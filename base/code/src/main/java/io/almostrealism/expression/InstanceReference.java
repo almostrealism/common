@@ -21,7 +21,6 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -29,7 +28,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.BiFunction;
 
 /**
  * {@link InstanceReference} is used to reference a previously declared
@@ -38,12 +36,6 @@ import java.util.function.BiFunction;
  * {@link Variable} the text does not appear in quotes.
  */
 public class InstanceReference<T, V> extends Expression<V> implements ExpressionFeatures, ConsoleFeatures {
-
-	/**
-	 * A configurable function that renders a variable-name and position string into a
-	 * dereferencing expression (e.g. {@code name[pos]}). Defaults to array-index notation.
-	 */
-	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
 	/** The variable being referenced. */
 	private Variable<T, ?> var;
@@ -96,29 +88,10 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	@Override
 	public boolean isVariableReference() { return true; }
 
+	/** {@inheritDoc} The referent renders the reference, at this reference's position. */
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		if (var instanceof ArrayVariable) {
-			ArrayVariable v = (ArrayVariable) var;
-
-			if (v.getDelegate() == null) {
-				if (pos == null) {
-					// Reference to the whole array
-					return var.getName();
-				} else if (v.isDisableOffset() || !lang.isVariableOffsetSupported()) {
-					// Reference to a specific element
-					return dereference.apply(var.getName(), pos.toInt().getExpression(lang));
-				} else {
-					// Reference to a specific element, with offset
-					return dereference.apply(var.getName(), pos.add(v.getOffsetValue()).toInt().getExpression(lang));
-				}
-			 } else {
-				throw new UnsupportedOperationException();
-			}
-		} else {
-			// warn("Reference to value which is not an ArrayVariable");
-			return var.getName();
-		}
+		return var.referenceExpression(lang, pos);
 	}
 
 	@Override
@@ -134,9 +107,19 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 		return dependencies;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Variables are compared by the name of their {@link Variable#getRootDelegate() root
+	 * delegate}, because a reference to a variable that delegates to another is created as a
+	 * reference to the delegate. A view of {@code var} and {@code var} itself, or two views of
+	 * the same storage, are therefore treated as the same variable.</p>
+	 */
 	@Override
 	public boolean containsReference(Variable var) {
-		return Objects.equals(getReferent().getName(), var.getName()) || super.containsReference(var);
+		Variable<?, ?> referent = (Variable<?, ?>) getReferent().getRootDelegate();
+		Variable<?, ?> target = (Variable<?, ?>) var.getRootDelegate();
+		return Objects.equals(referent.getName(), target.getName()) || super.containsReference(var);
 	}
 
 	@Override
@@ -178,21 +161,22 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>A reference is identified by its referent rather than its children: two references
-	 * match where their referents {@link Variable#refersToSameValue stand for the same value}
-	 * and their indices are equal. A reference without an index matches only another
-	 * reference without an index, and then only where their positions are equal; a scalar
-	 * reference, which has no position either, matches only another scalar reference.</p>
+	 * <p>A reference matches another reference whose referent {@link Variable#isSameAs is the
+	 * same} as its own, wherever their supplementary indices are equal. When neither reference
+	 * has a supplementary index, their positions are compared instead, and two references to
+	 * the variable as a whole (with no position) match. It never matches any other kind of
+	 * expression.</p>
 	 */
 	@Override
-	public Expression<Boolean> structuralEq(Expression<?> operand) {
-		if (!(operand instanceof InstanceReference)) return new BooleanConstant(false);
+	public Expression<Boolean> matches(Expression<?> other) {
+		if (!(other instanceof InstanceReference)) return new BooleanConstant(false);
 
-		InstanceReference<?, ?> alt = (InstanceReference<?, ?>) operand;
-		if (!var.refersToSameValue(alt.var)) return new BooleanConstant(false);
-		if (index != null && alt.index != null) return index.eq(alt.index);
-		if (index != null || alt.index != null) return new BooleanConstant(false);
-		if (pos == null || alt.pos == null) return new BooleanConstant(pos == alt.pos);
-		return pos.eq(alt.pos);
+		InstanceReference<?, ?> ref = (InstanceReference<?, ?>) other;
+		if (!getReferent().isSameAs(ref.getReferent())) return new BooleanConstant(false);
+		if (index != null && ref.index != null) return index.eq(ref.index);
+		if (index != null || ref.index != null) return new BooleanConstant(false);
+		if (pos == null || ref.pos == null) return new BooleanConstant(pos == ref.pos);
+
+		return pos.eq(ref.pos);
 	}
 }

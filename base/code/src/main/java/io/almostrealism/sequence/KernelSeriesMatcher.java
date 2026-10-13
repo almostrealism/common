@@ -17,7 +17,6 @@
 package io.almostrealism.sequence;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
@@ -365,7 +364,7 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 
 		try {
 			if (distinctCount == 1) {
-				return isInt ? Constant.exactInteger((long) first) : new DoubleConstant(first);
+				return isInt ? e((long) first) : new DoubleConstant(first);
 			}
 
 			if (maskPossible && distinctCount == 2) {
@@ -401,7 +400,7 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 		double value = distinct[1];
 
 		if (isInt) {
-			return Mask.of(condition, Constant.exactInteger((long) value));
+			return Mask.of(condition, e((long) value));
 		} else {
 			return Mask.of(condition, new DoubleConstant(value));
 		}
@@ -422,8 +421,8 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 		}
 
 		if (isInt) {
-			if (delta != 1.0) r = r.multiply(Constant.exactInteger((long) delta));
-			if (first != 0.0) r = r.add(Constant.exactInteger((long) first));
+			if (delta != 1.0) r = r.multiply(e((long) delta));
+			if (first != 0.0) r = r.add(e((long) first));
 		} else {
 			if (delta != 1.0) r = r.multiply(new DoubleConstant(delta));
 			if (first != 0.0) r = r.add(new DoubleConstant(first));

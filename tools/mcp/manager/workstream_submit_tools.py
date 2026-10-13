@@ -29,11 +29,13 @@ def workstream_submit_task(
     max_budget_usd: float = 0.0,
     protect_test_files: bool = False,
     enforce_changes: bool = False,
+    auto_create_pr: bool = False,
     started_after: str = "",
     required_labels: str = "",
     deduplication_mode: str = "",
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
+    object_oriented_review_enabled: bool = False,
     retrospective_enabled: bool = False,
     falsification_enabled: bool = False,
     use_tmux: Optional[bool] = None,
@@ -139,6 +141,11 @@ def workstream_submit_task(
             test-integrity-check, which allows editing a test but not
             weakening it.
         enforce_changes: If true, require the agent to produce code changes.
+        auto_create_pr: If true, the controller opens a pull request for the
+            job's branch against its base branch when the job succeeds, using
+            the job's commit message as the title and description — what the
+            CI-submitted planning and QA rounds do. Leave it off for work that
+            continues on a branch which already has a pull request.
         started_after: Epoch milliseconds timestamp. If a newer job already
             exists on the workstream, the submission is skipped and the
             response includes ``skipped: true``. Used by CI pipelines to
@@ -171,6 +178,12 @@ def workstream_submit_task(
             level of the module hierarchy. Disabled by default to keep routine
             exploratory jobs cheaper. Enable for final pre-merge cleanup jobs
             where placement correctness matters.
+        object_oriented_review_enabled: When ``True``, activates the
+            object-oriented design review after the content rules: one
+            dedicated agent session per changed production class, mandated to
+            fix design violations. Only takes effect while ``review_enabled``
+            is also ``True``. Disabled by default because it runs a session
+            per class and is costly on review-heavy branches.
         retrospective_enabled: When ``True``, activates the retrospective phase
             after all other phases. A separate agent session analyzes the
             primary phase transcript for tool-use and context-efficiency
@@ -670,6 +683,8 @@ def workstream_submit_task(
         payload["protectTestFiles"] = True
     if enforce_changes:
         payload["enforceChanges"] = True
+    if auto_create_pr:
+        payload["autoCreatePr"] = True
     if started_after:
         payload["startedAfter"] = started_after
     if required_labels:
@@ -682,6 +697,8 @@ def workstream_submit_task(
         payload["maxDeduplicationPasses"] = max_deduplication_passes
     if organizational_placement_enabled:
         payload["enforceOrganizationalPlacement"] = True
+    if object_oriented_review_enabled:
+        payload["objectOrientedReviewEnabled"] = True
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
     if falsification_enabled:

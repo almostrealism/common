@@ -22,6 +22,8 @@ import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalLong;
 
 /**
  * A mask expression that evaluates to a value when a boolean condition is true,
@@ -48,13 +50,30 @@ public class Mask<T extends Number> extends Conditional<T> {
 	public Expression<Boolean> getMask() { return (Expression<Boolean>) getChildren().get(0); }
 	public Expression<T> getMaskedValue() { return (Expression<T>) getChildren().get(1); }
 
+	/**
+	 * Returns an expression gated by this mask's guard, with the given value in place
+	 * of the masked value.
+	 *
+	 * @param value the expression returned when the mask is true
+	 * @param <V>   the numeric type of the value
+	 * @return the simplified masked expression
+	 */
+	public <V> Expression<V> withMaskedValue(Expression<V> value) {
+		return Mask.of(getMask(), value);
+	}
+
+	/**
+	 * Assigns to the masked value, which is the only branch of a mask that can be an
+	 * assignment target. Whether the assignment is supported is decided by the masked
+	 * value itself.
+	 *
+	 * @param exp the expression to assign
+	 * @return the assignment to the masked value
+	 * @throws UnsupportedOperationException if the masked value is not an assignment target
+	 */
 	@Override
 	public ExpressionAssignment<T> assign(Expression exp) {
-		if (getMaskedValue().isVariableReference()) {
-			return getMaskedValue().assign(exp);
-		}
-
-		return super.assign(exp);
+		return getMaskedValue().assign(exp);
 	}
 
 	@Override
@@ -80,6 +99,33 @@ public class Mask<T extends Number> extends Conditional<T> {
 
 	@Override
 	public boolean isMasked() { return true; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A mask compared against the constant it masks reduces to the mask itself. Integral
+	 * values are compared exactly, so distinct {@code long} values that share a
+	 * floating-point representation are never treated as equal.</p>
+	 */
+	@Override
+	public Optional<Expression<?>> equalityWith(Expression<?> other) {
+		OptionalLong maskedLong = getMaskedValue().longValue();
+		OptionalLong valueLong = other.longValue();
+
+		if (maskedLong.isPresent() && valueLong.isPresent()) {
+			return maskedLong.getAsLong() == valueLong.getAsLong() ?
+					Optional.of(this) : Optional.empty();
+		}
+
+		OptionalDouble masked = getMaskedValue().doubleValue();
+		OptionalDouble value = other.doubleValue();
+
+		if (masked.isPresent() && value.isPresent() && masked.getAsDouble() == value.getAsDouble()) {
+			return Optional.of(this);
+		}
+
+		return Optional.empty();
+	}
 
 	/**
 	 * Creates a mask expression, applying constant-folding and zero-value short-circuits.

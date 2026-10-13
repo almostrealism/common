@@ -1170,5 +1170,86 @@ class NonStringFieldTests(_StoreTestBase):
         self.assertEqual("orig", self.store.get_task(goal["id"])["title"])
 
 
+class CloseOutTests(_StoreTestBase):
+    """A claimed task follows its branch's pull request to an end."""
+
+    def test_only_claimed_ready_open_tasks_await_close_out(self):
+        self._task("claimed", workstream_id="ws-1")
+        self._task("also claimed", workstream_id="ws-1")
+        self._task("other branch", workstream_id="ws-2")
+        self._task("unclaimed")
+        self._task("person's own link", stage="backlog", workstream_id="ws-3")
+        self._task("finished", status="closed", workstream_id="ws-4")
+        self.assertEqual(["ws-1", "ws-2"], self.store.workstreams_awaiting_close_out())
+
+    def test_a_merge_closes_the_claimed_tasks_and_keeps_their_link(self):
+        task = self._task("t", workstream_id="ws-1")
+        self.assertEqual([task["id"]], self.store.close_out("ws-1", "merged"))
+        after = self.store.get_task(task["id"])
+        self.assertEqual(("closed", "ready", "ws-1"),
+                         (after["status"], after["stage"], after["workstream_id"]))
+        self.assertEqual([], self.store.workstreams_awaiting_close_out())
+
+    def test_a_closed_pull_request_declines_and_unlinks(self):
+        task = self._task("t", workstream_id="ws-1")
+        self.assertEqual([task["id"]], self.store.close_out("ws-1", "closed"))
+        after = self.store.get_task(task["id"])
+        self.assertEqual(("open", "declined", None),
+                         (after["status"], after["stage"], after["workstream_id"]))
+        self.assertEqual(0, self._count())
+
+    def test_a_declined_task_returned_to_ready_is_claimable_again(self):
+        task = self._task("t", workstream_id="ws-1")
+        self.store.close_out("ws-1", "closed")
+        self.store.update_task(task["id"], stage="ready")
+        self.assertEqual(1, self._count())
+
+    def test_tasks_a_person_moved_are_left_alone(self):
+        backlog = self._task("backlog", stage="backlog", workstream_id="ws-1")
+        closed = self._task("closed", status="closed", stage="ready", workstream_id="ws-1")
+        self.assertEqual([], self.store.close_out("ws-1", "closed"))
+        self.assertEqual(("open", "backlog", "ws-1"), tuple(
+            self.store.get_task(backlog["id"])[k] for k in ("status", "stage", "workstream_id")))
+        self.assertEqual(("closed", "ready", "ws-1"), tuple(
+            self.store.get_task(closed["id"])[k] for k in ("status", "stage", "workstream_id")))
+
+    def test_a_repeated_close_out_changes_nothing(self):
+        self._task("t", workstream_id="ws-1")
+        self.store.close_out("ws-1", "merged")
+        self.assertEqual([], self.store.close_out("ws-1", "merged"))
+
+    def test_an_unknown_outcome_is_refused(self):
+        task = self._task("t", workstream_id="ws-1")
+        with self.assertRaises(ValueError):
+            self.store.close_out("ws-1", "abandoned")
+        self.assertEqual("open", self.store.get_task(task["id"])["status"])
+
+    def test_the_endpoints_list_and_apply_outcomes(self):
+        task = self._task("t", workstream_id="ws-1")
+        listed = self.client.get("/v1/close-out")
+        self.assertEqual(200, listed.status_code, listed.text)
+        self.assertEqual(["ws-1"], listed.json()["workstream_ids"])
+        applied = self.client.post("/v1/close-out",
+                                   json={"workstream_id": "ws-1", "outcome": "merged"})
+        self.assertEqual(200, applied.status_code, applied.text)
+        self.assertEqual({"ok": True, "outcome": "merged", "task_ids": [task["id"]]},
+                         applied.json())
+
+    def test_the_endpoint_refuses_a_bad_request(self):
+        task = self._task("t", workstream_id="ws-1")
+        for body, message in (
+                ({"outcome": "merged"}, "workstream_id is required"),
+                ({"workstream_id": ["ws-1"], "outcome": "merged"}, "workstream_id is required"),
+                ({"workstream_id": "ws-1", "outcome": "abandoned"},
+                 "outcome must be one of: ['closed', 'merged']"),
+                ({"workstream_id": "ws-1", "outcome": ["merged"]},
+                 "outcome must be one of: ['closed', 'merged']")):
+            with self.subTest(body=body):
+                resp = self.client.post("/v1/close-out", json=body)
+                self.assertEqual(400, resp.status_code, resp.text)
+                self.assertEqual(message, resp.json()["error"])
+        self.assertEqual("open", self.store.get_task(task["id"])["status"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -16,9 +16,8 @@
 
 package io.flowtree.jobs.agent;
 
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.function.Consumer;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.flowtree.JsonFieldExtractor;
 
 /**
  * Identifies the lifecycle phase of a coding-agent job for the purpose of
@@ -121,6 +120,20 @@ public enum Phase {
     }
 
     /**
+     * Returns this phase as a JSON object holding its {@code name} (the
+     * {@linkplain #wireName() wire name}) and {@code description}, the shape
+     * {@code GET /api/agents} advertises to clients choosing per-phase runners.
+     *
+     * @return a new JSON object; never {@code null}
+     */
+    public ObjectNode toJson() {
+        ObjectNode json = JsonFieldExtractor.MAPPER.createObjectNode();
+        json.put("name", wireName);
+        json.put("description", description);
+        return json;
+    }
+
+    /**
      * Names the lifecycle state a job is in once it has entered or finished
      * this phase. This is what the controller records on the job so a poller
      * can tell "primary still running" from "primary done, review running"
@@ -151,63 +164,6 @@ public enum Phase {
             }
         }
         throw new IllegalArgumentException("Unknown phase wire name: " + wireName);
-    }
-
-    /**
-     * Encodes a per-phase runner map as a CSV of {@code phase=runner} pairs
-     * in declaration order, suitable for inclusion in a job's wire format.
-     *
-     * @param map the map to encode; must not be {@code null}
-     * @return the CSV string; empty when the map is empty
-     */
-    public static String encodeRunnerMap(Map<Phase, String> map) {
-        StringBuilder sb = new StringBuilder();
-        boolean first = true;
-        for (Phase phase : values()) {
-            String runner = map.get(phase);
-            if (runner == null) continue;
-            if (!first) sb.append(',');
-            first = false;
-            sb.append(phase.wireName).append('=').append(runner);
-        }
-        return sb.toString();
-    }
-
-    /**
-     * Parses a CSV runner map produced by {@link #encodeRunnerMap(Map)}.
-     * Unknown phase names are passed to {@code warningSink} and skipped so
-     * a future producer cannot brick a current consumer.
-     *
-     * @param value       the CSV string; {@code null} or empty yields an
-     *                    empty map
-     * @param warningSink consumer for warnings about unknown or malformed
-     *                    entries; may be {@code null} to discard them
-     * @return the parsed map; never {@code null}
-     */
-    public static Map<Phase, String> decodeRunnerMap(String value, Consumer<String> warningSink) {
-        Map<Phase, String> out = new EnumMap<>(Phase.class);
-        if (value == null || value.isEmpty()) return out;
-        for (String entry : value.split(",")) {
-            String trimmed = entry.trim();
-            if (trimmed.isEmpty()) continue;
-            int eq = trimmed.indexOf('=');
-            if (eq <= 0 || eq == trimmed.length() - 1) {
-                if (warningSink != null) warningSink.accept("Ignoring malformed runner entry: " + trimmed);
-                continue;
-            }
-            String phaseName = trimmed.substring(0, eq);
-            String runner = trimmed.substring(eq + 1);
-            try {
-                Phase phase = fromWireName(phaseName);
-                out.put(phase, runner);
-            } catch (IllegalArgumentException e) {
-                if (warningSink != null) {
-                    warningSink.accept("Ignoring unknown phase '" + phaseName
-                            + "' in runners map");
-                }
-            }
-        }
-        return out;
     }
 
     /**

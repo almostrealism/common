@@ -394,7 +394,7 @@
       "id": 6,
       "title": "Wait for a runner, by lane",
       "type": "timeseries",
-      "description": "Mean queue_wait_seconds of jobs created in each hour, per lane. Only jobs whose dependency graph was resolved contribute (see 'Wait measured'). A sustained rise here, on a lane whose runners below are all busy, is the signal to add hardware to that lane.",
+      "description": "Median (p50, solid) and 90th-percentile (p90, dashed) queue_wait_seconds of jobs created within each time bucket, per lane. Percentiles rather than a mean, because most jobs start within seconds and a mean is set by the few that wait long. Only jobs whose dependency graph was resolved contribute (see 'Wait measured'). A sustained rise in p50 means a typical job is waiting; a rise in p90 alone means a tail of jobs is. Either, on a lane whose runners below are all busy, is the signal to add hardware to that lane.",
       "datasource": {
         "type": "postgres",
         "uid": "fleet-db"
@@ -413,7 +413,7 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, $__interval),\n  lane AS metric,\n  AVG(queue_wait_seconds) AS value\nFROM job_event\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane) AND queue_wait_seconds IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1",
+          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, $__interval),\n  lane || ' ' || q.name AS metric,\n  PERCENTILE_CONT(q.fraction) WITHIN GROUP (ORDER BY queue_wait_seconds) AS value\nFROM job_event\nCROSS JOIN (VALUES ('p50', 0.5::float8), ('p90', 0.9::float8)) AS q(name, fraction)\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane) AND queue_wait_seconds IS NOT NULL\nGROUP BY 1, 2, q.fraction\nORDER BY 1",
           "format": "time_series",
           "editorMode": "code"
         }
@@ -450,7 +450,23 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* p90$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [10, 10]
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {

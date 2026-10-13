@@ -41,6 +41,20 @@ _CLAIMABLE = (
     "WHERE b.task_id = tasks.id AND blocker.status != 'closed')"
 )
 
+# The one definition of a task whose branch's outcome decides what becomes of
+# it: a claimed task still in the ready queue. A task a person left in backlog
+# is never closed or declined on their behalf, even when it is linked to a
+# workstream, so listing the work to reconcile and applying an outcome use the
+# same condition.
+_AWAITING_CLOSE_OUT = (
+    "tasks.status = 'open' AND tasks.stage = 'ready' "
+    "AND tasks.workstream_id IS NOT NULL"
+)
+
+# Branch outcomes a close-out applies: a merged pull request finishes the
+# task; one closed without merging declines it.
+CLOSE_OUT_OUTCOMES = ("merged", "closed")
+
 # Source prefix of a task an agent derived from a goal document
 # ("goals:<document>"); any other task was written by a person.
 GOAL_SOURCE_PREFIX = "goals:"
@@ -720,6 +734,54 @@ class TrackerStore:
             if cursor.rowcount == 0:
                 return None
         return self.get_task(row["id"])
+
+    def workstreams_awaiting_close_out(self) -> list:
+        """Return the workstream ids that have a claimed task still open and ready.
+
+        These are the branches whose pull-request outcome a reconciler has to
+        look up; see :meth:`close_out` for what it then applies.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT DISTINCT workstream_id FROM tasks WHERE {_AWAITING_CLOSE_OUT} "
+                "ORDER BY workstream_id"
+            ).fetchall()
+        return [r["workstream_id"] for r in rows]
+
+    def close_out(self, workstream_id: str, outcome: str) -> list:
+        """Apply a branch's outcome to the claimed tasks linked to it.
+
+        ``merged`` closes each task. ``closed`` (the pull request was closed
+        without merging) moves each task to ``declined`` and unlinks it, so it
+        stays out of the queue until a person returns it to ``ready``, at
+        which point it is claimable again rather than still held by the
+        abandoned branch.
+
+        Only tasks matching ``_AWAITING_CLOSE_OUT`` change, in one conditional
+        update, so a task a person moved or closed in the meantime is left as
+        they left it, and applying the same outcome twice changes nothing.
+
+        Returns:
+            The ids of the tasks changed.
+        """
+        if outcome not in CLOSE_OUT_OUTCOMES:
+            raise ValueError(f"outcome must be one of: {list(CLOSE_OUT_OUTCOMES)}")
+        change = ("status = 'closed'" if outcome == "merged"
+                  else "stage = 'declined', workstream_id = NULL")
+        with self._write():
+            rows = self._conn.execute(
+                f"SELECT id FROM tasks WHERE workstream_id = ? AND {_AWAITING_CLOSE_OUT} "
+                "ORDER BY id",
+                (workstream_id,),
+            ).fetchall()
+            ids = [r["id"] for r in rows]
+            if ids:
+                marks = ", ".join("?" for _ in ids)
+                self._conn.execute(
+                    f"UPDATE tasks SET {change}, updated_at = ? WHERE id IN ({marks})",
+                    [_now()] + ids,
+                )
+        return ids
 
     def delete_task(self, task_id: str) -> bool:
         """Delete a task. Returns True if a row was deleted."""

@@ -110,14 +110,28 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Determines whether this collection variable has a fixed element count.
-	 * This method checks if the underlying producer implements {@link Countable}
-	 * and reports a fixed count, looking through a {@link Delegated} producer to its delegate.
+	 * This method checks if the {@link #getProducerDelegate() producer delegate}
+	 * implements {@link Countable} and reports a fixed count.
 	 *
 	 * @return {@code true} if the element count is fixed and known at compile time,
 	 *         {@code false} otherwise
 	 */
 	public boolean isFixedCount() {
-		return Countable.isFixedCount(getUnwrappedProducer());
+		return Countable.isFixedCount(getProducerDelegate());
+	}
+
+	/**
+	 * Returns the {@link #getProducerDelegate() producer delegate} as a
+	 * {@link TraversableExpression}, if it is one. When it is, the values of this
+	 * variable are defined by that expression rather than by references to this
+	 * variable's own memory.
+	 *
+	 * @return the traversable producer delegate, or {@code null} if the values of this
+	 *         variable are references to its own memory
+	 */
+	public TraversableExpression<Double> getTraversableProducer() {
+		Supplier<?> producer = getProducerDelegate();
+		return producer instanceof TraversableExpression ? (TraversableExpression<Double>) producer : null;
 	}
 
 	/**
@@ -188,27 +202,21 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 *   <li>Transforming indices according to the shape's traversal order</li>
 	 * </ul>
 	 *
+	 * <p>Falling back to this variable's own references when the
+	 * {@link #getTraversableProducer() traversable producer} returns {@code null} should not
+	 * be necessary, but some implementations of {@link TraversableExpression} wrap other
+	 * types that may or may not be traversable themselves.</p>
+	 *
 	 * @param index the index expression specifying which element to access
 	 * @return an expression representing the Double value at the specified index
 	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		TraversableExpression<Double> producer = getTraversableProducer();
-
-		// TODO  This process of falling back when TraversableExpression
-		// TODO  returns null shouldn't really be necessary, but there
-		// TODO  are currently some implementations of TraversableExpression
-		// TODO  that wrap other types, and it isn't known whether those
-		// TODO  types are TraversableExpressions or not.
-		Expression<Double> result = null;
-
-		if (producer != null) {
-			result = producer.getValueAt(index);
-		}
-
+		Expression<Double> result = producer == null ? null : producer.getValueAt(index);
 		if (result != null) return result;
 
-		boolean fixedCount = Countable.isFixedCount(getProducer());
+		boolean fixedCount = isFixedCount();
 
 		if (getShape().getTotalSize() == 1 && fixedCount) {
 			return (Expression) reference(e(0));
@@ -237,42 +245,6 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	}
 
 	/**
-	 * A collection variable is an opaque input unless its producer, looking through a
-	 * {@link Delegated} producer to its delegate, is itself a {@link TraversableExpression},
-	 * whose values are computed rather than read.
-	 *
-	 * @return {@code true} if the unwrapped producer is not a {@link TraversableExpression}
-	 */
-	@Override
-	public boolean isOpaqueInput() {
-		return getTraversableProducer() == null;
-	}
-
-	/**
-	 * Returns the producer of this variable, looking through a {@link Delegated} producer
-	 * to its delegate, when that producer is a {@link TraversableExpression} whose values
-	 * can be computed directly rather than read from the argument.
-	 *
-	 * @return the unwrapped producer as a {@link TraversableExpression}, or {@code null}
-	 *         if it is not one
-	 */
-	protected TraversableExpression<Double> getTraversableProducer() {
-		Supplier<?> producer = getUnwrappedProducer();
-		return producer instanceof TraversableExpression ? (TraversableExpression<Double>) producer : null;
-	}
-
-	/**
-	 * A collection variable is referenced by an expression that contains a reference to it.
-	 *
-	 * @param expression the expression to inspect
-	 * @return {@code true} if the expression contains a reference to this variable
-	 */
-	@Override
-	public boolean isReferencedBy(Expression<?> expression) {
-		return expression.containsReference(this);
-	}
-
-	/**
 	 * Computes a unique non-zero offset for the given indices, if one exists.
 	 * This method checks if the underlying producer is a {@link TraversableExpression}
 	 * and delegates to its offset calculation, otherwise falls back to the default
@@ -295,10 +267,23 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the values of this variable are references to its own memory, the
+	 * dependence is detected precisely as a reference to this variable. When they are
+	 * defined by a {@link #getTraversableProducer() traversable producer} instead, a
+	 * possible dependence is reported.</p>
+	 */
+	@Override
+	public boolean isReferencedBy(Expression<?> e) {
+		return getTraversableProducer() != null || e.containsReference(this);
+	}
+
+	/**
 	 * Determines whether this collection variable algebraically matches another expression.
-	 * This variable matches another {@link Variable} if
-	 * {@link Variable#hasMatchingProducer(Variable) their producers match}. Otherwise,
-	 * falls back to the default {@link CollectionExpression} matching logic.
+	 * This variable matches any other {@link Variable} with which it
+	 * {@link #hasMatchingProducer has matching producers}. Otherwise, falls back to the default {@link CollectionExpression}
+	 * matching logic.
 	 *
 	 * @param other the other computation to compare against
 	 * @return {@code true} if the expressions match algebraically, {@code false} otherwise
@@ -332,9 +317,10 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Factory method to create an appropriate array variable for the given producer.
-	 * If the producer, or the producer it {@link Delegated#unwrap(Object) delegates to},
-	 * implements {@link Shape}, creates a {@code CollectionVariable} with the corresponding
-	 * shape. Otherwise, creates a standard {@link ArrayVariable}.
+	 * If the producer implements {@link Shape}, or it is {@link Delegated} and its
+	 * {@link Delegated#getDelegate() delegate} implements {@link Shape}, creates a
+	 * {@code CollectionVariable} with the corresponding shape. Otherwise, creates a
+	 * standard {@link ArrayVariable}.
 	 *
 	 * @param name the name identifier for the variable
 	 * @param p    the supplier that produces evaluable instances
@@ -344,12 +330,9 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	public static <T> ArrayVariable<T> create(String name,
 											  Supplier<Evaluable<? extends Multiple<T>>> p) {
-		Object source = p instanceof Shape ? p : Delegated.unwrap(p);
-
-		if (source instanceof Shape) {
-			return new CollectionVariable(name, ((Shape<?>) source).getShape(), p);
-		}
-
-		return new ArrayVariable<>(name, p);
+		Object shaped = p instanceof Delegated && !(p instanceof Shape) ? ((Delegated<?>) p).getDelegate() : p;
+		return shaped instanceof Shape
+				? new CollectionVariable(name, ((Shape<?>) shaped).getShape(), p)
+				: new ArrayVariable<>(name, p);
 	}
 }

@@ -81,9 +81,14 @@ public class Tangent extends Expression<Double> {
 		return new Tangent((Expression<Double>) children.get(0), hyperbolic);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The circular and hyperbolic tangent of the same operand are different values.</p>
+	 */
 	@Override
-	public boolean compare(Expression e) {
-		return super.compare(e) && ((Tangent) e).hyperbolic == hyperbolic;
+	protected boolean compareAttributes(Expression<?> other) {
+		return ((Tangent) other).hyperbolic == hyperbolic;
 	}
 
 	/**

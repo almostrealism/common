@@ -16,11 +16,12 @@
 
 package io.almostrealism.collect;
 
-import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
+import io.almostrealism.scope.Scope;
+import org.almostrealism.io.Console;
 
 import java.util.Optional;
 
@@ -28,19 +29,20 @@ import java.util.Optional;
  * A {@link CollectionExpression} that compares two reference expressions element-wise
  * and selects from a positive or negative operand based on the comparison result.
  *
- * <p>At each index the {@code reference} and {@code compareTo} expressions are compared
- * structurally. If they match, the value from {@code positive} is returned; otherwise the
- * value from {@code negative} is returned. The comparison is done on the expression tree
- * structure (not at runtime), so it can be resolved at compile time when both sides are
- * constants or share the same sub-expression tree.</p>
+ * <p>At each index the value of {@code reference} is {@link Expression#matches(Expression)
+ * matched} against the value of {@code compareTo}. Where they match, the value from
+ * {@code positive} is returned; otherwise the value from {@code negative} is returned. The
+ * match is decided on the expression tree structure (not at runtime), so it can be resolved
+ * at compile time when both sides are constants or share the same sub-expression tree.</p>
  *
- * <p>The static {@link #create} factory method can short-circuit the conditional when the
- * comparison result is statically known via {@link #staticComparison}.</p>
+ * <p>The static {@link #create} factory methods return the selected operand itself, rather
+ * than a conditional, when the selection is the same at every index.</p>
  */
 public class ExpressionMatchingCollectionExpression extends CollectionExpressionAdapter {
 	/**
-	 * Whether to attempt a static pre-check of whether the reference and compareTo expressions
-	 * can possibly match, allowing early elimination of the conditional.
+	 * Whether {@link #create} checks, before building the conditional, whether the reference
+	 * and compareTo expressions match at every index or at none, allowing early elimination
+	 * of the conditional.
 	 */
 	public static boolean enablePossibleMatch = true;
 
@@ -62,8 +64,8 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	 *
 	 * @param reference  the expression providing reference values
 	 * @param compareTo  the expression to compare against the reference
-	 * @param positive   the expression to use when reference equals compareTo
-	 * @param negative   the expression to use when reference does not equal compareTo
+	 * @param positive   the expression to use where reference matches compareTo
+	 * @param negative   the expression to use where reference does not match compareTo
 	 */
 	public ExpressionMatchingCollectionExpression(CollectionExpression reference,
 												  CollectionExpression compareTo,
@@ -78,78 +80,93 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return conditional(comparisonAt(index), positive.getValueAt(index), negative.getValueAt(index));
+		return conditional(matchAt(index), positive.getValueAt(index), negative.getValueAt(index));
 	}
 
 	@Override
 	public Expression<Integer> uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		ExpressionMatrix<Boolean> comparison =
-				ExpressionMatrix.create(globalIndex, localIndex, targetIndex, this::comparisonAt);
+				ExpressionMatrix.create(globalIndex, localIndex, targetIndex, this::matchAt);
 		if (comparison == null) return null;
 
 		Expression<Boolean> allMatch = comparison.allMatch();
 
-		if (allMatch != null) {
-			Optional<Boolean> alt = allMatch.booleanValue();
-
-			if (alt.isPresent()) {
-				if (alt.get()) {
-					return positive.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
-				} else {
-					return negative.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
-				}
-			}
-		} else {
+		if (allMatch == null) {
 			return comparison.uniqueMatchingOffset(globalIndex, e -> e.booleanValue().orElse(false));
 		}
 
-		return null;
+		return allMatch.booleanValue().map(this::select)
+				.map(selected -> selected.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex))
+				.orElse(null);
 	}
 
 	@Override
 	public boolean isIndexIndependent() {
-		Optional<Boolean> alt = staticComparison();
-
-		if (alt.isPresent()) {
-			return alt.get() ? positive.isIndexIndependent() : negative.isIndexIndependent();
-		}
-
-		return false;
+		return getUniformSelection().map(CollectionExpression::isIndexIndependent).orElse(false);
 	}
 
+	@Override
+	public Console console() { return Scope.console; }
+
 	/**
-	 * Builds the comparison of the {@code reference} and {@code compareTo} values at the given
-	 * index, using {@link Expression#structuralEq(Expression) structural equality}. A missing
-	 * value matches only another missing value.
+	 * Returns the condition under which the value of the reference at the given index
+	 * {@link Expression#matches(Expression) matches} the value of compareTo at that index.
 	 *
-	 * @param index the index at which to compare
-	 * @return a boolean expression for whether the two values match at {@code index}
+	 * @param index the index at which to compare the two expressions
+	 * @return a boolean expression that holds where the operand to select is {@code positive}
 	 */
-	protected Expression<Boolean> comparisonAt(Expression<?> index) {
-		Expression<?> r = reference.getValueAt(index);
-		Expression<?> c = compareTo.getValueAt(index);
-		if (r == null || c == null) return new BooleanConstant(r == c);
-		return r.structuralEq(c);
+	private Expression<Boolean> matchAt(Expression<?> index) {
+		return reference.getValueAt(index).matches(compareTo.getValueAt(index));
 	}
 
 	/**
-	 * Determines whether the comparison is statically known, by comparing the {@code reference}
-	 * and {@code compareTo} values at a temporary index.
+	 * Returns the operand this expression selects at every index, when that does not depend
+	 * on the index: the match is decided at a fresh temporary index, and if it holds or fails
+	 * there regardless of the index's value, the same operand is selected everywhere.
 	 *
-	 * @return {@code true} if the values always match, {@code false} if they never match,
-	 *         or empty if this cannot be determined without evaluation
+	 * @return the operand selected at every index, or empty if the selection depends on the index
 	 */
-	protected Optional<Boolean> staticComparison() {
-		return comparisonAt(DefaultIndex.temporary()).booleanValue();
+	private Optional<CollectionExpression> getUniformSelection() {
+		return matchAt(DefaultIndex.temporary()).booleanValue().map(this::select);
 	}
 
 	/**
-	 * Creates a matching expression, short-circuiting when the comparison is statically known.
+	 * Returns the operand selected for the given outcome of the match.
 	 *
-	 * <p>When {@link #enablePossibleMatch} is set and the {@link #staticComparison() static
-	 * comparison} shows that the reference always equals (or never equals) the compareTo
-	 * expression, the positive or negative operand is returned directly instead of the
-	 * conditional expression.</p>
+	 * @param matched whether reference matches compareTo
+	 * @return {@code positive} if matched, otherwise {@code negative}
+	 */
+	private CollectionExpression select(boolean matched) {
+		return matched ? positive : negative;
+	}
+
+	/**
+	 * Creates a matching expression using constant positive and negative scalar values.
+	 *
+	 * <p>Delegates to {@link #create(CollectionExpression, CollectionExpression, CollectionExpression, CollectionExpression)}
+	 * after wrapping the scalars in {@link ConstantCollectionExpression} instances.</p>
+	 *
+	 * @param reference  the reference expression
+	 * @param compareTo  the comparison target expression
+	 * @param positive   the scalar value when the comparison is true
+	 * @param negative   the scalar value when the comparison is false
+	 * @return a collection expression implementing the conditional selection
+	 */
+	public static CollectionExpression create(
+			CollectionExpression reference, CollectionExpression compareTo,
+			Expression<?> positive, Expression<?> negative) {
+		return create(reference, compareTo,
+				new ConstantCollectionExpression(reference.getShape(), positive),
+				new ConstantCollectionExpression(reference.getShape(), negative));
+	}
+
+	/**
+	 * Creates a matching expression, returning the selected operand itself when the
+	 * selection is the same at every index.
+	 *
+	 * <p>When {@link #enablePossibleMatch} is set and the reference matches the compareTo
+	 * expression at every index (or at none), the positive (or negative) operand is returned
+	 * directly instead of a conditional expression.</p>
 	 *
 	 * @param reference  the reference expression
 	 * @param compareTo  the comparison target expression
@@ -162,10 +179,6 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 			CollectionExpression positive, CollectionExpression negative) {
 		ExpressionMatchingCollectionExpression match =
 				new ExpressionMatchingCollectionExpression(reference, compareTo, positive, negative);
-		if (!enablePossibleMatch) return match;
-
-		Optional<Boolean> comp = match.staticComparison();
-		if (comp.isEmpty()) return match;
-		return comp.get() ? positive : negative;
+		return enablePossibleMatch ? match.getUniformSelection().orElse(match) : match;
 	}
 }

@@ -17,7 +17,9 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.compute.PhysicalScope;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -135,36 +137,6 @@ public class Variable<T, V extends Variable<T, ?>>
 	}
 
 	/**
-	 * Determines whether this variable and another stand for the same value, so that
-	 * references to them may be treated as references to the same thing. Two variables
-	 * are equivalent when their names match, or when they
-	 * {@link #hasMatchingProducer(Variable) are produced by matching computations}
-	 * even though they are named differently.
-	 *
-	 * @param other the variable to compare against
-	 * @return {@code true} if both variables stand for the same value
-	 */
-	public boolean refersToSameValue(Variable<?, ?> other) {
-		return Objects.equals(getName(), other.getName()) || hasMatchingProducer(other);
-	}
-
-	/**
-	 * Determines whether the {@link #getUnwrappedProducer() unwrapped producer} of this
-	 * variable and that of another are both {@link Computable} and
-	 * {@link Computable#matches(Computable) match}, so that both variables hold the value
-	 * of the same computation even when either reaches it through a {@link Delegated} wrapper.
-	 *
-	 * @param other the variable to compare against
-	 * @return {@code true} if the producers of both variables match
-	 */
-	public boolean hasMatchingProducer(Variable<?, ?> other) {
-		Supplier<?> a = getUnwrappedProducer();
-		Supplier<?> b = other.getUnwrappedProducer();
-		return a instanceof Computable && b instanceof Computable
-				&& ((Computable) a).matches((Computable) b);
-	}
-
-	/**
 	 * Creates an {@link InstanceReference} pointing to this variable.
 	 *
 	 * <p>If this variable has a delegate, the reference will point to
@@ -178,6 +150,20 @@ public class Variable<T, V extends Variable<T, ?>>
 		} else {
 			return getDelegate().ref();
 		}
+	}
+
+	/**
+	 * Renders a reference to this variable in the given language. A variable
+	 * that is not an array has no elements, so the position is not used and
+	 * the reference is the variable's name.
+	 *
+	 * @param lang     the language to render for
+	 * @param position the position of the referenced element, or {@code null}
+	 *                 for a reference to the variable as a whole
+	 * @return the rendered reference
+	 */
+	public String referenceExpression(LanguageOperations lang, Expression<?> position) {
+		return getName();
 	}
 
 	/**
@@ -248,14 +234,26 @@ public class Variable<T, V extends Variable<T, ?>>
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
 	/**
-	 * Returns the producer that actually provides this variable's values. If the
-	 * {@link #getProducer() producer} is {@link Delegated}, this is the producer it
-	 * delegates to; otherwise it is the producer itself.
+	 * Shorthand for {@code getProducer().getDelegate()}: the {@link Delegated#getDelegate()
+	 * delegate} of the {@link #getProducer() producer} when the producer is {@link Delegated},
+	 * or the producer itself otherwise. This does not redefine what the producer of a
+	 * variable is; it only saves subclasses from repeating the check and the cast.
 	 *
-	 * @return the delegate of the producer if it has one, otherwise the producer
+	 * <p>Exactly one level is unwrapped, rather than following the chain to
+	 * {@link Delegated#getRootDelegate() the root}, because of what that first level is.
+	 * The producer of a variable that is {@link Delegated} is a destination wrapper that
+	 * supplies the memory for the output of a computation, and its delegate is that
+	 * computation. The computation is what determines the count and the values held in
+	 * this variable's memory. Anything the computation might in turn delegate to describes
+	 * the output of a different producer, so continuing past it would answer questions
+	 * about data this variable does not hold.</p>
+	 *
+	 * @return the producer delegate, or {@code null} if there is no producer
+	 * @throws ClassCastException if the delegate is not a {@link Supplier}
 	 */
-	public Supplier<?> getUnwrappedProducer() {
-		return (Supplier<?>) Delegated.unwrap(producer);
+	protected Supplier<Evaluable<? extends T>> getProducerDelegate() {
+		Supplier<Evaluable<? extends T>> p = getProducer();
+		return p instanceof Delegated ? (Supplier<Evaluable<? extends T>>) ((Delegated<?>) p).getDelegate() : p;
 	}
 
 	/**
@@ -291,6 +289,36 @@ public class Variable<T, V extends Variable<T, ?>>
 		List<Variable<?, ?>> deps = new ArrayList<>();
 		if (delegate != null) deps.add(delegate);
 		return deps;
+	}
+
+	/**
+	 * Determines whether {@code other} stands for the same data as this variable, so that a
+	 * reference to one is a reference to the other. Unlike {@link #equals(Object)}, which
+	 * requires every property of the two variables to agree, a variable is identified by its
+	 * name, or by its producer when the two variables {@link #hasMatchingProducer have
+	 * matching producers}, so that a reference to an argument still matches the target of a
+	 * derivative when the two variables have different names.
+	 *
+	 * @param other the variable to compare with
+	 * @return {@code true} if {@code other} stands for the same data as this variable
+	 */
+	public boolean isSameAs(Variable<?, ?> other) {
+		return Objects.equals(getName(), other.getName()) || hasMatchingProducer(other);
+	}
+
+	/**
+	 * Determines whether the {@link #getProducerDelegate() producer delegates} of this
+	 * variable and {@code other} are {@link Computable} computations that
+	 * {@link Computable#matches match}, and therefore stand for the same data even when
+	 * either reaches that computation through a {@link Delegated} wrapper.
+	 *
+	 * @param other the variable to compare with
+	 * @return {@code true} if both producer delegates are {@link Computable} and match
+	 */
+	public boolean hasMatchingProducer(Variable<?, ?> other) {
+		Supplier<?> a = getProducerDelegate();
+		Supplier<?> b = other.getProducerDelegate();
+		return a instanceof Computable && b instanceof Computable && ((Computable) a).matches((Computable) b);
 	}
 
 	@Override

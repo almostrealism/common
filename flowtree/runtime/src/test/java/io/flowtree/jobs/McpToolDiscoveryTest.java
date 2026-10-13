@@ -460,6 +460,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare organizational_placement_enabled in"
 			+ " signature so callers can opt in to placement review for pre-merge jobs",
 			submitParams.contains("organizational_placement_enabled"));
+		assertTrue("workstream_submit_task must declare object_oriented_review_enabled in"
+			+ " signature so callers can opt in to the per-class design review",
+			submitParams.contains("object_oriented_review_enabled"));
 		assertTrue("workstream_submit_task must declare retrospective_enabled in signature"
 			+ " so callers can opt in to the retrospective phase",
 			submitParams.contains("retrospective_enabled"));
@@ -701,11 +704,15 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_create_task");
 		assertTrue("tracker_create_task must declare priority in signature",
 			trackerCreateParams.contains("priority"));
+		assertTrue("tracker_create_task must declare stage in signature",
+			trackerCreateParams.contains("stage"));
 
 		List<String> trackerUpdateParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_update_task");
 		assertTrue("tracker_update_task must declare priority in signature",
 			trackerUpdateParams.contains("priority"));
+		assertTrue("tracker_update_task must declare stage in signature",
+			trackerUpdateParams.contains("stage"));
 
 		List<String> trackerListParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_list_tasks");

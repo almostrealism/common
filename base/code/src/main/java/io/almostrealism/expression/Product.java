@@ -75,7 +75,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	 * @param values the operand expressions to multiply together
 	 */
 	protected Product(List<Expression<? extends Number>> values) {
-		this((Class<T>) type(values), (List) values);
+		this((Class<T>) promotedType(values), (List) values);
 	}
 
 	/**
@@ -372,7 +372,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static Expression<?> of(Expression<?>... values) {
-		return Expression.process(create(values));
+		return create(values).process();
 	}
 
 	/**
@@ -400,7 +400,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			List<Expression> operands = Stream.of(values)
 					.map(e -> e == mask.get() ? mask.get().getMaskedValue() : e)
 					.collect(Collectors.toList());
-			return Mask.of(mask.get().getMask(), Product.of(operands.toArray(new Expression[0])));
+			return mask.get().withMaskedValue(Product.of(operands.toArray(new Expression[0])));
 		}
 
 		double constant = 1.0;
@@ -448,13 +448,8 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		if (enableSort)
 			operands = operands.stream().sorted(depthOrder()).collect(Collectors.toList());
 
-		// TODO  When ArithmeticGenerator is present, this should just delegate to ArithmeticGenerator::multiply
-		// TODO  which handles this case, but may include other optimizations
 		if (operands.size() == 2 && operands.get(0) instanceof ArithmeticGenerator && operands.get(1).longValue().isPresent()) {
-			ArithmeticGenerator<?> ag = (ArithmeticGenerator<?>) operands.get(0);
-			return ArithmeticGenerator.create(ag.getIndex(),
-					ag.getScale() * operands.get(1).longValue().getAsLong(),
-					ag.getGranularity(), ag.getMod());
+			return ((ArithmeticGenerator<?>) operands.get(0)).multiply(operands.get(1));
 		}
 
 		return fp ? new Product(Double.class, operands) : new Product(operands);

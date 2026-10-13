@@ -85,23 +85,6 @@ public interface Delegated<T> {
 	T getDelegate();
 
 	/**
-	 * Looks through one level of delegation: returns the {@link #getDelegate() delegate}
-	 * of the given value if it is {@link Delegated}, and the value itself otherwise.
-	 * Unlike {@link #getRootDelegate()}, this does not follow the chain further.
-	 *
-	 * @param value the value to look through
-	 * @param <V>   the type of the value
-	 * @return the delegate of the value if it is {@link Delegated}, otherwise the value
-	 */
-	static <V> Object unwrap(V value) {
-		if (value instanceof Delegated) {
-			return ((Delegated<?>) value).getDelegate();
-		}
-
-		return value;
-	}
-
-	/**
 	 * Traverses the delegation chain and returns the final non-delegating object.
 	 *
 	 * <p>If this instance has no delegate, returns {@code this}. Otherwise,

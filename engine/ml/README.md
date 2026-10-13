@@ -569,7 +569,9 @@ loraModel.mergeAllLoraWeights();
 
 ### ProjectionFactory
 
-Abstracts projection layer creation for LoRA vs dense selection:
+Abstracts projection layer creation for LoRA vs dense selection. The static factories
+return the named `DenseProjectionFactory` and `LoRAProjectionFactory` implementations
+(both in `org.almostrealism.layers`):
 
 ```java
 // Standard dense projections

@@ -25,7 +25,6 @@ import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ScopeSettings;
-import org.almostrealism.io.Console;
 
 import java.util.List;
 import java.util.Optional;
@@ -181,7 +180,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * @return {@code Math.floorMod(dividend, divisor)} when the dividend may be negative,
 	 *         otherwise {@code dividend % divisor}
 	 */
-	static long foldIntMod(long dividend, long divisor, boolean dividendPossiblyNegative) {
+	private static long foldIntMod(long dividend, long divisor, boolean dividendPossiblyNegative) {
 		return dividendPossiblyNegative ? Math.floorMod(dividend, divisor) : dividend % divisor;
 	}
 
@@ -207,9 +206,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (fp) {
 			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
 		} else {
-			return adjustType(getType(),
-					intMod(getChildren().get(0).value(indexValues).longValue(),
-							getChildren().get(1).value(indexValues).longValue()));
+			return adjustType(intMod(getChildren().get(0).value(indexValues).longValue(),
+					getChildren().get(1).value(indexValues).longValue()));
 		}
 	}
 
@@ -443,7 +441,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * @return the simplified modulo expression
 	 */
 	public static Expression of(Expression input, Expression mod, boolean fp) {
-		return Expression.process(create(input, mod, fp));
+		return create(input, mod, fp).process();
 	}
 
 	/**
@@ -468,7 +466,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 			if (demoteMod || demoteInput) {
 				long l = (demoteMod ? mod : (Expression) input).longValue().getAsLong();
-				Expression<? extends Number> converted = Constant.exactInteger(l);
+				Expression<? extends Number> converted = ExpressionFeatures.getInstance().e(l);
 				return demoteMod ? create(input, converted, false)
 						: create(converted, mod, false);
 			}
@@ -498,22 +496,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			return ExpressionFeatures.getInstance().e(foldIntMod(id.getAsLong(), m, id.getAsLong() < 0));
 		}
 
-		if (input instanceof Mod && !input.isFP()) {
-			Mod<Long> innerMod = (Mod) input;
-			OptionalLong inMod = innerMod.getChildren().get(1).longValue();
-
-			if (inMod.isPresent()) {
-				long n = inMod.getAsLong();
-
-				if (n == m || (enableRedundantModReplacement && m % n == 0)) {
-					return innerMod;
-				} else if (n % m == 0) {
-					return new Mod(innerMod.getChildren().get(0),
-							ExpressionFeatures.getInstance().e(m),
-							false);
-				}
-			}
-		} else if (enableRemoveMultiples) {
+		if (enableRemoveMultiples) {
 			int count = input.countNodes();
 
 			w: while (input instanceof Sum && !input.isFP()) {
@@ -525,23 +508,19 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			}
 		}
 
+		// Applied after removing multiples, which can leave a bare inner modulus
+		if (!input.isFP()) {
+			Optional<Expression<?>> reduced = input.reducedModulo(m);
+			if (reduced.isPresent()) return reduced.get();
+		}
+
 		OptionalLong u = input.upperBound();
 		if (!input.isPossiblyNegative() && u.isPresent() && u.getAsLong() < m) {
 			return input;
 		}
 
 		if (!input.isFP()) {
-			if (input instanceof Mod) {
-				Expression simple = tryModSimplify((Mod) input, m);
-				if (simple != null)
-					return simple;
-			} else if (input instanceof Sum) {
-				Expression simple = trySumSimplify((Sum) input, m);
-				if (simple != null)
-					return simple;
-			}
-
-			if (enableMod2Optimization && isPowerOf2(m) && m < Integer.MAX_VALUE) {
+			if (enableMod2Optimization && m > 0 && Long.bitCount(m) == 1 && m < Integer.MAX_VALUE) {
 				return And.of(input, new IntegerConstant((int) m - 1));
 			}
 		}
@@ -550,88 +529,32 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	/**
-	 * Attempts to simplify {@code (innerMod) % m} when the inner modulus is a
-	 * multiple of or equal to {@code m}.
+	 * {@inheritDoc}
 	 *
-	 * @param innerMod the inner mod expression
-	 * @param m        the outer modulus
-	 * @return the simplified expression, or {@code null} if no simplification applies
+	 * <p>An integer modulus reduces when this modulus and {@code m} are multiples
+	 * of one another. When this modulus equals {@code m}, or (with
+	 * {@link #enableRedundantModReplacement}) {@code m} is a multiple of it, the
+	 * outer modulus cannot change the result and this expression is returned
+	 * unchanged. When this modulus is a multiple of {@code m}, the inner modulus
+	 * is redundant and the dividend is reduced by {@code m} directly.</p>
+	 *
+	 * <p>A zero modulus on either side has no defined result, so no reduction
+	 * is attempted and the divisibility checks never divide by zero.</p>
 	 */
-	private static Expression tryModSimplify(Mod<?> innerMod, long m) {
-		OptionalLong inMod = innerMod.getChildren().get(1).longValue();
+	@Override
+	protected Optional<Expression<?>> reducedModulo(long m) {
+		OptionalLong inner = getRight().longValue();
+		if (fp || inner.isEmpty()) return Optional.empty();
 
-		if (inMod.isPresent()) {
-			long n = inMod.getAsLong();
+		long n = inner.getAsLong();
+		if (n == 0 || m == 0) return Optional.empty();
 
-			if (n == m) {
-				return innerMod;
-			} else if (n % m == 0) {
-				return new Mod(innerMod.getChildren().get(0), Constant.of(m), false);
-			}
+		if (n == m || (enableRedundantModReplacement && m % n == 0)) {
+			return Optional.of(this);
+		} else if (n % m == 0) {
+			return Optional.of(new Mod(getLeft(), ExpressionFeatures.getInstance().e(m), false));
 		}
 
-		return null;
-	}
-
-	/**
-	 * Attempts to simplify {@code (k * x + (x % k)) % m} patterns when {@code k}
-	 * divides {@code m} and structural conditions are met.
-	 *
-	 * @param innerSum the sum expression inside the mod
-	 * @param m        the outer modulus
-	 * @return the simplified expression, or {@code null} if no simplification applies
-	 */
-	private static Expression trySumSimplify(Sum<?> innerSum, long m) {
-		if (!enableInnerSumSimplify || innerSum.getChildren().size() != 2) return null;
-
-		Product<?> product = (Product) innerSum.getChildren().stream()
-				.filter(e -> e instanceof Product)
-				.findFirst().orElse(null);
-		if (product == null) return null;
-		if (product.getChildren().size() != 2) return null;
-
-		Expression<?> arg = product.getChildren()
-				.stream().filter(e -> e.longValue().isEmpty())
-				.findFirst().orElse(null);
-		if (arg == null) return null;
-
-		long constant = product.getChildren().stream()
-				.map(Expression::longValue)
-				.filter(OptionalLong::isPresent).findFirst()
-				.map(OptionalLong::getAsLong).orElse(-1L);
-		if (constant <= 0) return null;
-		if (m % constant != 0) return null;
-		if (constant > m) return null;
-
-		Mod<?> mod = (Mod) innerSum.getChildren().stream()
-				.filter(e -> e instanceof Mod)
-				.findFirst().orElse(null);
-		if (mod == null) return null;
-		if (mod.isFP()) return null;
-		if (!mod.getChildren().get(0).equals(arg)) return null;
-		if (mod.getChildren().get(1).longValue().isEmpty()) return null;
-		if (mod.getChildren().get(1).longValue().getAsLong() != constant) return null;
-
-		if (constant == m) {
-			Expression m0 = ExpressionFeatures.getInstance().e(constant);
-			return new Mod(arg, m0, false);
-		} else if (constant * constant == m) {
-			Expression m0 = ExpressionFeatures.getInstance().e(constant);
-			Expression m1 = ExpressionFeatures.getInstance().e(constant + 1);
-			return Product.of(Mod.of(arg, m0, false), m1);
-		} else {
-			Console.root().warn("Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
-			return null;
-		}
-	}
-
-	/**
-	 * Returns {@code true} if the given number is a positive power of two.
-	 *
-	 * @param number the value to test
-	 * @return {@code true} if {@code number} is a positive power of two
-	 */
-	private static boolean isPowerOf2(long number) {
-		return number > 0 && (number & (number - 1)) == 0;
+		return Optional.empty();
 	}
 }

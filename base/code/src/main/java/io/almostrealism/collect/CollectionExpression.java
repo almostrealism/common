@@ -160,27 +160,20 @@ public interface CollectionExpression<T> extends TraversableExpression<Double>, 
 	}
 
 	/**
-	 * Whether this collection, as a differentiation target, is an opaque input: its values
-	 * are read directly rather than computed by an expression, so it can influence another
-	 * expression only by being referenced from it (see {@link #isReferencedBy(Expression)}).
+	 * Determines whether the given expression may depend on the values of this collection.
+	 * This is used when differentiating with respect to this collection, to decide whether
+	 * an operand can be treated as constant.
 	 *
-	 * <p>The default is {@code false}, which makes no claim about how this collection
-	 * relates to other expressions.</p>
+	 * <p>The default implementation is conservative and always reports a possible
+	 * dependence; collections whose values can be identified by reference override it
+	 * to detect those references precisely.</p>
 	 *
-	 * @return {@code true} if this collection is an opaque input
+	 * @param e the expression to examine
+	 * @return {@code false} only if {@code e} is known not to depend on this collection
 	 */
-	default boolean isOpaqueInput() { return false; }
-
-	/**
-	 * Whether the given expression reads any value of this collection.
-	 *
-	 * <p>The default is {@code true}, the conservative answer for a collection that cannot
-	 * tell where its values are read.</p>
-	 *
-	 * @param expression the expression to inspect
-	 * @return {@code true} unless the expression provably does not read this collection
-	 */
-	default boolean isReferencedBy(Expression<?> expression) { return true; }
+	default boolean isReferencedBy(Expression<?> e) {
+		return true;
+	}
 
 	/**
 	 * Sets the total shape context for this collection expression.

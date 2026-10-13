@@ -37,7 +37,7 @@ import static org.junit.Assert.assertTrue;
  * Integration tests that wire {@link RestartGovernor} into the live
  * {@link CodingAgentJob} restart machinery: the {@link EnforcementRunner}
  * correction loop, the {@link CodingAgentJob#executeSingleRun()} chokepoint,
- * and the {@link CodingAgentJobCodec} wire round-trip.
+ * and the {@link CodingAgentJob#encode()} wire round-trip.
  *
  * <p>The headline failure these guard against is an {@code enforce-changes}
  * job whose agent never produces a usable change: historically the loop would

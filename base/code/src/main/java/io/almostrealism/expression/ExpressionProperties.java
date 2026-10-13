@@ -79,6 +79,13 @@ public interface ExpressionProperties<T> {
 	public default boolean isMasked() { return false; }
 
 	/**
+	 * Checks if this expression is the index of the kernel thread evaluating it.
+	 *
+	 * @return {@code true} if this is a kernel index; default implementation returns {@code false}
+	 */
+	public default boolean isKernelIndex() { return false; }
+
+	/**
 	 * Checks if this expression consists of exactly one index reference.
 	 *
 	 * @return {@code true} if this is a single index expression; default implementation returns {@code false}
@@ -186,6 +193,17 @@ public interface ExpressionProperties<T> {
 	 *         represents a compile-time constant; empty otherwise
 	 */
 	public default Optional<Boolean> booleanValue() { return Optional.empty(); }
+
+	/**
+	 * Returns the operand this expression tests for equality against the given constant,
+	 * if this expression is such a test (e.g. {@code x == 1} reports {@code x} for
+	 * {@code value} 1).
+	 *
+	 * @param value the constant the operand must be compared against
+	 * @return the operand compared against {@code value}; empty if this expression is not
+	 *         an equality test against that constant (the default)
+	 */
+	public default Optional<Expression<?>> equalityOperand(double value) { return Optional.empty(); }
 
 	/**
 	 * Returns the compile-time integer value of this expression, if known.

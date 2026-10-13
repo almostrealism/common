@@ -54,13 +54,15 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 	 * {@inheritDoc}
 	 *
 	 * <p>When the diagonal optimisation is enabled, the target appears exactly once among
-	 * the operands, and at least one other operand exists that does not reference it, returns
-	 * a {@link DiagonalCollectionExpression} whose diagonal values are the product of the
+	 * the operands, and the target reports that it is not
+	 * {@link CollectionExpression#isReferencedBy referenced by} any of the remaining
+	 * operands, returns a
+	 * {@link DiagonalCollectionExpression} whose diagonal values are the product of the
 	 * remaining operands. Otherwise delegates to the parent implementation.</p>
 	 */
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		if (!enableDiagonalDelta || !target.isOpaqueInput()) {
+		if (!enableDiagonalDelta) {
 			return super.delta(target);
 		}
 
@@ -78,8 +80,7 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 		DefaultIndex index = DefaultIndex.temporary();
 
 		if (matches.size() != 1 || others.isEmpty() ||
-				others.stream().map(e -> e.getValueAt(index))
-						.anyMatch(target::isReferencedBy)) {
+				others.stream().map(e -> e.getValueAt(index)).anyMatch(target::isReferencedBy)) {
 			return super.delta(target);
 		}
 
