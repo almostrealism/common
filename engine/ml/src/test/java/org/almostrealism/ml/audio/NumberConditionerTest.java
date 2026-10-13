@@ -201,6 +201,17 @@ public class NumberConditionerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The learned-frequency constructor must reject {@code null} Fourier weights. The canonical
+	 * constructor treats {@code null} weights as the request for the expo ladder, so without this
+	 * rejection a missing learned matrix would silently produce a degenerate ladder over
+	 * {@code minFreq = maxFreq = 0} instead of failing.
+	 */
+	@Test(timeout = 120000, expected = IllegalArgumentException.class)
+	public void learnedConstructorRejectsNullFourierWeights() {
+		new NumberConditioner(MIN_VAL, MAX_VAL, OUT_DIM, null, projWeight, projBias);
+	}
+
+	/**
 	 * The geometric frequency ladder {@link NumberConditioner#expo} builds:
 	 * {@code f_k = exp(log(minFreq) + k * step)} with
 	 * {@code step = (log(maxFreq) - log(minFreq)) / (half - 1)}, or {@code 0} when {@code half == 1}.
