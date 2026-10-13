@@ -355,6 +355,52 @@ public class RestartGovernor {
         this.maxInactivityRestarts = maxInactivityRestarts;
     }
 
+    /**
+     * Appends the job-wide ceilings to {@code sb} in the {@code ::key:=value}
+     * wire format of {@link CodingAgentJob#encode()}. Each ceiling is emitted
+     * only when it differs from its default, so the wire stays minimal.
+     *
+     * @param sb buffer the job's encoded form is being built in
+     */
+    void appendEncoded(StringBuilder sb) {
+        if (maxTotalSessions != DEFAULT_MAX_TOTAL_SESSIONS) {
+            sb.append("::maxTotalSessions:=").append(maxTotalSessions);
+        }
+        if (maxTotalTurns != DEFAULT_MAX_TOTAL_TURNS) {
+            sb.append("::maxTotalTurns:=").append(maxTotalTurns);
+        }
+        if (!DEFAULT_MAX_WALL_CLOCK.equals(maxWallClock)) {
+            sb.append("::maxWallClockMs:=").append(maxWallClock.toMillis());
+        }
+    }
+
+    /**
+     * Applies one wire-format key/value pair written by
+     * {@link #appendEncoded(StringBuilder)}.
+     *
+     * @param key   the wire-format key (without the leading {@code ::})
+     * @param value the raw wire value
+     * @return {@code true} if {@code key} names one of this governor's
+     *         ceilings and was consumed
+     */
+    boolean applySetting(String key, String value) {
+        switch (key) {
+            case "maxTotalSessions":
+                setMaxTotalSessions(Integer.parseInt(value));
+                return true;
+            case "maxTotalTurns":
+                setMaxTotalTurns(Integer.parseInt(value));
+                return true;
+            case "maxWallClockMs":
+                // Non-positive is meaningful here: it disables the ceiling, so
+                // it travels rather than being treated as an absent override.
+                setMaxWallClock(Duration.ofMillis(Long.parseLong(value)));
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /** Returns the current inactivity-restart attempt index ({@code 0} outside the relaunch loop). */
     int getInactivityRestartAttempt() {
         return inactivityRestartAttempt;

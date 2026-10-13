@@ -17,12 +17,16 @@
 package io.flowtree.jobs.agent;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.function.Consumer;
 
 /**
  * Per-container holder for a {@link PhaseConfig} default plus per-phase
@@ -42,6 +46,14 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
     /** A bundle with no defaults and no per-phase overrides. */
     public static final PhaseConfigBundle EMPTY = new PhaseConfigBundle(
             PhaseConfig.EMPTY, Collections.emptyMap());
+
+    /**
+     * Mapper for the {@link #toWire()} form. NON_NULL keeps wire bytes
+     * minimal — every {@link PhaseConfig} field is independently nullable,
+     * and most jobs leave most fields unset.
+     */
+    private static final ObjectMapper WIRE_MAPPER = new ObjectMapper()
+            .setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
     /**
      * Canonical constructor; normalises {@code null} arguments to safe
@@ -188,53 +200,8 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
     }
 
     /**
-     * Merges the legacy single-runner fields ({@code defaultRunner} /
-     * {@code runners}) with the new {@code defaultPhaseConfig} /
-     * {@code phaseConfigs} fields into a single bundle. New fields take
-     * precedence field-by-field — when both forms set the same field, the new
-     * form wins; the legacy form fills in any field the new form leaves null.
-     *
-     * @param legacyDefaultRunner the legacy single-runner default, or {@code null}
-     * @param legacyRunners       the legacy per-phase runner map, keyed by
-     *                            phase wire name; may be {@code null}
-     * @param newDefault          the new default {@link PhaseConfig}, or {@code null}
-     * @param newPhaseConfigs     the new per-phase {@link PhaseConfig} map,
-     *                            keyed by phase wire name; may be {@code null}
-     * @return the merged bundle; never {@code null}
-     */
-    public static PhaseConfigBundle mergeLegacyWithNew(String legacyDefaultRunner,
-                                                       Map<String, String> legacyRunners,
-                                                       PhaseConfig newDefault,
-                                                       Map<String, PhaseConfig> newPhaseConfigs) {
-        PhaseConfigBundle bundle = fromLegacyRunners(legacyDefaultRunner, legacyRunners);
-        if (newDefault != null && !newDefault.isEmpty()) {
-            // New default overlays the legacy-derived default field-by-field
-            // (new wins; legacy fills in missing fields).
-            bundle = bundle.withDefault(
-                    newDefault.overlayOn(bundle.defaultPhaseConfig()));
-        }
-        if (newPhaseConfigs != null && !newPhaseConfigs.isEmpty()) {
-            for (Map.Entry<String, PhaseConfig> e : newPhaseConfigs.entrySet()) {
-                if (e.getValue() == null || e.getValue().isEmpty()) continue;
-                Phase phase;
-                try {
-                    phase = Phase.fromWireName(e.getKey());
-                } catch (IllegalArgumentException ex) {
-                    continue;
-                }
-                PhaseConfig existing = bundle.phaseConfigs().get(phase);
-                PhaseConfig merged = existing == null
-                        ? e.getValue()
-                        : e.getValue().overlayOn(existing);
-                bundle = bundle.withPhase(phase, merged);
-            }
-        }
-        return bundle;
-    }
-
-    /**
-     * Writes this bundle into a container's {@code defaultPhaseConfig} /
-     * {@code phaseConfigs} fields through the supplied setters.
+     * Writes this bundle into {@code container}'s {@code defaultPhaseConfig}
+     * / {@code phaseConfigs} fields.
      *
      * <p>Every non-empty per-phase entry is emitted, keyed by
      * {@link Phase#wireName()}; the default is written when non-empty and
@@ -245,15 +212,9 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
      * migrated {@code model} / {@code effort} / {@code defaultRunner} survives
      * once the legacy fields stop being written.</p>
      *
-     * <p>Lives here rather than on the persistence types because it reads only
-     * this bundle's own state; the setters are how it reaches whatever
-     * container is being written.</p>
-     *
-     * @param setDefault      receives the default, or {@code null} when empty
-     * @param setPhaseConfigs receives the per-phase map (never {@code null})
+     * @param container the configuration level to write into
      */
-    public void applyTo(Consumer<PhaseConfig> setDefault,
-                        Consumer<Map<String, PhaseConfig>> setPhaseConfigs) {
+    public void applyTo(PhaseConfigContainer container) {
         Map<String, PhaseConfig> byWireName = new LinkedHashMap<>();
         for (Map.Entry<Phase, PhaseConfig> e : phaseConfigs.entrySet()) {
             PhaseConfig pc = e.getValue();
@@ -261,9 +222,8 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
                 byWireName.put(e.getKey().wireName(), pc);
             }
         }
-        setPhaseConfigs.accept(byWireName);
-        setDefault.accept(defaultPhaseConfig != null && !defaultPhaseConfig.isEmpty()
-                ? defaultPhaseConfig : null);
+        container.setPhaseConfigs(byWireName);
+        container.setDefaultPhaseConfig(defaultPhaseConfig.isEmpty() ? null : defaultPhaseConfig);
     }
 
     /**
@@ -283,5 +243,43 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
             }
         }
         return out;
+    }
+
+    /**
+     * Serializes this bundle to Base64-wrapped JSON for transport in a
+     * {@code ::key:=value} job wire-format slot.
+     *
+     * @return Base64 of the JSON form, or {@code null} when this bundle is
+     *         {@linkplain #isEmpty() empty} so callers can skip emitting the
+     *         key entirely
+     */
+    public String toWire() {
+        if (isEmpty()) return null;
+        try {
+            return Base64.getEncoder().encodeToString(
+                    WIRE_MAPPER.writeValueAsString(this).getBytes(StandardCharsets.UTF_8));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Could not encode PhaseConfigBundle", e);
+        }
+    }
+
+    /**
+     * Reverses {@link #toWire()}. Returns {@link #EMPTY} for {@code null} or
+     * empty input so legacy wire payloads (which never set the key) decode
+     * without throwing.
+     *
+     * @param value Base64-wrapped JSON produced by {@link #toWire()}, or
+     *              {@code null}/empty
+     * @return the deserialized bundle, never {@code null}
+     */
+    public static PhaseConfigBundle fromWire(String value) {
+        if (value == null || value.isEmpty()) return EMPTY;
+        try {
+            return WIRE_MAPPER.readValue(
+                    new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8),
+                    PhaseConfigBundle.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Could not decode PhaseConfigBundle", e);
+        }
     }
 }

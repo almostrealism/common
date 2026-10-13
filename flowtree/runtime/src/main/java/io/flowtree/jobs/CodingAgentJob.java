@@ -21,7 +21,6 @@ import io.flowtree.jobs.agent.AgentRunRequest;
 import io.flowtree.jobs.agent.AgentRunResult;
 import io.flowtree.jobs.agent.AgentRunner;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
-import io.flowtree.jobs.agent.ClaudeCodeRunner;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
@@ -34,8 +33,10 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
@@ -71,24 +72,6 @@ public class CodingAgentJob extends GitManagedJob {
      * here — a second copy would drift the moment one of them was updated.</p>
      */
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop";
-
-    /**
-     * Valid values for the {@code --effort} flag exposed by the Claude Code runner.
-     *
-     * <p>Pluggable agent runners may accept different effort vocabularies; this
-     * list is retained on the orchestrator for backwards compatibility with
-     * callers (Workstream / WorkstreamConfig) that validate before submission.
-     * The canonical home is now {@link ClaudeCodeRunner#VALID_EFFORT_LEVELS}.</p>
-     */
-    public static final List<String> VALID_EFFORT_LEVELS = ClaudeCodeRunner.VALID_EFFORT_LEVELS;
-
-    /**
-     * Accepted values for the {@code --model} flag exposed by the Claude Code runner.
-     *
-     * <p>The canonical home is {@link ClaudeCodeRunner#VALID_MODELS}; this alias
-     * preserves the old API surface for callers that pre-validate inputs.</p>
-     */
-    public static final List<String> VALID_MODELS = ClaudeCodeRunner.VALID_MODELS;
 
     /**
      * Deduplication mode that runs an inline Claude Code session before the
@@ -184,6 +167,8 @@ public class CodingAgentJob extends GitManagedJob {
      * {@link #setEnforceOrganizationalPlacement(boolean)}.
      */
     private boolean enforceOrganizationalPlacement = false;
+    /** When {@code true} (and review is enabled), {@link ObjectOrientedDesignRule} runs; default {@code false}. */
+    private boolean objectOrientedReviewEnabled = false;
 
     /** When {@code true} (the default), a second-pass review session runs after primary work. */
     private boolean reviewEnabled = true;
@@ -240,17 +225,9 @@ public class CodingAgentJob extends GitManagedJob {
      */
     private String sensitiveFileBypassSignature;
 
-    /** Shell command run after the agent completes; non-empty activates {@link PostCompletionCommandRule}. */
-    private String postCompletionCommand;
+    /** Post-completion verification command, its working directory, timeout and pass cap. */
+    private final PostCompletionConfig postCompletion = new PostCompletionConfig();
 
-    /** Working directory for {@link #postCompletionCommand}; {@code null} uses the job's working directory. */
-    private String postCompletionWorkingDir;
-
-    /** Timeout in seconds for {@link #postCompletionCommand}; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}. */
-    private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
-
-    /** Per-job post-completion pass cap; passed to {@link PostCompletionCommandRule}. */
-    private int maxPostCompletionPasses = DEFAULT_MAX_POST_COMPLETION_PASSES;
     /** {@code true} when the pass cap was exhausted without a zero exit. */
     private boolean postCompletionCapHit;
 
@@ -339,25 +316,6 @@ public class CodingAgentJob extends GitManagedJob {
         return prompt != null && prompt.length() > 50
             ? prompt.substring(0, 47) + "..."
             : prompt;
-    }
-
-    /** Returns a short display summary for this job; description if set, else {@link #summarizePrompt(String)}. */
-    public String getDisplaySummary() {
-        if (description != null && !description.isEmpty()) {
-            return description;
-        }
-        return summarizePrompt(prompt);
-    }
-
-    /** Short display string for {@code prompt}: returned as-is if ≤80 chars, otherwise formatted as character count. */
-    public static String summarizePrompt(String prompt) {
-        if (prompt == null) {
-            return "(no prompt)";
-        }
-        if (prompt.length() <= 80) {
-            return prompt;
-        }
-        return String.format("%,d character prompt", prompt.length());
     }
 
     /**
@@ -687,6 +645,11 @@ public class CodingAgentJob extends GitManagedJob {
         this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
     }
 
+    /** Returns whether {@link ObjectOrientedDesignRule} runs (only while review is enabled); default {@code false}. */
+    public boolean isObjectOrientedReviewEnabled() { return objectOrientedReviewEnabled; }
+    /** Sets whether {@link ObjectOrientedDesignRule} runs; it still requires review to be enabled. */
+    public void setObjectOrientedReviewEnabled(boolean enabled) { this.objectOrientedReviewEnabled = enabled; }
+
     /** Returns whether the {@link ReviewRule} (second-pass sanity check) is active; default {@code true}. */
     public boolean isReviewEnabled() { return reviewEnabled; }
     /** Sets whether the {@link ReviewRule} is active for this job; {@code false} to skip the review phase. */
@@ -749,31 +712,28 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /** Returns the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
-    public String getPostCompletionCommand() { return postCompletionCommand; }
+    public String getPostCompletionCommand() { return postCompletion.getCommand(); }
 
-    /** Sets the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
-    public void setPostCompletionCommand(String postCompletionCommand) { this.postCompletionCommand = postCompletionCommand; }
+    /** Sets the post-completion command; non-empty activates {@link PostCompletionCommandRule}, clearing it resets the dependent values. */
+    public void setPostCompletionCommand(String postCompletionCommand) { postCompletion.setCommand(postCompletionCommand); }
 
     /** Returns the per-job post-completion pass cap; defaults to {@link #DEFAULT_MAX_POST_COMPLETION_PASSES}. */
-    public int getMaxPostCompletionPasses() { return maxPostCompletionPasses; }
+    public int getMaxPostCompletionPasses() { return postCompletion.getMaxPasses(); }
+
     /** Sets the per-job post-completion pass cap; must be positive (see {@link #DEFAULT_MAX_POST_COMPLETION_PASSES}). */
-    public void setMaxPostCompletionPasses(int maxPostCompletionPasses) {
-        if (maxPostCompletionPasses <= 0)
-            throw new IllegalArgumentException("maxPostCompletionPasses must be positive, got: " + maxPostCompletionPasses);
-        this.maxPostCompletionPasses = maxPostCompletionPasses;
-    }
+    public void setMaxPostCompletionPasses(int maxPostCompletionPasses) { postCompletion.setMaxPasses(maxPostCompletionPasses); }
 
     /** Returns the working directory for the post-completion command; {@code null} uses the job's working directory. */
-    public String getPostCompletionWorkingDir() { return postCompletionWorkingDir; }
+    public String getPostCompletionWorkingDir() { return postCompletion.getWorkingDir(); }
 
     /** Sets the working directory for the post-completion command; {@code null} uses the job's working directory. */
-    public void setPostCompletionWorkingDir(String postCompletionWorkingDir) { this.postCompletionWorkingDir = postCompletionWorkingDir; }
+    public void setPostCompletionWorkingDir(String postCompletionWorkingDir) { postCompletion.setWorkingDir(postCompletionWorkingDir); }
 
     /** Returns the post-completion command timeout in seconds; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}. */
-    public int getPostCompletionTimeoutSeconds() { return postCompletionTimeoutSeconds; }
+    public int getPostCompletionTimeoutSeconds() { return postCompletion.getTimeoutSeconds(); }
 
     /** Sets the post-completion command timeout in seconds. */
-    public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) { this.postCompletionTimeoutSeconds = postCompletionTimeoutSeconds; }
+    public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) { postCompletion.setTimeoutSeconds(postCompletionTimeoutSeconds); }
 
     /** Sets the current correction-session rule name; null for primary work. Package-private for tests. */
     void setCurrentActivity(String currentActivity) { this.currentActivity = currentActivity; }
@@ -1393,7 +1353,7 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Returns this job's cost tracker (per-runner/per-model USD cost plus the
-     * incomplete-cost flag), read by {@link CodingAgentJobEvent#populateFrom}.
+     * incomplete-cost flag), read by {@link CodingAgentJobEvent#forJob}.
      *
      * @return this job's cost tracker
      */
@@ -1410,6 +1370,16 @@ public class CodingAgentJob extends GitManagedJob {
      */
     RestartGovernor restartGovernor() {
         return restartGovernor;
+    }
+
+    /**
+     * Returns this job's {@link PostCompletionConfig}, populated by
+     * {@link CodingAgentJobFactory} from its own configuration.
+     *
+     * @return this job's post-completion configuration
+     */
+    PostCompletionConfig postCompletion() {
+        return postCompletion;
     }
 
     /**
@@ -1471,16 +1441,13 @@ public class CodingAgentJob extends GitManagedJob {
         return commitFile != null && Files.exists(commitFile);
     }
 
+    /**
+     * Creates the completion event for this job, already carrying the job's
+     * final execution state; see {@link CodingAgentJobEvent#forJob}.
+     */
     @Override
-    protected JobCompletionEvent createEvent(Exception error) {
-        return CodingAgentJobEvent.forJob(this, accumulator, error);
-    }
-
-    @Override
-    protected void populateEventDetails(JobCompletionEvent event) {
-        if (event instanceof CodingAgentJobEvent) {
-            ((CodingAgentJobEvent) event).populateFrom(this, accumulator);
-        }
+    protected CodingAgentJobEvent createEvent(Exception error) {
+        return CodingAgentJobEvent.forJob(this, error);
     }
 
     @Override
@@ -1515,9 +1482,28 @@ public class CodingAgentJob extends GitManagedJob {
         return GitOperations.extractNewFilePaths(getWorkingDirectory(), base, this::warn);
     }
 
-    /** Returns paths of files that are new or modified since the base branch, excluding scratch space. */
+    /**
+     * Returns paths of files that differ between the working tree (including
+     * uncommitted changes) and the base branch: new files first, then every
+     * other changed path, excluding scratch space.
+     *
+     * @return the changed paths, without duplicates; never {@code null}
+     */
     List<String> extractChangedFilePaths() {
-        return new ArrayList<>(ReviewRule.snapshotChangedFiles(this));
+        String base = getBaseBranch() != null ? getBaseBranch() : "master";
+        Set<String> changed = new LinkedHashSet<>(extractNewFilePaths());
+        try {
+            for (String line : executeGitWithOutput("diff", "--name-only", "origin/" + base).split("\n")) {
+                String trimmed = line.trim();
+                if (!trimmed.isEmpty() && !GitOperations.isExcludedPath(trimmed)) changed.add(trimmed);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn("Failed to list changed files: " + e.getMessage());
+        } catch (IOException e) {
+            warn("Failed to list changed files: " + e.getMessage());
+        }
+        return new ArrayList<>(changed);
     }
 
     /**
@@ -1558,12 +1544,17 @@ public class CodingAgentJob extends GitManagedJob {
     public String encode() {
         StringBuilder sb = new StringBuilder(super.encode());
         CodingAgentJobCodec.appendEncoded(sb, this);
+        restartGovernor.appendEncoded(sb);
+        postCompletion.appendEncoded(sb);
+        phaseRunnerConfig.appendEncoded(sb);
         return sb.toString();
     }
 
     @Override
     public void set(String key, String value) {
-        if (!CodingAgentJobCodec.applySetting(this, key, value)) {
+        if (!restartGovernor.applySetting(key, value)
+                && !postCompletion.applySetting(key, value)
+                && !CodingAgentJobCodec.applySetting(this, key, value)) {
             super.set(key, value);
         }
     }

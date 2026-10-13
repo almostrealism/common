@@ -51,6 +51,7 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | `pushedToolsConfig` | `null` | JSON mapping pushed tool server names to download URLs and tool names |
 | `deduplicationMode` | `"none"` | Post-work duplicate-method check. Disabled by default. `"local"` runs an inline session before committing (recommended for pre-merge cleanup); `"spawn"` posts a follow-up job to the workstream. |
 | `enforceOrganizationalPlacement` | `false` | When `true`, activates the organizational placement rule after primary work. Disabled by default; opt in for pre-merge cleanup jobs. |
+| `objectOrientedReviewEnabled` | `false` | When `true` and review is enabled, activates `ObjectOrientedDesignRule`: one review session per changed production class. Disabled by default; a job decoded without the field runs without it. |
 
 **Results:**
 
@@ -198,6 +199,39 @@ Pass `organizational_placement_enabled=True` to opt in (shown in the combined ex
 
 ```java
 factory.setEnforceOrganizationalPlacement(true);  // default is false
+```
+
+## Object-Oriented Design Review
+
+`ObjectOrientedDesignRule` runs one dedicated session per added or modified
+production Java class, asking the agent to fix violations of the object-oriented
+design rules in that class. Each class costs a full agent session, so the rule is
+disabled by default and must be explicitly enabled per job. It is job-level only.
+
+The rule is assembled only when **both** review is enabled (`reviewEnabled`, on by
+default) **and** `objectOrientedReviewEnabled` is `true`. It keeps its place in the
+rule order: after the content-protection rules and custom rules, before the
+staging and commit-message checks. Jobs decoded without the field — older
+submissions, and CI auto-resolve/auto-review jobs, which never send it — run
+without it.
+
+### Via ar-manager MCP
+
+```
+workstream_submit_task(
+    prompt="...",
+    workstream_id="ws-common",
+    object_oriented_review_enabled=True,   # opt in to per-class design review
+)
+```
+
+The submit response echoes `objectOrientedReviewEnabled` alongside
+`organizationalPlacementEnabled`.
+
+### Java API
+
+```java
+factory.setObjectOrientedReviewEnabled(true);  // default is false; requires review
 ```
 
 ## MCP Tools

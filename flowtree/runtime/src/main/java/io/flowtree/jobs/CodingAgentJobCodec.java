@@ -16,82 +16,32 @@
 
 package io.flowtree.jobs;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
-import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
-
-import java.time.Duration;
-import java.util.Map;
 
 /**
  * Wire-format codec for {@link CodingAgentJob}.
  *
- * <p>Owns the serialization layout for job-specific fields ({@code prompt},
- * {@code tools}, {@code maxTurns}, runner overrides, enforcement-rule flags,
- * etc.) so {@link CodingAgentJob} itself is not weighed down by encode/decode
- * boilerplate. Inherited fields from {@link GitManagedJob} are still
+ * <p>Owns the serialization layout for the job's own fields ({@code prompt},
+ * {@code tools}, {@code maxTurns}, enforcement-rule flags, etc.) so
+ * {@link CodingAgentJob} itself is not weighed down by encode/decode
+ * boilerplate. State held by the job's collaborators is encoded by the
+ * collaborator that owns it: {@link RestartGovernor} carries the job-wide
+ * ceilings, {@link PostCompletionConfig} the post-completion command, and
+ * {@link PhaseRunnerConfig} the runner identity and
+ * {@link PhaseConfigBundle}. Inherited fields from {@link GitManagedJob} are
  * encoded/decoded by the parent.</p>
  *
- * <p>This is an internal helper: the public protocol entry points remain
- * {@link CodingAgentJob#encode()} and {@link CodingAgentJob#set(String, String)},
- * which delegate to {@link #appendEncoded(StringBuilder, CodingAgentJob)} and
+ * <p>The public protocol entry points remain {@link CodingAgentJob#encode()}
+ * and {@link CodingAgentJob#set(String, String)}, which delegate to
+ * {@link #appendEncoded(StringBuilder, CodingAgentJob)} and
  * {@link #applySetting(CodingAgentJob, String, String)} respectively.</p>
  */
 final class CodingAgentJobCodec {
 
-    /**
-     * Shared mapper for {@link PhaseConfigBundle} JSON serialization. NON_NULL
-     * keeps wire bytes minimal — every {@link io.flowtree.jobs.agent.PhaseConfig}
-     * field is independently nullable, and most jobs leave most fields unset.
-     */
-    private static final ObjectMapper BUNDLE_MAPPER = new ObjectMapper()
-            .setSerializationInclusion(JsonInclude.Include.NON_NULL);
-
     /** Prevents instantiation; this class only exposes static helpers. */
     private CodingAgentJobCodec() {
-    }
-
-    /**
-     * Serializes a {@link PhaseConfigBundle} to a Base64-wrapped JSON string
-     * for transport in the {@code phaseConfigBundle} wire-format slot.
-     * Returns {@code null} when the bundle is {@code null} or empty so callers
-     * can skip emitting the key entirely.
-     *
-     * @param bundle the bundle to serialize; may be {@code null} or empty
-     * @return Base64 of the JSON form, or {@code null} when there is nothing
-     *         worth sending
-     */
-    static String encodePhaseConfigBundle(PhaseConfigBundle bundle) {
-        if (bundle == null || bundle.isEmpty()) return null;
-        try {
-            return GitManagedJob.base64Encode(BUNDLE_MAPPER.writeValueAsString(bundle));
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Could not encode PhaseConfigBundle", e);
-        }
-    }
-
-    /**
-     * Reverses {@link #encodePhaseConfigBundle(PhaseConfigBundle)}. Returns
-     * {@link PhaseConfigBundle#EMPTY} for null/empty input so legacy wire
-     * payloads (which never set the key) decode without throwing.
-     *
-     * @param value Base64-wrapped JSON produced by
-     *              {@link #encodePhaseConfigBundle(PhaseConfigBundle)}, or
-     *              {@code null}/empty
-     * @return the deserialized bundle, never {@code null}
-     */
-    static PhaseConfigBundle decodePhaseConfigBundle(String value) {
-        if (value == null || value.isEmpty()) return PhaseConfigBundle.EMPTY;
-        try {
-            return BUNDLE_MAPPER.readValue(
-                    GitManagedJob.base64Decode(value), PhaseConfigBundle.class);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Could not decode PhaseConfigBundle", e);
-        }
     }
 
     /**
@@ -107,27 +57,6 @@ final class CodingAgentJobCodec {
         sb.append("::tools:=").append(GitManagedJob.base64Encode(job.getAllowedTools()));
         sb.append("::maxTurns:=").append(job.getMaxTurns());
         sb.append("::maxBudget:=").append(job.getMaxBudgetUsd());
-        // Job-wide restart ceilings; emitted only when overridden so the wire stays minimal.
-        if (job.restartGovernor().getMaxTotalSessions() != RestartGovernor.DEFAULT_MAX_TOTAL_SESSIONS) {
-            sb.append("::maxTotalSessions:=").append(job.restartGovernor().getMaxTotalSessions());
-        }
-        if (job.restartGovernor().getMaxTotalTurns() != RestartGovernor.DEFAULT_MAX_TOTAL_TURNS) {
-            sb.append("::maxTotalTurns:=").append(job.restartGovernor().getMaxTotalTurns());
-        }
-        if (!RestartGovernor.DEFAULT_MAX_WALL_CLOCK.equals(job.restartGovernor().getMaxWallClock())) {
-            sb.append("::maxWallClockMs:=").append(job.restartGovernor().getMaxWallClock().toMillis());
-        }
-        // Runner identity. Model, effort, and provider are NOT separate wire
-        // keys — they travel only inside phaseConfigBundle below, whose decode
-        // (setPhaseConfigBundle) applies them without per-key validation.
-        String defaultRunner = job.getDefaultRunner();
-        if (defaultRunner != null && !AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
-            sb.append("::defaultRunner:=").append(defaultRunner);
-        }
-        Map<Phase, String> runners = job.getRunnerByPhase();
-        if (!runners.isEmpty()) {
-            sb.append("::runners:=").append(Phase.encodeRunnerMap(runners));
-        }
         if (job.getArManagerUrl() != null) {
             sb.append("::arManagerUrl:=").append(GitManagedJob.base64Encode(job.getArManagerUrl()));
         }
@@ -171,6 +100,9 @@ final class CodingAgentJobCodec {
         if (job.isEnforceOrganizationalPlacement()) {
             sb.append("::enforceOrgPlacement:=true");
         }
+        if (job.isObjectOrientedReviewEnabled()) {
+            sb.append("::objectOrientedReviewEnabled:=true");
+        }
         if (job.isUseTmux()) {
             sb.append("::useTmux:=true");
         }
@@ -198,26 +130,6 @@ final class CodingAgentJobCodec {
         if (job.getMaxReviewPasses() != CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES) {
             sb.append("::maxReviewPasses:=").append(job.getMaxReviewPasses());
         }
-        String postCmd = job.getPostCompletionCommand();
-        if (postCmd != null && !postCmd.isEmpty()) {
-            sb.append("::postCmd:=").append(GitManagedJob.base64Encode(postCmd));
-            if (job.getPostCompletionWorkingDir() != null) {
-                sb.append("::postCmdDir:=").append(GitManagedJob.base64Encode(job.getPostCompletionWorkingDir()));
-            }
-            if (job.getPostCompletionTimeoutSeconds() != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
-                sb.append("::postCmdTimeout:=").append(job.getPostCompletionTimeoutSeconds());
-            }
-            if (job.getMaxPostCompletionPasses() != CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES) {
-                sb.append("::maxPostCmdPasses:=").append(job.getMaxPostCompletionPasses());
-            }
-        }
-        // The bundle is the sole carrier of model, effort, and provider (both
-        // the default and every per-phase override). The defaultRunner/runners
-        // keys above carry only runner identity for runner-resolution callers.
-        String bundleWire = encodePhaseConfigBundle(job.getPhaseConfigBundle());
-        if (bundleWire != null) {
-            sb.append("::phaseConfigBundle:=").append(bundleWire);
-        }
     }
 
     /**
@@ -237,17 +149,6 @@ final class CodingAgentJobCodec {
                 return true;
             case "tools":
                 job.setAllowedTools(GitManagedJob.base64Decode(value));
-                return true;
-            case "maxTotalSessions":
-                job.restartGovernor().setMaxTotalSessions(Integer.parseInt(value));
-                return true;
-            case "maxWallClockMs":
-                // Non-positive is meaningful here: it disables the ceiling, so
-                // it travels rather than being treated as an absent override.
-                job.restartGovernor().setMaxWallClock(Duration.ofMillis(Long.parseLong(value)));
-                return true;
-            case "maxTotalTurns":
-                job.restartGovernor().setMaxTotalTurns(Integer.parseInt(value));
                 return true;
             case "maxTurns":
                 job.setMaxTurns(Integer.parseInt(value));
@@ -294,6 +195,9 @@ final class CodingAgentJobCodec {
             case "enforceOrgPlacement":
                 job.setEnforceOrganizationalPlacement(Boolean.parseBoolean(value));
                 return true;
+            case "objectOrientedReviewEnabled":
+                job.setObjectOrientedReviewEnabled(Boolean.parseBoolean(value));
+                return true;
             case "useTmux":
                 job.setUseTmux(Boolean.parseBoolean(value));
                 return true;
@@ -318,19 +222,6 @@ final class CodingAgentJobCodec {
             case "maxReviewPasses":
                 job.setMaxReviewPasses(parsePositiveOrDefault(value, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES));
                 return true;
-            case "postCmd":
-                job.setPostCompletionCommand(GitManagedJob.base64Decode(value));
-                return true;
-            case "postCmdDir":
-                job.setPostCompletionWorkingDir(GitManagedJob.base64Decode(value));
-                return true;
-            case "postCmdTimeout":
-                job.setPostCompletionTimeoutSeconds(Integer.parseInt(value));
-                return true;
-            case "maxPostCmdPasses":
-                job.setMaxPostCompletionPasses(
-                        parsePositiveOrDefault(value, CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES));
-                return true;
             case "runner":
                 // Legacy single-runner key. Honored when no defaultRunner/runners
                 // key supersedes it; consumed silently if defaultRunner is also
@@ -349,7 +240,7 @@ final class CodingAgentJobCodec {
                 // Bundle carries per-phase model/effort/provider that legacy
                 // wire keys cannot represent. setPhaseConfigBundle re-syncs
                 // the legacy fields, so it is safe regardless of arrival order.
-                job.setPhaseConfigBundle(decodePhaseConfigBundle(value));
+                job.setPhaseConfigBundle(PhaseConfigBundle.fromWire(value));
                 return true;
             default:
                 return false;

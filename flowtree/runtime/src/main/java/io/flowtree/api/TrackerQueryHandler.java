@@ -19,11 +19,9 @@ package io.flowtree.api;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Response;
+import io.flowtree.tracker.TrackerService;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Function;
@@ -46,21 +44,16 @@ import java.util.function.Function;
  */
 class TrackerQueryHandler {
 
-    /** The tracker's base URL, e.g. {@code http://ar-tracker:8030}. */
-    private final String trackerUrl;
-
-    /** The tracker's bearer token, or {@code null} when it runs without one. */
-    private final String authToken;
+    /** The tracker the question is passed to. */
+    private final TrackerService tracker;
 
     /**
-     * Creates a handler for the tracker at {@code trackerUrl}.
+     * Creates a handler that asks {@code tracker}.
      *
-     * @param trackerUrl the tracker's base URL
-     * @param authToken  the tracker's bearer token, or {@code null}
+     * @param tracker the tracker service
      */
-    TrackerQueryHandler(String trackerUrl, String authToken) {
-        this.trackerUrl = trackerUrl.replaceAll("/+$", "");
-        this.authToken = authToken == null || authToken.isEmpty() ? null : authToken;
+    TrackerQueryHandler(TrackerService tracker) {
+        this.tracker = tracker;
     }
 
     /**
@@ -77,30 +70,14 @@ class TrackerQueryHandler {
         if (project == null || release == null) {
             return errorResponse.apply("project and release are required");
         }
-        String url = trackerUrl + "/v1/claimable?project="
-                + URLEncoder.encode(project, StandardCharsets.UTF_8)
-                + "&release=" + URLEncoder.encode(release, StandardCharsets.UTF_8);
         try {
-            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Accept", "application/json");
-            if (authToken != null) {
-                conn.setRequestProperty("Authorization", "Bearer " + authToken);
-            }
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(10000);
-            int status = conn.getResponseCode();
-            InputStream in = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            String body = "";
-            if (in != null) {
-                try (InputStream stream = in) {
-                    body = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-                }
-            }
-            Response.IStatus responseStatus = Response.Status.lookup(status);
+            TrackerService.Reply reply = tracker.get("/v1/claimable?project="
+                    + URLEncoder.encode(project, StandardCharsets.UTF_8)
+                    + "&release=" + URLEncoder.encode(release, StandardCharsets.UTF_8));
+            Response.IStatus responseStatus = Response.Status.lookup(reply.status());
             return NanoHTTPD.newFixedLengthResponse(
                     responseStatus == null ? Response.Status.SERVICE_UNAVAILABLE : responseStatus,
-                    "application/json", body);
+                    "application/json", reply.body());
         } catch (IOException e) {
             return NanoHTTPD.newFixedLengthResponse(Response.Status.SERVICE_UNAVAILABLE, "application/json",
                     "{\"ok\":false,\"error\":"

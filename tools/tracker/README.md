@@ -77,10 +77,10 @@ convention and mirror the REST API:
 | `tracker_create_release` | write | Create a release |
 | `tracker_update_release` | write | Update a release |
 | `tracker_delete_release` | write | Delete a release (tasks kept, FK set to NULL) |
-| `tracker_create_task` | write | Create a task |
+| `tracker_create_task` | write | Create a task (optionally set its `stage`; omit to let the tracker default to `backlog`) |
 | `tracker_get_task` | read | Fetch one task by ID (full record, workspace-scoped) |
 | `tracker_list_tasks` | read | List tasks with filtering, pagination, and optional headlines projection |
-| `tracker_update_task` | write | Update a task's fields |
+| `tracker_update_task` | write | Update a task's fields, including its `stage` (mark it `ready` to queue it for planning) |
 | `tracker_delete_task` | write | Permanently delete a task |
 | `tracker_search_tasks` | read | Full-text search; supports headlines projection |
 | `tracker_project_summary` | read | Aggregate task counts for a project (no row fetch) |
@@ -103,6 +103,15 @@ A task is **claimable** when it is open, `ready`, not linked to a workstream,
 and not blocked by an open task. That definition lives in one place
 (`_CLAIMABLE` in `store.py`) and is used by both `/v1/claimable` and
 `/v1/claim`, so asking "is there work?" and taking it never disagree.
+
+A claimed task is **closed out** when its workstream's branch finishes. The
+FlowTree controller checks the branch's pull requests every few minutes
+(`TaskCloseOutReconciler`): when one merged, the task is closed; when one was
+closed without merging and none is open, the task becomes `declined` and is
+unlinked, so making it `ready` again puts it back in the queue. Only tasks that
+are open, `ready` and linked change (`_AWAITING_CLOSE_OUT` in `store.py`), so a
+task a person kept in `backlog`, or moved while the branch was in review, is
+left as they left it.
 
 ### Agent roles
 
@@ -234,6 +243,9 @@ GET    /v1/search/tasks?q=...           Full-text search (?fields=headlines)
 GET    /v1/claimable?project=&release=  Count the claimable tasks of a release
 POST   /v1/claim                        Claim the next one for a workstream
                                         ({"project", "release", "workstream_id"})
+GET    /v1/close-out                    Workstreams with a claimed task awaiting close-out
+POST   /v1/close-out                    Apply a branch outcome to its claimed tasks
+                                        ({"workstream_id", "outcome": "merged"|"closed"})
 POST   /v1/goal-tasks                   Ensure the release and create/update a goal task
                                         in one transaction (a failed write leaves no
                                         orphan release; a body "task_id" updates only
