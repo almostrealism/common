@@ -140,6 +140,33 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 			new ConcurrentHashMap<>();
 
 	/**
+	 * Drops every compiled renderer from the JVM-wide {@link #rendererCache}.
+	 *
+	 * <p>The cache deliberately outlives any single renderer, scene, or genome (see
+	 * {@link #rendererCache}) so that ticks of a shared shape reuse one compiled kernel.
+	 * That sharing is only valuable while a scene is live, though: once no scene remains,
+	 * nothing dispatches, so the cached kernels and their large bound input buffers sit
+	 * unreferenced by any render yet pinned by this static map. In a long-lived process
+	 * that builds and tears down many scenes of differing shapes — a reused test fork, a
+	 * batch of offline renders — the union of every shape ever seen would otherwise stay
+	 * resident for the whole process, a baseline that grows with the diversity of the
+	 * work rather than with what is live.</p>
+	 *
+	 * <p>Dropping the map references lets the garbage collector reclaim the native buffers
+	 * backing each renderer (a {@link PackedCollection}'s native memory is released once it
+	 * is unreachable). A shape rendered again afterward is recompiled lazily on first use.
+	 * Only the map entries are removed; a dispatch already holding a renderer reference
+	 * keeps it alive for the duration of that dispatch, so clearing concurrently with an
+	 * in-flight render is safe — it affects only subsequent lookups.</p>
+	 *
+	 * <p>Invoked when the last {@link org.almostrealism.studio.AudioScene} is destroyed,
+	 * the point at which no render can be in progress, so no useful sharing is lost.</p>
+	 */
+	public static void clearCompiledRenderers() {
+		rendererCache.clear();
+	}
+
+	/**
 	 * Identifies one melodic element's gathered note destinations within a cache epoch.
 	 * Melodic gathers depend only on element, repetition offset, voicing and stereo channel
 	 * (scale/automation geometry is constant within an epoch), and their note sources are
@@ -735,6 +762,18 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 	 */
 	int gatherCacheSize() {
 		return gatherCache.size();
+	}
+
+	/**
+	 * Returns the number of compiled renderers currently held in the JVM-wide
+	 * {@link #rendererCache}. Package-private so tests can verify that
+	 * {@link #clearCompiledRenderers()} releases them, without widening the public
+	 * surface.
+	 *
+	 * @return the number of entries in the compiled-renderer cache
+	 */
+	static int compiledRendererCount() {
+		return rendererCache.size();
 	}
 
 	/**

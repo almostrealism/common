@@ -355,6 +355,34 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	}
 
 	/**
+	 * A batched render compiles at least one renderer into the JVM-wide cache, and
+	 * {@link BatchedPatternLayerRenderer#clearCompiledRenderers()} releases every one.
+	 * This is the reclamation {@code AudioScene.destroy()} invokes once no scene remains
+	 * live, so a long-lived process (a reused test fork, a batch of offline renders) does
+	 * not keep the union of every shape's bound buffers resident for its whole lifetime.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void clearCompiledRenderersReleasesCache() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = true;
+
+		try (PatternSystemManager psm = system()) {
+			BatchedPatternLayerRenderer.clearCompiledRenderers();
+
+			renderAtOnce(psm);
+			Assert.assertTrue("a batched render must compile at least one renderer",
+					BatchedPatternLayerRenderer.compiledRendererCount() > 0);
+
+			BatchedPatternLayerRenderer.clearCompiledRenderers();
+			Assert.assertEquals("clearing releases every compiled renderer",
+					0, BatchedPatternLayerRenderer.compiledRendererCount());
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
 	 * More coincident notes than the largest batch bucket holds are split across
 	 * several dispatches rather than overrunning the bucket: every note is
 	 * rendered, so the result is the single-hit render scaled by the note count.

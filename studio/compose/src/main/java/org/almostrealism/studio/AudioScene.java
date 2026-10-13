@@ -47,6 +47,7 @@ import org.almostrealism.studio.persistence.MigrationClassLoader;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.audio.CellList;
+import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
 import org.almostrealism.music.pattern.ChordProgressionManager;
 import org.almostrealism.music.pattern.PatternAudioBuffer;
 import org.almostrealism.music.pattern.NoteAudioChoiceList;
@@ -1383,7 +1384,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				},
 				renderBuffers::destroy,
 				efx::destroyConsolidatedBuffers,
-				() -> activeInstances.remove(this)));
+				() -> {
+					activeInstances.remove(this);
+
+					// With no scene live the shared renderer cache can be reclaimed.
+					if (activeInstances.isEmpty()) {
+						BatchedPatternLayerRenderer.clearCompiledRenderers();
+					}
+				}));
 	}
 
 	/**
