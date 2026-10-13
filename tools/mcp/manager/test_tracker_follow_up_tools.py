@@ -46,6 +46,15 @@ class _FollowUpToolTestBase(unittest.TestCase):
         _clear_workspaces()
         _reset_workspace_cache()
 
+    def _scoped_to_w1(self, mock_get):
+        # ws-1 lives in workspace W1 (the caller's), ws-2 in W2 (another).
+        mock_get.return_value = [
+            {"workstreamId": "ws-1", "workspaceId": "W1"},
+            {"workstreamId": "ws-2", "workspaceId": "W2"},
+        ]
+        _reset_workspace_cache()
+        _set_workspaces("W1")
+
 
 class TestProvenanceFromToken(_FollowUpToolTestBase):
     """The task's source is the job's token, never caller input."""
@@ -178,15 +187,6 @@ class TestScopedReadBack(_FollowUpToolTestBase):
     """A scoped caller reads back the follow-up tasks its own workspace filed,
     and nothing else that is unlinked."""
 
-    def _scoped_to_w1(self, mock_get):
-        # ws-1 lives in workspace W1 (the caller's), ws-2 in W2 (another).
-        mock_get.return_value = [
-            {"workstreamId": "ws-1", "workspaceId": "W1"},
-            {"workstreamId": "ws-2", "workspaceId": "W2"},
-        ]
-        _reset_workspace_cache()
-        _set_workspaces("W1")
-
     @patch.object(server, "_controller_get")
     def test_own_follow_up_task_is_visible(self, mock_get):
         self._scoped_to_w1(mock_get)
@@ -258,6 +258,54 @@ class TestScopedReadBack(_FollowUpToolTestBase):
                 "ok": True, "task": _follow_up_task(workstream="ws-2")}
             with self.assertRaises(PermissionError):
                 server.tracker_get_task("t1")
+
+
+class TestScopedWriteDeny(_FollowUpToolTestBase):
+    """A scoped caller may read back its own follow-up tasks but must never
+    modify or delete an unlinked task — including its own follow-up, so it can
+    neither promote one to a claimable stage nor discard a recorded point."""
+
+    @patch.object(server, "_controller_get")
+    def test_update_task_denies_own_unlinked_follow_up(self, mock_get):
+        self._scoped_to_w1(mock_get)
+        with patch.object(server, "_tracker_get") as mock_tget, \
+                patch.object(server, "_tracker_put") as mock_tput:
+            mock_tget.return_value = {"ok": True, "task": _follow_up_task(workstream="ws-1")}
+            with self.assertRaises(PermissionError):
+                server.tracker_update_task("t1", stage="ready")
+            mock_tput.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    def test_update_task_denies_an_unrelated_unlinked_task(self, mock_get):
+        self._scoped_to_w1(mock_get)
+        with patch.object(server, "_tracker_get") as mock_tget, \
+                patch.object(server, "_tracker_put") as mock_tput:
+            mock_tget.return_value = {
+                "ok": True, "task": {"id": "t1", "workstream_id": None, "source": "person"}}
+            with self.assertRaises(PermissionError):
+                server.tracker_update_task("t1", stage="ready")
+            mock_tput.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    def test_delete_task_denies_own_unlinked_follow_up(self, mock_get):
+        self._scoped_to_w1(mock_get)
+        with patch.object(server, "_tracker_get") as mock_tget, \
+                patch.object(server, "_tracker_delete") as mock_tdel:
+            mock_tget.return_value = {"ok": True, "task": _follow_up_task(workstream="ws-1")}
+            with self.assertRaises(PermissionError):
+                server.tracker_delete_task("t1")
+            mock_tdel.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    def test_delete_task_denies_an_unrelated_unlinked_task(self, mock_get):
+        self._scoped_to_w1(mock_get)
+        with patch.object(server, "_tracker_get") as mock_tget, \
+                patch.object(server, "_tracker_delete") as mock_tdel:
+            mock_tget.return_value = {
+                "ok": True, "task": {"id": "t1", "workstream_id": None, "source": "person"}}
+            with self.assertRaises(PermissionError):
+                server.tracker_delete_task("t1")
+            mock_tdel.assert_not_called()
 
 
 if __name__ == "__main__":

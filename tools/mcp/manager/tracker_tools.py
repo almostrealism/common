@@ -399,9 +399,19 @@ def tracker_update_task(
     if not current.get("ok"):
         return current
     current_ws = (current.get("task") or {}).get("workstream_id", "")
-    # TODO(review): scoped callers can update any unlinked task (e.g. promote a follow-up to "ready"); deny like tracker_get_task does
     if current_ws:
         server._require_workstream_in_scope(current_ws)
+    elif server._get_workspace_scopes():
+        # A scoped caller (agent) may not modify a task with no workstream
+        # link, mirroring tracker_get_task's deny. This covers a follow-up
+        # task the caller's own workspace filed: the read-back path lets an
+        # agent report such a task's id, but it must never be able to edit one
+        # (e.g. promote it to stage "ready"), which would defeat the guarantee
+        # that an agent never creates claimable work.
+        raise PermissionError(
+            "Task is not attached to any workstream and cannot be "
+            "modified by a scoped caller. Tasks must be linked to a "
+            "workstream in your workspace to be editable by an agent.")
     if workstream_id and workstream_id != "null":
         server._require_workstream_in_scope(workstream_id)
     server._audit("tracker_update_task", task_id=task_id)
@@ -443,6 +453,15 @@ def tracker_delete_task(task_id: str) -> dict:
     ws = (current.get("task") or {}).get("workstream_id", "")
     if ws:
         server._require_workstream_in_scope(ws)
+    elif server._get_workspace_scopes():
+        # A scoped caller (agent) may not delete a task with no workstream
+        # link, mirroring tracker_get_task's deny — including a follow-up task
+        # its own workspace filed, so an agent can never discard the review
+        # points it recorded for a person to triage.
+        raise PermissionError(
+            "Task is not attached to any workstream and cannot be "
+            "deleted by a scoped caller. Tasks must be linked to a "
+            "workstream in your workspace to be deletable by an agent.")
     server._audit("tracker_delete_task", task_id=task_id)
     return server._tracker_delete(f"/v1/tasks/{task_id}")
 
