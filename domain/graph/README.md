@@ -392,6 +392,8 @@ The graph module provides built-in support for LoRA, enabling parameter-efficien
 | `AdapterConfig` | Configuration for which layers to adapt and hyperparameters |
 | `LowRankAdapterSupport` | Interface for models that support LoRA fine-tuning |
 | `ProjectionFactory` | Factory abstraction for creating dense vs LoRA layers |
+| `DenseProjectionFactory` | `ProjectionFactory` that creates standard dense layers |
+| `LoRAProjectionFactory` | `ProjectionFactory` that wraps targeted projections with LoRA and delegates the rest to a fallback |
 
 ### Basic Usage
 
@@ -436,7 +438,9 @@ AdapterConfig config = new AdapterConfig()
 
 ### Using ProjectionFactory
 
-`ProjectionFactory` allows attention methods to create either dense or LoRA layers:
+`ProjectionFactory` allows attention methods to create either dense or LoRA layers. The
+static factories return the named implementations `DenseProjectionFactory` and
+`LoRAProjectionFactory`:
 
 ```java
 // Standard dense layers (default)

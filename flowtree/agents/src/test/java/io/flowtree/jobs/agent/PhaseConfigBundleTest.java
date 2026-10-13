@@ -216,4 +216,16 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         PhaseConfigBundle b = new PhaseConfigBundle(PhaseConfig.EMPTY, overrides);
         assertFalse(b.isEmpty());
     }
+
+    /** toWire/fromWire round-trips a bundle; an empty bundle has no wire form and decodes back to EMPTY. */
+    @Test(timeout = 5000)
+    public void wireFormRoundTrips() {
+        Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
+        overrides.put(Phase.REVIEW, new PhaseConfig("opencode", "sonnet", null));
+        PhaseConfigBundle b = new PhaseConfigBundle(new PhaseConfig("claude", "opus", "high"), overrides);
+        assertEquals(b, PhaseConfigBundle.fromWire(b.toWire()));
+        assertNull(PhaseConfigBundle.EMPTY.toWire());
+        assertSame(PhaseConfigBundle.EMPTY, PhaseConfigBundle.fromWire(null));
+        assertSame(PhaseConfigBundle.EMPTY, PhaseConfigBundle.fromWire(""));
+    }
 }

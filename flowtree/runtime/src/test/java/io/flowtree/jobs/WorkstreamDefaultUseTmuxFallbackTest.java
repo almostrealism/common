@@ -27,9 +27,9 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests for the per-job {@code use_tmux} flag / workstream
  * {@code defaultUseTmux} precedence rule, exercised through
- * {@link CodingAgentJobFactory#resolveUseTmux(CodingAgentJobFactory, boolean, boolean, Workstream)}
- * — the helper that {@code FlowTreeApiEndpoint.handleSubmit} calls to
- * apply the resolution.
+ * {@link Workstream#newJobFactory(String)}, which seeds the factory with the
+ * workstream default, followed by the per-job override that
+ * {@code FlowTreeApiEndpoint.handleSubmit} applies on top of it.
  *
  * <p>Precedence, in order:</p>
  * <ol>
@@ -47,12 +47,17 @@ import static org.junit.Assert.assertTrue;
  */
 public class WorkstreamDefaultUseTmuxFallbackTest extends TestSuiteBase {
 
-	/** Resolves a body + workstream into the helper's 3-argument form. */
-	private static void resolve(CodingAgentJobFactory factory, String body,
-	                            Workstream workstream) {
-		boolean hasPerJob = body != null && JsonFieldExtractor.hasField(body, "useTmux");
-		boolean perJob = hasPerJob ? JsonFieldExtractor.extractBoolean(body, "useTmux") : false;
-		CodingAgentJobFactory.resolveUseTmux(factory, hasPerJob, perJob, workstream);
+	/**
+	 * Builds a factory the way the submit endpoint does: the workstream's
+	 * defaults from {@link Workstream#newJobFactory(String)}, then the
+	 * per-job {@code useTmux} override when the body carries one.
+	 */
+	private static CodingAgentJobFactory resolve(String body, Workstream workstream) {
+		CodingAgentJobFactory factory = workstream != null
+				? workstream.newJobFactory("prompt") : new CodingAgentJobFactory("prompt");
+		if (body != null && JsonFieldExtractor.hasField(body, "useTmux"))
+			factory.setUseTmux(JsonFieldExtractor.extractBoolean(body, "useTmux"));
+		return factory;
 	}
 
 	/**
@@ -61,10 +66,9 @@ public class WorkstreamDefaultUseTmuxFallbackTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void perJobTrueWinsOverWorkstreamTrue() {
-		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		Workstream workstream = new Workstream("ws", "C", "#c");
 		workstream.setUseTmux(true);
-		resolve(factory, "{\"useTmux\":true}", workstream);
+		CodingAgentJobFactory factory = resolve("{\"useTmux\":true}", workstream);
 		assertTrue("per-job useTmux=true must win over workstream default",
 			factory.isUseTmux());
 	}
@@ -77,10 +81,9 @@ public class WorkstreamDefaultUseTmuxFallbackTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void perJobFalseWinsOverWorkstreamTrue() {
-		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		Workstream workstream = new Workstream("ws", "C", "#c");
 		workstream.setUseTmux(true);
-		resolve(factory, "{\"useTmux\":false}", workstream);
+		CodingAgentJobFactory factory = resolve("{\"useTmux\":false}", workstream);
 		assertFalse("per-job useTmux=false must win over workstream default",
 			factory.isUseTmux());
 	}
@@ -93,10 +96,9 @@ public class WorkstreamDefaultUseTmuxFallbackTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void perJobTrueWinsOverWorkstreamFalse() {
-		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		Workstream workstream = new Workstream("ws", "C", "#c");
 		workstream.setUseTmux(false);
-		resolve(factory, "{\"useTmux\":true}", workstream);
+		CodingAgentJobFactory factory = resolve("{\"useTmux\":true}", workstream);
 		assertTrue("per-job useTmux=true must win over workstream default",
 			factory.isUseTmux());
 	}
@@ -108,10 +110,9 @@ public class WorkstreamDefaultUseTmuxFallbackTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void workstreamTrueAppliesWhenPerJobAbsent() {
-		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		Workstream workstream = new Workstream("ws", "C", "#c");
 		workstream.setUseTmux(true);
-		resolve(factory, "{\"prompt\":\"x\"}", workstream);
+		CodingAgentJobFactory factory = resolve("{\"prompt\":\"x\"}", workstream);
 		assertTrue("workstream default must apply when per-job flag absent",
 			factory.isUseTmux());
 	}
@@ -123,10 +124,9 @@ public class WorkstreamDefaultUseTmuxFallbackTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void workstreamFalseKeepsFactoryAtFalseWhenPerJobAbsent() {
-		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		Workstream workstream = new Workstream("ws", "C", "#c");
 		workstream.setUseTmux(false);
-		resolve(factory, "{\"prompt\":\"x\"}", workstream);
+		CodingAgentJobFactory factory = resolve("{\"prompt\":\"x\"}", workstream);
 		assertFalse("workstream default false must keep factory at false"
 			+ " when per-job flag absent", factory.isUseTmux());
 	}
@@ -139,10 +139,9 @@ public class WorkstreamDefaultUseTmuxFallbackTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void nullBodyFallsBackToWorkstreamDefault() {
-		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		Workstream workstream = new Workstream("ws", "C", "#c");
 		workstream.setUseTmux(true);
-		resolve(factory, null, workstream);
+		CodingAgentJobFactory factory = resolve(null, workstream);
 		assertTrue("null body must fall back to workstream default",
 			factory.isUseTmux());
 	}
@@ -153,13 +152,11 @@ public class WorkstreamDefaultUseTmuxFallbackTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void nullWorkstreamTreatedAsDefaultFalse() {
-		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
-		resolve(factory, "{\"prompt\":\"x\"}", null);
+		CodingAgentJobFactory factory = resolve("{\"prompt\":\"x\"}", null);
 		assertFalse("null workstream with no per-job flag must keep"
 			+ " factory at default false", factory.isUseTmux());
 
-		factory = new CodingAgentJobFactory("prompt");
-		resolve(factory, "{\"useTmux\":true}", null);
+		factory = resolve("{\"useTmux\":true}", null);
 		assertTrue("per-job useTmux=true must still apply when workstream"
 			+ " is null", factory.isUseTmux());
 	}

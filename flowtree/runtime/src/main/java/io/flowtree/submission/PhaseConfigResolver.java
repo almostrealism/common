@@ -548,14 +548,7 @@ public final class PhaseConfigResolver {
         PhaseConfigBundle updated = applyClearingAndOverlay(existing, root);
         String syntaxErr = validateSyntax(updated);
         if (syntaxErr != null) return syntaxErr;
-        // Write the updated result back as the new-shape fields.
-        entry.setDefaultPhaseConfig(updated.defaultPhaseConfig().isEmpty()
-                ? null : updated.defaultPhaseConfig());
-        Map<String, PhaseConfig> phaseMap = new LinkedHashMap<>();
-        for (Map.Entry<Phase, PhaseConfig> e : updated.phaseConfigs().entrySet()) {
-            phaseMap.put(e.getKey().wireName(), e.getValue());
-        }
-        entry.setPhaseConfigs(phaseMap);
+        updated.applyTo(entry);
         return null;
     }
 

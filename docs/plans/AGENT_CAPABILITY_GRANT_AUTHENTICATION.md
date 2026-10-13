@@ -58,7 +58,7 @@ it", which is the property the flag is supposed to have.
 Open questions before doing it:
 
 - Where to verify. Verifying in `ClaudeCodeRunner` catches the most paths but
-  puts crypto in the runner; verifying in `CodingAgentJobConfigurer` keeps it on
+  puts crypto in the runner; verifying in `CodingAgentJobFactory#configure` keeps it on
   the controller side of the job but leaves a directly-constructed job
   unchecked.
 - Whether to cover `dispatchCapable` in the same change. Leaving it unsigned

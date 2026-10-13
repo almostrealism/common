@@ -577,9 +577,9 @@ Partially. (a) is independent. (b) depends on (a) being correct.
 > and nowhere else — which left the "configurable per workstream" half of the
 > triage answer unimplemented. It now runs the full path:
 > `WorkstreamConfig` (persisted YAML) → `Workstream` → registration and update
-> handlers → `CodingAgentJobFactory.resolveMaxWallClockHours` →
+> handlers → `Workstream.newJobFactory` (per-job value overrides it) →
 > `CodingAgentJobCodec` (so it survives the worker hop) →
-> `CodingAgentJobConfigurer`. Exposed as `max_wall_clock_hours` on
+> `CodingAgentJobFactory#configure`. Exposed as `max_wall_clock_hours` on
 > `workstream_register`, `workstream_update_config` and
 > `workstream_submit_task`, with per-job winning over per-workstream winning
 > over the default.

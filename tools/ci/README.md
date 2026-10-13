@@ -26,6 +26,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `open-pr-backlog.sh` | Decide whether the open-PR backlog leaves room for a planning round (`MAX_OPEN_PRS`); shared by both planning jobs |
 | `plan_workstream_config.py` | Resolve the `docs/plans/<prefix>-workstream.yaml` settings a `project/` branch declares (longest matching prefix; strict schema) |
 | `tracker-claimable.sh` | Ask the controller whether a tracker release has a claimable task; fails closed |
+| `automated-intake.sh` | Ask the controller whether it accepts automated jobs, before a dispatch round creates anything; fails closed |
 | `register-workstream.sh` | Register a workstream with the FlowTree controller, optionally granting tracker roles (`TRACKER_CAPABILITIES`) |
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
 | `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests failed |

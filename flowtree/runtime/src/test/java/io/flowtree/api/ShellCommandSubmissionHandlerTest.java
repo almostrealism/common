@@ -34,13 +34,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -76,10 +72,8 @@ public class ShellCommandSubmissionHandlerTest extends TestSuiteBase {
      */
     private static ShellCommandSubmissionHandler handler(NotifierRegistry notifiers,
             SlackListener listener, RecordingServer server, Set<String> selfNotifyJobs) {
-        Map<String, ScheduledFuture<?>> pending = new ConcurrentHashMap<>();
-        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
-        return new ShellCommandSubmissionHandler(notifiers, listener, server,
-                pending, executor, () -> 7780, msg -> { }, selfNotifyJobs::add);
+        return new ShellCommandSubmissionHandler(notifiers, listener,
+                new DelayedJobQueue(server), () -> 7780, selfNotifyJobs);
     }
 
     /** Builds and registers a minimal workstream with the given ID on {@code notifier}. */
@@ -106,7 +100,7 @@ public class ShellCommandSubmissionHandlerTest extends TestSuiteBase {
         RecordingServer server = new RecordingServer();
 
         handler(new NotifierRegistry(notifier, Collections.emptyMap()), listener, server)
-                .handle("{}", workstream, "ws-shell-1", "echo hi", null, null, 0, false);
+                .handle(workstream, "echo hi", null, null, Collections.emptyMap(), 0, false);
 
         assertEquals(1, server.added.size());
         ShellCommandJob.Factory factory = (ShellCommandJob.Factory) server.added.get(0);
@@ -121,7 +115,7 @@ public class ShellCommandSubmissionHandlerTest extends TestSuiteBase {
         RecordingServer server = new RecordingServer();
 
         handler(new NotifierRegistry(notifier, Collections.emptyMap()), null, server)
-                .handle("{}", workstream, "ws-shell-2", "echo hi", null, null, 0, false);
+                .handle(workstream, "echo hi", null, null, Collections.emptyMap(), 0, false);
 
         assertEquals(1, server.added.size());
         ShellCommandJob.Factory factory = (ShellCommandJob.Factory) server.added.get(0);
@@ -141,7 +135,7 @@ public class ShellCommandSubmissionHandlerTest extends TestSuiteBase {
 
         Response response = handler(new NotifierRegistry(notifier, Collections.emptyMap()),
                 null, server)
-                .handle("{}", workstream, "ws-shell-3", "sleep 600", null, null, 0, true);
+                .handle(workstream, "sleep 600", null, null, Collections.emptyMap(), 0, true);
 
         ShellCommandJob.Factory factory = (ShellCommandJob.Factory) server.added.get(0);
         assertTrue(factory.isSelfNotify());
@@ -169,7 +163,7 @@ public class ShellCommandSubmissionHandlerTest extends TestSuiteBase {
         Set<String> selfNotifyJobs = ConcurrentHashMap.newKeySet();
 
         handler(new NotifierRegistry(notifier, Collections.emptyMap()), null, server, selfNotifyJobs)
-                .handle("{}", workstream, "ws-shell-5", "sleep 600", null, null, 0, true);
+                .handle(workstream, "sleep 600", null, null, Collections.emptyMap(), 0, true);
 
         ShellCommandJob.Factory factory = (ShellCommandJob.Factory) server.added.get(0);
         assertTrue("selfNotify=true submission must register the task ID",
@@ -189,7 +183,7 @@ public class ShellCommandSubmissionHandlerTest extends TestSuiteBase {
         Set<String> selfNotifyJobs = ConcurrentHashMap.newKeySet();
 
         handler(new NotifierRegistry(notifier, Collections.emptyMap()), null, server, selfNotifyJobs)
-                .handle("{}", workstream, "ws-shell-6", "echo hi", null, null, 0, false);
+                .handle(workstream, "echo hi", null, null, Collections.emptyMap(), 0, false);
 
         ShellCommandJob.Factory factory = (ShellCommandJob.Factory) server.added.get(0);
         assertTrue("ordinary submission must not register a self-notify job ID",
@@ -205,12 +199,61 @@ public class ShellCommandSubmissionHandlerTest extends TestSuiteBase {
 
         Response response = handler(new NotifierRegistry(notifier, Collections.emptyMap()),
                 null, server)
-                .handle("{}", workstream, "ws-shell-4", "echo hi", null, null, 0, false);
+                .handle(workstream, "echo hi", null, null, Collections.emptyMap(), 0, false);
 
         JsonNode json = MAPPER.readTree(readBody(response));
         assertTrue(json.get("ok").asBoolean());
         assertTrue("selfNotify must be absent (not merely false) when unset",
                 json.get("selfNotify") == null);
+    }
+
+    /**
+     * Submission labels and repository override the workstream's, and absent
+     * labels fall back to the workstream defaults.
+     */
+    @Test(timeout = 10000)
+    public void submissionValuesOverrideWorkstreamDefaults() throws IOException {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream workstream = ws("ws-shell-7", notifier);
+        workstream.setRepoUrl("https://github.com/owner/default.git");
+        workstream.setRequiredLabels(Collections.singletonMap("platform", "macos"));
+        RecordingServer server = new RecordingServer();
+        NotifierRegistry notifiers = new NotifierRegistry(notifier, Collections.emptyMap());
+
+        handler(notifiers, null, server).handle(workstream, "echo hi", null, null,
+                Collections.emptyMap(), 0, false);
+        handler(notifiers, null, server).handle(workstream, "echo hi", "ci/other",
+                "https://github.com/owner/other.git", Collections.singletonMap("gpu", "true"), 0, false);
+
+        ShellCommandJob.Factory defaults = (ShellCommandJob.Factory) server.added.get(0);
+        assertEquals("feature/ws-shell-7", defaults.getTargetBranch());
+        assertEquals("https://github.com/owner/default.git", defaults.getRepoUrl());
+        assertEquals(Collections.singletonMap("platform", "macos"), defaults.getRequiredLabels());
+        assertEquals("http://0.0.0.0:7780/api/workstreams/ws-shell-7/jobs/" + defaults.getTaskId(),
+                defaults.getWorkstreamUrl());
+
+        ShellCommandJob.Factory overridden = (ShellCommandJob.Factory) server.added.get(1);
+        assertEquals("ci/other", overridden.getTargetBranch());
+        assertEquals("https://github.com/owner/other.git", overridden.getRepoUrl());
+        assertEquals(Collections.singletonMap("gpu", "true"), overridden.getRequiredLabels());
+    }
+
+    /** A positive delay defers dispatch through the endpoint's delayed-job queue. */
+    @Test(timeout = 10000)
+    public void delayedSubmissionIsQueuedNotDispatched() throws IOException {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream workstream = ws("ws-shell-8", notifier);
+        RecordingServer server = new RecordingServer();
+        DelayedJobQueue delayedJobs = new DelayedJobQueue(server);
+
+        Response response = new ShellCommandSubmissionHandler(
+                new NotifierRegistry(notifier, Collections.emptyMap()), null,
+                delayedJobs, () -> 7780, ConcurrentHashMap.newKeySet())
+                .handle(workstream, "echo hi", null, null, Collections.emptyMap(), 3600, false);
+
+        String jobId = MAPPER.readTree(readBody(response)).get("jobId").asText();
+        assertTrue(server.added.isEmpty());
+        assertTrue(delayedJobs.isPending(jobId));
     }
 
     /** Reads the full response body from a NanoHTTPD {@link Response}. */

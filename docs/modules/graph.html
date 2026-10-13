@@ -592,6 +592,14 @@ CellularLayer layer = rmsnorm(shape, weights, eps);</code></pre>
                         <h4>ProjectionFactory</h4>
                         <p>Factory abstraction for creating dense vs LoRA layers. Enables attention methods to be LoRA-agnostic.</p>
                     </div>
+                    <div class="class-item">
+                        <h4>DenseProjectionFactory</h4>
+                        <p><code>ProjectionFactory</code> that creates standard dense layers, ignoring the target layer.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>LoRAProjectionFactory</h4>
+                        <p><code>ProjectionFactory</code> that wraps targeted projections with LoRA adapters and delegates the rest to a fallback factory.</p>
+                    </div>
                 </div>
 
                 <h3>Basic Usage</h3>
@@ -657,7 +665,7 @@ AdapterConfig config = new AdapterConfig()
                 </div>
 
                 <h3>Using ProjectionFactory</h3>
-                <p><code>ProjectionFactory</code> allows attention methods to create either dense or LoRA layers without code changes:</p>
+                <p><code>ProjectionFactory</code> allows attention methods to create either dense or LoRA layers without code changes. The static factories return the named <code>DenseProjectionFactory</code> and <code>LoRAProjectionFactory</code> implementations:</p>
                 <div class="code-example">
 <pre><code class="language-java">// Standard dense layers (default)
 ProjectionFactory factory = ProjectionFactory.dense();

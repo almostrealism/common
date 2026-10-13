@@ -30,6 +30,7 @@ import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.github.GitHubProxyHandler;
+import io.flowtree.github.PullRequest;
 import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.workstream.Workstream;
@@ -362,9 +363,7 @@ final class WorkstreamListing {
     /** Renders a single GitHub PR as a JSON object suitable for the {@code pullRequestState} field. */
     private static String prStateJson(JsonNode pr) {
         StringBuilder sb = new StringBuilder("{");
-        boolean merged = !pr.path("merged_at").isMissingNode()
-                && !pr.path("merged_at").isNull()
-                && !pr.path("merged_at").asText().isEmpty();
+        boolean merged = new PullRequest(pr).isMerged();
         String state = pr.path("state").asText("");
         String effective = merged ? "merged" : state;
         sb.append("\"state\":\"").append(effective).append("\"");

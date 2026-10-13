@@ -240,7 +240,7 @@ After construction, `fireJobCompleted()` populates the event in three steps:
 
 2. **Pull request URL**: `event.withPullRequestUrl(pullRequestUrl)` -- set only if a PR was detected.
 
-3. **Subclass details**: `populateEventDetails(event)` is called. `ClaudeCodeJob` overrides this to call:
+3. **Subclass details**: `populateEventDetails(event)` is called; a subclass whose own event needs nothing beyond what `createEvent()` built (such as `ShellCommandJob`'s self-notify flag) adds it here. `CodingAgentJob` does not override it: its `createEvent()` returns a `CodingAgentJobEvent` from `CodingAgentJobEvent.forJob(job, error)`, which already carries:
    - `ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode)` -- the raw prompt, extracted session ID, and process exit code.
    - `ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns)` -- timing and cost metrics from the NDJSON output.
    - `ccEvent.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames)` -- stop reason, error flag, and permission denial details.
@@ -534,9 +534,9 @@ If a `ClaudeCodeJobEvent` is created, its builder methods (`withClaudeCodeInfo`,
 
 5. **Backward compatibility**: If a consumer is unaware of Claude Code fields, it silently ignores them (they are just zero/null on the base class). This is particularly important for the deserialization path: if an older version of the controller receives a `ClaudeCodeJobEvent` JSON payload, the extra fields are simply parsed and stored as zero/null, producing a valid `JobCompletionEvent` with no Claude-specific data.
 
-### Where instanceof IS Used
+### No instanceof on the Producer Side
 
-Despite the design goal of avoiding type-checking, there is exactly one place in the system where `instanceof` is used: in `ClaudeCodeJob.populateEventDetails()`, which casts the event to `ClaudeCodeJobEvent` before calling the builder methods. This is necessary because the base class `fireJobCompleted()` method calls `populateEventDetails()` with the generic `JobCompletionEvent` type, and the builder methods (`withClaudeCodeInfo`, `withTimingInfo`, `withSessionDetails`) are defined only on the subclass. This single type-check is confined to the event producer side and does not affect any consumer code.
+The producer never type-checks its event either. `CodingAgentJob.createEvent()` overrides the base method with the covariant return type `CodingAgentJobEvent`, and `CodingAgentJobEvent.forJob(job, error)` both decides the terminal status and populates the Claude Code fields (`withClaudeCodeInfo`, `withTimingInfo`, `withSessionDetails`, and the rest) on the event it creates, so no later hook has to cast the generic `JobCompletionEvent` back to the subclass.
 
 ### Comparison with Alternative Approaches
 

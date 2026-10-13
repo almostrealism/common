@@ -1041,7 +1041,7 @@ Items the reviewer should weigh in on:
    involved). v1 ships with the UUID form for safety.
 4. **Wake-up prompt truncation of "description".** 200 chars
    is the same convention used elsewhere
-   (`CodingAgentJob.summarizePrompt`). For very long job
+   (`CodingAgentJobFactory.getDisplaySummary`). For very long job
    descriptions this loses information; the orchestrator
    has `workstream_get_job` for the full version. A
    reviewer may want this to be configurable.

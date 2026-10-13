@@ -116,8 +116,7 @@ Job (interface)
  |               overrides: doWork() -> invokes claude CLI
  |               overrides: getCommitMessage() -> reads commit.txt or generates
  |               overrides: validateChanges() -> runs detect-test-hiding.sh
- |               overrides: createEvent() -> returns ClaudeCodeJobEvent
- |               overrides: populateEventDetails() -> adds timing/session info
+ |               overrides: createEvent() -> returns a populated CodingAgentJobEvent
  |               |
  |               +-- ClaudeCodeJob.Factory (static inner class)
  |                       extends: AbstractJobFactory
@@ -145,7 +144,7 @@ InstructionPromptBuilder -- Constructs the full instruction prompt from job stat
 McpToolDiscovery       -- Discovers tool names by parsing Python MCP server source files
 CodingAgentJobFactory  -- Constructs CodingAgentJobs from a prompt list and config
 CodingAgentJobCodec    -- Codec between Factory wire form and a built CodingAgentJob
-CodingAgentJobConfigurer -- Applies Factory/Codec values onto a CodingAgentJob instance
+PostCompletionConfig   -- Post-completion command settings shared by job, factory, and wire
 RestartGovernor        -- Per-job ceiling on sessions, turns, and wall-clock time
 EnforcementRunner      -- Runs post-session checks (enforce-changes, dedup, ...) with retries
 ```
@@ -593,7 +592,7 @@ fireJobCompleted(error)
     +-- createEvent(error) -> JobCompletionEvent or ClaudeCodeJobEvent
     +-- event.withGitInfo(branch, commit, staged, skipped, pushed)
     +-- event.withPullRequestUrl(url)
-    +-- populateEventDetails(event) -> adds Claude Code-specific fields
+    +-- populateEventDetails(event) -> subclass extras (CodingAgentJob's event is already populated by createEvent)
     +-- postStatusEvent(event) -> HTTP POST to workstreamUrl
 ```
 
@@ -666,7 +665,7 @@ The event is then populated with git information and Claude Code-specific detail
 ```java
 event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles, pushed);
 event.withPullRequestUrl(pullRequestUrl);
-populateEventDetails(event);  // Adds timing, session, permission denial info
+populateEventDetails(event);  // Subclass extras; CodingAgentJobEvent.forJob() already populated the event
 ```
 
 ### Event Serialization
