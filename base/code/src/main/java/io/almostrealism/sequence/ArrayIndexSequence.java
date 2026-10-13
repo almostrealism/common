@@ -375,7 +375,10 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 
 		if (granularity == 1) return granularity;
 
-		long sections = lengthLong() / granularity;
+		// Round up so the trailing partial block (when the length is not an exact
+		// multiple of the granularity) is verified too; a partial block whose values
+		// are not all equal means the granularity does not hold throughout.
+		long sections = (lengthLong() + granularity - 1) / granularity;
 
 		for (int i = 0; i < sections; i++) {
 			for (int j = 1; j < granularity & i * granularity + j < length(); j++) {
