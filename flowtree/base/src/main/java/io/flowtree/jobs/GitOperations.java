@@ -340,7 +340,6 @@ public class GitOperations implements ConsoleFeatures {
      * @return the parsed files and whether the underlying query succeeded
      */
     private static ChangedFilesResult queryChangedFiles(String workingDirectory) {
-        List<String> files = new ArrayList<>();
         try {
             ProcessBuilder pb = new ProcessBuilder(resolveGitCommand(), "status", "--porcelain", "-uall");
             if (workingDirectory != null) {
@@ -354,27 +353,52 @@ public class GitOperations implements ConsoleFeatures {
                     process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             int exitCode = process.waitFor();
             if (exitCode != 0) {
-                return new ChangedFilesResult(files, false);
+                return new ChangedFilesResult(new ArrayList<>(), false);
             }
 
-            for (String line : statusOutput.split("\n")) {
-                if (line.length() > 3) {
-                    String file = line.substring(3).trim();
-                    if (file.contains(" -> ")) {
-                        file = file.split(" -> ")[1];
-                    }
-                    if (!file.isEmpty()) {
-                        files.add(file);
-                    }
-                }
-            }
+            return new ChangedFilesResult(parseChangedFiles(statusOutput), true);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return new ChangedFilesResult(files, false);
+            return new ChangedFilesResult(new ArrayList<>(), false);
         } catch (IOException e) {
-            return new ChangedFilesResult(files, false);
+            return new ChangedFilesResult(new ArrayList<>(), false);
         }
-        return new ChangedFilesResult(files, true);
+    }
+
+    /**
+     * Parses the standard output of {@code git status --porcelain} into the
+     * list of changed file paths it reports. Each porcelain line carries a
+     * two-character status code followed by a space, so the path begins at
+     * the fourth column; lines too short to hold a path are ignored. For a
+     * renamed entry ({@code "R  old -> new"}) only the post-rename path (the
+     * part after {@code " -> "}) is returned, and blank paths are dropped.
+     *
+     * <p>This is the shared porcelain-parsing step behind both
+     * {@link #getChangedFiles(String)} (which runs the query itself) and
+     * callers that have already captured status output through another git
+     * invocation. It makes no assumption about the {@code -u} mode used to
+     * produce the output: whether untracked files are listed individually or
+     * collapsed is decided by the command that generated {@code statusOutput},
+     * not by this parser.</p>
+     *
+     * @param statusOutput the raw standard output of a
+     *                     {@code git status --porcelain} invocation
+     * @return the changed file paths, in the order git reported them
+     */
+    public static List<String> parseChangedFiles(String statusOutput) {
+        List<String> files = new ArrayList<>();
+        for (String line : statusOutput.split("\n")) {
+            if (line.length() > 3) {
+                String file = line.substring(3).trim();
+                if (file.contains(" -> ")) {
+                    file = file.split(" -> ")[1];
+                }
+                if (!file.isEmpty()) {
+                    files.add(file);
+                }
+            }
+        }
+        return files;
     }
 
     /**
