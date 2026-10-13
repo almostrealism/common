@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import org.almostrealism.io.Truncation;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -497,7 +499,7 @@ public class PromptTestInstructionLinter {
 			}
 			if (reason != null) {
 				violations.add("Line " + (i + 1) + ": " + reason
-						+ "\n    > " + truncate(line.trim(), 120));
+						+ "\n    > " + Truncation.CUT.apply(line.trim(), 120));
 			}
 		}
 		return this;
@@ -598,11 +600,6 @@ public class PromptTestInstructionLinter {
 		sb.append("\nRewrite the prompt to name the specific failing test(s) to run as a bounded "
 				+ "selection.");
 		return sb.toString();
-	}
-
-	/** Truncates {@code s} to at most {@code max} characters. */
-	private static String truncate(String s, int max) {
-		return s.length() <= max ? s : s.substring(0, max);
 	}
 
 	/** A single line-level predicate, matched against every line of the prompt in
