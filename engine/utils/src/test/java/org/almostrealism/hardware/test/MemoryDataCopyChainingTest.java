@@ -123,6 +123,69 @@ public class MemoryDataCopyChainingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A copy created from two fixed {@link MemoryData} instances binds them as handles, like a
+	 * {@link io.almostrealism.relation.Provider}, so on Metal it is chained after the kernel ahead
+	 * of it instead of committing that kernel and waiting for it on the host: running the list
+	 * commits exactly once, for the wait at its end.
+	 */
+	@Test(timeout = 60000)
+	public void fixedOperandCopiesCommitOnce() {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		Assume.assumeTrue("Requires a Metal compute context", metal != null);
+
+		PackedCollection src = new PackedCollection(SIZE);
+		PackedCollection mid = new PackedCollection(SIZE);
+		PackedCollection dst = new PackedCollection(SIZE);
+		rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
+
+		OperationList list = new OperationList("Fixed operand copy", false);
+		list.add(a(p(mid), cp(src).multiply(2.0)));
+		list.add(new MemoryDataCopy("fixed mid to dst", mid, dst));
+		list.setComputeRequirements(List.of(ComputeRequirement.MTL));
+
+		Runnable runner = list.get();
+		runner.run();
+		assertDoubled(src, dst);
+
+		dst.clear();
+
+		MetalCommandRunner commands = metal.getCommandRunner();
+		long baseline = commands.getCommitCount();
+
+		runner.run();
+		assertEquals((double) (baseline + 1), (double) commands.getCommitCount());
+		assertDoubled(src, dst);
+	}
+
+	/**
+	 * A copy created from two fixed {@link MemoryData} instances is issued in order after the
+	 * dependency it is submitted with, so it copies the value that dependency produces, and has
+	 * finished once the completion it returns has been waited for.
+	 */
+	@Test(timeout = 60000)
+	public void fixedOperandCopyFollowsDependency() {
+		PackedCollection values = new PackedCollection(SIZE);
+		PackedCollection produced = new PackedCollection(SIZE);
+		PackedCollection dst = new PackedCollection(SIZE);
+		rand(values.getShape()).add(1.0).into(values.traverseEach()).evaluate();
+
+		AtomicInteger waits = new AtomicInteger();
+		Semaphore dependsOn = () -> {
+			waits.incrementAndGet();
+			cp(values).multiply(3.0).into(produced.traverseEach()).evaluate();
+		};
+
+		MemoryDataCopy copy = new MemoryDataCopy("fixed copy", produced, dst);
+		Semaphore done = ((Submittable) copy.get()).submit(dependsOn);
+		if (done != null) done.waitFor();
+
+		assertTrue("The dependency must be waited for", waits.get() > 0);
+		for (int i = 0; i < SIZE; i++) {
+			assertEquals(3.0 * values.toDouble(i), dst.toDouble(i));
+		}
+	}
+
+	/**
 	 * A copy that is run by itself rather than chained has finished when {@link Runnable#run()}
 	 * returns, whether its source is a handle or a computation.
 	 */
@@ -401,6 +464,18 @@ public class MemoryDataCopyChainingTest extends TestSuiteBase {
 	private void assertChained(PackedCollection src, PackedCollection dst) {
 		for (int i = 0; i < SIZE; i++) {
 			assertEquals(2.0 * src.toDouble(i) + 1.0, dst.toDouble(i));
+		}
+	}
+
+	/**
+	 * Asserts that every element of {@code dst} is {@code 2 * src}.
+	 *
+	 * @param src the input buffer
+	 * @param dst the output buffer
+	 */
+	private void assertDoubled(PackedCollection src, PackedCollection dst) {
+		for (int i = 0; i < SIZE; i++) {
+			assertEquals(2.0 * src.toDouble(i), dst.toDouble(i));
 		}
 	}
 }

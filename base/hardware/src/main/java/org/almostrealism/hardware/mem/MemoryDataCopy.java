@@ -189,6 +189,12 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 	private Producer<? extends MemoryData> sourceProducer;
 	/** Producer reference for the target; see {@link #sourceProducer}. */
 	private Producer<? extends MemoryData> targetProducer;
+	/**
+	 * Whether the source and target suppliers return fixed {@link MemoryData} handles that no
+	 * pending work produces, so that, like a {@link FixedEvaluable}, they can be resolved before
+	 * the work the copy depends on has completed.
+	 */
+	private boolean fixedOperands;
 	/** Element offset within the source from which copying begins. */
 	private int sourcePosition;
 	/** Element offset within the target at which copying begins. */
@@ -204,8 +210,8 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 	 * @param target Target memory data
 	 */
 	public MemoryDataCopy(String name, MemoryData source, MemoryData target) {
-		// TODO(review): fixed operands become raw Suppliers, so Runner treats them as unordered and host-waits dependsOn
 		this(name, () -> source, () -> target, 0, 0, source.getMemLength());
+		this.fixedOperands = true;
 	}
 
 	/**
@@ -349,7 +355,8 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 	 * <ul>
 	 *   <li>A {@link FixedEvaluable} (the {@link io.almostrealism.relation.Provider} of a
 	 *       collection, for example) is a handle whose value depends on no pending work. It is
-	 *       bound at once, and only the copy itself is ordered after {@code dependsOn}.</li>
+	 *       bound at once, and only the copy itself is ordered after {@code dependsOn}. The
+	 *       operands of a copy created from two {@link MemoryData} instances are bound the same way.</li>
 	 *   <li>A source whose evaluable is a dispatch-backed {@link StreamingEvaluable} (a compiled
 	 *       kernel, for example) is requested with {@code dependsOn}, which the provider chains
 	 *       into the dispatch, and delivers its result together with the completion of that
@@ -391,8 +398,8 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 			this.chainedSource = !(sourceEvaluable instanceof FixedEvaluable) &&
 					sourceEvaluable instanceof StreamingEvaluable &&
 					((StreamingEvaluable<?>) sourceEvaluable).isDispatchBacked();
-			this.ordered = targetEvaluable instanceof FixedEvaluable &&
-					(sourceEvaluable instanceof FixedEvaluable || chainedSource);
+			this.ordered = fixedOperands || (targetEvaluable instanceof FixedEvaluable &&
+					(sourceEvaluable instanceof FixedEvaluable || chainedSource));
 		}
 
 		@Override
