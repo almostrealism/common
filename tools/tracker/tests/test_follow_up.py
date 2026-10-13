@@ -213,6 +213,50 @@ class FollowUpApiTests(_FollowUpTestBase):
                           source=self._source(), description=["not", "a", "string"])
         self.assertEqual(400, resp.status_code)
 
+    def test_a_non_string_release_id_is_refused_with_400(self):
+        resp = self._post(project_id=self.project["id"], title="t",
+                          source=self._source(), release_id=7)
+        self.assertEqual(400, resp.status_code)
+
+    def test_caller_supplied_stage_priority_and_workstream_are_ignored(self):
+        resp = self._post(project_id=self.project["id"], title="t", source=self._source(),
+                          stage="ready", priority=2, workstream_id="ws-1", status="closed")
+        self.assertEqual(201, resp.status_code, resp.text)
+        task = resp.json()["task"]
+        self.assertEqual("backlog", task["stage"])
+        self.assertEqual(0, task["priority"])
+        self.assertEqual("open", task["status"])
+        self.assertIsNone(task["workstream_id"])
+
+    def test_an_unknown_release_is_400(self):
+        resp = self._post(project_id=self.project["id"], title="t",
+                          source=self._source(), release_id="no-such-release")
+        self.assertEqual(400, resp.status_code)
+        self.assertEqual([], self.store.list_tasks(project_id=self.project["id"])["tasks"])
+
+
+class FollowUpSourceOnGenericEndpointsTests(_FollowUpTestBase):
+    """The generic task endpoints accept a follow-up provenance so a filed task
+    survives an export/import round trip, and still refuse a bare prefix."""
+
+    def test_a_task_with_a_follow_up_source_is_accepted_by_import(self):
+        resp = self.client.post("/v1/import", json={"tasks": [
+            {"id": "imported-1", "title": "t", "source": self._source(),
+             "project_id": self.project["id"]}]})
+        self.assertEqual(200, resp.status_code, resp.text)
+        self.assertEqual(self._source(), self.store.get_task("imported-1")["source"])
+
+    def test_a_bare_follow_up_prefix_is_refused_by_import(self):
+        resp = self.client.post("/v1/import", json={"tasks": [
+            {"id": "imported-1", "title": "t", "source": FOLLOW_UP_SOURCE_PREFIX}]})
+        self.assertEqual(400, resp.status_code)
+        self.assertIsNone(self.store.get_task("imported-1"))
+
+    def test_a_follow_up_source_is_accepted_by_task_create(self):
+        resp = self.client.post("/v1/tasks", json={"title": "t", "source": self._source()})
+        self.assertEqual(201, resp.status_code, resp.text)
+        self.assertEqual(self._source(), resp.json()["task"]["source"])
+
 
 if __name__ == "__main__":
     unittest.main()

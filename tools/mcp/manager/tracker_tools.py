@@ -399,6 +399,7 @@ def tracker_update_task(
     if not current.get("ok"):
         return current
     current_ws = (current.get("task") or {}).get("workstream_id", "")
+    # TODO(review): scoped callers can update any unlinked task (e.g. promote a follow-up to "ready"); deny like tracker_get_task does
     if current_ws:
         server._require_workstream_in_scope(current_ws)
     if workstream_id and workstream_id != "null":

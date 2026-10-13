@@ -112,6 +112,67 @@ class TestLengthChecks(_FollowUpToolTestBase):
         self.assertFalse(result["ok"])
         mock_post.assert_not_called()
 
+    @patch.object(server, "_tracker_post")
+    def test_an_over_long_review_comment_is_refused(self, mock_post):
+        result = server.tracker_file_follow_up_task(
+            project_id="p1", title="t", review_comment="x" * 2_001)
+        self.assertFalse(result["ok"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_post")
+    def test_a_blank_project_id_is_refused(self, mock_post):
+        result = server.tracker_file_follow_up_task(project_id="  ", title="t")
+        self.assertEqual({"ok": False, "error": "project_id is required"}, result)
+        mock_post.assert_not_called()
+
+
+class TestDescriptionComposition(_FollowUpToolTestBase):
+    """The description carries the agent's text and the review provenance,
+    each omitted when absent."""
+
+    @patch.object(server, "_tracker_post")
+    def test_no_description_and_no_provenance_sends_null(self, mock_post):
+        mock_post.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_file_follow_up_task(project_id="p1", title="t", description="  ")
+        self.assertIsNone(mock_post.call_args.args[1]["description"])
+
+    @patch.object(server, "_tracker_post")
+    def test_provenance_alone_forms_the_description(self, mock_post):
+        mock_post.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_file_follow_up_task(project_id="p1", title="t", pr_number=7)
+        self.assertEqual("Raised by a review comment during a coding job.\nPR: #7",
+                         mock_post.call_args.args[1]["description"])
+
+    @patch.object(server, "_tracker_post")
+    def test_the_agents_description_leads_the_provenance(self, mock_post):
+        mock_post.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_file_follow_up_task(
+            project_id="p1", title="  t  ", description=" body ", review_comment="c9")
+        payload = mock_post.call_args.args[1]
+        self.assertEqual("t", payload["title"])
+        self.assertEqual("body\n\nRaised by a review comment during a coding job.\n"
+                         "Review comment: c9", payload["description"])
+        self.assertNotIn("release_id", payload)
+
+
+class TestTrackerErrors(_FollowUpToolTestBase):
+    """Tracker refusals are surfaced to the agent."""
+
+    @patch.object(server, "_tracker_post")
+    def test_an_unknown_project_names_the_project(self, mock_post):
+        mock_post.return_value = {"ok": False, "error": "Project not found"}
+        result = server.tracker_file_follow_up_task(project_id="p-missing", title="t")
+        self.assertEqual(
+            {"ok": False, "error": "Tracker project 'p-missing' does not exist"}, result)
+
+    @patch.object(server, "_tracker_post")
+    def test_the_cap_refusal_is_passed_through(self, mock_post):
+        refusal = {"ok": False, "error": "This job has already filed its maximum of 5 "
+                                         "follow-up tasks", "count": 5, "cap": 5}
+        mock_post.return_value = refusal
+        result = server.tracker_file_follow_up_task(project_id="p1", title="t")
+        self.assertEqual(refusal, result)
+
 
 class TestScopedReadBack(_FollowUpToolTestBase):
     """A scoped caller reads back the follow-up tasks its own workspace filed,
@@ -137,6 +198,28 @@ class TestScopedReadBack(_FollowUpToolTestBase):
         self._scoped_to_w1(mock_get)
         self.assertFalse(
             server._follow_up_task_workspace_allowed(_follow_up_task(workstream="ws-2")))
+
+    @patch.object(server, "_controller_get")
+    def test_malformed_or_non_follow_up_sources_are_not_visible(self, mock_get):
+        self._scoped_to_w1(mock_get)
+        for task in (
+            {"id": "t", "source": "follow-up:/job-1"},
+            {"id": "t", "source": "follow-up:"},
+            {"id": "t", "source": "goals:ws-1/job-1"},
+            {"id": "t", "source": "Follow-up:ws-1/job-1"},
+            {"id": "t", "source": None},
+            {"id": "t", "source": 42},
+            {"id": "t"},
+            "follow-up:ws-1/job-1",
+            None,
+        ):
+            self.assertFalse(server._follow_up_task_workspace_allowed(task), task)
+
+    @patch.object(server, "_controller_get")
+    def test_unknown_workstream_in_source_is_not_visible(self, mock_get):
+        self._scoped_to_w1(mock_get)
+        self.assertFalse(
+            server._follow_up_task_workspace_allowed(_follow_up_task(workstream="ws-unknown")))
 
     @patch.object(server, "_controller_get")
     def test_filter_keeps_own_follow_up_and_drops_others(self, mock_get):
