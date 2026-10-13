@@ -1406,15 +1406,23 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	/**
-	 * Adds a scene to the {@link #activeInstances} registry under a weak reference.
+	 * Adds a scene to the {@link #activeInstances} registry under a weak reference, first
+	 * dropping any entries whose scene has already been garbage collected.
+	 *
+	 * <p>Purging on registration keeps the registry tracking only live scenes rather than
+	 * accumulating a dead {@link WeakReference} for every scene ever abandoned without being
+	 * destroyed, which would otherwise grow without bound across a long-lived reuse fork.
+	 * The shared compiled-renderer cache is a separate concern: it is reclaimed on the
+	 * explicit {@link #destroy()} of the last live scene (see
+	 * {@link #deregisterActiveInstance(AudioScene)} and
+	 * {@link BatchedPatternLayerRenderer#clearCompiledRenderers()}), never on garbage
+	 * collection, so that it can outlive any single scene for cross-scene kernel reuse.</p>
 	 *
 	 * @param scene the scene to register
 	 */
 	private static void registerActiveInstance(AudioScene<?> scene) {
 		synchronized (activeInstances) {
-			// TODO(review): cleared weak refs are only purged on the destroy() path, so in the
-			// TODO(review): pure-abandonment case (scenes GC'd, never destroy()ed) isEmpty() stays
-			// TODO(review): false and clearCompiledRenderers() never fires — verify rendererCache reclaim.
+			activeInstances.removeIf(ref -> ref.get() == null);
 			activeInstances.add(new WeakReference<>(scene));
 		}
 	}
