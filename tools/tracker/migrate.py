@@ -122,6 +122,80 @@ CREATE INDEX IF NOT EXISTS idx_task_blockers_blocker ON task_blockers(blocker_id
 """
 
 
+# v4: admit a second agent provenance alongside goal decomposition.
+#
+# source  - gains a 'follow-up:<...>' form for a task a coding agent filed while
+#           working a branch (a valid review point out of scope for the branch).
+#           It is distinct from 'goals:<document>' so the two provenances can
+#           never be confused, and like it requires at least one non-whitespace
+#           character after the prefix (GLOB, so a bare 'follow-up:' and a
+#           case variant are refused, mirroring the API). SQLite cannot alter a
+#           CHECK in place, so the tasks table is rebuilt with the widened
+#           constraint; every column, index and trigger is reproduced exactly
+#           as the v1-v3 scripts left it, and rowids are carried across so the
+#           external-content tasks_fts index stays valid without a rebuild. The
+#           caller disables foreign keys around this migration (see
+#           run_migrations) so dropping the old tasks table does not cascade the
+#           implicit DELETE into task_blockers.
+_SCHEMA_V4 = """
+CREATE TABLE tasks_v4 (
+    id             TEXT PRIMARY KEY,
+    title          TEXT NOT NULL,
+    description    TEXT,
+    status         TEXT NOT NULL DEFAULT 'open',
+    project_id     TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    release_id     TEXT REFERENCES releases(id) ON DELETE SET NULL,
+    workstream_id  TEXT,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    priority       INTEGER NOT NULL DEFAULT 0 CHECK (priority BETWEEN -2 AND 2),
+    stage          TEXT NOT NULL DEFAULT 'backlog'
+        CHECK (stage IN ('backlog', 'ready', 'declined')),
+    source         TEXT NOT NULL DEFAULT 'person' CHECK (
+        source = 'person'
+        OR source GLOB
+            ('goals:*[^ ' || char(9) || char(10) || char(11) || char(12) || char(13) || ']*')
+        OR source GLOB
+            ('follow-up:*[^ ' || char(9) || char(10) || char(11) || char(12) || char(13) || ']*')
+    )
+);
+
+INSERT INTO tasks_v4
+    (rowid, id, title, description, status, project_id, release_id,
+     workstream_id, created_at, updated_at, priority, stage, source)
+SELECT rowid, id, title, description, status, project_id, release_id,
+       workstream_id, created_at, updated_at, priority, stage, source
+FROM tasks;
+
+DROP TABLE tasks;
+ALTER TABLE tasks_v4 RENAME TO tasks;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_project    ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_release    ON tasks(release_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_workstream ON tasks(workstream_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status     ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_priority   ON tasks(priority);
+CREATE INDEX IF NOT EXISTS idx_tasks_stage      ON tasks(stage);
+
+CREATE TRIGGER IF NOT EXISTS tasks_ai AFTER INSERT ON tasks BEGIN
+    INSERT INTO tasks_fts(rowid, title, description)
+    VALUES (new.rowid, new.title, new.description);
+END;
+
+CREATE TRIGGER IF NOT EXISTS tasks_ad AFTER DELETE ON tasks BEGIN
+    INSERT INTO tasks_fts(tasks_fts, rowid, title, description)
+    VALUES ('delete', old.rowid, old.title, old.description);
+END;
+
+CREATE TRIGGER IF NOT EXISTS tasks_au AFTER UPDATE ON tasks BEGIN
+    INSERT INTO tasks_fts(tasks_fts, rowid, title, description)
+    VALUES ('delete', old.rowid, old.title, old.description);
+    INSERT INTO tasks_fts(rowid, title, description)
+    VALUES (new.rowid, new.title, new.description);
+END;
+"""
+
+
 def run_migrations(conn: sqlite3.Connection) -> None:
     """Apply all pending schema migrations to the database connection.
 
@@ -147,6 +221,21 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     if version < 3:
         _apply(conn, _SCHEMA_V3 + "UPDATE schema_version SET version = 3;")
         version = 3
+
+    if version < 4:
+        # The rebuild drops and recreates the tasks table. Foreign keys are
+        # disabled around it so the implicit DELETE a DROP performs when they
+        # are on does not cascade into task_blockers and discard the blocking
+        # relationships. The pragma is a no-op inside a transaction, so it is
+        # toggled outside the BEGIN/COMMIT _apply wraps the script in. It is
+        # restored in a finally so a failed rebuild (which rolls itself back)
+        # still leaves foreign keys enabled for the next startup.
+        conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            _apply(conn, _SCHEMA_V4 + "UPDATE schema_version SET version = 4;")
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
+        version = 4
 
 
 def _apply(conn: sqlite3.Connection, script: str) -> None:
