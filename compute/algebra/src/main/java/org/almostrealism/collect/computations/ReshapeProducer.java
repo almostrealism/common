@@ -152,6 +152,15 @@ public class ReshapeProducer
 	private final Producer<PackedCollection> producer;
 
 	/**
+	 * Computation, equal in value to this reshape and with its shape, whose delta is used
+	 * in place of this reshape's own, or null if none has been declared.
+	 */
+	private CollectionProducer deltaAlternate;
+
+	/** Structure-aware gradient shortcut declared for this reshape, or null if none. */
+	private VectorJacobianProduct vectorJacobianProduct;
+
+	/**
 	 * Creates a ReshapeProducer that modifies the traversal axis of the input producer.
 	 * This constructor is used when you want to change how the collection is traversed
 	 * without changing its overall dimensional structure.
@@ -434,9 +443,12 @@ public class ReshapeProducer
 	public ReshapeProducer generate(List<Process<?, ?>> children) {
 		if (children.size() != 1) return this;
 
-		return shape == null ?
+		ReshapeProducer generated = shape == null ?
 				new ReshapeProducer(traversalAxis, (Producer<PackedCollection>) children.get(0)) :
 				new ReshapeProducer(shape, (Producer<PackedCollection>) children.get(0));
+		generated.deltaAlternate = deltaAlternate;
+		generated.vectorJacobianProduct = vectorJacobianProduct;
+		return generated;
 	}
 
 	@Override
@@ -530,8 +542,15 @@ public class ReshapeProducer
 		return false;
 	}
 
+	/**
+	 * Returns the delta of the {@link #withDeltaAlternate(CollectionProducer) declared
+	 * alternate} when there is one, and otherwise reinterprets the delta of the
+	 * underlying producer with this reshape's shape.
+	 */
 	@Override
 	public CollectionProducer delta(Producer<?> target) {
+		if (deltaAlternate != null) return deltaAlternate.delta(target);
+
 		if (producer instanceof CollectionProducer) {
 			CollectionProducer deltaResult = ((CollectionProducer) producer).delta(target);
 			if (shape == null) {
@@ -546,44 +565,80 @@ public class ReshapeProducer
 	}
 
 	/**
-	 * A reshape only reinterprets the layout of its producer's values, so the
-	 * vector-Jacobian product of the reshaped result is the product of the
-	 * underlying producer, given the same gradient values.
+	 * Returns the {@link #withVectorJacobianProduct(VectorJacobianProduct) declared}
+	 * product when it applies to the target, and otherwise the product of the underlying
+	 * producer: a reshape only reinterprets the layout of its producer's values, so either
+	 * sees the same gradient values.
 	 */
 	@Override
 	public CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
 		if (shape(producer).getTotalSizeLong() != shape(gradient).getTotalSizeLong()) return null;
+
+		if (vectorJacobianProduct != null) {
+			CollectionProducer declared = vectorJacobianProduct.apply(target, gradient);
+			if (declared != null) return declared;
+		}
+
 		Producer<PackedCollection> product = producer.attemptVectorJacobianProduct(target, gradient);
 		return product == null ? null : c(product);
 	}
 
 	/**
-	 * Hands the product to the underlying producer, which
-	 * {@link #attemptVectorJacobianProduct(Producer, Producer)} consults, since a
-	 * reshape preserves the order of values and the product therefore sees the same
-	 * gradient values whether it is reached through the reshape or directly.
+	 * Keeps the product on this reshape, which
+	 * {@link #attemptVectorJacobianProduct(Producer, Producer)} consults before the
+	 * underlying producer. The underlying producer is left unchanged, since it may be
+	 * shared by other parts of the graph that did not declare the product.
 	 */
 	@Override
 	public ReshapeProducer withVectorJacobianProduct(VectorJacobianProduct product) {
-		if (producer instanceof CollectionProducer) {
-			((CollectionProducer) producer).withVectorJacobianProduct(product);
-		}
-
+		this.vectorJacobianProduct = product;
 		return this;
 	}
 
 	/**
-	 * Hands the alternate to the underlying producer, whose delta this reshape
-	 * reinterprets in {@link #delta(Producer)}.
+	 * Returns the alternate declared by {@link #withDeltaAlternate(CollectionProducer)}.
+	 *
+	 * @return the delta alternate, or null if none has been declared
+	 */
+	@Override
+	public CollectionProducer getDeltaAlternate() {
+		return deltaAlternate;
+	}
+
+	/**
+	 * Keeps the alternate on this reshape, whose delta {@link #delta(Producer)} uses in
+	 * place of reinterpreting the delta of the underlying producer. The underlying
+	 * producer is left unchanged, since it may be shared by other parts of the graph
+	 * and has a different shape than the alternate.
 	 */
 	@Override
 	public ReshapeProducer withDeltaAlternate(CollectionProducer alternate) {
-		// TODO(review): mutates the wrapped (possibly shared) producer; alternate is shaped like this reshape, not like it
-		if (producer instanceof CollectionProducer) {
-			((CollectionProducer) producer).withDeltaAlternate(alternate);
+		this.deltaAlternate = alternate;
+		return this;
+	}
+
+	/**
+	 * Declares this reshape's delta alternate and vector-Jacobian product on a producer
+	 * that presents the same values under another shape, so that a further reshape or
+	 * traversal, which wraps the underlying producer directly rather than this reshape,
+	 * keeps them. The alternate is reshaped to the new shape. Nothing is declared when
+	 * the result is the underlying producer itself, which must stay unchanged.
+	 *
+	 * @param reshaped a producer of this reshape's values, in a different shape
+	 * @return the producer, with this reshape's declarations
+	 */
+	private CollectionProducer withDeclarationsOf(CollectionProducer reshaped) {
+		if (reshaped == producer) return reshaped;
+
+		if (vectorJacobianProduct != null) {
+			reshaped = reshaped.withVectorJacobianProduct(vectorJacobianProduct);
 		}
 
-		return this;
+		if (deltaAlternate != null) {
+			reshaped = reshaped.withDeltaAlternate(deltaAlternate.reshape(reshaped.getShape()));
+		}
+
+		return reshaped;
 	}
 
 	/**
@@ -625,9 +680,9 @@ public class ReshapeProducer
 	public CollectionProducer traverse(int axis) {
 		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
 			if (producer instanceof CollectionProducerComputation) {
-				return ((CollectionProducerComputation) producer).traverse(axis);
+				return withDeclarationsOf(((CollectionProducerComputation) producer).traverse(axis));
 			}
-			return new ReshapeProducer(axis, producer);
+			return withDeclarationsOf(new ReshapeProducer(axis, producer));
 		} else {
 			return new ReshapeProducer(axis, this);
 		}
@@ -655,9 +710,9 @@ public class ReshapeProducer
 	@Override
 	public CollectionProducer reshape(TraversalPolicy shape) {
 		if (producer instanceof CollectionProducerComputation) {
-			return ((CollectionProducerComputation) producer).reshape(shape);
+			return withDeclarationsOf(((CollectionProducerComputation) producer).reshape(shape));
 		}
-		return new ReshapeProducer(shape, producer);
+		return withDeclarationsOf(new ReshapeProducer(shape, producer));
 	}
 
 	/**
