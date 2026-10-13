@@ -33,9 +33,12 @@ branches feed the products through `compose`, whose backward pass propagates int
 That structure is the `sequence_attention.pdsl` asset `sequenceAttention` builds: its `keys` and
 `values` branches are the operands of the `scaled_dot_product` stages of the score and context
 layers.
-The same buffering pattern remains in `sequenceCrossAttention`, `TransformerResamplingFeatures`
-and `DifferentialAttentionFeatures`; those paths do not yet deliver gradients to their K/V
-projections.
+Differential attention follows the same structure: `differentialSequenceAttention` builds a layer of
+the `differential_attention.pdsl` asset, in which the keys and values of each of its two attention
+maps are branches read by the products, and the lambda-weighted second map is a branch the PDSL `add`
+built-in adds to the first, so all five sections of its fused projection receive gradients
+(`DifferentialAttentionAssetTest`). The buffering pattern remains in `sequenceCrossAttention` and
+`TransformerResamplingFeatures`; those paths do not yet deliver gradients to their K/V projections.
 
 ## Device memory during training
 
