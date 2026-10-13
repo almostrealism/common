@@ -578,6 +578,7 @@ public class ReshapeProducer
 	 */
 	@Override
 	public ReshapeProducer withDeltaAlternate(CollectionProducer alternate) {
+		// TODO(review): mutates the wrapped (possibly shared) producer; alternate is shaped like this reshape, not like it
 		if (producer instanceof CollectionProducer) {
 			((CollectionProducer) producer).withDeltaAlternate(alternate);
 		}
