@@ -1377,10 +1377,10 @@ public class PdslInterpreter {
 		/** Names of the layers whose bodies are being interpreted, outermost first. */
 		private final List<String> constructing = new ArrayList<>();
 		/**
-		 * Branch {@link Block}s already consumed as a {@code scaled_dot_product} operand
-		 * in this build, identified by reference. {@code compose} wires a branch in by replacing its
-		 * forward receptor, so a branch read by a second stage would silently displace the first
-		 * stage's consumer; that built-in adds each branch operand here and rejects a second use.
+		 * Branch {@link Block}s already consumed as a {@code scaled_dot_product} operand in this
+		 * build, identified by reference. {@code compose} wires a branch in by replacing its forward
+		 * receptor, so a branch read by a second product would silently displace the first product's
+		 * consumer; {@code scaled_dot_product} adds each branch operand here and rejects a second use.
 		 */
 		private final Set<Block> consumedBranchOperands =
 				Collections.newSetFromMap(new IdentityHashMap<>());

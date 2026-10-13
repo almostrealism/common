@@ -76,10 +76,11 @@ final class PdslBuiltins {
 	 *
 	 * @param name                   Name of the function
 	 * @param args                   Evaluated arguments
-	 * @param consumedBranchOperands the set of branch {@link Block}s already consumed as the operand
-	 *                               of a {@code scaled_dot_product} stage in the current build, to which
-	 *                               that built-in adds each branch it composes so that reusing one is
-	 *                               rejected rather than silently overwriting the first stage's consumer
+	 * @param consumedBranchOperands the set of branch {@link Block}s already consumed as a
+	 *                               {@code scaled_dot_product} operand in the current build, to
+	 *                               which {@code scaled_dot_product} adds each branch it composes so
+	 *                               that reusing one is rejected rather than silently overwriting the
+	 *                               first product's consumer
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
 	static Object call(String name, List<Object> args, Set<Block> consumedBranchOperands) {
@@ -912,7 +913,10 @@ final class PdslBuiltins {
 	 * whose output is the product's second operand: the branch runs before the stage that reads it,
 	 * and a backward pass carries the product's gradient with respect to the operand back into the
 	 * branch. This is how a self-attention layer computes its keys and values from its own input and
-	 * still trains them. A branch's output feeds one stage, as {@link #claimBranchOperand} explains.</p>
+	 * still trains them. A branch's output feeds one product: because {@code compose} wires the
+	 * branch in by replacing the branch's forward receptor, a second product reading the same branch
+	 * would silently displace the first product's consumer, so a branch already consumed as an
+	 * operand (tracked in {@code consumedBranchOperands}) is rejected rather than overwritten.</p>
 	 *
 	 * @param args                   two arguments: the second operand (a bound tensor, a producer or
 	 *                               a branch) and the boolean {@code transpose}, true to transpose the
@@ -937,7 +941,12 @@ final class PdslBuiltins {
 		}
 		boolean transpose = (Boolean) args.get(1);
 		if (args.get(0) instanceof Block) {
-			Block branch = claimBranchOperand("scaled_dot_product", (Block) args.get(0), consumedBranchOperands);
+			Block branch = (Block) args.get(0);
+			if (!consumedBranchOperands.add(branch)) {
+				throw new PdslParseException("scaled_dot_product() operand is a branch already consumed"
+						+ " by another product; a branch feeds one product, so split a separate branch"
+						+ " for each product that reads it");
+			}
 			return scaledDotProductLayer(branch.getOutputShape(), transpose, (inputShape, outputShape) ->
 					FEATURES.compose("scaledDotProduct", inputShape, branch, outputShape,
 							(input, other) -> FEATURES.scaledDotProduct(
@@ -949,31 +958,6 @@ final class PdslBuiltins {
 		return scaledDotProductLayer(FEATURES.shape(other), transpose, (inputShape, outputShape) ->
 				FEATURES.layer("scaledDotProduct", inputShape, outputShape,
 						input -> FEATURES.scaledDotProduct(FEATURES.c(input), other, transpose)));
-	}
-
-	/**
-	 * Records that a branch of the calling layer is read as the second operand of a stage
-	 * ({@code scaled_dot_product}), and rejects a branch some other stage already reads.
-	 * An operand stage wires its branch in through
-	 * {@link org.almostrealism.layers.LayerRoutingFeatures#compose(String, TraversalPolicy, Block,
-	 * TraversalPolicy, io.almostrealism.relation.Composition, io.almostrealism.compute.ComputeRequirement...)
-	 * compose}, which replaces the branch's forward receptor, so a second stage reading the same branch
-	 * would silently displace the first stage's consumer; a layer that needs one result in two stages
-	 * splits a branch for each.
-	 *
-	 * @param name                   the built-in reading the branch, for the error message
-	 * @param branch                 the branch
-	 * @param consumedBranchOperands the branches already read as an operand in this build, to which
-	 *                               {@code branch} is added
-	 * @return {@code branch}
-	 * @throws PdslParseException if another stage already reads the branch
-	 */
-	private static Block claimBranchOperand(String name, Block branch, Set<Block> consumedBranchOperands) {
-		if (!consumedBranchOperands.add(branch)) {
-			throw new PdslParseException(name + "() operand is a branch another stage already reads;"
-					+ " a branch feeds one stage, so split a separate branch for each stage that reads it");
-		}
-		return branch;
 	}
 
 	/**

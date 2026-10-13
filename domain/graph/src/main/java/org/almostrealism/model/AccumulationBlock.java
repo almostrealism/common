@@ -53,7 +53,7 @@ import java.util.function.Supplier;
  * @see Block
  * @see BranchBlock
  * @see SequentialBlock
- * @see LayerRoutingFeatures#accumBlocks(TraversalPolicy, List, ComputeRequirement...)
+ * @see org.almostrealism.layers.LayerRoutingFeatures#accumBlocks(TraversalPolicy, List, ComputeRequirement...)
  * @author Michael Murray
  */
 public class AccumulationBlock implements Block, Learning, Tracking {

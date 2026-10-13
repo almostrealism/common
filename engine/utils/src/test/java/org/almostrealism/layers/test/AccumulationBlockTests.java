@@ -16,11 +16,14 @@
 
 package org.almostrealism.layers.test;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerRoutingFeatures;
 import org.almostrealism.model.AccumulationBlock;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.ModelTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
@@ -30,6 +33,7 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tests for {@link AccumulationBlock}, the block behind
@@ -59,18 +63,20 @@ public class AccumulationBlockTests extends TestSuiteBase implements LayerRoutin
 
 		Model model = new Model(shape(SIZE));
 		model.add(accumBlocks(shape(SIZE), children(weights)));
-		PackedCollection out = model.compile(false).forward(input);
+		try (CompiledModel compiled = model.compile(false)) {
+			PackedCollection out = compiled.forward(input);
 
-		Assert.assertEquals(NODES, out.getShape().getTotalSize());
-		for (int i = 0; i < NODES; i++) {
-			double expected = 0.0;
-			for (PackedCollection w : weights) {
-				for (int j = 0; j < SIZE; j++) {
-					expected += w.toDouble(i * SIZE + j) * input.toDouble(j);
+			Assert.assertEquals(NODES, out.getShape().getTotalSize());
+			for (int i = 0; i < NODES; i++) {
+				double expected = 0.0;
+				for (PackedCollection w : weights) {
+					for (int j = 0; j < SIZE; j++) {
+						expected += w.toDouble(i * SIZE + j) * input.toDouble(j);
+					}
 				}
-			}
 
-			Assert.assertEquals("output " + i, expected, out.toDouble(i), 1e-5);
+				Assert.assertEquals("output " + i, expected, out.toDouble(i), 1e-5);
+			}
 		}
 	}
 
@@ -89,34 +95,35 @@ public class AccumulationBlockTests extends TestSuiteBase implements LayerRoutin
 		List<PackedCollection> recorded = new ArrayList<>();
 		Model model = new Model(shape(SIZE), gradientRecorder(recorded));
 		model.add(accumBlocks(shape(SIZE), children(weights)));
-		CompiledModel compiled = model.compile(true, true);
-		Assert.assertEquals(CHILDREN, recorded.size());
+		try (CompiledModel compiled = model.compile(true, true)) {
+			Assert.assertEquals(CHILDREN, recorded.size());
 
-		for (int pass = 0; pass < 2; pass++) {
-			PackedCollection outputGradient = randn(shape(NODES), 0.0, 1.0, random).evaluate();
-			compiled.forward(input);
-			PackedCollection inputGradient = compiled.backward(outputGradient);
+			for (int pass = 0; pass < 2; pass++) {
+				PackedCollection outputGradient = randn(shape(NODES), 0.0, 1.0, random).evaluate();
+				compiled.forward(input);
+				PackedCollection inputGradient = compiled.backward(outputGradient);
 
-			for (int k = 0; k < CHILDREN; k++) {
-				for (int i = 0; i < NODES; i++) {
-					for (int j = 0; j < SIZE; j++) {
-						Assert.assertEquals("pass " + pass + " child " + k + " weight [" + i + ", " + j + "]",
-								outputGradient.toDouble(i) * input.toDouble(j),
-								recorded.get(k).toDouble(i * SIZE + j), 1e-5);
-					}
-				}
-			}
-
-			Assert.assertEquals(SIZE, inputGradient.getShape().getTotalSize());
-			for (int j = 0; j < SIZE; j++) {
-				double expected = 0.0;
-				for (PackedCollection w : weights) {
+				for (int k = 0; k < CHILDREN; k++) {
 					for (int i = 0; i < NODES; i++) {
-						expected += w.toDouble(i * SIZE + j) * outputGradient.toDouble(i);
+						for (int j = 0; j < SIZE; j++) {
+							Assert.assertEquals("pass " + pass + " child " + k + " weight [" + i + ", " + j + "]",
+									outputGradient.toDouble(i) * input.toDouble(j),
+									recorded.get(k).toDouble(i * SIZE + j), 1e-5);
+						}
 					}
 				}
 
-				Assert.assertEquals("pass " + pass + " input " + j, expected, inputGradient.toDouble(j), 1e-5);
+				Assert.assertEquals(SIZE, inputGradient.getShape().getTotalSize());
+				for (int j = 0; j < SIZE; j++) {
+					double expected = 0.0;
+					for (PackedCollection w : weights) {
+						for (int i = 0; i < NODES; i++) {
+							expected += w.toDouble(i * SIZE + j) * outputGradient.toDouble(i);
+						}
+					}
+
+					Assert.assertEquals("pass " + pass + " input " + j, expected, inputGradient.toDouble(j), 1e-5);
+				}
 			}
 		}
 	}
@@ -163,6 +170,81 @@ public class AccumulationBlockTests extends TestSuiteBase implements LayerRoutin
 			Assert.fail("getChildren() must be unmodifiable");
 		} catch (UnsupportedOperationException expected) {
 			Assert.assertEquals(CHILDREN, block.getChildren().size());
+		}
+	}
+
+	/**
+	 * Compute requirements given to {@link LayerRoutingFeatures#accumBlocks} reach every child, and
+	 * an accumulation built without requirements leaves the children untouched.
+	 */
+	@Test(timeout = 60000)
+	public void accumBlocksPropagatesComputeRequirements() {
+		List<RecordingBlock> recording = recordingChildren(new AtomicInteger());
+		Block accum = accumBlocks(shape(SIZE), new ArrayList<>(recording), ComputeRequirement.CPU);
+		Assert.assertTrue(accum instanceof AccumulationBlock);
+		for (RecordingBlock child : recording) {
+			Assert.assertEquals(List.of(ComputeRequirement.CPU), child.requirements);
+		}
+
+		List<RecordingBlock> untouched = recordingChildren(new AtomicInteger());
+		accumBlocks(shape(SIZE), new ArrayList<>(untouched));
+		for (RecordingBlock child : untouched) {
+			Assert.assertNull(child.requirements);
+		}
+	}
+
+	/**
+	 * The setup of an accumulation runs the setup of every child exactly once, since the children
+	 * are driven by the accumulation rather than by an enclosing {@link org.almostrealism.model.SequentialBlock}.
+	 */
+	@Test(timeout = 60000)
+	public void setupRunsEveryChildSetup() {
+		AtomicInteger setups = new AtomicInteger();
+		AccumulationBlock block = new AccumulationBlock(shape(SIZE),
+				new ArrayList<>(recordingChildren(setups)));
+		Assert.assertEquals(0, setups.get());
+
+		block.setup().get().run();
+		Assert.assertEquals(CHILDREN, setups.get());
+	}
+
+	/**
+	 * Creates {@link #CHILDREN} recording children whose setup increments {@code setups}.
+	 *
+	 * @param setups counter incremented each time any child's setup runs
+	 * @return the recording children
+	 */
+	private List<RecordingBlock> recordingChildren(AtomicInteger setups) {
+		List<RecordingBlock> children = new ArrayList<>();
+		for (int k = 0; k < CHILDREN; k++) {
+			children.add(new RecordingBlock(setups));
+		}
+		return children;
+	}
+
+	/**
+	 * A pass-through child that records the compute requirements it is given and counts the
+	 * executions of its setup.
+	 */
+	private static class RecordingBlock extends DefaultBlock {
+		/** The requirements most recently given to this block, or {@code null} if none were. */
+		private List<ComputeRequirement> requirements;
+
+		/**
+		 * Creates a pass-through block of size {@link #NODES}.
+		 *
+		 * @param setups counter incremented each time this block's setup runs
+		 */
+		RecordingBlock(AtomicInteger setups) {
+			super(new TraversalPolicy(NODES),
+					new TraversalPolicy(NODES), null, null,
+					() -> setups::incrementAndGet);
+		}
+
+		/** {@inheritDoc} */
+		@Override
+		public void setComputeRequirements(List<ComputeRequirement> requirements) {
+			this.requirements = requirements;
 		}
 	}
 
