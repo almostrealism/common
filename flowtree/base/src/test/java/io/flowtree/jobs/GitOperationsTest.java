@@ -378,6 +378,60 @@ public class GitOperationsTest extends TestSuiteBase {
         Assert.assertEquals("", output);
     }
 
+    /**
+     * Pins the shared porcelain parse {@link GitOperations#parseChangedFiles(String)}
+     * that both {@link GitOperations#getChangedFiles(String)} and
+     * {@code GitRepositorySetup.getAllDirtyFiles()} now rely on: the path begins
+     * at the fourth column (after the two-character status code and its trailing
+     * space), every status kind (modified, added, deleted, untracked) is listed
+     * alike, a renamed entry yields only its post-rename path, and git's reported
+     * order is preserved.
+     */
+    @Test(timeout = 10000)
+    public void parseChangedFilesReadsPathsAndRenamesInOrder() {
+        String statusOutput = String.join("\n",
+                " M tracked.txt",
+                "A  added.txt",
+                " D deleted.txt",
+                "?? Untracked.java",
+                "R  old/name.txt -> new/name.txt");
+
+        List<String> files = GitOperations.parseChangedFiles(statusOutput);
+
+        Assert.assertEquals(
+                List.of("tracked.txt", "added.txt", "deleted.txt",
+                        "Untracked.java", "new/name.txt"),
+                files);
+    }
+
+    /**
+     * Pins the filtering edges of {@link GitOperations#parseChangedFiles(String)}:
+     * lines too short to hold a path (empty lines, a bare status code, the
+     * trailing fragment left by {@code split}) are ignored, and a line whose
+     * path is blank after trimming is dropped rather than contributing an empty
+     * entry.
+     */
+    @Test(timeout = 10000)
+    public void parseChangedFilesIgnoresShortAndBlankLines() {
+        String statusOutput = String.join("\n",
+                "",
+                "??",
+                " M kept.txt",
+                "    ",
+                " M also/kept.txt");
+
+        List<String> files = GitOperations.parseChangedFiles(statusOutput);
+
+        Assert.assertEquals(List.of("kept.txt", "also/kept.txt"), files);
+    }
+
+    /** Empty status output (a clean tree) parses to no files, never {@code null}. */
+    @Test(timeout = 10000)
+    public void parseChangedFilesEmptyOnNoOutput() {
+        assertTrue("Empty porcelain output must yield no files",
+                GitOperations.parseChangedFiles("").isEmpty());
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
