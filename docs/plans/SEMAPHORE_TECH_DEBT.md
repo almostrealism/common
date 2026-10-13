@@ -141,7 +141,7 @@ handling here is the deepest debt:
 | `AcceleratedOperation.apply` (`AcceleratedOperation.java:606-612`) | Cross-provider replacement: `nextSemaphore.waitFor()` **inside apply**, then host-mediated copy-back | ❌ re-express postprocess as chained `ComputeContext.copy(…, dependsOn=kernel)`; the copy machinery for this now exists on this branch |
 | `AcceleratedOperation.apply` (`:581-583`) | Aggregation copy-in: `Submittable.submit(prepareOps, dependsOn)` — **return value discarded**; kernel chains on the caller's `dependsOn`, not on the copies | ⚠️ safe only by the copy-context == kernel-context invariant; chain the returned semaphore into `operator.accept` to make it safe by construction |
 | `Assignment.Runner.run` (`Assignment.java:588-589`) | `submit(null)` + wait | ✅ boundary (`run()`); `submit` chains properly |
-| `MemoryDataCopy` (`MemoryDataCopy.java:144`) | **Not `Submittable`** — as an optimized-list member it forces `pending.waitFor()` and then a synchronous host copy | ❌ route through `ComputeContext.copy(src, dst, dependsOn)` and implement `Submittable` |
+| `MemoryDataCopy` (`MemoryDataCopy.Runner`) | `get()` returns a `Submittable` runner (2026-10-13, see §4.4 interim note): a copy into device-context memory is queued through `ComputeContext.copy(src, dst, dependsOn)`; a copy into CPU-context memory still waits `dependsOn` and copies inline (deferring a host transfer only adds thread hand-offs) | ✅ interim — retirement in favor of `Assignment` (§4.4) is still the end state |
 | `AbstractComputeContext.copy` (`AbstractComputeContext.java:176`) / `MetalComputeContext.copy` (`:234`) | Fallback waits `dependsOn` then `setMem`; Metal bridges foreign deps by host wait | ✅ as designed — this *is* the backend's documented last-resort bridge (invariant 2); Metal's foreign bridge can improve later (§4.6) |
 | `Heap.HeapStage.destroy` (`Heap.java:791`) | Drains `pendingKernels` | ✅ lifecycle safety |
 | `OperationAdapter.waitFor(Semaphore)` (`OperationAdapter.java:141`) | Null-safe wait helper used by boundary methods | ✅ helper, fine |
@@ -287,6 +287,24 @@ Revised sub-steps:
   into an invariant-by-construction.
 - Once 4.4a-b hold, `MemoryDataCopy` has no callers outside 4.4c's internal
   machinery; when 4.4c lands it can be removed outright.
+
+**Interim note (2026-10-13, `qa/performance-20261013-132831`).** With 4.4a still
+blocked on the assignment-recording divergence (`AssignmentIsolationDiagTest`), every
+layer input/output record in every training step remained a non-submittable
+`MemoryDataCopy`: on Metal that cost up to two commit-and-wait round trips per copy
+(`CommitCauseMeasurementTest`: 10 host-wait commits per step under copy recording vs. 4
+under assignment recording). As an interim measure, `MemoryDataCopy.get()` now returns a
+`Submittable` runner that resolves its operands the way `ProcessDetailsFactory` resolves
+kernel arguments (a `FixedEvaluable` is bound as a handle; a dispatch-backed
+`StreamingEvaluable` source is requested chained on `dependsOn` and delivers its
+completion; anything else waits for `dependsOn` first) and queues the copy through the
+target context's `ComputeContext.copy`. This reaches the same 4 commits per step without
+changing the recording route, so 4.4a-c and the eventual removal of the class are
+unaffected. Measured on Metal (M1 Ultra, old and new builds run back to back):
+`SyntheticDenseTrainingTest#denseClassification` 292 s -> 250 s,
+`TrainModelTest#trainSmallest` 20.4 s -> 14.0 s; the forward pass of the
+denseClassification model 1.78 ms -> 1.12 ms per call. The native backend is unchanged
+within run-to-run noise.
 
 ### 4.5 The argument pipeline carries semaphores
 

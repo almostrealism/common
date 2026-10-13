@@ -25,9 +25,10 @@
 > was written to eliminate. `MemoryDataCopy` is now `@Deprecated` with guidance toward
 > `Assignment`, `MemoryData.copyFrom`, and the `copy(...)` helpers, and internally performs its
 > physical copy through the owning `ComputeContext` (`Hardware.getComputeContext(Memory)`), with
-> host `toArray`/`setMem` only as the unmanaged-memory fallback — but it is still **not**
-> `Submittable`, so as an `OperationList` member it forces a `pending.waitFor()` chain reset
-> (see §9.1). The §3 direct-construction sites have been **partially** migrated (see the updated
+> host `toArray`/`setMem` only as the unmanaged-memory fallback. Until 2026-10-13 it was
+> **not** `Submittable`, so as an `OperationList` member it forced a `pending.waitFor()` chain
+> reset (see §9.1); its runner is now `Submittable` as an interim measure while the flip below
+> stays blocked (see the interim note in `SEMAPHORE_TECH_DEBT.md` §4.4). The §3 direct-construction sites have been **partially** migrated (see the updated
 > §3 table: aggregation and cross-provider replacement now use `ComputeContext.copy`
 > `Submittable`s; `WaveOutput` and `DefaultChannelSectionFactory` route through the flag-gated
 > `copy()` helper; `PackedCollection`, `CollectionProvider`, and `FilterEnvelopeProcessor`
@@ -113,11 +114,13 @@ The original table listed the sites that bypassed `enableAssignmentCopy` by cons
 | `CollectionProvider.java:163` | evaluate-into | **Still direct** |
 | `FilterEnvelopeProcessor.java:150,152` | input / output | **Still direct** (immediate `.get().run()`) |
 
-> **Important:** "helper-routed" is necessary but not sufficient. While `enableAssignmentCopy`
-> is off, the helper still returns a `MemoryDataCopy`, which is **not `Submittable`** — inside an
-> `OperationList` it forces `pending.waitFor()` and resets the semaphore chain
-> (`OperationListRunner.run()`). The audio §9.1 work therefore migrates those members to
-> `Submittable` form **per call site**, without waiting for the global flag flip. Under all-Metal
+> **Important (historical; superseded 2026-10-13):** "helper-routed" was necessary but not
+> sufficient. While `enableAssignmentCopy` is off, the helper still returns a `MemoryDataCopy`,
+> which was **not `Submittable`** — inside an `OperationList` it forced `pending.waitFor()` and
+> reset the semaphore chain (`OperationListRunner.run()`). The audio §9.1 work therefore planned
+> to migrate those members to `Submittable` form **per call site**, without waiting for the
+> global flag flip. `MemoryDataCopy.get()` now returns a `Submittable` runner, so helper-routed
+> copies into device memory chain without that wait. Under all-Metal
 > (`AR_HARDWARE_OFF_HEAP_SIZE=0`, now the default) the cross-provider replacement path largely
 > does not trigger (no provider mismatch).
 
