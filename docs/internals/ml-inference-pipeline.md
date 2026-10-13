@@ -854,8 +854,8 @@ The differential variant (`DifferentialAttentionFeatures.differentialSequenceAtt
 with `AttentionVariant.DIFFERENTIAL`) is a layer of `engine/ml/src/main/resources/pdsl/differential_attention.pdsl`:
 its fused projection holds five sections, `Q1 K1 K2 V Q2`; an `attention_map` layer forms each of
 the two attention maps from its query, key and value sections with the same `sdpa.pdsl` halves; and
-the second map, weighted by each head's lambda, is a branch that the PDSL `add` built-in subtracts
-from the first before the heads are merged and projected. `differentialSequenceAttention` binds the
+`accum_blocks` sums the two maps, the second weighted by each head's lambda (and negated) so the sum
+subtracts it, before the heads are merged and projected. `differentialSequenceAttention` binds the
 same arguments as `sequenceAttention` (`sequenceAttentionArguments`) plus the lambda.
 
 ---

@@ -25,22 +25,19 @@
  *   [batch, seq_len, dim] sequence
  *     qkv_projection                                  [batch, seq_len, 5 * dim]
  *     reshape                                         [batch, seq_len, 5, dim]    sections Q1 K1 K2 V Q2
- *     ├─ weighted_second_map:
- *     │    attention_map(Q2 = 4, K2 = 2, V = 3)       [batch, heads, seq_len, head_dim]
- *     │    scale(lambda, 1)                           each head's map times its own λ
- *     │    scale(-1)                                  negated, so that adding it subtracts it
- *     └─ attention_map(Q1 = 0, K1 = 1, V = 3)         [batch, heads, seq_len, head_dim]
- *          add(weighted_second_map)                   map1 − λ ⊙ map2
- *          merge_heads                                [batch, seq_len, dim]
- *          out_projection                             [batch, seq_len, dim]
+ *     accum_blocks:
+ *       attention_map(Q1 = 0, K1 = 1, V = 3)          [batch, heads, seq_len, head_dim]
+ *       attention_map(Q2 = 4, K2 = 2, V = 3)          [batch, heads, seq_len, head_dim]
+ *         scale(lambda, 1)                            each head's map times its own λ
+ *         scale(-1)                                   negated, so that summing it subtracts it
+ *     merge_heads                                     map1 − λ ⊙ map2, heads joined [batch, seq_len, dim]
+ *     out_projection                                  [batch, seq_len, dim]
  *
- * The weighted second map is a branch split off the projected sequence before the main path goes on to
- * the first map; add reads the branch as its second operand, so a backward pass carries the gradient
- * through both maps — into the query and key sections of each, and into the value section they share.
- * Inside each map the keys and values are branches as well, the second operands of the score and
- * context products, exactly as in sequence_attention.pdsl. The two maps are joined with add over a
- * branch rather than with accum_blocks, which would also apply both maps to one input, because the
- * backward pass of accum_blocks does not yet reach the blocks it sums, and this layer is trained.
+ * accum_blocks applies both maps to the projected sequence and sums their outputs; because the second
+ * map is scaled by −λ, the sum is map1 − λ ⊙ map2. Its backward pass carries the gradient into both
+ * maps — into the query and key sections of each, and into the value section they share — so the layer
+ * trains. Inside each map the keys and values are branches, the second operands of the score and
+ * context products, exactly as in sequence_attention.pdsl.
  *
  * The projections. qkv_projection and out_projection are layers the caller builds from its weights and
  * binds like a weight: plain dense layers, or adapter-wrapped ones when the model is being fine-tuned.
@@ -54,6 +51,8 @@
  * masking). A caller without padding binds all-ones masks, which leave every value and score unchanged.
  *
  * lambda holds one weight per head, [batch, heads]: how much of each head's second map is subtracted.
+ * It is applied with scale(lambda, 1), which reads lambda as a constant factor; when lambda is a learned
+ * re-parameterization its parameters therefore receive no gradient (a TODO(review) marks the stage).
  *
  * The three forms. The query/key normalization is optional and comes in two families; each form is its
  * own pair of layers, so a reader sees exactly the stages a model runs:
@@ -168,13 +167,13 @@ layer attention_map_qk_rmsnorm(batch: int, seq_len: int, heads: int, head_dim: i
  *
  *   qkv_projection                 the five sections side by side            [batch, seq_len, 5 * dim]
  *   reshape                        one dim-wide section each                 [batch, seq_len, 5, dim]
- *   weighted_second_map:
+ *   accum_blocks:
+ *     attention_map(0, 1, 3)       Q1 over K1 and the values                 [batch, heads, seq_len, head_dim]
  *     attention_map(4, 2, 3)       Q2 over K2 and the values                 [batch, heads, seq_len, head_dim]
- *     scale(lambda, 1)             each head's map times its λ (axis 1 is the head)
- *     scale(-1)                    negated
- *   attention_map(0, 1, 3)         Q1 over K1 and the values                 [batch, heads, seq_len, head_dim]
- *   add(weighted_second_map)       the first map minus λ times the second    [batch, heads, seq_len, head_dim]
- *   merge_heads                    the heads of each position joined         [batch, seq_len, dim]
+ *       scale(lambda, 1)           each head's map times its λ (axis 1 is the head)
+ *       scale(-1)                  negated
+ *   merge_heads                    the first map minus λ times the second,   [batch, seq_len, dim]
+ *                                  the heads of each position joined
  *   out_projection                 the output projection                     [batch, seq_len, dim]
  */
 layer differential_attention(batch: int, seq_len: int, heads: int, head_dim: int,
@@ -184,17 +183,15 @@ layer differential_attention(batch: int, seq_len: int, heads: int, head_dim: int
     qkv_projection
     reshape([batch, seq_len, 5, heads * head_dim])
 
-    // The second map, weighted by -λ
     // TODO(review): scale(lambda, 1) reads lambda as a constant, so a learned lambda's parameters receive no gradient
-    branch weighted_second_map {
-        attention_map(batch, seq_len, heads, head_dim, 4, 2, 3, inv_freq, padding_mask, key_mask)
-        scale(lambda, 1)
-        scale(-1)
-    }
-
-    // The first map, minus the weighted second map
-    attention_map(batch, seq_len, heads, head_dim, 0, 1, 3, inv_freq, padding_mask, key_mask)
-    add(weighted_second_map)
+    accum_blocks(
+        { attention_map(batch, seq_len, heads, head_dim, 0, 1, 3, inv_freq, padding_mask, key_mask) },
+        {
+            attention_map(batch, seq_len, heads, head_dim, 4, 2, 3, inv_freq, padding_mask, key_mask)
+            scale(lambda, 1)
+            scale(-1)
+        }
+    )
 
     merge_heads(batch, seq_len, heads, head_dim)
     out_projection
@@ -214,18 +211,20 @@ layer differential_attention_qk_layernorm(batch: int, seq_len: int, heads: int, 
     qkv_projection
     reshape([batch, seq_len, 5, heads * head_dim])
 
-    branch weighted_second_map {
-        attention_map_qk_layernorm(batch, seq_len, heads, head_dim, 4, 2, 3,
-                                   q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
-                                   inv_freq, padding_mask, key_mask)
-        scale(lambda, 1)
-        scale(-1)
-    }
-
-    attention_map_qk_layernorm(batch, seq_len, heads, head_dim, 0, 1, 3,
-                               q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
-                               inv_freq, padding_mask, key_mask)
-    add(weighted_second_map)
+    accum_blocks(
+        {
+            attention_map_qk_layernorm(batch, seq_len, heads, head_dim, 0, 1, 3,
+                                       q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
+                                       inv_freq, padding_mask, key_mask)
+        },
+        {
+            attention_map_qk_layernorm(batch, seq_len, heads, head_dim, 4, 2, 3,
+                                       q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
+                                       inv_freq, padding_mask, key_mask)
+            scale(lambda, 1)
+            scale(-1)
+        }
+    )
 
     merge_heads(batch, seq_len, heads, head_dim)
     out_projection
@@ -244,18 +243,20 @@ layer differential_attention_qk_rmsnorm(batch: int, seq_len: int, heads: int, he
     qkv_projection
     reshape([batch, seq_len, 5, heads * head_dim])
 
-    branch weighted_second_map {
-        attention_map_qk_rmsnorm(batch, seq_len, heads, head_dim, 4, 2, 3,
-                                 q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
-                                 inv_freq, padding_mask, key_mask)
-        scale(lambda, 1)
-        scale(-1)
-    }
-
-    attention_map_qk_rmsnorm(batch, seq_len, heads, head_dim, 0, 1, 3,
-                             q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
-                             inv_freq, padding_mask, key_mask)
-    add(weighted_second_map)
+    accum_blocks(
+        {
+            attention_map_qk_rmsnorm(batch, seq_len, heads, head_dim, 0, 1, 3,
+                                     q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
+                                     inv_freq, padding_mask, key_mask)
+        },
+        {
+            attention_map_qk_rmsnorm(batch, seq_len, heads, head_dim, 4, 2, 3,
+                                     q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
+                                     inv_freq, padding_mask, key_mask)
+            scale(lambda, 1)
+            scale(-1)
+        }
+    )
 
     merge_heads(batch, seq_len, heads, head_dim)
     out_projection

@@ -35,8 +35,8 @@ That structure is the `sequence_attention.pdsl` asset `sequenceAttention` builds
 layers.
 Differential attention follows the same structure: `differentialSequenceAttention` builds a layer of
 the `differential_attention.pdsl` asset, in which the keys and values of each of its two attention
-maps are branches read by the products, and the lambda-weighted second map is a branch the PDSL `add`
-built-in adds to the first, so all five sections of its fused projection receive gradients
+maps are branches read by the products, and `accum_blocks` sums the two maps (the second
+lambda-weighted and negated), so all five sections of its fused projection receive gradients
 (`DifferentialAttentionAssetTest`). The buffering pattern remains in `sequenceCrossAttention` and
 `TransformerResamplingFeatures`; those paths do not yet deliver gradients to their K/V projections.
 

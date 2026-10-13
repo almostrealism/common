@@ -71,8 +71,6 @@ import java.util.function.Function;
  *   <li>{@code identity()} - pass-through block, forward and backward unchanged</li>
  *   <li>{@code scale(factor)} - element-wise multiply by a scalar producer;
  *       {@code scale(factors, axis)} - multiply by one factor per position along an axis</li>
- *   <li>{@code add(other)} - element-wise sum with a tensor, or with a branch the layer has split
- *       off, which a backward pass trains through the sum</li>
  *   <li>{@code repeat(n)} - replicate the input along axis 0 to produce {@code n}
  *       times as many leading rows (equivalent to {@code CollectionProducer.repeat(0, n)})</li>
  *   <li>{@code sum_channels()} - collapse a {@code [C, S]} tensor to {@code [1, S]}
@@ -1118,8 +1116,7 @@ public class PdslInterpreter {
 	 * @param name  Name of the function
 	 * @param args  Evaluated arguments
 	 * @param build the state of the current build, whose record of the branches already consumed as
-	 *              a {@code scaled_dot_product} or {@code add} operand lets those built-ins reject
-	 *              reuse of a branch
+	 *              a {@code scaled_dot_product} operand lets that built-in reject reuse of a branch
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
 	private Object tryCallBuiltin(String name, List<Object> args, Build build) {
@@ -1380,10 +1377,10 @@ public class PdslInterpreter {
 		/** Names of the layers whose bodies are being interpreted, outermost first. */
 		private final List<String> constructing = new ArrayList<>();
 		/**
-		 * Branch {@link Block}s already consumed as a {@code scaled_dot_product} or {@code add} operand
+		 * Branch {@link Block}s already consumed as a {@code scaled_dot_product} operand
 		 * in this build, identified by reference. {@code compose} wires a branch in by replacing its
 		 * forward receptor, so a branch read by a second stage would silently displace the first
-		 * stage's consumer; those built-ins add each branch operand here and reject a second use.
+		 * stage's consumer; that built-in adds each branch operand here and rejects a second use.
 		 */
 		private final Set<Block> consumedBranchOperands =
 				Collections.newSetFromMap(new IdentityHashMap<>());

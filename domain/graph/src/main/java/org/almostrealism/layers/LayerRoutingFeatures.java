@@ -27,8 +27,8 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.model.AccumulationBlock;
 import org.almostrealism.model.Block;
-import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
@@ -239,59 +239,11 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	default Block accumBlocks(TraversalPolicy inputShape,
 							  List<Block> blocks,
 							  ComputeRequirement... requirements) {
-		if (blocks.isEmpty()) {
-			throw new IllegalArgumentException("accumBlocks requires at least one block");
+		AccumulationBlock accum = new AccumulationBlock(inputShape, blocks);
+		if (requirements.length > 0) {
+			accum.setComputeRequirements(List.of(requirements));
 		}
-		TraversalPolicy outputShape = blocks.get(0).getOutputShape();
-		for (Block b : blocks) {
-			if (b.getOutputShape().getTotalSize() != outputShape.getTotalSize()) {
-				throw new IllegalArgumentException(
-						"accumBlocks requires all blocks to share an output shape; got "
-								+ outputShape + " and " + b.getOutputShape());
-			}
-		}
-
-		Cell<PackedCollection> forward = Cell.of((input, next) -> {
-			List<Cell.CaptureReceptor<PackedCollection>> receptors = new ArrayList<>();
-			for (Block b : blocks) {
-				Cell.CaptureReceptor<PackedCollection> receptor = new Cell.CaptureReceptor<>();
-				b.getForward().setReceptor(receptor);
-				receptors.add(receptor);
-			}
-
-			OperationList ops = new OperationList("accum_blocks");
-			for (Block b : blocks) {
-				ops.add(b.getForward().push(input));
-			}
-
-			if (next != null) {
-				CollectionProducer sum = c(receptors.get(0).getReceipt())
-						.reshape(outputShape);
-				for (int i = 1; i < blocks.size(); i++) {
-					sum = sum.add(c(receptors.get(i).getReceipt())
-							.reshape(outputShape));
-				}
-				ops.add(next.push(sum));
-			}
-
-			return ops;
-		});
-
-		// Backward of an element-wise sum is gradient pass-through to every branch.
-		// The upstream input gradient is the sum of each branch's input-gradient,
-		// which the framework handles via the per-branch backward chain wiring.
-		// For now this is a structural stub that satisfies the compile-time backward
-		// chain construction; full gradient flow through accum_blocks is not yet
-		// required by any test or production caller.
-		Cell<PackedCollection> backward = Cell.of((gradient, next) -> {
-			OperationList ops = new OperationList("accum_blocks-backward");
-			if (next != null) {
-				ops.add(next.push(gradient));
-			}
-			return ops;
-		});
-
-		return new DefaultBlock(inputShape, outputShape, forward, backward);
+		return accum;
 	}
 
 	/**
