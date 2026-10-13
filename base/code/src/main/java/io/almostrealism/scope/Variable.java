@@ -234,15 +234,26 @@ public class Variable<T, V extends Variable<T, ?>>
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
 	/**
-	 * Returns the producer whose behavior actually defines this variable's data: the
-	 * {@link Delegated#getDelegate() delegate} of the {@link #getProducer() producer} when
-	 * the producer is {@link Delegated}, or the producer itself otherwise.
+	 * Shorthand for {@code getProducer().getDelegate()}: the {@link Delegated#getDelegate()
+	 * delegate} of the {@link #getProducer() producer} when the producer is {@link Delegated},
+	 * or the producer itself otherwise. This does not redefine what the producer of a
+	 * variable is; it only saves subclasses from repeating the check and the cast.
 	 *
-	 * @return the producer that underlies this variable, or {@code null}
+	 * <p>Exactly one level is unwrapped, rather than following the chain to
+	 * {@link Delegated#getRootDelegate() the root}, because of what that first level is.
+	 * The producer of a variable that is {@link Delegated} is a destination wrapper that
+	 * supplies the memory for the output of a computation, and its delegate is that
+	 * computation. The computation is what determines the count and the values held in
+	 * this variable's memory. Anything the computation might in turn delegate to describes
+	 * the output of a different producer, so continuing past it would answer questions
+	 * about data this variable does not hold.</p>
+	 *
+	 * @return the producer delegate, or {@code null} if there is no producer
+	 * @throws ClassCastException if the delegate is not a {@link Supplier}
 	 */
-	public Object getUnderlyingProducer() {
-		Supplier<?> p = getProducer();
-		return p instanceof Delegated ? ((Delegated<?>) p).getDelegate() : p;
+	protected Supplier<Evaluable<? extends T>> getProducerDelegate() {
+		Supplier<Evaluable<? extends T>> p = getProducer();
+		return p instanceof Delegated ? (Supplier<Evaluable<? extends T>>) ((Delegated<?>) p).getDelegate() : p;
 	}
 
 	/**

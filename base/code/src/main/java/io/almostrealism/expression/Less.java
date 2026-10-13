@@ -55,8 +55,8 @@ public class Less extends Comparison {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return getChildren().get(0).getWrappedExpression(lang) + (orEqual ? " <= " : " < ")
-				+ getChildren().get(1).getWrappedExpression(lang);
+		return lang.lessThan(getChildren().get(0).getWrappedExpression(lang),
+				getChildren().get(1).getWrappedExpression(lang), orEqual);
 	}
 
 	@Override

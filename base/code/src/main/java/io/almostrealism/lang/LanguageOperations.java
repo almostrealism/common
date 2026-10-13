@@ -125,6 +125,32 @@ public interface LanguageOperations {
 	String max(String a, String b);
 
 	/**
+	 * Returns a language-specific greater-than comparison. The default renders the
+	 * C-family infix operator {@code a > b}, or {@code a >= b} when {@code orEqual}.
+	 *
+	 * @param a       the left operand expression string
+	 * @param b       the right operand expression string
+	 * @param orEqual {@code true} for greater-than-or-equal, {@code false} for strict
+	 * @return the rendered comparison expression
+	 */
+	default String greaterThan(String a, String b, boolean orEqual) {
+		return a + (orEqual ? " >= " : " > ") + b;
+	}
+
+	/**
+	 * Returns a language-specific less-than comparison. The default renders the
+	 * C-family infix operator {@code a < b}, or {@code a <= b} when {@code orEqual}.
+	 *
+	 * @param a       the left operand expression string
+	 * @param b       the right operand expression string
+	 * @param orEqual {@code true} for less-than-or-equal, {@code false} for strict
+	 * @return the rendered comparison expression
+	 */
+	default String lessThan(String a, String b, boolean orEqual) {
+		return a + (orEqual ? " <= " : " < ") + b;
+	}
+
+	/**
 	 * Returns a language-specific absolute-value expression.
 	 *
 	 * @param value the operand expression string

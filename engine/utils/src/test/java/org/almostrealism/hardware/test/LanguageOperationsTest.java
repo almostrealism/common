@@ -18,6 +18,10 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.BooleanConstant;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Greater;
+import io.almostrealism.expression.Less;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
 import org.almostrealism.c.CJNILanguageOperations;
 import org.almostrealism.c.CLanguageOperations;
@@ -31,8 +35,8 @@ import org.junit.Test;
 import java.util.List;
 
 /**
- * Tests the integer and boolean literals the target language backends render into
- * generated source.
+ * Tests the integer and boolean literals and the comparison operators the target language
+ * backends render into generated source.
  */
 public class LanguageOperationsTest extends TestSuiteBase {
 
@@ -117,6 +121,43 @@ public class LanguageOperationsTest extends TestSuiteBase {
 			assertBooleanLiterals(new MetalLanguageOperations(p), "bool", "true", "false");
 			assertBooleanLiterals(new CudaLanguageOperations(p), "bool", "true", "false");
 		}
+	}
+
+	/**
+	 * Every backend renders ordering comparisons with the C-family infix operators by
+	 * default, and a {@link Greater} or {@link Less} renders whatever its language's
+	 * {@link LanguageOperations#greaterThan} or {@link LanguageOperations#lessThan} returns,
+	 * so a backend can replace the operators.
+	 */
+	@Test(timeout = 30000)
+	public void comparisonsRenderThroughTheLanguage() {
+		Expression<Integer> a = new StaticReference<>(Integer.class, "a");
+		Expression<Integer> b = new StaticReference<>(Integer.class, "b");
+
+		for (LanguageOperations lang : backends(Precision.FP32)) {
+			String context = lang.getClass().getSimpleName();
+			Assert.assertEquals(context, "a > b", Greater.of(a, b).getExpression(lang));
+			Assert.assertEquals(context, "a >= b", Greater.of(a, b, true).getExpression(lang));
+			Assert.assertEquals(context, "a < b", Less.of(a, b).getExpression(lang));
+			Assert.assertEquals(context, "a <= b", Less.of(a, b, true).getExpression(lang));
+		}
+
+		LanguageOperations custom = new CLanguageOperations(Precision.FP32, false, false) {
+			@Override
+			public String greaterThan(String left, String right, boolean orEqual) {
+				return (orEqual ? "ge(" : "gt(") + left + ", " + right + ")";
+			}
+
+			@Override
+			public String lessThan(String left, String right, boolean orEqual) {
+				return (orEqual ? "le(" : "lt(") + left + ", " + right + ")";
+			}
+		};
+
+		Assert.assertEquals("gt(a, b)", Greater.of(a, b).getExpression(custom));
+		Assert.assertEquals("ge(a, b)", Greater.of(a, b, true).getExpression(custom));
+		Assert.assertEquals("lt(a, b)", Less.of(a, b).getExpression(custom));
+		Assert.assertEquals("le(a, b)", Less.of(a, b, true).getExpression(custom));
 	}
 
 	/**

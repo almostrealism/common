@@ -25,6 +25,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
@@ -46,20 +47,42 @@ public class CollectionVariableTests extends TestSuiteBase implements Expression
 	private static final TraversalPolicy SCALAR = new TraversalPolicy(1);
 
 	/**
-	 * Returns a {@link Countable} that is neither a {@link Shape} nor traversable, so that a
-	 * variable produced by a wrapper around it falls back to the variable's own indexing.
+	 * A countable producer that is neither a {@link Shape} nor traversable, standing in for
+	 * the computation that a destination wrapper delegates to.
+	 */
+	private static class CountableSupplier implements Supplier<Evaluable<?>>, Countable {
+		/** Whether the count is fixed. */
+		private final boolean fixed;
+
+		/**
+		 * Creates a countable producer with a count of one.
+		 *
+		 * @param fixed whether the count is fixed
+		 */
+		CountableSupplier(boolean fixed) {
+			this.fixed = fixed;
+		}
+
+		@Override
+		public Evaluable<?> get() { throw new UnsupportedOperationException(); }
+
+		@Override
+		public long getCountLong() { return 1; }
+
+		@Override
+		public boolean isFixedCount() { return fixed; }
+	}
+
+	/**
+	 * Returns a {@link Countable} producer that is neither a {@link Shape} nor traversable,
+	 * so that a variable produced by a wrapper around it falls back to the variable's own
+	 * indexing.
 	 *
 	 * @param fixed whether the count is fixed
 	 * @return a new countable with a count of one
 	 */
 	private static Countable countable(boolean fixed) {
-		return new Countable() {
-			@Override
-			public long getCountLong() { return 1; }
-
-			@Override
-			public boolean isFixedCount() { return fixed; }
-		};
+		return new CountableSupplier(fixed);
 	}
 
 	/**

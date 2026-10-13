@@ -109,27 +109,27 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Determines whether this collection variable has a fixed element count.
-	 * This method checks if the {@link #getUnderlyingProducer() underlying producer}
+	 * This method checks if the {@link #getProducerDelegate() producer delegate}
 	 * implements {@link Countable} and reports a fixed count.
 	 *
 	 * @return {@code true} if the element count is fixed and known at compile time,
 	 *         {@code false} otherwise
 	 */
 	public boolean isFixedCount() {
-		return Countable.isFixedCount(getUnderlyingProducer());
+		return Countable.isFixedCount(getProducerDelegate());
 	}
 
 	/**
-	 * Returns the {@link #getUnderlyingProducer() underlying producer} as a
+	 * Returns the {@link #getProducerDelegate() producer delegate} as a
 	 * {@link TraversableExpression}, if it is one. When it is, the values of this
 	 * variable are defined by that expression rather than by references to this
 	 * variable's own memory.
 	 *
-	 * @return the traversable underlying producer, or {@code null} if the values of this
+	 * @return the traversable producer delegate, or {@code null} if the values of this
 	 *         variable are references to its own memory
 	 */
 	public TraversableExpression<Double> getTraversableProducer() {
-		Object producer = getUnderlyingProducer();
+		Supplier<?> producer = getProducerDelegate();
 		return producer instanceof TraversableExpression ? (TraversableExpression<Double>) producer : null;
 	}
 
