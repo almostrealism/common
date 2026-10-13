@@ -166,7 +166,7 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static Expression<?> of(Expression<?> value) {
-		return Expression.process(create(value));
+		return create(value).process();
 	}
 
 	/**

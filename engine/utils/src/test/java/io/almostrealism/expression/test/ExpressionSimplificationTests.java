@@ -21,6 +21,7 @@ import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
@@ -1111,5 +1112,58 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		// Non-negative dividends are unaffected, since floorMod and % agree there.
 		Assert.assertEquals(1, new IntegerConstant(5).imod(4).intValue().orElseThrow());
 		Assert.assertEquals(0, new IntegerConstant(8).imod(4).intValue().orElseThrow());
+	}
+
+	/**
+	 * Tests that an equality reports the operand it compares against a constant only for
+	 * that constant, and that non-equality expressions report no operand.
+	 */
+	@Test(timeout = 30000)
+	public void equalityOperand() {
+		Expression<?> index = kernel().withLimit(6);
+		Expression<?> equality = index.eq(3);
+
+		Optional<Expression<?>> operand = equality.equalityOperand(3);
+		Assert.assertTrue(operand.isPresent());
+		Assert.assertEquals(equality, operand.get().eq(3));
+
+		Assert.assertTrue(equality.equalityOperand(2).isEmpty());
+		Assert.assertTrue(index.equalityOperand(3).isEmpty());
+		Assert.assertTrue(index.greaterThan(new IntegerConstant(3)).equalityOperand(3).isEmpty());
+	}
+
+	/**
+	 * Tests that a mask compared against the constant it masks reduces to the mask itself,
+	 * that a comparison against any other constant does not, and that only an equality between
+	 * the kernel index itself and a constant is recognized as selecting a single index.
+	 */
+	@Test(timeout = 30000)
+	public void equalityReducedByLeftOperand() {
+		Expression<?> mask = Mask.of(kernel().eq(2), e(5));
+		Assert.assertEquals(mask, mask.eq(5));
+		Assert.assertNotEquals(mask, mask.eq(4));
+
+		Assert.assertTrue(kernel().eq(2).isSingleIndex());
+		Assert.assertFalse(kernel().multiply(2).eq(4).isSingleIndex());
+	}
+
+	/**
+	 * Tests that an equality against an integer quotient keeps integer-division semantics:
+	 * {@code k / 4 == 3} must hold for every {@code k} in {@code [12, 15]}, so it can never be
+	 * rewritten as {@code k == 12}. A floating-point quotient is not expanded either.
+	 */
+	@Test(timeout = 30000)
+	public void equalityAgainstQuotientPreservesIntegerDivision() {
+		Expression<?> equality = kernel().divide(4).eq(3);
+		Assert.assertNotEquals(kernel().eq(12), equality);
+
+		for (int k = 0; k < 24; k++) {
+			long expected = k / 4 == 3 ? 1 : 0;
+			Assert.assertEquals("k=" + k, expected,
+					equality.value(new IndexValues().put(kernel(), k)).longValue());
+		}
+
+		Expression<?> fp = kernel().divide(e(4.0));
+		Assert.assertEquals(fp, fp.eq(e(3.0)).getChildren().get(0));
 	}
 }

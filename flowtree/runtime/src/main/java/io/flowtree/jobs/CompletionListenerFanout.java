@@ -29,6 +29,7 @@ import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.Truncation;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -1036,7 +1037,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
                 .append('\n');
         if (event.getDescription() != null && !event.getDescription().isEmpty()) {
             sb.append("  Finished job description: ")
-                    .append(truncate(event.getDescription(), 200)).append('\n');
+                    .append(Truncation.CUT.apply(event.getDescription(), 200)).append('\n');
         }
         if (event.getCommitHash() != null && !event.getCommitHash().isEmpty()) {
             sb.append("  Commit hash (if any): ")
@@ -1074,19 +1075,6 @@ public class CompletionListenerFanout implements ConsoleFeatures {
      */
     private static String safe(String s) {
         return s == null ? "" : s;
-    }
-
-    /**
-     * Truncates the input string to {@code max} characters; {@code null}
-     * maps to the empty string. The truncation is a hard cut at the
-     * limit (no ellipsis) — the wake-up prompt already has a fixed
-     * shape and a trailing ellipsis would push the chain-ID line past
-     * the prompt's natural visual boundary.
-     */
-    private static String truncate(String s, int max) {
-        if (s == null) return "";
-        if (s.length() <= max) return s;
-        return s.substring(0, max);
     }
 
     /**

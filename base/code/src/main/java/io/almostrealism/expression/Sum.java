@@ -29,6 +29,7 @@ import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ScopeSettings;
+import org.almostrealism.io.Console;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -110,7 +111,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	 * @throws IllegalArgumentException if any operand has a statically known value of zero
 	 */
 	protected Sum(List<Expression<? extends Number>> values) {
-		super((Class<T>) type(values), "+", (List) values);
+		super((Class<T>) promotedType(values), "+", (List) values);
 
 		if (values.stream().anyMatch(i -> i.doubleValue().orElse(1.0) == 0.0)) {
 			throw new IllegalArgumentException("Sum cannot contain zero");
@@ -123,7 +124,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	 * @param values the operands
 	 */
 	protected Sum(Expression<? extends Number>... values) {
-		super((Class<T>) type(List.of(values)), "+", values);
+		super((Class<T>) promotedType(List.of(values)), "+", values);
 	}
 
 	@Override
@@ -159,6 +160,12 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		Set<Integer> largest = Collections.max(optionValues, Comparator.comparingInt(Set::size));
 		boolean allContained = optionValues.stream().allMatch(largest::containsAll);
 		return allContained ? Optional.of(largest) : Optional.empty();
+	}
+
+	/** {@inheritDoc} Returns the operands of this sum. */
+	@Override
+	public List<Expression<?>> getTerms() {
+		return getChildren();
 	}
 
 	@Override
@@ -401,6 +408,53 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	/**
+	 * Decomposes this sum when it has the form {@code k * x + (x % k)} for a positive
+	 * integer constant {@code k}, in either operand order.
+	 *
+	 * @return the decomposition, or empty if this sum does not have that form
+	 */
+	public Optional<ScaledRemainder> scaledRemainder() {
+		if (getChildren().size() != 2) return Optional.empty();
+
+		Expression<?> product = getChildren().stream()
+				.filter(e -> e instanceof Product)
+				.findFirst().orElse(null);
+		if (product == null || product.getChildren().size() != 2) return Optional.empty();
+
+		Expression<?> arg = product.getChildren()
+				.stream().filter(e -> e.longValue().isEmpty())
+				.findFirst().orElse(null);
+		if (arg == null) return Optional.empty();
+
+		long constant = product.getChildren().stream()
+				.map(Expression::longValue)
+				.filter(OptionalLong::isPresent).findFirst()
+				.map(OptionalLong::getAsLong).orElse(-1L);
+		if (constant <= 0) return Optional.empty();
+
+		return getChildren().stream()
+				.filter(e -> e instanceof Mod)
+				.findFirst()
+				.filter(mod -> !mod.isFP())
+				.filter(mod -> mod.getChildren().get(0).equals(arg))
+				.filter(mod -> mod.getChildren().get(1).longValue().orElse(-1) == constant)
+				.map(mod -> new ScaledRemainder(arg, constant));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An integer sum of the form {@code k * x + (x % k)} reduces through
+	 * {@link ScaledRemainder#modulo(long)} when {@link Mod#enableInnerSumSimplify}
+	 * is set.</p>
+	 */
+	@Override
+	protected Optional<Expression<?>> reducedModulo(long m) {
+		if (!Mod.enableInnerSumSimplify || isFP()) return Optional.empty();
+		return scaledRemainder().map(remainder -> remainder.modulo(m));
+	}
+
+	/**
 	 * Creates and post-processes a sum expression.
 	 *
 	 * @param values the operand expressions to add together
@@ -408,7 +462,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static <T> Expression<T> of(Expression... values) {
-		return Expression.process(create(values));
+		return Sum.<T>create(values).process();
 	}
 
 	/**
@@ -750,6 +804,68 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			} else {
 				return expression.multiply((long) coefficient);
 			}
+		}
+	}
+
+	/**
+	 * The integer sum {@code k * x + (x % k)} for a positive constant {@code k},
+	 * recognised by {@link #scaledRemainder()}, together with the modulo and
+	 * quotient rewrites that this shape admits.
+	 */
+	public static class ScaledRemainder {
+		/** The scaled operand {@code x}, as it appears in the product term. */
+		private final Expression<?> operand;
+
+		/** The positive scale {@code k}, which is also the remainder modulus. */
+		private final long scale;
+
+		/**
+		 * Constructs the decomposition {@code scale * operand + (operand % scale)}.
+		 *
+		 * @param operand the scaled operand {@code x}
+		 * @param scale   the positive scale {@code k}
+		 */
+		protected ScaledRemainder(Expression<?> operand, long scale) {
+			this.operand = operand;
+			this.scale = scale;
+		}
+
+		/**
+		 * Simplifies {@code (k * x + (x % k)) % m}.
+		 *
+		 * <p>When {@code k == m} the scaled term vanishes and the result is
+		 * {@code x % k}; when {@code k * k == m} the sum never reaches {@code m}
+		 * and equals {@code (x % k) * (k + 1)}.</p>
+		 *
+		 * @param m the modulus
+		 * @return the simplified expression, or {@code null} if no simplification applies
+		 */
+		public Expression<?> modulo(long m) {
+			if (m % scale != 0 || scale > m) return null;
+
+			Expression m0 = ExpressionFeatures.getInstance().e(scale);
+
+			if (scale == m) {
+				return new Mod(operand, m0, false);
+			} else if (scale * scale == m) {
+				Expression m1 = ExpressionFeatures.getInstance().e(scale + 1);
+				return Product.of(Mod.of(operand, m0, false), m1);
+			}
+
+			Console.root().warn("Inner sum simplify failed because " + scale + " * " + scale + " != " + m);
+			return null;
+		}
+
+		/**
+		 * Simplifies {@code (k * x + (x % k)) / divisor} to {@code x / (divisor / k)}
+		 * when {@code k} divides {@code divisor}.
+		 *
+		 * @param divisor the divisor
+		 * @return the simplified expression, or {@code null} if no simplification applies
+		 */
+		public Expression<?> quotient(long divisor) {
+			if (divisor % scale != 0 || scale > divisor) return null;
+			return Quotient.of(operand, ExpressionFeatures.getInstance().e(divisor / scale));
 		}
 	}
 }

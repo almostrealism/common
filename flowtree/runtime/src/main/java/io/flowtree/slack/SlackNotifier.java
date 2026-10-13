@@ -32,6 +32,7 @@ import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.Truncation;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -1308,21 +1309,15 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Truncates a string to at most {@code maxLength} characters, appending
-     * {@code "..."} when the string is shortened. Returns an empty string
-     * rather than {@code null} when the input is {@code null}.
-     *
-     * <p>Package-private so that other classes in this package
-     * ({@link MessageEndpointHandler}, {@link SlackListener}) can share the
-     * same implementation without duplicating it.
+     * Truncates Slack message text to at most {@code maxLength} characters with
+     * {@link Truncation#ELLIPSIS}, the style shared by every Slack-facing message
+     * ({@link MessageEndpointHandler} and {@link SlackListener} call this too).
      *
      * @param s          the string to truncate, or {@code null}
      * @param maxLength  maximum number of characters to retain (including ellipsis)
      * @return           the (possibly truncated) string, never {@code null}
      */
     public static String truncate(String s, int maxLength) {
-        if (s == null) return "";
-        if (s.length() <= maxLength) return s;
-        return s.substring(0, maxLength - 3) + "...";
+        return Truncation.ELLIPSIS.apply(s, maxLength);
     }
 }
