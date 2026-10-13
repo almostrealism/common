@@ -16,12 +16,20 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DataContext;
+import io.almostrealism.code.Memory;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.streams.Semaphore;
+import io.almostrealism.streams.StreamingEvaluable;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.OperationListRunner;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
@@ -34,6 +42,10 @@ import org.junit.Test;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 
 /**
  * Verifies that a {@link MemoryDataCopy} that is a member of an {@link OperationList} is
@@ -106,7 +118,6 @@ public class MemoryDataCopyChainingTest extends TestSuiteBase {
 		long baseline = commands.getCommitCount();
 
 		runner.run();
-
 		assertEquals((double) (baseline + 1), (double) commands.getCommitCount());
 		assertChained(src, dst);
 	}
@@ -204,6 +215,151 @@ public class MemoryDataCopyChainingTest extends TestSuiteBase {
 		assertTrue("The supplier must be resolved after the dependency completes",
 				resolvedAfterDependency.get());
 		assertEquals(7.0, dst.toDouble(0));
+	}
+
+	/**
+	 * A dispatch-backed source that can only deliver once its work has finished (as a kernel does
+	 * while output monitoring must read its result) delivers on the dependency's callback thread,
+	 * after waiting for it, rather than on the thread that requested it. The copy must wait for
+	 * that late delivery without deadlocking, must not evaluate the source synchronously, and must
+	 * copy the value the dependency produced.
+	 */
+	@Test(timeout = 60000)
+	public void lateDeliveringSourceIsCopiedAfterDependency() {
+		PackedCollection produced = new PackedCollection(1);
+		PackedCollection dst = new PackedCollection(1);
+
+		AtomicInteger waits = new AtomicInteger();
+		Semaphore dependsOn = () -> {
+			waits.incrementAndGet();
+			produced.setMem(0, 11.0);
+		};
+
+		LateSource late = new LateSource(produced);
+		Producer<PackedCollection> source = () -> late;
+		MemoryDataCopy copy = new MemoryDataCopy("late source copy", source, p(dst), 1);
+
+		Semaphore done = ((Submittable) copy.get()).submit(dependsOn);
+		if (done != null) done.waitFor();
+
+		assertEquals(1, late.requests.get());
+		assertEquals(0, late.evaluations.get());
+		assertTrue("The dependency must be waited for before the source is delivered", waits.get() > 0);
+		assertEquals(11.0, dst.toDouble(0));
+	}
+
+	/**
+	 * A copy whose target is a compiled evaluable that is not a fixed handle cannot know whether
+	 * resolving it reads memory the pending work is still producing, so the dependency must have
+	 * completed before the target is resolved, even though the source is a fixed handle.
+	 */
+	@Test(timeout = 60000)
+	public void unfixedTargetWaitsForDependency() {
+		PackedCollection src = new PackedCollection(1);
+		PackedCollection dst = new PackedCollection(1);
+
+		AtomicInteger waits = new AtomicInteger();
+		AtomicBoolean resolvedAfterDependency = new AtomicBoolean();
+		Semaphore dependsOn = () -> {
+			waits.incrementAndGet();
+			src.setMem(0, 5.0);
+		};
+
+		Evaluable<PackedCollection> target = args -> {
+			resolvedAfterDependency.set(waits.get() > 0);
+			return dst;
+		};
+		Producer<PackedCollection> targetProducer = () -> target;
+
+		MemoryDataCopy copy = new MemoryDataCopy("unfixed target copy", p(src), targetProducer, 1);
+		Semaphore done = ((Submittable) copy.get()).submit(dependsOn);
+		if (done != null) done.waitFor();
+
+		assertTrue("The target must be resolved after the dependency completes",
+				resolvedAfterDependency.get());
+		assertEquals(5.0, dst.toDouble(0));
+	}
+
+	/**
+	 * Preferring a device context selects a non-CPU context that manages the memory whenever one
+	 * does, even when a CPU context that delegates to the same provider is listed first (shared
+	 * memory with both a native and a Metal context configured), and otherwise selects the same
+	 * context as the plain lookup. Without the preference, the first managing context is chosen.
+	 */
+	@Test(timeout = 60000)
+	public void preferredDeviceContextManagesMemory() {
+		Hardware hardware = Hardware.getLocalHardware();
+		assertNull(hardware.getComputeContext(null, true));
+
+		PackedCollection collection = new PackedCollection(SIZE);
+		Memory memory = collection.getMem();
+
+		ComputeContext<MemoryData> device = null;
+		for (DataContext<MemoryData> dc : hardware.getAllDataContexts()) {
+			if (dc.getMemoryProviders().contains(memory.getProvider()) && !dc.getComputeContexts().isEmpty()
+					&& !dc.getComputeContext().isCPU() && device == null) {
+				device = dc.getComputeContext();
+			}
+		}
+
+		ComputeContext<MemoryData> preferred = hardware.getComputeContext(memory, true);
+		assertSame(hardware.getComputeContext(memory), hardware.getComputeContext(memory, false));
+
+		if (device == null) {
+			assertSame(hardware.getComputeContext(memory), preferred);
+		} else {
+			assertSame(device, preferred);
+		}
+	}
+
+	/**
+	 * A dispatch-backed {@link StreamingEvaluable} that, like a kernel whose output must be read
+	 * before it is delivered, delivers its result only after {@code dependsOn} has completed, on
+	 * that completion's callback thread.
+	 */
+	private static final class LateSource implements Evaluable<PackedCollection>, StreamingEvaluable<PackedCollection> {
+		/** The value delivered by every request. */
+		private final PackedCollection value;
+		/** Number of requests received. */
+		private final AtomicInteger requests = new AtomicInteger();
+		/** Number of synchronous evaluations performed. */
+		private final AtomicInteger evaluations = new AtomicInteger();
+
+		/**
+		 * Creates a source that delivers {@code value}.
+		 *
+		 * @param value the value to deliver
+		 */
+		private LateSource(PackedCollection value) {
+			this.value = value;
+		}
+
+		@Override
+		public PackedCollection evaluate(Object... args) {
+			evaluations.incrementAndGet();
+			return value;
+		}
+
+		@Override
+		public void request(Object[] args, Semaphore dependsOn, Consumer<PackedCollection> downstream) {
+			requests.incrementAndGet();
+			Semaphore.onComplete(dependsOn, () -> downstream.accept(value));
+		}
+
+		@Override
+		public void request(Object[] args, Semaphore dependsOn) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public void setDownstream(Consumer<PackedCollection> consumer) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public boolean isDispatchBacked() {
+			return true;
+		}
 	}
 
 	/**

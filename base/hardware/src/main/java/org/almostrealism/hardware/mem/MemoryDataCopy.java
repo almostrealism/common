@@ -358,7 +358,9 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 	 *       {@code dependsOn} is waited for before it is resolved.</li>
 	 * </ul>
 	 *
-	 * <p>Only a copy into memory managed by a device context is left to that context to order. When
+	 * <p>Only a copy into memory managed by a device context is left to that context to order; when
+	 * a device's shared memory is also managed by the native context that delegates to it, the
+	 * device context is chosen (see {@link Hardware#getComputeContext(io.almostrealism.code.Memory, boolean)}). When
 	 * the target's context runs on the CPU (or no context manages the target at all), the transfer
 	 * is performed by the host whichever way it is issued: queuing it behind the pending work would
 	 * only move the wait onto a callback thread and add hand-offs between threads, which costs more
@@ -431,7 +433,6 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 			if (chainedSource) {
 				Delivery delivery = new Delivery();
 				((StreamingEvaluable) sourceEvaluable).request(new Object[0], order, delivery);
-				// TODO(review): confirm a late (post-completion) delivery cannot block here on an uncommitted Metal buffer
 				source = delivery.awaitValue();
 				order = delivery.getCompletion();
 			} else {
@@ -449,7 +450,7 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 			}
 
 			ComputeContext<MemoryData> context =
-					Hardware.getLocalHardware().getComputeContext(target.getMem());
+					Hardware.getLocalHardware().getComputeContext(target.getMem(), true);
 
 			// See the class javadoc: a transfer the host performs is completed here
 			if ((context == null || context.isCPU()) && order != null) {
@@ -477,6 +478,11 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 	 * been issued, so the result is normally available when the request returns. A request that
 	 * can only deliver once its work has finished (for example while output monitoring must read
 	 * the result) delivers later, with no outstanding completion, and is waited for.</p>
+	 *
+	 * <p>Waiting for a late delivery cannot stall on work that only the waiting thread would
+	 * flush: such a request is delivered from {@link Semaphore#onComplete(Runnable)}, whose
+	 * callback thread calls {@link Semaphore#waitFor()} on the completion it follows, and a
+	 * batching backend's completion commits its open command buffer there.</p>
 	 */
 	private static final class Delivery implements CompletionConsumer<MemoryData> {
 		/** Released once the result has been delivered. */
