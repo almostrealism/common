@@ -20,45 +20,65 @@ import org.almostrealism.hardware.OperatorPoolExhaustedException;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Optional;
+
 /**
- * Verifies {@link OperatorPoolExhaustedException#isInCauseChain(Throwable)}, the predicate
- * callers use to recognise a (frequently wrapped) operator-pool exhaustion as the terminal
- * condition it is.
+ * Verifies {@link OperatorPoolExhaustedException#causeOf(Throwable)}, the lookup callers use
+ * to recognise a (frequently wrapped) operator-pool exhaustion as the terminal condition it
+ * is, and to obtain the exhaustion itself.
  *
  * <p>Unlike most tests in this project, this one does not extend {@code TestSuiteBase}: that
  * class lives in the engine layer, which sits above this module, so depending on it would
- * invert the module graph. The predicate under test needs no accelerator.</p>
+ * invert the module graph. The lookup under test needs no accelerator.</p>
  */
 public class OperatorPoolExhaustedExceptionTest {
 
-	/** A top-level exhaustion exception is recognised as its own cause chain. */
+	/** A top-level exhaustion exception is returned as its own cause. */
 	@Test(timeout = 10000)
-	public void directInstanceIsRecognised() {
+	public void directInstanceIsReturned() {
 		OperatorPoolExhaustedException exhausted =
 				new OperatorPoolExhaustedException(new RuntimeException("synthetic"));
-		Assert.assertTrue(OperatorPoolExhaustedException.isInCauseChain(exhausted));
+		Optional<OperatorPoolExhaustedException> found =
+				OperatorPoolExhaustedException.causeOf(exhausted);
+		Assert.assertTrue(found.isPresent());
+		Assert.assertSame(exhausted, found.get());
 	}
 
-	/** An exhaustion buried beneath unrelated wrapping exceptions is still recognised. */
+	/** An exhaustion buried beneath unrelated wrapping exceptions is found and returned. */
 	@Test(timeout = 10000)
-	public void wrappedInstanceIsRecognised() {
+	public void wrappedInstanceIsReturned() {
+		OperatorPoolExhaustedException exhausted =
+				new OperatorPoolExhaustedException(new RuntimeException("inner"));
 		Throwable wrapped = new IllegalStateException("outer",
-				new RuntimeException("middle",
-						new OperatorPoolExhaustedException(new RuntimeException("inner"))));
-		Assert.assertTrue(OperatorPoolExhaustedException.isInCauseChain(wrapped));
+				new RuntimeException("middle", exhausted));
+		Optional<OperatorPoolExhaustedException> found =
+				OperatorPoolExhaustedException.causeOf(wrapped);
+		Assert.assertTrue(found.isPresent());
+		Assert.assertSame(exhausted, found.get());
 	}
 
-	/** A failure with no exhaustion anywhere in its chain is not recognised. */
+	/** When the chain holds more than one exhaustion, the outermost is returned. */
 	@Test(timeout = 10000)
-	public void unrelatedChainIsNotRecognised() {
+	public void outermostInstanceIsReturned() {
+		OperatorPoolExhaustedException inner =
+				new OperatorPoolExhaustedException(new RuntimeException("first"));
+		OperatorPoolExhaustedException outer = new OperatorPoolExhaustedException(
+				new RuntimeException("rewrapped", inner));
+		Throwable wrapped = new IllegalStateException("top", outer);
+		Assert.assertSame(outer, OperatorPoolExhaustedException.causeOf(wrapped).get());
+	}
+
+	/** A failure with no exhaustion anywhere in its chain yields an empty result. */
+	@Test(timeout = 10000)
+	public void unrelatedChainIsEmpty() {
 		Throwable unrelated = new RuntimeException("outer",
 				new IllegalArgumentException("inner"));
-		Assert.assertFalse(OperatorPoolExhaustedException.isInCauseChain(unrelated));
+		Assert.assertFalse(OperatorPoolExhaustedException.causeOf(unrelated).isPresent());
 	}
 
-	/** A {@code null} throwable is tolerated and reported as no exhaustion. */
+	/** A {@code null} throwable is tolerated and yields an empty result. */
 	@Test(timeout = 10000)
 	public void nullIsTolerated() {
-		Assert.assertFalse(OperatorPoolExhaustedException.isInCauseChain(null));
+		Assert.assertFalse(OperatorPoolExhaustedException.causeOf(null).isPresent());
 	}
 }

@@ -380,7 +380,7 @@ public interface PatternFeatures extends CodeFeatures {
 											 Exception cause) {
 		warn("Note evaluation failed at frame " + noteStart + ": " + cause.getMessage());
 
-		if (OperatorPoolExhaustedException.isInCauseChain(cause)) {
+		if (OperatorPoolExhaustedException.causeOf(cause).isPresent()) {
 			throw new IllegalStateException(
 					"Pattern rendering aborted at frame " + noteStart
 							+ " — runtime native-lib template class pool exhausted"

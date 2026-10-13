@@ -24,7 +24,6 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.heredity.DestroyableTemporalCellular;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
@@ -86,7 +85,7 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	private Genome currentGenome;
 
 	/** The compiled temporal cell pipeline produced during initialization for audio rendering. */
-	private DestroyableTemporalCellular temporal;
+	private TemporalCellular temporal;
 
 	/** File path of the most recently generated audio output for the active genome. */
 	private String outputPath;
@@ -170,7 +169,7 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	public void init(Genome<PackedCollection> templateGenome,
 					 MultiChannelAudioOutput output, List<Integer> channels, int bufferSize) {
 		if (temporal != null) {
-			DestroyableTemporalCellular previous = temporal;
+			TemporalCellular previous = temporal;
 			temporal = null;
 			previous.destroy();
 		}

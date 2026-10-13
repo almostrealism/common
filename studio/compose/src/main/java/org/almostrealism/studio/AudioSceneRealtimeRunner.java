@@ -24,7 +24,6 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.Cells;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.heredity.DestroyableTemporalCellular;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.dsl.PdslNode;
@@ -159,9 +158,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or {@code null} for all channels
 	 * @param bufferSize frames per buffer
-	 * @return a {@link DestroyableTemporalCellular} for real-time playback
+	 * @return a {@link TemporalCellular} for real-time playback
 	 */
-	public DestroyableTemporalCellular create(MultiChannelAudioOutput output,
+	public TemporalCellular create(MultiChannelAudioOutput output,
 								   List<Integer> channels, int bufferSize) {
 		List<Integer> resolved = channels != null ? channels :
 				IntStream.range(0, scene.getChannelCount()).boxed().collect(Collectors.toList());
@@ -200,9 +199,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
-	 * @return a {@link DestroyableTemporalCellular} for real-time playback
+	 * @return a {@link TemporalCellular} for real-time playback
 	 */
-	private DestroyableTemporalCellular createCellList(MultiChannelAudioOutput output,
+	private TemporalCellular createCellList(MultiChannelAudioOutput output,
 											List<Integer> channels, int bufferSize) {
 		final int[] currentFrame = {0};
 
@@ -231,7 +230,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Increment buffer frame index: bufferFrameIndex = bufferFrameIndex + 1
 		loopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
 
-		return new DestroyableTemporalCellular() {
+		return new TemporalCellular() {
 			@Override
 			public Supplier<Runnable> setup() {
 				return cells.setup();
@@ -374,9 +373,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
-	 * @return a {@link DestroyableTemporalCellular} for real-time playback
+	 * @return a {@link TemporalCellular} for real-time playback
 	 */
-	private DestroyableTemporalCellular createPdsl(MultiChannelAudioOutput output,
+	private TemporalCellular createPdsl(MultiChannelAudioOutput output,
 										List<Integer> channels, int bufferSize) {
 		final int[] currentFrame = {0};
 		final long[] renderFrame = {0};
@@ -495,7 +494,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		PatternRenderStream renderStream = new PatternRenderStream(
 				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
 
-		return new DestroyableTemporalCellular() {
+		return new TemporalCellular() {
 			/**
 			 * One-time preparation: the render-cell setup from
 			 * {@link AudioScene#prepareRenderBuffers} (which also renders the first buffer

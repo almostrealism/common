@@ -61,7 +61,6 @@ import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.heredity.DestroyableTemporalCellular;
 import org.almostrealism.heredity.ProjectedChromosome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
@@ -1226,11 +1225,11 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *
 	 * @param output     the audio output to write to
 	 * @param bufferSize frames per buffer
-	 * @return a DestroyableTemporalCellular for real-time playback
+	 * @return a TemporalCellular for real-time playback
 	 *
 	 * @see PatternAudioBuffer
 	 */
-	public DestroyableTemporalCellular runnerRealTime(MultiChannelAudioOutput output, int bufferSize) {
+	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output, int bufferSize) {
 		return runnerRealTime(output, null, bufferSize);
 	}
 
@@ -1246,9 +1245,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render, or null for all
 	 * @param bufferSize frames per buffer
-	 * @return a DestroyableTemporalCellular for real-time playback
+	 * @return a TemporalCellular for real-time playback
 	 */
-	public DestroyableTemporalCellular runnerRealTime(MultiChannelAudioOutput output,
+	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,
 										   int bufferSize) {
 		return new AudioSceneRealtimeRunner(this).create(output, channels, bufferSize);
@@ -1274,7 +1273,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public String renderChannel(int channel, int frames, String outputPath) {
 		WaveOutput out = new WaveOutput(() -> new File(outputPath), 24, true);
 		int bufferSize = DEFAULT_REALTIME_BUFFER_SIZE;
-		DestroyableTemporalCellular cells = runnerRealTime(new MultiChannelAudioOutput(out),
+		TemporalCellular cells = runnerRealTime(new MultiChannelAudioOutput(out),
 				List.of(channel), bufferSize);
 		int bufferCount = (frames + bufferSize - 1) / bufferSize;
 

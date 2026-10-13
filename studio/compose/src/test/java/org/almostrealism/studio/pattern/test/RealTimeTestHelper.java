@@ -26,7 +26,7 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.heredity.DestroyableTemporalCellular;
+import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
@@ -193,7 +193,7 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 		file.getParentFile().mkdirs();
 
 		try (WaveOutput output = new WaveOutput(() -> file, 24, true)) {
-			DestroyableTemporalCellular runner = scene.runnerRealTime(
+			TemporalCellular runner = scene.runnerRealTime(
 					new MultiChannelAudioOutput(output), bufferSize);
 
 			try {
