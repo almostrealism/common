@@ -4,8 +4,9 @@
 factory and constructor use anonymous DiffusionTransformerFeatures although the class implements it"
 **Release:** the release this task is assigned to in tracker project "Common" (see the tracker
 task; no version is recorded here because version numbers go stale)
-**Status:** proposal only. This document is the whole change on its branch; `NumberConditioner.java`
-and `NumberConditionerTest.java` are untouched until the plan is approved and implemented separately.
+**Status:** implemented. The plan has been carried out on this branch: `NumberConditioner.java`
+builds the frequency matrix in instance context (both anonymous `DiffusionTransformerFeatures`
+instances removed) and `NumberConditionerTest.java` adds the expo-path coverage described below.
 
 ## Motivation
 
