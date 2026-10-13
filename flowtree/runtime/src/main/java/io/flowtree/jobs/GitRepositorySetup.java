@@ -334,21 +334,7 @@ class GitRepositorySetup implements ConsoleFeatures {
      */
     private List<String> getAllDirtyFiles() throws IOException, InterruptedException {
         String statusOutput = job.executeGitWithOutput("status", "--porcelain");
-        List<String> dirtyFiles = new ArrayList<>();
-
-        for (String line : statusOutput.split("\n")) {
-            if (line.length() > 3) {
-                String file = line.substring(3).trim();
-                if (file.contains(" -> ")) {
-                    file = file.split(" -> ")[1];
-                }
-                if (!file.isEmpty()) {
-                    dirtyFiles.add(file);
-                }
-            }
-        }
-
-        return dirtyFiles;
+        return GitOperations.parseChangedFiles(statusOutput);
     }
 
     /**
