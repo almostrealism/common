@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * A {@link Method} is included in a {@link Scope} to indicate that a function should
@@ -241,15 +242,25 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Two {@link Method} expressions are equal when they have the same name, member
-	 * qualifier, and argument list.</p>
+	 * <p>Two {@link Method} expressions are equal when they have the same result type, name,
+	 * member qualifier, and argument list.</p>
 	 */
 	@Override
 	public boolean compare(Expression e) {
-		return e instanceof Method &&
-				((Method) e).getName().equals(getName()) &&
-				((Method) e).getMember().equals(getMember()) &&
+		return isSameOperation(e) &&
 				((Method) e).getArguments().equals(getArguments());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Calls with the same arguments are the same term only if they invoke the same
+	 * function on the same member, if any.</p>
+	 */
+	@Override
+	protected boolean compareAttributes(Expression<?> other) {
+		Method<?> m = (Method<?>) other;
+		return Objects.equals(m.getName(), getName()) && Objects.equals(m.getMember(), getMember());
 	}
 
 	/**

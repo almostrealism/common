@@ -16,8 +16,11 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.compute.PhysicalScope;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Nameable;
@@ -150,6 +153,20 @@ public class Variable<T, V extends Variable<T, ?>>
 	}
 
 	/**
+	 * Renders a reference to this variable in the given language. A variable
+	 * that is not an array has no elements, so the position is not used and
+	 * the reference is the variable's name.
+	 *
+	 * @param lang     the language to render for
+	 * @param position the position of the referenced element, or {@code null}
+	 *                 for a reference to the variable as a whole
+	 * @return the rendered reference
+	 */
+	public String referenceExpression(LanguageOperations lang, Expression<?> position) {
+		return getName();
+	}
+
+	/**
 	 * Sets the physical scope for this variable.
 	 *
 	 * @param physicalScope the physical scope defining memory allocation strategy
@@ -217,6 +234,29 @@ public class Variable<T, V extends Variable<T, ?>>
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
 	/**
+	 * Shorthand for {@code getProducer().getDelegate()}: the {@link Delegated#getDelegate()
+	 * delegate} of the {@link #getProducer() producer} when the producer is {@link Delegated},
+	 * or the producer itself otherwise. This does not redefine what the producer of a
+	 * variable is; it only saves subclasses from repeating the check and the cast.
+	 *
+	 * <p>Exactly one level is unwrapped, rather than following the chain to
+	 * {@link Delegated#getRootDelegate() the root}, because of what that first level is.
+	 * The producer of a variable that is {@link Delegated} is a destination wrapper that
+	 * supplies the memory for the output of a computation, and its delegate is that
+	 * computation. The computation is what determines the count and the values held in
+	 * this variable's memory. Anything the computation might in turn delegate to describes
+	 * the output of a different producer, so continuing past it would answer questions
+	 * about data this variable does not hold.</p>
+	 *
+	 * @return the producer delegate, or {@code null} if there is no producer
+	 * @throws ClassCastException if the delegate is not a {@link Supplier}
+	 */
+	protected Supplier<Evaluable<? extends T>> getProducerDelegate() {
+		Supplier<Evaluable<? extends T>> p = getProducer();
+		return p instanceof Delegated ? (Supplier<Evaluable<? extends T>>) ((Delegated<?>) p).getDelegate() : p;
+	}
+
+	/**
 	 * Sets the type of data this variable holds.
 	 *
 	 * @param type the Java class representing the data type; may be {@code null}
@@ -249,6 +289,34 @@ public class Variable<T, V extends Variable<T, ?>>
 		List<Variable<?, ?>> deps = new ArrayList<>();
 		if (delegate != null) deps.add(delegate);
 		return deps;
+	}
+
+	/**
+	 * Determines whether {@code other} stands for the same data as this variable, so that a
+	 * reference to one is a reference to the other. Unlike {@link #equals(Object)}, which
+	 * requires every property of the two variables to agree, a variable is identified by its
+	 * name, or by its producer when the two variables {@link #hasMatchingProducer have
+	 * matching producers}, so that a reference to an argument still matches the target of a
+	 * derivative when the two variables have different names.
+	 *
+	 * @param other the variable to compare with
+	 * @return {@code true} if {@code other} stands for the same data as this variable
+	 */
+	public boolean isSameAs(Variable<?, ?> other) {
+		return Objects.equals(getName(), other.getName()) || hasMatchingProducer(other);
+	}
+
+	/**
+	 * Determines whether this variable and {@code other} are produced by {@link Algebraic}
+	 * producers that {@link Algebraic#matches match}, and therefore stand for the same data.
+	 *
+	 * @param other the variable to compare with
+	 * @return {@code true} if both producers are {@link Algebraic} and match
+	 */
+	public boolean hasMatchingProducer(Variable<?, ?> other) {
+		Supplier<?> a = getProducer();
+		Supplier<?> b = other.getProducer();
+		return a instanceof Algebraic && b instanceof Algebraic && ((Algebraic) a).matches((Algebraic) b);
 	}
 
 	@Override

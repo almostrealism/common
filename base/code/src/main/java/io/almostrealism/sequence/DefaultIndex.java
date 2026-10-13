@@ -22,7 +22,9 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 
 /**
  * A named {@link Index} with an optional numeric limit (exclusive upper bound).
@@ -113,6 +115,58 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 
 	@Override
 	public boolean isPossiblyNegative() { return false; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index contains the given index when the two have the same name.</p>
+	 */
+	@Override
+	public boolean containsIndex(Index idx) {
+		return Objects.equals(getName(), idx.getName()) || super.containsIndex(idx);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index is replaced by the given expression when the index being replaced
+	 * has its name.</p>
+	 */
+	@Override
+	public Expression<Integer> withIndex(Index index, Expression<?> e) {
+		if (Objects.equals(getName(), index.getName())) return (Expression) e;
+		return super.withIndex(index, e);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index references itself.</p>
+	 */
+	@Override
+	public Set<Index> getIndices() {
+		return Set.of(this);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index answers for itself, as described by {@link Index#getIndexOptions(Index)}.</p>
+	 */
+	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		return Index.super.getIndexOptions(index);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index is already the series of its own values, so it is never a target.</p>
+	 */
+	@Override
+	public boolean isSeriesSimplificationTarget(int depth) {
+		return false;
+	}
 
 	@Override
 	public boolean isValue(IndexValues values) {

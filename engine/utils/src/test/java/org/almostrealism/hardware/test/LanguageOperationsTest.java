@@ -17,10 +17,16 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.Precision;
+import io.almostrealism.expression.BooleanConstant;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Greater;
+import io.almostrealism.expression.Less;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
 import org.almostrealism.c.CJNILanguageOperations;
 import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
+import org.almostrealism.hardware.cuda.CudaLanguageOperations;
 import org.almostrealism.hardware.metal.MetalLanguageOperations;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -29,7 +35,8 @@ import org.junit.Test;
 import java.util.List;
 
 /**
- * Tests the integer literals the target language backends render into generated source.
+ * Tests the integer and boolean literals and the comparison operators the target language
+ * backends render into generated source.
  */
 public class LanguageOperationsTest extends TestSuiteBase {
 
@@ -96,5 +103,79 @@ public class LanguageOperationsTest extends TestSuiteBase {
 						lang.stringForLong(Integer.MIN_VALUE));
 			}
 		}
+	}
+
+	/**
+	 * A boolean literal is written in the type each backend declares for booleans: the
+	 * integer {@code 1} or {@code 0} where that type is {@code int}, since C has no
+	 * {@code true} or {@code false} without {@code <stdbool.h>}, and {@code true} or
+	 * {@code false} where the language has a {@code bool} of its own. A
+	 * {@link BooleanConstant} renders exactly that literal.
+	 */
+	@Test(timeout = 30000)
+	public void booleanLiteralsMatchEachBackendsBooleanType() {
+		for (Precision p : Precision.values()) {
+			assertBooleanLiterals(new CJNILanguageOperations(p), "int", "1", "0");
+			assertBooleanLiterals(new CLanguageOperations(p, false, false), "int", "1", "0");
+			assertBooleanLiterals(new OpenCLLanguageOperations(p), "int", "1", "0");
+			assertBooleanLiterals(new MetalLanguageOperations(p), "bool", "true", "false");
+			assertBooleanLiterals(new CudaLanguageOperations(p), "bool", "true", "false");
+		}
+	}
+
+	/**
+	 * Every backend renders ordering comparisons with the C-family infix operators by
+	 * default, and a {@link Greater} or {@link Less} renders whatever its language's
+	 * {@link LanguageOperations#greaterThan} or {@link LanguageOperations#lessThan} returns,
+	 * so a backend can replace the operators.
+	 */
+	@Test(timeout = 30000)
+	public void comparisonsRenderThroughTheLanguage() {
+		Expression<Integer> a = new StaticReference<>(Integer.class, "a");
+		Expression<Integer> b = new StaticReference<>(Integer.class, "b");
+
+		for (LanguageOperations lang : backends(Precision.FP32)) {
+			String context = lang.getClass().getSimpleName();
+			Assert.assertEquals(context, "a > b", Greater.of(a, b).getExpression(lang));
+			Assert.assertEquals(context, "a >= b", Greater.of(a, b, true).getExpression(lang));
+			Assert.assertEquals(context, "a < b", Less.of(a, b).getExpression(lang));
+			Assert.assertEquals(context, "a <= b", Less.of(a, b, true).getExpression(lang));
+		}
+
+		LanguageOperations custom = new CLanguageOperations(Precision.FP32, false, false) {
+			@Override
+			public String greaterThan(String left, String right, boolean orEqual) {
+				return (orEqual ? "ge(" : "gt(") + left + ", " + right + ")";
+			}
+
+			@Override
+			public String lessThan(String left, String right, boolean orEqual) {
+				return (orEqual ? "le(" : "lt(") + left + ", " + right + ")";
+			}
+		};
+
+		Assert.assertEquals("gt(a, b)", Greater.of(a, b).getExpression(custom));
+		Assert.assertEquals("ge(a, b)", Greater.of(a, b, true).getExpression(custom));
+		Assert.assertEquals("lt(a, b)", Less.of(a, b).getExpression(custom));
+		Assert.assertEquals("le(a, b)", Less.of(a, b, true).getExpression(custom));
+	}
+
+	/**
+	 * Asserts that {@code lang} declares booleans as {@code type}, and that both its own
+	 * boolean literals and the {@link BooleanConstant}s it renders are {@code t} and
+	 * {@code f}.
+	 *
+	 * @param lang the backend to check
+	 * @param type the type name the backend is expected to declare booleans with
+	 * @param t    the expected literal for {@code true}
+	 * @param f    the expected literal for {@code false}
+	 */
+	private void assertBooleanLiterals(LanguageOperations lang, String type, String t, String f) {
+		String context = lang.getClass().getSimpleName() + " " + lang.getPrecision();
+		Assert.assertEquals(context, type, lang.nameForType(Boolean.class));
+		Assert.assertEquals(context, t, lang.stringForBoolean(true));
+		Assert.assertEquals(context, f, lang.stringForBoolean(false));
+		Assert.assertEquals(context, t, new BooleanConstant(true).getExpression(lang));
+		Assert.assertEquals(context, f, new BooleanConstant(false).getExpression(lang));
 	}
 }
