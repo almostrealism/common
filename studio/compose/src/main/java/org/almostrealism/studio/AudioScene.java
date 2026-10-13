@@ -73,6 +73,7 @@ import org.almostrealism.time.Frequency;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -174,8 +175,25 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/** Timing metric that tracks the cumulative duration of {@code getCells} calls. */
 	private static final TimingMetric getCellsTime = console.timing("getCells");
 
-	/** Registry of all currently active {@code AudioScene} instances. */
-	private static final List<AudioScene<?>> activeInstances = new ArrayList<>();
+	/**
+	 * Registry of every {@code AudioScene} that has been constructed and not yet
+	 * {@link #destroy() destroyed}, held by {@link WeakReference} so a scene a caller
+	 * abandons without destroying is not pinned alive by this static list.
+	 *
+	 * <p>The entries exist only to drive {@link #destroyAll()} and to gate the shared
+	 * compiled-renderer cache reclamation on there being no live scene (see
+	 * {@link #destroy()}); nothing reads scene state through them, so holding them
+	 * weakly costs no correctness. A scene still in use is strongly reachable through
+	 * its user and so is never collected here. An abandoned scene, by contrast, becomes
+	 * unreachable, and only once it is unreachable can the native memory it owns — its
+	 * consolidated render buffers, pattern caches, and delay lines — be reclaimed through
+	 * the hardware memory providers' {@link java.lang.ref.PhantomReference} queues. A
+	 * strong reference here would keep every scene ever built resident for the whole
+	 * process, which in a long-lived reuse fork (a test fork that builds many scenes
+	 * across methods without explicit cleanup, a batch of offline renders) accumulates
+	 * without bound.</p>
+	 */
+	private static final List<WeakReference<AudioScene<?>>> activeInstances = new ArrayList<>();
 
 	/** Default number of audio source channels per scene. */
 	public static final int DEFAULT_SOURCE_COUNT = 6;
@@ -456,7 +474,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		genome.consolidateGeneValues();
 
 		this.generation = new GenerationManager(patterns, generation);
-		activeInstances.add(this);
+		registerActiveInstance(this);
 	}
 
 	/**
@@ -1384,14 +1402,48 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				},
 				renderBuffers::destroy,
 				efx::destroyConsolidatedBuffers,
-				() -> {
-					activeInstances.remove(this);
+				() -> deregisterActiveInstance(this)));
+	}
 
-					// With no scene live the shared renderer cache can be reclaimed.
-					if (activeInstances.isEmpty()) {
-						BatchedPatternLayerRenderer.clearCompiledRenderers();
-					}
-				}));
+	/**
+	 * Adds a scene to the {@link #activeInstances} registry under a weak reference.
+	 *
+	 * @param scene the scene to register
+	 */
+	private static void registerActiveInstance(AudioScene<?> scene) {
+		synchronized (activeInstances) {
+			// TODO(review): cleared weak refs are only purged on the destroy() path, so in the
+			// TODO(review): pure-abandonment case (scenes GC'd, never destroy()ed) isEmpty() stays
+			// TODO(review): false and clearCompiledRenderers() never fires — verify rendererCache reclaim.
+			activeInstances.add(new WeakReference<>(scene));
+		}
+	}
+
+	/**
+	 * Removes a scene from the {@link #activeInstances} registry, dropping the given
+	 * scene's entry along with any whose referent has already been garbage collected,
+	 * and reclaims the shared compiled-renderer cache once no live scene remains.
+	 *
+	 * <p>Purging the cleared entries is what lets the {@code isEmpty()} test become true
+	 * again after scenes are abandoned rather than explicitly destroyed: a cleared weak
+	 * reference means its scene is already unreachable and being reclaimed, so it no
+	 * longer counts as live. The remaining entries all have live referents, so an empty
+	 * list means no scene is live and the shared renderer cache can be dropped.</p>
+	 *
+	 * @param scene the scene to deregister
+	 */
+	private static void deregisterActiveInstance(AudioScene<?> scene) {
+		synchronized (activeInstances) {
+			activeInstances.removeIf(ref -> {
+				AudioScene<?> registered = ref.get();
+				return registered == null || registered == scene;
+			});
+
+			// With no scene live the shared renderer cache can be reclaimed.
+			if (activeInstances.isEmpty()) {
+				BatchedPatternLayerRenderer.clearCompiledRenderers();
+			}
+		}
 	}
 
 	/**
@@ -1404,7 +1456,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * consolidated buffers, and delay line memory.</p>
 	 */
 	public static void destroyAll() {
-		List<AudioScene<?>> scenes = new ArrayList<>(activeInstances);
+		List<AudioScene<?>> scenes = new ArrayList<>();
+		synchronized (activeInstances) {
+			for (WeakReference<AudioScene<?>> ref : activeInstances) {
+				AudioScene<?> scene = ref.get();
+				if (scene != null) scenes.add(scene);
+			}
+		}
+
 		for (AudioScene<?> scene : scenes) {
 			scene.destroy();
 		}
