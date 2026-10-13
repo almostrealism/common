@@ -71,7 +71,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * @param values the numerator followed by the denominator(s)
 	 */
 	protected Quotient(List<Expression<?>> values) {
-		super((Class<T>) type(values), "/", values);
+		super((Class<T>) promotedType(values), "/", values);
 	}
 
 	/** {@inheritDoc} Returns 6, reflecting the cost of a hardware division. */
@@ -231,7 +231,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				value = value / children[i].longValue();
 			}
 
-			return adjustType(getType(), value);
+			return adjustType(value);
 		}
 	}
 
@@ -246,7 +246,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (isFP()) {
 			return numerator.doubleValue() / denominator.doubleValue();
 		} else {
-			return adjustType(getType(), numerator.longValue() / denominator.longValue());
+			return adjustType(numerator.longValue() / denominator.longValue());
 		}
 	}
 
@@ -431,7 +431,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static Expression<?> of(Expression<?>... values) {
-		return Expression.process(create(values));
+		return create(values).process();
 	}
 
 	/**
@@ -529,7 +529,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		if (!fp && numerator instanceof Sum && d.isPresent()) {
-			Expression simple = trySumSimplify((Sum) numerator, d.getAsLong());
+			Expression simple = ((Sum<?>) numerator).scaledRemainder()
+					.map(r -> r.quotient(d.getAsLong())).orElse(null);
 			if (simple != null)
 				return simple;
 		}
@@ -637,7 +638,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				}
 			}
 
-			Expression simple = trySumSimplify((Sum) numerator, d.getAsLong());
+			Expression simple = ((Sum<?>) numerator).scaledRemainder()
+					.map(r -> r.quotient(d.getAsLong())).orElse(null);
 			if (simple != null)
 				return simple;
 
@@ -677,49 +679,6 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		return e.getChildren().stream()
 				.filter(c -> c.longValue().isPresent() && c.longValue().getAsLong() % divisor == 0 && c.longValue().getAsLong() > 0)
 				.findFirst().orElse(null);
-	}
-
-	/**
-	 * Attempts to simplify a {@code (product + mod) / divisor} pattern into a
-	 * single quotient when the structure matches.
-	 *
-	 * @param sum     the sum expression to analyse
-	 * @param divisor the divisor value
-	 * @return the simplified expression, or {@code null} if the pattern does not match
-	 */
-	private static Expression trySumSimplify(Sum<?> sum, long divisor) {
-		if (sum.getChildren().size() != 2) return null;
-
-		Product<?> product = (Product) sum.getChildren().stream()
-				.filter(e -> e instanceof Product)
-				.findFirst().orElse(null);
-		if (product == null) return null;
-		if (product.getChildren().size() != 2) return null;
-
-		Expression<?> arg = product.getChildren()
-				.stream().filter(e -> e.longValue().isEmpty())
-				.findFirst().orElse(null);
-		if (arg == null) return null;
-
-		long constant = product.getChildren().stream()
-				.map(Expression::longValue)
-				.filter(OptionalLong::isPresent).findFirst()
-				.map(OptionalLong::getAsLong).orElse(-1L);
-		if (constant <= 0) return null;
-		if (divisor % constant != 0) return null;
-		if (constant > divisor) return null;
-
-		Mod<?> mod = (Mod) sum.getChildren().stream()
-				.filter(e -> e instanceof Mod)
-				.findFirst().orElse(null);
-		if (mod == null) return null;
-		if (mod.isFP()) return null;
-		if (!mod.getChildren().get(0).equals(arg)) return null;
-		if (mod.getChildren().get(1).longValue().isEmpty()) return null;
-		if (mod.getChildren().get(1).longValue().getAsLong() != constant) return null;
-
-		Expression d = ExpressionFeatures.getInstance().e(divisor / constant);
-		return Quotient.of(arg, d);
 	}
 
 	/**

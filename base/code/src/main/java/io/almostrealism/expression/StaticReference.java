@@ -17,12 +17,10 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.sequence.Index;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -82,6 +80,18 @@ public class StaticReference<T> extends Expression<T> {
 		return (getName() != null && names.contains(getName())) || super.containsReference(names);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A static reference refers to its own name, in addition to the names of its
+	 * referent and indices.</p>
+	 */
+	@Override
+	public void collectReferencedNames(Set<String> names) {
+		if (getName() != null) names.add(getName());
+		super.collectReferencedNames(names);
+	}
+
 	@Override
 	public Expression<T> withValue(String name, Number value) {
 		if (!Objects.equals(name, expression)) return this;
@@ -93,12 +103,6 @@ public class StaticReference<T> extends Expression<T> {
 		} else {
 			return null;
 		}
-	}
-
-	@Override
-	public Set<Index> getIndices() {
-		if (this instanceof Index) return Set.of((Index) this);
-		return Collections.emptySet();
 	}
 
 	@Override
@@ -128,17 +132,22 @@ public class StaticReference<T> extends Expression<T> {
 		return this;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Two static references are equal when they apply the
+	 * {@link #isSameOperation(Expression) same operation}, which includes having the same
+	 * result type, and render the same code.</p>
+	 */
 	@Override
 	public boolean compare(Expression expression) {
-		if (expression instanceof StaticReference) {
-			if (((StaticReference) expression).expression == null || this.expression == null) {
-				return Objects.equals(expression.getExpression(lang), getExpression(lang));
-			}
+		if (!isSameOperation(expression)) return false;
 
-			return Objects.equals(((StaticReference) expression).expression, this.expression);
+		if (((StaticReference) expression).expression == null || this.expression == null) {
+			return Objects.equals(expression.getExpression(lang), getExpression(lang));
 		}
 
-		return false;
+		return Objects.equals(((StaticReference) expression).expression, this.expression);
 	}
 
 	@Override

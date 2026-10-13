@@ -55,15 +55,25 @@ public class Less extends Comparison {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		if (orEqual) {
-			return getChildren().get(0).getWrappedExpression(lang) + " <= " + getChildren().get(1).getWrappedExpression(lang);
-		} else{
-			return getChildren().get(0).getWrappedExpression(lang) + " < " + getChildren().get(1).getWrappedExpression(lang);
-		}
+		return lang.lessThan(getChildren().get(0).getWrappedExpression(lang),
+				getChildren().get(1).getWrappedExpression(lang), orEqual);
 	}
 
 	@Override
 	protected boolean compare(double left, double right) {
+		return holds(left, right, orEqual);
+	}
+
+	/**
+	 * Evaluates this comparison on two numeric values without constructing a node, so
+	 * that {@link #of(Expression, Expression, boolean)} can fold constant operands.
+	 *
+	 * @param left    the left value
+	 * @param right   the right value
+	 * @param orEqual {@code true} for {@code <=}, {@code false} for {@code <}
+	 * @return whether {@code left < right}, or {@code left <= right} when {@code orEqual}
+	 */
+	private static boolean holds(double left, double right, boolean orEqual) {
 		return orEqual ? left <= right : left < right;
 	}
 
@@ -78,11 +88,11 @@ public class Less extends Comparison {
 	 *
 	 * <p>Two comparisons with the same operands are equal only if both are strict or
 	 * both are inclusive: {@code a < b} and {@code a <= b} differ at equality and must
-	 * never be substituted for one another by a structural cache.</p>
+	 * never be substituted for one another by a structural cache or match.</p>
 	 */
 	@Override
-	public boolean compare(Expression e) {
-		return super.compare(e) && orEqual == ((Less) e).orEqual;
+	protected boolean compareAttributes(Expression<?> other) {
+		return orEqual == ((Less) other).orEqual;
 	}
 
 	/**
@@ -109,13 +119,8 @@ public class Less extends Comparison {
 		OptionalDouble rd = right.doubleValue();
 
 		if (ld.isPresent() && rd.isPresent()) {
-			if (orEqual) {
-				return ld.getAsDouble() <= rd.getAsDouble() ? new BooleanConstant(true) : new BooleanConstant(false);
-			} else {
-				return ld.getAsDouble() < rd.getAsDouble() ? new BooleanConstant(true) : new BooleanConstant(false);
-			}
+			return new BooleanConstant(holds(ld.getAsDouble(), rd.getAsDouble(), orEqual));
 		}
-
 
 		return new Less(left, right, orEqual);
 	}

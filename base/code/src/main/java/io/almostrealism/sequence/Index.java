@@ -18,9 +18,16 @@ package io.almostrealism.sequence;
 
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelIndexChild;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
 
+import java.util.Collections;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * A named, bounded sequence generator that represents an index variable in a kernel computation.
@@ -66,6 +73,37 @@ public interface Index extends SequenceGenerator, Named {
 	 */
 	default OptionalLong kernelIndexGranularity() {
 		return OptionalLong.empty();
+	}
+
+	/**
+	 * Returns the values of the given index required to produce every value of this index.
+	 *
+	 * <p>An index is opaque to this analysis: producing every value of it requires every
+	 * one of its own values, from zero up to its limit, and no value of any other index
+	 * (including the indices a composite {@link IndexChild} is built from). The result is
+	 * empty when this index has no limit, or a limit above
+	 * {@link ScopeSettings#indexOptionLimit}.</p>
+	 *
+	 * <p>The index expressions ({@link DefaultIndex}, {@link IndexChild}) override
+	 * {@link io.almostrealism.expression.Expression#getIndexOptions(Index)} to answer with
+	 * this method, since the class implementation would otherwise take precedence.</p>
+	 *
+	 * @param index the index whose required values are requested
+	 * @return the required values of {@code index}, or empty if they cannot be enumerated
+	 */
+	default Optional<Set<Integer>> getIndexOptions(Index index) {
+		if (!Objects.equals(this, index)) {
+			return Optional.of(Collections.emptySet());
+		}
+
+		OptionalLong limit = getLimit();
+		if (limit.isEmpty() || limit.getAsLong() > ScopeSettings.indexOptionLimit) {
+			return Optional.empty();
+		}
+
+		return Optional.of(
+				IntStream.range(0, Math.toIntExact(limit.getAsLong()))
+					.boxed().collect(Collectors.toSet()));
 	}
 
 	/**
