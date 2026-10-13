@@ -27,8 +27,9 @@ import java.util.Optional;
  * Represents a constant boolean expression in generated code.
  * <p>
  * This class extends {@link Constant} to provide a compile-time boolean value
- * that can be used in code generation. The value is rendered as "true" or "false"
- * in the output code.
+ * that can be used in code generation. The value is rendered as the boolean literal
+ * of the target language ({@link LanguageOperations#stringForBoolean(boolean)}), which
+ * is "true" or "false" unless that language represents booleans as integers.
  * </p>
  * <p>
  * When evaluated numerically, the boolean value is converted to 1 (true) or 0 (false),
@@ -38,7 +39,7 @@ import java.util.Optional;
  * <h2>Usage Example</h2>
  * <pre>{@code
  * BooleanConstant trueConst = new BooleanConstant(true);
- * String expr = trueConst.getExpression(lang); // Returns "true"
+ * String expr = trueConst.getExpression(lang); // "true", or "1" where booleans are integers
  * Number num = trueConst.evaluate();           // Returns 1
  * }</pre>
  *
@@ -47,7 +48,7 @@ import java.util.Optional;
  */
 public class BooleanConstant extends Constant<Boolean> {
 	/** The constant boolean value. */
-	private boolean value;
+	private final boolean value;
 
 	/**
 	 * Constructs a new boolean constant with the specified value.
@@ -61,14 +62,14 @@ public class BooleanConstant extends Constant<Boolean> {
 	}
 
 	/**
-	 * Generates the string representation of this boolean constant.
+	 * Renders this constant as the boolean literal of the target language.
 	 *
-	 * @param lang the language operations context (unused for boolean constants)
-	 * @return "true" or "false" as a string
+	 * @param lang the language operations for the target language
+	 * @return the literal for the value in the target language
 	 */
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return String.valueOf(value);
+		return lang.stringForBoolean(value);
 	}
 
 	/**
@@ -110,5 +111,20 @@ public class BooleanConstant extends Constant<Boolean> {
 	@Override
 	public Number evaluate(Number... children) {
 		return value ? 1 : 0;
+	}
+
+	/**
+	 * Compares this constant with another expression by value.
+	 *
+	 * @param e the expression to compare against
+	 * @return {@code true} if {@code e} is a {@link BooleanConstant} with the same value
+	 */
+	@Override
+	public boolean compare(Expression e) {
+		if (!(e instanceof BooleanConstant)) {
+			return false;
+		}
+
+		return ((BooleanConstant) e).value == value;
 	}
 }

@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import org.almostrealism.io.Truncation;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -298,7 +300,7 @@ public class PostCompletionCommandValidator {
 		Matcher shardMatch = AR_TEST_GROUP.matcher(command);
 		if (shardMatch.find()) {
 			violations.add("Command references AR_TEST_GROUP/AR_TEST_GROUPS: \""
-					+ truncate(command.trim(), 200) + "\". CI-shard partitioning is reserved "
+					+ Truncation.CUT.apply(command.trim(), 200) + "\". CI-shard partitioning is reserved "
 					+ "for the CI workflow matrix; agents and job submitters must never run a shard.");
 		}
 		validateText(command);
@@ -1352,10 +1354,5 @@ public class PostCompletionCommandValidator {
 	/** Whether {@code base} names a Python interpreter executable (see {@link #PYTHON_INTERPRETER}). */
 	private static boolean isPythonInterpreter(String base) {
 		return PYTHON_INTERPRETER.matcher(base).matches();
-	}
-
-	/** Truncates {@code s} to at most {@code max} characters. */
-	private static String truncate(String s, int max) {
-		return s.length() <= max ? s : s.substring(0, max);
 	}
 }

@@ -26,7 +26,6 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.OptionalLong;
 import java.util.Set;
 
@@ -37,12 +36,17 @@ import java.util.Set;
  * It always answers {@code true} from {@link #isValue(io.almostrealism.sequence.IndexValues)},
  * has an empty index set, and has a zero delta (since it does not vary).</p>
  *
+ * <p>Each concrete constant holds its value in its own representation, so each renders that
+ * value ({@link #getExpression(LanguageOperations)}) and decides whether another expression
+ * is the same constant ({@link #compare(Expression)}) for itself.</p>
+ *
  * @param <T> the type of the constant value
  */
 public abstract class Constant<T> extends Expression<T> {
 	/**
-	 * When {@code true}, {@link #minus()} on a {@link DoubleConstant} returns a new constant
-	 * with the negated value instead of wrapping it in a {@link Negation} node.
+	 * When {@code true}, {@link #minus()} on an {@link IntegerConstant}, {@link LongConstant}
+	 * or {@link DoubleConstant} directly returns a constant of the same type holding the
+	 * negated value, rather than going through {@link Minus#of(Expression)}.
 	 */
 	public static boolean enableNegationOptimization = true;
 
@@ -89,8 +93,14 @@ public abstract class Constant<T> extends Expression<T> {
 	@Override
 	public boolean containsIndex(Index idx) { return false; }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A constant does not vary, so a series could only reproduce it and it is never a
+	 * target.</p>
+	 */
 	@Override
-	public String getExpression(LanguageOperations lang) { return null; }
+	public boolean isSeriesSimplificationTarget(int depth) { return false; }
 
 	@Override
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
@@ -116,21 +126,17 @@ public abstract class Constant<T> extends Expression<T> {
 		return new ConstantCollectionExpression(target.getShape(), new IntegerConstant(0));
 	}
 
+	/**
+	 * Compares this constant with another expression by value.
+	 *
+	 * <p>Each concrete constant holds its value in its own representation, so each decides
+	 * for itself whether {@code e} is the same kind of constant holding the same value.</p>
+	 *
+	 * @param e the expression to compare against
+	 * @return {@code true} if {@code e} is the same kind of constant holding the same value
+	 */
 	@Override
-	public boolean compare(Expression e) {
-		if (!(e instanceof Constant)) {
-			return false;
-		}
-
-		if (getValue() == null || ((Constant<?>) e).getValue() == null) {
-			throw new UnsupportedOperationException(
-					"It is not possible to compare Constant implementation(s)" +
-					" which do not use the value field");
-		}
-
-		return Objects.equals(((Constant<?>) e).getType(), getType()) &&
-				Objects.equals(((Constant<?>) e).getValue(), getValue());
-	}
+	public abstract boolean compare(Expression e);
 
 	@Override
 	public int hashCode() {
@@ -160,29 +166,5 @@ public abstract class Constant<T> extends Expression<T> {
 		} else {
 			return new ConstantValue(value.getClass(), value);
 		}
-	}
-
-	/**
-	 * Creates the narrowest integer constant that represents the given value exactly:
-	 * an {@link IntegerConstant} when it fits an {@code int}, otherwise a
-	 * {@link LongConstant}.
-	 *
-	 * @param value the exact integral value
-	 * @return the narrowest integer constant representing {@code value}
-	 */
-	public static Expression<? extends Number> exactInteger(long value) {
-		return value == (int) value ? new IntegerConstant((int) value) : new LongConstant(value);
-	}
-
-	/**
-	 * Creates a typed {@link ConstantValue} with a {@code null} value, useful as a typed
-	 * placeholder during scope or argument construction.
-	 *
-	 * @param type the Java type of the placeholder constant
-	 * @param <T>  the type of the constant
-	 * @return a constant expression with a {@code null} value
-	 */
-	public static <T> Constant<T> forType(Class<T> type) {
-		return new ConstantValue<>(type, null);
 	}
 }

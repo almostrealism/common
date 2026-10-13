@@ -20,6 +20,7 @@ import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.Truncation;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -1245,7 +1246,9 @@ public class JobStatsStore implements ConsoleFeatures {
     }
 
     /**
-     * Truncates a string to at most {@code maxLength} characters.
+     * Truncates a string to at most {@code maxLength} characters with
+     * {@link Truncation#CUT}, keeping {@code null} as {@code null} so an absent
+     * value is stored as SQL {@code NULL} rather than an empty string.
      *
      * @param s         the string to truncate, or {@code null}
      * @param maxLength maximum number of characters to retain
@@ -1254,8 +1257,7 @@ public class JobStatsStore implements ConsoleFeatures {
      *         {@code null} if {@code s} is {@code null}
      */
     private static String truncate(String s, int maxLength) {
-        if (s == null) return null;
-        return s.length() <= maxLength ? s : s.substring(0, maxLength);
+        return s == null ? null : Truncation.CUT.apply(s, maxLength);
     }
 
     /**
