@@ -50,6 +50,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import io.flowtree.controller.FlowTreeController;
 import io.flowtree.github.GitHubProxyHandler;
+import io.flowtree.tracker.TaskCloseOutReconciler;
+import io.flowtree.tracker.TrackerService;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.submission.SubmissionConfigResolver;
 import io.flowtree.workstream.MailboxRegistry;
@@ -250,8 +252,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
     private String arManagerUrl;
 
+    /** The tracker service; {@code null} until configured. */
+    private TrackerService tracker;
     /** Answers {@code GET /api/tracker/claimable}; {@code null} until configured. */
     private TrackerQueryHandler trackerQueryHandler;
+    /** Closes out claimed tracker tasks whose branch finished; {@code null} until started. */
+    private TaskCloseOutReconciler taskCloseOut;
     /** Pushed-tools configuration JSON forwarded to every submitted job. */
     private String pushedToolsConfig;
     /**
@@ -396,7 +402,38 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param authToken the tracker bearer token, or {@code null} when it has none
      */
     public void setTrackerService(String url, String authToken) {
-        this.trackerQueryHandler = new TrackerQueryHandler(url, authToken);
+        this.tracker = new TrackerService(url, authToken);
+        this.trackerQueryHandler = new TrackerQueryHandler(tracker);
+    }
+
+    /**
+     * Starts closing out claimed tracker tasks when their branch's pull request
+     * merges or is closed (see {@link TaskCloseOutReconciler}). Requires the
+     * tracker service and the listener (its absence means no workstreams have
+     * been registered); resolves each workstream by its persistent id through
+     * {@link NotifierRegistry#workstreamFor(String)} rather than the listener's
+     * channel-keyed map, which omits workstreams without a channel. Does nothing
+     * without the tracker and listener or when already started. Stopped by
+     * {@link #stop()}.
+     */
+    public synchronized void startTaskCloseOut() {
+        if (taskCloseOut != null || tracker == null || listener == null) return;
+        taskCloseOut = new TaskCloseOutReconciler(tracker,
+                notifiers::workstreamFor,
+                githubProxyHandler::listPullRequestsForBranch);
+        taskCloseOut.start();
+    }
+
+    /** Stops serving requests and stops task close-out. */
+    @Override
+    public void stop() {
+        synchronized (this) {
+            if (taskCloseOut != null) {
+                taskCloseOut.stop();
+                taskCloseOut = null;
+            }
+        }
+        super.stop();
     }
 
     /**

@@ -108,7 +108,7 @@
                     </div>
                     <div class="class-item">
                         <h4>AutoregressiveModel</h4>
-                        <p>Token generation wrapper. Temperature sampling, step callbacks, and embedding lookup.</p>
+                        <p>Token generation wrapper. Temperature sampling, device-side position tracking, and embedding lookup.</p>
                     </div>
                     <div class="class-item">
                         <h4>ByteLevelBPETokenizer</h4>
@@ -313,10 +313,10 @@ Producer&lt;PackedCollection&gt; rotatedQ = ropeRotation(
                 <pre><code class="language-java">import org.almostrealism.ml.AutoregressiveModel;
 
 // Wrap compiled model for token generation
-AutoregressiveModel generator = AutoregressiveModel.of(
+AutoregressiveModel&lt;Integer&gt; generator = AutoregressiveModel.of(
     compiledModel,
-    step -> log("Step: " + step),
-    tokenId -> tokenEmbeddings.get(tokenId)
+    position,  // single-element PackedCollection the model reads as the sequence position
+    tokenId -&gt; tokenEmbeddings.range(shape(1, dim), tokenId * dim)
 );
 
 // Set sampling temperature
