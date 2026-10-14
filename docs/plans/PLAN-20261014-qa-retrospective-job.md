@@ -118,8 +118,9 @@ themselves. It requires these variables:
 - `REPO_URL`: the only repository the survey may cover;
 - `REVIEW_SINCE`: a `git --since` style window, `14 days ago` by default, the same
   convention as `doc-qa`;
-- `QA_PREFIXES`: the seven `qa/` prefixes plus `ci/qa-`. The workflow passes this list
-  from one place, so the prompt never hard-codes a stale list.
+- `QA_PREFIXES`: the seven `qa/` prefixes — the six existing rounds plus the
+  retrospective's own `qa/retro-` — plus `ci/qa-`. The workflow passes this list from one
+  place, so the prompt never hard-codes a stale list.
 
 The prompt tells the agent to:
 
@@ -190,6 +191,18 @@ departure from the task's suggested default:
   be implemented as a unit.
 - Under `docs/`, the branch still takes the docs-only review route (`docs-review.txt`) in
   `analysis.yaml`'s `auto-review`, so it gets reviewed like any plan.
+- `docs/qa/` already exists and already holds QA output of exactly this kind:
+  `docs/qa/qa_report.md` and `docs/qa/qa_tracking.csv` (both tracked on `master`) are a
+  prior documentation-QA report and its tracking table. A retrospective report and its
+  ledger are the same kind of durable, reviewed record, so `docs/qa/retrospectives/`
+  extends an established convention rather than inventing a location.
+- `docs/CLAUDE.md` reserves the `docs/` tree for "formal documentation only" and sends
+  temporary planning and investigation notes to `docs/plans/`. A retrospective report is
+  neither: it is a durable, reviewed record of what was surveyed and found, not a
+  work-in-progress plan to be superseded and deleted — which is also precisely why it must
+  not sit in `docs/plans/`, where Verify Completion would try to implement it. The existing
+  `docs/qa/` assets show the project already treats that directory as the home for this
+  kind of record.
 
 A proposal a person accepts becomes its own unit of work. A person can file it as a
 tracker task, or dispatch it on a branch named per §6. See Open questions on whether the
@@ -376,8 +389,12 @@ The new and edited files:
 1. **How the implementation lands (§7).** The signed bypass keeps one branch and PR, which
    is recommended. A `ci/qa-retrospective` branch is the alternative.
 2. **Report location.** The task suggests `docs/plans/`, and this plan proposes
-   `docs/qa/retrospectives/` (§3). Confirm, or keep `docs/plans/` and accept that Verify
-   Completion would treat the report as a plan to implement.
+   `docs/qa/retrospectives/` (§3). `docs/qa/` already holds QA output on `master`
+   (`qa_report.md`, `qa_tracking.csv`), so the proposal extends an existing convention, and
+   `docs/CLAUDE.md`'s "formal documentation only" rule is satisfied because a retrospective
+   report is a durable reviewed record rather than a temporary planning note. Confirm, or
+   keep `docs/plans/` and accept that Verify Completion would treat the report as a plan to
+   implement.
 3. **May the job file proposals as tracker tasks?** `tracker_file_follow_up_task` is
    already granted. Proposed: no for the first runs, so the report is the only output. The
    person reviewing the report files what they accept. Revisit once a few reports have been
