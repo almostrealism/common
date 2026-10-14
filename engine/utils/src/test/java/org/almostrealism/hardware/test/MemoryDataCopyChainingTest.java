@@ -19,6 +19,7 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.profile.OperationProfile;
@@ -364,6 +365,47 @@ public class MemoryDataCopyChainingTest extends TestSuiteBase {
 				assertSame(dc.getName() + " must name the same context for the memory",
 						context, dc.getComputeContext(memory));
 			}
+		}
+	}
+
+	/**
+	 * A native context names its delegate's compute context only for memory allocated from the
+	 * delegate's host-accessible provider. Without a delegate, for {@code null} memory, and for
+	 * memory when the delegate shares none, the native context names its own compute context.
+	 * Any backend can run this check, because the delegate here is another native context
+	 * that reports a host-accessible provider.
+	 */
+	@Test(timeout = 60000)
+	public void nativeContextNamesDelegateOnlyForSharedMemory() {
+		MemoryProvider<? extends Memory> sharedProvider = new PackedCollection(1).getMem().getProvider();
+		Memory sharedMemory = () -> sharedProvider;
+
+		NativeDataContext host = new NativeDataContext("Host", Hardware.getLocalHardware().getPrecision(), SIZE);
+		NativeDataContext sharing = new NativeDataContext("Sharing", host.getPrecision(), SIZE) {
+			@Override
+			public MemoryProvider<? extends Memory> getHostAccessibleMemoryProvider() {
+				return sharedProvider;
+			}
+		};
+		NativeDataContext unsharing = new NativeDataContext("Unsharing", host.getPrecision(), SIZE);
+
+		try {
+			ComputeContext<MemoryData> own = host.getComputeContext();
+
+			assertSame(own, host.getComputeContext(sharedMemory));
+			assertSame(own, host.getComputeContext((Memory) null));
+
+			host.setDelegate(unsharing);
+			assertSame(own, host.getComputeContext(sharedMemory));
+
+			host.setDelegate(sharing);
+			assertSame(sharing.getComputeContext(), host.getComputeContext(sharedMemory));
+			assertSame(own, host.getComputeContext((Memory) null));
+			assertSame(own, host.getComputeContext((Memory) () -> null));
+		} finally {
+			host.destroy();
+			sharing.destroy();
+			unsharing.destroy();
 		}
 	}
 
