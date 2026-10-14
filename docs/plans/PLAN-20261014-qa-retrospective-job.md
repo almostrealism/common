@@ -116,8 +116,10 @@ themselves. It requires these variables:
 
 - `BRANCH`, `BASE_BRANCH`;
 - `REPO_URL`: the only repository the survey may cover;
-- `REVIEW_SINCE`: a `git --since` style window, `14 days ago` by default, the same
-  convention as `doc-qa`;
+- `REVIEW_SINCE`: a `git --since` style window, `14 days ago` by default. This reuses
+  `doc-qa`'s `REVIEW_SINCE` variable — a `git --since` expression bounding the window —
+  but not its value: `doc-qa` passes `1 week ago`, and the retrospective passes a wider
+  window so every activity gets two looks (see the `MIN_INTERVAL_DAYS` rationale above);
 - `QA_PREFIXES`: the seven `qa/` prefixes — the six existing rounds plus the
   retrospective's own `qa/retro-` — plus `ci/qa-`. The workflow passes this list from one
   place, so the prompt never hard-codes a stale list.
