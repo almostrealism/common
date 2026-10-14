@@ -343,6 +343,43 @@ The new and edited files:
 | `docs/qa/retrospectives/README.md` | what the directory is, and that its proposals are not plans |
 | `.github/CLAUDE.md`, `tools/ci/README.md` | the seventh round, the `ci/qa-` convention, `MAX_OPEN_PRS` |
 
+### 7a. What has already been implemented, and what the `ci/` branch does
+
+Implementation has begun on the plan branch. Everything that is **not** under the
+CI-file lock, and that stays consistent without the locked workflow, has landed
+here:
+
+- `docs/qa/retrospectives/README.md` — what the directory is and that its reports
+  are not plans.
+- `docs/qa/retrospectives/ledger.tsv` — the ledger header row.
+
+Everything that **is** locked (or must move in lockstep with the locked workflow)
+is staged, verbatim and validated, under
+`docs/plans/PLAN-20261014-qa-retrospective-staged/`, with a manifest
+(`README.md`) that maps each staged file to its destination and gives the exact
+in-place edits. A follow-up branch named `ci/…` (or a signed-bypass run per the
+route above) completes the work by, in one change:
+
+1. moving `build-retrospective-prompt.sh` and `retrospective.txt` into
+   `tools/ci/prompts/`;
+2. applying the five `master-agent-dispatch.yaml` edits (new job, new
+   `ignore_interval_retrospective` input, new `retrospective` selector option,
+   `MAX_OPEN_PRS` 6→7 on both planning jobs, header comment) — the fully
+   assembled file is staged for a straight move when master is unchanged;
+3. moving the assembled `test_master_agent_dispatch.py` into `tools/tests/` (the
+   cadence-map addition, the two `MAX_OPEN_PRS` assertion bumps, and the two new
+   test methods);
+4. adding the two `tools/ci/README.md` prompt-table rows and the
+   `.github/CLAUDE.md` "seventh round" edits described in the manifest;
+5. deleting `docs/plans/PLAN-20261014-qa-retrospective-staged/` once its contents
+   are in place — it is scaffolding, not a durable asset.
+
+The staged artifacts were validated together (the new job against every per-QA-job
+check in `test_master_agent_dispatch.py`, the builder against the full
+`test_prompt_builders.py` contract, and the workflow against
+`test_automated_intake.py`'s wiring checks); see the manifest for how to re-run
+those checks on the `ci/` branch.
+
 ## Success criteria
 
 1. **Prompt builder tests.** `tools/tests/test_prompt_builders.py` discovers
