@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.DiagonalCollectionExpression;
@@ -124,7 +125,7 @@ public class ScalarMatrixComputation extends MatrixExpressionComputation {
 	 */
 	@Override
 	public boolean isZero() {
-		return super.isZero() || getInputs().get(1).isZero();
+		return super.isZero() || Algebraic.isZero(getInputs().get(1));
 	}
 
 	/**

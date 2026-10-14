@@ -20,6 +20,7 @@ import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -395,8 +396,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				ev = ((HardwareEvaluable<?>) ev).getKernel().getValue();
 			}
 
-			OptionalDouble s = in instanceof Computable ?
-					((Computable) in).getConstant() : OptionalDouble.empty();
+			OptionalDouble s = Algebraic.getConstant(in);
 
 			// If the source is a constant, and the destination is
 			// regular JVMMemory, the result can be written directly

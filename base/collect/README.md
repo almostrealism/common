@@ -17,7 +17,7 @@ The concrete collection implementation (`PackedCollection`) and the higher-level
 When the expression/collection coupling is resolved, this module should house:
 
 - **Shape algebra**: `Shape`, `Traversable`, `TraversalPolicy`, `IndexSet`, `TraversalOrdering` — the pure multi-dimensional indexing and traversal framework
-- **Collection interfaces**: `Collection`, `CollectionProducerBase` — contracts for shaped collections and their producers
+- **Collection interfaces**: `Collection`, `CollectionProducerBase`, `Algebraic` — contracts for shaped collections and their producers
 - **Collection expressions**: `CollectionExpression` and its ~30 subclasses — the expression tree nodes for collection-level operations (sums, products, conditionals, subsets, etc.)
 
 These types have no hardware dependency. They are pure algebra over shapes, indices, and expression trees.

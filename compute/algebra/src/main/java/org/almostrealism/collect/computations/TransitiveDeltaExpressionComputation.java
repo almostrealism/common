@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Computable;
@@ -132,11 +133,11 @@ public abstract class TransitiveDeltaExpressionComputation
 	 * are algebraically zero.
 	 *
 	 * @return {@code true} if this computation produces only zero values, {@code false} otherwise
-	 * @see Computable#isZero()
+	 * @see Algebraic#isZero()
 	 */
 	@Override
 	public boolean isZero() {
-		return super.isZero() || getInputs().stream().skip(1).allMatch(Producer::isZero);
+		return super.isZero() || getInputs().stream().skip(1).allMatch(Algebraic::isZero);
 	}
 
 	/**
@@ -146,12 +147,12 @@ public abstract class TransitiveDeltaExpressionComputation
 	 *
 	 * @param width The width of the target diagonal matrix
 	 * @return {@code true} if this computation represents a diagonal matrix, {@code false} otherwise
-	 * @see Computable#isDiagonal(int)
+	 * @see Algebraic#isDiagonal(int)
 	 */
 	@Override
 	public boolean isDiagonal(int width) {
 		return isIdentity(width) || getInputs().stream().skip(1)
-				.allMatch(p -> p.isDiagonal(width));
+				.allMatch(p -> Algebraic.isDiagonal(width, p));
 	}
 
 	/**
@@ -166,12 +167,12 @@ public abstract class TransitiveDeltaExpressionComputation
 	 * @param width The width of the target diagonal matrix
 	 * @return An {@link Optional} containing the scalar computation if extraction is successful,
 	 *         or empty if the computation is not diagonal or scalar extraction fails
-	 * @see Computable#getDiagonalScalar(int)
+	 * @see Algebraic#getDiagonalScalar(int)
 	 */
 	@Override
 	public Optional<Computable> getDiagonalScalar(int width) {
 		List<Process<?, ?>> scalars = isDiagonal(width) ? getInputs().stream().skip(1)
-				.map(p -> p.getDiagonalScalar(width))
+				.map(p -> Algebraic.getDiagonalScalar(width, p))
 				.filter(Optional::isPresent)
 				.map(Optional::get)
 				.filter(c -> c instanceof Process)

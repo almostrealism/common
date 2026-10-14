@@ -16,7 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.relation.Computable;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -213,7 +213,8 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 			if (operand.cannotMatch(target)) continue;
 			if (shape(operand).getTotalSizeLong() != size) return null;
 
-			Producer<PackedCollection> term = operand.attemptVectorJacobianProduct(target, gradient);
+			Producer<PackedCollection> term =
+					CollectionProducer.attemptVectorJacobianProduct(operand, target, gradient);
 			if (term == null) return null;
 			terms.add(term);
 		}
@@ -249,8 +250,8 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	 * is attempted, never what value it reads.</p>
 	 *
 	 * @return true if exactly one operand is non-zero and that operand is row-monomial
-	 * @see Computable#isRowMonomial()
-	 * @see Computable#isZero()
+	 * @see Algebraic#isRowMonomial()
+	 * @see Algebraic#isZero()
 	 */
 	@Override
 	public boolean isRowMonomial() {
@@ -274,11 +275,11 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 		Producer<PackedCollection> nonZero = null;
 
 		for (Producer<PackedCollection> operand : operands) {
-			if (operand.isZero()) continue;
+			if (Algebraic.isZero(operand)) continue;
 			if (nonZero != null) return false;
 			nonZero = operand;
 		}
 
-		return nonZero != null && nonZero.isRowMonomial();
+		return nonZero != null && Algebraic.isRowMonomial(nonZero);
 	}
 }

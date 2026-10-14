@@ -17,7 +17,7 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.compute.Process;
-import io.almostrealism.relation.Computable;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -43,9 +43,9 @@ import java.util.function.Function;
 
 /**
  * Verifies the polymorphic hooks that replaced type checks and casts in the collection
- * features: {@link Producer#attemptMultiply(double)},
- * {@link io.almostrealism.relation.Computable#isReduction()},
- * {@link io.almostrealism.relation.Computable#isDirectlyComputable()}, the
+ * features: {@link CollectionProducer#attemptMultiply(double)},
+ * {@link CollectionProducer#isReduction()},
+ * {@link io.almostrealism.collect.CollectionProducerBase#isDirectlyComputable()}, the
  * {@code with...} declarations on {@link CollectionProducer} (and their delegation
  * through {@link ReshapeProducer}), and {@link TraversalPolicy#forKernelLength}.
  *
@@ -96,23 +96,23 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 
 	/**
 	 * Constant operands are folded into a single constant through
-	 * {@link Computable#getConstant()}, for both sums and products.
+	 * {@link Algebraic#getConstant()}, for both sums and products.
 	 */
 	@Test(timeout = 60000)
 	public void constantOperandsFold() {
 		CollectionProducer product = multiply(c(2.0), c(3.0));
-		OptionalDouble productConstant = product.getConstant();
+		OptionalDouble productConstant = Algebraic.getConstant(product);
 		Assert.assertTrue(productConstant.isPresent());
 		Assert.assertEquals(6.0, productConstant.getAsDouble(), 0.0);
 		assertValues(product.evaluate(), 6.0);
 
 		CollectionProducer sum = c(2.0).add(c(3.0));
-		OptionalDouble sumConstant = sum.getConstant();
+		OptionalDouble sumConstant = Algebraic.getConstant(sum);
 		Assert.assertTrue(sumConstant.isPresent());
 		Assert.assertEquals(5.0, sumConstant.getAsDouble(), 0.0);
 		assertValues(sum.evaluate(), 5.0);
 
-		Assert.assertFalse(c(2.0).add(cp(pack(1.0))).getConstant().isPresent());
+		Assert.assertFalse(Algebraic.getConstant(c(2.0).add(cp(pack(1.0)))).isPresent());
 	}
 
 	/**

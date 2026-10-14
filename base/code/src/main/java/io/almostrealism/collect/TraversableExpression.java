@@ -23,7 +23,6 @@ import io.almostrealism.kernel.ExpressionMatrix;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexSequence;
-import io.almostrealism.relation.Computable;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -35,7 +34,7 @@ import org.almostrealism.io.ConsoleFeatures;
  * <p>This interface combines several capabilities:
  * <ul>
  *   <li>{@link IndexSet} - Defines which indices are valid for this expression</li>
- *   <li>{@link Computable} - Enables algebraic optimizations (zero detection, identity checks)</li>
+ *   <li>{@link Algebraic} - Enables algebraic optimizations (zero detection, identity checks)</li>
  *   <li>{@link ExpressionFeatures} - Provides expression construction utilities</li>
  *   <li>{@link ConsoleFeatures} - Enables logging and debugging output</li>
  * </ul>
@@ -81,11 +80,11 @@ import org.almostrealism.io.ConsoleFeatures;
  * @param <T> the type of values produced by this expression (typically {@link Double})
  * @see CollectionExpression
  * @see IndexSet
- * @see Computable
+ * @see Algebraic
  * @author Michael Murray
  */
 @FunctionalInterface
-public interface TraversableExpression<T> extends IndexSet, Computable, ExpressionFeatures, ConsoleFeatures {
+public interface TraversableExpression<T> extends IndexSet, Algebraic, ExpressionFeatures, ConsoleFeatures {
 
 	/**
 	 * Retrieves the value at the specified multi-dimensional position.

@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Shape;
@@ -349,27 +351,27 @@ public class ReshapeProducer
 	 */
 	@Override
 	public boolean isZero() {
-		return producer.isZero();
+		return Algebraic.isZero(producer);
 	}
 
 	@Override
 	public boolean isIdentity(int width) {
-		return producer.isIdentity(width);
+		return Algebraic.isIdentity(width, producer);
 	}
 
 	@Override
 	public boolean isDiagonal(int width) {
-		return producer.isDiagonal(width);
+		return Algebraic.isDiagonal(width, producer);
 	}
 
 	@Override
 	public boolean isRowMonomial() {
-		return producer.isRowMonomial();
+		return Algebraic.isRowMonomial(producer);
 	}
 
 	@Override
 	public Optional<Computable> getDiagonalScalar(int width) {
-		return producer.getDiagonalScalar(width);
+		return Algebraic.getDiagonalScalar(width, producer);
 	}
 
 	@Override
@@ -579,7 +581,8 @@ public class ReshapeProducer
 			if (declared != null) return declared;
 		}
 
-		Producer<PackedCollection> product = producer.attemptVectorJacobianProduct(target, gradient);
+		Producer<PackedCollection> product =
+				CollectionProducer.attemptVectorJacobianProduct(producer, target, gradient);
 		return product == null ? null : c(product);
 	}
 
@@ -647,7 +650,7 @@ public class ReshapeProducer
 	 */
 	@Override
 	public boolean isReduction() {
-		return producer.isReduction();
+		return CollectionProducer.isReduction(producer);
 	}
 
 	/**
@@ -656,7 +659,7 @@ public class ReshapeProducer
 	 */
 	@Override
 	public boolean isDirectlyComputable() {
-		return producer.isDirectlyComputable();
+		return CollectionProducerBase.isDirectlyComputable(producer);
 	}
 
 	/**

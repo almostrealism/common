@@ -17,7 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.relation.Computable;
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelismTargetOptimization;
@@ -270,11 +270,11 @@ public class PackedCollectionEnumerate
 	 * 
 	 * @return true if the enumeration output will be all zeros
 	 * 
-	 * @see Computable#isZero()
+	 * @see Algebraic#isZero()
 	 */
 	@Override
 	public boolean isZero() {
-		return getInputs().get(1).isZero();
+		return Algebraic.isZero(getInputs().get(1));
 	}
 
 	/**
@@ -285,16 +285,16 @@ public class PackedCollectionEnumerate
 	 * output row. When the enumerated input is row-monomial (at most one non-zero per row),
 	 * the enumerated output therefore remains row-monomial, so the selection structure that
 	 * enables the downstream gather collapse survives the enumeration. This propagation is
-	 * what allows {@link io.almostrealism.relation.Computable#isRowMonomial()} to reach the
+	 * what allows {@link io.almostrealism.collect.Algebraic#isRowMonomial()} to reach the
 	 * contraction across the {@code enumerate} wrappers that sit between a subset/concat
 	 * projection and its aggregation.</p>
 	 *
 	 * @return true if the enumerated input is row-monomial
-	 * @see Computable#isRowMonomial()
+	 * @see Algebraic#isRowMonomial()
 	 */
 	@Override
 	public boolean isRowMonomial() {
-		return getInputs().get(1).isRowMonomial();
+		return Algebraic.isRowMonomial(getInputs().get(1));
 	}
 
 	/**

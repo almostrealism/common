@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Computable;
@@ -170,7 +171,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			CollectionProducer vector, CollectionProducer matrix) {
 		if (vector.getShape().getDimensions() != 1) {
 			throw new IllegalArgumentException("Row scale factors must be 1-dimensional, not " + vector.getShape());
-		} else if (matrix.isIdentity(shape(vector).length(0))) {
+		} else if (Algebraic.isIdentity(shape(vector).length(0), matrix)) {
 			return diagonal(vector);
 		} else {
 			CollectionProducer expanded = vector.traverse(1).repeat(matrix.getShape().length(1));
@@ -264,7 +265,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			vector = reshape(vShape, vector);
 		}
 
- 		if (vector.isZero() || matrix.isZero()) {
+ 		if (Algebraic.isZero(vector) || Algebraic.isZero(matrix)) {
 			if (vShape.getDimensions() == 1) {
 				return zeros(shape(mShape.length(0), 1));
 			}
@@ -356,28 +357,28 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		int n = mShape.length(1);
 		int p = vectorShape.length(2);
 
-		if (matrix.isIdentity(vectorShape.length(1))) {
+		if (Algebraic.isIdentity(vectorShape.length(1), matrix)) {
 			return c(vector);
-		} else if (vector.isIdentity(vectorShape.length(1))) {
+		} else if (Algebraic.isIdentity(vectorShape.length(1), vector)) {
 			return c(matrix);
 		}
 
 		// Is the matrix just a scalar transform?
 		Optional<Computable> scalar =
-				matrix.getDiagonalScalar(vectorShape.length(1));
+				Algebraic.getDiagonalScalar(vectorShape.length(1), matrix);
 		if (scalar.isPresent() && scalar.get() instanceof Producer) {
 			return multiply(c(vector), (Producer<PackedCollection>) scalar.get());
 		}
 
 		// Is the vector just a scalar transform?
 		scalar =
-				vector.getDiagonalScalar(mShape.length(0));
+				Algebraic.getDiagonalScalar(mShape.length(0), vector);
 		if (b == 1 && scalar.isPresent() && scalar.get() instanceof Producer) {
 			return multiply(c(matrix), (Producer<PackedCollection>) scalar.get());
 		}
 
-		if (matrix.isDiagonal(vectorShape.length(1)) ||
-				vector.isDiagonal(mShape.length(0))) {
+		if (Algebraic.isDiagonal(vectorShape.length(1), matrix) ||
+				Algebraic.isDiagonal(mShape.length(0), vector)) {
 			console.features(MatrixFeatures.class)
 					.log("Matrix multiplication by diagonal matrix");
 		}

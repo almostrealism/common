@@ -17,7 +17,8 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.relation.Computable;
+import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
@@ -103,7 +104,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * 
 	 * <p>This method includes optimizations for constant operations:
 	 * when every operand reports a uniform constant value via
-	 * {@link Computable#getConstant()}, the method computes the sum directly and
+	 * {@link Algebraic#getConstant()}, the method computes the sum directly and
 	 * returns a new constant computation, avoiding the overhead of the full
 	 * computation pipeline.</p>
 	 *
@@ -111,7 +112,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * @return a CollectionProducer that generates the element-wise sum
 	 * @throws IllegalArgumentException if any operand is null
 	 *
-	 * @see Computable#getConstant()
+	 * @see Algebraic#getConstant()
 	 *
 	 * <pre>{@code
 	 * // Add three vectors together
@@ -134,8 +135,8 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			throw new IllegalArgumentException();
 		}
 
-		if (operands.stream().allMatch(o -> o.getConstant().isPresent())) {
-			double value = operands.stream().mapToDouble(o -> o.getConstant().getAsDouble()).sum();
+		if (operands.stream().allMatch(o -> Algebraic.getConstant(o).isPresent())) {
+			double value = operands.stream().mapToDouble(o -> Algebraic.getConstant(o).getAsDouble()).sum();
 
 			return CollectionFeatures.getInstance().compute((shape, args) -> new SingleConstantComputation(shape, value),
 					args -> String.join(" + ", CollectionFeatures.getInstance().applyParentheses(args)),
@@ -143,7 +144,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		}
 
 		return CollectionFeatures.getInstance().compute((shape, args) -> {
-					Producer[] p = args.stream().filter(Predicate.not(Producer::isZero)).toArray(Producer[]::new);
+					Producer[] p = args.stream().filter(Predicate.not(Algebraic::isZero)).toArray(Producer[]::new);
 
 					if (p.length == 0) {
 						return zeros(shape);
@@ -277,7 +278,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * @param shortCircuit optional pre-computed result for optimization
 	 * @return a {@link CollectionProducer} that generates the element-wise product
 	 *
-	 * @see Computable#getConstant()
+	 * @see Algebraic#getConstant()
 	 *
 	 * <pre>{@code
 	 * // Multiply with potential optimization
@@ -300,20 +301,20 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			Producer<PackedCollection> a, Producer<PackedCollection> b,
 			Evaluable<PackedCollection> shortCircuit) {
 		// anything * 0 = 0: collapse to a zeros computation eagerly so the *result* is recognized
-		// as zero (Computable.isZero) and propagates through the graph. Otherwise the zero detection
+		// as zero (Algebraic.isZero) and propagates through the graph. Otherwise the zero detection
 		// below happens inside the product expression, leaving a product wrapper around a zeros that
 		// the optimizer must carry and isolate — a zeros must never become an isolated child.
-		if (a.isZero() || b.isZero()) {
+		if (Algebraic.isZero(a) || Algebraic.isZero(b)) {
 			return zeros(outputShape(a, b));
 		}
 
-		if (a.isDirectlyComputable() && b.isDirectlyComputable()) {
-			OptionalDouble constantA = a.getConstant();
-			OptionalDouble constantB = b.getConstant();
+		if (CollectionProducerBase.isDirectlyComputable(a) && CollectionProducerBase.isDirectlyComputable(b)) {
+			OptionalDouble constantA = Algebraic.getConstant(a);
+			OptionalDouble constantB = Algebraic.getConstant(b);
 
-			if (shape(a).getTotalSizeLong() == 1 && a.isIdentity(1)) {
+			if (shape(a).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, a)) {
 				return CollectionFeatures.getInstance().c(b).withShortCircuit(shortCircuit);
-			} else if (shape(b).getTotalSizeLong() == 1 && b.isIdentity(1)) {
+			} else if (shape(b).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, b)) {
 				return CollectionFeatures.getInstance().c(a).withShortCircuit(shortCircuit);
 			} else if (constantA.isPresent() && constantB.isPresent()) {
 				return constant(outputShape(a, b), constantA.getAsDouble() * constantB.getAsDouble());
@@ -331,7 +332,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		}
 
 		return CollectionFeatures.getInstance().compute((shape, args) -> {
-					if (args.stream().anyMatch(Producer::isZero)) {
+					if (args.stream().anyMatch(Algebraic::isZero)) {
 						// Mathematical optimization: anything * 0 = 0
 						// Returns CollectionZerosComputation to avoid unnecessary computation
 						return zeros(shape);
@@ -379,7 +380,8 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			return minus(a);
 		}
 
-		Producer<PackedCollection> scaled = a.attemptMultiply(scale);
+		Producer<PackedCollection> scaled = a instanceof CollectionProducer ?
+				((CollectionProducer) a).attemptMultiply(scale) : null;
 		if (scaled != null) {
 			return CollectionFeatures.getInstance().c(scaled);
 		} else if (a.isConstant()) {
@@ -429,9 +431,9 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * }</pre>
 	 */
 	default CollectionProducer divide(Producer<PackedCollection> a, Producer<PackedCollection> b) {
-		if (b.isZero()) {
+		if (Algebraic.isZero(b)) {
 			throw new UnsupportedOperationException();
-		} else if (a.isZero()) {
+		} else if (Algebraic.isZero(a)) {
 			// Mathematical optimization: 0 / anything = 0
 			// Returns CollectionZerosComputation for efficiency
 			return zeros(outputShape(a, b));
@@ -478,7 +480,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 
 		if (shape.getTotalSizeLong() == 1 && a.isConstant() && Countable.isFixedCount(a)) {
 			return new AtomicConstantComputation(-a.get().evaluate().toDouble());
-		} else if (a.isIdentity(w)) {
+		} else if (Algebraic.isIdentity(w, a)) {
 			return new ScalarMatrixComputation(shape, c(-1))
 				.setDescription(args -> "-" + DescribableParent.description(a));
 		}
@@ -547,7 +549,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * }</pre>
 	 */
 	default CollectionProducer pow(Producer<PackedCollection> base, Producer<PackedCollection> exp) {
-		if (base.isIdentity(1)) {
+		if (Algebraic.isIdentity(1, base)) {
 			TraversalPolicy shape = shape(exp);
 
 			if (shape.getTotalSizeLong() == 1) {

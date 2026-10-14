@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelPreferences;
@@ -160,7 +161,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	default CollectionProducer sum(Producer<PackedCollection> input) {
 		TraversalPolicy targetShape = shape(input).replace(shape(1));
 
-		if (input.isZero()) {
+		if (Algebraic.isZero(input)) {
 			// Mathematical optimization: sum(zeros) = 0
 			return zeros(targetShape);
 		}
@@ -179,7 +180,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 			}
 		}
 
-		boolean tryUnaryWeighted = enableUnaryWeightedSum && !input.isReduction();
+		boolean tryUnaryWeighted = enableUnaryWeightedSum && !CollectionProducer.isReduction(input);
 
 		if (result == null && tryUnaryWeighted &&
 				shape(input).getSize() <= KernelPreferences.getWorkSubdivisionMinimum()) {
