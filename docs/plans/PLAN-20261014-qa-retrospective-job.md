@@ -104,8 +104,15 @@ it.
 
 ### 2. The prompt (`tools/ci/prompts/retrospective.txt`)
 
-The builder follows the `prompt-render.sh` pattern (`render_prompt`, plus
-`append_prompt_fragment pr-feedback.txt`). It requires these variables:
+The builder follows the recurring-round pattern of `build-defect-hunt-prompt.sh` and
+`build-doc-qa-prompt.sh`: it validates its required variables, reads a single `TEMPLATE`,
+and substitutes them with an inline `sed`. It carries **no** `pr-feedback.txt` fragment.
+That review-feedback policy is patched in only by the auto-review and auto-resolve builders
+(the `_AUTO_RESOLVE_BUILDERS` set in `tools/tests/test_prompt_builders.py`), which run
+against a branch that may already have a pull request. Like every round dispatched from
+master, the retrospective starts on a fresh branch with no PR, so it is not held to that —
+when its branch later gets a docs-review PR, those remediation jobs carry the policy
+themselves. It requires these variables:
 
 - `BRANCH`, `BASE_BRANCH`;
 - `REPO_URL`: the only repository the survey may cover;
@@ -324,14 +331,18 @@ The new and edited files:
 ## Success criteria
 
 1. **Prompt builder tests.** `tools/tests/test_prompt_builders.py` discovers
-   `build-retrospective-prompt.sh` automatically. It must pass these checks for the new
-   builder:
+   `build-retrospective-prompt.sh` automatically (`_builders()` picks up every
+   `build-*.sh`). It must pass the checks that run against every builder:
    - required variables declared and documented;
    - no placeholder left in the output;
    - every template placeholder a required variable;
-   - the `pr-feedback.txt` fragment exists;
-   - a missing or empty variable refused;
-   - sed metacharacters in a branch name substituted literally.
+   - a missing or empty variable refused (unset and empty alike).
+
+   The `pr-feedback.txt` and sed-metacharacter checks in that file are scoped to
+   `_AUTO_RESOLVE_BUILDERS` and do not apply to the retrospective: it is a recurring round
+   on a fresh branch, not a remediation builder, so it carries no `pr-feedback.txt`
+   fragment and renders through an inline `sed` like the other recurring rounds. A
+   `qa/retro-…` branch name contains no `sed` metacharacters.
 2. **Workflow wiring tests**, passing with the new job:
    - in `test_automated_intake.py`, intake before the cadence gate, nothing created
      before the gate, and the summary reporting the intake decision;
