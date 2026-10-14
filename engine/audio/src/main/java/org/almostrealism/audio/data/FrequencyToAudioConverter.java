@@ -72,7 +72,12 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * transform runs a frame at a time and reads from a buffer that stays in the
 	 * same place. An operation compiled against a particular offset into a larger
 	 * buffer is not the operation the next frame needs, so handing the transform a
-	 * moving view of the spectra would compile one program per frame.</p>
+	 * moving view of the spectra would compile one program per frame. The overlap-add
+	 * follows the same rule: each frame is copied into a fixed segment buffer, windowed
+	 * and accumulated there by a single compiled operation, and copied back to its
+	 * position in an accumulator padded so that every frame contributes a full window.
+	 * Accumulating directly into a view at each frame's start sample would compile and
+	 * load a separate native program for every frame.</p>
 	 *
 	 * @param details the WaveDetails to convert
 	 * @throws IllegalArgumentException if required frequency data is missing
@@ -106,8 +111,9 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 			details.setFrameCount(outputLength);
 		}
 
-		// Allocate output buffer
-		PackedCollection output = new PackedCollection(outputLength);
+		// Accumulator long enough that every frame contributes a full window
+		int accumulatedLength = Math.max(outputLength, (freqFrames - 1) * hopSize + fftSize);
+		PackedCollection accumulated = new PackedCollection(accumulatedLength);
 
 		// Precompute Hann window
 		PackedCollection window = createHannWindow(fftSize);
@@ -116,15 +122,30 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 		PackedCollection spectra = createComplexSpectra(freqData, freqFrames, freqBins);
 		PackedCollection frameSpectrum = new PackedCollection(shape(fftSize, 2));
 
+		// Fixed-position buffers for the overlap-add, so one compiled operation serves every frame
+		PackedCollection frameSamples = new PackedCollection(fftSize);
+		PackedCollection segment = new PackedCollection(fftSize);
+		Evaluable windowedAdd = cp(segment)
+				.add(cp(frameSamples).multiply(cp(window)))
+				.into(segment.traverseEach());
+
 		// Process each frame
 		for (int frame = 0; frame < freqFrames; frame++) {
 			frameSpectrum.setFrom(0, spectra.range(shape(fftSize * 2), frame * fftSize * 2));
-
-			PackedCollection timeDomain = applyIfft(frameSpectrum, fftSize);
+			// TODO(review): per-frame applyIfft results (and window/spectra/frameSpectrum) are never destroyed
+			frameSamples.setFrom(0, applyIfft(frameSpectrum, fftSize));
 
 			int startSample = frame * hopSize;
-			overlapAdd(output, timeDomain, window, startSample, outputLength);
+			segment.setFrom(accumulated, startSample, fftSize);
+			windowedAdd.evaluate();
+			accumulated.setFrom(startSample, segment);
 		}
+
+		PackedCollection output = new PackedCollection(outputLength);
+		output.setFrom(accumulated, 0, outputLength);
+		accumulated.destroy();
+		frameSamples.destroy();
+		segment.destroy();
 
 		// Normalize output to prevent clipping
 		normalizeAudio(output);
@@ -197,24 +218,6 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	private PackedCollection createHannWindow(int size) {
 		return c(1.0).subtract(cos(integers(0, size).multiply(2 * Math.PI / size)))
 				.multiply(0.5).evaluate();
-	}
-
-	/**
-	 * Applies window and overlap-adds time-domain frame to output.
-	 */
-	private void overlapAdd(PackedCollection output, PackedCollection frame,
-							PackedCollection window, int startSample, int outputLength) {
-		int begin = Math.max(0, -startSample);
-		int end = Math.min(frame.getMemLength(), outputLength - startSample);
-		if (end <= begin) return;
-
-		int count = end - begin;
-		PackedCollection destination = output.range(shape(count), startSample + begin);
-
-		cp(destination)
-				.add(cp(frame.range(shape(count), begin))
-						.multiply(cp(window.range(shape(count), begin))))
-				.into(destination.traverseEach()).evaluate();
 	}
 
 	/**
