@@ -368,7 +368,8 @@ public class NativeDataContext extends HardwareDataContext {
 	 */
 	@Override
 	public ComputeContext<MemoryData> getComputeContext(Memory memory) {
-		if (delegate != null && memory != null && !delegate.getComputeContexts().isEmpty() &&
+		if (delegate != null && memory != null && memory.getProvider() != null &&
+				!delegate.getComputeContexts().isEmpty() &&
 				memory.getProvider() == delegate.getHostAccessibleMemoryProvider()) {
 			return delegate.getComputeContext(memory);
 		}

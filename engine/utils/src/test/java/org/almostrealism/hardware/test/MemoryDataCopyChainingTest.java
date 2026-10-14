@@ -397,6 +397,7 @@ public class MemoryDataCopyChainingTest extends TestSuiteBase {
 
 			host.setDelegate(unsharing);
 			assertSame(own, host.getComputeContext(sharedMemory));
+			assertSame(own, host.getComputeContext((Memory) () -> null));
 
 			host.setDelegate(sharing);
 			assertSame(sharing.getComputeContext(), host.getComputeContext(sharedMemory));
