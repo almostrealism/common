@@ -66,6 +66,25 @@ public interface DataContext<MEM> extends Named {
 	List<ComputeContext<MEM>> getComputeContexts();
 
 	/**
+	 * Returns the compute context through which work on the given {@link Memory}, which this
+	 * context manages, should be performed &mdash; a copy into it, for example.
+	 *
+	 * <p>A data context can manage memory that another context owns: a host context that shares
+	 * memory with a device allocates from the device's
+	 * {@link #getHostAccessibleMemoryProvider() host-accessible provider}. Such memory is better
+	 * operated on by the device context, which can order the work after pending device work
+	 * without the host waiting for it, and only the context that set up the sharing knows that
+	 * the memory is the device's. That context overrides this method to name the device context;
+	 * every other context performs work on its memory itself, which is the default.</p>
+	 *
+	 * @param memory memory managed by this context
+	 * @return the compute context that should perform work on {@code memory}
+	 */
+	default ComputeContext<MEM> getComputeContext(Memory memory) {
+		return getComputeContext();
+	}
+
+	/**
 	 * Returns all memory providers available in this data context.
 	 *
 	 * @return the list of memory providers

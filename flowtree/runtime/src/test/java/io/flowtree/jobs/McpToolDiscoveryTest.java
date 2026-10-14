@@ -358,6 +358,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"tracker_delete_task",
 			"tracker_search_tasks",
 			"tracker_project_summary",
+			"tracker_file_follow_up_task",
 			"workspace_secret_list_names",
 			"workspace_secret_render_file"
 		));

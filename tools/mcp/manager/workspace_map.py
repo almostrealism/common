@@ -453,14 +453,47 @@ def _filter_workstreams_by_scope(entries: list) -> list:
     return filtered
 
 
+# Source prefix of a follow-up task a coding agent filed while working a branch.
+# It carries no workstream link, so its provenance source
+# ("follow-up:<workstream>/<job>") is the only record of which workstream filed
+# it. A scoped caller may read back the follow-up tasks its own workspace filed,
+# identified by the workstream embedded here. Duplicated from the tracker store
+# (tools/tracker/store.py FOLLOW_UP_SOURCE_PREFIX) across the service boundary,
+# as GOAL_SOURCE_PREFIX is duplicated in tracker_tools.py.
+FOLLOW_UP_SOURCE_PREFIX = "follow-up:"
+
+
+def _follow_up_task_workspace_allowed(task: dict) -> bool:
+    """Return True when *task* is a follow-up task whose filing workstream is in
+    the current request's workspace scope.
+
+    A follow-up task has no ``workstream_id`` (filing one would make it a
+    claimed task closed when the branch merges), so the workstream that filed it
+    is read from its provenance ``source``. Any task that is not a follow-up, or
+    whose embedded workstream is out of scope, returns False.
+    """
+    if not isinstance(task, dict):
+        return False
+    source = task.get("source") or ""
+    if not isinstance(source, str) or not source.startswith(FOLLOW_UP_SOURCE_PREFIX):
+        return False
+    rest = source[len(FOLLOW_UP_SOURCE_PREFIX):]
+    ws_id = rest.split("/", 1)[0]
+    if not ws_id:
+        return False
+    return _is_workspace_allowed(_workspace_for_workstream(ws_id))
+
+
 def _filter_tasks_by_scope(tasks: list) -> list:
     """Return only those task-dict entries whose linked workstream is
     permitted by the current request's workspace scope.
 
-    Unscoped callers see all tasks.  Tasks with no ``workstream_id`` are
+    Unscoped callers see all tasks.  A task with no ``workstream_id`` is
     dropped for scoped callers — there is no safe interpretation of
-    "this task belongs to your workspace" when no workstream link exists.
-    Malformed non-list payloads return an empty list for scoped callers.
+    "this task belongs to your workspace" when no workstream link exists —
+    unless it is a follow-up task its own workspace filed, recognised by the
+    workstream embedded in its provenance source. Malformed non-list payloads
+    return an empty list for scoped callers.
     """
     if not _get_workspace_scopes():
         return tasks
@@ -472,6 +505,8 @@ def _filter_tasks_by_scope(tasks: list) -> list:
             continue
         ws_id = t.get("workstream_id") or ""
         if not ws_id:
+            if _follow_up_task_workspace_allowed(t):
+                filtered.append(t)
             continue
         if _is_workspace_allowed(_workspace_for_workstream(ws_id)):
             filtered.append(t)
