@@ -50,6 +50,12 @@ recommends a sequencing.
   is blocked on root-causing that divergence (note
   `DefaultCellularLayer.enableMemoryDataCopy` is runtime-mutable, so the
   failing route can be reproduced in a test without a rebuild).
+  **Update (2026-10-13):** that divergence was root-caused and fixed on master
+  by `dd3facb92` (2026-07-06, hazard-aware `OperationList.subdivide()`), and the
+  flip was never re-attempted. Re-run with assignment recording, the
+  `GradientDescentTests` that diverged now pass. The remaining blocker is a
+  shape-tolerance gap in `LayerFeatures.into` (`NormTests.normLayerTrainable`).
+  See `MEMORY_DATA_COPY_RETIREMENT.md` for the evidence and the work-list.
 - **Step 5 (§4.5)**: primitives in place — `Semaphore.all(...)` merge and the
   shared `onComplete` callback executor (`SemaphoreCompositionTest`); the
   argument pipeline itself (delivering `(value, Semaphore)` downstream) remains.
@@ -288,7 +294,12 @@ Revised sub-steps:
 - Once 4.4a-b hold, `MemoryDataCopy` has no callers outside 4.4c's internal
   machinery; when 4.4c lands it can be removed outright.
 
-**Interim note (2026-10-13, `qa/performance-20261013-132831`).** With 4.4a still
+**Interim note (2026-10-13, `qa/performance-20261013-132831`).** *Correction:
+the premise of this note was stale. The divergence it cites had been fixed by
+`dd3facb92` three months earlier, and a re-run of the flip shows it no longer
+reproduces. `MEMORY_DATA_COPY_RETIREMENT.md` records how this interim measure
+came to be chosen over the flip and the work-list for retiring the class.* The
+original note follows. With 4.4a still
 blocked on the assignment-recording divergence (`AssignmentIsolationDiagTest`), every
 layer input/output record in every training step remained a non-submittable
 `MemoryDataCopy`: on Metal that cost up to two commit-and-wait round trips per copy

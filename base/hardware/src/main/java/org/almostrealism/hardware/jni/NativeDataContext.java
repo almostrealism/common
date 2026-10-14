@@ -353,6 +353,29 @@ public class NativeDataContext extends HardwareDataContext {
 		}
 	}
 
+	/**
+	 * Returns the compute context through which work on the given memory should be performed.
+	 *
+	 * <p>When shared memory is enabled this context allocates from the
+	 * {@link DataContext#getHostAccessibleMemoryProvider() host-accessible provider} of its
+	 * {@link #setDelegate delegate}, so memory from that provider belongs to the delegate's device
+	 * as much as to the host. The delegate's compute context is returned for it: it can order a
+	 * copy after pending device work on its own queue, where this context could only wait for that
+	 * work on the host. Any other memory is operated on by this context.</p>
+	 *
+	 * @param memory memory managed by this context
+	 * @return the delegate's compute context for memory shared with it, otherwise this context's
+	 */
+	@Override
+	public ComputeContext<MemoryData> getComputeContext(Memory memory) {
+		if (delegate != null && memory != null && !delegate.getComputeContexts().isEmpty() &&
+				memory.getProvider() == delegate.getHostAccessibleMemoryProvider()) {
+			return delegate.getComputeContext(memory);
+		}
+
+		return getComputeContext();
+	}
+
 	@Override
 	public <T> T deviceMemory(Callable<T> exec) {
 		try {

@@ -32,6 +32,8 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.OperationListRunner;
+import org.almostrealism.hardware.jni.NativeComputeContext;
+import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalComputeContext;
@@ -344,34 +346,63 @@ public class MemoryDataCopyChainingTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Preferring a device context selects a non-CPU context that manages the memory whenever one
-	 * does, even when a CPU context that delegates to the same provider is listed first (shared
-	 * memory with both a native and a Metal context configured), and otherwise selects the same
-	 * context as the plain lookup. Without the preference, the first managing context is chosen.
+	 * The context {@link Hardware#getComputeContext(Memory)} returns for memory is the one every
+	 * {@link DataContext} managing that memory names for it, so the result does not depend on the
+	 * order the contexts are listed in.
 	 */
 	@Test(timeout = 60000)
-	public void preferredDeviceContextManagesMemory() {
+	public void managingContextsAgreeOnMemory() {
 		Hardware hardware = Hardware.getLocalHardware();
-		assertNull(hardware.getComputeContext(null, true));
+		assertNull(hardware.getComputeContext((Memory) null));
 
 		PackedCollection collection = new PackedCollection(SIZE);
 		Memory memory = collection.getMem();
+		ComputeContext<MemoryData> context = hardware.getComputeContext(memory);
 
-		ComputeContext<MemoryData> device = null;
 		for (DataContext<MemoryData> dc : hardware.getAllDataContexts()) {
-			if (dc.getMemoryProviders().contains(memory.getProvider()) && !dc.getComputeContexts().isEmpty()
-					&& !dc.getComputeContext().isCPU() && device == null) {
-				device = dc.getComputeContext();
+			if (dc.getMemoryProviders().contains(memory.getProvider()) && !dc.getComputeContexts().isEmpty()) {
+				assertSame(dc.getName() + " must name the same context for the memory",
+						context, dc.getComputeContext(memory));
 			}
 		}
+	}
 
-		ComputeContext<MemoryData> preferred = hardware.getComputeContext(memory, true);
-		assertSame(hardware.getComputeContext(memory), hardware.getComputeContext(memory, false));
+	/**
+	 * A native context that shares a Metal device's memory names the Metal context as the one to
+	 * operate on that memory, so a copy chosen by the memory it writes is queued on the device.
+	 * A copy the native context is itself asked to perform (the argument preparation of its own
+	 * kernels) is still performed on the host, immediately, without touching the device's queue.
+	 */
+	@Test(timeout = 60000)
+	public void sharedMemoryIsOperatedOnByTheDevice() {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		Assume.assumeTrue("Requires a Metal compute context", metal != null);
 
-		if (device == null) {
-			assertSame(hardware.getComputeContext(memory), preferred);
-		} else {
-			assertSame(device, preferred);
+		DataContext<MemoryData> device = metal.getDataContext();
+		NativeDataContext shared = new NativeDataContext("Shared", device.getPrecision(), SIZE);
+		shared.setDelegate(device);
+		shared.setMemoryProvider(device.getHostAccessibleMemoryProvider());
+		NativeComputeContext host = new NativeComputeContext(shared, null);
+
+		try {
+			PackedCollection src = new PackedCollection(SIZE);
+			PackedCollection dst = new PackedCollection(SIZE);
+			rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
+
+			Assume.assumeTrue("Requires collections allocated in the Metal device's shared memory",
+					dst.getMem().getProvider() == device.getHostAccessibleMemoryProvider());
+			assertSame(device.getComputeContext(), shared.getComputeContext(dst.getMem()));
+
+			MetalCommandRunner commands = ((MetalComputeContext) device.getComputeContext()).getCommandRunner();
+			long baseline = commands.getCommitCount();
+
+			assertNull(host.copy(src, dst, null));
+			assertEquals((double) baseline, (double) commands.getCommitCount());
+			for (int i = 0; i < SIZE; i++) {
+				assertEquals(src.toDouble(i), dst.toDouble(i));
+			}
+		} finally {
+			host.destroy();
 		}
 	}
 

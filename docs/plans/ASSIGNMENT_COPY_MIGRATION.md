@@ -233,11 +233,11 @@ its parity gates and measurements can serve as the first §7 case study.
 
 ## 10. Open questions / next actions (updated 2026-07-11)
 
-1. **Resolve the recording divergence (the flip-blocker).** Root-cause why assignment-based
-   layer input/output recording diverges gradient-descent trainings, using
-   `AssignmentRecordingDiagTest` and its per-mode operation profiles (`ar-profile-analyzer` on
-   the generated kernel source is the prescribed instrument). Until this is fixed,
-   `enableAssignmentCopy` cannot default on.
+1. ~~**Resolve the recording divergence (the flip-blocker).**~~ **DONE** by `dd3facb92`
+   (2026-07-06, hazard-aware `OperationList.subdivide()`). Re-verified 2026-10-13: with
+   assignment recording, `GradientDescentTests.linear1`–`linear5` pass. The remaining blockers
+   (`LayerFeatures.into` shape tolerance, and the `Supplier` helper's unrolled `Assignment`) and
+   the full work-list are in [`MEMORY_DATA_COPY_RETIREMENT.md`](MEMORY_DATA_COPY_RETIREMENT.md).
 2. ~~**Audio beachhead** — aggregation copies via the `Assignment`/`Submittable` path.~~
    **DONE** on master: `MemoryDataArgumentMap` aggregation and `MemoryReplacementManager`
    replacement copies run through `ComputeContext.copy` `Submittable`s;

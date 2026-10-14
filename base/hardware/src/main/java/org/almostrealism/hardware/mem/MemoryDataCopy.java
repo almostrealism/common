@@ -367,8 +367,9 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 	 * </ul>
 	 *
 	 * <p>Only a copy into memory managed by a device context is left to that context to order; when
-	 * a device's shared memory is also managed by the native context that delegates to it, the
-	 * device context is chosen (see {@link Hardware#getComputeContext(io.almostrealism.code.Memory, boolean)}). When
+	 * a device's shared memory is also managed by the native context that delegates to it, that
+	 * native context names the device context as the one to use (see
+	 * {@link io.almostrealism.code.DataContext#getComputeContext(io.almostrealism.code.Memory)}). When
 	 * the target's context runs on the CPU (or no context manages the target at all), the transfer
 	 * is performed by the host whichever way it is issued: queuing it behind the pending work would
 	 * only move the wait onto a callback thread and add hand-offs between threads, which costs more
@@ -458,7 +459,7 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 			}
 
 			ComputeContext<MemoryData> context =
-					Hardware.getLocalHardware().getComputeContext(target.getMem(), true);
+					Hardware.getLocalHardware().getComputeContext(target.getMem());
 
 			// See the class javadoc: a transfer the host performs is completed here
 			if ((context == null || context.isCPU()) && order != null) {

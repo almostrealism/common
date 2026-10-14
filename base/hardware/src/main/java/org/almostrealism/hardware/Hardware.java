@@ -1249,40 +1249,27 @@ public final class Hardware implements ConsoleFeatures {
 	 * context from a computation's characteristics. One of the two should be used for any
 	 * targeting decision; the ambient {@link #getComputeContext()} should not.</p>
 	 *
+	 * <p>Memory can be managed by more than one context: with shared memory enabled, the native
+	 * (CPU) context allocates from a device's host-accessible provider, which the device context
+	 * also manages. The choice is not made from the order the contexts are listed in. The managing
+	 * {@link DataContext} names the context through {@link DataContext#getComputeContext(Memory)},
+	 * and a native context that shares a device's memory names that device's context, so the same
+	 * device context is returned whichever of the two is found first.</p>
+	 *
 	 * @param memory the memory whose managing context is sought
 	 * @return the managing context, or {@code null} if no configured context manages it
 	 */
 	public ComputeContext<MemoryData> getComputeContext(Memory memory) {
-		return getComputeContext(memory, false);
-	}
-
-	/**
-	 * Returns the {@link ComputeContext} of a {@link DataContext} that manages the given
-	 * {@link Memory}, as {@link #getComputeContext(Memory)} does, optionally preferring a device
-	 * context. Memory can be managed by more than one context: the provider of a device's shared
-	 * memory is also exposed by the native (CPU) context that delegates to it. A device context
-	 * queues work on that memory in order after pending device work, where a CPU context has to
-	 * wait for that work on the host first, so work that must follow pending device work prefers it.
-	 *
-	 * @param memory       the memory whose managing context is sought
-	 * @param preferDevice whether a non-CPU managing context is chosen over a CPU one listed first
-	 * @return the managing context, or {@code null} if no configured context manages it
-	 */
-	public ComputeContext<MemoryData> getComputeContext(Memory memory, boolean preferDevice) {
 		if (memory == null) return null;
 
-		ComputeContext<MemoryData> managing = null;
-
 		for (DataContext<MemoryData> dc : contexts) {
-			if (!dc.getMemoryProviders().contains(memory.getProvider()) ||
-					dc.getComputeContexts().isEmpty()) continue;
-
-			ComputeContext<MemoryData> context = dc.getComputeContexts().get(0);
-			if (!preferDevice || !context.isCPU()) return context;
-			if (managing == null) managing = context;
+			if (dc.getMemoryProviders().contains(memory.getProvider()) &&
+					!dc.getComputeContexts().isEmpty()) {
+				return dc.getComputeContext(memory);
+			}
 		}
 
-		return managing;
+		return null;
 	}
 
 	/**
