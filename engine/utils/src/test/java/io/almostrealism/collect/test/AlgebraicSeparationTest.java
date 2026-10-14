@@ -99,6 +99,8 @@ public class AlgebraicSeparationTest extends TestSuiteBase {
 		Producer<String> name = () -> args -> "dog";
 		Assert.assertFalse(CollectionProducer.isReduction(name));
 		Assert.assertNull(CollectionProducer.attemptVectorJacobianProduct(name, name, cp(pack(1.0))));
+		Assert.assertNull(CollectionProducer.attemptMultiply(name, 3.0));
+		Assert.assertNull(CollectionProducer.attemptMultiply(null, 3.0));
 	}
 
 	/**

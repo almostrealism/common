@@ -88,8 +88,14 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 		assertValues(scaled.evaluate(), 3.0, 9.0, 15.0, 21.0, 27.0);
 		assertValues(multiply(3.0, sequence).evaluate(), 3.0, 9.0, 15.0, 21.0, 27.0);
 
+		Producer<PackedCollection> generic = sequence;
+		CollectionProducer delegated = CollectionProducer.attemptMultiply(generic, -2.0);
+		Assert.assertTrue(delegated instanceof ArithmeticSequenceComputation);
+		assertValues(delegated.evaluate(), -2.0, -6.0, -10.0, -14.0, -18.0);
+
 		CollectionProducer values = cp(pack(1.0, 2.0, 3.0));
 		Assert.assertNull(values.attemptMultiply(3.0));
+		Assert.assertNull(CollectionProducer.attemptMultiply(values, 3.0));
 		Assert.assertNull(multiply(3.0, values));
 		assertValues(multiply(c(3.0), values).evaluate(), 3.0, 6.0, 9.0);
 	}

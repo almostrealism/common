@@ -380,8 +380,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			return minus(a);
 		}
 
-		Producer<PackedCollection> scaled = a instanceof CollectionProducer ?
-				((CollectionProducer) a).attemptMultiply(scale) : null;
+		Producer<PackedCollection> scaled = CollectionProducer.attemptMultiply(a, scale);
 		if (scaled != null) {
 			return CollectionFeatures.getInstance().c(scaled);
 		} else if (a.isConstant()) {

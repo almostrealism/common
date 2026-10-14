@@ -1039,6 +1039,21 @@ public interface CollectionProducer extends
 	}
 
 	/**
+	 * Attempts to scale an arbitrary producer by a constant factor, as
+	 * {@link #attemptMultiply(double)} does for a {@link CollectionProducer}. A producer
+	 * that is not a {@link CollectionProducer} offers no such representation, so
+	 * {@code null} is returned for it and the caller must form the product.
+	 *
+	 * @param producer the producer to scale
+	 * @param factor   the constant to scale by
+	 * @return the producer scaled by {@code factor}, or {@code null} if no shortcut applies
+	 */
+	static CollectionProducer attemptMultiply(Producer<?> producer, double factor) {
+		if (!(producer instanceof CollectionProducer)) return null;
+		return ((CollectionProducer) producer).attemptMultiply(factor);
+	}
+
+	/**
 	 * Indicates whether this producer is itself a reduction, combining groups of its
 	 * input elements into single outputs (an aggregation or a weighted sum). A reduction
 	 * already compiles to an accumulation, so a reduction applied to its output (see
