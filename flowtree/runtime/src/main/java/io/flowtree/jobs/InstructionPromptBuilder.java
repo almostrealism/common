@@ -784,6 +784,20 @@ public class InstructionPromptBuilder {
             sb.append("GitHub Copilot's per-round summary) -- that content is invisible to ");
             sb.append("github_pr_review_comments and github_pr_conversation.\n\n");
 
+            sb.append("## Out-of-Scope Review Points\n");
+            sb.append("Fix an in-scope defect on this branch. But when a review comment is valid ");
+            sb.append("and out of scope for this branch -- an edge case the branch does not need ");
+            sb.append("to cover, a related improvement, a larger refactor -- do NOT extend the ");
+            sb.append("branch through more review rounds to address it. Instead file a follow-up ");
+            sb.append("task with tracker_file_follow_up_task (pass the project_id, a title and ");
+            sb.append("description, and the pr_number and review_comment that prompted it); the ");
+            sb.append("server files it into the backlog for a person to triage. First read back ");
+            sb.append("the follow-up tasks you already filed with tracker_list_tasks or ");
+            sb.append("tracker_search_tasks so you do not file a duplicate. Then reply in the ");
+            sb.append("review thread with the task id instead of changing the code, following ");
+            sb.append("the reply rules above on who to reply to and when. List the ids of every ");
+            sb.append("follow-up task you filed in your final summary.\n\n");
+
             sb.append("## When to Post PR Replies\n");
             sb.append("Do NOT post a `github_pr_reply` claiming a fix is landed until the change is ");
             sb.append("on disk AND the relevant verification (compile clean, affected tests, build ");

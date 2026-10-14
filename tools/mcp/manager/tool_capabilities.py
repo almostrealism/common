@@ -67,6 +67,7 @@ GRANTED_TOOLS = (
     "tracker_claim_next_task",
     "tracker_list_release_tasks",
     "tracker_upsert_goal_task",
+    "tracker_file_follow_up_task",
 )
 
 # Withheld from coding agents. Mirrors
