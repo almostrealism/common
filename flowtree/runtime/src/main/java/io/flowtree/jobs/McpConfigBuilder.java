@@ -79,6 +79,18 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * and each enforces its own limits (claiming only ready tasks, editing
      * only goal-derived ones, never deleting).</p>
      *
+     * <p>{@code tracker_file_follow_up_task} is a fourth narrow write, open to
+     * every coding job rather than gated on a tracker capability, because the
+     * server-side limits are what make it safe: the task it files is always in
+     * the backlog, never linked to a workstream, filed under a provenance
+     * source derived from the job's own token, capped per job, and only ever
+     * at the default priority. An agent uses it to record a valid review point
+     * that is out of scope for the branch instead of extending the branch
+     * through more review rounds. The same provenance source lets a scoped
+     * caller read back (through {@code tracker_list_tasks} /
+     * {@code tracker_search_tasks}) the unlinked follow-up tasks its own
+     * workspace filed, without widening any other scoping rule.</p>
+     *
      * <p>{@code workstream_submit_task} is included so agents can
      * delegate work to other workstreams in the same workspace. The
      * server rejects self-submission (a job targeting the agent's own
@@ -139,7 +151,8 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "tracker_list_releases",
             "tracker_claim_next_task",
             "tracker_list_release_tasks",
-            "tracker_upsert_goal_task"
+            "tracker_upsert_goal_task",
+            "tracker_file_follow_up_task"
         ))
     );
 
