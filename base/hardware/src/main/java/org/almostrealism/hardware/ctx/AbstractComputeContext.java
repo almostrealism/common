@@ -225,6 +225,17 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 * view bound to memory the lease holds, which no destroy can take away between the copy
 	 * resolving it and using it.</p>
 	 *
+	 * <p>The copy is performed by this context even when the destination is a device's shared
+	 * memory that another context would rather operate on
+	 * ({@link DataContext#getComputeContext(io.almostrealism.code.Memory)}). A context's copies are
+	 * also the argument preparation of its own kernels, which chain on their completion: handing a
+	 * host context's copy to the device would make every host kernel wait for a device round trip,
+	 * and would put host work behind the device queue, which can itself be waiting for that host
+	 * work (a device dispatch bridged to a host completion), so neither could proceed. A caller that
+	 * chooses a context by the memory it writes, rather than by the work the copy belongs to, asks
+	 * {@link Hardware#getComputeContext(io.almostrealism.code.Memory)}, which consults the
+	 * {@link DataContext} that manages it.</p>
+	 *
 	 * @param source      the memory region to copy from
 	 * @param destination the memory region to copy into
 	 * @param dependsOn   the completion this copy must be ordered after, or {@code null}
