@@ -45,24 +45,32 @@ import java.util.concurrent.atomic.AtomicLong;
  *       {@link BatchedPatternRenderer#buildBatchedPercussionChainPlaced}.</li>
  * </ul>
  *
- * <p>Only continuing notes (within-note sampling offset {@code > 0}) and
- * non-batchable note shapes fall to the per-note path
- * ({@link PatternFeatures#renderNotes}) by design. This class implements
- * {@link PatternFeatures} to access that path and the batched-output
+ * <p>Only non-batchable note shapes (notes without a {@link BatchedNoteInputs} record)
+ * fall to the per-note path ({@link PatternFeatures#renderNotes}) by design. This class
+ * implements {@link PatternFeatures} to access that path and the batched-output
  * accumulation boundary, per the standard {@code Features} mixin convention.</p>
  *
- * <p>Only notes that start in the current window (sampling offset {@code == 0}) are
- * batched: their per-window kernel shape is fixed, so the compiled kernel is reused
- * across ticks. A note continuing from an earlier window reads from a growing
- * within-note offset; batching it bloats the shared per-dispatch source length (every
- * row pays the longest continuation's read), which measured a net loss, so continuing
- * notes are rendered per-note (once, then cached).</p>
+ * <h2>Continuing notes</h2>
+ *
+ * <p>Every batchable note overlapping the window is batched, including a note that
+ * continues from an earlier window: the kernel places it at offset 0 and reads (and
+ * envelopes) it from its within-note sampling offset. Continuations do grow the shared
+ * per-dispatch source length, since every row pays the longest continuation's read, but
+ * the per-note alternative is a full-note evaluation, a chain of separately waited
+ * kernels, for every distinct note identity. The {@link NoteAudioCache} keys that
+ * evaluation by the note's offset <em>and</em> its
+ * {@link RenderedNoteAudio.Identity identity} (element, voicing details, stereo channel),
+ * so chord tones, the MAIN and WET voicings, and the LEFT and RIGHT channels of one note
+ * each pay their own evaluation, and per-note continuation is the more expensive
+ * choice.</p>
  *
  * <h2>Transient note ownership</h2>
  *
  * <p>Percussion destinations are freshly gathered every tick and owned by the
- * {@link #render} call, so each note's offset-argument {@link PackedCollection} is
- * {@link RenderedNoteAudio#destroy() destroyed} after dispatch rather than left for GC.
+ * {@link #render} call, so each note is {@link RenderedNoteAudio#destroy() destroyed}
+ * after dispatch, releasing its offset-argument {@link PackedCollection} if anything
+ * requested one (it is allocated on demand, and the batched dispatch never reads it)
+ * rather than leaving it for GC.
  * Melodic destinations are memoized and owned by the {@link #gatherCache gather cache},
  * which releases them via {@link #clearGatherCache()}, so they are not destroyed per
  * tick.</p>
@@ -304,9 +312,10 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 	 * {@link BatchedPatternRenderer#buildBatchedSssChainPlacedFromScalars},
 	 * percussion via
 	 * {@link BatchedPatternRenderer#buildBatchedPercussionChainPlaced}) — see
-	 * the class javadoc. A note carrying a melodic-SSS record that starts in this
-	 * window is batched; a note continuing from an earlier tick is rendered
-	 * per-note from its within-note sampling offset.</p>
+	 * the class javadoc. Every overlapping note carrying a batched-input record is
+	 * batched, whether it starts in this window or continues from an earlier tick
+	 * (read from its within-note sampling offset); only notes without such a record
+	 * are rendered per-note.</p>
 	 *
 	 * <p>Melodic destinations are memoized by the gather cache and owned by it;
 	 * percussion destinations are transient — re-gathered fresh each call rather than
@@ -367,9 +376,8 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 				} else if (noteStart >= endFrame) {
 					continue;
 				}
-				// Batch only notes that start in this window (sampling offset == 0); a
-				// continuing note is rendered per-note. See the class javadoc for why.
-				if (note.getBatchedInputs() != null && noteStart >= startFrame) {
+				// Continuing notes are batched too; see the class javadoc for why.
+				if (note.getBatchedInputs() != null) {
 					batchNow.add(note);
 				} else {
 					perNote.add(note);

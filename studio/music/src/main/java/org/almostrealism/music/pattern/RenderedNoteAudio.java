@@ -136,6 +136,13 @@ public class RenderedNoteAudio implements Destroyable {
 	/** The PackedCollection used to pass the start frame offset to producers. */
 	private PackedCollection offsetArg;
 
+	/**
+	 * {@code true} while this note owns an offset argument that has not been allocated
+	 * yet (see {@link #allocateOffsetArgOnDemand()}). Cleared once the argument is
+	 * allocated, replaced, or released.
+	 */
+	private boolean offsetArgOnDemand;
+
 	/** Factory that creates audio producers for a given sample rate. */
 	private IntFunction<Producer<PackedCollection>> producerFactory;
 
@@ -208,9 +215,37 @@ public class RenderedNoteAudio implements Destroyable {
 	 * calls, the {@link org.almostrealism.collect.computations.CollectionProviderProducer}
 	 * signature remains stable (based on memory address, not data value),
 	 * enabling compiled kernel reuse via the instruction set cache.</p>
+	 *
+	 * <p>When the note was configured with {@link #allocateOffsetArgOnDemand()}, the
+	 * argument is allocated by the first call to this method; a released note returns
+	 * {@code null}.</p>
 	 */
 	public PackedCollection getOffsetArg() {
+		if (offsetArg == null && offsetArgOnDemand) {
+			offsetArg = new PackedCollection(1);
+			offsetArgOnDemand = false;
+		}
+
 		return offsetArg;
+	}
+
+	/**
+	 * Gives this note ownership of an offset argument that is allocated only when it is
+	 * first requested through {@link #getOffsetArg()}.
+	 *
+	 * <p>Most rendering never reads the offset argument: the batched dispatch takes its
+	 * inputs from {@link #getBatchedInputs()}, and full-note evaluation requests a
+	 * producer with no offset. Notes are gathered for every overlapping element on every
+	 * buffer tick, so allocating (and later releasing) a native buffer per note up front
+	 * would put a device allocation and release per gathered note on the render path for
+	 * memory that is never used. Deferring the allocation keeps that cost off the render
+	 * path while preserving the ownership contract: once allocated, the argument is the
+	 * note's and is released by {@link #destroy()}.</p>
+	 */
+	public void allocateOffsetArgOnDemand() {
+		if (offsetArg == null) {
+			offsetArgOnDemand = true;
+		}
 	}
 
 	/**
@@ -229,6 +264,7 @@ public class RenderedNoteAudio implements Destroyable {
 			return;
 		}
 
+		offsetArgOnDemand = false;
 		if (this.offsetArg != null) {
 			this.offsetArg.destroy();
 		}
@@ -318,13 +354,16 @@ public class RenderedNoteAudio implements Destroyable {
 	 * <p>The only native allocation a {@code RenderedNoteAudio} owns is its
 	 * {@link #getOffsetArg() offset argument}, a single-element {@link PackedCollection}
 	 * created per note. It is destroyed and the reference cleared, so a repeated call
-	 * is a no-op. The {@link #getBatchedInputs() batched inputs} are deliberately not
+	 * is a no-op; an on-demand argument that was never requested is simply dropped, and
+	 * a released note does not allocate a new one. The
+	 * {@link #getBatchedInputs() batched inputs} are deliberately not
 	 * touched: a memoized melodic note's batched sources are stable raw sample
 	 * references the note does not own, so destroying them here would free memory
 	 * still owned by the sample library.</p>
 	 */
 	@Override
 	public void destroy() {
+		offsetArgOnDemand = false;
 		if (offsetArg != null) {
 			offsetArg.destroy();
 			offsetArg = null;

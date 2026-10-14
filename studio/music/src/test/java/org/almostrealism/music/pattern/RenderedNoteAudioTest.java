@@ -213,4 +213,49 @@ public class RenderedNoteAudioTest extends TestSuiteBase {
 		note.destroy();
 		Assert.assertTrue("teardown still releases the retained offset argument", current.isDestroyed());
 	}
+
+	/**
+	 * An on-demand offset argument is allocated by the first request and is the same
+	 * live instance on every later request, so a producer factory reading it on each
+	 * invocation sees one stable argument; teardown releases it and a released note does
+	 * not allocate a replacement.
+	 */
+	@Test(timeout = 10000)
+	public void onDemandOffsetArgIsAllocatedOnFirstRequest() {
+		RenderedNoteAudio note = new RenderedNoteAudio(0, 0);
+		note.allocateOffsetArgOnDemand();
+
+		PackedCollection allocated = note.getOffsetArg();
+		Assert.assertNotNull("the first request allocates the owned offset argument", allocated);
+		Assert.assertEquals(1, allocated.getMemLength());
+		Assert.assertSame("later requests return the same instance", allocated, note.getOffsetArg());
+
+		note.destroy();
+		Assert.assertTrue("teardown releases the allocated argument", allocated.isDestroyed());
+		Assert.assertNull("a released note does not allocate a new argument", note.getOffsetArg());
+	}
+
+	/**
+	 * An on-demand offset argument that is never requested is never allocated, so
+	 * tearing the note down has nothing to release; an explicitly supplied argument
+	 * supersedes the on-demand one.
+	 */
+	@Test(timeout = 10000)
+	public void onDemandOffsetArgIsSupersededAndDroppedWhenUnused() {
+		RenderedNoteAudio unused = new RenderedNoteAudio(0, 0);
+		unused.allocateOffsetArgOnDemand();
+		unused.destroy();
+		Assert.assertNull("an unrequested on-demand argument is simply dropped", unused.getOffsetArg());
+
+		RenderedNoteAudio supplied = new RenderedNoteAudio(0, 0);
+		supplied.allocateOffsetArgOnDemand();
+		PackedCollection explicit = new PackedCollection(1);
+		supplied.setOffsetArg(explicit);
+		Assert.assertSame("an explicit argument supersedes the on-demand one",
+				explicit, supplied.getOffsetArg());
+
+		supplied.destroy();
+		Assert.assertTrue(explicit.isDestroyed());
+		Assert.assertNull(supplied.getOffsetArg());
+	}
 }

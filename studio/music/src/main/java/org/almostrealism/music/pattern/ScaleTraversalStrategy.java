@@ -366,9 +366,13 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 	 * {@link NoteAudioCache} from conflating coincident notes or the LEFT and RIGHT
 	 * renders of one note.</p>
 	 *
-	 * <p>The note is appended as soon as it owns its offset argument, before the
-	 * batched inputs are gathered, so a failure in that gather leaves the note
-	 * reachable by the cleanup in {@link #gatherNoteDestinations}.</p>
+	 * <p>The note owns an offset argument allocated on demand (see
+	 * {@link RenderedNoteAudio#allocateOffsetArgOnDemand()}): only a producer requested
+	 * with a positive frame count reads it, so the batched and full-note render paths
+	 * gather notes without a per-note device allocation. The note is appended as soon
+	 * as it owns that argument, before the batched inputs are gathered, so a failure in
+	 * that gather leaves the note reachable by the cleanup in
+	 * {@link #gatherNoteDestinations}.</p>
 	 *
 	 * @param destinations    the list the created note is appended to
 	 * @param element         the pattern element
@@ -392,7 +396,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 		int expectedFrameCount = (int) (durationSec * OutputLine.sampleRate);
 		RenderedNoteAudio note = new RenderedNoteAudio(frameOffset, expectedFrameCount);
 		note.setCacheIdentity(RenderedNoteAudio.Identity.of(element, details));
-		note.setOffsetArg(new PackedCollection(1));
+		note.allocateOffsetArgOnDemand();
 		destinations.add(note);
 
 		// The offset argument is resolved from the note on each invocation rather
