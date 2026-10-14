@@ -472,7 +472,7 @@ Tool names for project servers are automatically discovered by `McpToolDiscovery
 
 The `McpConfigBuilder.buildAllowedTools(String baseTools)` method constructs the complete comma-separated tools string for the `--allowedTools` flag. It starts with the base tools (e.g., `"Read,Edit,Write,Bash,Glob,Grep"`) and appends:
 
-1. The `ar-manager` tool allowlist (`McpConfigBuilder.AR_MANAGER_TOOL_NAMES`) when the ar-manager URL and bearer token are both configured. This is where `send_message`, the `github_pr_*` family, the read-only `tracker_*` queries, and `memory_recall`/`memory_store` come from.
+1. The `ar-manager` tool allowlist (`McpConfigBuilder.AR_MANAGER_TOOL_NAMES`) when the ar-manager URL and bearer token are both configured. This is where `send_message`, the `github_pr_*` family, the read-only `tracker_*` queries, and `memory_recall`/`memory_store` come from. The tracker **mutations** (`tracker_create_task`/`tracker_update_task`/`tracker_delete_task` and the project/release writes) are excluded; the narrow tracker writes that are granted enforce their own server-side limits — `tracker_claim_next_task`, `tracker_list_release_tasks` and `tracker_upsert_goal_task` are gated on a `trackerCapability`, and `tracker_file_follow_up_task` (filing an out-of-scope review point into the backlog) is open to every job because the server always files it as backlog, unlinked, provenance-from-token and capped per job.
 2. Tools from any other centralized servers as `mcp__{serverName}__{toolName}`.
 3. Tools from pushed servers as `mcp__{serverName}__{toolName}`.
 4. Tools from discovered project servers, auto-discovered from each server's Python source.

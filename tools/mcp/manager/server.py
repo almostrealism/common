@@ -261,6 +261,7 @@ from workspace_map import (
     TRACKER_STEWARD,
     _filter_workstreams_by_scope,
     _filter_tasks_by_scope,
+    _follow_up_task_workspace_allowed,
     _pipeline_error,
     _find_workstream,
 )
@@ -1492,6 +1493,7 @@ from tracker_tools import (  # noqa: E402
     tracker_claim_next_task,
     tracker_list_release_tasks,
     tracker_upsert_goal_task,
+    tracker_file_follow_up_task,
 )
 
 

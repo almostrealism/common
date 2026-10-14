@@ -114,8 +114,8 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 	public NumberConditioner(double minVal, double maxVal, int outDim,
 							 PackedCollection fourierWeights, PackedCollection projWeight,
 							 PackedCollection projBias) {
-		this(minVal, maxVal, outDim, learnedFourierDim(fourierWeights),
-				new DiffusionTransformerFeatures() { }.cp(fourierWeights), projWeight, projBias);
+		this(minVal, maxVal, outDim, learnedFourierDim(fourierWeights), fourierWeights,
+				0.0, 0.0, projWeight, projBias);
 	}
 
 	/**
@@ -136,9 +136,8 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 	public static NumberConditioner expo(double minVal, double maxVal, int outDim, int fourierDim,
 										 double minFreq, double maxFreq,
 										 PackedCollection projWeight, PackedCollection projBias) {
-		DiffusionTransformerFeatures features = new DiffusionTransformerFeatures() { };
-		return new NumberConditioner(minVal, maxVal, outDim, fourierDim,
-				features.expoFourierFrequencies(fourierDim, minFreq, maxFreq), projWeight, projBias);
+		return new NumberConditioner(minVal, maxVal, outDim, fourierDim, null,
+				minFreq, maxFreq, projWeight, projBias);
 	}
 
 	/**
@@ -157,18 +156,27 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 	}
 
 	/**
-	 * Creates a number conditioner over the given Fourier frequency matrix.
+	 * Canonical constructor. The Fourier frequency matrix is built here, in instance context, so the
+	 * class's own {@link DiffusionTransformerFeatures} mixin methods apply: when {@code fourierWeights}
+	 * is non-null the learned matrix is wrapped with {@link #cp(PackedCollection)}; otherwise the
+	 * deterministic geometric ladder {@link #expoFourierFrequencies(int, double, double)} is built from
+	 * {@code minFreq}/{@code maxFreq}. The {@code minFreq}/{@code maxFreq} arguments are ignored on the
+	 * learned path (callers pass {@code 0.0, 0.0}), and {@code fourierWeights} is {@code null} only on
+	 * the expo path.
 	 *
-	 * @param minVal      lower bound of the input range
-	 * @param maxVal      upper bound of the input range; must be greater than {@code minVal}
-	 * @param outDim      output embedding dimensionality; must equal {@code projWeight} rows
-	 * @param fourier     number of Fourier feature components
-	 * @param frequencies the Fourier frequency matrix producer, shape {@code [fourier/2, 1]}
-	 * @param projWeight  projection weight of shape {@code [outDim, fourierDim]}
-	 * @param projBias    optional projection bias of shape {@code [outDim]}, or {@code null}
+	 * @param minVal         lower bound of the input range
+	 * @param maxVal         upper bound of the input range; must be greater than {@code minVal}
+	 * @param outDim         output embedding dimensionality; must equal {@code projWeight} rows
+	 * @param fourier        number of Fourier feature components
+	 * @param fourierWeights learned frequency matrix of shape {@code [fourier/2, 1]}, or {@code null}
+	 *                       to build the expo ladder instead
+	 * @param minFreq        lowest frequency of the expo ladder; ignored when {@code fourierWeights} is non-null
+	 * @param maxFreq        highest frequency of the expo ladder; ignored when {@code fourierWeights} is non-null
+	 * @param projWeight     projection weight of shape {@code [outDim, fourierDim]}
+	 * @param projBias       optional projection bias of shape {@code [outDim]}, or {@code null}
 	 */
 	private NumberConditioner(double minVal, double maxVal, int outDim, int fourier,
-							  Producer<PackedCollection> frequencies,
+							  PackedCollection fourierWeights, double minFreq, double maxFreq,
 							  PackedCollection projWeight, PackedCollection projBias) {
 		if (maxVal <= minVal) {
 			throw new IllegalArgumentException("NumberConditioner maxVal must be greater than minVal");
@@ -194,7 +202,9 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 		this.maxVal = maxVal;
 		this.outDim = outDim;
 		this.fourierDim = fourier;
-		this.frequencies = frequencies;
+		this.frequencies = fourierWeights == null
+				? expoFourierFrequencies(fourier, minFreq, maxFreq)
+				: cp(fourierWeights);
 		this.projWeight = projWeight;
 		this.projBias = projBias == null ? null : projBias.flatten();
 	}
