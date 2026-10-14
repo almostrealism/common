@@ -88,7 +88,7 @@ Settings:
 | `concurrency.group` | `qa-retrospective`, not cancelling | Each job serializes under its own group. |
 | `PROTECT_TEST_FILES` | `"true"` | The round is docs-only. Locking tests costs nothing and removes a temptation. |
 | `AUTO_CREATE_PR` | `"true"` | Same as every QA round. |
-| `PHASE_CONFIGS` | `{"primary": {"runner": "claude", "model": "opus", "effort": "max", "provider": "anthropic"}}` | The judgment here is synthesis across many sources, the kind a model under-thinks, the same reason `pdsl-qa` carries this pin. |
+| `PHASE_CONFIGS` | `{"primary": {"runner": "claude", "model": "opus", "effort": "max", "provider": "anthropic"}}` | The judgment here is synthesis across many sources, the kind a model under-thinks, the same reason `performance-qa` and `pdsl-qa` carry this pin. (`defect-hunt` and `consolidation-qa` pin `opus` but not `effort: max`.) |
 | `REQUIRED_LABELS` | none | The job reads tools and writes markdown. It needs no Metal. |
 
 **The open-PR ceiling.** The retrospective gets the same ceiling as the other QA rounds:

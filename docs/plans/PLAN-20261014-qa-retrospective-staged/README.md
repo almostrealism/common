@@ -102,7 +102,7 @@ with it. Make these edits in that section:
 4. "(6, the number of automated QA rounds)" becomes "(7, …)".
 5. Add a sentence that the retrospective's output is docs-only (a report under
    `docs/qa/retrospectives/` and a ledger row), that it pins `claude/opus` at
-   `effort: max` for the same reason as `pdsl-qa`, and that `ci/qa-…` is the
+   `effort: max` for the same reason as `performance-qa` and `pdsl-qa`, and that `ci/qa-…` is the
    branch convention for a pipeline-subject QA follow-up a person opens from an
    accepted proposal.
 
