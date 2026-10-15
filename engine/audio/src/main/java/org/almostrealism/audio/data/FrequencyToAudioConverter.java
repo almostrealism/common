@@ -13,6 +13,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.computations.FourierTransform;
 
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -122,8 +123,13 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 		PackedCollection spectra = createComplexSpectra(freqData, freqFrames, freqBins);
 		PackedCollection frameSpectrum = new PackedCollection(shape(fftSize, 2));
 
-		// Fixed-position buffers for the overlap-add, so one compiled operation serves every frame
+		// Fixed-position buffers for the inverse transform, so one compiled operation serves every frame
+		PackedCollection transformed = new PackedCollection(shape(fftSize, 2));
 		PackedCollection frameSamples = new PackedCollection(fftSize);
+		Evaluable inverse = new FourierTransform(1, fftSize, true, cp(frameSpectrum)).get().into(transformed);
+		Evaluable realPart = realPart(transformed, fftSize).into(frameSamples.traverseEach());
+
+		// Fixed-position buffer for the overlap-add, for the same reason
 		PackedCollection segment = new PackedCollection(fftSize);
 		Evaluable windowedAdd = cp(segment)
 				.add(cp(frameSamples).multiply(cp(window)))
@@ -132,8 +138,8 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 		// Process each frame
 		for (int frame = 0; frame < freqFrames; frame++) {
 			frameSpectrum.setFrom(0, spectra.range(shape(fftSize * 2), frame * fftSize * 2));
-			// TODO(review): per-frame applyIfft results (and window/spectra/frameSpectrum) are never destroyed
-			frameSamples.setFrom(0, applyIfft(frameSpectrum, fftSize));
+			inverse.evaluate();
+			realPart.evaluate();
 
 			int startSample = frame * hopSize;
 			segment.setFrom(accumulated, startSample, fftSize);
@@ -143,9 +149,8 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 
 		PackedCollection output = new PackedCollection(outputLength);
 		output.setFrom(accumulated, 0, outputLength);
-		accumulated.destroy();
-		frameSamples.destroy();
-		segment.destroy();
+		List.of(accumulated, window, spectra, frameSpectrum, transformed, frameSamples, segment)
+				.forEach(PackedCollection::destroy);
 
 		// Normalize output to prevent clipping
 		normalizeAudio(output);
@@ -193,23 +198,21 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 				magnitude.multiply(cos(phase)),
 				magnitude.multiply(sin(phase)));
 
-		return conjugateSymmetric(half).evaluate();
+		PackedCollection spectra = conjugateSymmetric(half).evaluate();
+		angle.destroy();
+		return spectra;
 	}
 
 	/**
-	 * Applies inverse FFT to complex spectrum.
+	 * Describes the real part of the inverse transform's output.
 	 *
-	 * @param complexSpectrum complex spectrum in interleaved format
-	 * @param fftSize         number of frequency bins
-	 * @return time-domain samples (real part only)
+	 * @param transformed the inverse transform's output, as interleaved (real, imaginary) pairs
+	 * @param fftSize     number of samples in the transform
+	 * @return the real part of each sample, column 0 of the interleaved pairs
 	 */
-	private PackedCollection applyIfft(PackedCollection complexSpectrum, int fftSize) {
-		FourierTransform ifft = new FourierTransform(1, fftSize, true, cp(complexSpectrum));
-		PackedCollection result = ifft.get().evaluate();
-
-		// Extract real part -- column 0 of the interleaved (real, imaginary) pairs
-		return subset(shape(fftSize, 1), cp(result.reshape(shape(fftSize, 2))), 0, 0)
-				.evaluate().reshape(shape(fftSize));
+	private CollectionProducer realPart(PackedCollection transformed, int fftSize) {
+		return subset(shape(fftSize, 1), cp(transformed.reshape(shape(fftSize, 2))), 0, 0)
+				.reshape(shape(fftSize));
 	}
 
 	/**
