@@ -29,6 +29,10 @@ import org.almostrealism.hardware.metal.MetalSemaphore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * Verifies how {@link MetalCommandRunner} releases dependent dispatches that wait on the GPU for
  * dispatches in an earlier, already committed command buffer.
@@ -88,11 +92,12 @@ public class MetalTimelineSignalTest extends TestSuiteBase {
 	/**
 	 * The same dependents, with the committed buffer held on the GPU by a foreign gate: neither
 	 * is released before the gate opens and the earlier buffer has completed, and both then read
-	 * their dependencies' results.
+	 * their dependencies' results. Each dependent's completion callback records whether the gate
+	 * had already been opened when it ran, so a dependent released early fails the test even
+	 * though it would still have copied the right values.
 	 *
-	 * @throws InterruptedException if waiting for the gate thread is interrupted
+	 * @throws InterruptedException if waiting for the gate thread or a callback is interrupted
 	 */
-	// TODO(review): javadoc claims dependents are not released before the gate opens, but nothing asserts that ordering
 	@Test(timeout = 60000)
 	public void dependentsOfGatedBufferWaitForGate() throws InterruptedException {
 		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
@@ -116,6 +121,7 @@ public class MetalTimelineSignalTest extends TestSuiteBase {
 			MetalSemaphore lastWritten = (MetalSemaphore) last.fill.submit(null);
 			commitSharedBuffer(runner, firstWritten, lastWritten);
 
+			AtomicBoolean gateOpened = new AtomicBoolean();
 			Thread opener = new Thread(() -> {
 				try {
 					Thread.sleep(500);
@@ -123,16 +129,35 @@ public class MetalTimelineSignalTest extends TestSuiteBase {
 					Thread.currentThread().interrupt();
 				}
 
+				gateOpened.set(true);
 				gate.countDown();
 			}, "MetalTimelineSignalTest gate");
 			opener.start();
 
 			Semaphore firstRead = first.read.submit(firstWritten);
 			Semaphore lastRead = last.read.submit(lastWritten);
+			CountDownLatch released = new CountDownLatch(2);
+			AtomicBoolean firstAfterGate = new AtomicBoolean();
+			AtomicBoolean lastAfterGate = new AtomicBoolean();
+			firstRead.whenComplete(() -> {
+				firstAfterGate.set(gateOpened.get());
+				released.countDown();
+			});
+			lastRead.whenComplete(() -> {
+				lastAfterGate.set(gateOpened.get());
+				released.countDown();
+			});
+
 			firstRead.waitFor();
 			lastRead.waitFor();
 			opener.join(10000);
 
+			assertTrue("Both dependents' completion callbacks must run",
+					released.await(10, TimeUnit.SECONDS));
+			assertTrue("The dependent of the buffer's first dispatch completed before the gate opened",
+					firstAfterGate.get());
+			assertTrue("The dependent of the buffer's last dispatch completed before the gate opened",
+					lastAfterGate.get());
 			first.assertCopied();
 			last.assertCopied();
 		} finally {
