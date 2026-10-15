@@ -26,7 +26,9 @@ import os
 import platform
 import plistlib
 import re
+import shutil
 import subprocess
+import tempfile
 import unittest
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -83,6 +85,27 @@ class FleetCommonCommandTests(unittest.TestCase):
         result = _run(_FLEET, "cuda", "--help")
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("ar-ci-cuda", result.stdout)
+
+    def test_the_cuda_script_rejects_an_unknown_command_with_its_help(self):
+        """A copy beside an empty .env reaches the command dispatch without
+        touching docker; an unknown command must fail and print the help."""
+        with tempfile.TemporaryDirectory() as tmp:
+            shutil.copy(os.path.join(_REPO_ROOT, "tools", "ci", "cuda", "fleet.sh"), tmp)
+            open(os.path.join(tmp, ".env"), "w").close()
+            result = _run(os.path.join(tmp, "fleet.sh"), "scale")
+        self.assertEqual(2, result.returncode)
+        self.assertIn("Unknown command: scale", result.stderr)
+        self.assertIn("./fleet.sh up [N]", result.stderr)
+        self.assertEqual("", result.stdout)
+
+    def test_the_rocm_help_documents_up_and_down_to_the_end_of_its_header(self):
+        """Help needs no service account: it is answered before the re-exec."""
+        result = _run(os.path.join(_REPO_ROOT, "tools", "ci", "rocm", "fleet.sh"), "--help")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("up [N] and down are the same as start [N] and stop", result.stdout)
+        # The help runs to the end of the header comment, not a fixed line.
+        self.assertIn("For host setup see setup-host.sh", result.stdout)
+        self.assertNotIn("SCRIPT_DIR=", result.stdout)
 
     def test_the_macos_help_documents_up_and_down(self):
         result = _run(_MACOS_FLEET, "--help")
