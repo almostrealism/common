@@ -10,9 +10,9 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `agent-protection/` | Anti-deception enforcement scripts (test write locks, audit) |
 | `coverage/` | Test-coverage automation: target selection, report fetching, assertion density |
 | `docker/` | Linux CPU runner fleet (`ar-ci`), Docker Compose |
-| `macos/` | macOS GPU runner (`ar-ci`): `tools/bin/fleet macos install` sets one up as a LaunchDaemon |
+| `macos/` | macOS GPU runners (`ar-ci`): `tools/bin/fleet macos up [N]` installs them as LaunchDaemons |
 | `rocm/` | AMD/ROCm OpenCL runner fleet (`ar-ci-cl`), Docker Compose |
-| `cuda/` | NVIDIA CUDA runner fleet (`ar-ci-cuda`), Docker Compose on the host's NVIDIA runtime |
+| `cuda/` | NVIDIA CUDA runner fleet (`ar-ci-cuda`), Docker Compose on the host's NVIDIA runtime: `tools/bin/fleet cuda up [N]` |
 | `monitor/` | Host monitoring tools for CI infrastructure |
 | `prompts/` | Prompt builders and templates for agent jobs |
 
