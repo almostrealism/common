@@ -36,6 +36,11 @@ import org.junit.Test;
  * for example), loading the device and the callback pool for whatever runs next.</p>
  */
 public class AcceleratedOperationInterruptTest extends TestSuiteBase {
+	/**
+	 * How long the active-dispatch loop keeps dispatching before giving up on the interrupt,
+	 * far longer than the delay before the interrupt is sent and shorter than the test timeout.
+	 */
+	private static final long LOOP_DEADLINE_NANOS = 30_000_000_000L;
 
 	/**
 	 * Running an operation on an interrupted thread fails with a {@link HardwareException},
@@ -103,8 +108,10 @@ public class AcceleratedOperationInterruptTest extends TestSuiteBase {
 		interrupter.start();
 
 		try {
-			// The bound is only a safety net; the interrupter is expected to fail the loop first
-			for (int i = 0; i < 1_000_000; i++) {
+			// The loop is bounded by time rather than by a dispatch count, so a fast backend
+			// cannot finish it before the interrupt arrives; the deadline is only a safety net
+			long deadline = System.nanoTime() + LOOP_DEADLINE_NANOS;
+			while (System.nanoTime() < deadline) {
 				op.run();
 			}
 			Assert.fail("run() loop completed without reporting the interrupt");

@@ -64,14 +64,17 @@ public record MidiTempo(int microsPerBeat) {
 	 * Returns the tempo for {@code bpm} beats per minute, using the whole
 	 * number of microseconds per beat. A {@code bpm} that is not positive
 	 * yields {@link #DEFAULT}; one too slow for the Set Tempo field yields
-	 * {@link #MAX_MICROSECONDS_PER_BEAT}.
+	 * {@link #MAX_MICROSECONDS_PER_BEAT}, and one faster than a microsecond
+	 * per beat yields one microsecond per beat rather than the degenerate
+	 * zero tempo.
 	 *
 	 * @param bpm the tempo in beats per minute
 	 * @return the tempo
 	 */
 	public static MidiTempo ofBpm(int bpm) {
 		if (bpm <= 0) return DEFAULT;
-		return new MidiTempo((int) Math.min(MAX_MICROSECONDS_PER_BEAT, MICROSECONDS_PER_MINUTE / bpm));
+		long micros = MICROSECONDS_PER_MINUTE / bpm;
+		return new MidiTempo((int) Math.max(1, Math.min(MAX_MICROSECONDS_PER_BEAT, micros)));
 	}
 
 	/**

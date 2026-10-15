@@ -56,6 +56,19 @@ public class MidiTempoTest extends TestSuiteBase {
 		assertEquals(15_000_000, MidiTempo.ofBpm(4).microsPerBeat());
 	}
 
+	/**
+	 * A BPM faster than one microsecond per beat is clamped to one microsecond
+	 * rather than encoding a zero tempo, while 60,000,000 BPM, the fastest
+	 * tempo that fits, is kept exactly.
+	 */
+	@Test(timeout = 30000)
+	public void ofBpmNeverEncodesZeroTempo() {
+		assertEquals(1, MidiTempo.ofBpm(60_000_000).microsPerBeat());
+		assertEquals(1, MidiTempo.ofBpm(60_000_001).microsPerBeat());
+		assertEquals(1, MidiTempo.ofBpm(Integer.MAX_VALUE).microsPerBeat());
+		assertEquals(60_000_000, MidiTempo.ofBpm(Integer.MAX_VALUE).bpm());
+	}
+
 	/** The BPM of a tempo is rounded, and a zero tempo has zero BPM. */
 	@Test(timeout = 30000)
 	public void bpmRoundsAndHandlesZero() {
