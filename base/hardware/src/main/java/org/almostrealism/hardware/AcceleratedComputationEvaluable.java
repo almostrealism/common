@@ -407,9 +407,14 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 *   <li>Validates result (checks for NaN if monitoring enabled)</li>
 	 * </ol>
 	 *
+	 * <p>This is an interruptible blocking call: an interrupted calling thread fails fast
+	 * rather than returning an output the kernel may not have finished writing (see
+	 * {@link AcceleratedOperation#awaitCompletion(AcceleratedProcessDetails)}).</p>
+	 *
 	 * @param args The input arguments for the computation
 	 * @return The evaluated result of type T
-	 * @throws HardwareException if kernel execution fails
+	 * @throws HardwareException if kernel execution fails, or if the calling thread is
+	 *                           interrupted
 	 */
 	@Override
 	public T evaluate(Object... args) {

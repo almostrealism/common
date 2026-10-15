@@ -368,8 +368,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * and waits for completion. This is the primary entry point for executing
 	 * compiled operations.</p>
 	 *
-	 * @throws HardwareException if the calling thread is interrupted before the
-	 *                           operation completes
+	 * <p>This is an interruptible blocking call: an interrupted calling thread fails
+	 * fast rather than returning as though the work had finished (see
+	 * {@link #awaitCompletion(AcceleratedProcessDetails)}).</p>
+	 *
+	 * @throws HardwareException if the calling thread is interrupted
 	 */
 	@Override
 	public void run() {
@@ -390,22 +393,24 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * Waits until the dispatch described by {@code process} has been issued and has
 	 * completed, so that its outputs may be read.
 	 *
-	 * <p>A completion wait that an interrupt ends early returns with the interrupt
-	 * status set rather than throwing, leaving the work unfinished. Returning normally
-	 * in that case would let the caller read outputs the kernel may still be writing,
-	 * and a caller driving many dispatches (a per-tick loop, for example) would keep
-	 * issuing work it never waits for. The interrupt is therefore reported as a
-	 * failure, with the interrupt status left set.</p>
+	 * <p>This is an interruptible blocking call. A completion wait returns early, with the
+	 * interrupt status set, when the waiting thread is interrupted rather than throwing, so
+	 * its return alone cannot establish that the work finished. Returning normally in that
+	 * case would let the caller read outputs the kernel may still be writing, and a caller
+	 * driving many dispatches (a per-tick loop, for example) would keep issuing work it
+	 * never waits for. An interrupt is therefore reported as a failure. The status is only
+	 * inspected after the wait returns, so a thread whose interrupt status is already set on
+	 * entry fails the same way, as it would for any other interruptible blocking call; the
+	 * interrupt status is left set for the caller.</p>
 	 *
 	 * @param process the details returned by {@link #apply(MemoryBank, Object[])}
-	 * @throws HardwareException if the calling thread is interrupted before the
-	 *                           operation completes
+	 * @throws HardwareException if the calling thread's interrupt status is set once the
+	 *                           completion wait returns
 	 */
 	protected void awaitCompletion(AcceleratedProcessDetails process) {
 		process.awaitReady();
 		waitFor(process.getSemaphore());
 
-		// TODO(review): this also throws when the wait completed normally on an already-interrupted thread; consider checking semaphore completion instead
 		if (Thread.currentThread().isInterrupted()) {
 			throw new HardwareException("Interrupted before " + getName() + " completed");
 		}

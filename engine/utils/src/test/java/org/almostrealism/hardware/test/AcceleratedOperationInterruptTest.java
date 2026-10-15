@@ -72,6 +72,51 @@ public class AcceleratedOperationInterruptTest extends TestSuiteBase {
 	}
 
 	/**
+	 * An interrupt that arrives while a loop is actively dispatching is reported the same way
+	 * as one whose status was already set before the loop began, so a per-tick loop stops
+	 * dispatching once its thread is interrupted rather than running the remaining ticks
+	 * without waiting for any of them.
+	 */
+	@Test(timeout = 60000)
+	public void interruptDuringActiveDispatchFails() throws InterruptedException {
+		PackedCollection src = new PackedCollection(16).fill(1.0);
+		PackedCollection dst = new PackedCollection(16);
+
+		OperationList list = new OperationList("Interrupted dispatch", true);
+		list.add(a(each(p(dst)), cp(src).multiply(2.0)));
+
+		Runnable op = list.get();
+
+		op.run();
+		assertEquals(2.0, dst.toDouble(0));
+
+		Thread target = Thread.currentThread();
+		Thread interrupter = new Thread(() -> {
+			try {
+				Thread.sleep(50);
+			} catch (InterruptedException e) {
+				return;
+			}
+			target.interrupt();
+		}, "AcceleratedOperationInterruptTest-interrupter");
+
+		interrupter.start();
+
+		try {
+			// The bound is only a safety net; the interrupter is expected to fail the loop first
+			for (int i = 0; i < 1_000_000; i++) {
+				op.run();
+			}
+			Assert.fail("run() loop completed without reporting the interrupt");
+		} catch (HardwareException expected) {
+			Assert.assertTrue("interrupt status was cleared", Thread.currentThread().isInterrupted());
+		} finally {
+			interrupter.join();
+			Thread.interrupted();
+		}
+	}
+
+	/**
 	 * Evaluating a computation on an interrupted thread fails rather than returning an output
 	 * the kernel may not have finished writing.
 	 */
