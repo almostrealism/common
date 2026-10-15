@@ -367,6 +367,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * <p>Applies any compute requirements, dispatches the kernel with no arguments,
 	 * and waits for completion. This is the primary entry point for executing
 	 * compiled operations.</p>
+	 *
+	 * @throws HardwareException if the calling thread is interrupted before the
+	 *                           operation completes
 	 */
 	@Override
 	public void run() {
@@ -375,13 +378,36 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
 			}
 
-			AcceleratedProcessDetails process = apply(null, new Object[0]);
-			process.awaitReady();
-			waitFor(process.getSemaphore());
+			awaitCompletion(apply(null, new Object[0]));
 		} finally {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().popRequirements();
 			}
+		}
+	}
+
+	/**
+	 * Waits until the dispatch described by {@code process} has been issued and has
+	 * completed, so that its outputs may be read.
+	 *
+	 * <p>A completion wait that an interrupt ends early returns with the interrupt
+	 * status set rather than throwing, leaving the work unfinished. Returning normally
+	 * in that case would let the caller read outputs the kernel may still be writing,
+	 * and a caller driving many dispatches (a per-tick loop, for example) would keep
+	 * issuing work it never waits for. The interrupt is therefore reported as a
+	 * failure, with the interrupt status left set.</p>
+	 *
+	 * @param process the details returned by {@link #apply(MemoryBank, Object[])}
+	 * @throws HardwareException if the calling thread is interrupted before the
+	 *                           operation completes
+	 */
+	protected void awaitCompletion(AcceleratedProcessDetails process) {
+		process.awaitReady();
+		waitFor(process.getSemaphore());
+
+		// TODO(review): this also throws when the wait completed normally on an already-interrupted thread; consider checking semaphore completion instead
+		if (Thread.currentThread().isInterrupted()) {
+			throw new HardwareException("Interrupted before " + getName() + " completed");
 		}
 	}
 

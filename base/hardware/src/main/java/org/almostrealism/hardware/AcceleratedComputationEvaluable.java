@@ -420,8 +420,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 
 		try {
 			AcceleratedProcessDetails process = apply(null, args);
-			process.awaitReady();
-			waitFor(process.getSemaphore());
+			awaitCompletion(process);
 
 			T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
 			return validate(result);
