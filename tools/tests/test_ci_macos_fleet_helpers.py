@@ -945,5 +945,49 @@ INSTALLED_PLIST="$DAEMONS/com.almostrealism.ci-runner.plist"
         self.assertFalse(os.path.exists(self.calls))
 
 
+class StatusAllTests(unittest.TestCase):
+    """`status` reports the default runner, then each numbered one in order,
+    then the host-wide monitor; a named instance is shown on its own, without
+    the numbered ones, since it is not one of the runners `up` manages."""
+
+    FUNCTIONS = _functions("select_instance", "numbered_instances", "cmd_status_all")
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.daemons = os.path.join(self.tmp, "LaunchDaemons")
+        os.mkdir(self.daemons)
+        for name in ("", "-2", "-10", "-deploy"):
+            open(os.path.join(self.daemons, "com.almostrealism.ci-runner%s.plist" % name), "w").close()
+
+    def _run(self, instance):
+        # cmd_status and describe_service reach launchd and the env file, so they
+        # are stubbed to report just the runner they were called for; the real
+        # select_instance and numbered_instances decide the order and the set.
+        return _bash(self.FUNCTIONS + '''
+cmd_status() { echo "status ${INSTANCE:-default}"; }
+describe_service() { echo "monitor $1"; }
+SCRIPT_DIR="$TMP" ENV_FILE_ARG="" DAEMONS_DIR="$DAEMONS"
+LABEL_BASE=com.almostrealism.ci-runner MONITOR_LABEL=com.almostrealism.fleet-collector
+select_instance %s
+cmd_status_all''' % instance, TMP=self.tmp, DAEMONS=self.daemons)
+
+    def test_the_default_status_covers_every_runner_up_manages_then_the_monitor(self):
+        result = self._run('""')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            ["status default", "status 2", "status 10",
+             "Monitor com.almostrealism.fleet-collector", "monitor com.almostrealism.fleet-collector"],
+            [line for line in result.stdout.splitlines() if line])
+
+    def test_a_named_instance_is_shown_alone_without_the_numbered_runners(self):
+        result = self._run("deploy")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            ["status deploy", "Monitor com.almostrealism.fleet-collector",
+             "monitor com.almostrealism.fleet-collector"],
+            [line for line in result.stdout.splitlines() if line])
+
+
 if __name__ == "__main__":
     unittest.main()
