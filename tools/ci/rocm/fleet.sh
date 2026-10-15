@@ -15,6 +15,9 @@ set -euo pipefail
 #   ./fleet.sh logs [-f]      # journal for every instance
 #   ./fleet.sh restart        # stop then start
 #
+# up [N] and down are the same as start [N] and stop, under the names every
+# platform of tools/bin/fleet shares.
+#
 # It can be invoked from an admin account: anything other than the service
 # account re-executes itself under it with `sudo -iu`, using the service
 # account's own checkout. Set AR_CI_USER to override the account name and
@@ -39,7 +42,7 @@ CONTAINER_PREFIX="ar-ci-cl-runner-"
 # at when sweeping for runners that should not be there.
 MAX_INSTANCE=32
 
-usage() { sed -n '4,30p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '4,/^$/p' "$0" | sed 's/^# \{0,1\}//'; }
 
 case "${1:-}" in
     -h|--help|help|"") usage; exit 0 ;;
@@ -219,8 +222,8 @@ COMMAND="${1:-}"
 [ $# -gt 0 ] && shift
 
 case "${COMMAND}" in
-    start)   cmd_start "$@" ;;
-    stop)    cmd_stop "$@" ;;
+    start|up)  cmd_start "$@" ;;
+    stop|down) cmd_stop "$@" ;;
     restart) cmd_stop; echo; cmd_start "$@" ;;
     status)  cmd_status ;;
     logs)    cmd_logs "$@" ;;

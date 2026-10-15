@@ -789,3 +789,147 @@ class ExposedSecretTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _functions(*names):
+    """The source of the named fleet.sh functions, to run outside the script."""
+    with open(_MACOS_FLEET) as f:
+        src = f.read()
+    return "\n".join(re.search(r"^%s\(\) \{.*?^\}" % name, src, re.M | re.S).group(0) for name in names)
+
+
+def _bash(script, **env):
+    return subprocess.run(["bash", "-c", "set -euo pipefail\n" + script], capture_output=True, text=True,
+                          timeout=30, env={"PATH": os.environ["PATH"], **env})
+
+
+class NumberedRunnerEnvTests(unittest.TestCase):
+    """A numbered runner shares the default runner's env file, so its name and
+    any custom directory must be derived from it; a runner sharing a name or a
+    directory with another would take over its registration or its state."""
+
+    FUNCTIONS = _functions("derive_numbered_env", "staged_env")
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.env_file = os.path.join(self.tmp, ".env")
+        with open(self.env_file, "w") as f:
+            f.write("GITHUB_PAT=x\nRUNNER_NAME=mac-mini\nRUNNER_WORKDIR=/w\n")
+
+    def _run(self, numbered, instance, name, runner_dir, workdir, tail):
+        return _bash(self.FUNCTIONS + '''
+NUMBERED=%s INSTANCE=%s ENV_FILE="$ENV_FILE"
+ENV_RUNNER_NAME=%s ENV_RUNNER_DIR=%s ENV_RUNNER_WORKDIR=%s
+derive_numbered_env
+%s''' % (numbered, instance, name, runner_dir, workdir, tail), ENV_FILE=self.env_file)
+
+    def test_a_numbered_runner_gets_the_number_on_its_name_and_custom_directories(self):
+        result = self._run("true", "3", "mac-mini", "/r", "/w",
+                           'echo "$ENV_RUNNER_NAME|$ENV_RUNNER_DIR|$ENV_RUNNER_WORKDIR"')
+        self.assertEqual("mac-mini-3|/r-3|/w-3", result.stdout.strip(), result.stderr)
+
+    def test_unset_directories_stay_unset_for_their_per_instance_defaults(self):
+        result = self._run("true", "2", "mac-mini", '""', '""',
+                           'echo "[$ENV_RUNNER_DIR][$ENV_RUNNER_WORKDIR]"')
+        self.assertEqual("[][]", result.stdout.strip(), result.stderr)
+
+    def test_an_unnamed_numbered_runner_is_named_after_the_host(self):
+        result = self._run("true", "2", '""', '""', '""', 'echo "$ENV_RUNNER_NAME"')
+        self.assertRegex(result.stdout.strip(), r"^.+-macos-2$")
+
+    def test_the_default_runner_is_left_as_configured(self):
+        result = self._run("false", '""', "mac-mini", "/r", "/w",
+                           'echo "$ENV_RUNNER_NAME|$ENV_RUNNER_DIR|$ENV_RUNNER_WORKDIR"')
+        self.assertEqual("mac-mini|/r|/w", result.stdout.strip())
+
+    def test_the_staged_env_of_a_numbered_runner_overrides_the_shared_values(self):
+        """runner.sh sources the staged file, so the derived values must win."""
+        result = self._run("true", "3", "mac-mini", '""', "/w",
+                           'staged_env > "$ENV_FILE.staged"; . "$ENV_FILE.staged"; '
+                           'echo "$RUNNER_NAME|$RUNNER_WORKDIR|$GITHUB_PAT"')
+        self.assertEqual("mac-mini-3|/w-3|x", result.stdout.strip(), result.stderr)
+
+    def test_the_default_runner_stages_the_env_file_unchanged(self):
+        result = self._run("false", '""', "mac-mini", '""', "/w", "staged_env")
+        with open(self.env_file) as f:
+            self.assertEqual(f.read(), result.stdout)
+
+
+class UpAndDownTests(unittest.TestCase):
+    """`up N` installs the default runner and numbered runners 2..N, the monitor
+    with the first only, and removes numbered runners above N; `down` stops them
+    all. Named instances belong to their own commands and are never touched."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.daemons = os.path.join(self.tmp, "LaunchDaemons")
+        os.mkdir(self.daemons)
+        for name in ("", "-2", "-3", "-5", "-deploy"):
+            open(os.path.join(self.daemons, "com.almostrealism.ci-runner%s.plist" % name), "w").close()
+        self.calls = os.path.join(self.tmp, "calls")
+
+    def _run(self, body, **settings):
+        values = {"COUNT": "", "RUNNER_USER": "worker", "ENV_FILE_ARG": "", "MONITOR": "true",
+                  "STORE_FROM": "", "IF_IDLE": "false"}
+        values.update(settings)
+        assignments = "\n".join('%s="%s"' % item for item in values.items())
+        return _bash(_functions("numbered_instances", "cmd_up", "cmd_down") + '''
+fleet_self() { echo "$*" >> "$CALLS"; [ "$*" != "stop --instance 3 --if-idle" ]; }
+DAEMONS_DIR="$DAEMONS" LABEL_BASE=com.almostrealism.ci-runner
+INSTALLED_PLIST="$DAEMONS/com.almostrealism.ci-runner.plist"
+%s
+%s''' % (assignments, body), CALLS=self.calls, DAEMONS=self.daemons)
+
+    def _calls(self):
+        with open(self.calls) as f:
+            return f.read().splitlines()
+
+    def test_numbered_instances_lists_only_numbered_runners_in_order(self):
+        open(os.path.join(self.daemons, "com.almostrealism.ci-runner-10.plist"), "w").close()
+        result = self._run("numbered_instances")
+        self.assertEqual(["2", "3", "5", "10"], result.stdout.split())
+
+    def test_up_installs_each_runner_then_removes_the_numbered_ones_above_the_count(self):
+        result = self._run("cmd_up", COUNT="3", STORE_FROM="michael@mac-studio")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([
+            "install --user worker --store-from michael@mac-studio",
+            "install --instance 2 --no-monitor --user worker",
+            "install --instance 3 --no-monitor --user worker",
+            "uninstall --instance 5",
+        ], self._calls())
+
+    def test_up_without_a_count_runs_one_runner_and_passes_the_options_through(self):
+        result = self._run("cmd_up", MONITOR="false", IF_IDLE="true", ENV_FILE_ARG="/e/.env")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([
+            "install --user worker --env /e/.env --no-monitor",
+            "uninstall --instance 2 --if-idle",
+            "uninstall --instance 3 --if-idle",
+            "uninstall --instance 5 --if-idle",
+        ], self._calls())
+
+    def test_up_refuses_more_than_99_runners(self):
+        result = self._run("cmd_up", COUNT="100")
+        self.assertEqual(2, result.returncode)
+        self.assertFalse(os.path.exists(self.calls))
+
+    def test_down_stops_every_runner_up_manages_and_reports_a_failure(self):
+        result = self._run("cmd_down", IF_IDLE="true")
+        self.assertEqual(1, result.returncode, "a runner that would not stop must fail down")
+        self.assertEqual([
+            "stop --if-idle",
+            "stop --instance 2 --if-idle",
+            "stop --instance 3 --if-idle",
+            "stop --instance 5 --if-idle",
+        ], self._calls())
+
+    def test_down_with_nothing_installed_says_so(self):
+        for name in os.listdir(self.daemons):
+            os.remove(os.path.join(self.daemons, name))
+        result = self._run("cmd_down")
+        self.assertEqual(0, result.returncode)
+        self.assertIn("No runner is installed here", result.stdout)
+        self.assertFalse(os.path.exists(self.calls))
