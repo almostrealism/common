@@ -407,7 +407,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 *   <li>Validates result (checks for NaN if monitoring enabled)</li>
 	 * </ol>
 	 *
-	 * <p>This is an interruptible blocking call: an interrupted calling thread fails fast
+	 * <p>This is an interruptible blocking call: an interrupted calling thread fails
 	 * rather than returning an output the kernel may not have finished writing (see
 	 * {@link AcceleratedOperation#awaitCompletion(AcceleratedProcessDetails)}).</p>
 	 *

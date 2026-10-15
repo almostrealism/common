@@ -369,7 +369,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * compiled operations.</p>
 	 *
 	 * <p>This is an interruptible blocking call: an interrupted calling thread fails
-	 * fast rather than returning as though the work had finished (see
+	 * rather than returning as though the work had finished (see
 	 * {@link #awaitCompletion(AcceleratedProcessDetails)}).</p>
 	 *
 	 * @throws HardwareException if the calling thread is interrupted
@@ -393,15 +393,22 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * Waits until the dispatch described by {@code process} has been issued and has
 	 * completed, so that its outputs may be read.
 	 *
-	 * <p>This is an interruptible blocking call. A completion wait returns early, with the
-	 * interrupt status set, when the waiting thread is interrupted rather than throwing, so
-	 * its return alone cannot establish that the work finished. Returning normally in that
-	 * case would let the caller read outputs the kernel may still be writing, and a caller
-	 * driving many dispatches (a per-tick loop, for example) would keep issuing work it
-	 * never waits for. An interrupt is therefore reported as a failure. The status is only
-	 * inspected after the wait returns, so a thread whose interrupt status is already set on
-	 * entry fails the same way, as it would for any other interruptible blocking call; the
-	 * interrupt status is left set for the caller.</p>
+	 * <p>This is an interruptible blocking call. A completion wait that observes an interrupt
+	 * returns early, with the interrupt status set, rather than throwing, so its return alone
+	 * cannot establish that the work finished. Returning normally in that case would let the
+	 * caller read outputs the kernel may still be writing, and a caller driving many
+	 * dispatches (a per-tick loop, for example) would keep issuing work it never waits for.
+	 * An interrupt is therefore reported as a failure. The status is only inspected after the
+	 * wait returns, so a thread whose interrupt status is already set on entry fails the same
+	 * way, as it would for any other interruptible blocking call; the interrupt status is left
+	 * set for the caller.</p>
+	 *
+	 * <p>Whether an interrupt cuts the wait itself short depends on the backend's
+	 * {@link Semaphore}: a wait that cannot observe interrupts (an
+	 * OpenCL event wait, for example) blocks until the dispatch completes. Either way the
+	 * interrupt is reported once the wait returns, so no caller proceeds past an interrupt
+	 * as though nothing had happened, and a dispatch loop stops at the dispatch in progress
+	 * when the interrupt arrives.</p>
 	 *
 	 * @param process the details returned by {@link #apply(MemoryBank, Object[])}
 	 * @throws HardwareException if the calling thread's interrupt status is set once the

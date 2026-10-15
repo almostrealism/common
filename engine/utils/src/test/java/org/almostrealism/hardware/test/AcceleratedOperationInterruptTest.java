@@ -111,6 +111,9 @@ public class AcceleratedOperationInterruptTest extends TestSuiteBase {
 		} catch (HardwareException expected) {
 			Assert.assertTrue("interrupt status was cleared", Thread.currentThread().isInterrupted());
 		} finally {
+			// Clear the status before joining, since join() throws on an interrupted thread,
+			// then clear it again in case the interrupter fired after the loop ended
+			Thread.interrupted();
 			interrupter.join();
 			Thread.interrupted();
 		}
