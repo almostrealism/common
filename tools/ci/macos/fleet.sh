@@ -109,7 +109,7 @@ ONLINE_TIMEOUT_SECONDS=120
 # The programs runner.sh and the jobs need on the daemon's PATH.
 REQUIRED_TOOLS="java mvn curl jq git lsof"
 
-usage() { sed -n '4,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '4,/^$/p' "${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")" | sed 's/^# \{0,1\}//'; }
 
 COMMAND="${1:-}"
 case "${COMMAND}" in
@@ -171,10 +171,14 @@ case "${RUNNER_USER}" in
         exit 1
         ;;
 esac
-if [ "${COMMAND}" = up ] && [ -n "${INSTANCE}" ]; then
-    echo "ERROR: up manages the default runner and the numbered ones; it takes no --instance." >&2
-    exit 2
-fi
+case "${COMMAND}" in
+    up|down)
+        if [ -n "${INSTANCE}" ]; then
+            echo "ERROR: ${COMMAND} manages the default runner and the numbered ones; it takes no --instance." >&2
+            exit 2
+        fi
+        ;;
+esac
 
 # An explicit --env, absolute so the trust walk below covers every directory
 # above it, and resolved now, against the caller's directory.
@@ -1568,7 +1572,8 @@ fleet_self() {
 # up N: the default runner plus numbered runners 2..N, all from the default env
 # file, each installed (or updated: install replaces a registered service) and
 # online before the next. The monitor is installed once, with the first. Numbered
-# runners above N are uninstalled; named instances are not touched.
+# runners above N are uninstalled, each attempted even when another refuses
+# (--if-idle and busy), and up then fails; named instances are not touched.
 cmd_up() {
     local count="${COUNT:-1}" n
     if [ "${count}" -gt 99 ]; then
@@ -1592,7 +1597,7 @@ cmd_up() {
         echo "== Runner ${n} of ${count} =="
         fleet_self install --instance "${n}" --no-monitor "${common[@]}"
     done
-    local stop=()
+    local stop=() status=0
     if [ "${IF_IDLE}" = true ]; then
         stop+=(--if-idle)
     fi
@@ -1600,11 +1605,15 @@ cmd_up() {
         if [ "${n}" -gt "${count}" ]; then
             echo ""
             echo "== Removing runner ${n} (above ${count}) =="
-            fleet_self uninstall --instance "${n}" ${stop[@]+"${stop[@]}"}
+            fleet_self uninstall --instance "${n}" ${stop[@]+"${stop[@]}"} || status=1
         fi
     done
     echo ""
     echo "${count} runner(s) up. Check on them with: tools/bin/fleet macos status"
+    if [ "${status}" -ne 0 ]; then
+        echo "WARNING: not every runner above ${count} was removed; see above." >&2
+    fi
+    return "${status}"
 }
 
 # down: stop the default runner and every numbered one, deregistering each from

@@ -787,9 +787,6 @@ class ExposedSecretTests(unittest.TestCase):
             self.secret, "find() { return 1; }\n"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 def _functions(*names):
     """The source of the named fleet.sh functions, to run outside the script."""
@@ -911,6 +908,19 @@ INSTALLED_PLIST="$DAEMONS/com.almostrealism.ci-runner.plist"
             "uninstall --instance 5 --if-idle",
         ], self._calls())
 
+    def test_up_tries_every_removal_and_fails_when_a_busy_runner_refuses(self):
+        """A busy runner refusing --if-idle must not leave the ones after it running."""
+        result = self._run('fleet_self() { echo "$*" >> "$CALLS"; [ "$*" != "uninstall --instance 3 --if-idle" ]; }\n'
+                           "cmd_up", IF_IDLE="true")
+        self.assertEqual(1, result.returncode, "up must report the runner it could not remove")
+        self.assertEqual([
+            "install --user worker",
+            "uninstall --instance 2 --if-idle",
+            "uninstall --instance 3 --if-idle",
+            "uninstall --instance 5 --if-idle",
+        ], self._calls())
+        self.assertIn("not every runner above 1 was removed", result.stderr)
+
     def test_up_refuses_more_than_99_runners(self):
         result = self._run("cmd_up", COUNT="100")
         self.assertEqual(2, result.returncode)
@@ -933,3 +943,7 @@ INSTALLED_PLIST="$DAEMONS/com.almostrealism.ci-runner.plist"
         self.assertEqual(0, result.returncode)
         self.assertIn("No runner is installed here", result.stdout)
         self.assertFalse(os.path.exists(self.calls))
+
+
+if __name__ == "__main__":
+    unittest.main()

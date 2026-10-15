@@ -108,6 +108,14 @@ class MacosFleetUpArgumentTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("takes no --instance", result.stderr)
 
+    def test_down_takes_no_instance(self):
+        """down stops the default and numbered runners; an --instance it ignored
+        would stop the default runner instead of the one named."""
+        result = _run(_MACOS_FLEET, "down", "--instance", "deploy")
+        self.assertEqual(2, result.returncode)
+        self.assertIn("down manages the default runner and the numbered ones; it takes no --instance",
+                      result.stderr)
+
     def test_up_refuses_a_count_that_is_not_a_positive_number(self):
         for count in ("0", "007", "3x"):
             with self.subTest(count=count):
