@@ -1220,7 +1220,6 @@ EOF
         # as you inside the FLEET_HOME screened above. A dangling link counts as
         # existing: its target could be created or repointed later, so it is
         # handed to untrusted_program, which refuses a link it cannot follow.
-        # TODO(review): a venv left dangling by a Python upgrade is now refused (render.sh would have rebuilt it); say "remove ${fleet_home}/venv" in the error.
         local fleet_python="${FLEET_PYTHON:-${fleet_home}/venv/bin/python3}" python_bad=""
         case "${fleet_python}" in
             /*)
@@ -1234,6 +1233,14 @@ EOF
             echo "  ✗ ${python_bad}, on the path to the monitor interpreter (${fleet_python}), is not absolute, is" >&2
             echo "      writable by others, is owned by neither you (${admin_user}) nor root, or cannot be followed;" >&2
             echo "      another account could replace the interpreter the monitor install runs as you." >&2
+            # The default interpreter is the venv's, a symlink into the base
+            # Python; a Python upgrade can leave it dangling, which reads here as
+            # "cannot be followed". Removing the venv lets render.sh rebuild it on
+            # the next install. Only suggested for the default path — an explicit
+            # FLEET_PYTHON is the operator's own, not ours to remove.
+            if [ "${fleet_python}" = "${fleet_home}/venv/bin/python3" ]; then
+                echo "      If a Python upgrade left the venv dangling, remove it and reinstall: rm -rf ${fleet_home}/venv" >&2
+            fi
             errors=$((errors + 1))
         fi
         # Before any venv is involved, install.sh runs the python3 your PATH

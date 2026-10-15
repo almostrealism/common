@@ -227,6 +227,20 @@ class MacosFleetSecurityTests(unittest.TestCase):
         with open(_MACOS_FLEET) as f:
             self.src = f.read()
 
+    def test_a_dangling_default_venv_is_pointed_at_the_rebuild(self):
+        """The default monitor interpreter is the venv's python3, a symlink into
+        the base Python; an upgrade can leave it dangling, which reads as "cannot
+        be followed". The error must then tell the operator to remove the venv so
+        render.sh rebuilds it, but only for that default path — an explicit
+        FLEET_PYTHON is the operator's own and must not be suggested for removal."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn(
+            'if [ "${fleet_python}" = "${fleet_home}/venv/bin/python3" ]; then',
+            install,
+            "the rebuild hint must be gated on the default venv interpreter path")
+        self.assertIn("rm -rf ${fleet_home}/venv", install,
+                      "the hint should name the venv to remove for a rebuild")
+
     def test_github_token_never_reaches_a_curl_command_line(self):
         """`ps` shows every process's arguments to every account on the host,
         so the token must travel through a curl config file on stdin, never in
