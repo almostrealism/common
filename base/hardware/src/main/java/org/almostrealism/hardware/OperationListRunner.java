@@ -23,6 +23,7 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationTimingListener;
+import io.almostrealism.profile.OperationWithInfo;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -100,6 +101,11 @@ public class OperationListRunner implements Runnable, Destroyable, OperationInfo
 	 * <p>The compute requirements pushed here are thread-local; each member's dispatch
 	 * captures them on this thread and re-establishes them on whatever thread performs
 	 * the asynchronous work (see {@code AcceleratedOperation.apply}).</p>
+	 *
+	 * <p>When a timing listener is configured, the time taken to issue a {@link Submittable}
+	 * member is recorded under that member's own {@link OperationInfo#getMetadata() metadata},
+	 * as the run of a non-submittable member is, so a profile attributes it to the operation
+	 * rather than to an anonymous entry created afresh for every call.</p>
 	 */
 	@Override
 	public void run() {
@@ -122,8 +128,12 @@ public class OperationListRunner implements Runnable, Destroyable, OperationInfo
 					} else {
 						if (enableRunLogging) log("Running " + OperationInfo.display(r));
 						Semaphore[] completion = { pending };
+						Runnable submit = () -> completion[0] = s.submit(completion[0]);
+
+						// Attributed to the member, as a non-submittable member's run is
+						OperationMetadata member = r instanceof OperationInfo ? ((OperationInfo) r).getMetadata() : null;
 						timingListener.recordDuration(getMetadata(),
-								() -> completion[0] = s.submit(completion[0]));
+								member == null ? submit : OperationWithInfo.RunnableWithInfo.of(member, submit));
 						pending = completion[0];
 					}
 				} else {

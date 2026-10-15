@@ -1249,6 +1249,13 @@ public final class Hardware implements ConsoleFeatures {
 	 * context from a computation's characteristics. One of the two should be used for any
 	 * targeting decision; the ambient {@link #getComputeContext()} should not.</p>
 	 *
+	 * <p>Memory can be managed by more than one context: with shared memory enabled, the native
+	 * (CPU) context allocates from a device's host-accessible provider, which the device context
+	 * also manages. The choice is not made from the order the contexts are listed in. The managing
+	 * {@link DataContext} names the context through {@link DataContext#getComputeContext(Memory)},
+	 * and a native context that shares a device's memory names that device's context, so the same
+	 * device context is returned whichever of the two is found first.</p>
+	 *
 	 * @param memory the memory whose managing context is sought
 	 * @return the managing context, or {@code null} if no configured context manages it
 	 */
@@ -1258,7 +1265,7 @@ public final class Hardware implements ConsoleFeatures {
 		for (DataContext<MemoryData> dc : contexts) {
 			if (dc.getMemoryProviders().contains(memory.getProvider()) &&
 					!dc.getComputeContexts().isEmpty()) {
-				return dc.getComputeContexts().get(0);
+				return dc.getComputeContext(memory);
 			}
 		}
 
