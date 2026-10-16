@@ -2,7 +2,7 @@
 
 **Tracker task:** `92172edc-99c0-49e4-b72a-d81c7dfc97cf` — "Exfiltration guard reads an
 interpreter's data argument as the program after a stdin or inline program"
-**Release:** Common 0.76 (project "Common")
+**Project:** Common (release tracked in the project tracker)
 
 ## Motivation
 
@@ -44,8 +44,9 @@ A token containing `$` or a backtick cannot name a file the guard can resolve; t
 
 ## Scope
 
-In scope (all in `.claude/hooks/lib/` and the guard's file lists in
-`tools/ci/agent-protection/`):
+In scope (all in `.claude/hooks/lib/`, the guard's file lists in
+`tools/ci/agent-protection/`, and the enforcement-tampering file list in
+`.github/workflows/analysis.yaml`):
 
 1. After `-` (stdin program): stop the argument walk and return `f"{prog}:stdin"`; the
    remaining tokens are script arguments and are not read.
@@ -95,10 +96,17 @@ limit, so the new cases go in a new module, `test_exfiltration_guard_interpreter
 the shared `GuardFixture` imported from `test_exfiltration_guard_check.py`. This follows the
 precedent of `test_exfiltration_guard_transport.py`. CI already picks it up: `analysis.yaml`
 runs `python3 -m unittest discover -s .claude/hooks/lib -p "test_exfiltration_guard_*.py"`.
-The new file is guard infrastructure, so it is added to the `GUARD_FILES` arrays in both
-`tools/ci/agent-protection/verify-exfiltration-guard.sh` and
-`tools/ci/agent-protection/test-verify-exfiltration-guard.sh`, beside the transport module.
-<!-- TODO(review): the transport test module is also listed in PROTECTED_FILES of the enforcement-tampering step in .github/workflows/analysis.yaml; the new test module likely belongs there too (three list additions, not two). -->
+The new file is guard infrastructure, so it must be registered everywhere the transport
+module already is. The transport module appears in three lists, so the new module is added
+beside it in all three:
+
+- the `GUARD_FILES` array in `tools/ci/agent-protection/verify-exfiltration-guard.sh`,
+- the `GUARD_FILES` array in `tools/ci/agent-protection/test-verify-exfiltration-guard.sh`, and
+- the `PROTECTED_FILES` array of the "Check for enforcement infrastructure tampering" step in
+  `.github/workflows/analysis.yaml` (next to `test_exfiltration_guard_check.py`).
+
+Missing the `analysis.yaml` entry would leave the new test module editable on a PR branch
+without tripping the enforcement-tampering check, unlike every other guard test file.
 
 Cases (from the task):
 
@@ -152,4 +160,5 @@ No existing test changes.
 ## Estimated complexity
 
 Small. About 15 lines changed in one function plus a shared predicate, one new test module,
-and two one-line list additions.
+and three one-line list additions (two `GUARD_FILES` arrays and the `analysis.yaml`
+`PROTECTED_FILES` array).
