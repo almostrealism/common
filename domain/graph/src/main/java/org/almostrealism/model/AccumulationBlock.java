@@ -48,7 +48,9 @@ import java.util.function.Supplier;
  * deferred read would see zero. A parameter update set on this block reaches every child that
  * holds learnable parameters, so the weights inside each summed path train.</p>
  *
- * <p>All children must share an output shape, which is also this block's output shape.</p>
+ * <p>All children must accept this block's input shape, since the same input is pushed to each
+ * of them and their input-gradients are summed into one input-sized buffer, and all must share an
+ * output shape, which is also this block's output shape.</p>
  *
  * @see Block
  * @see BranchBlock
@@ -82,9 +84,10 @@ public class AccumulationBlock implements Block, Learning, Tracking {
 	 * Creates a block that sums the outputs of the given children applied to one input.
 	 *
 	 * @param inputShape the input shape every child receives
-	 * @param children   the child blocks to apply in parallel and sum; at least one, all sharing
-	 *                   an output shape
-	 * @throws IllegalArgumentException if no children are given, or the children do not share an
+	 * @param children   the child blocks to apply in parallel and sum; at least one, all accepting
+	 *                   {@code inputShape} and sharing an output shape
+	 * @throws IllegalArgumentException if no children are given, a child does not accept
+	 *                                  {@code inputShape}, or the children do not share an
 	 *                                  output shape
 	 */
 	public AccumulationBlock(TraversalPolicy inputShape, List<Block> children) {
@@ -95,6 +98,12 @@ public class AccumulationBlock implements Block, Learning, Tracking {
 		this.inputShape = inputShape;
 		this.outputShape = children.get(0).getOutputShape();
 		for (Block child : children) {
+			if (child.getInputShape().getTotalSize() != inputShape.getTotalSize()) {
+				throw new IllegalArgumentException(
+						"AccumulationBlock requires every block to accept its input " + inputShape
+								+ "; got a block expecting " + child.getInputShape());
+			}
+
 			if (child.getOutputShape().getTotalSize() != outputShape.getTotalSize()) {
 				throw new IllegalArgumentException(
 						"AccumulationBlock requires all blocks to share an output shape; got "

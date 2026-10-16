@@ -234,7 +234,10 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * @param inputShape   the input tensor shape
 	 * @param blocks       the sub-blocks to apply in parallel and sum
 	 * @param requirements optional compute requirements
-	 * @return a CellularLayer whose output is the element-wise sum of all block outputs
+	 * @return an {@link AccumulationBlock} whose output is the element-wise sum of all block
+	 *         outputs and whose backward pass reaches every sub-block
+	 * @throws IllegalArgumentException if no blocks are given, or the blocks do not all accept
+	 *                                  {@code inputShape} and share an output shape
 	 */
 	default Block accumBlocks(TraversalPolicy inputShape,
 							  List<Block> blocks,

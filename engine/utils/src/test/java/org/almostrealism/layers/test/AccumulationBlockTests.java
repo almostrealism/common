@@ -155,6 +155,29 @@ public class AccumulationBlockTests extends TestSuiteBase implements LayerRoutin
 	}
 
 	/**
+	 * Every child receives the same input and contributes an input-gradient to one input-sized
+	 * buffer, so a child expecting an input of a different size is rejected even when its output
+	 * size matches, and the message names both shapes.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsMismatchedInputShapes() {
+		Random random = new Random(15);
+		List<Block> children = new ArrayList<>();
+		children.add(dense(shape(SIZE), randn(shape(NODES, SIZE), 0.0, 1.0, random).evaluate(), false, false));
+		children.add(dense(shape(SIZE + 1), randn(shape(NODES, SIZE + 1), 0.0, 1.0, random).evaluate(), false, false));
+		try {
+			new AccumulationBlock(shape(SIZE), children);
+			Assert.fail("a child expecting a different input size must be rejected");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("accept its input"));
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains(String.valueOf(SIZE + 1)));
+		}
+
+		Block accepted = new AccumulationBlock(shape(SIZE), children.subList(0, 1));
+		Assert.assertEquals(shape(SIZE), accepted.getInputShape());
+	}
+
+	/**
 	 * The children are returned as an unmodifiable view, so the summed paths cannot be changed
 	 * after construction.
 	 */
@@ -258,12 +281,13 @@ public class AccumulationBlockTests extends TestSuiteBase implements LayerRoutin
 		private int destroyed;
 
 		/**
-		 * Creates a pass-through block of size {@link #NODES}.
+		 * Creates a block mapping {@link #SIZE} inputs to {@link #NODES} outputs, matching the
+		 * shapes of the dense children used elsewhere in these tests.
 		 *
 		 * @param setups counter incremented each time this block's setup runs
 		 */
 		RecordingBlock(AtomicInteger setups) {
-			super(new TraversalPolicy(NODES),
+			super(new TraversalPolicy(SIZE),
 					new TraversalPolicy(NODES), null, null,
 					() -> setups::incrementAndGet);
 		}
