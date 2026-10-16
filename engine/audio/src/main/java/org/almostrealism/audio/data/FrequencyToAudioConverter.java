@@ -6,6 +6,7 @@
 package org.almostrealism.audio.data;
 
 import io.almostrealism.compute.Process;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -13,6 +14,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.computations.FourierTransform;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
@@ -80,6 +82,11 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * Accumulating directly into a view at each frame's start sample would compile and
 	 * load a separate native program for every frame.</p>
 	 *
+	 * <p>The transient buffers used for synthesis are released in a {@code finally} block,
+	 * so a failure part-way through (allocation, kernel compilation, or evaluation) does not
+	 * strand their native allocations. The returned audio buffer stored in {@code details}
+	 * is not among them and survives a successful conversion.</p>
+	 *
 	 * @param details the WaveDetails to convert
 	 * @throws IllegalArgumentException if required frequency data is missing
 	 */
@@ -114,52 +121,61 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 
 		// Accumulator long enough that every frame contributes a full window
 		int accumulatedLength = Math.max(outputLength, (freqFrames - 1) * hopSize + fftSize);
-		PackedCollection accumulated = new PackedCollection(accumulatedLength);
 
-		// Precompute Hann window
-		PackedCollection window = createHannWindow(fftSize);
+		PackedCollection accumulated = null;
+		PackedCollection window = null;
+		PackedCollection spectra = null;
+		PackedCollection frameSpectrum = null;
+		PackedCollection transformed = null;
+		PackedCollection frameSamples = null;
+		PackedCollection segment = null;
 
-		// Complex spectra for every frame at once, with random phase
-		PackedCollection spectra = createComplexSpectra(freqData, freqFrames, freqBins);
-		PackedCollection frameSpectrum = new PackedCollection(shape(fftSize, 2));
+		try {
+			accumulated = new PackedCollection(accumulatedLength);
+			window = createHannWindow(fftSize);
+			spectra = createComplexSpectra(freqData, freqFrames, freqBins);
+			frameSpectrum = new PackedCollection(shape(fftSize, 2));
 
-		// Fixed-position buffers for the inverse transform, so one compiled operation serves every frame
-		PackedCollection transformed = new PackedCollection(shape(fftSize, 2));
-		PackedCollection frameSamples = new PackedCollection(fftSize);
-		Evaluable inverse = new FourierTransform(1, fftSize, true, cp(frameSpectrum)).get().into(transformed);
-		Evaluable realPart = realPart(transformed, fftSize).into(frameSamples.traverseEach());
+			// Fixed-position buffers for the inverse transform, so one compiled operation serves every frame
+			transformed = new PackedCollection(shape(fftSize, 2));
+			frameSamples = new PackedCollection(fftSize);
+			Evaluable inverse = new FourierTransform(1, fftSize, true, cp(frameSpectrum)).get().into(transformed);
+			Evaluable realPart = realPart(transformed, fftSize).into(frameSamples.traverseEach());
 
-		// Fixed-position buffer for the overlap-add, for the same reason
-		PackedCollection segment = new PackedCollection(fftSize);
-		Evaluable windowedAdd = cp(segment)
-				.add(cp(frameSamples).multiply(cp(window)))
-				.into(segment.traverseEach());
+			// Fixed-position buffer for the overlap-add, for the same reason
+			segment = new PackedCollection(fftSize);
+			Evaluable windowedAdd = cp(segment)
+					.add(cp(frameSamples).multiply(cp(window)))
+					.into(segment.traverseEach());
 
-		// Process each frame
-		for (int frame = 0; frame < freqFrames; frame++) {
-			frameSpectrum.setFrom(0, spectra.range(shape(fftSize * 2), frame * fftSize * 2));
-			inverse.evaluate();
-			realPart.evaluate();
+			for (int frame = 0; frame < freqFrames; frame++) {
+				frameSpectrum.setFrom(0, spectra.range(shape(fftSize * 2), frame * fftSize * 2));
+				inverse.evaluate();
+				realPart.evaluate();
 
-			int startSample = frame * hopSize;
-			segment.setFrom(accumulated, startSample, fftSize);
-			windowedAdd.evaluate();
-			accumulated.setFrom(startSample, segment);
+				int startSample = frame * hopSize;
+				segment.setFrom(accumulated, startSample, fftSize);
+				windowedAdd.evaluate();
+				accumulated.setFrom(startSample, segment);
+			}
+
+			PackedCollection output = new PackedCollection(outputLength);
+			output.setFrom(accumulated, 0, outputLength);
+
+			normalizeAudio(output);
+
+			details.setData(output);
+			details.setChannelCount(1);
+
+			log("Converted " + freqFrames + " frames to " + outputLength + " samples");
+		} finally {
+			List<Runnable> releases = new ArrayList<>();
+			for (PackedCollection buffer : new PackedCollection[] {
+					accumulated, window, spectra, frameSpectrum, transformed, frameSamples, segment }) {
+				if (buffer != null) releases.add(buffer::destroy);
+			}
+			Destroyable.releaseAll(releases);
 		}
-
-		PackedCollection output = new PackedCollection(outputLength);
-		output.setFrom(accumulated, 0, outputLength);
-		List.of(accumulated, window, spectra, frameSpectrum, transformed, frameSamples, segment)
-				.forEach(PackedCollection::destroy);
-
-		// Normalize output to prevent clipping
-		normalizeAudio(output);
-
-		// Store in WaveDetails
-		details.setData(output);
-		details.setChannelCount(1);
-
-		log("Converted " + freqFrames + " frames to " + outputLength + " samples");
 	}
 
 	/**

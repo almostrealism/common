@@ -148,6 +148,49 @@ public class FrequencyToAudioConverterTest implements TestFeatures {
 	}
 
 	/**
+	 * Conversion must reject details that carry no frequency data rather than
+	 * dereferencing a missing spectrum.
+	 */
+	@Test(timeout = 120000)
+	public void missingFrequencyDataIsRejected() {
+		WaveDetails details = new WaveDetails("empty", SAMPLE_RATE);
+		details.setFreqBinCount(BINS);
+		details.setFreqFrameCount(FRAMES);
+		details.setFreqSampleRate(FREQ_SAMPLE_RATE);
+		details.setSampleRate(SAMPLE_RATE);
+
+		assertConvertRejects(details);
+		Assert.assertNull("No audio should be produced for missing frequency data", details.getData());
+	}
+
+	/**
+	 * Non-positive frequency dimensions describe no spectrum and must be rejected
+	 * before any synthesis buffer is allocated.
+	 */
+	@Test(timeout = 120000)
+	public void invalidFrequencyDimensionsAreRejected() {
+		WaveDetails details = tonalDetails();
+		details.setFreqFrameCount(0);
+
+		assertConvertRejects(details);
+		Assert.assertNull("No audio should be produced for invalid dimensions", details.getData());
+	}
+
+	/**
+	 * Asserts that converting the given details raises {@link IllegalArgumentException}.
+	 *
+	 * @param details the details expected to be rejected
+	 */
+	private void assertConvertRejects(WaveDetails details) {
+		try {
+			new FrequencyToAudioConverter(new Random(1234)).convert(details);
+			Assert.fail("Conversion should have been rejected");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * Frequency data that is entirely zero should stay silent rather than being
 	 * scaled by a division that has no meaningful peak to divide by.
 	 */
