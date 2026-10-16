@@ -51,7 +51,37 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
 1. After `-` (stdin program): stop the argument walk and return `f"{prog}:stdin"`; the
    remaining tokens are script arguments and are not read.
 2. After an inline-code flag, handling splits by interpreter family, and the split follows each
-   family's actual grammar rather than the shared `_INTERPRETER_CODE_FLAGS` set.
+   family's actual grammar rather than the shared `_INTERPRETER_CODE_FLAGS` set. That set
+   (`-c`, `-e`, `-E`, `-p`, `-r`, `-C`, `--eval`, `--print`, …) is the union over every
+   interpreter, so for any one family most of its members are either not options at all or
+   options that take **no** argument. For the four families with an option table, the
+   inline-code match therefore uses a new per-family table of the flags that actually take a
+   program as their value:
+
+   | Family | Inline-code flags | Shared-set members that are argument-less for it |
+   |--------|-------------------|--------------------------------------------------|
+   | `python` | `-c` | `-E` (environment isolation) |
+   | `perl` | `-e`, `-E` (plus `-M…`, handled separately below) | `-p`, `-c`, `-C` |
+   | `ruby` | `-e` | `-p`, `-c` (`-E`, `-C`, `-r` are already taken by its value table, `-C` handler and preload table) |
+   | `node` | `-e`, `--eval`, `-p`, `--print`, `-pe` | `-c` (`--check`) (`-r`, `-C` are already taken by its preload and value tables) |
+
+   Node needs one more rule. `-pe` is Node's own alias for `--print --eval`, whose program is the
+   *next* token; it is not `-p` with the attached value `e`. Today's attached-form matching
+   (enabled for every family with a table) reads it the second way, scans the one-letter "code"
+   `e`, and then — harmlessly today, fatally once an early return exists — treats the real
+   program as the following operand. So the Node inline-code match recognises `-pe` as a whole
+   token and takes `-e`/`-p` values only as the next token or, for the long forms, after `=`
+   (`--eval=…`); it does not split an attached short value. The implementer should confirm Node's
+   short-option grammar against its option table before relying on this. Perl and Ruby genuinely
+   accept an attached value (`perl -e'print 1'`), so their `-e`/`-E` keep attached matching; a
+   switch cluster such as `-pe` or `-lne` no longer matches any of their inline flags (it does
+   not start with `-e`/`-E`), so it is skipped as an ordinary option and the code token after it
+   is read as a script and fails closed — the same outcome as today (Open question 4).
+
+   A shared-set member that is not in the family's table is an ordinary dash option that takes
+   no value, so the operand after it is still read and scanned as the script (item 3 and Open
+   question 3). Families with no table (`family is None`) keep matching the shared set exactly as
+   today.
    - **Python.** Python's only inline-code flag is `-c`, and `-c` turns the whole remainder of the
      command line into `sys.argv`, so once it has been scanned no later token is an option: the
      Python family returns `f"{prog}:inline"` immediately — but *only when the matched flag is
@@ -61,17 +91,22 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
      shared `_INTERPRETER_CODE_FLAGS` set also contains `-E`, which for Python is the
      environment-isolation option (it takes *no* argument), not inline code; so the Python
      inline-code match must be narrowed to `-c` alone (item 3 and Open question 3).
-   - **Perl, Ruby and Node.** An *inline-code* flag (`-e`/`-E` for Perl, `-e` for Ruby and Node)
-     puts everything after it into the program's argument vector (`@ARGV` / `process.argv`), so a
-     trailing operand is data, never a script. They also accept *repeated* inline-code flags
+   - **Perl, Ruby and Node.** An *inline-code* flag from the family's table above (`-e`/`-E` for
+     Perl, `-e` for Ruby, `-e`/`--eval`/`-p`/`--print`/`-pe` for Node) puts everything after it into the
+     program's argument vector (`@ARGV` / `process.argv`), so a trailing operand is data, never a
+     script. They also accept *repeated* inline-code flags
      (`perl -e 'a' -e 'b' file` scans both programs), so the loop keeps going after the first
      inline flag and an *inline-program-seen* early return just above the `tok == "-"` branch ends
      the walk at the first positional (or `-`) without reading it. That early return must key off
      an actual inline-code flag, **not** Perl's `-M`: `-M` loads a module and leaves the following
      operand a script that still runs (`perl -MJSON::PP script.pl` executes `script.pl`), so after
      a bare `-M` the first positional is a program and must still be read and scanned, exactly as
-     today. The one exception on the inline-program path is a positional token the shell can expand
-     into other words (`perl -e 'print 1' ${more[@]}`, or `perl -e 'print 1' *`): `${more[@]}` can
+     today. For the same reason it must key off the *family* table, not a match against the shared
+     set: matched against the shared set, Perl's argument-less `-p` would count as inline code, and
+     because attached matching is enabled for these families `perl -pe 'use Socket; …' file` reads
+     as `-p` with the value `e` — the early return would then end the walk at `'use Socket; …'`
+     and the real program would never be scanned. The one exception on the inline-program path is
+     a positional token the shell can expand into other words (`perl -e 'print 1' ${more[@]}`, or `perl -e 'print 1' *`): `${more[@]}` can
      expand at run time into a further `-e` and its code, and `*` into script or data operands the
      guard cannot predict, so such a token is *refused* there, not returned past, and a second
      program smuggled through an expansion is never silently skipped.
@@ -109,7 +144,13 @@ change to which modules or code count as network-capable.
 
 ## Approach
 
-All production changes are in `_check_interpreter` in `exfil_bash_runner.py`.
+All production changes are in `exfil_bash_runner.py`: the per-family inline-code table from
+Scope item 2 (a module-level dict beside `_INTERPRETER_VALUE_FLAGS` and
+`_INTERPRETER_PRELOAD_FLAGS`, keyed the same way), and the loop in `_check_interpreter`, which
+matches that table for the four families with one and the shared `_INTERPRETER_CODE_FLAGS` set
+only for `family is None`. No existing test exercises Perl/Ruby `-p`/`-c` or Node `-p`/`-pe`
+(Ruby's `-C` tests go through its dedicated working-directory handler, which runs first), so the
+narrowing changes no current assertion.
 
 - **Stdin program.** In the `tok == "-"` branch, after `_check_stdin_program(...)`, return
   `f"{prog}:stdin"` instead of `continue`. This matches the label `_check_shell` already uses
@@ -130,11 +171,21 @@ All production changes are in `_check_interpreter` in `exfil_bash_runner.py`.
     without reading the script — a fail-open (Open question 3). For the Python family, treat `-E`
     (and the other non-`-c` members of the shared set) as an ordinary dash option that takes no
     value, so the following `script.py` falls through to `_read_script` and is scanned.
-  - **Perl, Ruby and Node** (families `perl`, `ruby`, `node`). An inline-code flag (`-e`/`-E` for
-    Perl, `-e` for Ruby and Node) puts everything after it into the program's argument vector, so
+    <!-- TODO(review): today's loop already matches Python `-E` as inline code, so `python3 -E script.py` is a pre-existing fail-open (script never read), like the Perl `-p` case below; consider saying so instead of "would". -->
+  - **Perl, Ruby and Node** (families `perl`, `ruby`, `node`). An inline-code flag from the
+    family's table in Scope item 2 (`-e`/`-E` for Perl, `-e` for Ruby, `-e`/`--eval`/`-p`/
+    `--print`/`-pe` for Node — matched with the per-family table, never the shared set, and for
+    Node without splitting an attached short value) puts everything after it into the program's
+    argument vector, so
     a trailing operand is data, and these families may carry repeated inline-code flags
     (`perl -e 'a' -e 'b'`), so the loop must keep going after the first one: it `continue`s,
-    scanning each further `-e`/`-E` program. Alongside the existing `code_seen` (which it still
+    scanning each further inline program. The shared-set members that are argument-less for the
+    family (Perl `-p`/`-c`/`-C`, Ruby `-p`/`-c`, Node `-c`) no longer enter the inline-code branch
+    at all; they reach the `tok.startswith("-")` skip, so the operand after them is read by
+    `_read_script` as the script. That also closes a pre-existing fail-open: today
+    `perl -p script.pl` (and `ruby -p script.rb`, `perl -c script.pl`, whose `BEGIN` blocks run)
+    consumes `script.pl` as `-p`'s "code", scans only the literal file name, and never reads the
+    script. Alongside the existing `code_seen` (which it still
     sets, to gate the trailing stdin scan), the inline-code branch must record that an actual
     inline *program* was seen in a **new, separate** state — call it `inline_seen` — because
     `code_seen` is also set by Perl's `-M` branch (which shares the inline branch today), and `-M`
@@ -186,7 +237,7 @@ All production changes are in `_check_interpreter` in `exfil_bash_runner.py`.
     `_GuardError(f"{prog} script {tok!r} is expanded by the shell, so the guard cannot read it to scan it; a program the guard cannot read does not run")`
     before calling `_read_script`. The fail-closed outcome is unchanged from today (the token
     would reach `_read_script` and fail on the unreadable name); only the message is.
-  - On the Perl/Ruby/Node `code_seen` early-return path, such a token raises the same error
+  - On the Perl/Ruby/Node `inline_seen` early-return path, such a token raises the same error
     instead of returning `f"{prog}:inline"` — see the inline-program bullet above. Here the
     outcome *does* matter: returning early would let a token that expands into a further `-e`
     program (`${more[@]}`, `*`) slip past unscanned, so the guard must refuse it.
@@ -248,6 +299,14 @@ Cases (from the task):
   `script.pl` the program Perl runs, so it must still be read and scanned rather than returned
   past as argv data. (`perl -e 'print 1' script.pl` is the contrasting allow — there the operand
   *is* `@ARGV` data because `-e` is the program.)
+- `perl -pe 'use Socket; …' file` blocks (the `-pe` cluster is not an inline flag for Perl, so
+  the code token is read as a script and fails closed — it is never returned past as data), and
+  `perl -p /nonexistent/script.pl` and `ruby -p /nonexistent/script.rb` block because the script
+  is read rather than consumed as `-p`'s value. These guard that the Perl/Ruby inline match uses
+  the family table, not the shared set.
+- `node -p 'process.argv[1]' data.txt`, `node --eval 'x' data.txt` and
+  `node -pe 'process.argv[1]' data.txt` (no such file) allow, and `node -pe 'require("net")…'`
+  blocks — the real program after `-pe` is scanned, not skipped behind an attached `e`.
 - `python3 -E /nonexistent/script.py` still blocks because the script is read and scanned, not
   consumed as `-E`'s value. Guards that for the Python family `-E` is an argument-less option, not
   an inline-code flag, so the script after it is reached by `_read_script` (Open question 3). A
@@ -343,11 +402,23 @@ No existing test changes.
    option — and treating `-E` as inline code would let `python3 -E script.py` consume the script
    as `-E`'s value and skip reading it (Scope/Approach item 2, and the `python3 -E …` test above).
 
+4. **Perl/Ruby switch clusters (pre-existing over-block, out of scope).** `perl -lne 'code' file`,
+   `perl -pe 'code' file` and `ruby -ne 'code' file` are common one-liners. Today none of them is
+   recognised as carrying inline code (`-lne` matches no code flag; `-pe` matches `-p` with the
+   attached value `e`), so the code token is read as a script and the command blocks. This plan
+   keeps that fail-closed result — with the per-family tables a cluster still matches no inline
+   flag — rather than parse clusters, because a cluster parser must know which Perl/Ruby switches
+   take a value (`-l`, `-0`, `-i`, `-F`, `-C`, …) to find where the `e` sits, and a mistake there
+   is a fail-open. Parsing clusters correctly is a reasonable follow-up task once this change
+   lands.
+
 ## Estimated complexity
 
-Small. About 20–25 lines changed in one function — a Python-family immediate return in the
-inline-code branch gated on `-c` (with `-E` and the other non-`-c` shared flags treated as
-argument-less options for Python), an `inline_seen` early return above `tok == "-"` for the
+Small to moderate. About 30–40 lines changed in `exfil_bash_runner.py` — a per-family
+inline-code flag table beside `_INTERPRETER_VALUE_FLAGS` (Python `-c`; Perl `-e`/`-E`; Ruby `-e`;
+Node `-e`/`--eval`/`-p`/`--print`/`-pe`, without attached short values) used in place of the
+shared set for the four families with a table, a Python-family immediate return in the
+inline-code branch, an `inline_seen` early return above `tok == "-"` for the
 Perl/Ruby/Node families — tracked separately from `code_seen` so Perl's `-M` (which loads a
 module and leaves the next operand a script) does not trigger it, and itself guarding positional
 tokens the shell can expand — the
