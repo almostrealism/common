@@ -289,7 +289,9 @@ Out of scope: the shell branch (`_check_shell`, `bash "$f"`), awk's `-f progfile
 awk inline program (`awk "$code"` — the inline-code-value limitation of Open question 3; awk's
 first positional is program text scanned literally, not a path the guard reads, so the Scope item 3
 expansion refusal is not placed before the awk branch), and any
-change to which modules or code count as network-capable.
+change to which modules or code count as network-capable. The `--` end-of-options marker is not
+modelled as written. Open question 8 records the pre-existing fail-open and the remaining
+over-block that follow from that, and recommends handling `--` in this change.
 
 ## Approach
 
@@ -869,6 +871,20 @@ No existing test changes.
    — the one with a demonstrated second-program hazard once the guard knows an inline program is
    present — *is* closed, by the gated check above.
 
+   An earlier revision of this plan left the generic `-m` handler out of the gated refusal and
+   described Perl's attached `-m${…}` as an exotic case. A reviewer (Copilot, PR #659) showed that
+   this was wrong, and the problem was larger than the expansion shape. The handler *returns*, and
+   Perl does not stop parsing at `-m`, so on master a plain `-mstrict` ends the walk before any
+   later `-e` and before the stdin check. No expansion is needed for that. The plan now routes
+   Perl's `-m` through the `-M` branch (Scope item 2), which covers the inline-first `-m${more[@]}`
+   shape and the stdin path. The pre-inline `perl -m${more[@]} script.pl` shape is part of the
+   pre-inline residual this question records, the same as `-M`. The reviewer's separated example
+   (`perl -e 'eval <STDIN>' -m Foo <<'PL'`) is not a working command: Perl accepts `-m` only with
+   an attached value and exits with "Missing argument to -m" before running anything. The attached
+   form (`-mFoo`) does run, and that is the case the fix targets. The generic handler stays for
+   Python, whose `-m MODULE` really ends option parsing and which returns at `-c` before reaching
+   it after inline code. It also stays for Ruby and Node, which reject `-m` before running anything.
+
 7. **Argv data loaded as code by the fixed program (policy decision for the approver).** Scope
    item 2 ("What the early returns give up") records that once an inline flag has fixed the
    program, the guard no longer reads the trailing operands that master reads incidentally. So
@@ -902,20 +918,50 @@ No existing test changes.
    return, the `inline_seen` early return and the tests listed above, but not the stdin or
    expansion handling.
 
-   <!-- TODO(review): this `-m` history paragraph belongs to Open question 6 (whose `-m` carve-out it replaced); under 7 its "the residual described above" reads as the argv options. -->
-   An earlier revision of this plan left the generic `-m` handler out of the gated refusal and
-   described Perl's attached `-m${…}` as an exotic case. A reviewer (Copilot, PR #659) showed that
-   this was wrong, and the problem was larger than the expansion shape. The handler *returns*, and
-   Perl does not stop parsing at `-m`, so on master a plain `-mstrict` ends the walk before any
-   later `-e` and before the stdin check. No expansion is needed for that. The plan now routes
-   Perl's `-m` through the `-M` branch (Scope item 2), which covers the inline-first `-m${more[@]}`
-   shape and the stdin path. The pre-inline `perl -m${more[@]} script.pl` shape is part of the
-   residual described above, the same as `-M`. The reviewer's separated example
-   (`perl -e 'eval <STDIN>' -m Foo <<'PL'`) is not a working command: Perl accepts `-m` only with
-   an attached value and exits with "Missing argument to -m" before running anything. The attached
-   form (`-mFoo`) does run, and that is the case the fix targets. The generic handler stays for
-   Python, whose `-m MODULE` really ends option parsing and which returns at `-c` before reaching
-   it after inline code. It also stays for Ruby and Node, which reject `-m` before running anything.
+8. **The `--` end-of-options marker (not modelled; one pre-existing fail-open, one avoidable
+   over-block).** `_check_interpreter` has no case for `--`. It starts with `-`, so it reaches the
+   generic `tok.startswith("-")` skip and is dropped like any other option. The Approach above
+   leaves it there: on the `inline_seen` path it is an ordinary, unexpanded dash option and still
+   falls through to that skip. Copilot's review summary for the latest commit on PR #659 names a
+   "`--` handling gap" without an inline finding. Running the four interpreters with a `--` marker
+   shows two concrete consequences, one on each side of the inline flag.
+   - **Before the program is fixed, `--` makes the next word the script, even a dash-shaped one.**
+     With a file named `-e` (or `-c`) in the working directory, `perl -- -e 'print 1'` and
+     `ruby -- -e 'puts 1'` run the *file* `-e` and print its output, not the inline text.
+     `python3 -- -c 'print(1)'` runs the file `-c`. `node -- -e '…'` likewise treats `-e` as a
+     script path ("Cannot find module '-e'" when it cannot resolve it), not as inline code. The
+     guard skips `--`, matches the next token as an inline-code flag, scans the *following* word as
+     code, and never reads the file that actually runs. That is a pre-existing fail-open on master.
+     It needs a file with a flag-shaped name, which makes it narrow but not hypothetical, since a
+     command can create that file earlier in the same line. This plan does not make it wider in any
+     way that matters: master never reads the `-e` file either. The early returns only stop master's
+     incidental read of a later operand.
+   - **After an inline program, `--` makes every later word argv data.** `perl -e 'p' -- -e 'q'`,
+     `ruby -e 'p ARGV' -- -e 'q'` and `node -e '…' -- -e 'q'` all pass `-e` and `q` to the program
+     as arguments and run nothing further. Under the plan as written, the `inline_seen` path still
+     treats the words after `--` as possible options: an expanded token after `--`
+     (`perl -e '…' -- "$f"`) is refused as "expanded by the shell". Master blocks it too, on the
+     unreadable `$f`, so this is not a regression. It is still an over-block that the plan leaves in
+     place, and it hits exactly the loop idiom this plan exists to unblock, written the way careful
+     scripts write it. (Without
+     `--`, `perl -e '…' "$f"` is refused correctly. `f=-eCODE` expands to one attached-form inline
+     program, so the refusal is not confined to unquoted word-splitting.)
+
+   **Recommendation (for the approver):** model `--` for the four families with an option grammar
+   (`family is not None`) as part of this change. Both halves are local to the loop, and the tests
+   are small. (a) While no program has been fixed (`not code_seen`), `--` sends the next token straight
+   to the unknown-program path: the Scope item 3 expansion refusal, then `_read_script` and
+   `_scan_code`, never the flag handlers. If no token follows, the end-of-loop stdin check runs. (b)
+   Once `inline_seen` is set, `--` ends the walk: inspect stdin as the `inline_seen` early return
+   does, then return `f"{prog}:inline"` without applying the expansion refusal to the words after
+   it. Python's immediate return already covers the post-`-c` side. Leave grammar-less interpreters
+   alone, because their treatment of `--` is not modelled. Tests: with a readable `-e` file that
+   contains `use IO::Socket;`, `perl -- -e 'print 1'` blocks, and with a clean `-e` file it allows.
+   `python3 -- -c 'print(1)'` with a network-capable `-c` file blocks. `perl -e 'print 1' -- "$f"`
+   and `node -e 'x' -- "$f"` allow, while `perl -e 'print 1' "$f"` still blocks. If the approver
+   prefers to keep this change minimal, part (a) is a separate follow-up, since the fail-open is
+   pre-existing. Part (b) only removes an over-block, so it can also wait. The cost of waiting is
+   that `perl -e '…' -- "$f"` loops stay blocked.
 
 ## Estimated complexity
 
