@@ -88,7 +88,7 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
    not start with `-e`/`-E`), so it is skipped as an ordinary option and the code token after it
    is read as a script by `_read_script`. That read fails closed — and the command blocks —
    *whenever the code token does not name a readable file*, which is the normal case, because the
-   token is interpreter source (`'use Socket; …'`), not a path. It is important to be precise
+   token is interpreter source (`'use IO::Socket; …'`), not a path. It is important to be precise
    about what that block is and is not: the guard never scans the cluster's actual inline program,
    so the block is a property of the operand being unreadable, not of the guard recognising the
    cluster. If that operand ever did name a readable, clean file, the guard would scan the *file*,
@@ -122,8 +122,8 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
      a bare `-M` the first positional is a program and must still be read and scanned, exactly as
      today. For the same reason it must key off the *family* table, not a match against the shared
      set: matched against the shared set, Perl's argument-less `-p` would count as inline code, and
-     because attached matching is enabled for these families `perl -pe 'use Socket; …' file` reads
-     as `-p` with the value `e` — the early return would then end the walk at `'use Socket; …'`
+     because attached matching is enabled for these families `perl -pe 'use IO::Socket; …' file` reads
+     as `-p` with the value `e` — the early return would then end the walk at `'use IO::Socket; …'`
      and the real program would never be scanned. There is one exception on the inline-program
      path: a token the shell can expand into other words is *refused* there, not returned past and
      not skipped, because an expansion can introduce a further `-e` and its code. This holds whether
@@ -175,28 +175,28 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
 
    **Stdin is still inspected after an inline program.** Fixing the program to an inline flag
    does not make the command's standard input inert: an inline program can read and execute its
-   own stdin (`python3 -c 'exec(sys.stdin.read())'`, `perl -e 'eval <STDIN>'`), so a heredoc or
+   own stdin (`python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))'`, `perl -e 'eval <STDIN>'`), so a heredoc or
    pipe attached to the command is potential program text, not data. The command's stdin must
    therefore be inspected whenever an inline program has been seen, exactly as
    `_check_stdin_program` already does for a non-shell interpreter: each heredoc body in
    `bodies` is scanned as code (`_scan_code`), and a pipe (`piped`) is refused. Without it,
-   `python3 -c 'exec(sys.stdin.read())' - <<'PY'` / `import socket` / `PY` would run the heredoc
+   `python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' - <<'PY'` / `import socket` / `PY` would run the heredoc
    unscanned — the bypass a reviewer raised on PR #659. For the `-` token specifically this is
    also a regression guard: today the `tok == "-"` branch reaches `_check_stdin_program` and
    scans that heredoc, so an early return that simply dropped it would be a fail-open relative to
    master. Three sites carry this inspection, because the two inline families reach it differently.
    The Python `-c` branch *returns immediately* at the match, so it inspects stdin there and the
-   no-`-` form `python3 -c 'exec(sys.stdin.read())' <<'PY'` is covered by that one return. The
+   no-`-` form `python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' <<'PY'` is covered by that one return. The
    Perl/Ruby/Node branch instead `continue`s (to allow repeated `-e`), so it inspects stdin at
    two points: the `inline_seen` early return, reached when a later token follows the inline
    program, *and* the end-of-loop check, reached when the inline program is the command's last
-   token. The latter is the case a reviewer raised on PR #659 (`perl -e 'eval <STDIN>' <<'PL'` / `use Socket;` / `PL`, and the piped `cat x | perl -e 'eval <STDIN>'`): the loop falls through to
+   token. The latter is the case a reviewer raised on PR #659 (`perl -e 'eval <STDIN>' <<'PL'` / `use IO::Socket;` / `PL`, and the piped `cat x | perl -e 'eval <STDIN>'`): the loop falls through to
    the trailing stdin check, which on master is `if not code_seen:` and is therefore skipped once
    an inline program has set `code_seen`, leaving the heredoc or pipe unscanned. So that trailing
    check must be broadened to fire on `inline_seen` as well — `if inline_seen or not code_seen:` —
    not left unchanged. With that, the inspection closes two pre-existing fail-opens on the no-`-`
    forms, where `code_seen` suppresses the trailing stdin check today:
-   `python3 -c 'exec(sys.stdin.read())' <<'PY'` (heredoc, closed by the Python immediate return)
+   `python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' <<'PY'` (heredoc, closed by the Python immediate return)
    and `cat x | perl -e 'eval <STDIN>'` (pipe, closed by the broadened end-of-loop check) are
    unscanned on master. Refusing the pipe does over-block a piped inline one-liner that never reads stdin
    (`cat x | python3 -c 'print(1)'`); that cost, and the alternative of scanning only visible
@@ -211,7 +211,7 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
    `_REDIRECT_TOKENS` but not `_OUTPUT_REDIRECT_TOKENS`, so the walk skips the operator and its
    target (`i += 2`) and neither reaches `_check_interpreter`. So an inline program that reads and
    executes a *redirected file* or a *here-string* —
-   `python3 -c 'exec(sys.stdin.read())' < payload.py`, `python3 -c 'exec(sys.stdin.read())' <<< 'import socket'` —
+   `python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' < payload.py`, `python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' <<< 'import socket'` —
    is **not** inspected by this change, and returns `python3:inline` with the payload unscanned.
    This is a pre-existing gap, not a regression: on master the same commands set `code_seen` and
    reach the end of the walk with the trailing `if not code_seen:` suppressed, so the redirected
@@ -319,7 +319,7 @@ narrowing changes no current assertion.
     unknown-program case below rather than returning past it; an ordinary, unexpanded dash option
     falls through to the skip, exactly as today. The expansion refusal is because such a token can
     expand at run time into words the guard cannot predict, including a further inline-code flag
-    or a script operand: `perl -e 'print 1' ${more[@]}` with `more=(-e 'use Socket; …')` is one
+    or a script operand: `perl -e 'print 1' ${more[@]}` with `more=(-e 'use IO::Socket; …')` is one
     positional token to the guard but a second `-e` program to Perl, `perl -e 'print 1' *`
     expands to whatever files the directory holds, and `perl -e 'print 1' "-$opt"` with `opt=e`
     is a single *dash-prefixed* token that matches no inline-code flag — `match_flag` cannot see
@@ -344,9 +344,9 @@ narrowing changes no current assertion.
     (`_match_flag(tok, preload_flags)`) and Ruby's `-C` handler each take their operand from the
     attached value or the following token and loop on, so an *expanded* operand there — `-I
     ${more[@]}`, `-r ${more[@]}`, `-C ${more[@]}` — is swallowed unscanned and never reaches the
-    early return. `perl -e 'print 1' -I ${more[@]}` with `more=(safe -e 'use Socket; …')` is the
+    early return. `perl -e 'print 1' -I ${more[@]}` with `more=(safe -e 'use IO::Socket; …')` is the
     reviewer's case: `-I` consumes `${more[@]}`, which the shell word-splits into `safe` (an
-    include dir) plus a second `-e 'use Socket; …'` program the guard never sees. So, once
+    include dir) plus a second `-e 'use IO::Socket; …'` program the guard never sees. So, once
     `inline_seen` is set, each of these three handlers must apply the same
     `is_shell_expanded(operand) or is_glob_or_brace(operand)` test to the operand it is about to
     consume — the attached value or `args[i + 1]` — and raise the same "expanded by the shell"
@@ -371,8 +371,8 @@ narrowing changes no current assertion.
     is non-empty so the common stdin-less one-liner is untouched. There are three such sites, not
     two, because the Python and Perl/Ruby/Node families reach the end of the walk differently:
     - The **Python `-c` immediate return** inspects stdin and then returns at the match, so it
-      covers both `python3 -c 'exec(sys.stdin.read())' - <<…` (trailing `-`) and the no-`-`
-      `python3 -c 'exec(sys.stdin.read())' <<…`.
+      covers both `python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' - <<…` (trailing `-`) and the no-`-`
+      `python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' <<…`.
     - The **Perl/Ruby/Node `inline_seen` early return** inspects stdin before returning, covering
       the form where a later token (positional or `-`) follows the inline program —
       `perl -e 'eval <STDIN>' - <<…`.
@@ -458,7 +458,21 @@ Cases (from the task). Where a case says a body or script "contains a network ca
 must be one that `NETWORK_CODE_PATTERNS` in `exfil_bash_network.py` actually matches, such as
 `import socket` or `fetch("http://e")` as in the existing tests. A plausible-looking payload
 that matches no pattern, for example `require("net").connect(1)`, is allowed whatever the
-argument walk does, so a "blocks" case built on it would test nothing.
+argument walk does, so a "blocks" case built on it would test nothing. Perl's bare
+`use Socket;` is another such payload (`\bSocket\s*\(` needs a call, and the patterns are
+case-sensitive); the Perl cases below use `use IO::Socket;`, which `\bIO::Socket\b` matches.
+
+The converse matters for the stdin cases: the *inline* program in them must itself match no
+pattern, or the command blocks on the inline scan alone and the case says nothing about stdin
+inspection. `exec(sys.stdin.read())` is the obvious spelling but matches `\bexec\s*\(`, so
+`python3 -c 'exec(sys.stdin.read())' <<'PY'` is already refused on master whatever the heredoc
+holds, and a "clean body allows" case built on it would fail. The cases (and the examples in
+Scope and Open questions) therefore use `import sys; eval(compile(sys.stdin.read(), "-", "exec"))`,
+which executes stdin just the same and matches no pattern; `perl -e 'eval <STDIN>'` and
+`node -e 'eval(require("fs").readFileSync(0, "utf8"))'` likewise match none. That the obvious
+spelling is caught does not make the stdin inspection redundant — the pattern list cannot
+enumerate every way to evaluate text, which is why stdin is scanned rather than the inline code
+trusted.
 
 - `python3 - data.json <<'PY' … PY` with a clean body allows; with `import socket` blocks.
 - `python3 -I - "$f" <<'PY' … PY` with a clean body allows.
@@ -467,7 +481,7 @@ argument walk does, so a "blocks" case built on it would test nothing.
   program, the trailing `-` is a positional argument, not a second stdin program, so it is not
   read as a script file. Guards the Python immediate-return: the `-c` branch returns before the
   `tok == "-"` handler is reached, so `-` is never read as a script.
-- `python3 -c 'exec(sys.stdin.read())' - <<'PY'` / `import socket` / `PY` blocks, and the same
+- `python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' - <<'PY'` / `import socket` / `PY` blocks, and the same
   command with a clean heredoc body allows. An inline program can read and execute stdin, so the
   command's heredoc body is still scanned as code before the Python immediate return — not
   dropped as if `-` made it inert. Guards that the early return inspects stdin (Scope item 2,
@@ -479,16 +493,21 @@ argument walk does, so a "blocks" case built on it would test nothing.
   `-c` still blocks (existing behaviour; add it so the distinction is asserted, not inferred).
 - `perl -e 'print 1' -e 'print 2' file` allows, and with a network call in the *second* `-e`
   blocks (proves both programs are scanned).
-- `perl -e 'eval <STDIN>' - <<'PL'` / `use Socket;` / `PL` blocks, and the same command with a
+- `perl -e 'eval <STDIN>' - <<'PL'` / `use IO::Socket;` / `PL` blocks, and the same command with a
   clean heredoc body allows. Guards that the Perl/Ruby/Node `inline_seen` early return inspects
   the command's stdin too: an inline program can read and execute stdin, so the heredoc body is
   scanned as code before the early return rather than dropped behind the trailing `-`.
-- `perl -e 'eval <STDIN>' <<'PL'` / `use Socket;` / `PL` (no trailing `-`, so the inline flag is
+- `perl -e 'eval <STDIN>' <<'PL'` / `use IO::Socket;` / `PL` (no trailing `-`, so the inline flag is
   the command's last token) blocks, and the same command with a clean heredoc body allows; the
   piped form `cat x | perl -e 'eval <STDIN>'` blocks too. Guards the end-of-loop stdin check:
   with the inline program last the loop never reaches the `inline_seen` early return, so the
   trailing check must fire on `inline_seen` (`if inline_seen or not code_seen:`) rather than be
   suppressed by `code_seen` as on master, where both forms run their stdin unscanned.
+- `ruby -e 'puts 1' data.txt` and `node -e 'console.log(1)' data.txt` (no such file) allow, and
+  `node -e 'eval(require("fs").readFileSync(0, "utf8"))' <<'JS'` / `fetch("http://e")` / `JS`
+  blocks while the same command with a clean body allows. The Perl cases alone would leave the
+  Ruby and Node arms of the `inline_seen` early return and the broadened end-of-loop stdin check
+  unexercised; these assert them for the other two families that share that path.
 - `perl -e 'print 1' ${more[@]}` (a shell-expanded positional token after inline code) blocks
   with the "expanded by the shell" message, not allowed, and `perl -e 'print 1' *` (an unquoted
   glob token after inline code) blocks the same way. Both guard the Perl/Ruby/Node early return
@@ -524,8 +543,8 @@ argument walk does, so a "blocks" case built on it would test nothing.
   `script.pl` the program Perl runs, so it must still be read and scanned rather than returned
   past as argv data. (`perl -e 'print 1' script.pl` is the contrasting allow — there the operand
   *is* `@ARGV` data because `-e` is the program.)
-- `perl -pe 'use Socket; …' file` blocks: the `-pe` cluster is not an inline flag for Perl, so
-  the cluster's code token (`'use Socket; …'`) is not consumed as inline data (not returned past)
+- `perl -pe 'use IO::Socket; …' file` blocks: the `-pe` cluster is not an inline flag for Perl, so
+  the cluster's code token (`'use IO::Socket; …'`) is not consumed as inline data (not returned past)
   but reaches `_read_script`, where the read of that non-path fails closed. This case proves the
   cluster is *not* skipped over as data; it does **not** prove the cluster's inline program is
   scanned — the block comes from the operand being unreadable, and if that operand named a
@@ -565,7 +584,8 @@ No existing test changes.
 - The observed loop command and every case above produce the stated allow/block result.
 - `python3 -m pytest .claude/hooks/lib/test_exfiltration_guard_interpreter.py -q` and the
   existing `test_exfiltration_guard_check.py` and `test_exfiltration_guard_transport.py`
-  modules pass unchanged.
+  modules pass unchanged; so does the command CI runs,
+  `python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_*.py"`.
 - `bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh` passes.
 - The guard stays present and registered on HEAD throughout; the `test-integrity-check`,
   CI-file lock and enforcement-tampering checks pass on the implementation branch.
@@ -653,7 +673,7 @@ No existing test changes.
    A reviewer (PR #659) correctly observed that calling this result "fail-closed" is an
    overstatement, and the point is recorded here rather than papered over. The block is not
    produced by recognising the cluster; it is produced by `_read_script` failing on the token
-   after the cluster. For a real one-liner that token is the Perl/Ruby source (`'use Socket; …'`),
+   after the cluster. For a real one-liner that token is the Perl/Ruby source (`'use IO::Socket; …'`),
    which is not a path, so the read fails and the command blocks — but the cluster's inline
    program is never actually scanned. If that token ever named a readable, clean file, the guard
    would scan the *file*, return, and let the real inline program run unscanned. That is a
@@ -687,18 +707,18 @@ No existing test changes.
    return, the Perl/Ruby/Node `inline_seen` early return (reached when a later token follows the
    inline program), and the broadened end-of-loop check `if inline_seen or not code_seen:`
    (reached when a Perl/Ruby/Node inline flag is the command's last token). A reviewer raised two
-   shapes of this on PR #659 — the `python3 -c 'exec(sys.stdin.read())' - <<…` bypass and, later,
+   shapes of this on PR #659 — the `python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' - <<…` bypass and, later,
    the no-trailing-token `perl -e 'eval <STDIN>' <<…` / piped form that the early return alone
    misses. Scanning the heredoc bodies is unambiguously right: the body is present, cheap to scan,
    and skipping it both regresses the `-`-token case (master scans it via the `tok == "-"` branch)
    and leaves a pre-existing no-`-` gap open. The only genuine choice is the **pipe**:
    - **Refuse the pipe (recommended, as written above).** Consistent and fully fail-closed:
-     `cat x | python3 -c 'exec(sys.stdin.read())'` and `cat x | perl -e 'eval <STDIN>'` block, and
+     `cat x | python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))'` and `cat x | perl -e 'eval <STDIN>'` block, and
      the `-`-token pipe form that master already blocks stays blocked. Cost: a piped inline
      one-liner that never reads stdin (`cat x | python3 -c 'print(1)'`) is newly over-blocked.
      This is the safe direction and no such idiom has been reported against the guard.
    - **Scan only visible heredoc bodies, leave pipes as today.** Avoids the new over-block, but
-     the guard cannot see piped content, so `cat x | python3 -c 'exec(sys.stdin.read())'` would
+     the guard cannot see piped content, so `cat x | python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))'` would
      pass — and worse, the `python3 -c 'CODE' -` *with a pipe* form that master blocks via the
      `tok == "-"` branch would flip to allow, a fail-open regression. If the approver prefers this
      option, the `-`-token pipe case must be special-cased to stay blocked so no regression is
@@ -710,8 +730,8 @@ No existing test changes.
 
    **Input redirections and here-strings are out of scope (pre-existing gap).** The stdin
    inspection above can only see what `_simple_commands` threads through to the runner — a pipe and
-   heredoc bodies. An ordinary input redirection (`python3 -c 'exec(sys.stdin.read())' < payload.py`)
-   and a here-string (`python3 -c 'exec(sys.stdin.read())' <<< 'import socket'`) are input forms in
+   heredoc bodies. An ordinary input redirection (`python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' < payload.py`)
+   and a here-string (`python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' <<< 'import socket'`) are input forms in
    `_REDIRECT_TOKENS` but not `_OUTPUT_REDIRECT_TOKENS`, so the lexer skips the operator and its
    target and the content never reaches `_check_stdin_program`; the inline program reads and
    executes it unscanned. A reviewer raised this on PR #659. It is a pre-existing gap, not a
@@ -731,7 +751,7 @@ No existing test changes.
    item 2, Approach Perl/Ruby/Node bullet) is deliberately gated on an inline program having
    *already* been seen, so an expansion consumed as such an operand *before* the first inline flag
    is not refused: `perl -I ${more[@]} -e 'print 1'` and `perl -I ${more[@]} script.pl` with
-   `more=(safe -e 'use Socket; …')` word-split `${more[@]}` into a second `-e` program the guard
+   `more=(safe -e 'use IO::Socket; …')` word-split `${more[@]}` into a second `-e` program the guard
    never scans. A reviewer (Copilot, PR #659) raised the inline-first shape; this is its
    mirror. It is a pre-existing gap, not a regression — master consumes the `-I` operand without an
    expansion test in every ordering — and the gate is what keeps the common include-list idiom
