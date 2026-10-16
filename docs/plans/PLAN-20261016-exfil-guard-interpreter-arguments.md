@@ -61,15 +61,20 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
      shared `_INTERPRETER_CODE_FLAGS` set also contains `-E`, which for Python is the
      environment-isolation option (it takes *no* argument), not inline code; so the Python
      inline-code match must be narrowed to `-c` alone (item 3 and Open question 3).
-   - **Perl, Ruby and Node.** These put everything after an inline-code flag into the program's
-     argument vector (`@ARGV` / `process.argv`), so a trailing operand is data, never a script.
-     They also accept *repeated* inline-code flags (`perl -e 'a' -e 'b' file` scans both
-     programs), so the loop keeps going after the first inline flag and a `code_seen` early return
-     just above the `tok == "-"` branch ends the walk at the first positional (or `-`) without
-     reading it — except that a positional token on that path that the shell can expand into
-     other words (`perl -e 'print 1' ${more[@]}`, or `perl -e 'print 1' *`, either of which can
-     expand at run time into a further `-e` and its code) is *refused* there, not returned past,
-     so a second program smuggled through an expansion is never silently skipped.
+   - **Perl, Ruby and Node.** An *inline-code* flag (`-e`/`-E` for Perl, `-e` for Ruby and Node)
+     puts everything after it into the program's argument vector (`@ARGV` / `process.argv`), so a
+     trailing operand is data, never a script. They also accept *repeated* inline-code flags
+     (`perl -e 'a' -e 'b' file` scans both programs), so the loop keeps going after the first
+     inline flag and an *inline-program-seen* early return just above the `tok == "-"` branch ends
+     the walk at the first positional (or `-`) without reading it. That early return must key off
+     an actual inline-code flag, **not** Perl's `-M`: `-M` loads a module and leaves the following
+     operand a script that still runs (`perl -MJSON::PP script.pl` executes `script.pl`), so after
+     a bare `-M` the first positional is a program and must still be read and scanned, exactly as
+     today. The one exception on the inline-program path is a positional token the shell can expand
+     into other words (`perl -e 'print 1' ${more[@]}`, or `perl -e 'print 1' *`): `${more[@]}` can
+     expand at run time into a further `-e` and its code, and `*` into script or data operands the
+     guard cannot predict, so such a token is *refused* there, not returned past, and a second
+     program smuggled through an expansion is never silently skipped.
    - **Interpreters the guard has no option grammar for** (`php`, `lua`, `luajit`, `tclsh`,
      `Rscript`, …). These do *not* get the early return, because for some of them a trailing
      operand after inline code is still a program: `lua -e 'print(1)' script.lua` runs both the
@@ -125,12 +130,21 @@ All production changes are in `_check_interpreter` in `exfil_bash_runner.py`.
     without reading the script — a fail-open (Open question 3). For the Python family, treat `-E`
     (and the other non-`-c` members of the shared set) as an ordinary dash option that takes no
     value, so the following `script.py` falls through to `_read_script` and is scanned.
-  - **Perl, Ruby and Node** (families `perl`, `ruby`, `node`). These put everything after an
-    inline-code flag into the program's argument vector, so a trailing operand is data, and they
-    may carry repeated inline-code flags (`perl -e 'a' -e 'b'`), so the loop must keep going
-    after the first one: it sets `code_seen` and `continue`s, scanning each further `-e`/`-E`
-    program. A `code_seen` early return added just above `if tok == "-":` then ends the walk at
-    the first positional token (or `-`) without reading it. That early return is conditional on
+  - **Perl, Ruby and Node** (families `perl`, `ruby`, `node`). An inline-code flag (`-e`/`-E` for
+    Perl, `-e` for Ruby and Node) puts everything after it into the program's argument vector, so
+    a trailing operand is data, and these families may carry repeated inline-code flags
+    (`perl -e 'a' -e 'b'`), so the loop must keep going after the first one: it `continue`s,
+    scanning each further `-e`/`-E` program. Alongside the existing `code_seen` (which it still
+    sets, to gate the trailing stdin scan), the inline-code branch must record that an actual
+    inline *program* was seen in a **new, separate** state — call it `inline_seen` — because
+    `code_seen` is also set by Perl's `-M` branch (which shares the inline branch today), and `-M`
+    does *not* turn the following operand into argv data. An `inline_seen`
+    early return added just above `if tok == "-":` then ends the walk at the first positional token
+    (or `-`) without reading it. Keying it off `inline_seen` rather than `code_seen` is
+    load-bearing: `perl -MJSON::PP script.pl` sets `code_seen` through the `-M` branch but never
+    sets `inline_seen`, so `script.pl` falls through to `_read_script` and is scanned as the
+    program it is — returning `perl:inline` there would be a fail-open regression, since today that
+    operand is read and scanned. The `-M` path is otherwise unchanged. That early return is also conditional on
     the token: a plain positional returns `f"{prog}:inline"`, but one the shell can expand into
     other words — `is_shell_expanded(tok)` (`$`, backtick) *or* `is_glob_or_brace(tok)` (`*`,
     `?`, `[`, `{a,b}`) — raises the same "expanded by the shell" `_GuardError` as the
@@ -228,6 +242,12 @@ Cases (from the task):
   and one containing a network call blocks. Guards that grammar-less interpreters are *not* given
   the early return: Lua runs both the `-e` chunk and the script operand, so the operand must be
   read and scanned, not returned past as data.
+- `perl -MJSON::PP script.pl` scans `script.pl` as a program, so a clean `script.pl` allows and
+  one containing a network call blocks. Guards that the Perl/Ruby/Node early return keys off an
+  actual inline-code flag (`inline_seen`), not Perl's `-M`: `-M` loads a module and leaves
+  `script.pl` the program Perl runs, so it must still be read and scanned rather than returned
+  past as argv data. (`perl -e 'print 1' script.pl` is the contrasting allow — there the operand
+  *is* `@ARGV` data because `-e` is the program.)
 - `python3 -E /nonexistent/script.py` still blocks because the script is read and scanned, not
   consumed as `-E`'s value. Guards that for the Python family `-E` is an argument-less option, not
   an inline-code flag, so the script after it is reached by `_read_script` (Open question 3). A
@@ -327,8 +347,10 @@ No existing test changes.
 
 Small. About 20–25 lines changed in one function — a Python-family immediate return in the
 inline-code branch gated on `-c` (with `-E` and the other non-`-c` shared flags treated as
-argument-less options for Python), the `code_seen` early return above `tok == "-"` for the
-Perl/Ruby/Node families (itself guarding positional tokens the shell can expand), the
+argument-less options for Python), an `inline_seen` early return above `tok == "-"` for the
+Perl/Ruby/Node families — tracked separately from `code_seen` so Perl's `-M` (which loads a
+module and leaves the next operand a script) does not trigger it, and itself guarding positional
+tokens the shell can expand — the
 grammar-less families kept on today's fall-through, the `-` stdin return, and the
 unresolvable-token guard — reusing the existing `is_shell_expanded` and `is_glob_or_brace`
 predicates at both of its loop sites (two added imports, no new predicate), one new test module,
