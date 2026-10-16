@@ -124,11 +124,24 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
      set: matched against the shared set, Perl's argument-less `-p` would count as inline code, and
      because attached matching is enabled for these families `perl -pe 'use Socket; …' file` reads
      as `-p` with the value `e` — the early return would then end the walk at `'use Socket; …'`
-     and the real program would never be scanned. The one exception on the inline-program path is
-     a positional token the shell can expand into other words (`perl -e 'print 1' ${more[@]}`, or `perl -e 'print 1' *`): `${more[@]}` can
-     expand at run time into a further `-e` and its code, and `*` into script or data operands the
-     guard cannot predict, so such a token is *refused* there, not returned past, and a second
-     program smuggled through an expansion is never silently skipped.
+     and the real program would never be scanned. There is one exception on the inline-program
+     path: a token the shell can expand into other words is *refused* there, not returned past and
+     not skipped, because an expansion can introduce a further `-e` and its code. This holds whether
+     the token reads as a positional or as a dash option. A positional expansion
+     (`perl -e 'print 1' ${more[@]}`, or `perl -e 'print 1' *`): `${more[@]}` can expand at run time
+     into a further `-e` and its code, and `*` into script or data operands the guard cannot
+     predict. A *dash-prefixed* expansion (`perl -e 'print 1' "-$opt"` with `opt=e`) is the same
+     hazard in a different shape: `-$opt` is one token to the guard — matching no inline-code flag,
+     since `match_flag` cannot see through the `$` — but expands at run time into a second `-e`
+     whose program is the *following* token. A dash-prefixed expanded token must be caught
+     explicitly, because it would otherwise reach the generic `tok.startswith("-")` skip that sits
+     *below* the early return and be dropped silently, after which the real program (the next token)
+     is returned past unscanned. So the expansion test (`is_shell_expanded(tok)` or
+     `is_glob_or_brace(tok)`) is consulted for *every* token on the inline-program path, before that
+     skip, not only for positionals: a plain positional (or `-`) returns `f"{prog}:inline"`, an
+     expanded token of either shape is refused, and an ordinary dash option that is not expanded
+     still falls through to the skip as today. A second program smuggled through an expansion —
+     positional or dash-shaped — is never silently skipped.
    - **Interpreters the guard has no option grammar for** (`php`, `lua`, `luajit`, `tclsh`,
      `Rscript`, …). These do *not* get the early return, because for some of them a trailing
      operand after inline code is still a program: `lua -e 'print(1)' script.lua` runs both the
@@ -160,6 +173,24 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
    heredoc bodies while leaving pipes as today (which reintroduces the `-`-token pipe fail-open),
    are recorded in Open question 5 for the approver. This inspection does not read `-` as a
    script file and does not shell-analyze it; only the command's raw stdin is scanned, as code.
+
+   The guarantee is bounded by what the guard can see of the command's stdin, which is a pipe
+   (`piped`) and a heredoc body (`bodies`) — and *only* those. `_simple_commands` in
+   `exfil_bash_lex.py` records a pipe only for `|`/`|&` and a body only for a `<<WORD` heredoc; an
+   ordinary input redirection (`< payload.py`) and a here-string (`<<< 'import socket'`) are in
+   `_REDIRECT_TOKENS` but not `_OUTPUT_REDIRECT_TOKENS`, so the walk skips the operator and its
+   target (`i += 2`) and neither reaches `_check_interpreter`. So an inline program that reads and
+   executes a *redirected file* or a *here-string* —
+   `python3 -c 'exec(sys.stdin.read())' < payload.py`, `python3 -c 'exec(sys.stdin.read())' <<< 'import socket'` —
+   is **not** inspected by this change, and returns `python3:inline` with the payload unscanned.
+   This is a pre-existing gap, not a regression: on master the same commands set `code_seen` and
+   reach the end of the walk with the trailing `if not code_seen:` suppressed, so the redirected
+   file / here-string is never read there either. Closing it means teaching `_simple_commands` to
+   expose input-redirection targets and here-string words and threading them to
+   `_check_stdin_program` (reading `< file` as a script to scan, refusing or scanning `<<<`), which
+   widens the change into the lexer and the dispatcher. This plan scopes that out and narrows its
+   stated guarantee to pipes and heredocs; the input-redirection gap is recorded in Open
+   question 5 as a follow-up for the approver.
 3. A positional token the shell can expand into other words — one that contains `$` or a
    backtick (`is_shell_expanded`), or an unquoted glob/brace metacharacter (`is_glob_or_brace`:
    `*`, `?`, `[`, `{a,b}`) — reached while the program is still unknown (`python3 "$script"`,
@@ -242,14 +273,24 @@ narrowing changes no current assertion.
     sets `inline_seen`, so `script.pl` falls through to `_read_script` and is scanned as the
     program it is — returning `perl:inline` there would be a fail-open regression, since today that
     operand is read and scanned. The `-M` path is otherwise unchanged. That early return is also conditional on
-    the token: a plain positional returns `f"{prog}:inline"`, but one the shell can expand into
+    the token, and its condition is tested for *every* token it reaches — dash-prefixed or not,
+    ahead of the generic `tok.startswith("-")` skip below it: a plain positional (or `-`) returns
+    `f"{prog}:inline"`; a token the shell can expand into
     other words — `is_shell_expanded(tok)` (`$`, backtick) *or* `is_glob_or_brace(tok)` (`*`,
     `?`, `[`, `{a,b}`) — raises the same "expanded by the shell" `_GuardError` as the
-    unknown-program case below rather than returning past it. This is because such a token can
+    unknown-program case below rather than returning past it; an ordinary, unexpanded dash option
+    falls through to the skip, exactly as today. The expansion refusal is because such a token can
     expand at run time into words the guard cannot predict, including a further inline-code flag
     or a script operand: `perl -e 'print 1' ${more[@]}` with `more=(-e 'use Socket; …')` is one
-    positional token to the guard but a second `-e` program to Perl, and `perl -e 'print 1' *`
-    expands to whatever files the directory holds. Returning early on either would skip scanning
+    positional token to the guard but a second `-e` program to Perl, `perl -e 'print 1' *`
+    expands to whatever files the directory holds, and `perl -e 'print 1' "-$opt"` with `opt=e`
+    is a single *dash-prefixed* token that matches no inline-code flag — `match_flag` cannot see
+    through the `$` — yet expands into a second `-e` whose program is the *following* token.
+    The dash-prefixed shape is why the expansion test must run before the `tok.startswith("-")`
+    skip rather than only on positionals: a `-$opt` left to that skip is dropped silently, after
+    which the real program (the next token) hits the positional early return and is returned past
+    unscanned — the fail-open a reviewer raised on PR #659. Returning early on an expanded token of
+    either shape would skip scanning
     what the token becomes — a fail-open regression from today's behaviour, where the single
     literal token reaches `_read_script` and fails closed on the unreadable name. Placing the early
     return before `tok == "-"` is what makes a `-` after inline code read as a positional
@@ -277,7 +318,12 @@ narrowing changes no current assertion.
     no-`-` gaps where `code_seen` suppresses the trailing stdin check. The one new over-block is
     a piped inline one-liner that never reads stdin (Open question 5). Note this reuses the same
     helper the `tok == "-"` branch and the trailing `if not code_seen:` already call, so no new
-    stdin-scanning logic is introduced.
+    stdin-scanning logic is introduced. `_check_stdin_program` sees only what `_simple_commands`
+    threads through — a pipe and heredoc bodies — so an inline program fed by an input redirection
+    (`< payload.py`) or a here-string (`<<< 'import socket'`) is outside this inspection: those
+    targets are dropped by the lexer and never reach the runner. That bound is pre-existing (master
+    does not scan them either) and is recorded in Open question 5 as a follow-up rather than closed
+    here, which would require exposing input redirections from `_simple_commands`.
   The awk branch keeps its own `if not code_seen` scan of the first positional; with the early
   return above it (and the Python immediate return), it is reached only when no inline program
   has been seen.
@@ -300,7 +346,10 @@ narrowing changes no current assertion.
   - On the Perl/Ruby/Node `inline_seen` early-return path, such a token raises the same error
     instead of returning `f"{prog}:inline"` — see the inline-program bullet above. Here the
     outcome *does* matter: returning early would let a token that expands into a further `-e`
-    program (`${more[@]}`, `*`) slip past unscanned, so the guard must refuse it.
+    program (`${more[@]}`, `*`) slip past unscanned, so the guard must refuse it. The test applies
+    to dash-prefixed expanded tokens too (`-$opt` → `-e`), which is why it runs ahead of the
+    generic `tok.startswith("-")` skip and not only on positionals: left to that skip, `-$opt` is
+    dropped silently and the real program that follows it is returned past unscanned.
   Python's immediate return after `-c` needs no such check on the following tokens: its remainder
   is unconditionally `sys.argv`, so an expansion there is data, never a second program. (A
   shell-expanded `-c` *code value* is a separate, pre-existing limitation — Open question 3.)
@@ -362,6 +411,13 @@ argument walk does, so a "blocks" case built on it would test nothing.
   against a token that can expand at run time into a second `-e` program the guard cannot see;
   `python3 -c 'print(1)' "$rest"` still allows, since Python's remainder is unconditionally
   `sys.argv`.
+- `perl -e 'print 1' "-$opt"` (a shell-expanded *dash-prefixed* token after inline code) blocks
+  with the "expanded by the shell" message. Guards the dash-prefixed arm of the early return: the
+  token matches no inline-code flag, so without the explicit expansion test it would reach the
+  generic `tok.startswith("-")` skip, be dropped silently, and the following token (the real
+  program when `-$opt` expands to `-e`) would be returned past unscanned. A plain, unexpanded dash
+  option after inline code (`perl -e 'print 1' -w`) still allows — it is argv data, not an
+  expansion — so the test discriminates on expandability, not merely on the leading dash.
 - `lua -e 'print(1)' script.lua` scans `script.lua` as a program, so a clean `script.lua` allows
   and one containing a network call blocks. Guards that grammar-less interpreters are *not* given
   the early return: Lua runs both the `-e` chunk and the script operand, so the operand must be
@@ -552,6 +608,24 @@ No existing test changes.
    the safe direction, and it keeps the stdin rule a single, honest statement rather than a set of
    per-form exceptions.
 
+   **Input redirections and here-strings are out of scope (pre-existing gap).** The stdin
+   inspection above can only see what `_simple_commands` threads through to the runner — a pipe and
+   heredoc bodies. An ordinary input redirection (`python3 -c 'exec(sys.stdin.read())' < payload.py`)
+   and a here-string (`python3 -c 'exec(sys.stdin.read())' <<< 'import socket'`) are input forms in
+   `_REDIRECT_TOKENS` but not `_OUTPUT_REDIRECT_TOKENS`, so the lexer skips the operator and its
+   target and the content never reaches `_check_stdin_program`; the inline program reads and
+   executes it unscanned. A reviewer raised this on PR #659. It is a pre-existing gap, not a
+   regression — master does not scan a redirected file or a here-string fed to an inline program
+   either, because `code_seen` suppresses its trailing stdin check. Closing it is a larger change
+   than this one: `_simple_commands` would have to expose input-redirection targets and here-string
+   words (a new field on the simple-command tuple, consumed by the dispatcher), and
+   `_check_stdin_program` would read a `< file` as a script to scan and scan or refuse a `<<<`
+   word. That widens the change into the lexer and the dispatcher and touches every caller of the
+   simple-command tuple, so this plan narrows its stated stdin guarantee to pipes and heredocs and
+   files the input-redirection/here-string case as a separate follow-up for the approver, keeping
+   the bug fix small. Until it lands, the guarantee is honestly stated as "pipes and heredocs,"
+   not "all stdin."
+
 ## Estimated complexity
 
 Small to moderate. About 30–40 lines changed in `exfil_bash_runner.py` — a per-family
@@ -561,8 +635,9 @@ forms, matched in two `match_flag` calls) used in place of the
 shared set for the four families with a table, a Python-family immediate return in the
 inline-code branch, an `inline_seen` early return above `tok == "-"` for the
 Perl/Ruby/Node families — tracked separately from `code_seen` so Perl's `-M` (which loads a
-module and leaves the next operand a script) does not trigger it, and itself guarding positional
-tokens the shell can expand — the
+module and leaves the next operand a script) does not trigger it, and itself refusing any token
+the shell can expand (positional *or* dash-prefixed, the latter tested ahead of the generic
+`tok.startswith("-")` skip so a `-$opt`→`-e` cannot slip through it) — the
 grammar-less families kept on today's fall-through, the `-` stdin return, a conservative
 `_check_stdin_program` call on both inline early-return paths (reusing the existing helper, no
 new stdin logic), and the
