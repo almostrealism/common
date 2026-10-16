@@ -26,7 +26,9 @@ import os
 import platform
 import plistlib
 import re
+import shutil
 import subprocess
+import tempfile
 import unittest
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -64,6 +66,109 @@ class FleetDispatcherTests(unittest.TestCase):
         self.assertEqual(0, result.returncode)
         self.assertIn("install", result.stdout)
         self.assertIn("--instance", result.stdout)
+
+
+class FleetCommonCommandTests(unittest.TestCase):
+    """Every platform answers to the same everyday commands through the one
+    entry point, so an operator does not have to remember which host speaks
+    start/stop and which up/down."""
+
+    def test_help_lists_every_platform_and_the_shared_commands(self):
+        result = _run(_FLEET)
+        self.assertEqual(0, result.returncode)
+        for word in ("macos", "rocm", "cuda", "up [N]", "down", "status", "logs"):
+            with self.subTest(word=word):
+                self.assertIn(word, result.stdout)
+
+    def test_dispatches_to_the_cuda_script(self):
+        """Help needs no .env, so it works on a host that is not set up yet."""
+        result = _run(_FLEET, "cuda", "--help")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("ar-ci-cuda", result.stdout)
+
+    def test_the_cuda_script_rejects_an_unknown_command_with_its_help(self):
+        """A copy beside an empty .env reaches the command dispatch without
+        touching docker; an unknown command must fail and print the help."""
+        with tempfile.TemporaryDirectory() as tmp:
+            shutil.copy(os.path.join(_REPO_ROOT, "tools", "ci", "cuda", "fleet.sh"), tmp)
+            open(os.path.join(tmp, ".env"), "w").close()
+            result = _run(os.path.join(tmp, "fleet.sh"), "scale")
+        self.assertEqual(2, result.returncode)
+        self.assertIn("Unknown command: scale", result.stderr)
+        self.assertIn("./fleet.sh up [N]", result.stderr)
+        self.assertEqual("", result.stdout)
+
+    def test_the_rocm_help_documents_up_and_down_to_the_end_of_its_header(self):
+        """Help needs no service account: it is answered before the re-exec."""
+        result = _run(os.path.join(_REPO_ROOT, "tools", "ci", "rocm", "fleet.sh"), "--help")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("up [N] and down are the same as start [N] and stop", result.stdout)
+        # The help runs to the end of the header comment, not a fixed line.
+        self.assertIn("For host setup see setup-host.sh", result.stdout)
+        self.assertNotIn("SCRIPT_DIR=", result.stdout)
+
+    def test_the_macos_help_documents_up_and_down(self):
+        result = _run(_MACOS_FLEET, "--help")
+        self.assertEqual(0, result.returncode)
+        self.assertIn("macos up [N]", result.stdout)
+        self.assertIn("macos down", result.stdout)
+        # The help runs to the end of the header comment, not a fixed line.
+        self.assertIn("leaves the stage directory, the runner directory and the monitor in place.",
+                      result.stdout)
+
+    def test_the_rocm_script_accepts_up_and_down(self):
+        with open(os.path.join(_REPO_ROOT, "tools", "ci", "rocm", "fleet.sh")) as f:
+            src = f.read()
+        self.assertIn('start|up)  cmd_start "$@" ;;', src)
+        self.assertIn('stop|down) cmd_stop "$@" ;;', src)
+
+
+class MacosFleetUpArgumentTests(unittest.TestCase):
+    """These guards run before the macOS check, so they hold on any host."""
+
+    def test_up_takes_no_instance(self):
+        result = _run(_MACOS_FLEET, "up", "2", "--instance", "deploy")
+        self.assertEqual(2, result.returncode)
+        self.assertIn("takes no --instance", result.stderr)
+
+    def test_down_takes_no_instance(self):
+        """down stops the default and numbered runners; an --instance it ignored
+        would stop the default runner instead of the one named."""
+        result = _run(_MACOS_FLEET, "down", "--instance", "deploy")
+        self.assertEqual(2, result.returncode)
+        self.assertIn("down manages the default runner and the numbered ones; it takes no --instance",
+                      result.stderr)
+
+    def test_up_refuses_a_count_that_is_not_a_positive_number(self):
+        for count in ("0", "007", "3x"):
+            with self.subTest(count=count):
+                result = _run(_MACOS_FLEET, "up", count)
+                self.assertEqual(2, result.returncode)
+
+    def test_only_up_takes_a_count(self):
+        result = _run(_MACOS_FLEET, "stop", "3")
+        self.assertEqual(2, result.returncode)
+        self.assertIn("unknown argument '3'", result.stderr)
+
+    def test_up_takes_one_count(self):
+        result = _run(_MACOS_FLEET, "up", "2", "3")
+        self.assertEqual(2, result.returncode)
+
+    def test_runner_1_is_the_default_instance_not_a_numbered_one(self):
+        for instance in ("0", "1", "02", "100"):
+            with self.subTest(instance=instance):
+                result = _run(_MACOS_FLEET, "start", "--instance", instance)
+                self.assertEqual(1, result.returncode)
+                self.assertIn("numbered runners are 2 to 99", result.stderr)
+
+    def test_install_derives_a_numbered_runners_name_before_checking_it(self):
+        with open(_MACOS_FLEET) as f:
+            src = f.read()
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", src, re.M | re.S).group(0)
+        derive = install.index("derive_numbered_env")
+        self.assertLess(derive, install.index('if [ -z "${ENV_RUNNER_NAME}" ] && [ -n "${INSTANCE}" ]; then'))
+        self.assertLess(derive, install.index('RUNNER_DIR="${ENV_RUNNER_DIR:-'))
+        self.assertIn('staged_env | stage_file "${STAGE_DIR}/runner.env" 600', install)
 
 
 class MacosFleetArgumentTests(unittest.TestCase):
@@ -106,6 +211,34 @@ class MacosFleetArgumentTests(unittest.TestCase):
         self.assertIn("install --instance fleet-test-never-installed", result.stderr)
 
 
+class MacosFleetWorkingDirectoryTests(unittest.TestCase):
+    """`sudo -u <runner>` keeps the administrator's working directory, normally
+    the checkout under the administrator's home, which the runner account
+    cannot enter. A JVM started there will not start at all, so install's java
+    probe reported an installed JDK 17 as missing. The script must move to a
+    directory every account can enter before anything runs as the runner."""
+
+    def setUp(self):
+        with open(_MACOS_FLEET) as f:
+            self.src = f.read()
+
+    def test_the_script_leaves_the_invoking_directory_before_running_as_the_runner(self):
+        leave = re.search(r"^cd /$", self.src, re.M)
+        self.assertIsNotNone(leave, "fleet.sh must `cd /` at top level")
+        first_runner_call = self.src.index('sudo -u "${RUNNER_USER}"')
+        self.assertLess(leave.start(), first_runner_call,
+                        "the working directory must change before any command runs as the runner")
+
+    def test_a_relative_env_file_is_resolved_before_the_directory_changes(self):
+        leave = re.search(r"^cd /$", self.src, re.M).start()
+        resolve = self.src.index('*) ENV_FILE="${PWD}/${ENV_FILE}" ;;')
+        self.assertLess(resolve, leave, "--env must be made absolute against the caller's directory")
+
+    def test_an_unreadable_java_version_is_reported_with_what_java_said(self):
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn('printf "jdk17+ (java -version said: %s) " "$(java -version 2>&1 | head -1)"', install)
+
+
 class MacosFleetSecurityTests(unittest.TestCase):
     """The install path needs sudo and launchd, so these guard the security
     properties of ``fleet.sh`` at the source level instead - the same way the
@@ -116,6 +249,20 @@ class MacosFleetSecurityTests(unittest.TestCase):
     def setUp(self):
         with open(_MACOS_FLEET) as f:
             self.src = f.read()
+
+    def test_a_dangling_default_venv_is_pointed_at_the_rebuild(self):
+        """The default monitor interpreter is the venv's python3, a symlink into
+        the base Python; an upgrade can leave it dangling, which reads as "cannot
+        be followed". The error must then tell the operator to remove the venv so
+        render.sh rebuilds it, but only for that default path — an explicit
+        FLEET_PYTHON is the operator's own and must not be suggested for removal."""
+        install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
+        self.assertIn(
+            'if [ "${fleet_python}" = "${fleet_home}/venv/bin/python3" ]; then',
+            install,
+            "the rebuild hint must be gated on the default venv interpreter path")
+        self.assertIn("rm -rf ${fleet_home}/venv", install,
+                      "the hint should name the venv to remove for a rebuild")
 
     def test_github_token_never_reaches_a_curl_command_line(self):
         """`ps` shows every process's arguments to every account on the host,

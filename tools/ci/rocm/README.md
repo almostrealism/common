@@ -419,8 +419,9 @@ under that account when invoked from an admin login, so it works from either:
 ```
 
 `tools/bin/fleet rocm <command>` is the same thing from the repository root —
-the fleet-wide entry point, which also covers the macOS runner
-(`tools/bin/fleet macos ...`).
+the fleet-wide entry point, which also covers the macOS and CUDA runners. It
+takes the same commands for every platform, so `up [N]` and `down` work here
+too, as `start [N]` and `stop`.
 
 `start` delegates to `install-runner.sh --no-build`, so it also refreshes
 `runner.env` and the limits drop-in and applies the memory-headroom check. It
