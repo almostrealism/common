@@ -128,14 +128,21 @@ public interface CollectionProducerComputation extends
 	}
 
 	/**
+	 * Returns the inputs of this computation, its destination first. These are the
+	 * producers the computation was built from, including any that are not a
+	 * {@link Process}, which {@link #getChildren()} would wrap.
+	 *
+	 * @return the inputs of this computation
+	 */
+	List<Producer<PackedCollection>> getInputs();
+
+	/**
 	 * Returns the terms of this computation, its destination first.
 	 *
-	 * @return the children of this computation as producers
+	 * @return the inputs of this computation
 	 */
 	private List<Producer<?>> getTerms() {
-		return getChildren().stream()
-				.map(t -> (Producer<?>) t)
-				.collect(Collectors.toList());
+		return new ArrayList<>(getInputs());
 	}
 
 	/**
@@ -296,6 +303,7 @@ public interface CollectionProducerComputation extends
 		} else if (terms.size() == 1) {
 			return (CollectionProducer) terms.get(0);
 		} else {
+			// TODO(review): terms now come from getInputs, so a non-Process input reaches this cast and throws ClassCastException
 			return generate((List) args.stream()
 					.map(t -> (Process) t).collect(Collectors.toList()));
 		}

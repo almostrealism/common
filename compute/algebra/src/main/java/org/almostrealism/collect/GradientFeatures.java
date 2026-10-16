@@ -77,7 +77,8 @@ public interface GradientFeatures extends ComparisonFeatures {
 	/**
 	 * Combines the Jacobian of a function with an upstream gradient to produce the
 	 * input gradient via the chain rule. The Jacobian is computed as
-	 * {@code func.delta(input)}, reshaped to {@code [outSize, inSize]}, multiplied
+	 * {@code func.delta(input)}, reshaped to {@code [outSize, inSize]} (where {@code outSize}
+	 * is the size of the upstream gradient, or of the function when there is none), multiplied
 	 * by the upstream gradient (broadcast over inputs), then summed over output dimensions
 	 * to yield the gradient with respect to {@code input}.
 	 *
@@ -95,8 +96,7 @@ public interface GradientFeatures extends ComparisonFeatures {
 			Producer<?> input, Producer<PackedCollection> gradient) {
 		// TODO(review): wrong for the 256x64 dense weight over 64 rows (2^34 iteration space); check 32-bit index overflow
 		int inSize = shape(input).getTotalSize();
-		// TODO(review): outSize was shape(gradient) before; confirm the two agree for variable-count functions
-		int outSize = func.getShape().getTotalSize();
+		int outSize = gradient == null ? func.getShape().getTotalSize() : shape(gradient).getTotalSize();
 		CollectionProducer jacobian = func.delta(input).reshape(outSize, inSize).traverse(1);
 		if (gradient != null) {
 			jacobian = multiplyGradient(jacobian, gradient, inSize);

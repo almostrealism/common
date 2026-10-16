@@ -182,22 +182,17 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	 * @return {@code true} if the target is found
 	 */
 	default boolean containsMatch(Producer<?> target) {
-		if (refersTo(target)) return true;
-		if (!(this instanceof Process)) return false;
-
-		for (Process<?, ?> child : ((Process<?, ?>) this).getChildren()) {
-			if (child instanceof Producer && ((Producer<?>) child).containsMatch(target)) {
-				return true;
-			}
-		}
-
-		return false;
+		// TODO(review): no longer stops at the first matching child; every child is searched, which costs more on deep shared DAGs
+		return refersTo(target) || !matchingInputs(target).isEmpty();
 	}
 
 	/**
 	 * Returns every input of this producer that {@link #containsMatch(Producer) contains}
 	 * the target. Used in automatic differentiation to find the inputs through which this
-	 * producer depends on a variable.
+	 * producer depends on a variable. The inputs are the producers among this producer's
+	 * {@link Process#getChildren() process children}; a producer that keeps its inputs
+	 * elsewhere must override this method to search them, or it will be reported as
+	 * independent of every target.
 	 *
 	 * @param target the producer to search for
 	 * @return the matching inputs, which is empty when this producer has no inputs

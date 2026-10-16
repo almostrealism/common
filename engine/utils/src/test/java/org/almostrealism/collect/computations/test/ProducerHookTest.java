@@ -29,6 +29,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
+import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -314,6 +315,59 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 		Assert.assertFalse(dynamic.cannotMatch(dynamic));
 		Assert.assertFalse(dynamic.reshape(shape(2, 2)).cannotMatch(dynamic));
 		Assert.assertTrue(dynamic.cannotMatch(a));
+	}
+
+	/**
+	 * A dynamic producer computed on the host from producer arguments depends on those
+	 * arguments, even though they are not its process children: it contains a match for an
+	 * argument (and for an input of an argument), is not independent of it, and its direct
+	 * delta with respect to it is not the zeros of an independent producer. It remains
+	 * independent of an unrelated value.
+	 */
+	@Test(timeout = 60000)
+	public void dynamicProducerArgumentsAreMatched() {
+		Producer<PackedCollection> a = p(pack(1.0, 2.0, 3.0, 4.0));
+		Producer<PackedCollection> b = p(pack(5.0, 6.0, 7.0, 8.0));
+		CollectionProducer scaled = c(a).multiply(2.0);
+
+		Function<PackedCollection[], Function<Object[], PackedCollection>> function =
+				inputs -> args -> inputs[0];
+		DynamicCollectionProducer dynamic =
+				new DynamicCollectionProducer(shape(4), function, false, true, scaled);
+
+		Assert.assertEquals(1, dynamic.matchingInputs(a).size());
+		Assert.assertSame(scaled, dynamic.matchingInputs(scaled).get(0));
+		Assert.assertTrue(dynamic.containsMatch(a));
+		Assert.assertFalse(dynamic.cannotMatch(a));
+		Assert.assertFalse(dynamic.reshape(shape(2, 2)).cannotMatch(a));
+		Assert.assertNull(dynamic.attemptDirectDelta(a));
+
+		Assert.assertTrue(dynamic.matchingInputs(b).isEmpty());
+		Assert.assertFalse(dynamic.containsMatch(b));
+		Assert.assertTrue(dynamic.cannotMatch(b));
+		assertValues(dynamic.attemptDirectDelta(b).evaluate(), new double[16]);
+
+		assertValues(dynamic.evaluate(), 2.0, 4.0, 6.0, 8.0);
+	}
+
+	/**
+	 * The terms of a computation are its inputs, including one that is not a
+	 * {@link Process} (which its process children would only present wrapped): such a term
+	 * is counted, and excluding it leaves exactly the other term.
+	 */
+	@Test(timeout = 60000)
+	public void termsIncludeNonProcessInputs() {
+		PackedCollection x = pack(1.0, 2.0, 3.0);
+		Producer<PackedCollection> raw = () -> args -> x;
+		Assert.assertFalse(raw instanceof Process);
+
+		CollectionProducer other = cp(pack(4.0, 5.0, 6.0));
+		CollectionAddComputation sum = new CollectionAddComputation(shape(3), raw, other);
+
+		Assert.assertEquals(1, sum.countTerms(raw));
+		Assert.assertEquals(1, sum.countTerms(other));
+		Assert.assertEquals(0, sum.countTerms(cp(pack(7.0, 8.0, 9.0))));
+		Assert.assertSame(other, sum.excludeTerm(raw));
 	}
 
 	/**
