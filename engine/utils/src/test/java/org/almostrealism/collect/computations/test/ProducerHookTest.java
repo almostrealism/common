@@ -31,6 +31,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+import org.almostrealism.collect.computations.CollectionProductComputation;
 import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ReshapeProducer;
@@ -368,6 +369,95 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 		Assert.assertEquals(1, sum.countTerms(other));
 		Assert.assertEquals(0, sum.countTerms(cp(pack(7.0, 8.0, 9.0))));
 		Assert.assertSame(other, sum.excludeTerm(raw));
+	}
+
+	/**
+	 * Excluding one term of a three-term computation rebuilds it from the remaining two
+	 * when both are {@link Process}es. When one of the remaining terms is not a
+	 * {@link Process} the computation cannot be rebuilt: the exclusion returns null rather
+	 * than failing, and {@link MultiTermDeltaStrategy#COMBINE} declines for that reason.
+	 */
+	@Test(timeout = 60000)
+	public void excludeTermRebuildsOnlyFromProcesses() {
+		CollectionProducer first = cp(pack(1.0, 2.0, 3.0));
+		CollectionProducer other = cp(pack(4.0, 5.0, 6.0));
+		CollectionProducer excluded = cp(pack(7.0, 8.0, 9.0));
+
+		CollectionProducer remaining =
+				new CollectionAddComputation(shape(3), first, other, excluded).excludeTerm(excluded);
+		Assert.assertTrue(remaining instanceof CollectionProducerComputation);
+		Assert.assertEquals(1, remaining.matchingInputs(first).size());
+		Assert.assertEquals(1, remaining.matchingInputs(other).size());
+		Assert.assertTrue(remaining.matchingInputs(excluded).isEmpty());
+		assertValues(remaining.evaluate(), 5.0, 7.0, 9.0);
+
+		PackedCollection x = pack(1.0, 2.0, 3.0);
+		Producer<PackedCollection> raw = () -> args -> x;
+		Assert.assertNull(new CollectionAddComputation(shape(3), raw, other, excluded)
+				.excludeTerm(excluded));
+
+		CollectionProductComputation product =
+				new CollectionProductComputation(shape(3), raw, other, excluded);
+		Assert.assertNull(MultiTermDeltaStrategy.COMBINE.delta(product, excluded));
+	}
+
+	/**
+	 * An input of a computation that is not a {@link Process} is still one of its inputs for
+	 * matching: the computation contains it, is not independent of it, and finds it as its
+	 * single matching input. The computation remains independent of an unrelated value.
+	 */
+	@Test(timeout = 60000)
+	public void nonProcessInputsAreMatched() {
+		PackedCollection x = pack(1.0, 2.0, 3.0);
+		Producer<PackedCollection> raw = () -> args -> x;
+		Assert.assertFalse(raw instanceof Process);
+
+		CollectionProducer other = cp(pack(4.0, 5.0, 6.0));
+		CollectionAddComputation sum = new CollectionAddComputation(shape(3), raw, other);
+
+		Assert.assertTrue(sum.containsMatch(raw));
+		Assert.assertFalse(sum.cannotMatch(raw));
+		Assert.assertSame(raw, sum.matchInput(raw).orElseThrow());
+		Assert.assertNull(sum.attemptDirectDelta(raw));
+
+		Producer<PackedCollection> unrelated = p(pack(7.0, 8.0, 9.0));
+		Assert.assertFalse(sum.containsMatch(unrelated));
+		Assert.assertTrue(sum.cannotMatch(unrelated));
+	}
+
+	/**
+	 * {@link Producer#containsMatch(Producer)} stops at the first input that contains the
+	 * target: a later input is never searched once an earlier one has matched, and is
+	 * searched exactly once when no earlier one does.
+	 */
+	@Test(timeout = 60000)
+	public void containsMatchStopsAtFirstMatchingInput() {
+		Producer<PackedCollection> a = p(pack(1.0, 2.0, 3.0, 4.0));
+		Producer<PackedCollection> b = p(pack(5.0, 6.0, 7.0, 8.0));
+		int[] searches = new int[1];
+		Producer<PackedCollection> counted = new Producer<>() {
+			@Override
+			public Evaluable<PackedCollection> get() {
+				return args -> pack(0.0, 0.0, 0.0, 0.0);
+			}
+
+			@Override
+			public boolean containsMatch(Producer<?> target) {
+				searches[0]++;
+				return false;
+			}
+		};
+
+		Function<PackedCollection[], Function<Object[], PackedCollection>> function =
+				inputs -> args -> inputs[0];
+		DynamicCollectionProducer dynamic =
+				new DynamicCollectionProducer(shape(4), function, false, true, a, counted);
+
+		Assert.assertTrue(dynamic.containsMatch(a));
+		Assert.assertEquals(0, searches[0]);
+
+		Assert.assertFalse(dynamic.containsMatch(b));
+		Assert.assertEquals(1, searches[0]);
 	}
 
 	/**

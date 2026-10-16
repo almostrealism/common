@@ -23,9 +23,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
-import java.util.List;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -231,20 +229,15 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	}
 
 	/**
-	 * Returns every producer argument that {@link Producer#containsMatch(Producer) contains}
-	 * the target. The arguments are evaluated on the host rather than exposed as process
-	 * children, so they are searched here; otherwise a producer computed from the target
-	 * would be reported as independent of it.
+	 * Returns the producer arguments of this producer. They are evaluated on the host
+	 * rather than exposed as process children, so they are presented here for matching;
+	 * otherwise a producer computed from a target would be reported as independent of it.
 	 *
-	 * @param target the producer to search for
-	 * @return the arguments that contain the target, empty when there are none
+	 * @return the producer arguments, empty when there are none
 	 */
 	@Override
-	public List<Producer<PackedCollection>> matchingInputs(Producer<?> target) {
-		return Stream.of(args)
-				.filter(arg -> arg.containsMatch(target))
-				.map(arg -> (Producer<PackedCollection>) arg)
-				.collect(Collectors.toList());
+	public Stream<? extends Producer<?>> matchableInputs() {
+		return args == null ? Stream.empty() : Stream.of(args);
 	}
 
 	/**

@@ -19,11 +19,12 @@ package io.almostrealism.relation;
 import io.almostrealism.compute.Process;
 import io.almostrealism.lifecycle.Destroyable;
 
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * A {@link Producer} represents a computational operation that can produce an {@link Evaluable}
@@ -182,33 +183,43 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	 * @return {@code true} if the target is found
 	 */
 	default boolean containsMatch(Producer<?> target) {
-		// TODO(review): no longer stops at the first matching child; every child is searched, which costs more on deep shared DAGs
-		return refersTo(target) || !matchingInputs(target).isEmpty();
+		return refersTo(target) || matchableInputs().anyMatch(in -> in.containsMatch(target));
 	}
 
 	/**
-	 * Returns every input of this producer that {@link #containsMatch(Producer) contains}
-	 * the target. Used in automatic differentiation to find the inputs through which this
-	 * producer depends on a variable. The inputs are the producers among this producer's
-	 * {@link Process#getChildren() process children}; a producer that keeps its inputs
-	 * elsewhere must override this method to search them, or it will be reported as
-	 * independent of every target.
+	 * Returns the producers this producer is computed from, which are searched when
+	 * matching a target against its inputs. By default these are the producers among this
+	 * producer's {@link Process#getChildren() process children}. A producer that keeps
+	 * its inputs elsewhere, or whose process children present some inputs wrapped rather
+	 * than as producers, must override this method to expose them, or it will be reported
+	 * as independent of those inputs.
+	 *
+	 * @return the inputs of this producer, empty when it has none
+	 */
+	default Stream<? extends Producer<?>> matchableInputs() {
+		if (!(this instanceof Process)) return Stream.empty();
+
+		Collection<? extends Process<?, ?>> children = ((Process<?, ?>) this).getChildren();
+		if (children == null) return Stream.empty();
+
+		return children.stream()
+				.filter(child -> child instanceof Producer)
+				.map(child -> (Producer<?>) child);
+	}
+
+	/**
+	 * Returns every one of this producer's {@link #matchableInputs() inputs} that
+	 * {@link #containsMatch(Producer) contains} the target. Used in automatic
+	 * differentiation to find the inputs through which this producer depends on a variable.
 	 *
 	 * @param target the producer to search for
 	 * @return the matching inputs, which is empty when this producer has no inputs
 	 */
 	default List<Producer<T>> matchingInputs(Producer<?> target) {
-		if (!(this instanceof Process)) return Collections.emptyList();
-
-		List<Producer<T>> matched = new ArrayList<>();
-
-		for (Process<?, ?> child : ((Process<?, ?>) this).getChildren()) {
-			if (child instanceof Producer && ((Producer<?>) child).containsMatch(target)) {
-				matched.add((Producer<T>) child);
-			}
-		}
-
-		return matched;
+		return matchableInputs()
+				.filter(in -> in.containsMatch(target))
+				.map(in -> (Producer<T>) in)
+				.collect(Collectors.toList());
 	}
 
 	/**

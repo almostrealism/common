@@ -137,6 +137,19 @@ public interface CollectionProducerComputation extends
 	List<Producer<PackedCollection>> getInputs();
 
 	/**
+	 * Presents the {@link #getInputs() inputs} of this computation for matching, so that
+	 * an input that is not a {@link Process} (which {@link #getChildren()} presents only
+	 * wrapped) is still recognized as something this computation depends on.
+	 *
+	 * @return the inputs of this computation, empty when they are not set
+	 */
+	@Override
+	default Stream<? extends Producer<?>> matchableInputs() {
+		List<Producer<PackedCollection>> inputs = getInputs();
+		return inputs == null ? Stream.empty() : inputs.stream();
+	}
+
+	/**
 	 * Returns the terms of this computation, its destination first.
 	 *
 	 * @return the inputs of this computation
@@ -164,7 +177,8 @@ public interface CollectionProducerComputation extends
 	 * term remains, that term is returned directly.
 	 *
 	 * @param target  the term to leave out
-	 * @return this computation over the remaining terms
+	 * @return this computation over the remaining terms, or null if several terms remain
+	 *         and one of them is not a {@link Process}, so the computation cannot be rebuilt
 	 */
 	default CollectionProducer excludeTerm(Producer<?> target) {
 		return generateFromTerms(getTerms().stream()
@@ -291,21 +305,26 @@ public interface CollectionProducerComputation extends
 	 * structure of this computation as the template. The first child is the destination;
 	 * if only one term follows it, that term is returned directly.
 	 *
+	 * <p>Several terms can only be rebuilt through {@link #generate(List)}, whose children
+	 * must each be a {@link Process} that is also the {@link Producer} it stands for. A
+	 * term that is not a {@link Process} cannot be presented that way ({@link Process#of}
+	 * would wrap it in something that is not a {@link Producer}), so the computation is
+	 * not rebuilt and null is returned instead.</p>
+	 *
 	 * @param args  the children of the new computation, destination first
-	 * @return the computation over the given terms
+	 * @return the computation over the given terms, or null if they include a term that
+	 *         is not a {@link Process} and more than one term remains
 	 */
 	private CollectionProducer generateFromTerms(List<Producer<?>> args) {
-		List<Producer<?>> terms = new ArrayList<>();
-		args.stream().skip(1).forEach(terms::add);
-
-		if (terms.isEmpty()) {
-			throw new IllegalArgumentException();
-		} else if (terms.size() == 1) {
-			return (CollectionProducer) terms.get(0);
+		if (args.size() < 2) {
+			throw new IllegalArgumentException("No terms remain");
+		} else if (args.size() == 2) {
+			// TODO(review): a single remaining term that is not a CollectionProducer (a raw Producer input) throws ClassCastException here
+			return (CollectionProducer) args.get(1);
+		} else if (!args.stream().allMatch(t -> t instanceof Process)) {
+			return null;
 		} else {
-			// TODO(review): terms now come from getInputs, so a non-Process input reaches this cast and throws ClassCastException
-			return generate((List) args.stream()
-					.map(t -> (Process) t).collect(Collectors.toList()));
+			return generate((List) args);
 		}
 	}
 

@@ -80,15 +80,16 @@ public enum MultiTermDeltaStrategy implements MatrixFeatures {
 	COMBINE {
 		@Override
 		protected CollectionProducer termDelta(CollectionProducerComputation computation, Producer<?> target) {
-			return diagonal(computation.excludeTerm(target).flatten());
+			CollectionProducer others = computation.excludeTerm(target);
+			return others == null ? null : diagonal(others.flatten());
 		}
 	};
 
 	/**
 	 * Computes the gradient of the given computation with respect to one of its own terms.
 	 * For every strategy that differentiates terms, the result is null when the target
-	 * appears in more than one term, and zero when it appears in none; {@link #NONE}
-	 * always returns null.
+	 * appears in more than one term or the term's delta cannot be formed, and zero when it
+	 * appears in none; {@link #NONE} always returns null.
 	 *
 	 * @param computation  the multi-term computation being differentiated
 	 * @param target       the term to differentiate with respect to
@@ -105,7 +106,8 @@ public enum MultiTermDeltaStrategy implements MatrixFeatures {
 			return null;
 		}
 
-		return termDelta(computation, target).reshape(jacobianShape);
+		CollectionProducer termDelta = termDelta(computation, target);
+		return termDelta == null ? null : termDelta.reshape(jacobianShape);
 	}
 
 	/**
@@ -115,7 +117,7 @@ public enum MultiTermDeltaStrategy implements MatrixFeatures {
 	 *
 	 * @param computation  the multi-term computation being differentiated
 	 * @param target       the term to differentiate with respect to
-	 * @return the gradient matrix
+	 * @return the gradient matrix, or null if it cannot be formed
 	 */
 	protected abstract CollectionProducer termDelta(CollectionProducerComputation computation, Producer<?> target);
 }
