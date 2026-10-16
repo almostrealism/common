@@ -430,6 +430,16 @@ py_remove_function_and_production() {
     edit_production "$1"
 }
 
+py_delete_test_file() {
+    git -C "$1" rm -q tools/example/test_example.py
+    edit_production "$1"
+}
+
+py_rename_test_file() {
+    git -C "$1" mv tools/example/test_example.py tools/example/test_moved.py
+    edit_production "$1"
+}
+
 # ── validate-agent-commit.sh: more than edits to base-branch tests ──
 #
 # Only a change set confined to existing test files, with no new test in
@@ -499,6 +509,8 @@ run_case "one of two assertions on a line found" 2 "$PY_HIDING" feature/x "$SECR
 run_case "dotted mock assertion removal found"  2 "$PY_HIDING" feature/x "$SECRET" py_remove_mock_assertion
 run_case "mock assertion moved to comment found" 2 "$PY_HIDING" feature/x "$SECRET" py_remove_mock_assertion_in_comment
 run_case "nested tests/ assertion removal found" 2 "$PY_HIDING" feature/x "$SECRET" py_remove_nested_assertion
+run_case "py test file deletion found"          2 "$PY_HIDING" feature/x "$SECRET" py_delete_test_file
+run_case "py test file rename found"            2 "$PY_HIDING" feature/x "$SECRET" py_rename_test_file
 
 echo "detect-python-test-hiding — permitted Python test work"
 run_case "py test body edit allowed"            0 "$PY_HIDING" feature/x "$SECRET" py_edit_test_body

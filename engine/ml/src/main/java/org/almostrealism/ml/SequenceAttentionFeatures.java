@@ -243,6 +243,56 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 									Producer<PackedCollection> keyMask,
 									double logitSoftcap,
 									boolean causal) {
+		Map<String, Object> args = sequenceAttentionArguments(batchSize, seqLen, dim, heads,
+				toQkvWeight, toOutWeight, qNormWeight, qNormBias, kNormWeight, kNormBias,
+				invFreq, projectionFactory, paddingMask, keyMask);
+		args.put("softcap", logitSoftcap);
+
+		String layer = "sequence_attention" + queryKeyNormalization(qNormWeight, qkNorm)
+				+ (logitSoftcap > 0.0 ? "_softcapped" : "") + (causal ? "_causal" : "");
+
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(SEQUENCE_ATTENTION_ASSET), layer,
+				shape(batchSize, seqLen, dim), args);
+	}
+
+	/**
+	 * Binds the arguments every full-sequence self-attention layer takes — those of
+	 * {@link #SEQUENCE_ATTENTION_ASSET} and of {@code /pdsl/differential_attention.pdsl}: the batch,
+	 * sequence and head geometry, the fused and output projections built with
+	 * {@code projectionFactory} (so adapters wrap them), the query/key normalization weights, the
+	 * rotary frequencies and the two masks. A missing mask is bound as an all-ones mask, which leaves
+	 * every value and every logit unchanged. Each layer takes further arguments of its own, with which
+	 * the caller completes the map.
+	 *
+	 * @param batchSize         batch dimension
+	 * @param seqLen            sequence length
+	 * @param dim               model dimension
+	 * @param heads             number of attention heads
+	 * @param toQkvWeight       fused projection weights, as wide as the layer's sections
+	 * @param toOutWeight       output projection weights
+	 * @param qNormWeight       query normalization weights ({@code null} for no query/key normalization)
+	 * @param qNormBias         query normalization biases ({@code null} for none)
+	 * @param kNormWeight       key normalization weights ({@code null} exactly when {@code qNormWeight} is)
+	 * @param kNormBias         key normalization biases ({@code null} for none)
+	 * @param invFreq           RoPE inverse frequencies
+	 * @param projectionFactory factory for creating projection layers
+	 * @param paddingMask       per-position validity, shape {@code (batch, seqLen)}, or {@code null}
+	 * @param keyMask           per-key validity, shape {@code (batch, seqLen)}, or {@code null}
+	 * @return the argument bindings, to be completed with the layer-specific arguments
+	 * @throws IllegalArgumentException if only one of {@code qNormWeight} and {@code kNormWeight}
+	 *                                  is supplied
+	 * @throws UnsupportedOperationException if {@code batchSize} is not 1
+	 */
+	default Map<String, Object> sequenceAttentionArguments(int batchSize, int seqLen, int dim, int heads,
+														   PackedCollection toQkvWeight,
+														   PackedCollection toOutWeight,
+														   PackedCollection qNormWeight, PackedCollection qNormBias,
+														   PackedCollection kNormWeight, PackedCollection kNormBias,
+														   PackedCollection invFreq,
+														   ProjectionFactory projectionFactory,
+														   Producer<PackedCollection> paddingMask,
+														   Producer<PackedCollection> keyMask) {
 		if ((qNormWeight == null) != (kNormWeight == null)) {
 			throw new IllegalArgumentException("QK-Norm requires both query and key weights");
 		}
@@ -267,15 +317,24 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 		args.put("inv_freq", invFreq);
 		args.put("padding_mask", paddingMask != null ? paddingMask : everyPositionValid(batchSize, seqLen));
 		args.put("key_mask", keyMask != null ? keyMask : everyPositionValid(batchSize, seqLen));
-		args.put("softcap", logitSoftcap);
+		return args;
+	}
 
-		String normalization = qNormWeight == null ? ""
-				: qkNorm == NormalizationType.RMS ? "_qk_rmsnorm" : "_qk_layernorm";
-		String layer = "sequence_attention" + normalization
-				+ (logitSoftcap > 0.0 ? "_softcapped" : "") + (causal ? "_causal" : "");
+	/**
+	 * Names the query/key normalization in the layer names of the full-sequence self-attention
+	 * assets, which give each normalization a layer of its own: nothing without normalization,
+	 * {@code _qk_rmsnorm} for RMSNorm and {@code _qk_layernorm} for LayerNorm.
+	 *
+	 * @param qNormWeight query normalization weights, {@code null} for no query/key normalization
+	 * @param qkNorm      family of the query/key normalization
+	 * @return the suffix that names the normalization
+	 */
+	default String queryKeyNormalization(PackedCollection qNormWeight, NormalizationType qkNorm) {
+		if (qNormWeight == null) {
+			return "";
+		}
 
-		PdslLoader loader = new PdslLoader();
-		return loader.buildLayer(loader.parseResource(SEQUENCE_ATTENTION_ASSET), layer, inputShape, args);
+		return qkNorm == NormalizationType.RMS ? "_qk_rmsnorm" : "_qk_layernorm";
 	}
 
 	/**

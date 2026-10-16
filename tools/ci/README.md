@@ -139,6 +139,7 @@ it knowingly does not cover are in
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |
 | `build-resolve-prompt.sh` | Build prompt for agent when tests fail |
 | `build-review-prompt.sh` | Build prompt for general code review |
+| `build-retrospective-prompt.sh` | Build prompt for the recurring QA retrospective: survey recent automated work and propose how the process should improve |
 | `build-verify-prompt.sh` | Build prompt for the verify-completion workflow, the manual "implement the plan" trigger |
 | `consolidation.txt` | Template for the consolidation round: find one duplicated behavior, share it, pin it with tests |
 | `coverage.txt` | Template for the test-coverage round |
@@ -147,6 +148,7 @@ it knowingly does not cover are in
 | `doc-qa.txt` | Template for the documentation-staleness review |
 | `general-review.txt` | Template for general code review prompt |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
+| `retrospective.txt` | Template for the QA retrospective: study recent automated work and propose, with evidence, how the agent harness and the QA jobs should improve — proposes, never implements |
 | `pdsl-migration.txt` | Template for the PDSL migration round: move one piece of pipeline structure from Java into a `.pdsl` asset, delete the Java assembly, pin parity with tests, and report language gaps rather than aliasing around them |
 | `plan-workstream-settings.txt` | Shared fragment: when a plan needs particular hardware, declare it in `docs/plans/<branch>-workstream.yaml` — included by both planning prompts |
 | `plan-pr-framing.txt` | Shared fragment: write the commit message (and so the pull request) for the planned work, not the plan — included by both planning prompts |
