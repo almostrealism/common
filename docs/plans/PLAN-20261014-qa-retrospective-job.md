@@ -446,6 +446,10 @@ Each question the design raised was resolved by adopting the plan's own proposal
    The gap is noted and nothing is filed: whether to scope job tokens — including that
    `workstream_context` with `repo_url`, `branch` and `workstream_id` all supplied skips
    the workspace check on its job listing — is a separate decision for a person.
+   The docs-only file scope is advisory in the same way: no submission setting confines a
+   job to a path, so the CI-file lock and the test lock bound the worst edits and review of
+   the auto-created PR catches the rest. A harness-side path allowlist would be a new
+   submission feature for every round, not something this round should introduce.
 6. **Cadence.** 7 days with a 14-day window, so most activity is looked at twice across
    runs. A slower cadence (14 days, 21-day window) remains available should weekly reports
    prove repetitive.

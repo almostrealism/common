@@ -1760,7 +1760,12 @@ jobs:
   #
   # Its output is docs-only (a report under docs/qa/retrospectives/ and a row
   # in that directory's ledger), so PROTECT_TEST_FILES costs nothing and
-  # removes a temptation. Like pdsl-qa and performance-qa it pins the primary
+  # removes a temptation. That docs-only scope is the prompt's contract, not
+  # something the harness enforces: no submission setting restricts a job to
+  # a path. What is enforced is narrower — the harness refuses CI-file edits
+  # on a non-ci/ branch, the test lock keeps existing test methods intact —
+  # and the rest is caught where every round's output is, in the review of
+  # the PR AUTO_CREATE_PR opens. Like pdsl-qa and performance-qa it pins the primary
   # phase to claude/opus at max effort: the judgment here is synthesis across
   # many workstreams, jobs and PRs, the kind a model under-thinks.
   #

@@ -955,7 +955,10 @@ measurement, and the merged tests run on every backend the pipeline covers.
 repository's recent automated work and proposes, with evidence, how the agent
 harness and the QA jobs should improve — it only proposes. Its output is
 docs-only (a report under `docs/qa/retrospectives/` and a row in that
-directory's ledger), so `PROTECT_TEST_FILES` costs nothing. It pins the primary
+directory's ledger), so `PROTECT_TEST_FILES` costs nothing. That scope is the
+prompt's contract, not a harness restriction — no submission setting confines a
+job to a path; the CI-file lock and the test lock bound the worst edits, and
+the rest is caught in review of the PR `AUTO_CREATE_PR` opens. It pins the primary
 phase to `claude/opus` at `effort: max` for the same reason as `performance-qa`
 and `pdsl-qa` — the judgment is synthesis across many workstreams, jobs and
 PRs, the kind a model under-thinks — and carries no `REQUIRED_LABELS`, since it
