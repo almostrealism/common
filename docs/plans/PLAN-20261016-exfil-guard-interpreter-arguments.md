@@ -137,24 +137,30 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
      whose program is the *following* token. A dash-prefixed expanded token must be caught
      explicitly, because it would otherwise reach the generic `tok.startswith("-")` skip that sits
      *below* the early return and be dropped silently, after which the real program (the next token)
-     is returned past unscanned. A *value-flag or preload-flag operand* is a third shape, caught at
+     is returned past unscanned. A *value-flag, preload-flag or `-M` operand* is a third shape, caught at
      a different site again. The value-flag handler (Perl's/Ruby's `-I`, Ruby's `-E`/`-F`, Node's
      value flags), the preload-flag handler (`-r`/`--require`/`--import`/`--loader` for Node, `-r`
-     for Ruby) and Ruby's `-C` working-directory handler each consume their operand — the attached
-     value, or the *following* token — and `continue`, and all three sit *above* the inline-program
+     for Ruby), Ruby's `-C` working-directory handler and Perl's `-M` module-load branch each
+     consume an operand — the *following* token, or, for `-C`/`-M`, an attached value (`-Cdir`,
+     `-MModule`) — and `continue`, and all of them sit at or *above* the inline-program
      early return, so an expanded operand there never reaches the early return's per-token test.
      `perl -e 'print 1' -I ${more[@]}`, where `${more[@]}` word-splits into a further `-e` and its
-     code, is the case: `-I` swallows `${more[@]}` as its value and the second `-e` is never seen.
+     code, is one case: `-I` swallows `${more[@]}` as its value and the second `-e` is never seen.
+     `perl -e 'print 1' -M${more[@]}`, where the shell expands `-M${more[@]}` into
+     `-MJSON::PP -e 'use IO::Socket; …'`, is the same hazard through Perl's `-M` branch: that branch
+     (which lives inside the inline-code branch and sets `code_seen`) scans only the literal
+     `${more[@]}` as the module value and `continue`s, so the injected second `-e` is never seen.
      So once an inline program has been seen, those operand-consuming handlers must apply the same
-     expansion test to the operand they are about to consume and refuse it, rather than swallow it
-     unscanned. The expansion test (`is_shell_expanded(tok)` or
+     expansion test to the operand they are about to consume — for `-M`, the attached value
+     `tok[2:]` — and refuse it, rather than swallow it unscanned. The expansion test
+     (`is_shell_expanded(tok)` or
      `is_glob_or_brace(tok)`) is therefore consulted at two kinds of site: for *every* token on the
      inline-program early-return path, before the `tok.startswith("-")`
      skip, not only for positionals — a plain positional (or `-`) returns `f"{prog}:inline"`, an
      expanded token of either shape is refused, and an ordinary dash option that is not expanded
      still falls through to the skip as today — *and*, once `inline_seen` is set, on the operand
-     each value-flag, preload-flag and Ruby `-C` handler is about to consume, before that operand
-     is swallowed. Gating the operand check on `inline_seen` keeps the common pre-inline idiom
+     each value-flag, preload-flag, Ruby `-C` and Perl `-M` handler is about to consume, before that
+     operand is swallowed. Gating the operand check on `inline_seen` keeps the common pre-inline idiom
      (`perl -I ${inc[@]} script.pl`, an include-path list) passing as it does today; the residual
      this leaves — an expansion consumed as a value/preload operand *before* any inline program is
      detected — is pre-existing on master and recorded in Open question 6. A second program
@@ -239,7 +245,10 @@ Optional, lower priority (the task's "Related" item; see Open questions): scanni
 body written to a script path earlier in the same command, instead of failing the read of a
 file that does not exist yet at scan time.
 
-Out of scope: the shell branch (`_check_shell`, `bash "$f"`), awk's `-f progfile`, and any
+Out of scope: the shell branch (`_check_shell`, `bash "$f"`), awk's `-f progfile`, a shell-expanded
+awk inline program (`awk "$code"` — the inline-code-value limitation of Open question 3; awk's
+first positional is program text scanned literally, not a path the guard reads, so the Scope item 3
+expansion refusal is not placed before the awk branch), and any
 change to which modules or code count as network-capable.
 
 ## Approach
@@ -341,16 +350,20 @@ narrowing changes no current assertion.
     The early return's per-token expansion test is *not* the whole story, because the
     operand-consuming handlers run above it and `continue` before it is reached. The value-flag
     handler (`_match_flag(tok, value_flags)`), the preload-flag handler
-    (`_match_flag(tok, preload_flags)`) and Ruby's `-C` handler each take their operand from the
-    attached value or the following token and loop on, so an *expanded* operand there — `-I
-    ${more[@]}`, `-r ${more[@]}`, `-C ${more[@]}` — is swallowed unscanned and never reaches the
-    early return. `perl -e 'print 1' -I ${more[@]}` with `more=(safe -e 'use IO::Socket; …')` is the
-    reviewer's case: `-I` consumes `${more[@]}`, which the shell word-splits into `safe` (an
-    include dir) plus a second `-e 'use IO::Socket; …'` program the guard never sees. So, once
-    `inline_seen` is set, each of these three handlers must apply the same
+    (`_match_flag(tok, preload_flags)`), Ruby's `-C` handler and Perl's `-M` branch each take their
+    operand from the attached value or the following token and loop on, so an *expanded* operand
+    there — `-I ${more[@]}`, `-r ${more[@]}`, `-C ${more[@]}`, `-M${more[@]}` — is swallowed
+    unscanned and never reaches the
+    early return. `perl -e 'print 1' -I ${more[@]}` with `more=(safe -e 'use IO::Socket; …')` is one
+    reviewer case: `-I` consumes `${more[@]}`, which the shell word-splits into `safe` (an
+    include dir) plus a second `-e 'use IO::Socket; …'` program the guard never sees;
+    `perl -e 'print 1' -M${more[@]}` with `more=(JSON::PP -e 'use IO::Socket; …')` is the same hazard
+    through `-M`, whose branch scans only the literal `${more[@]}` as the module value (setting
+    `code_seen`) and lets the injected `-e` through unscanned. So, once
+    `inline_seen` is set, each of these four handlers must apply the same
     `is_shell_expanded(operand) or is_glob_or_brace(operand)` test to the operand it is about to
-    consume — the attached value or `args[i + 1]` — and raise the same "expanded by the shell"
-    `_GuardError` instead of consuming it. The test is gated on `inline_seen` so the common
+    consume — the attached value (for `-M`, `tok[2:]`) or `args[i + 1]` — and raise the same
+    "expanded by the shell" `_GuardError` instead of consuming it. The test is gated on `inline_seen` so the common
     pre-inline include-list idiom (`perl -I ${inc[@]} script.pl`) keeps passing exactly as today;
     the residual it leaves — an expansion consumed as a value/preload operand *before* any inline
     program has been seen — is pre-existing on master and recorded in Open question 6, not closed
@@ -396,7 +409,18 @@ narrowing changes no current assertion.
     here, which would require exposing input redirections from `_simple_commands`.
   The awk branch keeps its own `if not code_seen` scan of the first positional; with the early
   return above it (and the Python immediate return), it is reached only when no inline program
-  has been seen.
+  has been seen. That first positional is awk's *inline program text*, not a path the guard reads
+  (awk loads a program from a file only via `-f progfile`, which this change leaves out of scope).
+  So the unknown-program expansion refusal of Scope item 3 is deliberately *not* placed before the
+  awk branch: a shell-expanded awk program (`awk "$code"`) is the same pre-existing inline-code-value
+  limitation as `python3 -c "$CODE"` (Open question 3) — the guard scans the literal `$code`, cannot
+  see the shell's substitution, and refusing it would over-block every dynamic awk one-liner, the
+  opposite of this change's goal. A glob/brace first positional (`awk *.awk`) is *not* a
+  code-loading bypass either: awk reads the first expanded word as literal program text, never as a
+  file whose contents it loads, so no file content reaches either awk or the guard through that
+  path (that again would need `-f`). A reviewer (Copilot, PR #659) raised the awk positional; it is
+  documented here as an explicit exclusion rather than closed, because closing it in the
+  `is_shell_expanded` direction would add exactly the false positive this change removes.
 - **Unresolvable token.** The predicates already exist in `exfil_bash_lex.py`:
   `is_shell_expanded(token)` returns `"$" in token or "`" in token`, and `is_glob_or_brace(token)`
   matches an unquoted `*`, `?`, `[` class or `{a,b}`/`{m..n}` brace list; both are imported and
@@ -420,11 +444,13 @@ narrowing changes no current assertion.
     to dash-prefixed expanded tokens too (`-$opt` → `-e`), which is why it runs ahead of the
     generic `tok.startswith("-")` skip and not only on positionals: left to that skip, `-$opt` is
     dropped silently and the real program that follows it is returned past unscanned.
-  - On the Perl/Ruby/Node value-flag, preload-flag and Ruby `-C` handlers, once `inline_seen` is
-    set, the operand each is about to consume (the attached value or `args[i + 1]`) raises the same
-    error instead of being swallowed — see the inline-program bullet above. These handlers sit
+  - On the Perl/Ruby/Node value-flag, preload-flag, Ruby `-C` and Perl `-M` handlers, once
+    `inline_seen` is set, the operand each is about to consume (the attached value — for `-M`,
+    `tok[2:]` — or `args[i + 1]`) raises the same
+    error instead of being swallowed — see the inline-program bullet above. These handlers sit at or
     *above* the `inline_seen` early return and `continue` before it, so without this check an
-    expanded value/preload operand (`perl -e 'print 1' -I ${more[@]}`) that word-splits into a
+    expanded value/preload/`-M` operand (`perl -e 'print 1' -I ${more[@]}`,
+    `perl -e 'print 1' -M${more[@]}`) that word-splits into a
     further `-e` would be consumed unscanned and never reach the per-token test. The check is gated
     on `inline_seen` so a pre-inline include-list (`perl -I ${inc[@]} script.pl`) is unaffected;
     the pre-inline residual is Open question 6.
@@ -527,7 +553,16 @@ trusted.
   the same way. Guards the value-flag/preload-flag arm of the expansion refusal: these handlers
   run *above* the `inline_seen` early return and consume their operand before it, so without the
   gated check `${more[@]}` — which can word-split into a second `-e`/`require` and its code — would
-  be swallowed unscanned. A clean value operand after inline code (`perl -e 'print 1' -I lib`)
+  be swallowed unscanned.
+- `perl -e 'print 1' -M${more[@]}` (a shell-expanded value consumed by Perl's `-M` module-load
+  branch after inline code) blocks with the "expanded by the shell" message. Guards the `-M` arm of
+  the expansion refusal: `-M${more[@]}` expands into `-MJSON::PP -e 'use IO::Socket; …'`, and
+  without the `inline_seen`-gated check the `-M` branch scans only the literal `${more[@]}` as the
+  module value (setting `code_seen`) and `continue`s, letting the injected second `-e` run
+  unscanned. A clean attached module (`perl -e 'print 1' -MJSON::PP`) still allows, since the value
+  is not an expansion. The gating on `inline_seen` is asserted by `perl -M${mods[@]} script.pl` (no
+  inline program yet): it reaches `_read_script` on `script.pl` as on master (the pre-inline
+  residual, Open question 6), so the change adds no new false positive to a dynamic module list. A clean value operand after inline code (`perl -e 'print 1' -I lib`)
   still allows, since `lib` is an ordinary include directory, not an expansion. The gating on
   `inline_seen` is asserted by `perl -I ${inc[@]} script.pl` (no inline program yet): it is *not*
   blocked by this new check — it reaches `_read_script` on `script.pl` exactly as on master (the
@@ -645,7 +680,8 @@ No existing test changes.
    Keeping the fail-closed direction there mirrors the `-m` decision above.
 
 3. **Shell-expanded inline *code value* (pre-existing, out of scope).** When the inline code
-   itself is a shell expansion — `python3 -c "$CODE"`, `perl -e "$CODE"` — the guard scans the
+   itself is a shell expansion — `python3 -c "$CODE"`, `perl -e "$CODE"`, and (since awk's first
+   positional *is* its program text) `awk "$code"` — the guard scans the
    literal text `$CODE`, which carries no network pattern, and passes. The real code is produced
    by the shell at run time and the guard can never see it. This is a pre-existing property of
    the guard (today `python3 -c "$CODE"` with no operand already allows) and is independent of
@@ -746,13 +782,17 @@ No existing test changes.
    the bug fix small. Until it lands, the guarantee is honestly stated as "pipes and heredocs,"
    not "all stdin."
 
-6. **Expanded value/preload operand before any inline program (pre-existing, out of scope).** The
-   `inline_seen` expansion refusal on the value-flag, preload-flag and Ruby `-C` handlers (Scope
+6. **Expanded value/preload/`-M` operand before any inline program (pre-existing, out of scope).**
+   The `inline_seen` expansion refusal on the value-flag, preload-flag, Ruby `-C` and Perl `-M`
+   handlers (Scope
    item 2, Approach Perl/Ruby/Node bullet) is deliberately gated on an inline program having
    *already* been seen, so an expansion consumed as such an operand *before* the first inline flag
-   is not refused: `perl -I ${more[@]} -e 'print 1'` and `perl -I ${more[@]} script.pl` with
-   `more=(safe -e 'use IO::Socket; …')` word-split `${more[@]}` into a second `-e` program the guard
-   never scans. A reviewer (Copilot, PR #659) raised the inline-first shape; this is its
+   is not refused: `perl -I ${more[@]} -e 'print 1'`, `perl -I ${more[@]} script.pl` and
+   `perl -M${more[@]} script.pl` with
+   `more=(safe -e 'use IO::Socket; …')` (or `more=(JSON::PP -e 'use IO::Socket; …')` for `-M`)
+   word-split `${more[@]}` into a second `-e` program the guard
+   never scans. A reviewer (Copilot, PR #659) raised the inline-first value/preload shape and,
+   separately, the inline-first `-M` shape (both now closed by the gated check); this is their
    mirror. It is a pre-existing gap, not a regression — master consumes the `-I` operand without an
    expansion test in every ordering — and the gate is what keeps the common include-list idiom
    (`perl -I ${inc[@]} script.pl`) from becoming a new false positive, since before any inline
@@ -776,8 +816,8 @@ No existing test changes.
    `-m` handler the same `inline_seen`-gated expansion refusal would be a consistent, strictly
    safer extension if the approver wants it; this plan scopes it out with the pre-inline case to
    keep the change small, and the enumeration of operand-consuming handlers covered by the gated
-   check (value-flag, preload-flag, Ruby `-C`) is stated with this one carve-out named rather than
-   silently omitted.
+   check (value-flag, preload-flag, Ruby `-C`, Perl `-M`) is stated with this one carve-out named
+   rather than silently omitted.
 
 ## Estimated complexity
 
@@ -796,9 +836,9 @@ grammar-less families kept on today's fall-through, the `-` stdin return, a cons
 Perl/Ruby/Node `inline_seen` early return, and the end-of-loop check broadened from
 `if not code_seen:` to `if inline_seen or not code_seen:` so a last-token inline program's stdin
 is still inspected — all reusing the existing helper, no new stdin logic),
-the `inline_seen`-gated expansion refusal on the value-flag, preload-flag and
-Ruby `-C` operand-consuming handlers (so an expanded `-I`/`-r`/`-C` operand after inline code is
-refused rather than swallowed), and the
+the `inline_seen`-gated expansion refusal on the value-flag, preload-flag,
+Ruby `-C` and Perl `-M` operand-consuming handlers (so an expanded `-I`/`-r`/`-C`/`-M` operand
+after inline code is refused rather than swallowed), and the
 unresolvable-token guard — reusing the existing `is_shell_expanded` and `is_glob_or_brace`
 predicates at all three of its loop sites (two added imports, no new predicate), one new test module,
 and three one-line list additions (two `GUARD_FILES` arrays and the `analysis.yaml`
