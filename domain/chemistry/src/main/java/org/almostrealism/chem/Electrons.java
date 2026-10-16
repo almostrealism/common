@@ -204,9 +204,12 @@ public class Electrons implements ConsoleFeatures {
 		assert index > 0;
 
 		// Pick a new configuration with less energy than this one
-		ExcitationConfiguration c = random(energies[(int) (StrictMath.random() * index)]);
-		double eV = d - this.configurationMap.get(excited);
+		double newEnergy = energies[(int) (StrictMath.random() * index)];
+		ExcitationConfiguration c = random(newEnergy);
+		double eV = d - newEnergy;
 		c.apply(e);
+
+		this.excited = newEnergy > 0.0 ? c : null;
 
 		return eV;
 	}

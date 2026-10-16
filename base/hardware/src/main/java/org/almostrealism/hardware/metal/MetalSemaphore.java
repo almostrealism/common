@@ -23,8 +23,9 @@ import io.almostrealism.profile.OperationMetadata;
 /**
  * {@link OperationSemaphore} backed by a Metal {@link MTLEvent} timeline value — the Metal analog of
  * {@link org.almostrealism.hardware.cl.CLSemaphore}. It is the single completion handle for one
- * dispatch: the dispatch was encoded into {@link #getCommandBuffer() a command buffer} and signals
- * the event to {@link #getValue() its value}.
+ * dispatch: the dispatch was encoded into {@link #getCommandBuffer() a command buffer}, which
+ * signals the event to at least {@link #getValue() its value} once all of the buffer's work,
+ * including this dispatch, has completed (see {@link MetalCommandRunner}).
  *
  * <p>{@link #waitFor()} ensures that command buffer is committed and completed (host completion).
  * A <em>dependent</em> dispatch instead orders itself after this one on the GPU by encoding a wait
@@ -42,12 +43,12 @@ public class MetalSemaphore implements OperationSemaphore {
 	private final MetalCommandRunner runner;
 	/** The command buffer the dispatch was encoded into. */
 	private final MTLCommandBuffer commandBuffer;
-	/** The timeline event the dispatch signals. */
+	/** The timeline event the dispatch's command buffer signals. */
 	private final MTLEvent event;
-	/** The value the dispatch signals the event to. */
+	/** The timeline value of the dispatch, reached once its command buffer has completed. */
 	private final long value;
 	/**
-	 * The highest event value signaled by a dispatch merged into this completion from an earlier
+	 * The highest timeline value of a dispatch merged into this completion from an earlier
 	 * command buffer than {@link #commandBuffer}, or {@code 0} when there is none.
 	 */
 	private final long priorBufferValue;
@@ -58,8 +59,8 @@ public class MetalSemaphore implements OperationSemaphore {
 	 * @param requester     metadata of the operation this completion belongs to, or {@code null}
 	 * @param runner        the command runner that owns the command buffer
 	 * @param commandBuffer the command buffer the dispatch was encoded into
-	 * @param event         the timeline event the dispatch signals
-	 * @param value         the value the dispatch signals the event to
+	 * @param event         the timeline event the dispatch's command buffer signals
+	 * @param value         the timeline value of the dispatch
 	 */
 	public MetalSemaphore(OperationMetadata requester, MetalCommandRunner runner,
 						  MTLCommandBuffer commandBuffer, MTLEvent event, long value) {
@@ -72,9 +73,9 @@ public class MetalSemaphore implements OperationSemaphore {
 	 * @param requester        metadata of the operation this completion belongs to, or {@code null}
 	 * @param runner           the command runner that owns the command buffer
 	 * @param commandBuffer    the command buffer the dispatch was encoded into
-	 * @param event            the timeline event the dispatch signals
-	 * @param value            the value the dispatch signals the event to
-	 * @param priorBufferValue the highest value signaled by a covered dispatch from an earlier
+	 * @param event            the timeline event the dispatch's command buffer signals
+	 * @param value            the timeline value of the dispatch
+	 * @param priorBufferValue the highest timeline value of a covered dispatch from an earlier
 	 *                         command buffer, or {@code 0} when there is none
 	 */
 	private MetalSemaphore(OperationMetadata requester, MetalCommandRunner runner,
@@ -91,14 +92,14 @@ public class MetalSemaphore implements OperationSemaphore {
 	/** Returns the command buffer the dispatch was encoded into. */
 	public MTLCommandBuffer getCommandBuffer() { return commandBuffer; }
 
-	/** Returns the timeline event the dispatch signals. */
+	/** Returns the timeline event the dispatch's command buffer signals. */
 	public MTLEvent getEvent() { return event; }
 
-	/** Returns the value the dispatch signals the event to. */
+	/** Returns the timeline value of the dispatch, reached once its command buffer has completed. */
 	public long getValue() { return value; }
 
 	/**
-	 * Returns the highest event value signaled by a dispatch this completion covers from a command
+	 * Returns the highest timeline value of a dispatch this completion covers from a command
 	 * buffer earlier than {@link #getCommandBuffer()}, or {@code 0} when it covers none &mdash;
 	 * always {@code 0} for the completion of a single dispatch. A dependent dispatch encoded into
 	 * this completion's own command buffer is ordered after the dispatches of that buffer by the
@@ -158,17 +159,17 @@ public class MetalSemaphore implements OperationSemaphore {
 	 * chains on one completion of this runner instead of on a host-side composite. Completions
 	 * from another runner, or from any other provider, are not merged.
 	 *
-	 * <p>A runner encodes its dispatches in order, each signaling the next value of the runner's
-	 * timeline event after the work encoded before it in its command buffer, into command buffers
-	 * committed to one serial queue. Waiting on the host for the later dispatch, or encoding a
-	 * GPU wait for its value from another command buffer, therefore orders after the earlier one
-	 * as well &mdash; the same ordering {@link MetalCommandRunner} relies on for any single
-	 * dependency. The one ordering the later completion alone does not carry is that of an
-	 * earlier dispatch from a different command buffer, for a dependent encoded into the later
-	 * dispatch's own (still open) buffer, where the runner orders a single dependency by the
-	 * buffer and encodes no wait. The merged completion records the value of such a dispatch as
-	 * its {@link #getPriorBufferValue() prior buffer value}, for which the runner still encodes
-	 * the wait.</p>
+	 * <p>A runner encodes its dispatches in order, each taking the next value of the runner's
+	 * timeline event, into command buffers committed to one serial queue, and each buffer signals
+	 * the value of its last dispatch once all of its work has completed. Waiting on the host for
+	 * the later dispatch, or encoding a GPU wait for its value from another command buffer,
+	 * therefore orders after the earlier one as well &mdash; the same ordering
+	 * {@link MetalCommandRunner} relies on for any single dependency. The one ordering the later
+	 * completion alone does not carry is that of an earlier dispatch from a different command
+	 * buffer, for a dependent encoded into the later dispatch's own (still open) buffer, where the
+	 * runner orders a single dependency by the buffer and encodes no wait. The merged completion
+	 * records the value of such a dispatch as its {@link #getPriorBufferValue() prior buffer
+	 * value}, for which the runner still encodes the wait.</p>
 	 *
 	 * @param other another completion
 	 * @return the merged completion when both belong to this runner, otherwise {@code null}

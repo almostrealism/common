@@ -17,6 +17,7 @@
 package org.almostrealism.studio.persistence;
 
 import org.almostrealism.audio.api.Audio;
+import org.almostrealism.audio.midi.MidiTempo;
 import org.almostrealism.music.midi.MidiNoteEvent;
 
 import javax.sound.midi.InvalidMidiDataException;
@@ -350,14 +351,12 @@ public final class MidiPatternPersistence {
 		int type = mm.getType();
 		byte[] data = mm.getData();
 		switch (type) {
-			case 0x51: { // set tempo
-				if (data.length < 3) return;
-				int micros = ((data[0] & 0xff) << 16) | ((data[1] & 0xff) << 8) | (data[2] & 0xff);
-				int bpm = micros == 0 ? 0 : (int) Math.round(60_000_000.0 / micros);
-				out.add(new TrackedEvent(tick, sequence, Audio.MidiEvent.newBuilder()
-						.setTick(tick).setTrack(trackIdx)
-						.setSetTempo(Audio.SetTempoEvent.newBuilder().setBpm(bpm))
-						.build()));
+			case MidiTempo.META_TYPE: {
+				MidiTempo.of(mm).ifPresent(tempo -> out.add(new TrackedEvent(tick, sequence,
+						Audio.MidiEvent.newBuilder()
+								.setTick(tick).setTrack(trackIdx)
+								.setSetTempo(Audio.SetTempoEvent.newBuilder().setBpm(tempo.bpm()))
+								.build())));
 				break;
 			}
 			case 0x58: { // time signature
@@ -457,14 +456,7 @@ public final class MidiPatternPersistence {
 				break;
 			}
 			case SET_TEMPO: {
-				int bpm = Math.max(1, event.getSetTempo().getBpm());
-				int micros = (int) (60_000_000L / bpm);
-				byte[] data = new byte[] {
-						(byte) ((micros >> 16) & 0xff),
-						(byte) ((micros >> 8) & 0xff),
-						(byte) (micros & 0xff)
-				};
-				track.add(new MidiEvent(new MetaMessage(0x51, data, 3), tick));
+				track.add(new MidiEvent(MidiTempo.ofBpm(event.getSetTempo().getBpm()).toMetaMessage(), tick));
 				break;
 			}
 			case TIME_SIGNATURE: {

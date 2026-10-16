@@ -412,6 +412,59 @@ public class MidiFileReaderTest extends TestSuiteBase {
 		assertEquals("Duration at the default tempo", 100L, readBack.get(0).getDuration());
 	}
 
+	/**
+	 * Verify that {@link MidiFileReader#write(List, File, int)} encodes a
+	 * SET_TEMPO event as the whole number of microseconds per beat.
+	 */
+	@Test(timeout = 60000)
+	public void writeEncodesTempoAsMicrosecondsPerBeat() throws Exception {
+		assertEquals("Microseconds per beat at 120 BPM", 500_000, writtenTempo(120));
+		assertEquals("Microseconds per beat at 90 BPM", 666_666, writtenTempo(90));
+	}
+
+	/**
+	 * Verify that a SET_TEMPO event without a positive tempo is written as the
+	 * MIDI default of 120 BPM.
+	 */
+	@Test(timeout = 60000)
+	public void writeEncodesNonPositiveTempoAsDefault() throws Exception {
+		assertEquals("Microseconds per beat for a zero tempo", 500_000, writtenTempo(0));
+		assertEquals("Microseconds per beat for a negative tempo", 500_000, writtenTempo(-5));
+	}
+
+	/**
+	 * Verify that a BPM too slow for the 24-bit Set Tempo field is clamped to
+	 * the slowest tempo the field can hold instead of wrapping to a faster one.
+	 */
+	@Test(timeout = 60000)
+	public void writeClampsTempoSlowerThanTheSetTempoField() throws Exception {
+		assertEquals("Microseconds per beat at 2 BPM", 0xFFFFFF, writtenTempo(2));
+	}
+
+	/**
+	 * Writes a single SET_TEMPO event with {@link MidiFileReader#write(List, File, int)}
+	 * and returns the microseconds per beat stored in the resulting file.
+	 */
+	private static int writtenTempo(int bpm) throws Exception {
+		List<MidiNoteEvent> events = new ArrayList<>();
+		events.add(MidiNoteEvent.setTempo(0, 0, bpm));
+
+		File tempFile = File.createTempFile("midi-written-tempo-", ".mid");
+		tempFile.deleteOnExit();
+		new MidiFileReader().write(events, tempFile, 480);
+
+		for (Track track : MidiSystem.getSequence(tempFile).getTracks()) {
+			for (int i = 0; i < track.size(); i++) {
+				if (track.get(i).getMessage() instanceof MetaMessage meta && meta.getType() == 0x51) {
+					byte[] data = meta.getData();
+					return (data[0] & 0xFF) << 16 | (data[1] & 0xFF) << 8 | data[2] & 0xFF;
+				}
+			}
+		}
+
+		throw new AssertionError("No Set Tempo event was written");
+	}
+
 	/** Creates a Set Tempo meta event with the given microseconds per quarter note. */
 	private static MidiEvent tempoEvent(int microsPerBeat, long tick) throws InvalidMidiDataException {
 		byte[] data = {

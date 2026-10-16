@@ -193,6 +193,10 @@ warning when no library has been staged yet.
 ./fleet.sh logs [-f]
 ```
 
+`tools/bin/fleet cuda <command>` is the same thing from anywhere in the
+checkout — the fleet-wide entry point, which takes the same commands for every
+platform.
+
 `down` cancels any job in flight. Runners are ephemeral, so that only costs a
 retry.
 

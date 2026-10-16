@@ -36,15 +36,26 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>Dispatches are <em>encoded</em> into an open command buffer (not committed per dispatch) on a
  * single-threaded executor, so independent dispatches accumulate into one command buffer. Each
- * dispatch returns a {@link MetalSemaphore} — the operation's single completion handle — and
- * signals a {@link MTLEvent} timeline value. Ordering between dependent dispatches is expressed at
- * the GPU level: when a dispatch is submitted with a {@link MetalSemaphore} dependency of this
+ * dispatch returns a {@link MetalSemaphore} — the operation's single completion handle — carrying
+ * the next value of a {@link MTLEvent} timeline. Ordering between dependent dispatches is expressed
+ * at the GPU level: when a dispatch is submitted with a {@link MetalSemaphore} dependency of this
  * runner, nothing is committed. A dependency in the still-open buffer is ordered by in-buffer hazard
  * tracking and costs no wait (only a merged completion's
  * {@link MetalSemaphore#getPriorBufferValue() prior buffer value}, if any, is waited for); a
  * dependency in an earlier, committed buffer is honored by encoding a wait for its event value, so
  * the GPU serializes the dependent after the dependency across buffers without a host stall. Only a
  * foreign dependency commits the open buffer first (see {@link #submit}).</p>
+ *
+ * <h2>Timeline signals</h2>
+ *
+ * <p>A command buffer signals the timeline once, when it is committed: the signal carries the value
+ * of the last dispatch encoded into it and fires when all of the buffer's work has completed (see
+ * {@link #commitOpenOnExecutor()}). The timeline is only ever waited on from a later command buffer,
+ * for a dispatch in a buffer that has already been committed, so that one signal releases every
+ * such wait — later than a signal after the dispatch itself would, by the rest of that buffer's
+ * work. Signaling after every dispatch instead would end each dispatch with a command-buffer-level
+ * signal command, which costs the GPU tens of microseconds per dispatch and, for a kernel as small as
+ * most kernels of a model's forward pass, costs far more than the kernel itself.</p>
  *
  * <p>{@link MetalSemaphore#waitFor()} is the only thing that blocks the host: it commits the
  * dispatch's buffer if still open and waits for it (and every buffer committed before it, since the
@@ -132,7 +143,10 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	/** Timeline event used to order dependent dispatches across command buffers on the GPU. */
 	private final MTLEvent event;
 
-	/** Monotonic value last signaled on {@link #event}. Executor-thread only. */
+	/**
+	 * Monotonic timeline value of the last dispatch encoded, signaled on {@link #event} when the
+	 * buffer holding that dispatch is committed. Executor-thread only.
+	 */
 	private long signaled;
 
 	/** The open (encoded, not yet committed) command buffer, or {@code null}. Executor-thread only. */
@@ -336,8 +350,8 @@ public class MetalCommandRunner implements ConsoleFeatures {
 
 			command.encode(openBuffer);
 
+			// The buffer signals this value when it is committed (see commitOpenOnExecutor)
 			signaled++;
-			openBuffer.encodeSignalEvent(event, signaled);
 			openCount++;
 			totalDispatchCount.incrementAndGet();
 			if (onComplete != null) openOnComplete.add(onComplete);
@@ -541,6 +555,12 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
 	 * completion. Must run on the executor thread.
 	 *
+	 * <p>Before committing, the buffer is made to signal the timeline to the value of the last
+	 * dispatch encoded so far. That signal fires once every command before it in the buffer has
+	 * completed, which is what releases a later buffer's wait for any of this buffer's dispatches
+	 * (see the class documentation). The value never decreases from one buffer to the next, and a
+	 * buffer committed without a dispatch of its own signals the previous buffer's value again.</p>
+	 *
 	 * @return true if a commit was performed, false if no buffer was open
 	 */
 	private boolean commitOpenOnExecutor() {
@@ -549,6 +569,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		totalCommitCount.incrementAndGet();
 		commitCount++;
 
+		openBuffer.encodeSignalEvent(event, signaled);
 		openBuffer.commit();
 		bufferOpen = false;
 

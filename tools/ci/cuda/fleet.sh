@@ -18,6 +18,13 @@ set -euo pipefail
 # tree readable by its group only, and the image's runner user is not in any
 # host group, so the compose file adds this gid to the runner with group_add.
 
+SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+usage() { sed -n '4,/^$/p' "${SCRIPT}" | sed 's/^# \{0,1\}//'; }
+
+case "${1:-}" in
+    ""|-h|--help|help) usage; exit 0 ;;
+esac
+
 cd "$(dirname "$0")"
 
 if [ ! -f .env ]; then
@@ -97,7 +104,9 @@ case "${1:-}" in
         RUNNER_VERSION=unused AR_CI_SAMPLES_GID=0 compose logs "$@"
         ;;
     *)
-        sed -n '/^# ─── Manage/,/^# "up" resolves/p' "$0" | sed 's/^# \{0,1\}//' | head -6
+        echo "Unknown command: $1" >&2
+        echo >&2
+        usage >&2
         exit 2
         ;;
 esac
