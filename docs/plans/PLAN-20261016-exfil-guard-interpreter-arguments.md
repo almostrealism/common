@@ -1113,5 +1113,9 @@ and three one-line list additions (two `GUARD_FILES` arrays and the `analysis.ya
 If the approver takes the recommended cluster-rejection in Open question 4 (refusing an
 unrecognised single-`-`, length > 2 cluster on the `inline_seen` path for Perl/Ruby/Node and for the
 Python family, to close the `-pe`-after-`-e` and `-Ec'…'` fail-opens), add roughly five to ten lines
-more and two to three regressions. The grammar-less stdin gap and the no-inline cluster over-block
-(Open questions 4 and 5) are left as separable follow-ups and add nothing here.
+more and two to three regressions. If the approver also takes the recommended `--` end-of-options
+handling in Open question 8 — both halves, for the four families with an option grammar: the
+unknown-program side under `not code_seen` and the end-the-walk side under `inline_seen` — add roughly
+five more lines and the four tests Open question 8 lists. The grammar-less stdin gap and the no-inline
+cluster over-block (Open questions 4 and 5), and the pre-inline expanded-operand residual (Open
+question 6), are left as separable follow-ups and add nothing here.
