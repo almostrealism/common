@@ -9,7 +9,9 @@
 # already used by AGENT_ENV and TRANSCRIPT_DIR_HOST elsewhere in this
 # script), which lets these tests redirect that block at temporary
 # directories instead. `docker` and `mvn` are replaced with no-op mocks on
-# PATH so the script never attempts a real build or compose invocation.
+# PATH so the script never attempts a real build or compose invocation; the
+# docker mock records every invocation, and fails any whose arguments contain
+# MOCK_DOCKER_FAIL_ON, so the post-deploy prune can be checked as well.
 #
 # Usage:
 #   test-rebuild.sh
@@ -36,6 +38,9 @@ cat > "$MOCK_BIN/docker" <<'EOF'
   echo "ARGS $*"
   echo "FLEET_BIND_ADDR=${FLEET_BIND_ADDR:-<unset>}"
 } >> "$MOCK_DOCKER_LOG"
+if [ -n "${MOCK_DOCKER_FAIL_ON:-}" ] && [[ "$*" == *"${MOCK_DOCKER_FAIL_ON}"* ]]; then
+  exit 1
+fi
 exit 0
 EOF
 chmod +x "$MOCK_BIN/docker"
@@ -182,6 +187,72 @@ else
   echo "    --- docker mock log ---"
   sed 's/^/    /' "$MOCK_DOCKER_LOG"
 fi
+
+# check_docker_log NAME CONDITION...
+#
+# Records a pass or failure for NAME according to whether CONDITION (a
+# command run against the docker mock log of the most recent case) succeeds.
+check_docker_log() {
+  local name="$1"
+  shift
+  if "$@"; then
+    PASS=$((PASS + 1))
+    echo "  PASS: $name"
+  else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("$name")
+    echo "  FAIL: $name"
+    echo "    --- docker mock log ---"
+    sed 's/^/    /' "$MOCK_DOCKER_LOG"
+  fi
+}
+
+# first_line TEXT: line number of TEXT's first occurrence in the mock log.
+first_line() {
+  grep -nF "$1" "$MOCK_DOCKER_LOG" | head -1 | cut -d: -f1
+}
+
+# prunes_follow_restart: both prunes ran, and only after the containers were
+# recreated, so nothing a running container needs could have been removed.
+prunes_follow_restart() {
+  local up image builder
+  up="$(first_line "up -d --force-recreate")"
+  image="$(first_line "ARGS image prune -f")"
+  builder="$(first_line "ARGS builder prune -f --max-used-space ${1}")"
+  [ -n "$up" ] && [ -n "$image" ] && [ -n "$builder" ] \
+    && [ "$image" -gt "$up" ] && [ "$builder" -gt "$up" ]
+}
+
+no_prune() {
+  ! grep -qF " prune" "$MOCK_DOCKER_LOG"
+}
+
+echo ""
+echo "rebuild.sh post-deploy prune tests"
+
+run_case "a successful rebuild reports the prune" 0 \
+    "Pruning superseded images and build cache beyond 20gb" "" \
+    flowtree-controller --
+check_docker_log "superseded images and build cache are pruned after the restart" \
+    prunes_follow_restart 20gb
+
+run_case "BUILD_CACHE_MAX_USED_SPACE is accepted" 0 \
+    "beyond 5gb" "" \
+    flowtree-controller -- \
+    BUILD_CACHE_MAX_USED_SPACE=5gb
+check_docker_log "BUILD_CACHE_MAX_USED_SPACE sets the build cache budget" \
+    prunes_follow_restart 5gb
+
+run_case "a failed build fails the rebuild" 1 \
+    "" "Pruning superseded images" \
+    flowtree-controller -- \
+    MOCK_DOCKER_FAIL_ON="compose -f flowtree/runtime/controller/docker-compose.yml build"
+check_docker_log "nothing is pruned when the build fails" no_prune
+
+run_case "a failed prune is reported without failing a deploy that worked" 0 \
+    "WARNING: docker builder prune failed" "" \
+    flowtree-controller -- \
+    MOCK_DOCKER_FAIL_ON="builder prune"
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
