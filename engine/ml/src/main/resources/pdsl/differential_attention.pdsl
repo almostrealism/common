@@ -52,7 +52,8 @@
  *
  * lambda holds one weight per head, [batch, heads]: how much of each head's second map is subtracted.
  * It is applied with scale(lambda, 1), which reads lambda as a constant factor; when lambda is a learned
- * re-parameterization its parameters therefore receive no gradient (a TODO(review) marks the stage).
+ * re-parameterization its parameters therefore receive no gradient (a TODO(review) marks the stage in
+ * each of the three layers).
  *
  * The three forms. The query/key normalization is optional and comes in two families; each form is its
  * own pair of layers, so a reader sees exactly the stages a model runs:
@@ -211,6 +212,7 @@ layer differential_attention_qk_layernorm(batch: int, seq_len: int, heads: int, 
     qkv_projection
     reshape([batch, seq_len, 5, heads * head_dim])
 
+    // TODO(review): scale(lambda, 1) reads lambda as a constant, so a learned lambda's parameters receive no gradient
     accum_blocks(
         {
             attention_map_qk_layernorm(batch, seq_len, heads, head_dim, 0, 1, 3,
@@ -243,6 +245,7 @@ layer differential_attention_qk_rmsnorm(batch: int, seq_len: int, heads: int, he
     qkv_projection
     reshape([batch, seq_len, 5, heads * head_dim])
 
+    // TODO(review): scale(lambda, 1) reads lambda as a constant, so a learned lambda's parameters receive no gradient
     accum_blocks(
         {
             attention_map_qk_rmsnorm(batch, seq_len, heads, head_dim, 0, 1, 3,
