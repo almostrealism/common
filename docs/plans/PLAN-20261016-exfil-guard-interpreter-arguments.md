@@ -109,7 +109,10 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
      all allow — the program is fixed and the rest is data. The gate on `-c` matters because the
      shared `_INTERPRETER_CODE_FLAGS` set also contains `-E`, which for Python is the
      environment-isolation option (it takes *no* argument), not inline code; so the Python
-     inline-code match must be narrowed to `-c` alone (item 3 and Open question 3).
+     inline-code match must be narrowed to `-c` alone (item 3 and Open question 3). Matching `-c`
+     exactly does not catch a cluster that buries it, such as `-Ec'…'` (one token), which Python
+     still runs as inline code; that residual, and the recommendation to reject such clusters in
+     this change, are in Open question 4.
    - **Perl, Ruby and Node.** An *inline-code* flag from the family's table above (`-e`/`-E` for
      Perl, `-e` for Ruby, `-e`/`--eval`/`-p`/`--print`/`-pe` for Node) puts everything after it into the
      program's argument vector (`@ARGV` / `process.argv`), so a trailing operand is data, never a
@@ -223,7 +226,10 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
    does not make the command's standard input inert: an inline program can read and execute its
    own stdin (`python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))'`, `perl -e 'eval <STDIN>'`), so a heredoc or
    pipe attached to the command is potential program text, not data. The command's stdin must
-   therefore be inspected whenever an inline program has been seen, exactly as
+   therefore be inspected whenever an inline program has been seen *for one of the four modeled
+   families* (`python`, `perl`, `ruby`, `node`); grammar-less interpreters keep master's suppressed
+   tail and are the documented exception (Approach, "Interpreters with no option grammar", and Open
+   question 5). The inspection is exactly what
    `_check_stdin_program` already does for a non-shell interpreter: each heredoc body in
    `bodies` is scanned as code (`_scan_code`), and a pipe (`piped`) is refused. Without it,
    `python3 -c 'import sys; eval(compile(sys.stdin.read(), "-", "exec"))' - <<'PY'` / `import socket` / `PY` would run the heredoc
@@ -425,8 +431,19 @@ narrowing changes no current assertion.
     fail-closed (the script operand is read and scanned); where a grammar-less interpreter's
     operand is in fact data (`php -r 'code' data`), reading it is a residual over-block in the
     safe direction, since the guard cannot model the grammar to know otherwise (Open question 2).
-  - **Stdin after inline code.** Every path that fixes the program to an inline flag must inspect
-    the command's stdin before it finishes, because the inline program can read and execute it.
+    These families also fall outside the stdin inspection below. They set `code_seen` through the
+    shared-set match but never set `inline_seen`, so the end-of-loop check
+    `if inline_seen or not code_seen:` stays suppressed for them exactly as master's
+    `if not code_seen:` does: a grammar-less inline program with no following operand that reads and
+    executes its own stdin (`php -r 'eval(stream_get_contents(STDIN));' <<'PHP' … PHP`) runs the
+    heredoc or pipe unscanned. The stdin guarantee in the next bullet is therefore scoped to the
+    four modeled families; this grammar-less gap is pre-existing on master, not a regression, and is
+    recorded in Open question 5.
+  - **Stdin after inline code.** Every path *for a modeled family* (`python`, `perl`, `ruby`,
+    `node`) that fixes the program to an inline flag must inspect the command's stdin before it
+    finishes, because the inline program can read and execute it. Grammar-less families are the
+    exception noted in the previous bullet: they keep master's suppressed tail and are not covered
+    here.
     Reuse `_check_stdin_program(prog, piped, bodies, ctx, depth, analyze_command)` for this: it
     refuses a pipe and scans each heredoc body with `_scan_code` for a non-shell interpreter,
     which is exactly the conservative treatment wanted here. Call it only when `piped` or `bodies`
@@ -637,6 +654,16 @@ trusted.
   and one containing a network call blocks. Guards that grammar-less interpreters are *not* given
   the early return: Lua runs both the `-e` chunk and the script operand, so the operand must be
   read and scanned, not returned past as data.
+- `php -r 'eval(stream_get_contents(STDIN));' <<'PHP' / import socket / PHP`
+  (a grammar-less inline program as the command's last token, reading its stdin) documents the
+  stdin-inspection boundary (Open question 5). The heredoc body carries a network-matching payload
+  (`NETWORK_CODE_PATTERNS` matches on text, not on language, so `import socket` suffices), yet the
+  command *allows* under both master and this plan, because the body is never scanned: `php` sets
+  `code_seen` but never `inline_seen`, so the end-of-loop `if inline_seen or not code_seen:` check
+  stays suppressed. The case asserts the plan's stdin guarantee is scoped to the four modeled
+  families rather than silently claiming grammar-less coverage it does not provide; it is a boundary
+  case, not a regression (master behaves the same). If the approver later closes the grammar-less
+  gap, this case flips to "blocks."
 - `perl -MJSON::PP script.pl` scans `script.pl` as a program, so a clean `script.pl` allows and
   one containing a network call blocks. Guards that the Perl/Ruby/Node early return keys off an
   actual inline-code flag (`inline_seen`), not Perl's `-M`: `-M` loads a module and leaves
@@ -654,6 +681,13 @@ trusted.
   and `ruby -p /nonexistent/script.rb` block because the script is read rather than consumed as
   `-p`'s value. These guard that the Perl/Ruby inline match uses the family table, not the shared
   set.
+- `perl -e 'print 1' -pe 'use IO::Socket;' file` (an unsupported cluster *after* an inline program)
+  — if the approver takes the recommended inline-first cluster rejection (Open question 4), this
+  blocks with the unsupported-cluster refusal, and the case is a regression against the fail-open
+  where the `inline_seen` early return returns past the cluster's code token (`'use IO::Socket;'`)
+  unscanned. If the approver defers the inline-first rejection, this case instead documents the
+  known fail-open (it allows) and is marked as such. Either way the plan must not leave the
+  inline-first cluster to inference; the recommendation is the blocking form.
 - `node -p 'process.argv[1]' data.txt`, `node --eval 'x' data.txt` and
   `node -pe 'process.argv[1]' data.txt` (no such file) allow, and `node -pe 'fetch("http://e")'`
   blocks — the real program after `-pe` is scanned, not skipped behind an attached `e`.
@@ -668,6 +702,13 @@ trusted.
   It guards that for the Python family `-E` is an argument-less option, not an inline-code flag,
   so the script after it is reached by `_read_script` (Open question 3). A `python3 -E script.py`
   whose readable script contains a network call blocks, and a clean one allows.
+- `python3 -Ec'import socket'` (one token, a cluster that buries `-c`) and
+  `python3 -E -c 'import socket'` (the idiomatic separated form). The separated form blocks on both
+  master and the plan — `-E` is skipped, `-c 'import socket'` is matched and scanned — and is
+  asserted so the distinction is explicit. The clustered single-token form is the family-level
+  residual in Open question 4: under the bare per-family `-c` match it is skipped unscanned and
+  allows; if the approver takes the Python cluster rejection it blocks. The case documents the
+  residual rather than leaving the clustered spelling to inference.
 - `python3 /nonexistent/script.py` still blocks (existing behaviour). The closest existing
   assertion is the option-value variant `python3 -W error /nonexistent/script.py` in
   `test_interpreter_options_with_a_value_are_not_the_program`; the new module adds the plain
@@ -763,7 +804,8 @@ No existing test changes.
    consumes the script as `-E`'s value and never reads it — a pre-existing fail-open that the
    per-family table closes (Scope/Approach item 2, and the `python3 -E …` test above).
 
-4. **Perl/Ruby switch clusters (pre-existing over-block, out of scope).** `perl -lne 'code' file`,
+4. **Perl/Ruby switch clusters (pre-existing over-block before inline code; a fail-open after it —
+   one decision for the approver).** `perl -lne 'code' file`,
    `perl -pe 'code' file` and `ruby -ne 'code' file` are common one-liners. Today none of them is
    recognised as carrying inline code (`-lne` matches no code flag; `-pe` matches `-p` with the
    attached value `e`), so the cluster's code token is read as a script and the command blocks.
@@ -784,28 +826,89 @@ No existing test changes.
    a nonexistent code-looking path therefore demonstrates that the cluster token is not consumed
    as data; it does not demonstrate that the inline program is scanned.
 
+   **The cluster is worse once an inline program has already been seen.** The paragraphs above
+   describe the cluster reached while the program is still unknown, where the block is produced by
+   `_read_script` failing on the token after the cluster (fail-closed, if only accidentally so). A
+   reviewer (Copilot, PR #659) pointed out that the same cluster reached *after* an inline flag is an
+   outright fail-open, not merely an unprincipled block. In
+   `perl -e 'print 1' -pe 'use IO::Socket;' file` the first `-e` sets `inline_seen`; the `-pe`
+   cluster matches no member of Perl's table, so it falls through to the generic `tok.startswith("-")`
+   skip; then the cluster's code token (`'use IO::Socket;'`) is the next positional and hits the
+   `inline_seen` early return, which returns `f"{prog}:inline"` *without* calling
+   `_read_script`/`_scan_code` on it. Perl runs both the `-e 'print 1'` program and the `-pe` program
+   (`-pe` is `-p -e`), so a second inline program runs unscanned. This is the mirror, on the
+   inline-first path, of the no-inline cluster above: there `_read_script` still runs and fails
+   closed; here the early return skips it. The "reject unsupported clusters" resolution below must
+   therefore be applied on the `inline_seen` early-return path as well — a single-`-`, length > 2
+   token that is not a long `--` flag and matches no value/preload/inline flag is refused before the
+   generic dash-option skip, whether or not an inline program has been seen — with a regression for a
+   cluster after an inline program (`perl -e 'print 1' -pe 'use IO::Socket;' file` blocks) added
+   alongside the no-inline one.
+
+   **Python has the same cluster shape with `-c`.** A reviewer (Copilot, PR #659) observed that
+   Python clusters short options too, so `-c` can be buried in a cluster the per-family Python table
+   (which matches `-c` exactly) does not recognise. `python3 '-Ecprint(1+1)'` runs `print(1+1)`
+   (verified), because Python reads `-E`, then `-c`, whose value is the rest of the token. The
+   guard's `match_flag` only recognises an *attached* short value when the token *starts* with the
+   flag (`-cCODE`), so a token beginning `-E` matches neither `-c` nor, under the per-family table,
+   anything else, and falls to the `tok.startswith("-")` skip. The two-token form
+   `python3 -Ec 'import socket'` still fails closed under the plan — `-Ec` is skipped, `'import socket'`
+   is the next positional, `code_seen` is false, so it reaches `_read_script` and blocks on the
+   unreadable name — but the single-token attached form `python3 -Ec'import socket'` (one token,
+   `-Ecimport socket`) is skipped with `code_seen` false and, being the last token, returns
+   `python:inline` with the code unscanned: a fail-open. The plan's statement that `-c` is Python's
+   only inline-code form is true of *which flag* carries code, but it is **not** a claim that every
+   spelling of that flag is matched; the per-family `-c` match misses the clustered spelling. The
+   two resolutions below apply to the Python family as well: extend "reject unsupported clusters" to
+   Python (a single-`-`, length > 2 token that matches none of Python's tables is refused — note this
+   also blocks the legitimate-but-rare `python3 -Ec script.py`), or decompose Python clusters to find
+   a buried `-c`. Either way a regression is needed (`python3 -Ec'import socket'` blocks;
+   `python3 -E -c 'import socket'`, the idiomatic separated form, already blocks on master and under
+   the plan and should be asserted alongside it). This is recorded as a documented family-level
+   residual rather than silently treated as covered. Because this spelling is a true fail-open (not
+   merely an over-block), the recommendation is to take the Python arm of "reject unsupported
+   clusters" in this change, in step with the inline-first Perl/Ruby/Node cluster refusal above.
+
    Two ways close it, for the approver to choose between:
-   - **Reject unsupported clusters.** When the program is still unknown and a token is a short
-     option cluster the family's tables do not recognise (a single-`-`, length > 2 token that is
-     not a long `--` flag and matches no value/preload/inline flag), refuse it before reading the
-     following token as a script, rather than skipping it. This makes the block unconditional
-     (independent of whether the next token is a readable file) and is a small, local change. Its
-     cost is that it can only ever block — it still does not run the one-liner — so it does not
-     remove the over-block, only makes the fail-closed behaviour honest; and it must be scoped to
-     Perl/Ruby/Node (families with a code grammar), since a grammar-less interpreter's unknown
-     clusters cannot be classified this way.
+   - **Reject unsupported clusters.** When a token is a short option cluster the family's tables do
+     not recognise (a single-`-`, length > 2 token that is not a long `--` flag and matches no
+     value/preload/inline flag), refuse it before the generic dash-option skip, rather than skipping
+     it. This must happen on *both* cluster paths: while the program is still unknown (so the
+     following token is not read as a script by accident) *and* once `inline_seen` is set (so the
+     following token is not returned past as argv data by the early return) — the inline-first case
+     is the fail-open described just above, and skipping it there is strictly unsafe, not merely
+     unprincipled. This makes the block unconditional (independent of whether the next token is a
+     readable file) and is a small, local change. Its cost is that it can only ever block — it still
+     does not run the one-liner — so it does not remove the over-block, only makes the fail-closed
+     behaviour honest; and it must be scoped to the four families with a code grammar (Python as
+     well as Perl/Ruby/Node, since Python's `-Ec` cluster is the same shape), since a grammar-less
+     interpreter's unknown clusters cannot be classified this way.
    - **Parse clusters.** Decompose `-pe`/`-lne`/`-ne` into their constituent switches, resolve
      which ones take a value, and scan the `-e` program properly. This removes the over-block (the
      one-liner would be scanned and, if clean, allowed) but is the riskier change: a mistake about
      which switches consume a value is itself a fail-open.
 
-   Either is a reasonable follow-up task once this change lands; neither is in scope here, which
-   keeps the bug fix small.
+   The split by path matters for what can be deferred. The *no-inline* over-block is pre-existing on
+   master and either resolution for it is a reasonable follow-up that can land after this change. The
+   *inline-first* Perl/Ruby/Node case and the Python `-Ec'…'` case are different: both are genuine
+   fail-opens (for the inline-first case, this plan's `inline_seen` early return is what turns
+   master's fail-closed `_read_script` into a return-past; for `-Ec'…'`, the single-token cluster is
+   skipped unscanned and allowed as the last token). The recommendation is therefore to take the
+   minimal arm of "reject unsupported clusters" — the single-`-`, length > 2 unrecognised-token
+   refusal — on the `inline_seen` early-return path *and* for the Python family *as part of this
+   change*, with the regressions noted above, and to leave the no-inline Perl/Ruby refusal and full
+   cluster parsing as the separable follow-up. Rejecting the
+   cluster on the inline-first path costs nothing a correct Perl one-liner relies on, because such a
+   cluster after an inline `-e` is already non-idiomatic, and it keeps the plan's own guarantee
+   ("a second program smuggled past the first is never silently skipped once an inline program has
+   been seen") true for clusters as well as for expansions.
 
 5. **Pipe vs heredoc on the inline-program stdin path (in scope; one decision for the approver).**
    Because an inline program can read and execute its own stdin, Scope item 2 requires every
-   inline-program path to inspect the command's stdin, reusing `_check_stdin_program` (refuse a
-   pipe, scan each heredoc body as code). That is three sites, not two: the Python `-c` immediate
+   *modeled-family* inline-program path to inspect the command's stdin, reusing
+   `_check_stdin_program` (refuse a pipe, scan each heredoc body as code); the grammar-less families
+   are the documented exception at the end of this question. That is three sites, not two: the
+   Python `-c` immediate
    return, the Perl/Ruby/Node `inline_seen` early return (reached when a later token follows the
    inline program), and the broadened end-of-loop check `if inline_seen or not code_seen:`
    (reached when a Perl/Ruby/Node inline flag is the command's last token). A reviewer raised two
@@ -847,6 +950,23 @@ No existing test changes.
    files the input-redirection/here-string case as a separate follow-up for the approver, keeping
    the bug fix small. Until it lands, the guarantee is honestly stated as "pipes and heredocs,"
    not "all stdin."
+
+   **Grammar-less families are not covered by the stdin inspection (pre-existing gap).** The three
+   stdin-inspection sites above all live on the four modeled families' paths (the Python `-c`
+   immediate return, the Perl/Ruby/Node `inline_seen` early return, and the broadened end-of-loop
+   check). A grammar-less interpreter (`php -r 'code'`, `lua -e 'code'`; `family is None`) matches
+   the shared `_INTERPRETER_CODE_FLAGS` set and sets `code_seen`, but it never sets `inline_seen`
+   and gets no early return, so when its inline program is the command's last token the loop falls
+   through to the end-of-loop check with `inline_seen` false and `code_seen` true — the condition is
+   false and stdin is not inspected. An inline program that reads and executes its own stdin
+   (`php -r 'eval(stream_get_contents(STDIN));' <<'PHP' … PHP`, or the piped form) therefore runs
+   the heredoc or pipe unscanned. A reviewer (Copilot, PR #659) raised this. It is a pre-existing
+   property of master, not a regression — master's `if not code_seen:` tail is suppressed by the
+   same `code_seen` — and closing it would mean giving the grammar-less families their own
+   `inline_seen`-equivalent state and an end-of-loop stdin inspection, which this change scopes out
+   to keep the fix on the four modeled families it can reason about precisely. The plan's stdin
+   guarantee is accordingly scoped to those four families (Scope item 2, Approach "Stdin after
+   inline code").
 
 6. **Expanded value/preload/`-M`/`-m` operand before any inline program (pre-existing, out of
    scope).** The `inline_seen` expansion refusal on the value-flag, preload-flag, Ruby `-C` and
@@ -989,3 +1109,9 @@ unresolvable-token guard — reusing the existing `is_shell_expanded` and `is_gl
 predicates at all three of its loop sites (two added imports, no new predicate), one new test module,
 and three one-line list additions (two `GUARD_FILES` arrays and the `analysis.yaml`
 `PROTECTED_FILES` array).
+
+If the approver takes the recommended cluster-rejection in Open question 4 (refusing an
+unrecognised single-`-`, length > 2 cluster on the `inline_seen` path for Perl/Ruby/Node and for the
+Python family, to close the `-pe`-after-`-e` and `-Ec'…'` fail-opens), add roughly five to ten lines
+more and two to three regressions. The grammar-less stdin gap and the no-inline cluster over-block
+(Open questions 4 and 5) are left as separable follow-ups and add nothing here.
