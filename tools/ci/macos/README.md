@@ -55,10 +55,11 @@ chmod 600 tools/ci/macos/.env   # it holds GITHUB_PAT; install refuses a readabl
 $EDITOR tools/ci/macos/.env
 
 # 2. Install the runner as a LaunchDaemon, and the fleet monitor
-tools/bin/fleet macos install --store-from michael@mac-studio
+tools/bin/fleet macos up --store-from michael@mac-studio
 ```
 
-That is the whole setup. `install` checks everything before it changes
+That is the whole setup. `up` with no count is one runner, the same as
+`install`; `up N` runs N (see "Several Runners on One Mac" below). `install` checks everything before it changes
 anything — the env file, the runner account, the tools the runner needs on
 the PATH the daemon will have, directory ownership, the monitor's credential —
 and reports every problem at once. It then stages `runner.sh` and the env
@@ -88,6 +89,8 @@ already exists, or pass `--no-monitor` to install the runner alone.
 Day to day:
 
 ```bash
+tools/bin/fleet macos up [N]          # install or update N runners (default 1); also how to scale
+tools/bin/fleet macos down [--if-idle] # stop every runner `up` manages; they stay stopped across reboots
 tools/bin/fleet macos status          # launchd state, idle/busy, GitHub registration, monitor
 tools/bin/fleet macos logs [-f]       # the runner's log
 tools/bin/fleet macos stop [--if-idle] # deregister and stop; stays stopped across reboots
@@ -106,6 +109,34 @@ To run `runner.sh` in the foreground instead, for debugging:
 `./runner.sh [env-file] [runner-dir]`. Do not run it beside the installed
 service with the same runner directory — `install` refuses to, and two
 wrappers would fight over one registration.
+
+## Several Runners on One Mac
+
+A machine with the memory and cores for it can run more than one runner:
+
+```bash
+tools/bin/fleet macos up 3 --store-from michael@mac-studio
+```
+
+That is the default runner plus numbered runners 2 and 3, all configured by
+the one `.env`. Each is its own LaunchDaemon (`com.almostrealism.ci-runner`,
+`-2`, `-3`) with its own runner and stage directory, registered under
+`RUNNER_NAME` with its number appended (`mac-mini`, `mac-mini-2`,
+`mac-mini-3`; without `RUNNER_NAME`, `<hostname>-macos-2` and so on). A
+`RUNNER_DIR` or `RUNNER_WORKDIR` set in `.env` gets the number appended too, so
+no two runners share a directory. The monitor is installed once, with the first.
+
+`up` installs (or, re-run, updates) each runner in turn and waits for it to come
+online before the next, so it is also how to apply a `git pull` or an `.env`
+edit to all of them. A smaller count removes the numbered runners above it
+(`--if-idle` refuses to remove one in the middle of a job). `status` shows
+every runner `up` manages; `--instance N` selects one of them for the other
+commands.
+
+The runners share the machine's CPU and GPU directly — they are not containers
+— so measure before raising the count, and consider `RUNNER_CPU_LIMIT`.
+Named instances (`--instance deploy`, below) are separate from this and are
+never touched by `up` or `down`.
 
 ## How It Works
 

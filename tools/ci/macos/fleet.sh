@@ -6,6 +6,9 @@ set -euo pipefail
 # The macOS counterpart of tools/ci/rocm/fleet.sh, normally reached through
 # the fleet entry point:
 #
+#   tools/bin/fleet macos up [N]  [--user worker] [--store-from USER@HOST]
+#                                 [--no-monitor] [--if-idle]
+#   tools/bin/fleet macos down    [--if-idle]
 #   tools/bin/fleet macos install [--user worker] [--instance NAME]
 #                                 [--env FILE] [--store-from USER@HOST]
 #                                 [--no-monitor]
@@ -15,6 +18,13 @@ set -euo pipefail
 #   tools/bin/fleet macos status  [--instance NAME]
 #   tools/bin/fleet macos logs    [--instance NAME] [-f]
 #   tools/bin/fleet macos uninstall [--instance NAME]
+#
+# up N runs N runners on this host: the default one plus numbered runners
+# 2..N (instances "2", "3", ...), all configured by the one .env, each named
+# after RUNNER_NAME with its number appended. It installs or updates each in
+# turn, installs the monitor once, and removes numbered runners above N. down
+# stops them all. Named instances (--instance deploy) are left to their own
+# commands.
 #
 # Run it as an administrator (an account with sudo), from a checkout that
 # account owns, after filling in tools/ci/macos/.env. Not as root. The monitor
@@ -42,12 +52,14 @@ set -euo pipefail
 #   --user NAME        the account the runner, and every job, runs as
 #                      (default: worker, or AR_CI_USER). install only; the
 #                      other commands read it from the registered service.
-#   --instance NAME    a second runner on the same host (e.g. deploy-agent):
+#   --instance NAME    a numbered runner (2..99, as up creates), or a named
+#                      second runner on the same host (e.g. deploy-agent):
 #                      service com.almostrealism.ci-runner-NAME, env file
 #                      NAME.env beside this script, stage directory
 #                      ~<user>/ci-runner-NAME, default runner directory
-#                      ~<user>/actions-runner-NAME. It needs its own
-#                      RUNNER_NAME in that env file.
+#                      ~<user>/actions-runner-NAME. A named one needs its
+#                      own RUNNER_NAME in that env file; a numbered one uses
+#                      .env and derives its name.
 #   --env FILE         the env file to install (default: .env, or NAME.env
 #                      with --instance, beside this script)
 #   --store-from U@H   where install.sh copies the monitor's store credential
@@ -97,7 +109,7 @@ ONLINE_TIMEOUT_SECONDS=120
 # The programs runner.sh and the jobs need on the daemon's PATH.
 REQUIRED_TOOLS="java mvn curl jq git lsof"
 
-usage() { sed -n '4,63p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '4,/^$/p' "${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")" | sed 's/^# \{0,1\}//'; }
 
 COMMAND="${1:-}"
 case "${COMMAND}" in
@@ -112,6 +124,7 @@ STORE_FROM=""
 MONITOR=true
 IF_IDLE=false
 FOLLOW=false
+COUNT=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --user|--instance|--env|--store-from)
@@ -129,6 +142,16 @@ while [ "$#" -gt 0 ]; do
             ;;
         --no-monitor) MONITOR=false ;;
         --if-idle) IF_IDLE=true ;;
+        [0-9]*)
+            if [ "${COMMAND}" != up ] || [ -n "${COUNT}" ]; then
+                echo "ERROR: unknown argument '$1'." >&2
+                exit 2
+            fi
+            case "$1" in
+                *[!0-9]*|0*) echo "ERROR: up needs a runner count from 1 to 99 (got '$1')." >&2; exit 2 ;;
+            esac
+            COUNT="$1"
+            ;;
         -f|--follow) FOLLOW=true ;;
         -h|--help) usage; exit 0 ;;
         *)
@@ -148,22 +171,58 @@ case "${RUNNER_USER}" in
         exit 1
         ;;
 esac
-case "${INSTANCE}" in
-    *[!a-z0-9-]*|-*)
-        echo "ERROR: --instance '${INSTANCE}' may use only lower-case letters, digits and '-'." >&2
-        exit 1
+case "${COMMAND}" in
+    up|down)
+        if [ -n "${INSTANCE}" ]; then
+            echo "ERROR: ${COMMAND} manages the default runner and the numbered ones; it takes no --instance." >&2
+            exit 2
+        fi
         ;;
 esac
 
-SUFFIX="${INSTANCE:+-${INSTANCE}}"
-LABEL="${LABEL_BASE}${SUFFIX}"
-INSTALLED_PLIST="${DAEMONS_DIR}/${LABEL}.plist"
-ENV_FILE="${ENV_FILE:-${SCRIPT_DIR}/${INSTANCE}.env}"
-# Absolute, so the trust walk below covers every directory above it.
-case "${ENV_FILE}" in
-    /*) ;;
-    *) ENV_FILE="${PWD}/${ENV_FILE}" ;;
-esac
+# An explicit --env, absolute so the trust walk below covers every directory
+# above it, and resolved now, against the caller's directory.
+if [ -n "${ENV_FILE}" ]; then
+    case "${ENV_FILE}" in
+        /*) ;;
+        *) ENV_FILE="${PWD}/${ENV_FILE}" ;;
+    esac
+fi
+ENV_FILE_ARG="${ENV_FILE}"
+
+# Points the commands at one runner: the default one (no name), a numbered one
+# (2 to 99, what `up N` creates beside the default, all from the default env
+# file), or a named one with an env file of its own (NAME.env). Sets INSTANCE,
+# NUMBERED, SUFFIX, LABEL, INSTALLED_PLIST and ENV_FILE.
+select_instance() {
+    INSTANCE="$1"
+    case "${INSTANCE}" in
+        *[!a-z0-9-]*|-*)
+            echo "ERROR: --instance '${INSTANCE}' may use only lower-case letters, digits and '-'." >&2
+            exit 1
+            ;;
+    esac
+    NUMBERED=false
+    case "${INSTANCE}" in
+        ""|*[!0-9]*) ;;
+        [2-9]|[1-9][0-9]) NUMBERED=true ;;
+        *)
+            echo "ERROR: --instance '${INSTANCE}': numbered runners are 2 to 99; runner 1 is the default one." >&2
+            exit 1
+            ;;
+    esac
+    SUFFIX="${INSTANCE:+-${INSTANCE}}"
+    LABEL="${LABEL_BASE}${SUFFIX}"
+    INSTALLED_PLIST="${DAEMONS_DIR}/${LABEL}.plist"
+    if [ -n "${ENV_FILE_ARG}" ]; then
+        ENV_FILE="${ENV_FILE_ARG}"
+    elif [ "${NUMBERED}" = true ]; then
+        ENV_FILE="${SCRIPT_DIR}/.env"
+    else
+        ENV_FILE="${SCRIPT_DIR}/${INSTANCE}.env"
+    fi
+}
+select_instance "${INSTANCE}"
 
 if [ "$(uname -s)" != "Darwin" ]; then
     echo "ERROR: this is the macOS runner; for the Linux GPU fleet use: tools/bin/fleet rocm ${COMMAND}" >&2
@@ -173,6 +232,14 @@ if [ "$(id -u)" -eq 0 ]; then
     echo "ERROR: run this as an administrator, not as root; it calls sudo where it needs to." >&2
     exit 1
 fi
+
+# Every path from here on is absolute. Leave the administrator's directory for
+# one every account can enter: `sudo -u <runner>` keeps the working directory,
+# and the runner account usually cannot enter the administrator's home, where
+# the checkout lives. A JVM started there refuses to start at all ("Could not
+# determine current working directory"), so the java check below would report
+# a JDK that is installed as missing.
+cd /
 
 # ---------- Helpers ----------
 
@@ -519,6 +586,34 @@ read_env() {
     eval "${values}"
 }
 
+# A numbered runner shares the default runner's env file, so the values that
+# must differ between them are derived from it, suffixed with the number: the
+# GitHub name (two runners under one name would replace each other's
+# registration), and a custom RUNNER_DIR or RUNNER_WORKDIR (two runners in one
+# directory would share its state). Unset directories already differ, since
+# their defaults carry the instance suffix. Called after read_env.
+derive_numbered_env() {
+    [ "${NUMBERED}" = true ] || return 0
+    ENV_RUNNER_NAME="${ENV_RUNNER_NAME:-$(hostname)-macos}-${INSTANCE}"
+    ENV_RUNNER_DIR="${ENV_RUNNER_DIR:+${ENV_RUNNER_DIR}-${INSTANCE}}"
+    ENV_RUNNER_WORKDIR="${ENV_RUNNER_WORKDIR:+${ENV_RUNNER_WORKDIR}-${INSTANCE}}"
+}
+
+# The env file the service runs with: the operator's, followed for a numbered
+# runner by the values derive_numbered_env changed, which runner.sh's `source`
+# then takes over the ones above them. RUNNER_DIR reaches runner.sh as an
+# argument rendered into the plist, not through this file.
+staged_env() {
+    cat "${ENV_FILE}"
+    if [ "${NUMBERED}" = true ]; then
+        printf '\n# Derived by fleet.sh for numbered runner %s.\n' "${INSTANCE}"
+        printf 'RUNNER_NAME=%q\n' "${ENV_RUNNER_NAME}"
+        if [ -n "${ENV_RUNNER_WORKDIR}" ]; then
+            printf 'RUNNER_WORKDIR=%q\n' "${ENV_RUNNER_WORKDIR}"
+        fi
+    fi
+}
+
 # Sets API_BASE from the env file's scope, as runner.sh does.
 resolve_api_base() {
     case "${ENV_RUNNER_SCOPE:-repo}" in
@@ -670,6 +765,7 @@ cmd_install() {
         echo "  one. Remove the PATH line and set RUNNER_PATH instead." >&2
         exit 1
     fi
+    derive_numbered_env
     # A named instance must carry its own RUNNER_NAME. The default name,
     # $(hostname)-macos, belongs to the default instance, and runner.sh registers
     # with config.sh --replace, so a second instance that fell back to it would
@@ -743,7 +839,8 @@ cmd_install() {
     missing="$(sudo -u "${RUNNER_USER}" env -i HOME="${RUNNER_HOME}" PATH="${RUNNER_PATH}" /bin/bash -c '
         for c in "$@"; do command -v "$c" >/dev/null 2>&1 || printf "%s " "$c"; done
         major=$(java -version 2>&1 | sed -n "1s/.*\"\([0-9][0-9]*\).*/\1/p")
-        [ -n "$major" ] && [ "$major" -ge 17 ] || printf "jdk17+ "' _ ${REQUIRED_TOOLS} 2>/dev/null || true)"
+        [ -n "$major" ] && [ "$major" -ge 17 ] \
+            || printf "jdk17+ (java -version said: %s) " "$(java -version 2>&1 | head -1)"' _ ${REQUIRED_TOOLS} 2>/dev/null || true)"
     if [ -n "${missing}" ]; then
         echo "  ✗ not on ${RUNNER_USER}'s daemon PATH: ${missing}" >&2
         echo "      PATH=${RUNNER_PATH}" >&2
@@ -1123,7 +1220,6 @@ EOF
         # as you inside the FLEET_HOME screened above. A dangling link counts as
         # existing: its target could be created or repointed later, so it is
         # handed to untrusted_program, which refuses a link it cannot follow.
-        # TODO(review): a venv left dangling by a Python upgrade is now refused (render.sh would have rebuilt it); say "remove ${fleet_home}/venv" in the error.
         local fleet_python="${FLEET_PYTHON:-${fleet_home}/venv/bin/python3}" python_bad=""
         case "${fleet_python}" in
             /*)
@@ -1137,6 +1233,14 @@ EOF
             echo "  ✗ ${python_bad}, on the path to the monitor interpreter (${fleet_python}), is not absolute, is" >&2
             echo "      writable by others, is owned by neither you (${admin_user}) nor root, or cannot be followed;" >&2
             echo "      another account could replace the interpreter the monitor install runs as you." >&2
+            # The default interpreter is the venv's, a symlink into the base
+            # Python; a Python upgrade can leave it dangling, which reads here as
+            # "cannot be followed". Removing the venv lets render.sh rebuild it on
+            # the next install. Only suggested for the default path — an explicit
+            # FLEET_PYTHON is the operator's own, not ours to remove.
+            if [ "${fleet_python}" = "${fleet_home}/venv/bin/python3" ]; then
+                echo "      If a Python upgrade left the venv dangling, remove it and reinstall: rm -rf ${fleet_home}/venv" >&2
+            fi
             errors=$((errors + 1))
         fi
         # Before any venv is involved, install.sh runs the python3 your PATH
@@ -1231,7 +1335,7 @@ EOF
     for script in runner.sh cpu-watcher.sh; do
         stage_file "${STAGE_DIR}/bin/${script}" 755 < "${SCRIPT_DIR}/${script}"
     done
-    stage_file "${STAGE_DIR}/runner.env" 600 < "${ENV_FILE}"
+    staged_env | stage_file "${STAGE_DIR}/runner.env" 600
 
     local rendered
     rendered="$(mktemp -t ci-runner-plist)"
@@ -1395,6 +1499,40 @@ EOF2
     fi
 }
 
+# The numbered runners installed here, one number per line, in order.
+numbered_instances() {
+    local plist n
+    for plist in "${DAEMONS_DIR}/${LABEL_BASE}"-*.plist; do
+        [ -e "${plist}" ] || continue
+        n="${plist##*/"${LABEL_BASE}"-}"
+        n="${n%.plist}"
+        case "${n}" in
+            ""|*[!0-9]*) ;;
+            *) echo "${n}" ;;
+        esac
+    done | sort -n
+}
+
+# Without --instance, every runner `up` manages: the default one, then each
+# numbered one. A named instance is shown only when asked for by name.
+cmd_status_all() {
+    cmd_status
+    if [ -z "${INSTANCE}" ]; then
+        local n
+        for n in $(numbered_instances); do
+            select_instance "${n}"
+            echo ""
+            cmd_status
+        done
+    fi
+    echo ""
+    echo "Monitor ${MONITOR_LABEL}"
+    # The monitor is a single host-wide service, not one per instance, so its
+    # start command carries no --instance selector.
+    describe_service "${MONITOR_LABEL}" "tools/bin/fleet macos start"
+}
+
+# The selected runner's status.
 cmd_status() {
     load_installed
     echo "Runner ${LABEL} (runs as ${RUNNER_USER})"
@@ -1421,17 +1559,88 @@ cmd_status() {
     elif [ -r "${ENV_FILE}" ]; then
         read_env "${ENV_FILE}"
         resolve_api_base
+        derive_numbered_env
         ENV_RUNNER_NAME="${ENV_RUNNER_NAME:-$(hostname)-macos}"
         local status
         status="$(github_status)"
         echo "  GitHub:   ${ENV_RUNNER_NAME}: ${status:-not registered}"
     fi
     echo "  log:      ${LOG_FILE}"
+}
+
+# ---------- up / down ----------
+
+# This script again, for one runner. Each install is its own process because
+# install exits on the first problem, and up must stop there too.
+fleet_self() {
+    /bin/bash "${SCRIPT_DIR}/fleet.sh" "$@"
+}
+
+# up N: the default runner plus numbered runners 2..N, all from the default env
+# file, each installed (or updated: install replaces a registered service) and
+# online before the next. The monitor is installed once, with the first. Numbered
+# runners above N are uninstalled, each attempted even when another refuses
+# (--if-idle and busy), and up then fails; named instances are not touched.
+cmd_up() {
+    local count="${COUNT:-1}" n
+    if [ "${count}" -gt 99 ]; then
+        echo "ERROR: up supports at most 99 runners per host (got ${count})." >&2
+        exit 2
+    fi
+    local common=(--user "${RUNNER_USER}")
+    if [ -n "${ENV_FILE_ARG}" ]; then
+        common+=(--env "${ENV_FILE_ARG}")
+    fi
+    local first=("${common[@]}")
+    if [ "${MONITOR}" = true ]; then
+        first+=(${STORE_FROM:+--store-from "${STORE_FROM}"})
+    else
+        first+=(--no-monitor)
+    fi
+    echo "== Runner 1 of ${count} =="
+    fleet_self install "${first[@]}"
+    for ((n = 2; n <= count; n++)); do
+        echo ""
+        echo "== Runner ${n} of ${count} =="
+        fleet_self install --instance "${n}" --no-monitor "${common[@]}"
+    done
+    local stop=() status=0
+    if [ "${IF_IDLE}" = true ]; then
+        stop+=(--if-idle)
+    fi
+    for n in $(numbered_instances); do
+        if [ "${n}" -gt "${count}" ]; then
+            echo ""
+            echo "== Removing runner ${n} (above ${count}) =="
+            fleet_self uninstall --instance "${n}" ${stop[@]+"${stop[@]}"} || status=1
+        fi
+    done
     echo ""
-    echo "Monitor ${MONITOR_LABEL}"
-    # The monitor is a single host-wide service, not one per instance, so its
-    # start command carries no --instance selector.
-    describe_service "${MONITOR_LABEL}" "tools/bin/fleet macos start"
+    echo "${count} runner(s) up. Check on them with: tools/bin/fleet macos status"
+    if [ "${status}" -ne 0 ]; then
+        echo "WARNING: not every runner above ${count} was removed; see above." >&2
+    fi
+    return "${status}"
+}
+
+# down: stop the default runner and every numbered one, deregistering each from
+# GitHub. Each stays stopped across reboots until `up` (or `start`) again.
+cmd_down() {
+    local stop=() n status=0
+    if [ "${IF_IDLE}" = true ]; then
+        stop+=(--if-idle)
+    fi
+    if [ ! -f "${INSTALLED_PLIST}" ] && [ -z "$(numbered_instances)" ]; then
+        echo "No runner is installed here. Start some with: tools/bin/fleet macos up [N]"
+        return 0
+    fi
+    if [ -f "${INSTALLED_PLIST}" ]; then
+        fleet_self stop ${stop[@]+"${stop[@]}"} || status=1
+    fi
+    for n in $(numbered_instances); do
+        fleet_self stop --instance "${n}" ${stop[@]+"${stop[@]}"} || status=1
+    done
+    return "${status}"
 }
 
 cmd_logs() {
@@ -1449,12 +1658,14 @@ cmd_logs() {
 # ---------- Dispatch ----------
 
 case "${COMMAND}" in
+    up)        cmd_up ;;
+    down)      cmd_down ;;
     install)   cmd_install ;;
     uninstall) cmd_uninstall ;;
     start)     cmd_start ;;
     stop)      cmd_stop ;;
     restart)   cmd_stop; echo; cmd_start ;;
-    status)    cmd_status ;;
+    status)    cmd_status_all ;;
     logs)      cmd_logs ;;
     *) echo "Unknown command: ${COMMAND}" >&2; echo >&2; usage >&2; exit 2 ;;
 esac

@@ -31,17 +31,28 @@ Group membership takes effect at each account's next login.
 ## fleet
 
 Machine setup, not code navigation: one entry point for the self-hosted CI
-runner fleet, `fleet <platform> <command>`. On a new Mac, after filling in
-`tools/ci/macos/.env`, as an administrator:
+runner fleet, `fleet <platform> <command>`. Every platform (`macos`, `rocm`,
+`cuda`) takes the same everyday commands, after its credential is in
+`tools/ci/<platform>/.env`:
 
 ```bash
-tools/bin/fleet macos install --store-from michael@mac-studio   # runner LaunchDaemon + fleet monitor
-tools/bin/fleet macos status | start | stop [--if-idle] | restart | logs [-f] | uninstall
-tools/bin/fleet rocm start | stop | status | logs                # Linux OpenCL fleet
+tools/bin/fleet <platform> up [N]     # run N runners on this host (default 1); also how to scale
+tools/bin/fleet <platform> down       # stop them, deregistering from GitHub
+tools/bin/fleet <platform> status
+tools/bin/fleet <platform> logs [-f]
 ```
 
-It dispatches to `tools/ci/<platform>/fleet.sh`; see `tools/ci/macos/README.md`
-and `tools/ci/rocm/README.md`.
+On a Mac, run it as an administrator; `up` installs each runner as a
+LaunchDaemon (it starts at boot, with nobody logged in) and the fleet monitor
+once per host:
+
+```bash
+tools/bin/fleet macos up 2 --store-from michael@mac-studio
+```
+
+It dispatches to `tools/ci/<platform>/fleet.sh`, where each platform's extra
+commands are listed (`--help`); see `tools/ci/macos/README.md`,
+`tools/ci/rocm/README.md` and `tools/ci/cuda/README.md`.
 
 ---
 
