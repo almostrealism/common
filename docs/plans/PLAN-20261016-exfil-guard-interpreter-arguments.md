@@ -127,7 +127,8 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
      and the real program would never be scanned. There is one exception on the inline-program
      path: a token the shell can expand into other words is *refused* there, not returned past and
      not skipped, because an expansion can introduce a further `-e` and its code. This holds whether
-     the token reads as a positional or as a dash option. A positional expansion
+     the token reads as a positional, as a dash option, or as the operand a value-flag or
+     preload-flag consumes. A positional expansion
      (`perl -e 'print 1' ${more[@]}`, or `perl -e 'print 1' *`): `${more[@]}` can expand at run time
      into a further `-e` and its code, and `*` into script or data operands the guard cannot
      predict. A *dash-prefixed* expansion (`perl -e 'print 1' "-$opt"` with `opt=e`) is the same
@@ -136,12 +137,29 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
      whose program is the *following* token. A dash-prefixed expanded token must be caught
      explicitly, because it would otherwise reach the generic `tok.startswith("-")` skip that sits
      *below* the early return and be dropped silently, after which the real program (the next token)
-     is returned past unscanned. So the expansion test (`is_shell_expanded(tok)` or
-     `is_glob_or_brace(tok)`) is consulted for *every* token on the inline-program path, before that
-     skip, not only for positionals: a plain positional (or `-`) returns `f"{prog}:inline"`, an
+     is returned past unscanned. A *value-flag or preload-flag operand* is a third shape, caught at
+     a different site again. The value-flag handler (Perl's/Ruby's `-I`, Ruby's `-E`/`-F`, Node's
+     value flags), the preload-flag handler (`-r`/`--require`/`--import`/`--loader` for Node, `-r`
+     for Ruby) and Ruby's `-C` working-directory handler each consume their operand — the attached
+     value, or the *following* token — and `continue`, and all three sit *above* the inline-program
+     early return, so an expanded operand there never reaches the early return's per-token test.
+     `perl -e 'print 1' -I ${more[@]}`, where `${more[@]}` word-splits into a further `-e` and its
+     code, is the case: `-I` swallows `${more[@]}` as its value and the second `-e` is never seen.
+     So once an inline program has been seen, those operand-consuming handlers must apply the same
+     expansion test to the operand they are about to consume and refuse it, rather than swallow it
+     unscanned. The expansion test (`is_shell_expanded(tok)` or
+     `is_glob_or_brace(tok)`) is therefore consulted at two kinds of site: for *every* token on the
+     inline-program early-return path, before the `tok.startswith("-")`
+     skip, not only for positionals — a plain positional (or `-`) returns `f"{prog}:inline"`, an
      expanded token of either shape is refused, and an ordinary dash option that is not expanded
-     still falls through to the skip as today. A second program smuggled through an expansion —
-     positional or dash-shaped — is never silently skipped.
+     still falls through to the skip as today — *and*, once `inline_seen` is set, on the operand
+     each value-flag, preload-flag and Ruby `-C` handler is about to consume, before that operand
+     is swallowed. Gating the operand check on `inline_seen` keeps the common pre-inline idiom
+     (`perl -I ${inc[@]} script.pl`, an include-path list) passing as it does today; the residual
+     this leaves — an expansion consumed as a value/preload operand *before* any inline program is
+     detected — is pre-existing on master and recorded in Open question 6. A second program
+     smuggled through an expansion — positional, dash-shaped, or hidden in a consumed operand — is
+     never silently skipped once an inline program has been seen.
    - **Interpreters the guard has no option grammar for** (`php`, `lua`, `luajit`, `tclsh`,
      `Rscript`, …). These do *not* get the early return, because for some of them a trailing
      operand after inline code is still a program: `lua -e 'print(1)' script.lua` runs both the
@@ -299,6 +317,24 @@ narrowing changes no current assertion.
     program. For these families the `-m` handler still runs
     after inline code, so `perl -e 'x' -m Foo`-style tokens stay fail-closed (see Open
     question 2); no such case has been reported.
+
+    The early return's per-token expansion test is *not* the whole story, because the
+    operand-consuming handlers run above it and `continue` before it is reached. The value-flag
+    handler (`_match_flag(tok, value_flags)`), the preload-flag handler
+    (`_match_flag(tok, preload_flags)`) and Ruby's `-C` handler each take their operand from the
+    attached value or the following token and loop on, so an *expanded* operand there — `-I
+    ${more[@]}`, `-r ${more[@]}`, `-C ${more[@]}` — is swallowed unscanned and never reaches the
+    early return. `perl -e 'print 1' -I ${more[@]}` with `more=(safe -e 'use Socket; …')` is the
+    reviewer's case: `-I` consumes `${more[@]}`, which the shell word-splits into `safe` (an
+    include dir) plus a second `-e 'use Socket; …'` program the guard never sees. So, once
+    `inline_seen` is set, each of these three handlers must apply the same
+    `is_shell_expanded(operand) or is_glob_or_brace(operand)` test to the operand it is about to
+    consume — the attached value or `args[i + 1]` — and raise the same "expanded by the shell"
+    `_GuardError` instead of consuming it. The test is gated on `inline_seen` so the common
+    pre-inline include-list idiom (`perl -I ${inc[@]} script.pl`) keeps passing exactly as today;
+    the residual it leaves — an expansion consumed as a value/preload operand *before* any inline
+    program has been seen — is pre-existing on master and recorded in Open question 6, not closed
+    here. A clean operand (`perl -e 'print 1' -I lib`) is consumed as data and passes.
   - **Interpreters with no option grammar** (`php`, `lua`, `luajit`, `tclsh`, `Rscript`, `julia`,
     `groovy`, …; `family is None`). These do *not* get the early return. For some of them the
     first operand after an inline-code flag is still a program — `lua -e 'print(1)' script.lua`
@@ -337,7 +373,7 @@ narrowing changes no current assertion.
   and the interpreter loop. Do not introduce a second predicate in `exfil_bash_runner.py` — that
   would duplicate the shared helpers and let the definitions drift. The "shell can expand this
   into other words" test — `is_shell_expanded(tok) or is_glob_or_brace(tok)` — is consulted at
-  two points in the loop, both fail-closed:
+  three points in the loop, all fail-closed:
   - When the program is still unknown and a positional token satisfies it (`python3 "$script"`,
     `python3 *.py`), raise
     `_GuardError(f"{prog} script {tok!r} is expanded by the shell, so the guard cannot read it to scan it; a program the guard cannot read does not run")`
@@ -350,6 +386,14 @@ narrowing changes no current assertion.
     to dash-prefixed expanded tokens too (`-$opt` → `-e`), which is why it runs ahead of the
     generic `tok.startswith("-")` skip and not only on positionals: left to that skip, `-$opt` is
     dropped silently and the real program that follows it is returned past unscanned.
+  - On the Perl/Ruby/Node value-flag, preload-flag and Ruby `-C` handlers, once `inline_seen` is
+    set, the operand each is about to consume (the attached value or `args[i + 1]`) raises the same
+    error instead of being swallowed — see the inline-program bullet above. These handlers sit
+    *above* the `inline_seen` early return and `continue` before it, so without this check an
+    expanded value/preload operand (`perl -e 'print 1' -I ${more[@]}`) that word-splits into a
+    further `-e` would be consumed unscanned and never reach the per-token test. The check is gated
+    on `inline_seen` so a pre-inline include-list (`perl -I ${inc[@]} script.pl`) is unaffected;
+    the pre-inline residual is Open question 6.
   Python's immediate return after `-c` needs no such check on the following tokens: its remainder
   is unconditionally `sys.argv`, so an expansion there is data, never a second program. (A
   shell-expanded `-c` *code value* is a separate, pre-existing limitation — Open question 3.)
@@ -418,6 +462,18 @@ argument walk does, so a "blocks" case built on it would test nothing.
   program when `-$opt` expands to `-e`) would be returned past unscanned. A plain, unexpanded dash
   option after inline code (`perl -e 'print 1' -w`) still allows — it is argv data, not an
   expansion — so the test discriminates on expandability, not merely on the leading dash.
+- `perl -e 'print 1' -I ${more[@]}` (a shell-expanded operand consumed by the `-I` value flag
+  after inline code) blocks with the "expanded by the shell" message, and `node -e 'x' -r
+  ${more[@]}` (an expanded operand consumed by Node's `-r` preload flag after inline code) blocks
+  the same way. Guards the value-flag/preload-flag arm of the expansion refusal: these handlers
+  run *above* the `inline_seen` early return and consume their operand before it, so without the
+  gated check `${more[@]}` — which can word-split into a second `-e`/`require` and its code — would
+  be swallowed unscanned. A clean value operand after inline code (`perl -e 'print 1' -I lib`)
+  still allows, since `lib` is an ordinary include directory, not an expansion. The gating on
+  `inline_seen` is asserted by `perl -I ${inc[@]} script.pl` (no inline program yet): it is *not*
+  blocked by this new check — it reaches `_read_script` on `script.pl` exactly as on master (the
+  pre-inline residual, Open question 6) — so the change adds no new false positive to the common
+  include-list idiom.
 - `lua -e 'print(1)' script.lua` scans `script.lua` as a program, so a clean `script.lua` allows
   and one containing a network call blocks. Guards that grammar-less interpreters are *not* given
   the early return: Lua runs both the `-e` chunk and the script operand, so the operand must be
@@ -626,6 +682,39 @@ No existing test changes.
    the bug fix small. Until it lands, the guarantee is honestly stated as "pipes and heredocs,"
    not "all stdin."
 
+6. **Expanded value/preload operand before any inline program (pre-existing, out of scope).** The
+   `inline_seen` expansion refusal on the value-flag, preload-flag and Ruby `-C` handlers (Scope
+   item 2, Approach Perl/Ruby/Node bullet) is deliberately gated on an inline program having
+   *already* been seen, so an expansion consumed as such an operand *before* the first inline flag
+   is not refused: `perl -I ${more[@]} -e 'print 1'` and `perl -I ${more[@]} script.pl` with
+   `more=(safe -e 'use Socket; …')` word-split `${more[@]}` into a second `-e` program the guard
+   never scans. A reviewer (Copilot, PR #659) raised the inline-first shape; this is its
+   mirror. It is a pre-existing gap, not a regression — master consumes the `-I` operand without an
+   expansion test in every ordering — and the gate is what keeps the common include-list idiom
+   (`perl -I ${inc[@]} script.pl`) from becoming a new false positive, since before any inline
+   program the guard has no reason to treat an expanded include list as a smuggled program. Closing
+   it in the pre-inline direction would mean refusing *every* expanded value/preload operand
+   regardless of `inline_seen`, which over-blocks legitimate dynamic include lists and conflicts
+   with the plan's goal of removing false positives; a precise fix would have to model each flag's
+   word-splitting rather than refuse wholesale. Both are larger than this change, so the pre-inline
+   case is recorded here as a follow-up for the approver rather than closed. The inline-first case
+   — the one with a demonstrated second-program hazard once the guard knows an inline program is
+   present — *is* closed, by the gated check above.
+
+   One further operand-consuming handler sits above the early return and is *not* given the gated
+   refusal: the generic `-m` handler, which reads its module from the attached value or the next
+   token and then *returns* (ending the walk). It is left as-is because it is barely reachable as a
+   smuggling vector for the families that carry the `inline_seen` early return. Python — the only
+   family with a real `-m MODULE` that takes a separate operand — returns at `-c` before the `-m`
+   handler runs, so it never reaches it after inline code; Node and Ruby have no `-m`; and Perl's
+   `-m` is an attached module-import (`-mFoo`), so the only expansion shape that could smuggle a
+   second `-e` through it is an attached `-m${…}`, an exotic case with none reported. Giving the
+   `-m` handler the same `inline_seen`-gated expansion refusal would be a consistent, strictly
+   safer extension if the approver wants it; this plan scopes it out with the pre-inline case to
+   keep the change small, and the enumeration of operand-consuming handlers covered by the gated
+   check (value-flag, preload-flag, Ruby `-C`) is stated with this one carve-out named rather than
+   silently omitted.
+
 ## Estimated complexity
 
 Small to moderate. About 30–40 lines changed in `exfil_bash_runner.py` — a per-family
@@ -640,8 +729,10 @@ the shell can expand (positional *or* dash-prefixed, the latter tested ahead of 
 `tok.startswith("-")` skip so a `-$opt`→`-e` cannot slip through it) — the
 grammar-less families kept on today's fall-through, the `-` stdin return, a conservative
 `_check_stdin_program` call on both inline early-return paths (reusing the existing helper, no
-new stdin logic), and the
+new stdin logic), the `inline_seen`-gated expansion refusal on the value-flag, preload-flag and
+Ruby `-C` operand-consuming handlers (so an expanded `-I`/`-r`/`-C` operand after inline code is
+refused rather than swallowed), and the
 unresolvable-token guard — reusing the existing `is_shell_expanded` and `is_glob_or_brace`
-predicates at both of its loop sites (two added imports, no new predicate), one new test module,
+predicates at all three of its loop sites (two added imports, no new predicate), one new test module,
 and three one-line list additions (two `GUARD_FILES` arrays and the `analysis.yaml`
 `PROTECTED_FILES` array).
