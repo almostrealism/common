@@ -1,0 +1,266 @@
+/**
+ * Differential self-attention (the Differential Transformer): two softmax attention maps over one
+ * [batch, seq_len, dim] sequence, the second subtracted from the first in proportion to a learned
+ * per-head lambda, so that the attention both maps pay to irrelevant positions cancels:
+ *
+ *   out = W_o · merge_heads( softmax(Q1 K1ᵀ / √d) V  −  λ ⊙ softmax(Q2 K2ᵀ / √d) V )
+ *
+ * This file replaces the Java assembly that used to live in
+ * DifferentialAttentionFeatures.differentialSequenceAttention, which built these stages as a
+ * SequentialBlock: the fused five-section projection, a split into five per-head paths, the optional
+ * query/key normalization, the value padding mask, the rotary embedding of the queries and keys,
+ * stores for the keys, the values and the second map, the second map computed on one path and the
+ * first on another, the lambda-weighted subtraction, the head merge and the output projection.
+ * differentialSequenceAttention now only builds the two projections, binds the arguments and builds
+ * one of the layers below.
+ *
+ * It is the differential sibling of the layers of /pdsl/sequence_attention.pdsl, which this file
+ * imports for their head_rows and merge_heads layers; each attention map runs the score and context
+ * halves of /pdsl/sdpa.pdsl (sdpa_scores and sdpa_context). Because (A1 − λ A2) V = A1 V − λ (A2 V),
+ * each map takes its weighted sum of the values before the two are combined, so each map is ordinary
+ * scaled dot-product attention.
+ *
+ * Data flow of one forward pass (dim = heads * head_dim):
+ *
+ *   [batch, seq_len, dim] sequence
+ *     qkv_projection                                  [batch, seq_len, 5 * dim]
+ *     reshape                                         [batch, seq_len, 5, dim]    sections Q1 K1 K2 V Q2
+ *     accum_blocks:
+ *       attention_map(Q1 = 0, K1 = 1, V = 3)          [batch, heads, seq_len, head_dim]
+ *       attention_map(Q2 = 4, K2 = 2, V = 3)          [batch, heads, seq_len, head_dim]
+ *         scale(lambda, 1)                            each head's map times its own λ
+ *         scale(-1)                                   negated, so that summing it subtracts it
+ *     merge_heads                                     map1 − λ ⊙ map2, heads joined [batch, seq_len, dim]
+ *     out_projection                                  [batch, seq_len, dim]
+ *
+ * accum_blocks applies both maps to the projected sequence and sums their outputs; because the second
+ * map is scaled by −λ, the sum is map1 − λ ⊙ map2. Its backward pass carries the gradient into both
+ * maps — into the query and key sections of each, and into the value section they share — so the layer
+ * trains. Inside each map the keys and values are branches, the second operands of the score and
+ * context products, exactly as in sequence_attention.pdsl.
+ *
+ * The projections. qkv_projection and out_projection are layers the caller builds from its weights and
+ * binds like a weight: plain dense layers, or adapter-wrapped ones when the model is being fine-tuned.
+ * The adapter decision belongs to the training setup, not to the attention's structure, and the
+ * language has no construct for a projection the host may adapt, so the two projections arrive as
+ * layers and appear below as the first and last stages, as in sequence_attention.pdsl.
+ *
+ * The masks. padding_mask is one validity value per position, [batch, seq_len], one for a real position
+ * and zero for padding; it zeroes the padded positions' values, which still occupy their softmax slots
+ * (value masking). key_mask has the same shape and removes masked keys from both softmaxes (logit
+ * masking). A caller without padding binds all-ones masks, which leave every value and score unchanged.
+ *
+ * lambda holds one weight per head, [batch, heads]: how much of each head's second map is subtracted.
+ * It is applied with scale(lambda, 1), which reads lambda as a constant factor; when lambda is a learned
+ * re-parameterization its parameters therefore receive no gradient (a TODO(review) marks the stage in
+ * each of the three layers).
+ *
+ * The three forms. The query/key normalization is optional and comes in two families; each form is its
+ * own pair of layers, so a reader sees exactly the stages a model runs:
+ *
+ *   query/key norm   attention map                  differential attention
+ *   none             attention_map                  differential_attention
+ *   LayerNorm        attention_map_qk_layernorm     differential_attention_qk_layernorm
+ *   RMSNorm          attention_map_qk_rmsnorm       differential_attention_qk_rmsnorm
+ *
+ * Both query sections share the query normalization weights and both key sections share the key
+ * normalization weights. The normalizations use an epsilon of 1e-6.
+ */
+
+import "/pdsl/sequence_attention.pdsl"
+
+/**
+ * One attention map: the queries of one section of the projected sequence attend over the keys of a
+ * second section and the values of a third.
+ * [batch, seq_len, sections, dim] -> [batch, heads, seq_len, head_dim].
+ *
+ *   keys:   head_rows(key)            the key section, one row per head      [batch, heads, seq_len, head_dim]
+ *           sequence_rope             each row rotated by its position
+ *   values: head_rows(value)          the value section, one row per head    [batch, heads, seq_len, head_dim]
+ *           scale(padding_mask, 2)    each position's rows times its validity (axis 2 is the position)
+ *   head_rows(query)                  the query section, one row per head    [batch, heads, seq_len, head_dim]
+ *   sequence_rope                     each row rotated by its position
+ *   sdpa_scores(keys)                 softmax over the keys of the key-masked Q Kᵀ / sqrt(head_dim)
+ *                                                                            [batch, heads, seq_len, seq_len]
+ *   sdpa_context(values)              the weights times the values           [batch, heads, seq_len, head_dim]
+ */
+layer attention_map(batch: int, seq_len: int, heads: int, head_dim: int,
+                    query: int, key: int, value: int,
+                    inv_freq: weight, padding_mask: weight, key_mask: weight) {
+    branch keys {
+        head_rows(batch, seq_len, heads, head_dim, key)
+        sequence_rope(inv_freq)
+    }
+    branch values {
+        head_rows(batch, seq_len, heads, head_dim, value)
+        scale(padding_mask, 2)
+    }
+
+    head_rows(batch, seq_len, heads, head_dim, query)
+    sequence_rope(inv_freq)
+    sdpa_scores(keys, key_mask, head_dim)
+    sdpa_context(values)
+}
+
+/**
+ * One attention map with a LayerNorm of every query and key row before the rotation:
+ * [batch, seq_len, sections, dim] -> [batch, heads, seq_len, head_dim]. As attention_map, with one
+ * stage added on each of the query and key paths:
+ *
+ *   layernorm(norm weight, norm bias, 1e-6)   each head_dim row to zero mean and unit variance, then
+ *                                             scaled and shifted; after head_rows, before sequence_rope
+ */
+layer attention_map_qk_layernorm(batch: int, seq_len: int, heads: int, head_dim: int,
+                                 query: int, key: int, value: int,
+                                 q_norm_weight: weight, q_norm_bias: weight,
+                                 k_norm_weight: weight, k_norm_bias: weight,
+                                 inv_freq: weight, padding_mask: weight, key_mask: weight) {
+    branch keys {
+        head_rows(batch, seq_len, heads, head_dim, key)
+        layernorm(k_norm_weight, k_norm_bias, 1e-6)
+        sequence_rope(inv_freq)
+    }
+    branch values {
+        head_rows(batch, seq_len, heads, head_dim, value)
+        scale(padding_mask, 2)
+    }
+
+    head_rows(batch, seq_len, heads, head_dim, query)
+    layernorm(q_norm_weight, q_norm_bias, 1e-6)
+    sequence_rope(inv_freq)
+    sdpa_scores(keys, key_mask, head_dim)
+    sdpa_context(values)
+}
+
+/**
+ * One attention map with an RMSNorm of every query and key row before the rotation:
+ * [batch, seq_len, sections, dim] -> [batch, heads, seq_len, head_dim]. As attention_map, with one
+ * stage added on each of the query and key paths:
+ *
+ *   rmsnorm(norm weight, norm bias, 1e-6)     each head_dim row divided by its root mean square, then
+ *                                             scaled (and shifted when a bias is bound; bind null for
+ *                                             none); after head_rows, before sequence_rope
+ */
+layer attention_map_qk_rmsnorm(batch: int, seq_len: int, heads: int, head_dim: int,
+                               query: int, key: int, value: int,
+                               q_norm_weight: weight, q_norm_bias: weight,
+                               k_norm_weight: weight, k_norm_bias: weight,
+                               inv_freq: weight, padding_mask: weight, key_mask: weight) {
+    branch keys {
+        head_rows(batch, seq_len, heads, head_dim, key)
+        rmsnorm(k_norm_weight, k_norm_bias, 1e-6)
+        sequence_rope(inv_freq)
+    }
+    branch values {
+        head_rows(batch, seq_len, heads, head_dim, value)
+        scale(padding_mask, 2)
+    }
+
+    head_rows(batch, seq_len, heads, head_dim, query)
+    rmsnorm(q_norm_weight, q_norm_bias, 1e-6)
+    sequence_rope(inv_freq)
+    sdpa_scores(keys, key_mask, head_dim)
+    sdpa_context(values)
+}
+
+/**
+ * Differential self-attention without query/key normalization: [batch, seq_len, dim] -> same.
+ *
+ *   qkv_projection                 the five sections side by side            [batch, seq_len, 5 * dim]
+ *   reshape                        one dim-wide section each                 [batch, seq_len, 5, dim]
+ *   accum_blocks:
+ *     attention_map(0, 1, 3)       Q1 over K1 and the values                 [batch, heads, seq_len, head_dim]
+ *     attention_map(4, 2, 3)       Q2 over K2 and the values                 [batch, heads, seq_len, head_dim]
+ *       scale(lambda, 1)           each head's map times its λ (axis 1 is the head)
+ *       scale(-1)                  negated
+ *   merge_heads                    the first map minus λ times the second,   [batch, seq_len, dim]
+ *                                  the heads of each position joined
+ *   out_projection                 the output projection                     [batch, seq_len, dim]
+ */
+layer differential_attention(batch: int, seq_len: int, heads: int, head_dim: int,
+                             qkv_projection: projection, out_projection: projection,
+                             inv_freq: weight, padding_mask: weight, key_mask: weight,
+                             lambda: producer([batch, heads])) {
+    qkv_projection
+    reshape([batch, seq_len, 5, heads * head_dim])
+
+    // TODO(review): scale(lambda, 1) reads lambda as a constant, so a learned lambda's parameters receive no gradient
+    accum_blocks(
+        { attention_map(batch, seq_len, heads, head_dim, 0, 1, 3, inv_freq, padding_mask, key_mask) },
+        {
+            attention_map(batch, seq_len, heads, head_dim, 4, 2, 3, inv_freq, padding_mask, key_mask)
+            scale(lambda, 1)
+            scale(-1)
+        }
+    )
+
+    merge_heads(batch, seq_len, heads, head_dim)
+    out_projection
+}
+
+/**
+ * Differential self-attention with a LayerNorm of every query and key row (the normalization of the
+ * Stable Audio diffusion transformer's attention): [batch, seq_len, dim] -> same. As
+ * differential_attention, with both maps built by attention_map_qk_layernorm.
+ */
+layer differential_attention_qk_layernorm(batch: int, seq_len: int, heads: int, head_dim: int,
+                                          qkv_projection: projection, out_projection: projection,
+                                          q_norm_weight: weight, q_norm_bias: weight,
+                                          k_norm_weight: weight, k_norm_bias: weight,
+                                          inv_freq: weight, padding_mask: weight, key_mask: weight,
+                                          lambda: producer([batch, heads])) {
+    qkv_projection
+    reshape([batch, seq_len, 5, heads * head_dim])
+
+    // TODO(review): scale(lambda, 1) reads lambda as a constant, so a learned lambda's parameters receive no gradient
+    accum_blocks(
+        {
+            attention_map_qk_layernorm(batch, seq_len, heads, head_dim, 0, 1, 3,
+                                       q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
+                                       inv_freq, padding_mask, key_mask)
+        },
+        {
+            attention_map_qk_layernorm(batch, seq_len, heads, head_dim, 4, 2, 3,
+                                       q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
+                                       inv_freq, padding_mask, key_mask)
+            scale(lambda, 1)
+            scale(-1)
+        }
+    )
+
+    merge_heads(batch, seq_len, heads, head_dim)
+    out_projection
+}
+
+/**
+ * Differential self-attention with an RMSNorm of every query and key row: [batch, seq_len, dim] -> same.
+ * As differential_attention, with both maps built by attention_map_qk_rmsnorm.
+ */
+layer differential_attention_qk_rmsnorm(batch: int, seq_len: int, heads: int, head_dim: int,
+                                        qkv_projection: projection, out_projection: projection,
+                                        q_norm_weight: weight, q_norm_bias: weight,
+                                        k_norm_weight: weight, k_norm_bias: weight,
+                                        inv_freq: weight, padding_mask: weight, key_mask: weight,
+                                        lambda: producer([batch, heads])) {
+    qkv_projection
+    reshape([batch, seq_len, 5, heads * head_dim])
+
+    // TODO(review): scale(lambda, 1) reads lambda as a constant, so a learned lambda's parameters receive no gradient
+    accum_blocks(
+        {
+            attention_map_qk_rmsnorm(batch, seq_len, heads, head_dim, 0, 1, 3,
+                                     q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
+                                     inv_freq, padding_mask, key_mask)
+        },
+        {
+            attention_map_qk_rmsnorm(batch, seq_len, heads, head_dim, 4, 2, 3,
+                                     q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
+                                     inv_freq, padding_mask, key_mask)
+            scale(lambda, 1)
+            scale(-1)
+        }
+    )
+
+    merge_heads(batch, seq_len, heads, head_dim)
+    out_projection
+}
