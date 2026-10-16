@@ -6,7 +6,7 @@ name: "Master Agent Dispatch"
 # Defect Hunt) with byte-identical triggers. They are one workflow because a
 # workflow per lifecycle event keeps the Actions UI navigable; a separate file
 # per job multiplies the sidebar without separating anything. Every job added
-# since — test coverage, consolidation, performance, PDSL migration — belongs
+# since — test coverage, consolidation, performance, PDSL migration, retrospective — belongs
 # here for the same reason.
 #
 # Each job keeps its own concurrency group, so they still serialize
@@ -56,6 +56,7 @@ on:
           - "consolidation"
           - "performance"
           - "pdsl"
+          - "retrospective"
       force:
         description: "Submit even if at capacity or one ran recently"
         required: false
@@ -87,6 +88,11 @@ on:
         type: boolean
       ignore_interval_pdsl:
         description: "Run the PDSL migration QA even if its minimum interval has not passed (a round still in progress blocks it)"
+        required: false
+        default: false
+        type: boolean
+      ignore_interval_retrospective:
+        description: "Run the QA retrospective even if its minimum interval has not passed (a round still in progress blocks it)"
         required: false
         default: false
         type: boolean
@@ -132,7 +138,7 @@ jobs:
       # matches the number of automated QA rounds, so a backlog past it
       # means other work beyond QA is already waiting for review, and a new
       # proposal would only compete with it.
-      MAX_OPEN_PRS: "6"
+      MAX_OPEN_PRS: "7"
 
     steps:
       - name: Checkout Code
@@ -370,7 +376,7 @@ jobs:
       # "<project> <root pom.xml version>".
       TRACKER_PROJECT: "Common"
       # Kept equal to the Project Manager's; see the note on that job.
-      MAX_OPEN_PRS: "6"
+      MAX_OPEN_PRS: "7"
 
     steps:
       - name: Checkout Code
@@ -1739,6 +1745,184 @@ jobs:
               "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous PDSL migration PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last PDSL migration round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
+            esac
+          fi
+
+  # ── QA Retrospective ─────────────────────────────────────────────────
+  # Submits a FlowTree coding-agent job that studies the repository's recent
+  # automated work — the QA rounds above and the harness that runs them — and
+  # proposes, with evidence, how the process itself should improve. It is the
+  # one QA round that looks back rather than forward, and the one rule it
+  # cannot break is that it only proposes: a person decides what to act on.
+  #
+  # Its output is docs-only (a report under docs/qa/retrospectives/ and a row
+  # in that directory's ledger), so PROTECT_TEST_FILES costs nothing and
+  # removes a temptation. Like pdsl-qa and performance-qa it pins the primary
+  # phase to claude/opus at max effort: the judgment here is synthesis across
+  # many workstreams, jobs and PRs, the kind a model under-thinks.
+  #
+  # It carries no REQUIRED_LABELS — it reads tools and writes markdown, so it
+  # needs no Metal. Cadence and cleanup are shared with the other QA rounds
+  # through tools/ci/qa-cadence.sh and tools/ci/archive-stale-workstreams.sh.
+  # Its window (REVIEW_SINCE) is wider than doc-qa's so that, at its weekly
+  # cadence, most activity is looked at twice across runs — the second look is
+  # how it tells whether an earlier proposal was acted on.
+  qa-retrospective:
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.agent == 'all' ||
+      github.event.inputs.agent == 'retrospective'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize so two merges landing together cannot both pass the gate.
+    concurrency:
+      group: qa-retrospective
+      cancel-in-progress: false
+
+    env:
+      # The window of recent automated work the retrospective surveys. Wider
+      # than doc-qa's so every activity gets two looks across successive runs.
+      # Passed to the prompt as a git --since expression.
+      REVIEW_SINCE: "14 days ago"
+      BRANCH_PREFIX: "qa/retro-"
+      MIN_INTERVAL_DAYS: "7"
+      # The branch prefixes the survey covers: every QA job's BRANCH_PREFIX
+      # plus ci/qa- (the convention for pipeline-subject QA follow-ups). Passed
+      # from this one place so the prompt never hard-codes a stale list; a
+      # future eighth QA job must be added here.
+      QA_PREFIXES: "qa/docs- qa/defect- qa/coverage- qa/consolidate- qa/performance- qa/pdsl- qa/retro- ci/qa-"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/automated-intake.sh
+          ./tools/ci/automated-intake.sh
+
+      - name: Decide whether to submit
+        id: decide
+        if: steps.intake.outputs.open == 'true'
+        env:
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          PR_GRACE_HOURS: "24"
+          IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_retrospective }}
+          FORCE: ${{ github.event.inputs.force }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./tools/ci/qa-cadence.sh
+          ./tools/ci/qa-cadence.sh
+
+      # Retire the rounds that came before this one. Safe here because the
+      # gate above has already established that none of them is in progress
+      # (no open PR, and no branch within PR_GRACE_HOURS still awaiting one):
+      # anything still registered has been merged, closed, or abandoned. A
+      # forced run skips that check, so it archives nothing — a round still
+      # being worked must not be retired beside the one it starts. Archiving
+      # is reversible.
+      - name: Archive previous rounds
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/archive-stale-workstreams.sh
+          ./tools/ci/archive-stale-workstreams.sh
+
+      - name: Create retrospective branch
+        if: steps.decide.outputs.run == 'true'
+        id: branch
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          BRANCH_NAME="${BRANCH_PREFIX}${TIMESTAMP}"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
+      - name: Build retrospective prompt
+        if: steps.decide.outputs.run == 'true'
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          REVIEW_SINCE: ${{ env.REVIEW_SINCE }}
+          QA_PREFIXES: ${{ env.QA_PREFIXES }}
+        run: |
+          chmod +x ./tools/ci/prompts/build-retrospective-prompt.sh
+          ./tools/ci/prompts/build-retrospective-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      # "effort": "max" is the Claude Code --effort level, the top of the
+      # runner's accepted range.
+      - name: Submit retrospective agent job
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          DESCRIPTION: "Study recent automated work and propose how the QA process should improve"
+          PROTECT_TEST_FILES: "true"
+          AUTO_CREATE_PR: "true"
+          PHASE_CONFIGS: '{"primary": {"runner": "claude", "model": "opus", "effort": "max", "provider": "anthropic"}}'
+        run: |
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Quality Assurance — Retrospective" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Survey window:** ${{ env.REVIEW_SINCE }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.decide.outputs.run }}" = "true" ]; then
+            echo "Created \`${{ steps.branch.outputs.branch }}\` and submitted a retrospective job" >> "$GITHUB_STEP_SUMMARY"
+            echo "with the primary phase pinned to claude/opus at max effort (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-open) echo "Skipped: a previous retrospective PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
+              too-recent) echo "Skipped: the last retrospective round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;

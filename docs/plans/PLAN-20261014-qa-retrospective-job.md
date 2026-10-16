@@ -95,8 +95,8 @@ Settings:
 `qa-cadence.sh` condition 1 (one open `qa/retro-*` PR holds the next round off) plus the
 grace window. The repository-wide `MAX_OPEN_PRS` backlog check (`open-pr-backlog.sh`)
 applies only to the planning rounds today, and the QA rounds do not use it. Adding it here
-would make the retrospective the only QA job held off by the backlog. That is listed as an
-open question rather than decided silently.
+would make the retrospective the only QA job held off by the backlog. The Decisions section
+records the choice not to (Q4) rather than leaving it decided silently.
 
 `MAX_OPEN_PRS` in the planning jobs is documented as "6, the number of automated QA rounds".
 It becomes 7 in the same change, and the comment and `.github/CLAUDE.md` are updated with
@@ -165,7 +165,7 @@ The prompt tells the agent to:
 The prompt also carries the safety rules as hard constraints:
 
 - **Repository scope.** Survey only workstreams whose `repoUrl` equals `REPO_URL`. Other
-  repositories' workstreams are reachable with this job's token (see Open questions) and
+  repositories' workstreams are reachable with this job's token (see Decisions, Q5) and
   must not be read, quoted or counted.
 - **Public repository.** The report must not name private downstream products or quote
   their workstreams. The wording follows the root `CLAUDE.md` section "This Repository Is
@@ -207,8 +207,8 @@ departure from the task's suggested default:
   kind of record.
 
 A proposal a person accepts becomes its own unit of work. A person can file it as a
-tracker task, or dispatch it on a branch named per §6. See Open questions on whether the
-job may file such tasks itself.
+tracker task, or dispatch it on a branch named per §6. The job itself files nothing
+(Decisions, Q3).
 
 ### 4. The job's own record (survey ledger)
 
@@ -260,8 +260,8 @@ Investigated against the code; no change is needed for the job to work:
   controller's `GET /api/workstreams/{id}/jobs`, through its `job_limit` parameter, and the
   prompt tells the agent to pass a high `job_limit`.
 
-The workstream needs no tracker capability unless the open question on filing tasks is
-answered "yes". `tracker_file_follow_up_task` is already granted to every job. It creates
+The workstream needs no tracker capability: the job files nothing (Decisions, Q3). Should
+that change, `tracker_file_follow_up_task` is already granted to every job — it creates
 backlog-stage, medium-priority, unlinked tasks with server-enforced limits.
 
 ### 6. Branch convention for pipeline-subject QA work: `ci/qa-<job>-<stamp>`
@@ -312,24 +312,24 @@ creating CI-capable branches would defeat the purpose of the lock.
 ### 7. How this implementation lands
 
 The implementation edits `.github/workflows/master-agent-dispatch.yaml`, `tools/ci/prompts/`
-and `tools/tests/`. The first two are under the CI-file lock, which this `project/task-`
-branch cannot lift by its name.
+and `tools/tests/`. The first two are under the CI-file lock, which the plan's own
+`project/task-` branch cannot lift by its name. The work therefore splits in two: the
+design (this document and the unlocked docs) lands on the plan branch and merges, and the
+CI-locked parts land afterward on a branch named `ci/…`, whose name lifts the lock for the
+whole pipeline (Q1). That branch is cut once the plan PR has merged, so its PR carries only
+the implementation.
 
-**Recommended route: the controller-signed bypass, so the work stays on this branch and PR.**
-The person approving the plan submits the implementation job with
-`sensitive_file_protection_enabled=false` (an operator-only `workstream_submit_task`
-parameter). The controller then pre-signs the job, and the harness appends a
-`Sensitive-File-Bypass` trailer that `check-ci-file-lock.sh` and `GitCommitHandler`
-accept.
+A branch name alone lifts the *lock*, but a commit that touches a CI file still needs the
+harness to stage that file: the `ci/…` round is dispatched with a controller-signed
+`Sensitive-File-Bypass`, which `check-ci-file-lock.sh`, `GitCommitHandler` and the harness's
+staging filter all accept. Every commit that touches a CI file carries its own trailer, so a
+review or resolve job that later edits those files is submitted the same way;
+`verify-completion.yaml` has no input for this, so the implementation is dispatched through
+`workstream_submit_task`, not through Verify Completion.
 
-Every commit that touches a CI file must carry its own trailer. Review or resolve jobs
-that later need to touch those files must therefore be submitted the same way.
-`verify-completion.yaml` has no input for this, so the implementation is dispatched
-through `workstream_submit_task`, not through Verify Completion.
-
-**Alternative: `ci/qa-retrospective`.** The approver cuts that branch from this one and
-dispatches the implementation there. This needs no bypass, but it moves the work to a
-second branch and PR. This PR would then carry only the design.
+The alternative — a controller-signed bypass on the plan's own `project/task-` branch — would
+have kept the design and the implementation on one branch and PR. It was not taken: keeping
+the CI-locked change on its own `ci/…` PR keeps the design reviewable on its own.
 
 The new and edited files:
 
@@ -343,42 +343,37 @@ The new and edited files:
 | `docs/qa/retrospectives/README.md` | what the directory is, and that its proposals are not plans |
 | `.github/CLAUDE.md`, `tools/ci/README.md` | the seventh round, the `ci/qa-` convention, `MAX_OPEN_PRS` |
 
-### 7a. What has already been implemented, and what the `ci/` branch does
+### 7a. What landed where
 
-Implementation has begun on the plan branch. Everything that is **not** under the
-CI-file lock, and that stays consistent without the locked workflow, has landed
-here:
+The work landed across the two branches §7 describes.
+
+On the plan branch — everything **not** under the CI-file lock, which stays
+consistent without the locked workflow:
 
 - `docs/qa/retrospectives/README.md` — what the directory is and that its reports
   are not plans.
 - `docs/qa/retrospectives/ledger.tsv` — the ledger header row.
 
-Everything that **is** locked (or must move in lockstep with the locked workflow)
-is staged, verbatim and validated, under
-`docs/plans/PLAN-20261014-qa-retrospective-staged/`, with a manifest
-(`README.md`) that maps each staged file to its destination and gives the exact
-in-place edits. A follow-up branch named `ci/…` (or a signed-bypass run per the
-route above) completes the work by, in one change:
+On the `ci/…` branch — everything that **is** locked, or must move in lockstep
+with the locked workflow, in one change:
 
-1. moving `build-retrospective-prompt.sh` and `retrospective.txt` into
-   `tools/ci/prompts/`;
-2. applying the five `master-agent-dispatch.yaml` edits (new job, new
+1. `build-retrospective-prompt.sh` and `retrospective.txt` in `tools/ci/prompts/`;
+2. the five `master-agent-dispatch.yaml` edits (new job, new
    `ignore_interval_retrospective` input, new `retrospective` selector option,
-   `MAX_OPEN_PRS` 6→7 on both planning jobs, header comment) — the fully
-   assembled file is staged for a straight move when master is unchanged;
-3. moving the assembled `test_master_agent_dispatch.py` into `tools/tests/` (the
-   cadence-map addition, the two `MAX_OPEN_PRS` assertion bumps, and the two new
-   test methods);
-4. adding the two `tools/ci/README.md` prompt-table rows and the
-   `.github/CLAUDE.md` "seventh round" edits described in the manifest;
-5. deleting `docs/plans/PLAN-20261014-qa-retrospective-staged/` once its contents
-   are in place — it is scaffolding, not a durable asset.
+   `MAX_OPEN_PRS` 6→7 on both planning jobs, header comment);
+3. `test_master_agent_dispatch.py` in `tools/tests/` (the cadence-map addition,
+   the two `MAX_OPEN_PRS` assertion bumps, and the two new test methods) — not
+   locked, but it must move with the workflow, since the cadence-map addition and
+   the `MAX_OPEN_PRS` assertions fail until the job exists and the bump lands;
+4. the two `tools/ci/README.md` prompt-table rows and the `.github/CLAUDE.md`
+   "seventh round" edits.
 
-The staged artifacts were validated together (the new job against every per-QA-job
-check in `test_master_agent_dispatch.py`, the builder against the full
-`test_prompt_builders.py` contract, and the workflow against
-`test_automated_intake.py`'s wiring checks); see the manifest for how to re-run
-those checks on the `ci/` branch.
+The locked parts were first staged verbatim beside this plan and validated together
+(the new job against every per-QA-job check in `test_master_agent_dispatch.py`, the
+builder against the full `test_prompt_builders.py` contract, and the workflow against
+`test_automated_intake.py`'s wiring checks) so the `ci/…` branch could move them into
+place with no re-derivation; the staging copy was removed once its contents were in
+place, being scaffolding rather than a durable asset.
 
 ## Success criteria
 
@@ -423,35 +418,37 @@ those checks on the `ci/` branch.
 - None from the tracker. The task has no blockers.
 - The implementation needs the operator-signed bypass or a `ci/` branch (§7).
 
-## Open questions
+## Decisions
 
-1. **How the implementation lands (§7).** The signed bypass keeps one branch and PR, which
-   is recommended. A `ci/qa-retrospective` branch is the alternative.
-2. **Report location.** The task suggests `docs/plans/`, and this plan proposes
-   `docs/qa/retrospectives/` (§3). `docs/qa/` already holds QA output on `master`
-   (`qa_report.md`, `qa_tracking.csv`), so the proposal extends an existing convention, and
-   `docs/CLAUDE.md`'s "formal documentation only" rule is satisfied because a retrospective
-   report is a durable reviewed record rather than a temporary planning note. Confirm, or
-   keep `docs/plans/` and accept that Verify Completion would treat the report as a plan to
-   implement.
-3. **May the job file proposals as tracker tasks?** `tracker_file_follow_up_task` is
-   already granted. Proposed: no for the first runs, so the report is the only output. The
-   person reviewing the report files what they accept. Revisit once a few reports have been
-   judged.
-4. **Backlog ceiling.** Should the retrospective, alone among the QA jobs, also be held off
-   by `open-pr-backlog.sh` (`MAX_OPEN_PRS`)? Proposed: no, for consistency with the other
-   QA rounds. A backlog is itself something the retrospective should report on.
-5. **Repository scoping is advisory, not enforced.** A job token can read any workstream,
-   memory or PR in its workspace, including other repositories'. In legacy single-workspace
-   mode it can read everything. The prompt restricts the survey to `REPO_URL`, but nothing
-   enforces it.
+Each question the design raised was resolved by adopting the plan's own proposal.
 
-   A possible further gap: `workstream_context` with `repo_url`, `branch` and
-   `workstream_id` all supplied skips the workspace check on its job listing. A person
-   should decide whether to file a separate tracker task to scope job tokens. This plan
-   does not widen into that.
-6. **Cadence.** Proposed: 7 days with a 14-day window. A slower cadence (14 days, 21-day
-   window) suits the case where weekly reports prove repetitive.
+1. **How the implementation lands (§7).** The CI-locked parts land on a branch named
+   `ci/…`, cut after the plan PR merged, so the design and the implementation stay on
+   separate reviewable PRs. The single-branch signed-bypass route was the alternative and
+   was not taken.
+2. **Report location.** Reports go in `docs/qa/retrospectives/` (§3). `docs/qa/` already
+   holds QA output on `master` (`qa_report.md`, `qa_tracking.csv`), so the choice extends
+   an existing convention, and `docs/CLAUDE.md`'s "formal documentation only" rule is
+   satisfied because a retrospective report is a durable reviewed record rather than a
+   temporary planning note. `docs/plans/` is rejected: Verify Completion would treat a
+   report there as a plan to implement.
+3. **Filing proposals as tracker tasks.** The job does not file them. For the first runs
+   the report is the only output, and the person reviewing it files what they accept. This
+   is revisited once a few reports have been judged; `tracker_file_follow_up_task` is
+   already granted if that changes.
+4. **Backlog ceiling.** The retrospective is not held off by `open-pr-backlog.sh`
+   (`MAX_OPEN_PRS`), for consistency with the other QA rounds — none of which uses it. A
+   backlog is itself something the retrospective should report on.
+5. **Repository scoping stays advisory, not enforced.** A job token can read any
+   workstream, memory or PR in its workspace, including other repositories'; in legacy
+   single-workspace mode it can read everything. The prompt restricts the survey to
+   `REPO_URL`, but nothing enforces it, and this plan does not widen into enforcing it.
+   The gap is noted and nothing is filed: whether to scope job tokens — including that
+   `workstream_context` with `repo_url`, `branch` and `workstream_id` all supplied skips
+   the workspace check on its job listing — is a separate decision for a person.
+6. **Cadence.** 7 days with a 14-day window, so most activity is looked at twice across
+   runs. A slower cadence (14 days, 21-day window) remains available should weekly reports
+   prove repetitive.
 
 ## Estimated complexity
 

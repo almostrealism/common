@@ -828,7 +828,7 @@ Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
 that fire on a merge to master: `plan-next-task` (Project Manager),
 `plan-release-task` (Task Planning), `doc-qa`
 (Quality Assurance), `defect-hunt`, `coverage-qa`, `consolidation-qa`,
-`performance-qa` and `pdsl-qa`. The `plan-next-task`, `doc-qa` and `defect-hunt`
+`performance-qa`, `pdsl-qa` and `qa-retrospective`. The `plan-next-task`, `doc-qa` and `defect-hunt`
 jobs were separate workflows with byte-identical triggers; merging them keeps the
 Actions sidebar navigable without changing what any of them does, and each job
 added since — `plan-release-task` among them — lands here for the same reason.
@@ -850,21 +850,22 @@ the window needs a controller-side reservation that the round takes before it
 creates its branch; until one exists, this check removes the common case (a
 round that starts while intake is already closed).
 
-The six QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
-`consolidation-qa`, `performance-qa`, `pdsl-qa`) share a shape:
+The seven QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
+`consolidation-qa`, `performance-qa`, `pdsl-qa`, `qa-retrospective`) share a shape:
 `tools/ci/qa-cadence.sh` decides whether to run from the job's own
 `BRANCH_PREFIX` (`qa/docs-`, `qa/defect-`, `qa/coverage-`, `qa/consolidate-`,
-`qa/performance-`, `qa/pdsl-`), `tools/ci/archive-stale-workstreams.sh` retires
+`qa/performance-`, `qa/pdsl-`, `qa/retro-`), `tools/ci/archive-stale-workstreams.sh` retires
 the previous rounds, then a branch is created, a workstream registered, a prompt
 built from `tools/ci/prompts/`, and a coding-agent job submitted with
 `AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
 cadence logic.
 
 Each QA job's `MIN_INTERVAL_DAYS` is 2 (`defect-hunt`, `coverage-qa`,
-`consolidation-qa`, `performance-qa`) or 5 (`doc-qa`, `pdsl-qa`). Every one of
+`consolidation-qa`, `performance-qa`), 5 (`doc-qa`, `pdsl-qa`) or 7
+(`qa-retrospective`). Every one of
 them also has its own boolean `workflow_dispatch` input,
 `ignore_interval_<job>` (`docs`, `defect_hunt`, `coverage`, `consolidation`,
-`performance`, `pdsl`), passed to `qa-cadence.sh` as `IGNORE_INTERVAL`. It lifts
+`performance`, `pdsl`, `retrospective`), passed to `qa-cadence.sh` as `IGNORE_INTERVAL`. It lifts
 only the interval: a round still in progress holds it off either way — a PR from
 the job's previous round is still open, or (via `PR_GRACE_HOURS`, set to 24 on
 every QA gate) its branch is younger than that window and has not opened one yet.
@@ -887,7 +888,7 @@ The grace window is load-bearing: the agent opens its PR only when it finishes,
 so without it a merge landing mid-round started a second round beside the first
 (this is how `project/plan-20260926-172935` and `project/plan-20260926-174202`
 came to coexist). Only when no round is in progress does the job check the
-backlog: it starts a round unless more than `MAX_OPEN_PRS` (6, the number of
+backlog: it starts a round unless more than `MAX_OPEN_PRS` (7, the number of
 automated QA rounds) PRs of any kind are open. `force` bypasses both checks.
 
 Like the QA rounds, both planning jobs retire earlier rounds with
@@ -950,15 +951,30 @@ mechanical check while migrating nothing. It carries no `REQUIRED_LABELS`:
 parity between the Java assembly and the asset is a correctness property, not a
 measurement, and the merged tests run on every backend the pipeline covers.
 
+`qa-retrospective` is the round that looks back at the others: it surveys the
+repository's recent automated work and proposes, with evidence, how the agent
+harness and the QA jobs should improve — it only proposes. Its output is
+docs-only (a report under `docs/qa/retrospectives/` and a row in that
+directory's ledger), so `PROTECT_TEST_FILES` costs nothing. It pins the primary
+phase to `claude/opus` at `effort: max` for the same reason as `performance-qa`
+and `pdsl-qa` — the judgment is synthesis across many workstreams, jobs and
+PRs, the kind a model under-thinks — and carries no `REQUIRED_LABELS`, since it
+reads tools and writes markdown and needs no Metal. Its survey window
+(`REVIEW_SINCE`, 14 days) is wider than its 7-day cadence so most activity is
+looked at twice across runs, which is how it tells whether an earlier proposal
+was acted on. `ci/qa-…` is the branch convention for a pipeline-subject QA
+follow-up a person opens from an accepted proposal; it is one of the prefixes
+the survey covers (`QA_PREFIXES`), and a person — never a job — creates it.
+
 Each job carries its **own** `concurrency` group (`project-manager`,
 `quality-assurance`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
-`performance-qa`, `pdsl-qa`, none cancelling in progress), so they serialize
+`performance-qa`, `pdsl-qa`, `qa-retrospective`, none cancelling in progress), so they serialize
 independently rather than queueing behind one another. Workflow-level
 concurrency would couple them — do not add one.
 
 A `workflow_dispatch` selects a single job via the `agent` input
 (`all` | `project-manager` | `quality-assurance` | `defect-hunt` | `coverage` |
-`consolidation` | `performance` | `pdsl`); `force` is passed through to
+`consolidation` | `performance` | `pdsl` | `retrospective`); `force` is passed through to
 whichever job runs, and each `ignore_interval_*` input reaches only its own job. Each job's
 `if` is written as `github.event_name != 'workflow_dispatch' || ...` so a push
 to master runs all of them. Adding a job means adding its selector to that
