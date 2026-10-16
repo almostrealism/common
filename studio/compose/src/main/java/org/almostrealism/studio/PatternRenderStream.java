@@ -21,6 +21,7 @@ import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
@@ -59,7 +60,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * which is distinct from the consumer's playback clock. The render depends only on the frame
  * parameter, so the two positions are free to diverge by up to {@code slots} buffers.</p>
  */
-public class PatternRenderStream implements Destroyable, CollectionFeatures {
+public class PatternRenderStream implements Destroyable, CollectionFeatures, ConsoleFeatures {
+
+	/** How long {@link #stop()} waits for the producer before warning that a render is still in flight. */
+	public static final long STOP_WARNING_MILLIS = 2000;
 
 	/** Renders the working input for the current {@link #renderFrame}; run repeatedly by the producer. */
 	private final Runnable renderOp;
@@ -251,16 +255,18 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures {
 	/**
 	 * Stops the producer thread and resets the ring to empty so the stream can be restarted via
 	 * {@link #start(int)}. The backing storage is retained.
+	 *
+	 * <p>This does not return until the producer thread has terminated. A render in progress
+	 * when the stream is stopped still reads the render cells and writes {@link #ring}, so
+	 * returning while it runs would let a caller release those resources (as
+	 * {@link #destroy()} and the owning runner's teardown do immediately afterwards) underneath
+	 * it. A render that outlasts {@link #STOP_WARNING_MILLIS} is reported and then awaited.</p>
 	 */
 	public void stop() {
 		running = false;
 		if (producer != null) {
 			producer.interrupt();
-			try {
-				producer.join(2000);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-			}
+			awaitTermination(producer);
 			producer = null;
 		}
 		writeIndex.set(0);
@@ -268,6 +274,37 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures {
 		empty.drainPermits();
 		empty.release(slots);
 		filled.drainPermits();
+	}
+
+	/**
+	 * Blocks until the given producer thread has terminated, warning once if it is still
+	 * running after {@link #STOP_WARNING_MILLIS}. An interrupt of the calling thread does not
+	 * cut the wait short, since the producer may still be using the stream's resources; the
+	 * interrupt status is restored once the producer has exited.
+	 *
+	 * @param thread the producer thread to wait for
+	 */
+	private void awaitTermination(Thread thread) {
+		boolean interrupted = false;
+		boolean warned = false;
+
+		while (thread.isAlive()) {
+			try {
+				thread.join(STOP_WARNING_MILLIS);
+			} catch (InterruptedException e) {
+				interrupted = true;
+			}
+
+			if (!warned && thread.isAlive()) {
+				warn("Render-ahead producer still running " + STOP_WARNING_MILLIS
+						+ "ms after stop; waiting for the in-flight render to finish");
+				warned = true;
+			}
+		}
+
+		if (interrupted) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	@Override
