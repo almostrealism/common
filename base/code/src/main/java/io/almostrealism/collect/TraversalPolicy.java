@@ -816,7 +816,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		} else if (length(axis) == 1) {
 			return repeat(axis, length);
 		} else {
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Axis " + axis + " of length " + length(axis)
+					+ " cannot be broadcast to length " + length);
 		}
 	}
 
@@ -1151,6 +1152,11 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	/**
 	 * Returns the output shape of a kernel of length {@code len} that produces {@code count} elements
 	 * of this shape per pass, prepending a dimension for the repetitions unless the count is fixed or not exceeded.
+	 *
+	 * @param count      the number of elements of this shape produced per kernel pass
+	 * @param fixedCount whether the count is fixed, in which case no dimension is prepended
+	 * @param len        the kernel length
+	 * @return this policy, or this policy with a leading dimension of {@code len / count} repetitions
 	 */
 	public TraversalPolicy forKernelLength(int count, boolean fixedCount, int len) {
 		int repetitions = fixedCount ? 0 : len / count;

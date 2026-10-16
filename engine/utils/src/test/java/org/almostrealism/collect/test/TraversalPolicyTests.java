@@ -401,7 +401,7 @@ public class TraversalPolicyTests extends TestSuiteBase {
 			new TraversalPolicy(3, 6).broadcast(0, 4);
 			Assert.fail("An axis of length 3 should not broadcast to length 4");
 		} catch (IllegalArgumentException expected) {
-			// Only an axis of length one can be broadcast
+			Assert.assertEquals("Axis 0 of length 3 cannot be broadcast to length 4", expected.getMessage());
 		}
 	}
 
