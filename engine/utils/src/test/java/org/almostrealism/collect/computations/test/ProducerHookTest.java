@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.compute.Process;
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -402,6 +403,43 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * Excluding one term of a two-term computation leaves a single term. A term that is
+	 * neither a {@link CollectionProducer} nor a {@link Shape} has
+	 * no shape to present it by, so the exclusion returns null and
+	 * {@link MultiTermDeltaStrategy#COMBINE} declines rather than failing with a
+	 * {@link ClassCastException}. A term that has a shape is presented through a
+	 * {@link ReshapeProducer}, and the product's delta is the diagonal of its values.
+	 */
+	@Test(timeout = 60000)
+	public void excludeTermPresentsSingleRemainingTerm() {
+		PackedCollection x = pack(1.0, 2.0, 3.0);
+		CollectionProducer other = cp(pack(4.0, 5.0, 6.0));
+
+		Producer<PackedCollection> raw = () -> args -> x;
+		CollectionProductComputation rawProduct = new CollectionProductComputation(shape(3), raw, other);
+		Assert.assertNull(rawProduct.excludeTerm(other));
+		Assert.assertNull(MultiTermDeltaStrategy.COMBINE.delta(rawProduct, other));
+		Assert.assertSame(other, rawProduct.excludeTerm(raw));
+
+		ShapedProducer shaped = new ShapedProducer(x);
+		Assert.assertFalse(shaped instanceof Process);
+		CollectionProductComputation shapedProduct =
+				new CollectionProductComputation(shape(3), shaped, other);
+
+		CollectionProducer remaining = shapedProduct.excludeTerm(other);
+		Assert.assertEquals(3, remaining.getShape().getTotalSize());
+		Assert.assertTrue(remaining.containsMatch(shaped));
+		assertValues(remaining.evaluate(), 1.0, 2.0, 3.0);
+
+		CollectionProducer delta = MultiTermDeltaStrategy.COMBINE.delta(shapedProduct, other);
+		Assert.assertEquals(shape(3, 3), delta.getShape());
+		assertValues(delta.evaluate(),
+				1.0, 0.0, 0.0,
+				0.0, 2.0, 0.0,
+				0.0, 0.0, 3.0);
+	}
+
+	/**
 	 * An input of a computation that is not a {@link Process} is still one of its inputs for
 	 * matching: the computation contains it, is not independent of it, and finds it as its
 	 * single matching input. The computation remains independent of an unrelated value.
@@ -548,6 +586,45 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 		Assert.assertEquals(expected.length, actual.getShape().getTotalSize());
 		for (int i = 0; i < expected.length; i++) {
 			Assert.assertEquals("value[" + i + "]", expected[i], actual.toDouble(i), 1e-6);
+		}
+	}
+
+	/**
+	 * A producer of a fixed collection that declares its shape but is neither a
+	 * {@link CollectionProducer} nor a {@link Process}.
+	 */
+	private static class ShapedProducer implements Producer<PackedCollection>,
+			Shape<Producer<PackedCollection>> {
+		/** The collection this producer produces. */
+		private final PackedCollection value;
+
+		/**
+		 * Creates a producer of the given collection.
+		 *
+		 * @param value  the collection to produce
+		 */
+		ShapedProducer(PackedCollection value) {
+			this.value = value;
+		}
+
+		@Override
+		public Evaluable<PackedCollection> get() {
+			return args -> value;
+		}
+
+		@Override
+		public TraversalPolicy getShape() {
+			return value.getShape();
+		}
+
+		@Override
+		public Producer<PackedCollection> reshape(TraversalPolicy shape) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public Producer<PackedCollection> traverse(int axis) {
+			throw new UnsupportedOperationException();
 		}
 	}
 }

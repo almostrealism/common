@@ -177,8 +177,9 @@ public interface CollectionProducerComputation extends
 	 * term remains, that term is returned directly.
 	 *
 	 * @param target  the term to leave out
-	 * @return this computation over the remaining terms, or null if several terms remain
-	 *         and one of them is not a {@link Process}, so the computation cannot be rebuilt
+	 * @return this computation over the remaining terms, or null if it cannot be rebuilt:
+	 *         several terms remain and one of them is not a {@link Process}, or the single
+	 *         remaining term is neither a {@link CollectionProducer} nor a {@link Shape}
 	 */
 	default CollectionProducer excludeTerm(Producer<?> target) {
 		return generateFromTerms(getTerms().stream()
@@ -303,7 +304,9 @@ public interface CollectionProducerComputation extends
 	/**
 	 * Generates a new {@link CollectionProducer} from a list of children, using the
 	 * structure of this computation as the template. The first child is the destination;
-	 * if only one term follows it, that term is returned directly.
+	 * if only one term follows it, that term is returned directly, viewed through a
+	 * {@link ReshapeProducer} when it is a {@link Shape} but not a {@link CollectionProducer}.
+	 * A single term that is neither has no shape to present it by, and null is returned.
 	 *
 	 * <p>Several terms can only be rebuilt through {@link #generate(List)}, whose children
 	 * must each be a {@link Process} that is also the {@link Producer} it stands for. A
@@ -313,14 +316,21 @@ public interface CollectionProducerComputation extends
 	 *
 	 * @param args  the children of the new computation, destination first
 	 * @return the computation over the given terms, or null if they include a term that
-	 *         is not a {@link Process} and more than one term remains
+	 *         is not a {@link Process} and more than one term remains, or if the single
+	 *         remaining term is neither a {@link CollectionProducer} nor a {@link Shape}
 	 */
 	private CollectionProducer generateFromTerms(List<Producer<?>> args) {
 		if (args.size() < 2) {
 			throw new IllegalArgumentException("No terms remain");
 		} else if (args.size() == 2) {
-			// TODO(review): a single remaining term that is not a CollectionProducer (a raw Producer input) throws ClassCastException here
-			return (CollectionProducer) args.get(1);
+			Producer<?> term = args.get(1);
+			if (term instanceof CollectionProducer) {
+				return (CollectionProducer) term;
+			} else if (term instanceof Shape) {
+				return new ReshapeProducer(((Shape) term).getShape().getTraversalAxis(), (Producer) term);
+			} else {
+				return null;
+			}
 		} else if (!args.stream().allMatch(t -> t instanceof Process)) {
 			return null;
 		} else {
