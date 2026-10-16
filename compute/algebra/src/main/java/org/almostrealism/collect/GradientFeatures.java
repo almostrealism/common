@@ -95,6 +95,7 @@ public interface GradientFeatures extends ComparisonFeatures {
 			Producer<?> input, Producer<PackedCollection> gradient) {
 		// TODO(review): wrong for the 256x64 dense weight over 64 rows (2^34 iteration space); check 32-bit index overflow
 		int inSize = shape(input).getTotalSize();
+		// TODO(review): outSize was shape(gradient) before; confirm the two agree for variable-count functions
 		int outSize = func.getShape().getTotalSize();
 		CollectionProducer jacobian = func.delta(input).reshape(outSize, inSize).traverse(1);
 		if (gradient != null) {

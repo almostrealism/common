@@ -51,8 +51,9 @@ import java.util.stream.Stream;
  * <p>Both gradients are formed by {@link #combineGradient}, which asks the operator for
  * its {@link org.almostrealism.calculus.ReduceAxis#OUT output-reduced} delta weighted by
  * the upstream gradient, so an operator whose computations know their structure (a dense
- * layer's matrix multiply, for its weights and its input) never forms its full
- * Jacobian.</p>
+ * layer's matrix multiply of at most 1000 nodes, for its weights and its input) never
+ * forms its full Jacobian. Computations without a reduced delta contract their full
+ * Jacobian instead.</p>
  *
  * <p>Diagnostic flags ({@link #enableDiagnosticGrad}, {@link #enableDiagnosticWeight})
  * can be enabled to wrap operations in {@code OperationWithInfo} for profiling.</p>
