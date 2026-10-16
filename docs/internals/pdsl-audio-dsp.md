@@ -109,7 +109,11 @@ composes the KV-cached attention block from these and `attention()` loads that a
 `engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` composes full-sequence self-attention,
 bidirectional or causal, and `sequenceAttention()` loads it — its keys and values are branches of
 the layer that the score and context products read as operands (`scaled_dot_product` accepts a
-branch as well as a tensor), so the asset trains as well as it infers; and
+branch as well as a tensor), so the asset trains as well as it infers;
+`engine/ml/src/main/resources/pdsl/differential_attention.pdsl` composes differential self-attention,
+two `attention_map` layers over the sections of one fused projection summed by `accum_blocks`, the
+second map weighted by each head's lambda (`scale(lambda, 1)`, `scale(-1)`) so the sum subtracts it,
+and `differentialSequenceAttention()` loads it; and
 `engine/ml/src/main/resources/pdsl/feed_forward.pdsl` composes the SwiGLU MLP that
 `feedForward()` loads. `engine/ml/src/main/resources/pdsl/transformer.pdsl` composes the
 pre-norm transformer layer from the layers of `attention.pdsl` and `feed_forward.pdsl` — `accum` around an attention
@@ -168,7 +172,7 @@ layer delay_feedback_bank(channels: int, signal_size: int, delay_samples: int,
 | `for each channel { }` | `[C, S]` → `[C, S]` | Applies the body per channel; `channel` is bound to the index. State and producer rows are sliced with `expr[channel]`. |
 | `route(matrix)` | `[in, S]` → `[out, S]` | `out[i] = sum_j matrix[i,j] * in[j]`. Matrix must be 2D and its first axis must equal the upstream channel count. Square and rectangular both supported; a rectangular route updates the downstream channel count via the primitive context. |
 | `sum_channels()` | `[C, S]` → `[1, S]` | Within-tensor channel-axis reduction. |
-| `accum_blocks(a, b, …)` | branches → sum | Each brace-delimited sub-block receives the same input; the output is the element-wise sum of their outputs. This is heterogeneous branching (e.g. dry + wet). Distinct from `sum_channels()`, which reduces one tensor's channel axis. |
+| `accum_blocks(a, b, …)` | branches → sum | Each brace-delimited sub-block receives the same input; the output is the element-wise sum of their outputs. This is heterogeneous branching (e.g. dry + wet). The backward pass delivers the full output gradient to every sub-block and sums their input-gradients, so each summed path trains. Distinct from `sum_channels()`, which reduces one tensor's channel axis. |
 
 ### Vectorized `for each channel`
 
