@@ -59,13 +59,19 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
    inline-code flags; Node; and interpreters the guard has no option grammar for — keeps the loop
    going after the first inline flag so a later one is still scanned (`perl -e 'a' -e 'b' file`
    scans both programs), and a `code_seen` early return just above the `tok == "-"` branch then
-   ends the walk at the first positional (or `-`) without reading it. That path stays fail-closed:
-   the only reason to single Python out is that its `-c` grammar is unambiguous enough to return
-   early safely (Open question 2).
+   ends the walk at the first positional (or `-`) without reading it — except that a
+   shell-expanded positional token on that path (`perl -e 'print 1' ${more[@]}`, where `${more[@]}`
+   can expand at run time into a further `-e` and its code) is *refused* there, not returned past,
+   so a second program smuggled through an expansion is never silently skipped. That path stays
+   fail-closed: the only reason to single Python out is that its `-c` grammar is unambiguous
+   enough — the remainder is unconditionally `sys.argv`, expansions included — to return early
+   safely (Open question 2).
 3. A positional token that contains `$` or a backtick, reached while the program is still
    unknown (`python3 "$script"`), blocks with a message that says what it is — an argument the
    guard cannot resolve to a file — instead of a `FileNotFoundError` on the literal text. Once
-   the program is known, such a token is just an argument and passes (covered by items 1–2).
+   the program is a resolved script path or Python's `-c`, such a token is just data and passes
+   (covered by items 1–2); the one place it still blocks is the non-Python inline-code path,
+   where it could expand into a further program (item 2).
 4. Tests for all of the above (see Success criteria).
 
 Optional, lower priority (the task's "Related" item; see Open questions): scanning a heredoc
@@ -95,8 +101,16 @@ All production changes are in `_check_interpreter` in `exfil_bash_runner.py`.
     lua). These may carry repeated inline-code
     flags (`perl -e 'a' -e 'b'`), so the loop must keep going after the first one: it sets
     `code_seen` and `continue`s, scanning each further `-e`/`-E` program. A `code_seen` early
-    return added just above `if tok == "-":` — returning `f"{prog}:inline"` — then ends the walk
-    at the first positional token (or `-`) without reading it. Placing it before `tok == "-"` is
+    return added just above `if tok == "-":` then ends the walk at the first positional token
+    (or `-`) without reading it. That early return is conditional on the token: a plain
+    positional returns `f"{prog}:inline"`, but one that `is_shell_expanded` raises the same
+    "expanded by the shell" `_GuardError` as the unknown-program case below rather than returning
+    past it. This is because, for these families, a shell-expanded token can expand at run time
+    into a further `-e` and its code — `perl -e 'print 1' ${more[@]}` with
+    `more=(-e 'use Socket; …')` is one positional token to the guard but two programs to Perl —
+    and returning early would skip the second program, a fail-open regression from today's
+    behaviour (the token currently reaches `_read_script` and fails closed on the unreadable
+    name). Placing the early return before `tok == "-"` is
     what makes a `-` after inline code read as a positional argument rather than a second stdin
     program. For these families the `-m` handler still runs after inline code, so
     `perl -e 'x' -m Foo`-style tokens stay fail-closed (see Open question 2); no such case has
@@ -110,10 +124,19 @@ All production changes are in `_check_interpreter` in `exfil_bash_runner.py`.
   (`SHELLS`, `GuardError`, `match_flag`); add `is_shell_expanded` to that import and use it in
   both `_resolve_dir` (replacing its inline `"$" in target or "`" in target`) and the
   interpreter loop. Do not introduce a second predicate in `exfil_bash_runner.py` — that would
-  duplicate the shared helper and let the two definitions drift. In the loop, when the program
-  is unknown and the positional token satisfies it, raise
-  `_GuardError(f"{prog} script {tok!r} is expanded by the shell, so the guard cannot read it to scan it; a program the guard cannot read does not run")`
-  before calling `_read_script`. The fail-closed outcome is unchanged; only the message is.
+  duplicate the shared helper and let the two definitions drift. The predicate is consulted at
+  two points in the loop, both fail-closed:
+  - When the program is still unknown and a positional token satisfies it (`python3 "$script"`),
+    raise
+    `_GuardError(f"{prog} script {tok!r} is expanded by the shell, so the guard cannot read it to scan it; a program the guard cannot read does not run")`
+    before calling `_read_script`. The fail-closed outcome is unchanged from today (the token
+    would reach `_read_script` and fail on the unreadable name); only the message is.
+  - On the non-Python `code_seen` early-return path, a shell-expanded positional token raises the
+    same error instead of returning `f"{prog}:inline"` — see the inline-program bullet above. Here
+    the outcome *does* matter: returning early would let a shell-expanded token (`${more[@]}`)
+    that expands into a further `-e` program slip past unscanned, so the guard must refuse it.
+  Python's immediate return after `-c` needs no such check: its remainder is unconditionally
+  `sys.argv`, so an expansion there is data, never a second program.
 - **Return labels.** `_check_interpreter`'s return value is only a descriptive label consumed by
   the dispatcher in `exfil_bash_dispatch.py`; no caller branches on it, so returning
   early changes nothing downstream.
@@ -153,6 +176,11 @@ Cases (from the task):
   `-c` still blocks (existing behaviour; add it so the distinction is asserted, not inferred).
 - `perl -e 'print 1' -e 'print 2' file` allows, and with a network call in the *second* `-e`
   blocks (proves both programs are scanned).
+- `perl -e 'print 1' ${more[@]}` (a shell-expanded positional token after inline code) blocks
+  with the "expanded by the shell" message, not allowed. Guards the non-Python early return
+  against a token that can expand at run time into a second `-e` program the guard cannot see;
+  `python3 -c 'print(1)' "$rest"` still allows, since Python's remainder is unconditionally
+  `sys.argv`.
 - `python3 /nonexistent/script.py` still blocks (existing behaviour). The closest existing
   assertion is the option-value variant `python3 -W error /nonexistent/script.py` in
   `test_interpreter_options_with_a_value_are_not_the_program`; the new module adds the plain
@@ -208,10 +236,17 @@ No existing test changes.
    the fail-closed path too is a one-line change, at the cost of keeping the reported
    `python3 -c 'x' -m http.server` false positive.
 
+   The same fail-open asymmetry governs a shell-expanded positional token after inline code: for
+   Python the remainder is unconditionally `sys.argv`, so `python3 -c 'x' "$rest"` is safe to
+   allow, but for the other families `${more[@]}` could expand into a further `-e` program, so the
+   non-Python early return refuses a shell-expanded token (Scope/Approach item 2) rather than
+   return past it. Keeping the fail-closed direction there mirrors the `-m` decision above.
+
 ## Estimated complexity
 
 Small. About 15–20 lines changed in one function — a Python-family immediate return in the
-inline-code branch, the `code_seen` early return above `tok == "-"` for the other families, the
-`-` stdin return, and the unresolvable-token guard — reusing the existing `is_shell_expanded`
-predicate (one added import, no new predicate), one new test module, and three one-line list
+inline-code branch, the `code_seen` early return above `tok == "-"` for the other families
+(itself guarding shell-expanded positional tokens), the `-` stdin return, and the
+unresolvable-token guard — reusing the existing `is_shell_expanded` predicate at both of its loop
+sites (one added import, no new predicate), one new test module, and three one-line list
 additions (two `GUARD_FILES` arrays and the `analysis.yaml` `PROTECTED_FILES` array).
