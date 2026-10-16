@@ -209,6 +209,30 @@ public class AccumulationBlockTests extends TestSuiteBase implements LayerRoutin
 	}
 
 	/**
+	 * The gradient buffer is allocated only when the backward cell is built, so destroying a block
+	 * used solely for inference must still destroy every child exactly once without touching the
+	 * absent buffer, and destroying a block whose backward was built must do the same.
+	 */
+	@Test(timeout = 60000)
+	public void destroyReleasesChildrenWithOrWithoutBackward() {
+		List<RecordingBlock> inferenceOnly = recordingChildren(new AtomicInteger());
+		AccumulationBlock forwardBlock = new AccumulationBlock(shape(SIZE), new ArrayList<>(inferenceOnly));
+		Assert.assertNotNull(forwardBlock.getForward());
+		forwardBlock.destroy();
+		for (RecordingBlock child : inferenceOnly) {
+			Assert.assertEquals(1, child.destroyed);
+		}
+
+		List<RecordingBlock> trained = recordingChildren(new AtomicInteger());
+		AccumulationBlock backwardBlock = new AccumulationBlock(shape(SIZE), new ArrayList<>(trained));
+		Assert.assertSame(backwardBlock.getBackward(), backwardBlock.getBackward());
+		backwardBlock.destroy();
+		for (RecordingBlock child : trained) {
+			Assert.assertEquals(1, child.destroyed);
+		}
+	}
+
+	/**
 	 * Creates {@link #CHILDREN} recording children whose setup increments {@code setups}.
 	 *
 	 * @param setups counter incremented each time any child's setup runs
@@ -230,6 +254,9 @@ public class AccumulationBlockTests extends TestSuiteBase implements LayerRoutin
 		/** The requirements most recently given to this block, or {@code null} if none were. */
 		private List<ComputeRequirement> requirements;
 
+		/** The number of times this block has been destroyed. */
+		private int destroyed;
+
 		/**
 		 * Creates a pass-through block of size {@link #NODES}.
 		 *
@@ -245,6 +272,12 @@ public class AccumulationBlockTests extends TestSuiteBase implements LayerRoutin
 		@Override
 		public void setComputeRequirements(List<ComputeRequirement> requirements) {
 			this.requirements = requirements;
+		}
+
+		/** {@inheritDoc} */
+		@Override
+		public void destroy() {
+			destroyed++;
 		}
 	}
 
