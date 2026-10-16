@@ -609,8 +609,10 @@ trusted.
 - `perl -e 'print 1' ${more[@]}` (a shell-expanded positional token after inline code) blocks
   with the "expanded by the shell" message, not allowed, and `perl -e 'print 1' *` (an unquoted
   glob token after inline code) blocks the same way. Both guard the Perl/Ruby/Node early return
-  against a token that can expand at run time into a second `-e` program the guard cannot see;
-  `python3 -c 'print(1)' "$rest"` still allows, since Python's remainder is unconditionally
+  against a token that can expand at run time into words the guard cannot predict — `${more[@]}`
+  into a further `-e` program, `*` into script or data operands — either of which could carry a
+  second program; `python3 -c 'print(1)' "$rest"` still allows, since Python's remainder is
+  unconditionally
   `sys.argv`.
 - `perl -e 'print 1' "-$opt"` (a shell-expanded *dash-prefixed* token after inline code) blocks
   with the "expanded by the shell" message. Guards the dash-prefixed arm of the early return: the
