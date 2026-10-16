@@ -150,8 +150,26 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
      `-MJSON::PP -e 'use IO::Socket; …'`, is the same hazard through Perl's `-M` branch: that branch
      (which lives inside the inline-code branch and sets `code_seen`) scans only the literal
      `${more[@]}` as the module value and `continue`s, so the injected second `-e` is never seen.
+     Perl's lowercase `-mModule` (an import with an empty list, `use Module ();`) is the same switch
+     in every respect that matters here, but today it is *not* handled by that branch: it falls to
+     the generic `-m` handler, which treats it as Python's terminal `-m MODULE`, checks the name
+     against `NETWORK_MODULES` (a list of Python module names), and **returns**, ending the walk.
+     Perl does not stop parsing at `-m` — `perl -e 'print 3;' -mstrict -e 'print 4;'` runs both
+     programs, and `perl -e '…<STDIN>…' -mstrict` still reads its stdin — so on master
+     `perl -mstrict -e 'use IO::Socket; …'` and `perl -e 'print 1' -mstrict -e 'use IO::Socket; …'`
+     return `perl:-m strict` with the `-e` program never scanned, and the trailing stdin check is
+     never reached either. That is a pre-existing fail-open that needs no shell expansion at all, and
+     it would make every guarantee in this item false for Perl. So the Perl `-M` branch is widened to
+     `-m` as well (`tok.startswith(("-M", "-m"))`): the attached module value is scanned exactly as
+     `-M`'s is (so `-mIO::Socket` blocks, as `-MIO::Socket` already does), `code_seen` is set,
+     `inline_seen` is *not* set, and the walk `continue`s, so a later `-e`, the operand-expansion
+     refusal below, the `inline_seen` early return and the end-of-loop stdin check all still run.
+     Perl accepts `-m`/`-M` only with an attached value (`perl -e 1 -m strict` exits with "Missing
+     argument to -m" without running anything), so the branch needs no separate-operand form. The
+     generic `-m` handler stays as it is for Python, where `-m MODULE` really does end option
+     parsing; Ruby and Node have no `-m` option and reject it before running anything.
      So once an inline program has been seen, those operand-consuming handlers must apply the same
-     expansion test to the operand they are about to consume — for `-M`, the attached value
+     expansion test to the operand they are about to consume — for `-M`/`-m`, the attached value
      `tok[2:]` — and refuse it, rather than swallow it unscanned. The expansion test
      (`is_shell_expanded(tok)` or
      `is_glob_or_brace(tok)`) is therefore consulted at two kinds of site: for *every* token on the
@@ -159,8 +177,8 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
      skip, not only for positionals — a plain positional (or `-`) returns `f"{prog}:inline"`, an
      expanded token of either shape is refused, and an ordinary dash option that is not expanded
      still falls through to the skip as today — *and*, once `inline_seen` is set, on the operand
-     each value-flag, preload-flag, Ruby `-C` and Perl `-M` handler is about to consume, before that
-     operand is swallowed. Gating the operand check on `inline_seen` keeps the common pre-inline idiom
+     each value-flag, preload-flag, Ruby `-C` and Perl `-M`/`-m` handler is about to consume, before
+     that operand is swallowed. Gating the operand check on `inline_seen` keeps the common pre-inline idiom
      (`perl -I ${inc[@]} script.pl`, an include-path list) passing as it does today; the residual
      this leaves — an expansion consumed as a value/preload operand *before* any inline program is
      detected — is pre-existing on master and recorded in Open question 6. A second program
@@ -178,6 +196,28 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
    The only reason Python is singled out for the immediate return is that its `-c` grammar is
    unambiguous enough — the remainder is unconditionally `sys.argv`, expansions included — to
    return early safely; every other path stays fail-closed.
+
+   **What the early returns give up: argv data is no longer scanned.** Both early returns (Python
+   `-c` and the Perl/Ruby/Node `inline_seen` return) stop reading operands that master reads
+   today, and that is a real loosening, not only the removal of a false positive. An inline
+   program can load and execute one of its own arguments:
+   `python3 -c 'import runpy,sys; runpy.run_path(sys.argv[1])' payload.py` has no network pattern
+   in its inline text, so when `payload.py` exists and contains `import socket`, master blocks it
+   (the trailing operand is read as a script and scanned) and this plan allows it as
+   `python3:inline`. The Perl/Ruby/Node equivalents (`perl -e 'do $ARGV[0]' payload.pl`,
+   `ruby -e 'load ARGV[0]' payload.rb`, `node -e 'require(process.argv[1])' payload.js`) behave
+   the same way. The plan takes the position that master's block here is incidental. It comes from
+   misreading the operand as a second program, and that same misreading causes the reported false
+   positive. The guard has never scanned argv data handed to a *script*: `python3 runner.py
+   payload.py` reads and scans `runner.py`, returns, and never opens `payload.py`, even though
+   `runner.py` may `runpy.run_path` it. Under this plan, a program fixed by an inline flag is
+   treated exactly like one fixed by a script path: the program is scanned and its arguments are
+   not. A program that loads code from a file it names at run time is outside what a static argv
+   scan can see, whether that program is inline or a script. Nothing in the network patterns
+   matches `runpy`, `do FILE`, `load` or `require` of a variable path, so this rests on a policy
+   decision, not on detection elsewhere. A reviewer (Copilot, PR #659) raised it, and Open
+   question 7 records the decision for the approver, together with the fail-closed alternative and
+   the tests each option implies.
 
    **Stdin is still inspected after an inline program.** Fixing the program to an inline flag
    does not make the command's standard input inert: an inline program can read and execute its
@@ -343,16 +383,23 @@ narrowing changes no current assertion.
     return before `tok == "-"` is what makes a `-` after inline code read as a positional
     argument rather than a second stdin-*program* selection — its stdin is still scanned by the
     `_check_stdin_program` call the early return makes first, just not re-interpreted as the
-    program. For these families the `-m` handler still runs
-    after inline code, so `perl -e 'x' -m Foo`-style tokens stay fail-closed (see Open
-    question 2); no such case has been reported.
+    program. Perl's `-m` no longer reaches the generic `-m` handler at all: the Perl `-M` branch
+    is widened to `tok.startswith(("-M", "-m"))`, so an attached `-mModule` is scanned as a module
+    value and the walk `continue`s rather than returning `perl:-m Module`. Today that return ends
+    the walk before any later `-e` and before the end-of-loop stdin check, so
+    `perl -mstrict -e 'use IO::Socket; …'` and `perl -e 'eval <STDIN>' -mstrict <<'PL'` run
+    unscanned on master — a pre-existing fail-open that this change closes (Scope item 2). The
+    generic `-m` handler is kept for the remaining families. Python never reaches it after `-c`,
+    and Ruby and Node reject `-m` as an unknown option, so for them it can only ever end the walk
+    on a command that does not run.
 
     The early return's per-token expansion test is *not* the whole story, because the
     operand-consuming handlers run above it and `continue` before it is reached. The value-flag
     handler (`_match_flag(tok, value_flags)`), the preload-flag handler
-    (`_match_flag(tok, preload_flags)`), Ruby's `-C` handler and Perl's `-M` branch each take their
-    operand from the attached value or the following token and loop on, so an *expanded* operand
-    there — `-I ${more[@]}`, `-r ${more[@]}`, `-C ${more[@]}`, `-M${more[@]}` — is swallowed
+    (`_match_flag(tok, preload_flags)`), Ruby's `-C` handler and Perl's `-M`/`-m` branch each take
+    their operand from the attached value or the following token and loop on, so an *expanded*
+    operand there — `-I ${more[@]}`, `-r ${more[@]}`, `-C ${more[@]}`, `-M${more[@]}`,
+    `-m${more[@]}` — is swallowed
     unscanned and never reaches the
     early return. `perl -e 'print 1' -I ${more[@]}` with `more=(safe -e 'use IO::Socket; …')` is one
     reviewer case: `-I` consumes `${more[@]}`, which the shell word-splits into `safe` (an
@@ -362,7 +409,7 @@ narrowing changes no current assertion.
     `code_seen`) and lets the injected `-e` through unscanned. So, once
     `inline_seen` is set, each of these four handlers must apply the same
     `is_shell_expanded(operand) or is_glob_or_brace(operand)` test to the operand it is about to
-    consume — the attached value (for `-M`, `tok[2:]`) or `args[i + 1]` — and raise the same
+    consume — the attached value (for `-M`/`-m`, `tok[2:]`) or `args[i + 1]` — and raise the same
     "expanded by the shell" `_GuardError` instead of consuming it. The test is gated on `inline_seen` so the common
     pre-inline include-list idiom (`perl -I ${inc[@]} script.pl`) keeps passing exactly as today;
     the residual it leaves — an expansion consumed as a value/preload operand *before* any inline
@@ -444,9 +491,9 @@ narrowing changes no current assertion.
     to dash-prefixed expanded tokens too (`-$opt` → `-e`), which is why it runs ahead of the
     generic `tok.startswith("-")` skip and not only on positionals: left to that skip, `-$opt` is
     dropped silently and the real program that follows it is returned past unscanned.
-  - On the Perl/Ruby/Node value-flag, preload-flag, Ruby `-C` and Perl `-M` handlers, once
-    `inline_seen` is set, the operand each is about to consume (the attached value — for `-M`,
-    `tok[2:]` — or `args[i + 1]`) raises the same
+  - On the Perl/Ruby/Node value-flag, preload-flag, Ruby `-C` and Perl `-M`/`-m` handlers, once
+    `inline_seen` is set, the operand each is about to consume (the attached value — for
+    `-M`/`-m`, `tok[2:]` — or `args[i + 1]`) raises the same
     error instead of being swallowed — see the inline-program bullet above. These handlers sit at or
     *above* the `inline_seen` early return and `continue` before it, so without this check an
     expanded value/preload/`-M` operand (`perl -e 'print 1' -I ${more[@]}`,
@@ -503,6 +550,12 @@ trusted.
 - `python3 - data.json <<'PY' … PY` with a clean body allows; with `import socket` blocks.
 - `python3 -I - "$f" <<'PY' … PY` with a clean body allows.
 - `python3 -c 'print(1)' data.txt` (no such file) allows.
+- `python3 -c 'import runpy,sys; runpy.run_path(sys.argv[1])' payload.py`, with a readable
+  `payload.py` that contains `import socket`, allows. This asserts the argv-is-data policy in
+  Scope item 2 ("What the early returns give up") as an explicit, accepted boundary rather than
+  leaving it to inference. It is a deliberate change from master, which blocks this command by
+  reading `payload.py` as a second program. If the approver chooses the other option in Open
+  question 7, this case flips to "blocks" and that option's tests replace it.
 - `python3 -c 'print(1)' -` with no heredoc or pipe allows: once inline code has fixed the
   program, the trailing `-` is a positional argument, not a second stdin program, so it is not
   read as a script file. Guards the Python immediate-return: the `-c` branch returns before the
@@ -553,7 +606,12 @@ trusted.
   the same way. Guards the value-flag/preload-flag arm of the expansion refusal: these handlers
   run *above* the `inline_seen` early return and consume their operand before it, so without the
   gated check `${more[@]}` — which can word-split into a second `-e`/`require` and its code — would
-  be swallowed unscanned.
+  be swallowed unscanned. A clean value operand after inline code (`perl -e 'print 1' -I lib`)
+  still allows, since `lib` is an ordinary include directory, not an expansion. The gating on
+  `inline_seen` is asserted by `perl -I ${inc[@]} script.pl` (no inline program yet): it is *not*
+  blocked by this new check — it reaches `_read_script` on `script.pl` exactly as on master (the
+  pre-inline residual, Open question 6) — so the change adds no new false positive to the common
+  include-list idiom.
 - `perl -e 'print 1' -M${more[@]}` (a shell-expanded value consumed by Perl's `-M` module-load
   branch after inline code) blocks with the "expanded by the shell" message. Guards the `-M` arm of
   the expansion refusal: `-M${more[@]}` expands into `-MJSON::PP -e 'use IO::Socket; …'`, and
@@ -562,12 +620,17 @@ trusted.
   unscanned. A clean attached module (`perl -e 'print 1' -MJSON::PP`) still allows, since the value
   is not an expansion. The gating on `inline_seen` is asserted by `perl -M${mods[@]} script.pl` (no
   inline program yet): it reaches `_read_script` on `script.pl` as on master (the pre-inline
-  residual, Open question 6), so the change adds no new false positive to a dynamic module list. A clean value operand after inline code (`perl -e 'print 1' -I lib`)
-  still allows, since `lib` is an ordinary include directory, not an expansion. The gating on
-  `inline_seen` is asserted by `perl -I ${inc[@]} script.pl` (no inline program yet): it is *not*
-  blocked by this new check — it reaches `_read_script` on `script.pl` exactly as on master (the
-  pre-inline residual, Open question 6) — so the change adds no new false positive to the common
-  include-list idiom.
+  residual, Open question 6), so the change adds no new false positive to a dynamic module list.
+- `perl -mstrict -e 'use IO::Socket;'` and `perl -e 'print 1' -mstrict -e 'use IO::Socket;'`
+  block, and `perl -mstrict -e 'print 1'` allows. These are regression tests for a fix: on master
+  the generic `-m` handler returns `perl:-m strict` at the `-mstrict` token, so the `-e` program
+  after it is never scanned and both blocking cases allow. Together they guard that Perl's `-m`
+  is routed through the `-M` branch and `continue`s. `perl -e 'eval <STDIN>' -mstrict <<'PL'` /
+  `use IO::Socket;` / `PL` blocks, which guards that the end-of-loop stdin check is still reached
+  after a Perl `-m`. `perl -e 'print 1' -m${more[@]}` blocks with the "expanded by the shell"
+  message, which guards the `-m` arm of the gated operand refusal. `perl -mIO::Socket -e 'print 1'`
+  blocks on the scanned module value, matching `perl -MIO::Socket -e 'print 1'`, which already
+  blocks today.
 - `lua -e 'print(1)' script.lua` scans `script.lua` as a program, so a clean `script.lua` allows
   and one containing a network call blocks. Guards that grammar-less interpreters are *not* given
   the early return: Lua runs both the `-e` chunk and the script operand, so the operand must be
@@ -654,9 +717,10 @@ No existing test changes.
    The resolution is deliberately Python-only: Python's `-c` unambiguously consumes the rest of
    argv, whereas returning early for interpreters that can carry repeated inline-code flags
    (Perl, Ruby) — or Node — would risk *not* scanning a later inline program — a fail-open bypass.
-   So Perl/Ruby/Node keep the continue-then-early-return path, and a residual fail-closed false
-   positive remains for them (e.g. `perl -e 'x' -m Foo` if `Foo` ever named a modelled network
-   module). None has been reported; over-blocking there is the safe direction. If a reviewer
+   So Perl/Ruby/Node keep the continue-then-early-return path. (Perl's `-m` is not an exception to
+   this: it is routed through the `-M` module branch and `continue`s, rather than reaching the
+   generic, returning `-m` handler that ends the walk on master. Ruby and Node reject `-m`
+   outright. See Scope item 2.) If a reviewer
    prefers the maximally conservative option, leaving Python in the fail-closed path too is a
    one-line change, at the cost of keeping the reported `python3 -c 'x' -m http.server` false
    positive.
@@ -782,9 +846,9 @@ No existing test changes.
    the bug fix small. Until it lands, the guarantee is honestly stated as "pipes and heredocs,"
    not "all stdin."
 
-6. **Expanded value/preload/`-M` operand before any inline program (pre-existing, out of scope).**
-   The `inline_seen` expansion refusal on the value-flag, preload-flag, Ruby `-C` and Perl `-M`
-   handlers (Scope
+6. **Expanded value/preload/`-M`/`-m` operand before any inline program (pre-existing, out of
+   scope).** The `inline_seen` expansion refusal on the value-flag, preload-flag, Ruby `-C` and
+   Perl `-M`/`-m` handlers (Scope
    item 2, Approach Perl/Ruby/Node bullet) is deliberately gated on an inline program having
    *already* been seen, so an expansion consumed as such an operand *before* the first inline flag
    is not refused: `perl -I ${more[@]} -e 'print 1'`, `perl -I ${more[@]} script.pl` and
@@ -805,19 +869,53 @@ No existing test changes.
    — the one with a demonstrated second-program hazard once the guard knows an inline program is
    present — *is* closed, by the gated check above.
 
-   One further operand-consuming handler sits above the early return and is *not* given the gated
-   refusal: the generic `-m` handler, which reads its module from the attached value or the next
-   token and then *returns* (ending the walk). It is left as-is because it is barely reachable as a
-   smuggling vector for the families that carry the `inline_seen` early return. Python — the only
-   family with a real `-m MODULE` that takes a separate operand — returns at `-c` before the `-m`
-   handler runs, so it never reaches it after inline code; Node and Ruby have no `-m`; and Perl's
-   `-m` is an attached module-import (`-mFoo`), so the only expansion shape that could smuggle a
-   second `-e` through it is an attached `-m${…}`, an exotic case with none reported. Giving the
-   `-m` handler the same `inline_seen`-gated expansion refusal would be a consistent, strictly
-   safer extension if the approver wants it; this plan scopes it out with the pre-inline case to
-   keep the change small, and the enumeration of operand-consuming handlers covered by the gated
-   check (value-flag, preload-flag, Ruby `-C`, Perl `-M`) is stated with this one carve-out named
-   rather than silently omitted.
+7. **Argv data loaded as code by the fixed program (policy decision for the approver).** Scope
+   item 2 ("What the early returns give up") records that once an inline flag has fixed the
+   program, the guard no longer reads the trailing operands that master reads incidentally. So
+   `python3 -c 'import runpy,sys; runpy.run_path(sys.argv[1])' payload.py`, with a readable
+   `payload.py` that contains `import socket`, goes from blocked to allowed, and the Perl, Ruby
+   and Node equivalents do too. A reviewer (Copilot, PR #659) asked for this to be either kept
+   fail-closed or covered by an explicit, tested policy. There are two options:
+   - **Treat argv as data, as for scripts (as written).** The program is what the guard scans, and
+     its arguments are not, whether the program is inline or a script file. This is the rule master
+     already applies to `python3 runner.py payload.py`, which never reads `payload.py`. It is also
+     the only option that removes the reported false positive. In the observed command
+     (`python3 -I - "$f"`), the operand is a shell expansion that the guard can never read, so the
+     guard cannot scan it either way. Under this option, the new test module asserts the policy
+     directly: `python3 -c 'import runpy,sys; runpy.run_path(sys.argv[1])' payload.py` allows
+     with a network-capable `payload.py`, and the test documents this as the accepted boundary, so
+     a later change to the boundary is a visible test edit rather than a silent drift.
+   - **Keep scanning readable operands after inline code.** After the program is fixed, an operand
+     that names a readable regular file is still read and scanned as code. An operand that is
+     missing, unreadable or shell-expanded is passed as data instead of failing the command. This
+     keeps master's incidental coverage for literal file operands and still fixes
+     `python3 -c 'print(1)' data.txt` (missing file) and the `"$f"` loop. Its costs are as follows.
+     It cannot cover the observed `"$f"` shape, so it protects only literal paths. It scans data
+     files as code, so a JSON or text data file that mentions `socket.` or `fetch(` blocks a
+     read-only command, which is the same kind of false positive this plan exists to remove. It
+     also introduces asymmetric treatment of inline programs and scripts that has no counterpart
+     for `python3 runner.py payload.py`. Under this option, the `runpy` case above blocks, and
+     `python3 -c 'print(1)' data.json` with a readable `data.json` containing `import socket`
+     blocks too, which needs its own test.
+
+   The plan as written takes the first option. Choosing the second changes the Python immediate
+   return, the `inline_seen` early return and the tests listed above, but not the stdin or
+   expansion handling.
+
+   <!-- TODO(review): this `-m` history paragraph belongs to Open question 6 (whose `-m` carve-out it replaced); under 7 its "the residual described above" reads as the argv options. -->
+   An earlier revision of this plan left the generic `-m` handler out of the gated refusal and
+   described Perl's attached `-m${…}` as an exotic case. A reviewer (Copilot, PR #659) showed that
+   this was wrong, and the problem was larger than the expansion shape. The handler *returns*, and
+   Perl does not stop parsing at `-m`, so on master a plain `-mstrict` ends the walk before any
+   later `-e` and before the stdin check. No expansion is needed for that. The plan now routes
+   Perl's `-m` through the `-M` branch (Scope item 2), which covers the inline-first `-m${more[@]}`
+   shape and the stdin path. The pre-inline `perl -m${more[@]} script.pl` shape is part of the
+   residual described above, the same as `-M`. The reviewer's separated example
+   (`perl -e 'eval <STDIN>' -m Foo <<'PL'`) is not a working command: Perl accepts `-m` only with
+   an attached value and exits with "Missing argument to -m" before running anything. The attached
+   form (`-mFoo`) does run, and that is the case the fix targets. The generic handler stays for
+   Python, whose `-m MODULE` really ends option parsing and which returns at `-c` before reaching
+   it after inline code. It also stays for Ruby and Node, which reject `-m` before running anything.
 
 ## Estimated complexity
 
@@ -836,9 +934,11 @@ grammar-less families kept on today's fall-through, the `-` stdin return, a cons
 Perl/Ruby/Node `inline_seen` early return, and the end-of-loop check broadened from
 `if not code_seen:` to `if inline_seen or not code_seen:` so a last-token inline program's stdin
 is still inspected — all reusing the existing helper, no new stdin logic),
-the `inline_seen`-gated expansion refusal on the value-flag, preload-flag,
-Ruby `-C` and Perl `-M` operand-consuming handlers (so an expanded `-I`/`-r`/`-C`/`-M` operand
-after inline code is refused rather than swallowed), and the
+Perl's `-m` routed through the `-M` branch instead of the returning generic `-m` handler (a
+one-condition change that closes the pre-existing `perl -mstrict -e …` fail-open), the
+`inline_seen`-gated expansion refusal on the value-flag, preload-flag,
+Ruby `-C` and Perl `-M`/`-m` operand-consuming handlers (so an expanded `-I`/`-r`/`-C`/`-M`/`-m`
+operand after inline code is refused rather than swallowed), and the
 unresolvable-token guard — reusing the existing `is_shell_expanded` and `is_glob_or_brace`
 predicates at all three of its loop sites (two added imports, no new predicate), one new test module,
 and three one-line list additions (two `GUARD_FILES` arrays and the `analysis.yaml`
