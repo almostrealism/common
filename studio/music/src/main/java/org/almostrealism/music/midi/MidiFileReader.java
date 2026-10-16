@@ -16,6 +16,8 @@
 
 package org.almostrealism.music.midi;
 
+import org.almostrealism.audio.midi.MidiTempo;
+
 import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.MetaMessage;
 import javax.sound.midi.MidiEvent;
@@ -69,12 +71,6 @@ public class MidiFileReader {
 
 	/** Instrument number assigned to drum channel notes. */
 	private static final int DRUM_INSTRUMENT = 128;
-
-	/** MIDI Set Tempo meta-message type. */
-	private static final int SET_TEMPO = 0x51;
-
-	/** Tempo assumed by MIDI until the first Set Tempo event (120 BPM). */
-	private static final int DEFAULT_MICROSECONDS_PER_BEAT = 500_000;
 
 	/** Microseconds per second, which is also the tempo of 60 BPM in microseconds per beat. */
 	private static final int MICROSECONDS_PER_SECOND = 1_000_000;
@@ -174,7 +170,7 @@ public class MidiFileReader {
 			throws IOException, InvalidMidiDataException {
 		Sequence sequence = new Sequence(Sequence.PPQ, MidiNoteEvent.TIME_RESOLUTION);
 		Track track = sequence.createTrack();
-		track.add(new MidiEvent(tempoMessage(MICROSECONDS_PER_SECOND), 0));
+		track.add(new MidiEvent(new MidiTempo(MICROSECONDS_PER_SECOND).toMetaMessage(), 0));
 
 		Map<Integer, Integer> instrumentToChannel = new HashMap<>();
 		int nextChannel = 0;
@@ -278,10 +274,7 @@ public class MidiFileReader {
 					break;
 				}
 				case SET_TEMPO: {
-					int microsPerBeat = event.getBpm() > 0
-							? 60_000_000 / event.getBpm()
-							: DEFAULT_MICROSECONDS_PER_BEAT;
-					track.add(new MidiEvent(tempoMessage(microsPerBeat), tick));
+					track.add(new MidiEvent(MidiTempo.ofBpm(event.getBpm()).toMetaMessage(), tick));
 					break;
 				}
 				case TIME_SIGNATURE: {
@@ -330,18 +323,6 @@ public class MidiFileReader {
 	}
 
 	/**
-	 * Create a Set Tempo meta message (type 0x51) for the given tempo.
-	 */
-	private static MetaMessage tempoMessage(int microsPerBeat) throws InvalidMidiDataException {
-		byte[] data = {
-				(byte) (microsPerBeat >> 16 & 0xFF),
-				(byte) (microsPerBeat >> 8 & 0xFF),
-				(byte) (microsPerBeat & 0xFF)
-		};
-		return new MetaMessage(SET_TEMPO, data, 3);
-	}
-
-	/**
 	 * The tempo map of a {@link Sequence}, converting MIDI ticks to
 	 * {@link MidiNoteEvent#TIME_RESOLUTION} ticks per second.
 	 *
@@ -371,22 +352,20 @@ public class MidiFileReader {
 			this.smpteTicksPerSecond = sequence.getDivisionType() == Sequence.PPQ
 					? 0 : sequence.getDivisionType() * resolution;
 
-			tempoAtChange.put(0L, DEFAULT_MICROSECONDS_PER_BEAT);
+			tempoAtChange.put(0L, MidiTempo.DEFAULT.microsPerBeat());
 			for (Track track : sequence.getTracks()) {
 				for (int i = 0; i < track.size(); i++) {
 					MidiEvent event = track.get(i);
-					if (event.getMessage() instanceof MetaMessage meta
-							&& meta.getType() == SET_TEMPO && meta.getData().length >= 3) {
-						byte[] data = meta.getData();
-						tempoAtChange.put(event.getTick(),
-								(data[0] & 0xFF) << 16 | (data[1] & 0xFF) << 8 | data[2] & 0xFF);
+					if (event.getMessage() instanceof MetaMessage meta) {
+						MidiTempo.of(meta).ifPresent(tempo ->
+								tempoAtChange.put(event.getTick(), tempo.microsPerBeat()));
 					}
 				}
 			}
 
 			long previousTick = 0;
 			double micros = 0;
-			int previousTempo = DEFAULT_MICROSECONDS_PER_BEAT;
+			int previousTempo = MidiTempo.DEFAULT.microsPerBeat();
 			for (Map.Entry<Long, Integer> change : tempoAtChange.entrySet()) {
 				micros += (change.getKey() - previousTick) * (double) previousTempo / resolution;
 				microsAtChange.put(change.getKey(), micros);
