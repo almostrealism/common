@@ -71,7 +71,17 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
    `e`, and then — harmlessly today, fatally once an early return exists — treats the real
    program as the following operand. So the Node inline-code match recognises `-pe` as a whole
    token and takes `-e`/`-p` values only as the next token or, for the long forms, after `=`
-   (`--eval=…`); it does not split an attached short value. The implementer should confirm Node's
+   (`--eval=…`, `--print=…`); it does not split an attached short value.
+
+   `match_flag` cannot express that rule in one call: `allow_attached=False` rejects the
+   `--eval=…` form as well as attached short values, and `allow_attached=True` splits `-pe` and
+   `-eCODE`. An implementation that simply turns attached matching off for Node would let
+   `node --eval='fetch("http://e")'` miss every inline flag, reach the `tok.startswith("-")` skip,
+   and run unscanned — a fail-open (today the shared-set match, with attached matching on, does
+   catch `--eval=…`). No matcher change is needed; the Node table is matched in two calls:
+   `match_flag(tok, {"-e", "-p", "-pe"}, allow_attached=False)` for the exact short tokens, then
+   `match_flag(tok, {"--eval", "--print"}, allow_attached=True)`, whose attached branch for a
+   `--`-prefixed flag accepts only the `=` form. The implementer should confirm Node's
    short-option grammar against its option table before relying on this. Perl and Ruby genuinely
    accept an attached value (`perl -e'print 1'`), so their `-e`/`-E` keep attached matching; a
    switch cluster such as `-pe` or `-lne` no longer matches any of their inline flags (it does
@@ -131,8 +141,9 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
    items 1–2); the one place it still blocks is the Perl/Ruby/Node inline-code early-return path,
    where it could expand into a further `-e` program (item 2). The Python family's only inline-code
    flag is `-c`; `-E` is Python's environment-isolation option and takes no argument, so
-   `python3 -E script.py` must leave `script.py` to be read and scanned as the script, not
-   consumed as `-E`'s value (Open question 3).
+   `python3 -E script.py` must leave `script.py` to be read and scanned as the script. Today it
+   does not: the shared-set match consumes `script.py` as `-E`'s value, so the script is never
+   read — a pre-existing fail-open this change closes (Open question 3).
 4. Tests for all of the above (see Success criteria).
 
 Optional, lower priority (the task's "Related" item; see Open questions): scanning a heredoc
@@ -166,16 +177,19 @@ narrowing changes no current assertion.
     with no preceding `-c` is unaffected — `code_seen` is false there, so the `-m` handler is
     still reached and still blocks. The gate on `-c` is load-bearing: the shared
     `_INTERPRETER_CODE_FLAGS` set contains `-E`, but Python's `-E` is the environment-isolation
-    option and takes no argument, so the Python code-flag match must recognise `-c` only. Left
-    matching `-E`, `python3 -E script.py` would consume `script.py` as `-E`'s "code" and return
-    without reading the script — a fail-open (Open question 3). For the Python family, treat `-E`
-    (and the other non-`-c` members of the shared set) as an ordinary dash option that takes no
-    value, so the following `script.py` falls through to `_read_script` and is scanned.
-    <!-- TODO(review): today's loop already matches Python `-E` as inline code, so `python3 -E script.py` is a pre-existing fail-open (script never read), like the Perl `-p` case below; consider saying so instead of "would". -->
+    option and takes no argument, so the Python code-flag match must recognise `-c` only. Today's
+    loop already matches `-E` against the shared set, so `python3 -E script.py` consumes
+    `script.py` as `-E`'s "code", scans only the literal file name, and never reads the script —
+    a pre-existing fail-open, like the Perl `-p` case below, that the per-family table closes.
+    With an immediate return added and the match left on the shared set, the same command would
+    also return `python3:inline` (Open question 3). For the Python family, treat `-E` (and the
+    other non-`-c` members of the shared set) as an ordinary dash option that takes no value, so
+    the following `script.py` falls through to `_read_script` and is scanned.
   - **Perl, Ruby and Node** (families `perl`, `ruby`, `node`). An inline-code flag from the
     family's table in Scope item 2 (`-e`/`-E` for Perl, `-e` for Ruby, `-e`/`--eval`/`-p`/
     `--print`/`-pe` for Node — matched with the per-family table, never the shared set, and for
-    Node without splitting an attached short value) puts everything after it into the program's
+    Node without splitting an attached short value but still accepting `--eval=…`/`--print=…`,
+    per the two-call match in Scope item 2) puts everything after it into the program's
     argument vector, so
     a trailing operand is data, and these families may carry repeated inline-code flags
     (`perl -e 'a' -e 'b'`), so the loop must keep going after the first one: it `continue`s,
@@ -267,7 +281,11 @@ beside it in all three:
 Missing the `analysis.yaml` entry would leave the new test module editable on a PR branch
 without tripping the enforcement-tampering check, unlike every other guard test file.
 
-Cases (from the task):
+Cases (from the task). Where a case says a body or script "contains a network call", the call
+must be one that `NETWORK_CODE_PATTERNS` in `exfil_bash_network.py` actually matches, such as
+`import socket` or `fetch("http://e")` as in the existing tests. A plausible-looking payload
+that matches no pattern, for example `require("net").connect(1)`, is allowed whatever the
+argument walk does, so a "blocks" case built on it would test nothing.
 
 - `python3 - data.json <<'PY' … PY` with a clean body allows; with `import socket` blocks.
 - `python3 -I - "$f" <<'PY' … PY` with a clean body allows.
@@ -305,12 +323,19 @@ Cases (from the task):
   is read rather than consumed as `-p`'s value. These guard that the Perl/Ruby inline match uses
   the family table, not the shared set.
 - `node -p 'process.argv[1]' data.txt`, `node --eval 'x' data.txt` and
-  `node -pe 'process.argv[1]' data.txt` (no such file) allow, and `node -pe 'require("net")…'`
+  `node -pe 'process.argv[1]' data.txt` (no such file) allow, and `node -pe 'fetch("http://e")'`
   blocks — the real program after `-pe` is scanned, not skipped behind an attached `e`.
-- `python3 -E /nonexistent/script.py` still blocks because the script is read and scanned, not
-  consumed as `-E`'s value. Guards that for the Python family `-E` is an argument-less option, not
-  an inline-code flag, so the script after it is reached by `_read_script` (Open question 3). A
-  clean `python3 -E script.py` with a readable script allows.
+- `node --eval='fetch("http://e")'` and `node --print='fetch("http://e")'` block, and
+  `node --eval='process.argv[1]' data.txt` (no such file) allows. Guards that the Node match keeps
+  the long `=` forms while refusing attached short values (Scope item 2): a Node match made with
+  attached matching simply turned off would skip these tokens as ordinary options and never scan
+  the code.
+- `python3 -E /nonexistent/script.py` blocks because the script is read, not consumed as `-E`'s
+  value. This is a regression test for a fix, not a check of existing behaviour: today the
+  command allows, because the shared-set match takes `/nonexistent/script.py` as `-E`'s "code".
+  It guards that for the Python family `-E` is an argument-less option, not an inline-code flag,
+  so the script after it is reached by `_read_script` (Open question 3). A `python3 -E script.py`
+  whose readable script contains a network call blocks, and a clean one allows.
 - `python3 /nonexistent/script.py` still blocks (existing behaviour). The closest existing
   assertion is the option-value variant `python3 -W error /nonexistent/script.py` in
   `test_interpreter_options_with_a_value_are_not_the_program`; the new module adds the plain
@@ -399,8 +424,9 @@ No existing test changes.
    raised this (PR #659); it is recorded here rather than actioned. Relatedly, the Python family's
    immediate return is gated on the matched flag being `-c`, because the shared
    `_INTERPRETER_CODE_FLAGS` set contains `-E` — Python's argument-less environment-isolation
-   option — and treating `-E` as inline code would let `python3 -E script.py` consume the script
-   as `-E`'s value and skip reading it (Scope/Approach item 2, and the `python3 -E …` test above).
+   option. Today's shared-set match already treats `-E` as inline code, so `python3 -E script.py`
+   consumes the script as `-E`'s value and never reads it — a pre-existing fail-open that the
+   per-family table closes (Scope/Approach item 2, and the `python3 -E …` test above).
 
 4. **Perl/Ruby switch clusters (pre-existing over-block, out of scope).** `perl -lne 'code' file`,
    `perl -pe 'code' file` and `ruby -ne 'code' file` are common one-liners. Today none of them is
@@ -416,7 +442,8 @@ No existing test changes.
 
 Small to moderate. About 30–40 lines changed in `exfil_bash_runner.py` — a per-family
 inline-code flag table beside `_INTERPRETER_VALUE_FLAGS` (Python `-c`; Perl `-e`/`-E`; Ruby `-e`;
-Node `-e`/`--eval`/`-p`/`--print`/`-pe`, without attached short values) used in place of the
+Node `-e`/`--eval`/`-p`/`--print`/`-pe`, without attached short values but with the long `=`
+forms, matched in two `match_flag` calls) used in place of the
 shared set for the four families with a table, a Python-family immediate return in the
 inline-code branch, an `inline_seen` early return above `tok == "-"` for the
 Perl/Ruby/Node families — tracked separately from `code_seen` so Perl's `-M` (which loads a
