@@ -141,6 +141,25 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
    The only reason Python is singled out for the immediate return is that its `-c` grammar is
    unambiguous enough — the remainder is unconditionally `sys.argv`, expansions included — to
    return early safely; every other path stays fail-closed.
+
+   **Stdin is still inspected after an inline program.** Fixing the program to an inline flag
+   does not make the command's standard input inert: an inline program can read and execute its
+   own stdin (`python3 -c 'exec(sys.stdin.read())'`, `perl -e 'eval <STDIN>'`), so a heredoc or
+   pipe attached to the command is potential program text, not data. The early returns above
+   must therefore inspect the command's stdin *before* returning, exactly as
+   `_check_stdin_program` already does for a non-shell interpreter: each heredoc body in
+   `bodies` is scanned as code (`_scan_code`), and a pipe (`piped`) is refused. Without it,
+   `python3 -c 'exec(sys.stdin.read())' - <<'PY'` / `import socket` / `PY` would run the heredoc
+   unscanned — the bypass a reviewer raised on PR #659. For the `-` token specifically this is
+   also a regression guard: today the `tok == "-"` branch reaches `_check_stdin_program` and
+   scans that heredoc, so an early return that simply dropped it would be a fail-open relative to
+   master. The same inspection closes two pre-existing fail-opens on the no-`-` forms, where
+   `code_seen` suppresses the trailing stdin check today: `python3 -c 'exec(sys.stdin.read())' <<'PY'` (heredoc) and `cat x | python3 -c 'exec(sys.stdin.read())'` (pipe) are unscanned on
+   master. Refusing the pipe does over-block a piped inline one-liner that never reads stdin
+   (`cat x | python3 -c 'print(1)'`); that cost, and the alternative of scanning only visible
+   heredoc bodies while leaving pipes as today (which reintroduces the `-`-token pipe fail-open),
+   are recorded in Open question 5 for the approver. This inspection does not read `-` as a
+   script file and does not shell-analyze it; only the command's raw stdin is scanned, as code.
 3. A positional token the shell can expand into other words — one that contains `$` or a
    backtick (`is_shell_expanded`), or an unquoted glob/brace metacharacter (`is_glob_or_brace`:
    `*`, `?`, `[`, `{a,b}`) — reached while the program is still unknown (`python3 "$script"`,
@@ -178,11 +197,13 @@ narrowing changes no current assertion.
 - **Inline program.** Three cases, by interpreter family.
   - **Python** (family `python`: `python`, `python2`, `python3`, `pypy`, `pypy3`). `-c` makes
     everything after it `sys.argv`, so nothing that follows is an option. In the inline-code
-    branch, when `family == "python"` *and the matched flag is `-c`*, return `f"{prog}:inline"`
-    as soon as `_scan_code(...)` has run — before the `-m` handler, the `tok == "-"` branch, and
-    the positional/awk handlers. This is what stops `python3 -c 'x' -m http.server` from being
-    refused as a network module and `python3 -c 'print(1)' -` from scanning stdin as a second
-    program: both tokens are arguments to the program `-c` already fixed. `python3 -m http.server`
+    branch, when `family == "python"` *and the matched flag is `-c`*, inspect the command's stdin
+    (`_check_stdin_program(...)` when `piped`/`bodies` is present; see "Stdin after inline code"
+    below) and then return `f"{prog}:inline"` as soon as `_scan_code(...)` has run — before the
+    `-m` handler, the `tok == "-"` branch, and the positional/awk handlers. This is what stops
+    `python3 -c 'x' -m http.server` from being refused as a network module and `python3 -c 'print(1)' -` from reading the trailing `-` as a second *program* (a script file or a stdin-program
+    selection): both tokens are arguments to the program `-c` already fixed. The command's stdin
+    is still scanned, because the `-c` code may read and execute it. `python3 -m http.server`
     with no preceding `-c` is unaffected — `code_seen` is false there, so the `-m` handler is
     still reached and still blocks. The gate on `-c` is load-bearing: the shared
     `_INTERPRETER_CODE_FLAGS` set contains `-E`, but Python's `-E` is the environment-isolation
@@ -214,7 +235,9 @@ narrowing changes no current assertion.
     `code_seen` is also set by Perl's `-M` branch (which shares the inline branch today), and `-M`
     does *not* turn the following operand into argv data. An `inline_seen`
     early return added just above `if tok == "-":` then ends the walk at the first positional token
-    (or `-`) without reading it. Keying it off `inline_seen` rather than `code_seen` is
+    (or `-`) without reading it as a program — but first inspects the command's stdin
+    (`_check_stdin_program(...)` when `piped`/`bodies` is present; see "Stdin after inline code"
+    below), because a Perl/Ruby/Node inline program can likewise read and execute its stdin. Keying it off `inline_seen` rather than `code_seen` is
     load-bearing: `perl -MJSON::PP script.pl` sets `code_seen` through the `-M` branch but never
     sets `inline_seen`, so `script.pl` falls through to `_read_script` and is scanned as the
     program it is — returning `perl:inline` there would be a fail-open regression, since today that
@@ -230,7 +253,9 @@ narrowing changes no current assertion.
     what the token becomes — a fail-open regression from today's behaviour, where the single
     literal token reaches `_read_script` and fails closed on the unreadable name. Placing the early
     return before `tok == "-"` is what makes a `-` after inline code read as a positional
-    argument rather than a second stdin program. For these families the `-m` handler still runs
+    argument rather than a second stdin-*program* selection — its stdin is still scanned by the
+    `_check_stdin_program` call the early return makes first, just not re-interpreted as the
+    program. For these families the `-m` handler still runs
     after inline code, so `perl -e 'x' -m Foo`-style tokens stay fail-closed (see Open
     question 2); no such case has been reported.
   - **Interpreters with no option grammar** (`php`, `lua`, `luajit`, `tclsh`, `Rscript`, `julia`,
@@ -241,6 +266,18 @@ narrowing changes no current assertion.
     fail-closed (the script operand is read and scanned); where a grammar-less interpreter's
     operand is in fact data (`php -r 'code' data`), reading it is a residual over-block in the
     safe direction, since the guard cannot model the grammar to know otherwise (Open question 2).
+  - **Stdin after inline code.** Both early returns — the Python `-c` immediate return and the
+    Perl/Ruby/Node `inline_seen` early return — must inspect the command's stdin before they
+    return, because the inline program can read and execute it. Reuse `_check_stdin_program(prog,
+    piped, bodies, ctx, depth, analyze_command)` for this: it refuses a pipe and scans each
+    heredoc body with `_scan_code` for a non-shell interpreter, which is exactly the conservative
+    treatment wanted here. Call it only when `piped` or `bodies` is non-empty so the common
+    stdin-less one-liner is untouched. This both preserves today's scan of a heredoc on the
+    `tok == "-"` path (which the early return would otherwise skip) and closes the pre-existing
+    no-`-` gaps where `code_seen` suppresses the trailing stdin check. The one new over-block is
+    a piped inline one-liner that never reads stdin (Open question 5). Note this reuses the same
+    helper the `tok == "-"` branch and the trailing `if not code_seen:` already call, so no new
+    stdin-scanning logic is introduced.
   The awk branch keeps its own `if not code_seen` scan of the first positional; with the early
   return above it (and the Python immediate return), it is reached only when no inline program
   has been seen.
@@ -299,17 +336,26 @@ argument walk does, so a "blocks" case built on it would test nothing.
 - `python3 - data.json <<'PY' … PY` with a clean body allows; with `import socket` blocks.
 - `python3 -I - "$f" <<'PY' … PY` with a clean body allows.
 - `python3 -c 'print(1)' data.txt` (no such file) allows.
-- `python3 -c 'print(1)' -` allows: once inline code has fixed the program, the trailing `-`
-  is a positional argument, not a second stdin program, so its heredoc/pipe is not scanned
-  (and with `import socket` only in that stdin body, still allows — the body never runs as a
-  program). Guards the Python immediate-return: the `-c` branch returns before the
-  `tok == "-"` handler is reached.
+- `python3 -c 'print(1)' -` with no heredoc or pipe allows: once inline code has fixed the
+  program, the trailing `-` is a positional argument, not a second stdin program, so it is not
+  read as a script file. Guards the Python immediate-return: the `-c` branch returns before the
+  `tok == "-"` handler is reached, so `-` is never read as a script.
+- `python3 -c 'exec(sys.stdin.read())' - <<'PY'` / `import socket` / `PY` blocks, and the same
+  command with a clean heredoc body allows. An inline program can read and execute stdin, so the
+  command's heredoc body is still scanned as code before the Python immediate return — not
+  dropped as if `-` made it inert. Guards that the early return inspects stdin (Scope item 2,
+  "Stdin is still inspected after an inline program"); on master the `tok == "-"` branch scans
+  this heredoc, so an early return that skipped it would be a fail-open regression.
 - `python3 -c 'print(1)' -m http.server` allows: for Python, `-m http.server` after `-c` is
   `sys.argv`, not a module directive, so it is not refused as a network module. Guards that the
   Python return precedes the `-m` handler (Open question 2). `python3 -m http.server` with no
   `-c` still blocks (existing behaviour; add it so the distinction is asserted, not inferred).
 - `perl -e 'print 1' -e 'print 2' file` allows, and with a network call in the *second* `-e`
   blocks (proves both programs are scanned).
+- `perl -e 'eval <STDIN>' - <<'PL'` / `use Socket;` / `PL` blocks, and the same command with a
+  clean heredoc body allows. Guards that the Perl/Ruby/Node `inline_seen` early return inspects
+  the command's stdin too: an inline program can read and execute stdin, so the heredoc body is
+  scanned as code before the early return rather than dropped behind the trailing `-`.
 - `perl -e 'print 1' ${more[@]}` (a shell-expanded positional token after inline code) blocks
   with the "expanded by the shell" message, not allowed, and `perl -e 'print 1' *` (an unquoted
   glob token after inline code) blocks the same way. Both guard the Perl/Ruby/Node early return
@@ -482,6 +528,30 @@ No existing test changes.
    Either is a reasonable follow-up task once this change lands; neither is in scope here, which
    keeps the bug fix small.
 
+5. **Pipe vs heredoc on the inline-program stdin path (in scope; one decision for the approver).**
+   Because an inline program can read and execute its own stdin, Scope item 2 requires the two
+   inline early-return paths to inspect the command's stdin before returning, reusing
+   `_check_stdin_program` (refuse a pipe, scan each heredoc body as code). A reviewer raised this
+   on PR #659 (the `python3 -c 'exec(sys.stdin.read())' - <<…` bypass). Scanning the heredoc
+   bodies is unambiguously right: the body is present, cheap to scan, and skipping it both
+   regresses the `-`-token case (master scans it via the `tok == "-"` branch) and leaves a
+   pre-existing no-`-` gap open. The only genuine choice is the **pipe**:
+   - **Refuse the pipe (recommended, as written above).** Consistent and fully fail-closed:
+     `cat x | python3 -c 'exec(sys.stdin.read())'` blocks, and the `-`-token pipe form that
+     master already blocks stays blocked. Cost: a piped inline one-liner that never reads stdin
+     (`cat x | python3 -c 'print(1)'`) is newly over-blocked. This is the safe direction and no
+     such idiom has been reported against the guard.
+   - **Scan only visible heredoc bodies, leave pipes as today.** Avoids the new over-block, but
+     the guard cannot see piped content, so `cat x | python3 -c 'exec(sys.stdin.read())'` would
+     pass — and worse, the `python3 -c 'CODE' -` *with a pipe* form that master blocks via the
+     `tok == "-"` branch would flip to allow, a fail-open regression. If the approver prefers this
+     option, the `-`-token pipe case must be special-cased to stay blocked so no regression is
+     introduced.
+
+   The recommendation is to refuse the pipe uniformly; the over-block it costs is small and in
+   the safe direction, and it keeps the stdin rule a single, honest statement rather than a set of
+   per-form exceptions.
+
 ## Estimated complexity
 
 Small to moderate. About 30–40 lines changed in `exfil_bash_runner.py` — a per-family
@@ -493,7 +563,9 @@ inline-code branch, an `inline_seen` early return above `tok == "-"` for the
 Perl/Ruby/Node families — tracked separately from `code_seen` so Perl's `-M` (which loads a
 module and leaves the next operand a script) does not trigger it, and itself guarding positional
 tokens the shell can expand — the
-grammar-less families kept on today's fall-through, the `-` stdin return, and the
+grammar-less families kept on today's fall-through, the `-` stdin return, a conservative
+`_check_stdin_program` call on both inline early-return paths (reusing the existing helper, no
+new stdin logic), and the
 unresolvable-token guard — reusing the existing `is_shell_expanded` and `is_glob_or_brace`
 predicates at both of its loop sites (two added imports, no new predicate), one new test module,
 and three one-line list additions (two `GUARD_FILES` arrays and the `analysis.yaml`
