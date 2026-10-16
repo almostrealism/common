@@ -40,6 +40,13 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 	/**
 	 * A render that is still running when the stream is stopped, and that outlasts the
 	 * warning period, must have finished by the time {@code stop()} returns.
+	 *
+	 * <p>The uninterruptible delay is started from the interrupt that {@link PatternRenderStream#stop()}
+	 * delivers to the producer, not from when the render begins, so the elapsed-time assertion does
+	 * not depend on how promptly the test thread is scheduled between observing that a render is in
+	 * flight and calling {@code stop()}. Since {@code stop()} interrupts the producer before joining
+	 * it, waiting for that interrupt before the delay keeps the full delay inside the join window
+	 * while still detecting a {@code stop()} that returns after the old two-second join timeout.</p>
 	 */
 	@Test(timeout = 60000)
 	public void stopWaitsForRenderThatOutlastsWarningPeriod() throws InterruptedException {
@@ -49,6 +56,11 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 
 		Runnable slowRender = () -> {
 			rendering.set(true);
+			// Wait for stop() to interrupt the producer, then begin the deliberately
+			// uninterruptible delay so it is measured from shutdown rather than render start.
+			while (!Thread.currentThread().isInterrupted()) {
+				Thread.onSpinWait();
+			}
 			long deadline = System.nanoTime() + renderMillis * 1_000_000L;
 			while (System.nanoTime() < deadline) {
 				Thread.onSpinWait();
