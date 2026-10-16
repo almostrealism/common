@@ -66,11 +66,11 @@ public class AccumulationBlock implements Block, Learning, Tracking {
 	/** The child blocks applied in parallel and summed. */
 	private final List<Block> children;
 
-	/** Accumulated input-gradient sum from all child backward passes. */
-	private final PackedCollection gradient;
-
-	/** Receptor that adds each child's emitted input-gradient into {@link #gradient}. */
-	private final Receptor<PackedCollection> aggregator;
+	/**
+	 * Accumulated input-gradient sum from all child backward passes. Allocated only when the
+	 * backward cell is built, so a block used solely for inference holds no gradient memory.
+	 */
+	private PackedCollection gradient;
 
 	/** The lazily constructed forward cell returned by {@link #getForward()}. */
 	private Cell<PackedCollection> forward;
@@ -103,9 +103,6 @@ public class AccumulationBlock implements Block, Learning, Tracking {
 		}
 
 		this.children = new ArrayList<>(children);
-		this.gradient = new PackedCollection(inputShape);
-		this.aggregator = input ->
-				a("accum_blocks aggregate", p(gradient.each()), add(p(gradient.each()), input));
 	}
 
 	/**
@@ -191,6 +188,10 @@ public class AccumulationBlock implements Block, Learning, Tracking {
 	@Override
 	public Cell<PackedCollection> getBackward() {
 		if (backward == null) {
+			gradient = new PackedCollection(inputShape);
+			Receptor<PackedCollection> aggregator = input ->
+					a("accum_blocks aggregate", p(gradient.each()), add(p(gradient.each()), input));
+
 			backward = Cell.of((gradientValue, next) -> {
 				for (Block child : children) {
 					child.getBackward().setReceptor(aggregator);
