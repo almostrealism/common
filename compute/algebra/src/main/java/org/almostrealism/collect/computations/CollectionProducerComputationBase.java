@@ -35,7 +35,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.calculus.DeltaAlternate;
 import org.almostrealism.calculus.InputStub;
-import org.almostrealism.calculus.VectorJacobianProduct;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -156,9 +156,6 @@ public abstract class CollectionProducerComputationBase
 	/** Alternative producer for delta computations (derivatives/gradients). */
 	private CollectionProducer deltaAlternate;
 
-	/** Structure-aware gradient shortcut for this computation, or null if none is known. */
-	private VectorJacobianProduct vectorJacobianProduct;
-
 	/** Custom description function for generating human-readable computation descriptions. */
 	private Function<List<String>, String> description;
 
@@ -272,29 +269,6 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
-	 * Keeps the structure-aware vector-Jacobian product for this computation, which
-	 * {@link #attemptVectorJacobianProduct(Producer, Producer)} consults so that the
-	 * backward pass can avoid materializing this computation's full Jacobian.
-	 *
-	 * @param vectorJacobianProduct the vector-Jacobian product, or null to clear it
-	 * @return this computation
-	 */
-	@Override
-	public CollectionProducerComputationBase withVectorJacobianProduct(VectorJacobianProduct vectorJacobianProduct) {
-		this.vectorJacobianProduct = vectorJacobianProduct;
-		return this;
-	}
-
-	/**
-	 * Returns the result of the assigned {@link VectorJacobianProduct}, or null if no
-	 * product has been assigned or it does not apply to the target.
-	 */
-	@Override
-	public CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
-		return vectorJacobianProduct == null ? null : vectorJacobianProduct.apply(target, gradient);
-	}
-
-	/**
 	 * Indicates whether {@link #attemptDelta(Producer)} may differentiate this computation
 	 * through an intermediate input using the multivariate chain rule. Subclasses whose
 	 * expression can be differentiated with respect to a stubbed input return true.
@@ -374,14 +348,67 @@ public abstract class CollectionProducerComputationBase
 	 */
 	public CollectionProducer isolatedDelta(Producer<?> input) {
 		InputStub stub = new InputStub((Producer) input);
+		return replaceInput(input, stub).delta(stub);
+	}
 
-		List<Process<?, ?>> isolatedInputs = new ArrayList<>();
-		isolatedInputs.add(null);
-		getInputs().stream().skip(1)
-				.map(in -> input.equals(in) ? stub : (Process<?, ?>) in)
-				.forEach(isolatedInputs::add);
+	/**
+	 * Computes the reduced delta of this computation by the multivariate chain rule when
+	 * the target is reached through exactly one of its inputs {@code h}, passing the
+	 * reduction on to that input so that neither this computation's Jacobian with respect
+	 * to the target nor that of {@code h} is formed:
+	 * <pre>
+	 * OUT:  gᵀ d(this)/dx = (gᵀ d(this)/dh) dh/dx    -  h.delta(x, OUT, this.delta(h, OUT, g))
+	 * IN:   d(this)/dx t  = d(this)/dh (dh/dx t)      -  this.delta(h, IN, h.delta(x, IN, t))
+	 * </pre>
+	 * <p>The delta with respect to {@code h} holds every other input constant (see
+	 * {@link #isolatedDelta(Producer)}). Every other case is left to the general
+	 * implementation.</p>
+	 */
+	@Override
+	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (hasDirectDelta(target) || !isChainRuleSupported() || !isFixedCount()) {
+			return CollectionProducerComputation.super.delta(target, axis, weight);
+		}
 
-		return generate(isolatedInputs).delta(stub);
+		Optional<Producer<PackedCollection>> match = matchInput(target);
+		if (match == null || match.isEmpty() || match.get().refersTo(target) ||
+				!(match.get() instanceof Shape)) {
+			return CollectionProducerComputation.super.delta(target, axis, weight);
+		}
+
+		Producer<PackedCollection> in = match.get();
+		InputStub stub = new InputStub(in);
+		CollectionProducer isolated = replaceInput(in, stub);
+
+		if (axis == ReduceAxis.OUT) {
+			return c(in).delta(target, axis, isolated.delta(stub, axis, weight));
+		}
+
+		return isolated.delta(stub, axis, c(in).delta(target, axis, weight));
+	}
+
+	/**
+	 * Returns a copy of this computation with one of its inputs replaced by another
+	 * producer of the same shape, leaving every other input in place.
+	 *
+	 * @param input       the input to replace
+	 * @param replacement the producer to use in its place
+	 * @return the regenerated computation
+	 * @throws IllegalArgumentException if {@code input} is not an input of this computation
+	 */
+	public CollectionProducer replaceInput(Producer<?> input, Producer<?> replacement) {
+		List<Producer<PackedCollection>> current = getInputs();
+		if (current.stream().skip(1).noneMatch(input::equals)) {
+			throw new IllegalArgumentException(input + " is not an input of " + describe());
+		}
+
+		List<Process<?, ?>> inputs = new ArrayList<>();
+		inputs.add(null);
+		current.stream().skip(1)
+				.map(in -> input.equals(in) ? (Process<?, ?>) replacement : (Process<?, ?>) in)
+				.forEach(inputs::add);
+
+		return generate(inputs);
 	}
 
 	/**

@@ -17,6 +17,7 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 
 /**
  * Factory interface for gradient and differentiation operations on collections.
@@ -56,10 +57,9 @@ public interface GradientFeatures extends ComparisonFeatures {
 	 * Combines a function's derivative with an upstream gradient to produce the gradient
 	 * with respect to {@code input} via the chain rule (the vector-Jacobian product).
 	 *
-	 * <p>When the function offers a structure-aware product for {@code input}
-	 * ({@link CollectionProducer#attemptVectorJacobianProduct}, which a matrix multiply
-	 * does for its matrix and its rows), that product is used and the Jacobian is never
-	 * formed. Otherwise the result is exactly {@link #jacobianGradient}.</p>
+	 * <p>This is the {@link ReduceAxis#OUT output-reduced} delta of the function weighted
+	 * by the upstream gradient, so a function whose structure is known (a matrix multiply,
+	 * for example) never forms its Jacobian.</p>
 	 *
 	 * @param func     the differentiable collection producer representing the forward function
 	 * @param input    the input collection producer for which the gradient is computed
@@ -70,12 +70,8 @@ public interface GradientFeatures extends ComparisonFeatures {
 	default CollectionProducer combineGradient(
 			CollectionProducer func,
 			Producer<?> input, Producer<PackedCollection> gradient) {
-		CollectionProducer product = func.attemptVectorJacobianProduct(input, gradient);
-		if (product != null) {
-			return product.reshape(shape(shape(input).getTotalSize())).each();
-		}
-
-		return jacobianGradient(func, input, gradient);
+		return func.delta(input, ReduceAxis.OUT, gradient)
+				.reshape(shape(shape(input).getTotalSize())).each();
 	}
 
 	/**
@@ -86,11 +82,12 @@ public interface GradientFeatures extends ComparisonFeatures {
 	 * to yield the gradient with respect to {@code input}.
 	 *
 	 * <p>This always materializes the full Jacobian, so it is the reference that any
-	 * structure-aware product used by {@link #combineGradient} must agree with.</p>
+	 * {@link ReduceAxis#OUT output-reduced} delta must agree with.</p>
 	 *
 	 * @param func     the differentiable collection producer representing the forward function
 	 * @param input    the input collection producer for which the gradient is computed
-	 * @param gradient the upstream gradient producer (output gradient from the next layer)
+	 * @param gradient the upstream gradient producer (output gradient from the next layer),
+	 *                 or null to weight every output by one
 	 * @return a {@link CollectionProducer} containing the gradient with respect to {@code input}
 	 */
 	default CollectionProducer jacobianGradient(
@@ -98,9 +95,13 @@ public interface GradientFeatures extends ComparisonFeatures {
 			Producer<?> input, Producer<PackedCollection> gradient) {
 		// TODO(review): wrong for the 256x64 dense weight over 64 rows (2^34 iteration space); check 32-bit index overflow
 		int inSize = shape(input).getTotalSize();
-		int outSize = shape(gradient).getTotalSize();
-		return multiplyGradient(func.delta(input).reshape(outSize, inSize)
-				.traverse(1), gradient, inSize)
+		int outSize = func.getShape().getTotalSize();
+		CollectionProducer jacobian = func.delta(input).reshape(outSize, inSize).traverse(1);
+		if (gradient != null) {
+			jacobian = multiplyGradient(jacobian, gradient, inSize);
+		}
+
+		return jacobian
 				.traverse(0)
 				.enumerate(1, 1)
 				.sum(1)

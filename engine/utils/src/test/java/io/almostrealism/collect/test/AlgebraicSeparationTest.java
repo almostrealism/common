@@ -49,7 +49,7 @@ public class AlgebraicSeparationTest extends TestSuiteBase {
 
 	/** The numeric hooks that are specific to collection producers. */
 	private static final List<String> COLLECTION_HOOKS = Arrays.asList(
-			"attemptMultiply", "attemptVectorJacobianProduct", "isReduction", "isDirectlyComputable");
+			"attemptMultiply", "isReduction", "isDirectlyComputable");
 
 	/**
 	 * Neither {@link Computable} nor {@link Producer} exposes an algebraic query or a
@@ -81,7 +81,7 @@ public class AlgebraicSeparationTest extends TestSuiteBase {
 	/**
 	 * A computation that is not {@link Algebraic} is never classified as a special
 	 * transformation, and never reported as a collection reduction or as offering a
-	 * vector-Jacobian product.
+	 * constant-scale representation.
 	 */
 	@Test(timeout = 10000)
 	public void nonAlgebraicComputableIsConservative() {
@@ -98,7 +98,6 @@ public class AlgebraicSeparationTest extends TestSuiteBase {
 
 		Producer<String> name = () -> args -> "dog";
 		Assert.assertFalse(CollectionProducer.isReduction(name));
-		Assert.assertNull(CollectionProducer.attemptVectorJacobianProduct(name, name, cp(pack(1.0))));
 		Assert.assertNull(CollectionProducer.attemptMultiply(name, 3.0));
 		Assert.assertNull(CollectionProducer.attemptMultiply(null, 3.0));
 	}

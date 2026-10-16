@@ -19,7 +19,7 @@ package org.almostrealism.layers.test;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.MatrixMultiplyVectorJacobianProduct;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionAddComputation;
@@ -29,21 +29,28 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.List;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
- * Verifies that the structure-aware vector-Jacobian product of a dense layer's operator
- * produces exactly the gradient that contracting the operator's full Jacobian produces.
+ * Verifies that the {@link ReduceAxis reduced} delta of a dense layer's operator produces
+ * exactly the gradient that contracting the operator's full Jacobian produces, and that,
+ * where every computation of the operator knows its own reduced delta, it does so without
+ * forming anything as large as that Jacobian.
  *
  * <p>Every comparison is made on the whole dense operator built by
  * {@link LayerFeatures#denseOperator} (output reshape of the optional bias addition of the
- * matrix multiply), so a product that fails to survive those wrappers is caught. The side
- * under test is {@link #combineGradient}, which the backward pass uses; the full-Jacobian
- * reference is {@link #jacobianGradient}, which materializes the Jacobian regardless of
- * whether a shortcut exists, and for dense operators both are also compared with the
- * gradient computed on the host from its definition. Inputs are sequences of rows, so the
- * weight gradient must reduce the per-row outer products over every position.</p>
+ * matrix multiply), so a reduction that fails to pass through those wrappers is caught. The
+ * side under test is {@link #combineGradient}, which the backward pass uses and which is the
+ * {@link ReduceAxis#OUT output-reduced} delta weighted by the upstream gradient; the
+ * full-Jacobian reference is {@link #jacobianGradient}, which materializes the Jacobian
+ * regardless of the structure of the operator, and for dense operators both are also
+ * compared with the gradient computed on the host from its definition. Inputs are sequences
+ * of rows, so the weight gradient must reduce the per-row outer products over every
+ * position. The {@link ReduceAxis#IN input-reduced} delta is checked against the
+ * Jacobian-vector product computed on the host.</p>
  *
  * @author Michael Murray
  */
@@ -62,7 +69,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 * it has been measured to disagree with the definition in roughly a tenth of the 16,384
 	 * entries (from row 64 onward), by a different count on each run. The comparison is
 	 * still computed and the number of disagreeing entries is logged, but only the agreement
-	 * of the vector-Jacobian product with the definition is asserted for the weight.</p>
+	 * of the reduced delta with the definition is asserted for the weight.</p>
 	 */
 	@Test(timeout = 20 * 60000)
 	public void outputProjection() {
@@ -97,9 +104,9 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	}
 
 	/**
-	 * With a bias, the weight and input products are reached through the bias addition
-	 * and agree with the full Jacobian; the bias itself is broadcast over the rows and
-	 * keeps the full Jacobian.
+	 * With a bias, the weight, input and bias gradients are all reduced through the bias
+	 * addition and agree with the full Jacobian; the bias, repeated for every row, has the
+	 * gradient summed over the rows.
 	 */
 	@Test(timeout = 10 * 60000)
 	public void denseWithBias() {
@@ -151,7 +158,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 
 		assertGradientsMatch(out, p(weights), cp(gradient), true);
 		assertGradientsMatch(out, in, cp(gradient), true);
-		assertGradientsMatch(out, p(biases), cp(gradient), false);
+		assertGradientsMatch(out, p(biases), cp(gradient), true);
 	}
 
 	/** A single input vector (no sequence axis) agrees with the full Jacobian. */
@@ -166,44 +173,43 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 */
 	@Test(timeout = 5 * 60000)
 	public void singleOutputNode() {
-		assertDenseGradientsMatch(shape(1, 5, 3), 1);
-		assertDenseGradientsMatch(shape(3), 1);
+		assertDenseGradientsMatch(shape(1, 5, 3), 1, true, false);
+		assertDenseGradientsMatch(shape(3), 1, true, false);
 	}
 
 	/**
 	 * An output wider than 1000 lowers the matrix multiply to a weighted sum rather than a
-	 * multiply and sum; its product must agree with the full Jacobian too.
+	 * multiply and sum. The weighted sum has no reduced delta of its own yet, so its
+	 * gradient is the contracted Jacobian, and must agree with the definition.
 	 */
 	@Test(timeout = 10 * 60000)
 	public void wideOutputWeightedSum() {
-		assertDenseGradientsMatch(shape(1, 3, 8), 1200);
+		assertDenseGradientsMatch(shape(1, 3, 8), 1200, true, false);
 	}
 
 	/**
-	 * Operators without a matrix multiply at the top offer no product, and their gradient
-	 * is exactly the full-Jacobian gradient.
+	 * An element-wise product is reduced through the product rule, and its gradient with
+	 * respect to either operand agrees with the full Jacobian. An activation applied to a
+	 * matrix multiply, which is differentiated through the chain rule, does too.
 	 */
 	@Test(timeout = 5 * 60000)
-	public void nonMatmulFallsBack() {
+	public void elementwiseAndActivation() {
 		PackedCollection weights = new PackedCollection(shape(8, 6)).randnFill();
 		PackedCollection input = new PackedCollection(shape(8, 6)).randnFill();
 		PackedCollection gradient = new PackedCollection(shape(8, 6)).randnFill();
 
 		Producer<PackedCollection> in = cp(input);
 		CollectionProducer elementwise = cp(input).multiply(p(weights));
-		assertGradientsMatch(elementwise, p(weights), cp(gradient), false);
-		assertGradientsMatch(elementwise, in, cp(gradient), false);
+		assertGradientsMatch(elementwise, p(weights), cp(gradient), true);
+		assertGradientsMatch(elementwise, in, cp(gradient), true);
 
 		CollectionProducer activated = sigmoid(matmul(p(weights), cp(input).traverse(1)));
 		assertGradientsMatch(activated, p(weights), cp(new PackedCollection(shape(8, 8)).randnFill()), false);
 	}
 
-	/**
-	 * A genuine matrix-by-matrix product has no row structure, so it offers no product and
-	 * keeps the full Jacobian.
-	 */
+	/** A genuine matrix-by-matrix product agrees with the full Jacobian. */
 	@Test(timeout = 5 * 60000)
-	public void matrixMatrixFallsBack() {
+	public void matrixMatrix() {
 		PackedCollection a = new PackedCollection(shape(5, 4)).randnFill();
 		PackedCollection b = new PackedCollection(shape(4, 3)).randnFill();
 		CollectionProducer product = matmul(p(a), traverse(0, p(b)));
@@ -212,13 +218,13 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	}
 
 	/**
-	 * When the rows are computed from the target rather than being the target, the product
-	 * cannot express the chain through that computation, so none is offered and the
-	 * gradient with respect to the target is the full-Jacobian gradient. The weight, which
-	 * the rows cannot depend on, still has its product.
+	 * When the rows are computed from the target rather than being the target, the
+	 * reduction is passed on through that computation, and the gradient with respect to
+	 * the target agrees with the full Jacobian. The weight, which the rows cannot depend
+	 * on, is still reduced without forming the Jacobian.
 	 */
 	@Test(timeout = 5 * 60000)
-	public void targetFeedingRowsFallsBack() {
+	public void targetFeedingRows() {
 		TraversalPolicy inputShape = shape(1, 5, 6);
 		PackedCollection weights = new PackedCollection(shape(7, 6)).randnFill();
 		PackedCollection input = new PackedCollection(inputShape).randnFill();
@@ -234,11 +240,11 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 
 	/**
 	 * A matrix multiplied by its own rows ({@code y_r = W · w_r}) has the target in both
-	 * operands, which neither half of the product accounts for, so none is offered and the
-	 * gradient agrees with its definition {@code dW[a][b] = Σ_r g[r][a] W[r][b] + Σ_i g[a][i] W[i][b]}.
+	 * operands, and the product rule accounts for both, so the gradient agrees with its
+	 * definition {@code dW[a][b] = Σ_r g[r][a] W[r][b] + Σ_i g[a][i] W[i][b]}.
 	 */
 	@Test(timeout = 5 * 60000)
-	public void matrixInBothOperandsFallsBack() {
+	public void matrixInBothOperands() {
 		int n = 4;
 		PackedCollection weights = new PackedCollection(shape(n, n)).randnFill();
 		PackedCollection gradient = new PackedCollection(shape(n, n)).randnFill();
@@ -261,58 +267,45 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	}
 
 	/**
-	 * A matrix multiplied by a reshape of itself has the target in both operands. Neither
-	 * half of the product accounts for both, so none is offered, rather than the matrix
-	 * half alone silently dropping the contribution of the rows. This holds for a computed
-	 * matrix and for a producer that is neither a value source nor has any inputs, whose
-	 * reshape cannot be found to depend on it by searching inputs.
-	 */
-	@Test(timeout = 60000)
-	public void matrixInBothOperandsDeclines() {
-		int n = 4;
-		PackedCollection weights = new PackedCollection(shape(n, n)).randnFill();
-		Producer<PackedCollection> gradient = cp(new PackedCollection(shape(n, n)).randnFill());
-		Function<Object[], PackedCollection> function = args -> weights;
-
-		CollectionProducer scaled = cp(weights).multiply(2.0);
-		CollectionProducer dynamic = new DynamicCollectionProducer(shape(n, n), function);
-
-		for (CollectionProducer matrix : List.of(scaled, dynamic)) {
-			MatrixMultiplyVectorJacobianProduct product =
-					new MatrixMultiplyVectorJacobianProduct(matrix, matrix.reshape(shape(n, n)));
-			Assert.assertNull(product.apply(matrix, gradient));
-			Assert.assertNull(product.apply(matrix.reshape(shape(n * n)), gradient));
-		}
-	}
-
-	/**
 	 * A residual connection {@code y = dense(x) + x}, where {@code x} is neither a value
 	 * source nor has any inputs, has the target as an operand of the sum. That operand
-	 * depends on the target although no input of it contains the target, so the sum offers
-	 * no product (the operand has none), rather than offering the dense term's
-	 * {@code Wᵀ · g_r} alone and dropping {@code g_r}. The dense term on its own still
-	 * offers its product.
+	 * depends on the target although no input of it contains the target, and its
+	 * contribution {@code g_r} must be kept alongside the dense term's {@code Wᵀ · g_r}.
 	 */
-	@Test(timeout = 60000)
-	public void residualOfDynamicInputDeclines() {
+	@Test(timeout = 5 * 60000)
+	public void residualOfDynamicInput() {
 		int rows = 3;
 		int size = 4;
 		TraversalPolicy inputShape = shape(1, rows, size);
 		PackedCollection weights = new PackedCollection(shape(size, size)).randnFill();
 		PackedCollection input = new PackedCollection(inputShape).randnFill();
-		Producer<PackedCollection> gradient = cp(new PackedCollection(inputShape).randnFill());
+		PackedCollection gradient = new PackedCollection(inputShape).randnFill();
 		Function<Object[], PackedCollection> function = args -> input;
 
 		CollectionProducer x = new DynamicCollectionProducer(inputShape, function);
 		CollectionProducer dense = (CollectionProducer) denseOperator(inputShape, weights, null).getResultant(x);
-		Assert.assertNotNull(dense.attemptVectorJacobianProduct(x, gradient));
-		Assert.assertNull(dense.add(x).attemptVectorJacobianProduct(x, gradient));
+
+		double[] w = weights.toArray(0, size * size);
+		double[] g = gradient.toArray(0, rows * size);
+		double[] reference = new double[rows * size];
+		for (int r = 0; r < rows; r++) {
+			for (int j = 0; j < size; j++) {
+				reference[r * size + j] = g[r * size + j];
+				for (int i = 0; i < size; i++) {
+					reference[r * size + j] += g[r * size + i] * w[i * size + j];
+				}
+			}
+		}
+
+		PackedCollection actual = evaluate(combineGradient(dense.add(x), x, cp(gradient)));
+		assertValuesMatch("residual", reference, actual.toArray(0, rows * size));
+		actual.destroy();
 	}
 
 	/**
-	 * The sum of two dense operators sharing a weight matrix offers a product for that
-	 * matrix which adds the products of both terms, {@code dW = Σ_r g_r ⊗ x_r + Σ_r g_r ⊗ z_r},
-	 * and for each input a product from the one term it appears in.
+	 * The sum of two dense operators sharing a weight matrix reduces the delta for that
+	 * matrix through both terms, {@code dW = Σ_r g_r ⊗ x_r + Σ_r g_r ⊗ z_r}, and for each
+	 * input through the one term it appears in.
 	 */
 	@Test(timeout = 10 * 60000)
 	public void sharedWeightSumAddsTermProducts() {
@@ -351,12 +344,14 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	}
 
 	/**
-	 * A sum offers no product when an operand that depends on the target is broadcast into
-	 * it (its size differs from the sum's), even though the other operand alone offers one,
-	 * nor when no operand depends on the target.
+	 * A sum with a single value that depends on the target and is broadcast into every
+	 * output gives that value the total of the upstream gradient, so the gradient of
+	 * {@code dense(x) + Σ W} with respect to {@code W} is {@code Σ_r g_r ⊗ x_r + Σ g},
+	 * formed without the Jacobian; a sum that does not depend on the target has a zero
+	 * gradient.
 	 */
 	@Test(timeout = 5 * 60000)
-	public void sumDeclinesBroadcastAndIndependentOperands() {
+	public void sumWithBroadcastAndIndependentOperands() {
 		int rows = 3;
 		int size = 4;
 		int nodes = 2;
@@ -368,50 +363,143 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 		CollectionProducer dense = (CollectionProducer) denseOperator(inputShape, weights, null).getResultant(cp(input));
 		CollectionProducer broadcast = dense.add(sum(p(weights)));
 		Assert.assertTrue(broadcast instanceof CollectionAddComputation);
-		Assert.assertNull(broadcast.attemptVectorJacobianProduct(p(weights), cp(gradient)));
-		Assert.assertNotNull(dense.attemptVectorJacobianProduct(p(weights), cp(gradient)));
+
+		double[] x = input.toArray(0, rows * size);
+		double[] g = gradient.toArray(0, rows * nodes);
+		double total = 0.0;
+		for (double v : g) total += v;
+
+		double[] reference = new double[nodes * size];
+		for (int i = 0; i < nodes; i++) {
+			for (int j = 0; j < size; j++) {
+				reference[i * size + j] = total;
+				for (int r = 0; r < rows; r++) {
+					reference[i * size + j] += g[r * nodes + i] * x[r * size + j];
+				}
+			}
+		}
+
+		CollectionProducer reduced = combineGradient(broadcast, p(weights), cp(gradient));
+		assertNoLargerThanForward(broadcast, reduced);
+		PackedCollection actual = evaluate(reduced);
+		assertValuesMatch("broadcast", reference, actual.toArray(0, nodes * size));
+		actual.destroy();
 
 		CollectionProducer independent = cp(input).add(cp(input));
-		Assert.assertNull(independent.attemptVectorJacobianProduct(p(weights), cp(new PackedCollection(inputShape))));
+		PackedCollection zero = evaluate(independent.delta(p(weights), ReduceAxis.OUT, cp(new PackedCollection(inputShape))));
+		assertValuesMatch("independent", new double[nodes * size], zero.toArray(0, nodes * size));
+		zero.destroy();
 	}
 
 	/**
-	 * The product declines, rather than computing a wrong gradient, whenever its operands
-	 * or the upstream gradient do not have the row structure it assumes, or the target is
-	 * not one of its operands.
+	 * The {@link ReduceAxis#IN input-reduced} delta of a dense operator with a bias is the
+	 * Jacobian-vector product: for a tangent {@code T} of the weight it is
+	 * {@code Σ_j T[i][j] x_r[j]}, for a tangent {@code X} of the input it is
+	 * {@code Σ_j W[i][j] X_r[j]}, and for a tangent {@code B} of the bias it is {@code B[i]}
+	 * on every row, each in the shape of the output.
 	 */
-	@Test(timeout = 60000)
-	public void productDeclinesUnstructuredArguments() {
-		Producer<PackedCollection> matrix = p(new PackedCollection(shape(3, 4)));
-		Producer<PackedCollection> rows = cp(new PackedCollection(shape(5, 4)));
-		Producer<PackedCollection> gradient = cp(new PackedCollection(shape(5, 3)));
-		MatrixMultiplyVectorJacobianProduct product = new MatrixMultiplyVectorJacobianProduct(matrix, rows);
+	@Test(timeout = 10 * 60000)
+	public void jacobianVectorProduct() {
+		int rows = 6;
+		int size = 5;
+		int nodes = 4;
+		TraversalPolicy inputShape = shape(1, rows, size);
+		PackedCollection weights = new PackedCollection(shape(nodes, size)).randnFill();
+		PackedCollection biases = new PackedCollection(shape(nodes)).randnFill();
+		PackedCollection input = new PackedCollection(inputShape).randnFill();
+		PackedCollection weightTangent = new PackedCollection(shape(nodes, size)).randnFill();
+		PackedCollection inputTangent = new PackedCollection(inputShape).randnFill();
+		PackedCollection biasTangent = new PackedCollection(shape(nodes)).randnFill();
 
-		Assert.assertEquals(12, product.apply(matrix, gradient).getShape().getTotalSize());
-		Assert.assertEquals(20, product.apply(rows, gradient).getShape().getTotalSize());
+		Producer<PackedCollection> in = cp(input);
+		CollectionProducer out = (CollectionProducer) denseOperator(inputShape, weights, biases).getResultant(in);
 
-		Assert.assertNull(product.apply(matrix, cp(new PackedCollection(shape(5, 4)))));
-		Assert.assertNull(product.apply(rows, cp(new PackedCollection(shape(14)))));
-		Assert.assertNull(product.apply(cp(new PackedCollection(shape(3, 4))), gradient));
-		Assert.assertNull(product.apply(cp(new PackedCollection(shape(5, 4))), gradient));
+		double[] w = weights.toArray(0, nodes * size);
+		double[] x = input.toArray(0, rows * size);
+		double[] tw = weightTangent.toArray(0, nodes * size);
+		double[] tx = inputTangent.toArray(0, rows * size);
+		double[] tb = biasTangent.toArray(0, nodes);
+		double[] weightProduct = new double[rows * nodes];
+		double[] inputProduct = new double[rows * nodes];
+		double[] biasProduct = new double[rows * nodes];
+		for (int r = 0; r < rows; r++) {
+			for (int i = 0; i < nodes; i++) {
+				biasProduct[r * nodes + i] = tb[i];
+				for (int j = 0; j < size; j++) {
+					weightProduct[r * nodes + i] += tw[i * size + j] * x[r * size + j];
+					inputProduct[r * nodes + i] += w[i * size + j] * tx[r * size + j];
+				}
+			}
+		}
 
-		Assert.assertNull(new MatrixMultiplyVectorJacobianProduct(matrix, cp(new PackedCollection(shape(5, 3))))
-				.apply(matrix, cp(new PackedCollection(shape(15)))));
-		Producer<PackedCollection> cube = p(new PackedCollection(shape(2, 3, 4)));
-		Assert.assertNull(new MatrixMultiplyVectorJacobianProduct(cube, rows)
-				.apply(cube, cp(new PackedCollection(shape(30)))));
+		assertTangentMatches(out, p(weights), cp(weightTangent), weightProduct);
+		assertTangentMatches(out, in, cp(inputTangent), inputProduct);
+		assertTangentMatches(out, p(biases), cp(biasTangent), biasProduct);
+	}
+
+	/**
+	 * Without a weight, the reduced delta weights every entry along the reduced axis by
+	 * one: the output-reduced delta of a dense operator with respect to its input is
+	 * {@code Σ_i W[i][j]} for every row, and its input-reduced delta with respect to its
+	 * weight is {@code Σ_j x_r[j]} for every node.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void unweightedReduction() {
+		int rows = 3;
+		int size = 4;
+		int nodes = 5;
+		TraversalPolicy inputShape = shape(1, rows, size);
+		PackedCollection weights = new PackedCollection(shape(nodes, size)).randnFill();
+		PackedCollection input = new PackedCollection(inputShape).randnFill();
+
+		Producer<PackedCollection> in = cp(input);
+		CollectionProducer out = (CollectionProducer) denseOperator(inputShape, weights, null).getResultant(in);
+
+		double[] w = weights.toArray(0, nodes * size);
+		double[] x = input.toArray(0, rows * size);
+		double[] columnSums = new double[rows * size];
+		double[] rowSums = new double[rows * nodes];
+		for (int r = 0; r < rows; r++) {
+			for (int i = 0; i < nodes; i++) {
+				for (int j = 0; j < size; j++) {
+					columnSums[r * size + j] += w[i * size + j];
+					rowSums[r * nodes + i] += x[r * size + j];
+				}
+			}
+		}
+
+		PackedCollection outReduced = evaluate(out.delta(in, ReduceAxis.OUT));
+		assertValuesMatch("unweighted out", columnSums, outReduced.toArray(0, rows * size));
+		outReduced.destroy();
+
+		PackedCollection inReduced = evaluate(out.delta(p(weights), ReduceAxis.IN));
+		assertValuesMatch("unweighted in", rowSums, inReduced.toArray(0, rows * nodes));
+		inReduced.destroy();
 	}
 
 	/**
 	 * Builds a dense operator without bias for the given input shape and output width,
 	 * and checks the weight and input gradients against their definition and against
-	 * the full Jacobian.
+	 * the full Jacobian, expecting neither to form anything as large as the Jacobian.
 	 *
 	 * @param inputShape the input shape, whose last dimension is the input width
 	 * @param nodes      the output width
 	 */
 	private void assertDenseGradientsMatch(TraversalPolicy inputShape, int nodes) {
 		assertDenseGradientsMatch(inputShape, nodes, true);
+	}
+
+	/**
+	 * Builds a dense operator without bias, as {@link #assertDenseGradientsMatch(TraversalPolicy, int)}
+	 * does, optionally without requiring the full-Jacobian weight gradient to agree.
+	 *
+	 * @param inputShape             the input shape, whose last dimension is the input width
+	 * @param nodes                  the output width
+	 * @param weightJacobianReliable whether the full-Jacobian weight gradient is required to
+	 *                               agree with the definition at this size
+	 */
+	private void assertDenseGradientsMatch(TraversalPolicy inputShape, int nodes, boolean weightJacobianReliable) {
+		assertDenseGradientsMatch(inputShape, nodes, weightJacobianReliable, true);
 	}
 
 	/**
@@ -425,8 +513,11 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 * @param nodes                  the output width
 	 * @param weightJacobianReliable whether the full-Jacobian weight gradient is required to
 	 *                               agree with the definition at this size
+	 * @param expectReduced          whether the gradients must be formed without anything
+	 *                               as large as the Jacobian
 	 */
-	private void assertDenseGradientsMatch(TraversalPolicy inputShape, int nodes, boolean weightJacobianReliable) {
+	private void assertDenseGradientsMatch(TraversalPolicy inputShape, int nodes,
+										   boolean weightJacobianReliable, boolean expectReduced) {
 		int size = inputShape.length(inputShape.getDimensions() - 1);
 		TraversalPolicy outputShape = inputShape.replaceDimension(inputShape.getDimensions() - 1, nodes);
 
@@ -458,48 +549,50 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 
 		assertValuesMatch("forward", output, evaluate(out).toArray(0, rows * nodes));
 
-		assertGradientsMatch(out, p(weights), cp(gradient), true, weightGradient, weightJacobianReliable);
-		assertGradientsMatch(out, in, cp(gradient), true, inputGradient, true);
+		assertGradientsMatch(out, p(weights), cp(gradient), expectReduced, weightGradient, weightJacobianReliable);
+		assertGradientsMatch(out, in, cp(gradient), expectReduced, inputGradient, true);
 	}
 
 	/**
 	 * Asserts that the gradient the backward pass uses equals the full-Jacobian gradient,
-	 * and that a structure-aware product was or was not used, as expected.
+	 * and, when expected, that it was formed without anything as large as the Jacobian.
 	 *
-	 * @param function        the forward operator
-	 * @param target          the producer to differentiate with respect to
-	 * @param gradient        the upstream gradient
-	 * @param expectShortcut  whether the operator should offer a vector-Jacobian product
+	 * @param function      the forward operator
+	 * @param target        the producer to differentiate with respect to
+	 * @param gradient      the upstream gradient
+	 * @param expectReduced whether the gradient must be formed without the Jacobian
 	 */
 	private void assertGradientsMatch(CollectionProducer function, Producer<PackedCollection> target,
-									  Producer<PackedCollection> gradient, boolean expectShortcut) {
-		assertGradientsMatch(function, target, gradient, expectShortcut, null, true);
+									  Producer<PackedCollection> gradient, boolean expectReduced) {
+		assertGradientsMatch(function, target, gradient, expectReduced, null, true);
 	}
 
 	/**
-	 * Asserts that a structure-aware product was or was not used, as expected, that the
-	 * gradient the backward pass uses agrees with an independently computed reference when
-	 * one is given, and that it agrees with the full-Jacobian gradient. When the
-	 * full-Jacobian gradient is not reliable, its disagreement with the reference is
-	 * logged instead of asserted.
+	 * Asserts that, when expected, the gradient was formed without anything as large as the
+	 * Jacobian, that it agrees with an independently computed reference when one is given,
+	 * and that it agrees with the full-Jacobian gradient. When the full-Jacobian gradient is
+	 * not reliable, its disagreement with the reference is logged instead of asserted.
 	 *
 	 * @param function         the forward operator
 	 * @param target           the producer to differentiate with respect to
 	 * @param gradient         the upstream gradient
-	 * @param expectShortcut   whether the operator should offer a vector-Jacobian product
+	 * @param expectReduced    whether the gradient must be formed without the Jacobian
 	 * @param reference        the gradient computed directly from its definition, or null
 	 * @param jacobianReliable whether the full-Jacobian gradient is required to agree
 	 */
 	private void assertGradientsMatch(CollectionProducer function, Producer<PackedCollection> target,
-									  Producer<PackedCollection> gradient, boolean expectShortcut,
+									  Producer<PackedCollection> gradient, boolean expectReduced,
 									  double[] reference, boolean jacobianReliable) {
-		Assert.assertEquals(expectShortcut,
-				function.attemptVectorJacobianProduct(target, gradient) != null);
-
-		PackedCollection actual = evaluate(combineGradient(function, target, gradient));
-		PackedCollection expected = evaluate(jacobianGradient(function, target, gradient));
+		CollectionProducer reduced = combineGradient(function, target, gradient);
 
 		int size = shape(target).getTotalSize();
+		if (expectReduced) {
+			assertNoLargerThanForward(function, reduced);
+		}
+
+		PackedCollection actual = evaluate(reduced);
+		PackedCollection expected = evaluate(jacobianGradient(function, target, gradient));
+
 		Assert.assertEquals(size, actual.getShape().getTotalSize());
 		Assert.assertEquals(size, expected.getShape().getTotalSize());
 
@@ -509,12 +602,12 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 		expected.destroy();
 
 		if (reference != null) {
-			assertValuesMatch("vjp", reference, a);
+			assertValuesMatch("reduced", reference, a);
 		}
 
 		if (jacobianReliable) {
 			if (reference != null) assertValuesMatch("jacobian", reference, e);
-			assertValuesMatch("vjp against jacobian", e, a);
+			assertValuesMatch("reduced against jacobian", e, a);
 		} else {
 			int disagreements = 0;
 			for (int i = 0; i < size; i++) {
@@ -523,6 +616,62 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 
 			log("jacobianDisagreements=" + disagreements + " of " + size);
 		}
+	}
+
+	/**
+	 * Asserts that the {@link ReduceAxis#IN input-reduced} delta of a function for the
+	 * given tangent has the shape of the function and agrees with the reference.
+	 *
+	 * @param function  the forward operator
+	 * @param target    the producer to differentiate with respect to
+	 * @param tangent   the tangent of the target
+	 * @param reference the Jacobian-vector product computed from its definition
+	 */
+	private void assertTangentMatches(CollectionProducer function, Producer<PackedCollection> target,
+									  Producer<PackedCollection> tangent, double[] reference) {
+		CollectionProducer product = function.delta(target, ReduceAxis.IN, tangent);
+		Assert.assertEquals(function.getShape().getTotalSize(), product.getShape().getTotalSize());
+
+		PackedCollection actual = evaluate(product);
+		assertValuesMatch("tangent", reference, actual.toArray(0, reference.length));
+		actual.destroy();
+	}
+
+	/**
+	 * Asserts that no computation in the graph of a reduced delta is larger than the
+	 * largest computation of the function it differentiates, which is how a reduced delta
+	 * shows that it was formed without the Jacobian (whose size is the product of the
+	 * output and target sizes).
+	 *
+	 * @param function the function being differentiated
+	 * @param reduced  its reduced delta
+	 */
+	private static void assertNoLargerThanForward(CollectionProducer function, CollectionProducer reduced) {
+		long forward = largestComputation(function, Collections.newSetFromMap(new IdentityHashMap<>()));
+		long largest = largestComputation(reduced, Collections.newSetFromMap(new IdentityHashMap<>()));
+		Assert.assertTrue("largest=" + largest + " forward=" + forward, largest <= forward);
+	}
+
+	/**
+	 * Returns the largest output of any computation in the graph of the given producer.
+	 *
+	 * @param node    the producer or process to inspect
+	 * @param visited the nodes already inspected
+	 * @return the largest total size of any collection producer in the graph
+	 */
+	private static long largestComputation(Object node, Set<Object> visited) {
+		if (node == null || !visited.add(node)) return 0;
+
+		long largest = node instanceof CollectionProducer ?
+				((CollectionProducer) node).getShape().getTotalSizeLong() : 0;
+
+		if (node instanceof Process) {
+			for (Object child : ((Process<?, ?>) node).getChildren()) {
+				largest = Math.max(largest, largestComputation(child, visited));
+			}
+		}
+
+		return largest;
 	}
 
 	/**

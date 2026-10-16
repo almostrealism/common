@@ -26,7 +26,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.calculus.DeltaAlternate;
 import org.almostrealism.calculus.MultiTermDeltaStrategy;
-import org.almostrealism.calculus.VectorJacobianProduct;
+import org.almostrealism.calculus.ReduceAxis;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -950,52 +950,80 @@ public interface CollectionProducer extends
 	}
 
 	/**
-	 * Attempts to compute the gradient with respect to {@code target} directly from the
-	 * upstream gradient, without forming this computation's full Jacobian. Returns
-	 * {@code null} when this computation has no structure-aware shortcut for the target,
-	 * in which case the caller must contract the dense {@link #delta(Producer) Jacobian}.
+	 * Computes the delta of this computation with respect to {@code target}, with one axis
+	 * of the Jacobian summed away and every entry along it weighted by one. See
+	 * {@link #delta(Producer, ReduceAxis, Producer)}.
 	 *
-	 * @param target   the producer with respect to which to differentiate
-	 * @param gradient the upstream gradient, with the same total size as this computation
-	 * @return the gradient with respect to {@code target} (same total size as the target),
-	 *         or {@code null} if no shortcut applies
-	 * @see org.almostrealism.calculus.VectorJacobianProduct
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   the axis of the Jacobian to sum away
+	 * @return the reduced delta, in the shape of the axis that remains
 	 */
-	default CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
-		return null;
+	default CollectionProducer delta(Producer<?> target, ReduceAxis axis) {
+		return delta(target, axis, null);
 	}
 
 	/**
-	 * Attempts the structure-aware vector-Jacobian product of an arbitrary producer, as
-	 * {@link #attemptVectorJacobianProduct(Producer, Producer)} does for a
-	 * {@link CollectionProducer}. A producer that is not a {@link CollectionProducer}
-	 * offers no such product, so {@code null} is returned for it and the caller must
-	 * contract the dense Jacobian.
+	 * Computes the delta of this computation with respect to {@code target}, with one axis
+	 * of the Jacobian {@code J} summed away after weighting each entry along it:
+	 * <ul>
+	 *   <li>{@link ReduceAxis#OUT} produces the vector-Jacobian product {@code gᵀJ} for a
+	 *       weight {@code g} with the shape of this computation, and has the shape of the
+	 *       target.</li>
+	 *   <li>{@link ReduceAxis#IN} produces the Jacobian-vector product {@code J t} for a
+	 *       weight {@code t} with the shape of the target, and has the shape of this
+	 *       computation.</li>
+	 * </ul>
 	 *
-	 * @param function the producer whose output the upstream gradient refers to
-	 * @param target   the producer with respect to which to differentiate
-	 * @param gradient the upstream gradient, with the same total size as {@code function}
-	 * @return the gradient with respect to {@code target}, or {@code null} if no shortcut applies
+	 * <p>Because the caller says how the Jacobian will be reduced, a computation can
+	 * produce the reduced result directly from its own structure, and pass the reduction on
+	 * to its inputs through the chain rule, without ever forming {@code J}. Computations
+	 * that know such a form override this method. This implementation handles a target that
+	 * this producer is, or cannot depend on, and otherwise contracts the full
+	 * {@link #delta(Producer) Jacobian}, which is always correct and is what any override
+	 * must agree with.</p>
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   the axis of the Jacobian to sum away
+	 * @param weight the weight of each entry along that axis, or null to weight every
+	 *               entry by one
+	 * @return the reduced delta, in the shape of the axis that remains
 	 */
-	static CollectionProducer attemptVectorJacobianProduct(Producer<?> function, Producer<?> target,
-														   Producer<PackedCollection> gradient) {
-		if (!(function instanceof CollectionProducer)) return null;
-		return ((CollectionProducer) function).attemptVectorJacobianProduct(target, gradient);
+	default CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		CollectionProducer alternate = getDeltaAlternate();
+		if (alternate != null) return alternate.delta(target, axis, weight);
+
+		TraversalPolicy resultShape = axis.resultShape(getShape(), shape(target));
+
+		if (cannotMatch(target)) {
+			return zeros(resultShape);
+		} else if (refersTo(target)) {
+			return weight == null ? constant(resultShape, 1.0) : c(weight).reshape(resultShape);
+		} else if (axis == ReduceAxis.OUT) {
+			return jacobianGradient(this, target, weight).reshape(resultShape);
+		}
+
+		int outSize = getShape().getTotalSize();
+		int inSize = shape(target).getTotalSize();
+		CollectionProducer jacobian = delta(target).reshape(outSize, inSize).traverse(1);
+		if (weight != null) {
+			jacobian = jacobian.multiply(c(weight).reshape(shape(inSize)).repeat(outSize));
+		}
+
+		return jacobian.traverse(1).sum().reshape(resultShape);
 	}
 
 	/**
-	 * Declares a structure-aware {@link VectorJacobianProduct} for this computation, to
-	 * be returned by {@link #attemptVectorJacobianProduct(Producer, Producer)}. The
-	 * product is an optimization of the backward pass, not a change to its result: a
-	 * producer that has nowhere to keep it ignores it and continues to be
-	 * differentiated through its dense {@link #delta(Producer) Jacobian}, which yields
-	 * the same gradient.
+	 * Indicates whether the delta of this producer with respect to {@code target} is
+	 * determined without the structure of its inputs: this producer has a
+	 * {@link #getDeltaAlternate() delta alternate}, is the target, or cannot depend on it.
+	 * Overrides of {@link #delta(Producer, ReduceAxis, Producer)} that differentiate
+	 * through their inputs leave these cases to the general implementation.
 	 *
-	 * @param product the vector-Jacobian product of this computation
-	 * @return this producer (for method chaining)
+	 * @param target the producer with respect to which to differentiate
+	 * @return true if the delta does not depend on the structure of the inputs
 	 */
-	default CollectionProducer withVectorJacobianProduct(VectorJacobianProduct product) {
-		return this;
+	default boolean hasDirectDelta(Producer<?> target) {
+		return getDeltaAlternate() != null || refersTo(target) || cannotMatch(target);
 	}
 
 	/**

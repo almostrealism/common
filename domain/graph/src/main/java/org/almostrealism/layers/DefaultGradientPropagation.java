@@ -48,10 +48,11 @@ import java.util.stream.Stream;
  *       is applied to the weights via the corresponding {@link ParameterUpdate}.</li>
  * </ul>
  *
- * <p>Both gradients are formed by {@link #combineGradient}, which uses the operator's
- * structure-aware vector-Jacobian product when it has one (a dense layer's matrix
- * multiply does, for its weights and its input) and otherwise contracts the operator's
- * full Jacobian with the upstream gradient.</p>
+ * <p>Both gradients are formed by {@link #combineGradient}, which asks the operator for
+ * its {@link org.almostrealism.calculus.ReduceAxis#OUT output-reduced} delta weighted by
+ * the upstream gradient, so an operator whose computations know their structure (a dense
+ * layer's matrix multiply, for its weights and its input) never forms its full
+ * Jacobian.</p>
  *
  * <p>Diagnostic flags ({@link #enableDiagnosticGrad}, {@link #enableDiagnosticWeight})
  * can be enabled to wrap operations in {@code OperationWithInfo} for profiling.</p>

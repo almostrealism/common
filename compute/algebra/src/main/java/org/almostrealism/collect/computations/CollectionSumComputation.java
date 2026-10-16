@@ -16,11 +16,14 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -146,6 +149,34 @@ public class CollectionSumComputation extends AggregatedProducerComputation {
 	@Override
 	public CollectionSumComputation generate(List<Process<?, ?>> children) {
 		return new CollectionSumComputation((Producer<PackedCollection>) children.get(1));
+	}
+
+	/**
+	 * Each output of the sum depends on every element of its group of the input with a
+	 * derivative of one. The {@link ReduceAxis#OUT output-reduced} delta therefore gives
+	 * every element of a group the weight of that group's output and passes it on to the
+	 * input, and, the sum being linear, the {@link ReduceAxis#IN input-reduced} delta is the
+	 * sum of the input's own input-reduced delta.
+	 */
+	@Override
+	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		Producer<PackedCollection> child = getInputs().get(1);
+		if (hasDirectDelta(target) || !(child instanceof Shape)) {
+			return super.delta(target, axis, weight);
+		}
+
+		CollectionProducer input = c(child);
+		TraversalPolicy inputShape = input.getShape();
+
+		if (axis == ReduceAxis.IN) {
+			return replaceInput(child, reshape(inputShape, input.delta(target, axis, weight)));
+		} else if (weight == null) {
+			return input.delta(target, axis);
+		}
+
+		int groups = getShape().getTotalSize();
+		return input.delta(target, axis,
+				c(weight).reshape(shape(groups, 1)).repeat(1, inputShape.getSize()).reshape(inputShape));
 	}
 
 	/**

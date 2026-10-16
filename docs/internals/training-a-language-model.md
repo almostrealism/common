@@ -68,23 +68,26 @@ dx_r = Wᵀ · g_r
 
 Contracting the dense Jacobian instead is an iteration space of output size times weight size
 times the inner dimension: about 17 billion terms for the 256 by 64 output projection of the model
-below, where the products above need about a million. `MatrixFeatures.matmul` therefore attaches a
-`MatrixMultiplyVectorJacobianProduct` to its result whenever the right operand is a vector or a batch of
-vectors (both its multiply-and-sum lowering and its weighted-sum lowering for wide outputs), as the
-`VectorJacobianProduct` of the computation. `CollectionProducer.attemptVectorJacobianProduct`
-exposes it; a reshape forwards it to the producer it reshapes, and an addition sums the products of
-the operands that depend on the target, so a dense layer's operator (`LayerFeatures.denseOperator`:
-the output reshape of the bias addition of the matrix multiply) offers it for its weights and its
-input. `GradientFeatures.combineGradient`, which `DefaultGradientPropagation` uses for both the
-input gradient and every weight gradient, uses the product when the operator offers one and
-otherwise falls back to `GradientFeatures.jacobianGradient`, the unchanged contraction of the full
-Jacobian. Only a target that is exactly one operand, and cannot appear in the other, gets the
-product: a genuine matrix-by-matrix product, a broadcast bias, and every other operator keep the
-full Jacobian.
+below, where the products above need about a million. The caller therefore tells `delta` which
+axis of the Jacobian it is about to sum away: `CollectionProducer.delta(target, ReduceAxis.OUT, g)`
+is the vector-Jacobian product `gᵀJ` (and `ReduceAxis.IN` with a tangent is the Jacobian-vector
+product). Each computation produces the reduced delta from its own structure and passes the
+reduction on to its inputs by the chain rule: a reshape passes it through, an addition gives every
+operand the same weight, an element-wise product applies the product rule, a sum broadcasts the
+weight over each group, and a repetition sums the weights of the copies. `matmul`'s
+multiply-and-sum lowering is built from exactly those computations, so a dense layer's operator
+(`LayerFeatures.denseOperator`: the output reshape of the bias addition of the matrix multiply)
+yields `Σ_r g_r ⊗ x_r`, `Wᵀ · g_r` and the row-summed bias gradient without any code that
+recognizes a matrix multiply. A computation without a reduced form of its own contracts its full
+Jacobian, which is what `GradientFeatures.jacobianGradient` always does; the weighted-sum lowering
+that `matmul` uses for outputs wider than 1000 is one of these. `GradientFeatures.combineGradient`,
+which `DefaultGradientPropagation` uses for both the input gradient and every weight gradient, is
+the output-reduced delta weighted by the upstream gradient.
 
-`DenseVectorJacobianProductTest` compares the product on the whole dense operator with the forced
-full-Jacobian gradient and with the gradient computed on the host from its definition, for every
-projection shape of the model below over a 64-row sequence.
+`DenseVectorJacobianProductTest` compares the reduced delta of the whole dense operator with the
+forced full-Jacobian gradient and with the gradient computed on the host from its definition, for
+every projection shape of the model below over a 64-row sequence, and checks that no computation in
+the reduced delta's graph is larger than the largest computation of the operator itself.
 
 **The full-Jacobian weight gradient is wrong for the output projection.** For the 256 by 64
 weight over 64 rows, `jacobianGradient` disagrees with the definition in about a tenth of the
@@ -197,7 +200,9 @@ Lessons from the runs before the dense-layer changes (the first four rows):
   has a great deal of headroom; the configuration above, at 4.19, still uses only part of it.
 
 **Timing** (Mac Studio, Apple silicon, Metal, FP32), measured by the test on the same machine
-before and after dense layers took the vector-Jacobian product:
+before and after dense layers took the vector-Jacobian product. The "after" figures were measured
+with an earlier form of the product, a matmul-specific object attached to the matrix multiply,
+which the reduced delta described above has replaced; they have not yet been re-measured with it.
 
 | | Before | After |
 |---|--------|-------|

@@ -39,7 +39,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
-import org.almostrealism.calculus.VectorJacobianProduct;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -158,9 +158,6 @@ public class ReshapeProducer
 	 * in place of this reshape's own, or null if none has been declared.
 	 */
 	private CollectionProducer deltaAlternate;
-
-	/** Structure-aware gradient shortcut declared for this reshape, or null if none. */
-	private VectorJacobianProduct vectorJacobianProduct;
 
 	/**
 	 * Creates a ReshapeProducer that modifies the traversal axis of the input producer.
@@ -449,7 +446,6 @@ public class ReshapeProducer
 				new ReshapeProducer(traversalAxis, (Producer<PackedCollection>) children.get(0)) :
 				new ReshapeProducer(shape, (Producer<PackedCollection>) children.get(0));
 		generated.deltaAlternate = deltaAlternate;
-		generated.vectorJacobianProduct = vectorJacobianProduct;
 		return generated;
 	}
 
@@ -567,35 +563,25 @@ public class ReshapeProducer
 	}
 
 	/**
-	 * Returns the {@link #withVectorJacobianProduct(VectorJacobianProduct) declared}
-	 * product when it applies to the target, and otherwise the product of the underlying
-	 * producer: a reshape only reinterprets the layout of its producer's values, so either
-	 * sees the same gradient values.
+	 * A reshape only reinterprets the layout of its producer's values, so its reduced delta
+	 * is that of the underlying producer: the weight of the output axis is presented in the
+	 * underlying producer's shape, and a delta that keeps the output axis is presented in
+	 * this reshape's shape.
 	 */
 	@Override
-	public CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
-		if (shape(producer).getTotalSizeLong() != shape(gradient).getTotalSizeLong()) return null;
-
-		if (vectorJacobianProduct != null) {
-			CollectionProducer declared = vectorJacobianProduct.apply(target, gradient);
-			if (declared != null) return declared;
+	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (hasDirectDelta(target) || !(producer instanceof CollectionProducer)) {
+			return CollectionProducerParallelProcess.super.delta(target, axis, weight);
 		}
 
-		Producer<PackedCollection> product =
-				CollectionProducer.attemptVectorJacobianProduct(producer, target, gradient);
-		return product == null ? null : c(product);
-	}
+		CollectionProducer underlying = (CollectionProducer) producer;
 
-	/**
-	 * Keeps the product on this reshape, which
-	 * {@link #attemptVectorJacobianProduct(Producer, Producer)} consults before the
-	 * underlying producer. The underlying producer is left unchanged, since it may be
-	 * shared by other parts of the graph that did not declare the product.
-	 */
-	@Override
-	public ReshapeProducer withVectorJacobianProduct(VectorJacobianProduct product) {
-		this.vectorJacobianProduct = product;
-		return this;
+		if (axis == ReduceAxis.OUT) {
+			return underlying.delta(target, axis,
+					weight == null ? null : reshape(underlying.getShape(), weight));
+		}
+
+		return underlying.delta(target, axis, weight).reshape(getShape());
 	}
 
 	/**
@@ -621,21 +607,17 @@ public class ReshapeProducer
 	}
 
 	/**
-	 * Declares this reshape's delta alternate and vector-Jacobian product on a producer
-	 * that presents the same values under another shape, so that a further reshape or
-	 * traversal, which wraps the underlying producer directly rather than this reshape,
-	 * keeps them. The alternate is reshaped to the new shape. Nothing is declared when
-	 * the result is the underlying producer itself, which must stay unchanged.
+	 * Declares this reshape's delta alternate on a producer that presents the same values
+	 * under another shape, so that a further reshape or traversal, which wraps the
+	 * underlying producer directly rather than this reshape, keeps it. The alternate is
+	 * reshaped to the new shape. Nothing is declared when the result is the underlying
+	 * producer itself, which must stay unchanged.
 	 *
 	 * @param reshaped a producer of this reshape's values, in a different shape
 	 * @return the producer, with this reshape's declarations
 	 */
 	private CollectionProducer withDeclarationsOf(CollectionProducer reshaped) {
 		if (reshaped == producer) return reshaped;
-
-		if (vectorJacobianProduct != null) {
-			reshaped = reshaped.withVectorJacobianProduct(vectorJacobianProduct);
-		}
 
 		if (deltaAlternate != null) {
 			reshaped = reshaped.withDeltaAlternate(deltaAlternate.reshape(reshaped.getShape()));

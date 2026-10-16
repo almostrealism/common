@@ -186,9 +186,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 *
 	 * <p>
 	 * Entry {@code (i, j)} of the result is the dot product of row {@code i} of {@code a}
-	 * with row {@code j} of {@code b}. Unlike {@link #matmul(Producer, Producer)}, the
-	 * result carries no structure-aware vector-Jacobian product, which makes it suitable
-	 * for forming gradients themselves.
+	 * with row {@code j} of {@code b}.
 	 * </p>
 	 *
 	 * @param a  the left matrix, of shape {@code (p, k)}
@@ -239,13 +237,6 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * row with one vector instead of applying every row to every vector.
 	 * </p>
 	 *
-	 * <p>
-	 * When the right operand is a vector or a batch of vectors, the result carries a
-	 * structure-aware {@link MatrixMultiplyVectorJacobianProduct}, so the backward
-	 * pass forms the gradients with respect to the matrix and the vectors without
-	 * materializing the product's Jacobian. A genuine matrix-by-matrix product does not,
-	 * and keeps the full Jacobian.
-	 * </p>
 	 *
 	 * @param matrix  the matrix (left operand)
 	 * @param vector  the vector or matrix (right operand)
@@ -318,10 +309,7 @@ public interface MatrixFeatures extends AlgebraFeatures {
 				long vectors = vShape.getTotalSizeLong() / mShape.length(1);
 				CollectionProducer a = vectors > 1 && vShape.getTotalSizeLong() % mShape.length(1) == 0 ?
 						repeat(0, (int) vectors, matrix).reshape(b.getShape()) : c(matrix);
-				CollectionProducer product = multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
-				return vShape.length(vShape.getDimensions() - 1) == mShape.length(1) ?
-						product.withVectorJacobianProduct(
-							new MatrixMultiplyVectorJacobianProduct(matrix, vector)) : product;
+				return multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
 			}
 			// For large outputs, continue to weightedSum path with original vShape/vector
 		}
@@ -419,14 +407,11 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			finalShape = shape(b, m, p);
 		}
 
-		CollectionProducer product = weightedSum("matmul",
+		return weightedSum("matmul",
 				matrixPositions, vectorPositions,
 				matrixGroupShape, vectorGroupShape,
 				reshape(matrixShape, matrix),
 				reshape(vectorShape, vector)).reshape(finalShape.traverseEach());
-
-		return p == 1 ? product.withVectorJacobianProduct(
-				new MatrixMultiplyVectorJacobianProduct(matrix, vector)) : product;
 	}
 
 	/**

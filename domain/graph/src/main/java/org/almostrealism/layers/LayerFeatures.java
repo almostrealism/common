@@ -1028,10 +1028,11 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 * to every row of the last axis of the input and reshaped to the input shape with its
 	 * last dimension replaced by the number of nodes. The bias is repeated for every row
 	 * explicitly, so it is added per node even when there are as many rows as nodes (an
-	 * implicit broadcast would then pair bias entries with rows). The matrix multiply carries its own
-	 * vector-Jacobian product (see {@link org.almostrealism.algebra.MatrixMultiplyVectorJacobianProduct}), which is reachable through the
-	 * bias addition and the output reshape, so the backward pass forms the weight and input
-	 * gradients without materializing the operator's Jacobian.
+	 * implicit broadcast would then pair bias entries with rows). Every computation the
+	 * operator is built from has an
+	 * {@link org.almostrealism.calculus.ReduceAxis#OUT output-reduced} delta, so the backward
+	 * pass forms the weight and input gradients without materializing the operator's
+	 * Jacobian.
 	 *
 	 * @param inputShape the expected input shape, whose last dimension is the input size
 	 * @param weights    the weight matrix of shape {@code [nodes, size]}

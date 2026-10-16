@@ -12,6 +12,17 @@ Second, the full-Jacobian weight gradient is itself wrong for the 256×64 output
 A/B gate compares that one weight against the definition rather than the Jacobian. The run now
 beats the unigram baseline (4.194 against 4.912), but greedy generation is still a single
 repeated byte.
+**Revision (2026-10-16):** the matmul-specific `MatrixMultiplyVectorJacobianProduct`, the
+`VectorJacobianProduct` interface and the hooks that attached it to and carried it through a
+`CollectionProducer` have been removed. In their place, `CollectionProducer.delta(target, axis, weight)`
+takes the axis of the Jacobian that the caller will sum away (`ReduceAxis.OUT` for the
+vector-Jacobian product, `ReduceAxis.IN` for the Jacobian-vector product). Each computation produces
+that reduced delta from its own structure, and the matrix multiply's gradient follows from the
+reshape, repeat, product and sum it is built from. The weighted-sum lowering for outputs wider
+than 1000 has no reduced form yet and contracts its Jacobian. Still to clean up:
+`MultiTermDeltaStrategy`, the delta-alternate mechanism, and `attemptDelta`, `combineGradient` and
+`grad` on `CollectionProducer`.
+
 **Category:** Performance (directly unblocking Proof of Value)
 **Branch:** `project/plan-20261009-171224`
 **Requires:** a macOS / Metal node (see `plan-20261009-171224-workstream.yaml`)

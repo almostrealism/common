@@ -24,7 +24,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.calculus.DeltaAlternate;
 import org.almostrealism.calculus.MultiTermDeltaStrategy;
-import org.almostrealism.calculus.VectorJacobianProduct;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -192,51 +192,30 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 		Assert.assertSame(dynamic, dynamic.withDeltaAlternate(alternate));
 		Assert.assertNull(dynamic.getDeltaAlternate());
 		Assert.assertSame(dynamic, dynamic.withShortCircuit(shortCircuit));
-		Assert.assertSame(dynamic, dynamic.withVectorJacobianProduct((target, gradient) -> c(gradient)));
-		Assert.assertNull(dynamic.attemptVectorJacobianProduct(cp(x), cp(x)));
 	}
 
 	/**
-	 * A vector-Jacobian product declared on a reshape is kept by the reshape, not by the
-	 * computation it reshapes; the reshape declines a gradient whose size differs from its
-	 * own, and the product declines a target it does not apply to.
+	 * The reduced delta of a reshape is that of the computation it reshapes: the
+	 * output-reduced delta takes a weight in the reshape's shape and has the target's
+	 * shape, and the input-reduced delta takes a tangent of the target and has the
+	 * reshape's shape.
 	 */
 	@Test(timeout = 60000)
-	public void vectorJacobianProductThroughReshape() {
+	public void reducedDeltaThroughReshape() {
 		PackedCollection x = pack(1.0, 2.0, 3.0, 4.0);
 		Producer<PackedCollection> target = cp(x);
-		VectorJacobianProduct product = (t, gradient) -> t == target ? c(gradient).multiply(2.0) : null;
 
 		CollectionProducer inner = cp(x).add(cp(x));
 		ReshapeProducer reshaped = new ReshapeProducer(shape(2, 2), inner);
-		Assert.assertSame(reshaped, reshaped.withVectorJacobianProduct(product));
 
-		Producer<PackedCollection> gradient = cp(pack(1.0, -1.0, 0.5, 2.0));
-		assertValues(reshaped.attemptVectorJacobianProduct(target, gradient).evaluate(), 2.0, -2.0, 1.0, 4.0);
-		Assert.assertNull(inner.attemptVectorJacobianProduct(target, gradient));
+		CollectionProducer gradient = c(shape(2, 2), 1.0, -1.0, 0.5, 2.0);
+		CollectionProducer out = reshaped.delta(target, ReduceAxis.OUT, gradient);
+		Assert.assertEquals(shape(4), out.getShape());
+		assertValues(out.evaluate(), 2.0, -2.0, 1.0, 4.0);
 
-		Assert.assertNull(reshaped.attemptVectorJacobianProduct(target, cp(pack(1.0, 2.0))));
-		Assert.assertNull(reshaped.attemptVectorJacobianProduct(cp(x), gradient));
-	}
-
-	/**
-	 * A product the underlying computation declares itself is still reached through a
-	 * reshape that declares none, and one the reshape declares takes precedence over it.
-	 */
-	@Test(timeout = 60000)
-	public void reshapeDefersToUnderlyingVectorJacobianProduct() {
-		PackedCollection x = pack(1.0, 2.0, 3.0, 4.0);
-		Producer<PackedCollection> target = cp(x);
-		Producer<PackedCollection> gradient = cp(pack(1.0, -1.0, 0.5, 2.0));
-
-		CollectionProducer inner = cp(x).add(cp(x))
-				.withVectorJacobianProduct((t, g) -> t == target ? c(g).multiply(2.0) : null);
-		ReshapeProducer reshaped = new ReshapeProducer(shape(2, 2), inner);
-		assertValues(reshaped.attemptVectorJacobianProduct(target, gradient).evaluate(), 2.0, -2.0, 1.0, 4.0);
-
-		reshaped.withVectorJacobianProduct((t, g) -> t == target ? c(g).multiply(3.0) : null);
-		assertValues(reshaped.attemptVectorJacobianProduct(target, gradient).evaluate(), 3.0, -3.0, 1.5, 6.0);
-		assertValues(inner.attemptVectorJacobianProduct(target, gradient).evaluate(), 2.0, -2.0, 1.0, 4.0);
+		CollectionProducer in = reshaped.delta(target, ReduceAxis.IN, cp(pack(1.0, -1.0, 0.5, 2.0)));
+		Assert.assertEquals(shape(2, 2), in.getShape());
+		assertValues(in.evaluate(), 2.0, -2.0, 1.0, 4.0);
 	}
 
 	/**
@@ -250,15 +229,14 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 		PackedCollection x = pack(1.0, 2.0, 3.0, 4.0);
 		Producer<PackedCollection> target = cp(x);
 		Producer<PackedCollection> gradient = cp(pack(1.0, -1.0, 0.5, 2.0));
-		VectorJacobianProduct product = (t, g) -> t == target ? c(g).multiply(5.0) : null;
 
 		CollectionProducer shared = c(target).multiply(2.0);
 		ReshapeProducer declaring = new ReshapeProducer(shape(2, 2), shared);
 		ReshapeProducer other = new ReshapeProducer(shape(4, 1), shared);
 		CollectionProducer alternate = c(target).multiply(3.0).reshape(shape(2, 2));
-		declaring.withVectorJacobianProduct(product).withDeltaAlternate(alternate);
+		declaring.withDeltaAlternate(alternate);
 
-		Assert.assertNull(other.attemptVectorJacobianProduct(target, gradient));
+		assertValues(other.delta(target, ReduceAxis.OUT, gradient).evaluate(), 2.0, -2.0, 1.0, 4.0);
 		Assert.assertNull(other.getDeltaAlternate());
 		Assert.assertNull(shared.getDeltaAlternate());
 
@@ -268,17 +246,19 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 		assertTripledIdentity(delta);
 		assertTripledIdentity(shared.delta(target).multiply(1.5));
 
+		assertValues(declaring.delta(target, ReduceAxis.OUT, gradient).evaluate(), 3.0, -3.0, 1.5, 6.0);
+
 		CollectionProducer flattened = declaring.reshape(shape(4));
-		assertValues(flattened.attemptVectorJacobianProduct(target, gradient).evaluate(), 5.0, -5.0, 2.5, 10.0);
+		assertValues(flattened.delta(target, ReduceAxis.OUT, gradient).evaluate(), 3.0, -3.0, 1.5, 6.0);
 		Assert.assertEquals(shape(4), flattened.getDeltaAlternate().getShape());
 		assertTripledIdentity(flattened.delta(target));
 
 		CollectionProducer traversed = declaring.traverse(1);
-		assertValues(traversed.attemptVectorJacobianProduct(target, gradient).evaluate(), 5.0, -5.0, 2.5, 10.0);
+		assertValues(traversed.delta(target, ReduceAxis.OUT, gradient).evaluate(), 3.0, -3.0, 1.5, 6.0);
 		assertTripledIdentity(traversed.delta(target));
 
 		ReshapeProducer generated = declaring.generate(List.of((Process<?, ?>) shared));
-		assertValues(generated.attemptVectorJacobianProduct(target, gradient).evaluate(), 5.0, -5.0, 2.5, 10.0);
+		assertValues(generated.delta(target, ReduceAxis.OUT, gradient).evaluate(), 3.0, -3.0, 1.5, 6.0);
 		Assert.assertSame(alternate, generated.getDeltaAlternate());
 	}
 

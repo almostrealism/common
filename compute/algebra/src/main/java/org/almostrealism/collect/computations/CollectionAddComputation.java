@@ -18,10 +18,12 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -194,33 +196,44 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	}
 
 	/**
-	 * The gradient of a sum with respect to a target is the sum of the gradients of the
-	 * operands that depend on the target, each given the unchanged upstream gradient.
-	 * Operands that cannot depend on the target contribute nothing and are skipped. The
-	 * product is only available when every dependent operand has the full output size
-	 * (it is not broadcast into the sum) and offers its own vector-Jacobian product;
-	 * otherwise this returns null and the full Jacobian is used.
+	 * Every output of a sum depends on the matching element of each operand with a
+	 * derivative of one, so the {@link ReduceAxis#OUT output-reduced} delta is the sum of
+	 * the operands' own output-reduced deltas under the same weight. Operands that cannot
+	 * depend on the target contribute nothing. A single value broadcast into every output
+	 * receives the total weight. Any other operand that is broadcast into the sum (its size
+	 * differs from the sum's) shares its elements among outputs in a layout this sum does
+	 * not know, so in that case, as for the {@link ReduceAxis#IN input-reduced} delta, the
+	 * general implementation is used.
 	 */
 	@Override
-	public CollectionProducer attemptVectorJacobianProduct(Producer<?> target, Producer<PackedCollection> gradient) {
-		CollectionProducer assigned = super.attemptVectorJacobianProduct(target, gradient);
-		if (assigned != null) return assigned;
+	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.OUT || hasDirectDelta(target)) {
+			return super.delta(target, axis, weight);
+		}
 
 		long size = getShape().getTotalSizeLong();
 		List<Producer<?>> terms = new ArrayList<>();
 
-		for (Producer<PackedCollection> operand : getInputs().stream().skip(1).collect(Collectors.toList())) {
-			if (operand.cannotMatch(target)) continue;
-			if (shape(operand).getTotalSizeLong() != size) return null;
+		for (Process<?, ?> child : getChildren().stream().skip(1).collect(Collectors.toList())) {
+			if (!(child instanceof Shape)) return super.delta(target, axis, weight);
 
-			Producer<PackedCollection> term =
-					CollectionProducer.attemptVectorJacobianProduct(operand, target, gradient);
-			if (term == null) return null;
-			terms.add(term);
+			CollectionProducer operand = c((Producer) child);
+			if (operand.cannotMatch(target)) continue;
+
+			long operandSize = operand.getShape().getTotalSizeLong();
+			if (operandSize == 1 && size > 1) {
+				terms.add(operand.delta(target, axis, weight == null ?
+						constant(operand.getShape(), size) : c(weight).sum().reshape(operand.getShape())));
+			} else if (operandSize == size) {
+				terms.add(operand.delta(target, axis,
+						weight == null ? null : reshape(operand.getShape(), weight)));
+			} else {
+				return super.delta(target, axis, weight);
+			}
 		}
 
-		if (terms.isEmpty()) return null;
-		return terms.size() == 1 ? c(terms.get(0)) : add(terms);
+		if (terms.isEmpty()) return zeros(shape(target));
+		return terms.size() == 1 ? (CollectionProducer) terms.get(0) : add(terms);
 	}
 
 	/**
