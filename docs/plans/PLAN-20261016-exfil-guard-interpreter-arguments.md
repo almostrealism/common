@@ -53,6 +53,9 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
 2. After an inline-code flag: keep consuming further inline-code flags (and the dash-led
    options between them, which the loop already handles), so `perl -e 'a' -e 'b' file` scans
    both programs; at the first positional token, return `f"{prog}:inline"` without reading it.
+   Once inline code has fixed the program, a `-` is a positional argument too (it is
+   `sys.argv`), so the early return must preempt the `tok == "-"` branch; otherwise
+   `python3 -c 'print(1)' -` would scan stdin as a second program.
 3. A positional token that contains `$` or a backtick, reached while the program is still
    unknown (`python3 "$script"`), blocks with a message that says what it is — an argument the
    guard cannot resolve to a file — instead of a `FileNotFoundError` on the literal text. Once
@@ -75,14 +78,22 @@ All production changes are in `_check_interpreter` in `exfil_bash_runner.py`.
   for a stdin program. The trailing `if not code_seen: _check_stdin_program(...)` is unchanged.
 - **Inline program.** After the inline-code branch sets `code_seen`, the loop continues so
   further code flags and dash-led options are still processed (they may be more `-e` programs,
-  preloads, or `-m`, which must still be checked). Immediately before the awk branch and the
-  `_read_script` fallthrough, add: if `code_seen`, return `f"{prog}:inline"`. The awk branch
-  already behaves this way and folds into the same check (its own `if not code_seen` scan of
-  the first positional stays).
-- **Unresolvable token.** Factor the `"$" in target or "`" in target` test out of
-  `_resolve_dir` into one module-level predicate (e.g. `_is_shell_expanded(token)`), used by
-  both `_resolve_dir` and the interpreter loop. In the loop, when the program is unknown and
-  the positional token satisfies it, raise
+  preloads, or `-m`, which must still be checked). The early return goes *after* those dash-led
+  handlers (so repeated `-e` and a trailing `-m` are still checked — see Open question 2) but
+  *before* the `tok == "-"` branch: add, just above `if tok == "-":`, a check that returns
+  `f"{prog}:inline"` when `code_seen`. Placing it before `tok == "-"` is what makes a `-` after
+  inline code read as a positional argument rather than a second stdin program
+  (`python3 -c 'print(1)' -`). The awk branch keeps its own `if not code_seen` scan of the first
+  positional; with the early return above it, that branch is only reached when no inline program
+  has been seen.
+- **Unresolvable token.** The predicate already exists: `is_shell_expanded(token)` in
+  `exfil_bash_lex.py` returns `"$" in token or "`" in token`, and is imported and used by the
+  dispatcher and VCS checks. `exfil_bash_runner.py` already imports from that module
+  (`SHELLS`, `GuardError`, `match_flag`); add `is_shell_expanded` to that import and use it in
+  both `_resolve_dir` (replacing its inline `"$" in target or "`" in target`) and the
+  interpreter loop. Do not introduce a second predicate in `exfil_bash_runner.py` — that would
+  duplicate the shared helper and let the two definitions drift. In the loop, when the program
+  is unknown and the positional token satisfies it, raise
   `_GuardError(f"{prog} script {tok!r} is expanded by the shell, so the guard cannot read it to scan it; a program the guard cannot read does not run")`
   before calling `_read_script`. The fail-closed outcome is unchanged; only the message is.
 - **Return labels.** `_check_interpreter`'s return value is only a descriptive label consumed by
@@ -113,10 +124,17 @@ Cases (from the task):
 - `python3 - data.json <<'PY' … PY` with a clean body allows; with `import socket` blocks.
 - `python3 -I - "$f" <<'PY' … PY` with a clean body allows.
 - `python3 -c 'print(1)' data.txt` (no such file) allows.
+- `python3 -c 'print(1)' -` allows: once inline code has fixed the program, the trailing `-`
+  is a positional argument, not a second stdin program, so its heredoc/pipe is not scanned
+  (and with `import socket` only in that stdin body, still allows — the body never runs as a
+  program). Guards the early-return-before-`tok == "-"` placement.
 - `perl -e 'print 1' -e 'print 2' file` allows, and with a network call in the *second* `-e`
   blocks (proves both programs are scanned).
-- `python3 /nonexistent/script.py` still blocks (existing behaviour; already asserted in
-  `test_interpreter_options_with_a_value_are_not_the_program` — the new module asserts the `"$script"` variant).
+- `python3 /nonexistent/script.py` still blocks (existing behaviour). The closest existing
+  assertion is the option-value variant `python3 -W error /nonexistent/script.py` in
+  `test_interpreter_options_with_a_value_are_not_the_program`; the new module adds the plain
+  `python3 /nonexistent/script.py` case and the `python3 "$script"` variant (which blocks with
+  the new "expanded by the shell" message), so neither is left to inference.
 - `python3 "$script"` blocks with the new "expanded by the shell" message.
 
 No existing test changes.
@@ -144,8 +162,9 @@ No existing test changes.
 
 1. **Heredoc-written script (optional item).** `cat > /abs/fix.py <<'PY' … PY; python3 -I
    /abs/fix.py target.md` is blocked because the file does not exist at scan time. The
-   dispatcher has every heredoc body (`_split_heredocs` in `exfil_bash_dispatch.py`)
-   and the redirects of each simple command, so pairing a `>` target with its body and
+   dispatcher has every heredoc body (it calls `_split_heredocs`, defined in
+   `exfil_bash_lex.py`, and holds the resulting `bodies`) and the redirects of each simple
+   command, so pairing a `>` target with its body and
    scanning that body when the interpreter's script path equals the target is feasible. It
    widens the change into the dispatcher and needs careful path normalisation (relative vs
    absolute, a `cd` between the write and the run). Fail-closed is defensible.
@@ -159,6 +178,6 @@ No existing test changes.
 
 ## Estimated complexity
 
-Small. About 15 lines changed in one function plus a shared predicate, one new test module,
-and three one-line list additions (two `GUARD_FILES` arrays and the `analysis.yaml`
-`PROTECTED_FILES` array).
+Small. About 15 lines changed in one function, reusing the existing `is_shell_expanded`
+predicate (one added import, no new predicate), one new test module, and three one-line list
+additions (two `GUARD_FILES` arrays and the `analysis.yaml` `PROTECTED_FILES` array).
