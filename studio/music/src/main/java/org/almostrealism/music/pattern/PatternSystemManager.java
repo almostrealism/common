@@ -575,13 +575,17 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 * <p>The notes gathered for each element are transient to this warm-up: each owns a
 	 * single-element offset-argument {@link PackedCollection} nothing else references, so
 	 * they are {@link RenderedNoteAudio#destroy() destroyed} in a {@code finally} after
-	 * evaluation. The evaluated audio is discarded: when a {@link Heap} is active the
-	 * evaluation runs in a heap stage that frees it on exit, and otherwise the
-	 * evaluation's output allocation is destroyed directly, so repeated scene warm-ups
-	 * do not accumulate native allocations until garbage collection. The scratch
-	 * destination allocated for each pattern is likewise released in a {@code finally}; it
-	 * exists only to satisfy {@link PatternLayerManager#updateDestination} during warm-up
-	 * and is replaced by the real destination on the first render.</p>
+	 * evaluation. The evaluated audio is discarded but deliberately not freed here: a note
+	 * whose producer is a pass-through (for example a {@code SimplePatternNote} returning
+	 * its {@code NoteAudioProvider} producer) hands back a view of shared, cached sample
+	 * memory, so destroying the result would invalidate audio reused by later renders. When
+	 * a {@link Heap} is active the evaluation runs in a heap stage that frees any transient
+	 * output on exit; otherwise the output is reclaimed by the garbage collector. This
+	 * matches the per-note render path, which copies rather than destroys the evaluated
+	 * result for the same reason. The scratch destination allocated for each pattern is
+	 * released in a {@code finally}; it exists only to satisfy
+	 * {@link PatternLayerManager#updateDestination} during warm-up and is replaced by the
+	 * real destination on the first render.</p>
 	 *
 	 * @param contextProvider a function that creates an {@link AudioSceneContext} for a channel
 	 * @return the number of notes successfully evaluated during warmup
@@ -632,7 +636,6 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 										PackedCollection audio = traverse(1, producer).get().evaluate();
 										if (audio == null) return;
 										rendered[0] = true;
-										if (Heap.getDefault() == null) audio.getRootDelegate().destroy();
 									});
 									if (rendered[0]) {
 										notesEvaluated++;

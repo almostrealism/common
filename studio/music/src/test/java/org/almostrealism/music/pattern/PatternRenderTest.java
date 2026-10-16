@@ -538,6 +538,43 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	}
 
 	/**
+	 * A note whose producer is a pass-through hands back a view of shared, cached sample
+	 * memory from {@code evaluate()} (for example a {@code SimplePatternNote} returning its
+	 * {@code NoteAudioProvider} producer). Warm-up runs with no active {@link Heap}, so it
+	 * must evaluate into a buffer it owns rather than destroying the evaluate() result's
+	 * root delegate; otherwise it would invalidate sample memory reused by later renders.
+	 * This exercises that pass-through shape with a buffer the test owns and asserts the
+	 * buffer survives the warm-up intact.
+	 */
+	@Test(timeout = 120000)
+	public void warmNoteCacheLeavesSharedNoteAudioIntact() {
+		NoteAudioChoice choice = NoteAudioChoice.fromSource("Hit",
+				new FileNoteSource(getNamedTestWavPath("render_hit.wav", 330.0, SAMPLE_SECONDS, true),
+						WesternChromatic.C1), 0, 9, false);
+		choice.setTuning(new DefaultKeyboardTuning());
+
+		PackedCollection shared = new PackedCollection(shape(2, 64));
+		shared.fill(1.0);
+		PassThroughElement element = new PassThroughElement(
+				new PatternNote(0.1, 0.5, 0.9), 0.25, cp(shared));
+
+		try (PatternSystemManager psm = new PatternSystemManager(List.of(choice),
+				PatternSystemManagerTest.chromosomes(1))) {
+			psm.init();
+			psm.addPattern(0, 1.0, false).setExplicitElements(choice, List.of(element));
+
+			Assert.assertEquals("the pass-through note is evaluated during warm-up",
+					1, psm.warmNoteCache(channel -> context(null)));
+		}
+
+		Assert.assertFalse("warm-up must not destroy shared note-audio sample memory",
+				shared.isDestroyed());
+		Assert.assertEquals("shared note-audio contents survive warm-up",
+				1.0, shared.toDouble(0), 0.0);
+		shared.destroy();
+	}
+
+	/**
 	 * A {@link PatternElement} whose note audio is absent ({@code null}), recording the
 	 * destinations it gathers and how many times its audio was requested.
 	 */
@@ -585,6 +622,37 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 		/** Returns the number of note audio requests made so far. */
 		int getAudioRequests() {
 			return audioRequests;
+		}
+	}
+
+	/**
+	 * A {@link PatternElement} whose note audio is a fixed pass-through producer over a
+	 * shared buffer, modelling a note (such as a {@code SimplePatternNote}) that returns
+	 * its {@code NoteAudioProvider}'s cached audio directly rather than computing it.
+	 */
+	private static final class PassThroughElement extends PatternElement {
+		/** The shared pass-through audio producer returned for every request. */
+		private final Producer<PackedCollection> audio;
+
+		/**
+		 * Creates a pass-through element.
+		 *
+		 * @param note     the main-voicing note
+		 * @param position the position of this element within its pattern, in measures
+		 * @param audio    the pass-through audio producer over shared sample memory
+		 */
+		PassThroughElement(PatternNote note, double position, Producer<PackedCollection> audio) {
+			super(note, position);
+			this.audio = audio;
+		}
+
+		@Override
+		public Producer<PackedCollection> getNoteAudio(ElementVoicingDetails details,
+													   Factor<PackedCollection> automationLevel,
+													   DoubleFunction<PatternNoteAudio> audioSelection,
+													   DoubleUnaryOperator timeForDuration,
+													   PackedCollection offset, int frameCount) {
+			return audio;
 		}
 	}
 }
