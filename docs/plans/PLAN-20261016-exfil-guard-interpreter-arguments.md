@@ -529,8 +529,11 @@ narrowing changes no current assertion.
 
 ### Tests
 
-`.claude/hooks/lib/test_exfiltration_guard_check.py` is 1,575 lines, just under the 1,600-line
-limit, so the new cases go in a new module, `test_exfiltration_guard_interpreter.py`, built on
+`.claude/hooks/lib/test_exfiltration_guard_check.py` is 1,575 lines — already past the project's
+recommended 1,500-line file size and close to the 1,600-line ceiling (for Python files that
+ceiling is enforced by `scripts/check-python-file-lengths.sh`, which CI runs and which fails the
+build, the same limit checkstyle's `FileLength` rule applies to Java) — so the new cases go in a new module,
+`test_exfiltration_guard_interpreter.py`, built on
 the shared `GuardFixture` imported from `test_exfiltration_guard_check.py`. This follows the
 precedent of `test_exfiltration_guard_transport.py`. CI already picks it up: `analysis.yaml`
 runs `python3 -m unittest discover -s .claude/hooks/lib -p "test_exfiltration_guard_*.py"`.
@@ -858,7 +861,7 @@ No existing test changes.
    is the next positional, `code_seen` is false, so it reaches `_read_script` and blocks on the
    unreadable name — but the single-token attached form `python3 -Ec'import socket'` (one token,
    `-Ecimport socket`) is skipped with `code_seen` false and, being the last token, returns
-   `python:inline` with the code unscanned: a fail-open. The plan's statement that `-c` is Python's
+   `python3:inline` with the code unscanned: a fail-open. The plan's statement that `-c` is Python's
    only inline-code form is true of *which flag* carries code, but it is **not** a claim that every
    spelling of that flag is matched; the per-family `-c` match misses the clustered spelling. The
    two resolutions below apply to the Python family as well: extend "reject unsupported clusters" to
@@ -904,6 +907,20 @@ No existing test changes.
    cluster after an inline `-e` is already non-idiomatic, and it keeps the plan's own guarantee
    ("a second program smuggled past the first is never silently skipped once an inline program has
    been seen") true for clusters as well as for expansions.
+
+   **Review concern: the Python arm over-blocks more than `-Ec script.py`.** That "costs nothing"
+   argument holds for the Perl/Ruby/Node inline-first path, but the Python arm runs while the
+   program is still unknown, where clusters are ordinary. Python accepts several common argument-less
+   clusters — `-OO`, `-bb`, `-IS`, `-Es`, `-vv` — and none of them starts with `-W`, `-X` or `-c`, so
+   each is a single-`-`, length > 2 token matching none of Python's tables. The minimal refusal as
+   worded would therefore block `python3 -OO script.py` and `python3 -IS script.py`, a new false
+   positive of exactly the kind this plan sets out to remove. Python's short-option grammar is small
+   enough that a narrower rule is cheap: only `-c`, `-m`, `-W` and `-X` take a value, so walking the
+   cluster's letters and refusing (or scanning, for `c`) only when a `c` is reached before any other
+   value-taking letter closes `-Ec'…'` without touching `-OO`/`-IS`. The approver should choose
+   between the minimal refusal (accepting that over-block) and this per-letter Python walk; the
+   regressions above should then also assert that `python3 -OO /nonexistent/script.py` blocks on the
+   unreadable script, not on the cluster refusal, if the narrower rule is taken.
 
 5. **Pipe vs heredoc on the inline-program stdin path (in scope; one decision for the approver).**
    Because an inline program can read and execute its own stdin, Scope item 2 requires every
@@ -1044,8 +1061,8 @@ No existing test changes.
    over-block).** `_check_interpreter` has no case for `--`. It starts with `-`, so it reaches the
    generic `tok.startswith("-")` skip and is dropped like any other option. The Approach above
    leaves it there: on the `inline_seen` path it is an ordinary, unexpanded dash option and still
-   falls through to that skip. Copilot's review summary for the latest commit on PR #659 names a
-   "`--` handling gap" without an inline finding. Running the four interpreters with a `--` marker
+   falls through to that skip. A Copilot review summary on PR #659 named a "`--` handling gap"
+   without an inline finding. Running the four interpreters with a `--` marker
    shows two concrete consequences, one on each side of the inline flag.
    - **Before the program is fixed, `--` makes the next word the script, even a dash-shaped one.**
      With a file named `-e` (or `-c`) in the working directory, `perl -- -e 'print 1'` and
