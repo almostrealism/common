@@ -86,7 +86,16 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
    accept an attached value (`perl -e'print 1'`), so their `-e`/`-E` keep attached matching; a
    switch cluster such as `-pe` or `-lne` no longer matches any of their inline flags (it does
    not start with `-e`/`-E`), so it is skipped as an ordinary option and the code token after it
-   is read as a script and fails closed — the same outcome as today (Open question 4).
+   is read as a script by `_read_script`. That read fails closed — and the command blocks —
+   *whenever the code token does not name a readable file*, which is the normal case, because the
+   token is interpreter source (`'use Socket; …'`), not a path. It is important to be precise
+   about what that block is and is not: the guard never scans the cluster's actual inline program,
+   so the block is a property of the operand being unreadable, not of the guard recognising the
+   cluster. If that operand ever did name a readable, clean file, the guard would scan the *file*,
+   return, and let the real inline program run unscanned — a residual fail-open inherent to not
+   parsing clusters. This is the same outcome as today, where `-pe` matches `-p` with the attached
+   value `e` and the operand is likewise read as a script; Open question 4 records the residual
+   and the two ways to close it.
 
    A shared-set member that is not in the family's table is an ordinary dash option that takes
    no value, so the operand after it is still read and scanned as the script (item 3 and Open
@@ -317,11 +326,17 @@ argument walk does, so a "blocks" case built on it would test nothing.
   `script.pl` the program Perl runs, so it must still be read and scanned rather than returned
   past as argv data. (`perl -e 'print 1' script.pl` is the contrasting allow — there the operand
   *is* `@ARGV` data because `-e` is the program.)
-- `perl -pe 'use Socket; …' file` blocks (the `-pe` cluster is not an inline flag for Perl, so
-  the code token is read as a script and fails closed — it is never returned past as data), and
-  `perl -p /nonexistent/script.pl` and `ruby -p /nonexistent/script.rb` block because the script
-  is read rather than consumed as `-p`'s value. These guard that the Perl/Ruby inline match uses
-  the family table, not the shared set.
+- `perl -pe 'use Socket; …' file` blocks: the `-pe` cluster is not an inline flag for Perl, so
+  the cluster's code token (`'use Socket; …'`) is not consumed as inline data (not returned past)
+  but reaches `_read_script`, where the read of that non-path fails closed. This case proves the
+  cluster is *not* skipped over as data; it does **not** prove the cluster's inline program is
+  scanned — the block comes from the operand being unreadable, and if that operand named a
+  readable clean file the real program would run unscanned (the residual fail-open in Open
+  question 4). A regression that genuinely exercised scanning of a cluster's inline code would
+  require parsing the cluster, which this change does not do. `perl -p /nonexistent/script.pl`
+  and `ruby -p /nonexistent/script.rb` block because the script is read rather than consumed as
+  `-p`'s value. These guard that the Perl/Ruby inline match uses the family table, not the shared
+  set.
 - `node -p 'process.argv[1]' data.txt`, `node --eval 'x' data.txt` and
   `node -pe 'process.argv[1]' data.txt` (no such file) allow, and `node -pe 'fetch("http://e")'`
   blocks — the real program after `-pe` is scanned, not skipped behind an attached `e`.
@@ -431,12 +446,41 @@ No existing test changes.
 4. **Perl/Ruby switch clusters (pre-existing over-block, out of scope).** `perl -lne 'code' file`,
    `perl -pe 'code' file` and `ruby -ne 'code' file` are common one-liners. Today none of them is
    recognised as carrying inline code (`-lne` matches no code flag; `-pe` matches `-p` with the
-   attached value `e`), so the code token is read as a script and the command blocks. This plan
-   keeps that fail-closed result — with the per-family tables a cluster still matches no inline
-   flag — rather than parse clusters, because a cluster parser must know which Perl/Ruby switches
-   take a value (`-l`, `-0`, `-i`, `-F`, `-C`, …) to find where the `e` sits, and a mistake there
-   is a fail-open. Parsing clusters correctly is a reasonable follow-up task once this change
-   lands.
+   attached value `e`), so the cluster's code token is read as a script and the command blocks.
+   This plan keeps that result — with the per-family tables a cluster still matches no inline flag
+   — rather than parse clusters, because a cluster parser must know which Perl/Ruby switches take a
+   value (`-l`, `-0`, `-i`, `-F`, `-C`, …) to find where the `e` sits, and a mistake there is a
+   fail-open.
+
+   A reviewer (PR #659) correctly observed that calling this result "fail-closed" is an
+   overstatement, and the point is recorded here rather than papered over. The block is not
+   produced by recognising the cluster; it is produced by `_read_script` failing on the token
+   after the cluster. For a real one-liner that token is the Perl/Ruby source (`'use Socket; …'`),
+   which is not a path, so the read fails and the command blocks — but the cluster's inline
+   program is never actually scanned. If that token ever named a readable, clean file, the guard
+   would scan the *file*, return, and let the real inline program run unscanned. That is a
+   residual fail-open, narrow (it needs the source text to coincide with a readable clean path)
+   but genuine, and it exists on `master` today as much as under this plan. A test that uses only
+   a nonexistent code-looking path therefore demonstrates that the cluster token is not consumed
+   as data; it does not demonstrate that the inline program is scanned.
+
+   Two ways close it, for the approver to choose between:
+   - **Reject unsupported clusters.** When the program is still unknown and a token is a short
+     option cluster the family's tables do not recognise (a single-`-`, length > 2 token that is
+     not a long `--` flag and matches no value/preload/inline flag), refuse it before reading the
+     following token as a script, rather than skipping it. This makes the block unconditional
+     (independent of whether the next token is a readable file) and is a small, local change. Its
+     cost is that it can only ever block — it still does not run the one-liner — so it does not
+     remove the over-block, only makes the fail-closed behaviour honest; and it must be scoped to
+     Perl/Ruby/Node (families with a code grammar), since a grammar-less interpreter's unknown
+     clusters cannot be classified this way.
+   - **Parse clusters.** Decompose `-pe`/`-lne`/`-ne` into their constituent switches, resolve
+     which ones take a value, and scan the `-e` program properly. This removes the over-block (the
+     one-liner would be scanned and, if clean, allowed) but is the riskier change: a mistake about
+     which switches consume a value is itself a fail-open.
+
+   Either is a reasonable follow-up task once this change lands; neither is in scope here, which
+   keeps the bug fix small.
 
 ## Estimated complexity
 
