@@ -50,12 +50,18 @@ In scope (all in `.claude/hooks/lib/`, the guard's file lists in
 
 1. After `-` (stdin program): stop the argument walk and return `f"{prog}:stdin"`; the
    remaining tokens are script arguments and are not read.
-2. After an inline-code flag: keep consuming further inline-code flags (and the dash-led
-   options between them, which the loop already handles), so `perl -e 'a' -e 'b' file` scans
-   both programs; at the first positional token, return `f"{prog}:inline"` without reading it.
-   Once inline code has fixed the program, a `-` is a positional argument too (it is
-   `sys.argv`), so the early return must preempt the `tok == "-"` branch; otherwise
-   `python3 -c 'print(1)' -` would scan stdin as a second program.
+2. After an inline-code flag, handling splits by interpreter family. Python's `-c` turns the
+   whole remainder of the command line into `sys.argv`, so once it has been scanned no later
+   token is an option: the Python family returns `f"{prog}:inline"` immediately, before the
+   `-m`, `-`, positional, or awk handlers run. That is what makes `python3 -c 'print(1)' data.txt`,
+   `python3 -c 'print(1)' -`, and `python3 -c 'x' -m http.server` all allow — the program is
+   fixed and the rest is data. Every other interpreter — Perl and Ruby, which accept *repeated*
+   inline-code flags; Node; and interpreters the guard has no option grammar for — keeps the loop
+   going after the first inline flag so a later one is still scanned (`perl -e 'a' -e 'b' file`
+   scans both programs), and a `code_seen` early return just above the `tok == "-"` branch then
+   ends the walk at the first positional (or `-`) without reading it. That path stays fail-closed:
+   the only reason to single Python out is that its `-c` grammar is unambiguous enough to return
+   early safely (Open question 2).
 3. A positional token that contains `$` or a backtick, reached while the program is still
    unknown (`python3 "$script"`), blocks with a message that says what it is — an argument the
    guard cannot resolve to a file — instead of a `FileNotFoundError` on the literal text. Once
@@ -76,15 +82,27 @@ All production changes are in `_check_interpreter` in `exfil_bash_runner.py`.
 - **Stdin program.** In the `tok == "-"` branch, after `_check_stdin_program(...)`, return
   `f"{prog}:stdin"` instead of `continue`. This matches the label `_check_shell` already uses
   for a stdin program. The trailing `if not code_seen: _check_stdin_program(...)` is unchanged.
-- **Inline program.** After the inline-code branch sets `code_seen`, the loop continues so
-  further code flags and dash-led options are still processed (they may be more `-e` programs,
-  preloads, or `-m`, which must still be checked). The early return goes *after* those dash-led
-  handlers (so repeated `-e` and a trailing `-m` are still checked — see Open question 2) but
-  *before* the `tok == "-"` branch: add, just above `if tok == "-":`, a check that returns
-  `f"{prog}:inline"` when `code_seen`. Placing it before `tok == "-"` is what makes a `-` after
-  inline code read as a positional argument rather than a second stdin program
-  (`python3 -c 'print(1)' -`). The awk branch keeps its own `if not code_seen` scan of the first
-  positional; with the early return above it, that branch is only reached when no inline program
+- **Inline program.** Two cases, by interpreter family.
+  - **Python** (family `python`: `python`, `python2`, `python3`, `pypy`, `pypy3`). `-c` makes
+    everything after it `sys.argv`, so nothing that follows is an option. In the inline-code
+    branch, when `family == "python"`, return `f"{prog}:inline"` as soon as `_scan_code(...)`
+    has run — before the `-m` handler, the `tok == "-"` branch, and the positional/awk handlers.
+    This is what stops `python3 -c 'x' -m http.server` from being refused as a network module and
+    `python3 -c 'print(1)' -` from scanning stdin as a second program: both tokens are arguments
+    to the program `-c` already fixed. `python3 -m http.server` with no preceding `-c` is
+    unaffected — `code_seen` is false there, so the `-m` handler is still reached and still blocks.
+  - **Every other interpreter** (Perl, Ruby, Node, and grammar-less interpreters such as php or
+    lua). These may carry repeated inline-code
+    flags (`perl -e 'a' -e 'b'`), so the loop must keep going after the first one: it sets
+    `code_seen` and `continue`s, scanning each further `-e`/`-E` program. A `code_seen` early
+    return added just above `if tok == "-":` — returning `f"{prog}:inline"` — then ends the walk
+    at the first positional token (or `-`) without reading it. Placing it before `tok == "-"` is
+    what makes a `-` after inline code read as a positional argument rather than a second stdin
+    program. For these families the `-m` handler still runs after inline code, so
+    `perl -e 'x' -m Foo`-style tokens stay fail-closed (see Open question 2); no such case has
+    been reported.
+  The awk branch keeps its own `if not code_seen` scan of the first positional; with the early
+  return above it (and the Python immediate return), it is reached only when no inline program
   has been seen.
 - **Unresolvable token.** The predicate already exists: `is_shell_expanded(token)` in
   `exfil_bash_lex.py` returns `"$" in token or "`" in token`, and is imported and used by the
@@ -127,7 +145,12 @@ Cases (from the task):
 - `python3 -c 'print(1)' -` allows: once inline code has fixed the program, the trailing `-`
   is a positional argument, not a second stdin program, so its heredoc/pipe is not scanned
   (and with `import socket` only in that stdin body, still allows — the body never runs as a
-  program). Guards the early-return-before-`tok == "-"` placement.
+  program). Guards the Python immediate-return: the `-c` branch returns before the
+  `tok == "-"` handler is reached.
+- `python3 -c 'print(1)' -m http.server` allows: for Python, `-m http.server` after `-c` is
+  `sys.argv`, not a module directive, so it is not refused as a network module. Guards that the
+  Python return precedes the `-m` handler (Open question 2). `python3 -m http.server` with no
+  `-c` still blocks (existing behaviour; add it so the distinction is asserted, not inferred).
 - `perl -e 'print 1' -e 'print 2' file` allows, and with a network call in the *second* `-e`
   blocks (proves both programs are scanned).
 - `python3 /nonexistent/script.py` still blocks (existing behaviour). The closest existing
@@ -170,14 +193,25 @@ No existing test changes.
    absolute, a `cd` between the write and the run). Fail-closed is defensible.
    **Recommendation:** leave it out of this change and file it as a follow-up task, so the bug
    fix lands small. If the reviewer wants it in, it is a second, separable phase.
-2. **Options after an inline program.** For Python, everything after `-c CODE` is
-   `sys.argv`, so `python3 -c 'x' -m http.server` passes `-m http.server` as arguments, but
-   the guard will still refuse it as a network module. That is a fail-closed false positive
-   no one has reported; the plan keeps processing dash-led tokens after inline code (needed
-   for perl/ruby's repeated `-e`) and does not special-case Python. Confirm that is acceptable.
+2. **Options after an inline program (resolved).** For Python, everything after `-c CODE` is
+   `sys.argv`, so `python3 -c 'x' -m http.server` must pass `-m http.server` as arguments rather
+   than be refused as a network module — the same class of false positive this change targets.
+   An earlier draft left this open; it is now resolved in Scope/Approach by having the Python
+   family return `f"{prog}:inline"` as soon as inline code is scanned, before the `-m` handler.
+   The resolution is deliberately Python-only: Python's `-c` unambiguously consumes the rest of
+   argv, whereas returning early for interpreters that can carry repeated inline-code flags
+   (Perl, Ruby) — or Node, or any interpreter whose grammar the guard does not model — would risk
+   *not* scanning a later inline program — a fail-open bypass. So those families keep the continue-then-early-return
+   path, and a residual fail-closed false positive remains for them (e.g. `perl -e 'x' -m Foo`
+   if `Foo` ever named a modelled network module). None has been reported; over-blocking there is
+   the safe direction. If a reviewer prefers the maximally conservative option, leaving Python in
+   the fail-closed path too is a one-line change, at the cost of keeping the reported
+   `python3 -c 'x' -m http.server` false positive.
 
 ## Estimated complexity
 
-Small. About 15 lines changed in one function, reusing the existing `is_shell_expanded`
+Small. About 15–20 lines changed in one function — a Python-family immediate return in the
+inline-code branch, the `code_seen` early return above `tok == "-"` for the other families, the
+`-` stdin return, and the unresolvable-token guard — reusing the existing `is_shell_expanded`
 predicate (one added import, no new predicate), one new test module, and three one-line list
 additions (two `GUARD_FILES` arrays and the `analysis.yaml` `PROTECTED_FILES` array).
