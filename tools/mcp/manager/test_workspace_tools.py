@@ -639,3 +639,149 @@ class TestWorkspaceSecretRenderFile(unittest.TestCase):
                     template="",
                     output_path="/tmp/out",
                 )
+
+
+class TestArchivedWorkstreamReadOnly(unittest.TestCase):
+    """Archived workstreams are readable but frozen.
+
+    A retrospective that surveys merged QA rounds must be able to read an
+    archived round's context, job history and memories; the first run of the
+    retrospective could not, because every helper that resolves a workstream's
+    ownership read the controller's live-only list, so an archived id came
+    back as "not found" / "not in scope". These tests pin that ownership now
+    resolves for archived workstreams (so the read tools see them), and that
+    the write tools nonetheless refuse to submit a job to, or change the
+    configuration of, an archived workstream.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    @patch.object(server, "_controller_get")
+    def test_scope_map_includes_archived(self, mock_get):
+        """The workspace map resolves an archived workstream's owner, and asks
+        the controller for archived rows to do it."""
+        mock_get.return_value = [
+            {"workstreamId": "ws-live", "workspaceId": "TAAA"},
+            {"workstreamId": "ws-arch", "workspaceId": "TBBB", "archived": True},
+        ]
+        self.assertEqual("TBBB", server._workspace_for_workstream("ws-arch"))
+        self.assertEqual("/api/workstreams?includeArchived=true",
+                         mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_get")
+    def test_find_workstream_resolves_archived(self, mock_get):
+        """_find_workstream returns an archived row (carrying archived=true)
+        rather than treating it as absent."""
+        mock_get.return_value = [
+            {"workstreamId": "ws-arch", "workspaceId": "TBBB", "archived": True},
+        ]
+        ws = server._find_workstream("ws-arch")
+        self.assertIsNotNone(ws)
+        self.assertTrue(ws.get("archived"))
+        self.assertIn("includeArchived=true", mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_get")
+    def test_find_workstream_by_branch_matches_archived(self, mock_get):
+        """repo_url + branch resolves an archived workstream for the job
+        timeline, honouring the controller's archived list."""
+        mock_get.return_value = [
+            {"workstreamId": "ws-arch", "defaultBranch": "qa/retro-x",
+             "workspaceId": "TBBB", "archived": True},
+        ]
+        ws = server._find_workstream_by_branch(
+            "git@github.com:org/repo.git", "qa/retro-x")
+        self.assertIsNotNone(ws)
+        self.assertEqual("ws-arch", ws["workstreamId"])
+        self.assertIn("includeArchived=true", mock_get.call_args[0][0])
+
+    @patch.object(server, "_find_workstream")
+    def test_archived_error_fires_for_archived(self, mock_find):
+        mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
+        err = server._archived_workstream_error("submit a task", "ws-arch")
+        self.assertIsNotNone(err)
+        self.assertFalse(err["ok"])
+        self.assertIn("archived", err["error"])
+
+    @patch.object(server, "_find_workstream")
+    def test_archived_error_silent_for_live(self, mock_find):
+        mock_find.return_value = {"workstreamId": "ws-live"}
+        self.assertIsNone(
+            server._archived_workstream_error("submit a task", "ws-live"))
+
+    @patch.object(server, "_find_workstream", return_value=None)
+    def test_archived_error_silent_for_unknown(self, _):
+        self.assertIsNone(
+            server._archived_workstream_error("submit a task", "ws-missing"))
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream")
+    def test_submit_rejected_for_archived(self, mock_find, mock_post):
+        """No job may be submitted to an archived workstream, and the refusal
+        reaches the caller before the controller is contacted."""
+        mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug", workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream")
+    def test_submit_allowed_for_live(self, mock_find, mock_post):
+        """A live workstream is unaffected by the archived guard."""
+        mock_find.return_value = {"workstreamId": "ws-live"}
+        mock_post.return_value = {"ok": True, "jobId": "job-1",
+                                  "workstreamId": "ws-live"}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug", workstream_id="ws-live")
+        self.assertTrue(result["ok"])
+        mock_post.assert_called_once()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream")
+    def test_update_config_rejected_for_archived(self, mock_find, mock_post):
+        """An archived workstream's configuration is frozen."""
+        mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.workstream_update_config(
+            workstream_id="ws-arch", repo_url="git@github.com:org/repo.git")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_get_memory_client")
+    def test_context_jobs_resolved_from_repo_and_branch(
+            self, mock_client_fn, mock_by_branch, mock_get, mock_pr):
+        """A repo_url + branch caller now gets the job timeline, which an
+        archived round depends on since it is addressed by branch, not id."""
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_pr.return_value = {"ok": True, "found": False}
+        mock_by_branch.return_value = {"workstreamId": "ws-arch"}
+        mock_get.return_value = [
+            {"jobId": "job-9", "timestamp": "2026-10-10T00:00:00Z",
+             "status": "SUCCESS", "description": "retro"},
+        ]
+
+        result = server.workstream_context(
+            repo_url="git@github.com:org/repo.git",
+            branch="qa/retro-x",
+            include_commits=False,
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertIn("jobs", result)
+        self.assertEqual([j["jobId"] for j in result["jobs"]], ["job-9"])
+        # The timeline was fetched for the branch-resolved workstream.
+        self.assertIn("/api/workstreams/ws-arch/jobs",
+                      mock_get.call_args[0][0])

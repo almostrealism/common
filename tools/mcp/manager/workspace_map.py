@@ -99,10 +99,21 @@ def _refresh_workspace_map() -> Optional[tuple]:
     treat the two the same: a fetch failure means "unknown state," not
     "no workspaces exist," and must not overwrite a previously-good cache
     with an empty one (see :func:`_get_cached_maps`).
+
+    Archived workstreams are included (``includeArchived=true``). The map
+    answers "which workspace owns this workstream," and an archived
+    workstream still belongs to its workspace. Resolving ownership for
+    archived rows is what lets the read tools (``workstream_context``,
+    ``workstream_get_job``, ``workstream_get_status``) see an archived
+    round at all; whether an *operation* is permitted on an archived
+    workstream is a separate question answered by the write tools, which
+    refuse it (see :func:`_archived_workstream_error`). The dispatch-capable
+    map is built from a live-only fetch on purpose — dispatch is a property
+    of a workstream that can still accept work.
     """
     import sys as _sys
     _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
-    result = _cget("/api/workstreams")
+    result = _cget("/api/workstreams?includeArchived=true")
     if isinstance(result, list):
         entries = result
     elif isinstance(result, dict) and isinstance(result.get("workstreams"), list):
@@ -539,6 +550,13 @@ def _pipeline_error(workstream_id: str, missing: str) -> dict:
 def _find_workstream(workstream_id: str) -> Optional[dict]:
     """Fetch a specific workstream from the controller's list.
 
+    Archived workstreams are included (``includeArchived=true``) so an
+    archived round still resolves — its dict carries ``archived=true``,
+    which the write tools read to keep it read-only (see
+    :func:`_archived_workstream_error`). Without this, addressing an
+    archived workstream by id failed as "not found" for every read tool
+    that resolves repo/branch through here.
+
     Enforces the current request's workspace scope as a side effect: a
     scoped caller looking up a workstream in an out-of-scope workspace
     receives ``None`` (the lookup appears to fail, rather than leaking
@@ -549,7 +567,7 @@ def _find_workstream(workstream_id: str) -> Optional[dict]:
     """
     import sys as _sys
     _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
-    result = _cget("/api/workstreams")
+    result = _cget("/api/workstreams?includeArchived=true")
     if isinstance(result, list):
         for ws in result:
             if ws.get("workstreamId") == workstream_id:
@@ -558,3 +576,97 @@ def _find_workstream(workstream_id: str) -> Optional[dict]:
                     return None
                 return ws
     return None
+
+
+def _find_workstream_by_branch(repo_url: str, branch: str) -> Optional[dict]:
+    """Find a workstream by its repository and default branch.
+
+    Archived workstreams are included, so a caller that addresses a branch
+    by ``repo_url`` + ``branch`` (rather than by id) can still resolve an
+    archived round — the shape a retrospective survey uses for a merged,
+    archived QA round it found through ``workstream_list``. This is what
+    lets :func:`workstream_context` return a job timeline for the
+    repo+branch form, not only when a ``workstream_id`` was supplied.
+
+    Enforces workspace scope exactly as :func:`_find_workstream` does: a
+    match owned by an out-of-scope workspace is skipped, so existence is
+    not leaked to a scoped caller.
+
+    Returns:
+        The first in-scope workstream dict whose ``defaultBranch`` equals
+        *branch* on the given repository, or ``None`` when there is none.
+    """
+    if not repo_url or not branch:
+        return None
+    import sys as _sys
+    _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
+    from urllib.parse import urlencode
+    path = "/api/workstreams?" + urlencode(
+        {"includeArchived": "true", "repoUrl": repo_url})
+    result = _cget(path)
+    if isinstance(result, list):
+        entries = result
+    elif isinstance(result, dict) and isinstance(result.get("workstreams"), list):
+        entries = result["workstreams"]
+    else:
+        return None
+    for ws in entries:
+        if not isinstance(ws, dict) or ws.get("defaultBranch") != branch:
+            continue
+        if _get_workspace_scopes() and not _is_workspace_allowed(
+                ws.get("workspaceId") or ws.get("slackWorkspaceId")):
+            continue
+        return ws
+    return None
+
+
+def _archived_workstream_error(operation: str, workstream_id: str) -> Optional[dict]:
+    """Return an error dict when *workstream_id* names an archived
+    workstream, or ``None`` when it is live, unknown, or out of scope.
+
+    Archived workstreams are read-only: their context, memories and job
+    history stay queryable, but no job may be submitted to them and their
+    configuration may not be changed. The write tools call this before they
+    contact the controller so the refusal names archiving as the reason
+    rather than surfacing as a generic controller error. Resolving an
+    archived workstream's ownership now succeeds (see
+    :func:`_find_workstream`), so this explicit guard — not the former
+    accidental scope-resolution failure — is what keeps writes off an
+    archived workstream.
+
+    An unknown or out-of-scope workstream resolves to ``None`` here so the
+    caller's existing not-found / scope handling still runs; this guard
+    speaks only to the archived case. Addressing by ``workstream_id`` is the
+    path it protects — a caller that resolves a workstream another way (an
+    operator submitting by ``target_branch`` with no id) is left to the
+    controller's own archived handling.
+
+    Args:
+        operation: What the caller was attempting, phrased to complete
+            "Cannot <operation>:" — e.g. ``"submit a task"``.
+        workstream_id: The workstream the write was aimed at.
+
+    Returns:
+        An ``{"ok": False, ...}`` dict naming archiving as the reason, or
+        ``None`` when the workstream is not archived (or not resolvable).
+    """
+    if not workstream_id:
+        return None
+    import sys as _sys
+    _find = getattr(_sys.modules.get('server'), '_find_workstream', None) or _find_workstream
+    ws = _find(workstream_id)
+    if not ws or not ws.get("archived"):
+        return None
+    return {
+        "ok": False,
+        "error": (
+            f"Cannot {operation}: workstream '{workstream_id}' is archived. "
+            "Archived workstreams are read-only — their context, memories and "
+            "job history remain readable, but no new job may be submitted to "
+            "them and their configuration may not be changed."
+        ),
+        "next_steps": [
+            f"Unarchive it first with workstream_unarchive('{workstream_id}') to resume work",
+            "Or target a live workstream — workstream_list marks which are archived",
+        ],
+    }

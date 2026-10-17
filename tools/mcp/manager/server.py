@@ -264,6 +264,8 @@ from workspace_map import (
     _follow_up_task_workspace_allowed,
     _pipeline_error,
     _find_workstream,
+    _find_workstream_by_branch,
+    _archived_workstream_error,
 )
 
 # ---------------------------------------------------------------------------

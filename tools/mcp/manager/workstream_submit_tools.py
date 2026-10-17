@@ -653,6 +653,14 @@ def workstream_submit_task(
                 ],
             }
 
+    # Archived workstreams are read-only: their history stays queryable but
+    # they accept no new work. Resolving an archived workstream's ownership
+    # now succeeds, so this explicit refusal — checked before the controller
+    # is contacted — is what holds that line. Guards the id-addressed path;
+    # an operator submitting by target_branch is left to the controller.
+    archived_err = server._archived_workstream_error("submit a task", workstream_id)
+    if archived_err:
+        return archived_err
     server._require_workstream_in_scope(workstream_id)
     server._audit("workstream_submit_task", workstream_id=workstream_id,
            target_branch=target_branch, repo_url=repo_url,

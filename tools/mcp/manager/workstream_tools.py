@@ -568,9 +568,10 @@ def workstream_context(
       - **jobs**: a compact timeline of job runs on this workstream
         (timestamp, status, description, commit, PR, error). Not the
         full operational record — just enough to situate memories in
-        time. Present (possibly as an empty list) whenever
-        ``workstream_id`` is supplied and ``job_limit > 0``; omitted
-        otherwise.
+        time. Present (possibly as an empty list) whenever the branch
+        resolves to a workstream — by ``workstream_id``, or by
+        ``repo_url`` + ``branch`` (archived rounds included) — and
+        ``job_limit > 0``; omitted otherwise.
       - **metadata**: resolved repo_url, branch, namespace. Always present.
       - **pull_request**: metadata about the most recent pull request
         associated with the branch (across all states: open, closed,
@@ -876,13 +877,26 @@ def workstream_context(
         safe_job_limit = max(0, int(job_limit))
     except (TypeError, ValueError):
         safe_job_limit = 0
+    # Resolve the workstream whose job timeline to fetch. A caller that
+    # addressed the branch by workstream_id uses it directly; a caller that
+    # passed repo_url + branch has its workstream resolved here (archived
+    # rounds included) so the timeline is available either way, not only
+    # when an id was supplied. The resolution is skipped when no timeline
+    # was asked for (job_limit=0) or the branch context did not resolve.
+    jobs_workstream_id = workstream_id
+    if (not jobs_workstream_id and safe_job_limit > 0
+            and effective_repo and effective_branch):
+        ws_by_branch = server._find_workstream_by_branch(
+            effective_repo, effective_branch)
+        if ws_by_branch:
+            jobs_workstream_id = ws_by_branch.get("workstreamId", "") or ""
     jobs_timeline = []
-    jobs_included = bool(workstream_id) and safe_job_limit > 0
+    jobs_included = bool(jobs_workstream_id) and safe_job_limit > 0
     if jobs_included:
         try:
             params = urlencode({"limit": safe_job_limit})
             jobs_result = server._controller_get(
-                f"/api/workstreams/{quote(workstream_id, safe='')}/jobs?{params}")
+                f"/api/workstreams/{quote(jobs_workstream_id, safe='')}/jobs?{params}")
             if isinstance(jobs_result, list):
                 for job in jobs_result:
                     if not isinstance(job, dict):
