@@ -105,10 +105,16 @@ public class ArgmaxConsistencyTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Empty inputs have no maximum.
+	 * Empty inputs have no maximum, for both the array form and the greedy sampler. A
+	 * {@code vocabSize} of {@code 0} routes an empty {@code values} array through
+	 * {@code argmax}, so the sampler agrees with the array form and yields {@code -1}
+	 * rather than throwing.
 	 */
 	@Test(timeout = 30000)
 	public void emptyInput() {
 		Assert.assertEquals(-1, argmax(new double[0]));
+
+		int emptyVocabToken = AutoregressiveModel.sampleToken(distinct(), 0, 0.0, 1.0, null);
+		Assert.assertEquals(argmax(new double[0]), emptyVocabToken);
 	}
 }
