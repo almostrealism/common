@@ -1250,3 +1250,176 @@ class TestArchivedWorkstreamReadOnly(unittest.TestCase):
         self.assertTrue(result["ok"])
         mock_by_branch.assert_not_called()
         self.assertIn("/api/workstreams/ws-live/jobs", mock_get.call_args[0][0])
+
+    @staticmethod
+    def _listing_by_repo_filter(filtered, unfiltered):
+        """Return a _controller_get stand-in that answers the workstream
+        listing with *filtered* when it carries a repoUrl filter and with
+        *unfiltered* otherwise, mirroring the controller's WorkstreamListing,
+        whose repoUrl filter omits a workstream that names no repository."""
+        def _get(path):
+            return filtered if "repoUrl=" in path else unfiltered
+        return _get
+
+    @patch.object(server, "_controller_get")
+    def test_find_workstream_by_branch_falls_back_to_unscoped_round(self, mock_get):
+        """With a repo_url that no workstream on the branch names, the lookup
+        falls back to a round that names no repository — as the controller's
+        findWorkstreamByBranchAndRepo does — so an archived unscoped round is
+        not missed because the listing's repoUrl filter dropped it."""
+        mock_get.side_effect = self._listing_by_repo_filter([], [
+            {"workstreamId": "ws-other-repo", "defaultBranch": "qa/retro-x",
+             "repoUrl": "git@github.com:org/other.git"},
+            {"workstreamId": "ws-unscoped", "defaultBranch": "qa/retro-x",
+             "archived": True},
+        ])
+        ws = server._find_workstream_by_branch(
+            "git@github.com:org/repo.git", "qa/retro-x", enforce_scope=False)
+        self.assertIsNotNone(ws)
+        self.assertEqual("ws-unscoped", ws["workstreamId"])
+        self.assertEqual(2, mock_get.call_count)
+        self.assertNotIn("repoUrl", mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_get")
+    def test_find_workstream_by_branch_prefers_repo_match_over_unscoped(
+            self, mock_get):
+        """A round naming the requested repository wins over an unscoped round
+        on the same branch, and no second listing is requested for it."""
+        mock_get.side_effect = self._listing_by_repo_filter([
+            {"workstreamId": "ws-repo", "defaultBranch": "qa/retro-x",
+             "repoUrl": "git@github.com:org/repo.git"},
+        ], [
+            {"workstreamId": "ws-unscoped", "defaultBranch": "qa/retro-x",
+             "archived": True},
+        ])
+        ws = server._find_workstream_by_branch(
+            "git@github.com:org/repo.git", "qa/retro-x")
+        self.assertEqual("ws-repo", ws["workstreamId"])
+        self.assertEqual(1, mock_get.call_count)
+
+    @patch.object(server, "_controller_get")
+    def test_find_workstream_by_branch_fallback_ignores_other_repositories(
+            self, mock_get):
+        """The unscoped fallback never resolves a round that names a different
+        repository: with only such a round on the branch the lookup is None."""
+        mock_get.side_effect = self._listing_by_repo_filter([], [
+            {"workstreamId": "ws-other-repo", "defaultBranch": "qa/retro-x",
+             "repoUrl": "git@github.com:org/other.git", "archived": True},
+        ])
+        self.assertIsNone(server._find_workstream_by_branch(
+            "git@github.com:org/repo.git", "qa/retro-x"))
+
+    @patch.object(server, "_controller_get")
+    def test_find_workstream_by_branch_unscoped_fallback_honours_scope(
+            self, mock_get):
+        """The unscoped fallback applies the same workspace filter as the
+        primary match: an out-of-scope unscoped round stays hidden by default
+        and is seen only with enforce_scope=False."""
+        _set_workspaces("TAAA")
+        mock_get.side_effect = self._listing_by_repo_filter([], [
+            {"workstreamId": "ws-unscoped", "defaultBranch": "qa/retro-x",
+             "workspaceId": "TBBB", "archived": True},
+        ])
+        self.assertIsNone(server._find_workstream_by_branch(
+            "git@github.com:org/repo.git", "qa/retro-x"))
+        ws = server._find_workstream_by_branch(
+            "git@github.com:org/repo.git", "qa/retro-x", enforce_scope=False)
+        self.assertEqual("ws-unscoped", ws["workstreamId"])
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_controller_get")
+    def test_submit_rejected_for_archived_unscoped_round_via_repo_and_branch(
+            self, mock_get, mock_post):
+        """End to end through the real branch resolver: a repo_url +
+        target_branch submission that the controller would route to an
+        archived round naming no repository is refused before the controller
+        is contacted."""
+        mock_get.side_effect = self._listing_by_repo_filter([], [
+            {"workstreamId": "ws-unscoped", "defaultBranch": "qa/retro-x",
+             "archived": True},
+        ])
+        result = server.workstream_submit_task(
+            prompt="Fix the bug",
+            repo_url="git@github.com:org/repo.git",
+            target_branch="qa/retro-x",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        self.assertIn("ws-unscoped", result["error"])
+        mock_post.assert_not_called()
+
+    _LIVE_WS = {"workstreamId": "ws-live", "defaultBranch": "feature/live",
+                "repoUrl": "git@github.com:org/repo.git"}
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_submit_rejected_for_live_id_with_archived_target_branch(
+            self, mock_find, mock_by_branch, mock_post):
+        """The controller selects the workstream by a resolved id but checks
+        the job out on targetBranch, so a live workstream_id combined with an
+        archived round's branch is refused. The branch is resolved in the
+        live workstream's repository when no repo_url is given."""
+        mock_find.return_value = dict(self._LIVE_WS)
+        mock_by_branch.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug", workstream_id="ws-live",
+            target_branch="qa/retro-x")
+        self.assertFalse(result["ok"])
+        self.assertIn("ws-arch", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/repo.git", "qa/retro-x", enforce_scope=False)
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_submit_live_id_branch_override_uses_explicit_repo_url(
+            self, mock_find, mock_by_branch, mock_post):
+        """An explicit repo_url is the repository the branch override is
+        resolved in, taking precedence over the live workstream's own."""
+        mock_find.return_value = dict(self._LIVE_WS)
+        mock_by_branch.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug", workstream_id="ws-live",
+            repo_url="git@github.com:org/fork.git", target_branch="qa/retro-x")
+        self.assertFalse(result["ok"])
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/fork.git", "qa/retro-x", enforce_scope=False)
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_submit_live_id_with_live_target_branch_is_submitted(
+            self, mock_find, mock_by_branch, mock_post):
+        """A live workstream_id with a branch override that names a live (or
+        unregistered) round passes the guard and reaches the controller."""
+        mock_find.return_value = dict(self._LIVE_WS)
+        mock_by_branch.return_value = None
+        mock_post.return_value = {"ok": True, "jobId": "job-1",
+                                  "workstreamId": "ws-live"}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug", workstream_id="ws-live",
+            target_branch="feature/new")
+        self.assertTrue(result["ok"])
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/repo.git", "feature/new", enforce_scope=False)
+        mock_post.assert_called_once()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_submit_live_id_own_default_branch_skips_branch_lookup(
+            self, mock_find, mock_by_branch, mock_post):
+        """A target_branch equal to the live workstream's own default branch is
+        already covered by the id guard, so no branch lookup is made."""
+        mock_find.return_value = dict(self._LIVE_WS)
+        mock_post.return_value = {"ok": True, "jobId": "job-1",
+                                  "workstreamId": "ws-live"}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug", workstream_id="ws-live",
+            target_branch="feature/live")
+        self.assertTrue(result["ok"])
+        mock_by_branch.assert_not_called()
+        mock_post.assert_called_once()

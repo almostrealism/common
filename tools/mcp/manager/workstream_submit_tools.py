@@ -689,6 +689,16 @@ def workstream_submit_task(
         "submit a task", archived_target, ws=archived_ws)
     if archived_err:
         return archived_err
+    # The controller selects the workstream by a resolved id but still checks
+    # the job out on targetBranch (Workstream.newJobFactory), so a live id
+    # must not carry a submission onto another round's archived branch.
+    if (archived_ws and archived_target == workstream_id and target_branch
+            and target_branch != archived_ws.get("defaultBranch")):
+        archived_err = server._archived_branch_error(
+            "submit a task", repo_url or archived_ws.get("repoUrl", "") or "",
+            target_branch)
+        if archived_err:
+            return archived_err
     server._require_workstream_in_scope(workstream_id)
     server._audit("workstream_submit_task", workstream_id=workstream_id,
            target_branch=target_branch, repo_url=repo_url,

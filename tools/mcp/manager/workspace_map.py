@@ -595,7 +595,10 @@ def _find_workstream_by_branch(
 
     Mirrors the controller's own branch resolution
     (``NotifierRegistry.resolveBranch``): with a ``repo_url`` the lookup is
-    unambiguous and the single ``(branch, repo)`` match is returned; without
+    unambiguous and the single ``(branch, repo)`` match is returned — or,
+    when no workstream on the branch names that repository, a workstream on
+    the branch that names no repository at all, exactly as
+    ``SlackNotifier.findWorkstreamByBranchAndRepo`` falls back; without
     one it falls back to branch-only matching and resolves **only** when
     exactly one workstream carries that default branch. An ambiguous
     branch-only match (two repositories sharing a branch) resolves to
@@ -628,14 +631,54 @@ def _find_workstream_by_branch(
     """
     if not branch:
         return None
+    matches = _list_workstreams_on_branch(repo_url, branch, enforce_scope)
+    if matches is None:
+        return None
+    if repo_url:
+        if matches:
+            # (branch, repo) is unique; the first match is the match.
+            return matches[0]
+        # The listing's repoUrl filter omits a workstream that names no
+        # repository, but the controller's findWorkstreamByBranchAndRepo
+        # falls back to such an unscoped round when no workstream names the
+        # requested repository — so resolve it the same way here.
+        unfiltered = _list_workstreams_on_branch("", branch, enforce_scope) or []
+        for ws in unfiltered:
+            if not ws.get("repoUrl"):
+                return ws
+        return None
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _list_workstreams_on_branch(
+        repo_url: str, branch: str, enforce_scope: bool) -> Optional[list]:
+    """List the workstreams (archived included) whose default branch is
+    *branch*, filtered by the controller to *repo_url* when one is given.
+
+    The repository filter is applied by the controller's listing, which
+    matches on repository identity (SSH and HTTPS forms of one repository
+    are the same repository), and it excludes a workstream that names no
+    repository.
+
+    Args:
+        repo_url: The repository to filter to; empty for every repository.
+        branch: The ``defaultBranch`` to match.
+        enforce_scope: When True a workstream owned by an out-of-scope
+            workspace is skipped.
+
+    Returns:
+        The matching workstream dicts in listing order, or ``None`` when the
+        controller's response could not be read.
+    """
     import sys as _sys
     _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
     from urllib.parse import urlencode
     params = {"includeArchived": "true"}
     if repo_url:
         params["repoUrl"] = repo_url
-    path = "/api/workstreams?" + urlencode(params)
-    result = _cget(path)
+    result = _cget("/api/workstreams?" + urlencode(params))
     if isinstance(result, list):
         entries = result
     elif isinstance(result, dict) and isinstance(result.get("workstreams"), list):
@@ -650,12 +693,7 @@ def _find_workstream_by_branch(
                 ws.get("workspaceId") or ws.get("slackWorkspaceId")):
             continue
         matches.append(ws)
-        if repo_url:
-            # (branch, repo) is unique; no need to scan further.
-            return ws
-    if len(matches) == 1:
-        return matches[0]
-    return None
+    return matches
 
 
 def _archived_workstream_error(
