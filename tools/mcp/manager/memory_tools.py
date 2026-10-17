@@ -302,32 +302,31 @@ def memory_store(
     # archived workstream's ownership now succeeds, so this explicit refusal is
     # what keeps new memories off an archived round.
     #
-    # The round the write lands on is whatever _resolve_branch_context chose,
-    # and its precedence is explicit repo_url + branch first, then
-    # workstream_id, then the in-flight request's HMAC temp token. This guard
-    # resolves the archived target in the SAME order so it always checks the
-    # round that is actually written — checking workstream_id first would let a
-    # caller pass a live workstream_id alongside an archived repo_url + branch,
-    # whose branch wins in _resolve_branch_context and gets the memory while the
-    # live id passes the guard. The repo_url + branch form is resolved with
-    # enforce_scope=False and its dict handed to the guard directly: an archived
-    # round is frozen for every caller regardless of workspace, and memory_store
-    # applies no workspace scope of its own, so a scope-filtered lookup would
-    # hide an out-of-scope archived round and let the write through. A temp
-    # token can briefly outlive the job that minted it, so the token-fallback
-    # path is guarded too rather than trusted to never name an archived round.
+    # The memory lands on (effective_repo, effective_branch) as resolved by
+    # _resolve_branch_context above — never on the raw arguments. Its precedence
+    # is explicit repo_url + branch first, then workstream_id (whose repoUrl
+    # supplies the repo while an explicit branch argument is kept as an
+    # override), then the in-flight request's HMAC temp token. So this guard
+    # resolves the archived target from those effective values, which is the
+    # round that is actually written in every addressing form: resolving from
+    # the raw workstream_id instead would miss a caller passing a live
+    # workstream_id alongside an archived branch override (no repo_url) — the
+    # branch override wins in _resolve_branch_context and gets the memory while
+    # the live id would pass a guard keyed on the id. memory_store requires a
+    # branch (require_branch defaults to True), so both effective values are
+    # non-empty once the error check above has passed.
+    #
+    # The lookup uses enforce_scope=False and its dict is handed to the guard
+    # directly: an archived round is frozen for every caller regardless of
+    # workspace, and memory_store applies no workspace scope of its own, so a
+    # scope-filtered lookup would hide an out-of-scope archived round and let
+    # the write through. A temp token can briefly outlive the job that minted
+    # it, so the token-fallback round (reached through effective_* here) is
+    # guarded too rather than trusted to never name an archived round.
     # Unarchive it first to record against it.
-    archived_target = ""
-    archived_ws = None
-    if repo_url and branch:
-        archived_ws = server._find_workstream_by_branch(
-            repo_url, branch, enforce_scope=False)
-        if archived_ws:
-            archived_target = archived_ws.get("workstreamId", "") or ""
-    elif workstream_id:
-        archived_target = workstream_id
-    else:
-        archived_target = server._get_token_workstream_id() or ""
+    archived_ws = server._find_workstream_by_branch(
+        effective_repo, effective_branch, enforce_scope=False)
+    archived_target = archived_ws.get("workstreamId", "") or "" if archived_ws else ""
     archived_err = server._archived_workstream_error(
         "store a memory", archived_target, ws=archived_ws)
     if archived_err:
