@@ -629,4 +629,65 @@ public class ProfileAnalyzerCLITest extends OperationProfileTestBase {
 		Assert.assertEquals(1,
 				runForExit(new ArrayList<>(), "source", saveSampleProfile(), MATMUL_KEY, "not-a-number"));
 	}
+
+	/**
+	 * A command that emits a {@code "Node not found"} error document for an unresolved node key
+	 * reports a non-zero exit code, so a caller that only inspects the exit status still sees the
+	 * failure. This covers the {@code children}, {@code breakdown}, {@code source}, and
+	 * {@code source-summary} commands, each of which resolves the key before producing output.
+	 */
+	@Test(timeout = 60000)
+	public void missingNodeReportsErrorJsonAndNonZeroExit() throws IOException {
+		String file = saveSampleProfile();
+
+		for (String command : new String[] { "children", "breakdown", "source", "source-summary" }) {
+			List<String> output = new ArrayList<>();
+			int exit = runForExit(output, command, file, MISSING_KEY);
+
+			Assert.assertEquals(command + " should exit non-zero for a missing node", 1, exit);
+
+			boolean sawError = false;
+			for (String chunk : output) {
+				if (JSON_LINE.matcher(chunk).find()) {
+					JsonNode json = mapper.readTree(chunk.substring(chunk.indexOf('{')));
+					if (json.has("error")) {
+						Assert.assertEquals("Node not found: " + MISSING_KEY, json.get("error").asText());
+						sawError = true;
+					}
+				}
+			}
+			Assert.assertTrue(command + " should print an error JSON document", sawError);
+		}
+	}
+
+	/**
+	 * The {@code source-summary} command also reports a non-zero exit code when the node exists but
+	 * has no (or a null) source, since both cases emit an error document.
+	 */
+	@Test(timeout = 60000)
+	public void sourceSummaryWithoutSourceReportsNonZeroExit() throws IOException {
+		String file = saveSampleProfile();
+
+		Assert.assertEquals(1, runForExit(new ArrayList<>(), "source-summary", file, SOFTMAX_KEY));
+		Assert.assertEquals(1, runForExit(new ArrayList<>(), "source-summary", file, COPY_KEY));
+	}
+
+	/**
+	 * Commands that produce a valid document report a zero exit code, including the {@code source}
+	 * command for a node that resolves but has no matching source — that is a well-formed
+	 * no-source result carrying a hint, not an error.
+	 */
+	@Test(timeout = 60000)
+	public void successfulCommandsReportZeroExit() throws IOException {
+		String file = saveSampleProfile();
+
+		Assert.assertEquals(0, runForExit(new ArrayList<>(), "summary", file));
+		Assert.assertEquals(0, runForExit(new ArrayList<>(), "children", file));
+		Assert.assertEquals(0, runForExit(new ArrayList<>(), "children", file, MATMUL_KEY));
+		Assert.assertEquals(0, runForExit(new ArrayList<>(), "breakdown", file, MATMUL_KEY));
+		Assert.assertEquals(0, runForExit(new ArrayList<>(), "source", file, MATMUL_KEY));
+		Assert.assertEquals("A resolved node with no matching source is not an error",
+				0, runForExit(new ArrayList<>(), "source", file, ROOT_KEY));
+		Assert.assertEquals(0, runForExit(new ArrayList<>(), "source-summary", file, MATMUL_KEY));
+	}
 }

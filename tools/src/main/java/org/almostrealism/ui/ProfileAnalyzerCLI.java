@@ -103,8 +103,7 @@ public class ProfileAnalyzerCLI {
                     break;
                 case "children":
                     String nodeKey = args.length > 2 ? args[2] : null;
-                    printChildren(filePath, nodeKey);
-                    break;
+                    return printChildren(filePath, nodeKey) ? 0 : 1;
                 case "search":
                     if (args.length < 3) {
                         Console.root().warn("Error: search requires a pattern argument", null);
@@ -117,8 +116,7 @@ public class ProfileAnalyzerCLI {
                         Console.root().warn("Error: breakdown requires a node_key argument", null);
                         return 1;
                     }
-                    printBreakdown(filePath, args[2]);
-                    break;
+                    return printBreakdown(filePath, args[2]) ? 0 : 1;
                 case "source":
                     if (args.length < 3) {
                         Console.root().warn("Error: source requires a node_key argument", null);
@@ -128,15 +126,13 @@ public class ProfileAnalyzerCLI {
                     if (args.length > 3) {
                         maxLines = Integer.parseInt(args[3]);
                     }
-                    printSource(filePath, args[2], maxLines);
-                    break;
+                    return printSource(filePath, args[2], maxLines) ? 0 : 1;
                 case "source-summary":
                     if (args.length < 3) {
                         Console.root().warn("Error: source-summary requires a node_key argument", null);
                         return 1;
                     }
-                    printSourceSummary(filePath, args[2]);
-                    break;
+                    return printSourceSummary(filePath, args[2]) ? 0 : 1;
                 default:
                     Console.root().warn("Unknown command: " + command, null);
                     printUsage();
@@ -293,15 +289,16 @@ public class ProfileAnalyzerCLI {
      *
      * @param filePath path to the serialized profile file
      * @param nodeKey  the key of the node to report on
+     * @return {@code true} if the breakdown was printed, {@code false} if the node was not found
      * @throws IOException if the file cannot be read
      */
-    private static void printBreakdown(String filePath, String nodeKey) throws IOException {
+    private static boolean printBreakdown(String filePath, String nodeKey) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
         OperationProfileNode node = findByKey(root, nodeKey);
         if (node == null) {
             Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
-            return;
+            return false;
         }
 
         double compileTime = 0;
@@ -371,6 +368,7 @@ public class ProfileAnalyzerCLI {
         json.append("}");
 
         Console.root().println(String.valueOf(json));
+        return true;
     }
 
     /**
@@ -379,15 +377,16 @@ public class ProfileAnalyzerCLI {
      *
      * @param filePath path to the serialized profile file
      * @param nodeKey  the key of the parent node, or {@code null} for the root
+     * @return {@code true} if the children were printed, {@code false} if the node was not found
      * @throws IOException if the file cannot be read
      */
-    private static void printChildren(String filePath, String nodeKey) throws IOException {
+    private static boolean printChildren(String filePath, String nodeKey) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
         OperationProfileNode parent = nodeKey == null ? root : findByKey(root, nodeKey);
         if (parent == null) {
             Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
-            return;
+            return false;
         }
 
         List<OperationProfileNode> children = parent.getChildren() != null ?
@@ -432,6 +431,7 @@ public class ProfileAnalyzerCLI {
         json.append("}");
 
         Console.root().println(String.valueOf(json));
+        return true;
     }
 
     /**
@@ -494,14 +494,25 @@ public class ProfileAnalyzerCLI {
      * <p>Source code is stored on the root profile node's
      * {@code operationSources} map, keyed by operation name.  This method
      * looks up the target node's name in the root's sources.</p>
+     *
+     * <p>A node with no matching source is not an error: a well-formed document
+     * carrying a hint and the available source keys is printed and {@code true}
+     * is returned. Only a node key that resolves to no node at all produces an
+     * error document and {@code false}.</p>
+     *
+     * @param filePath path to the serialized profile file
+     * @param nodeKey  the key of the node whose source is requested
+     * @param maxLines the maximum number of source lines to include before truncating
+     * @return {@code true} if a source or no-source document was printed, {@code false} if the node was not found
+     * @throws IOException if the file cannot be read
      */
-    private static void printSource(String filePath, String nodeKey, int maxLines) throws IOException {
+    private static boolean printSource(String filePath, String nodeKey, int maxLines) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
         OperationProfileNode node = findByKey(root, nodeKey);
         if (node == null) {
             Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
-            return;
+            return false;
         }
 
         // Sources are stored on the root node, keyed by operation name
@@ -620,20 +631,27 @@ public class ProfileAnalyzerCLI {
 
         json.append("}");
         Console.root().println(String.valueOf(json));
+        return true;
     }
 
     /**
      * Prints a structural summary of the generated source code for an operation,
      * including function counts by type, loop counts, math operations, and total
      * lines — without dumping the full source.
+     *
+     * @param filePath path to the serialized profile file
+     * @param nodeKey  the key of the node whose source is summarized
+     * @return {@code true} if the summary was printed, {@code false} if the node was not found or
+     *         has no (non-null) source
+     * @throws IOException if the file cannot be read
      */
-    private static void printSourceSummary(String filePath, String nodeKey) throws IOException {
+    private static boolean printSourceSummary(String filePath, String nodeKey) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
         OperationProfileNode node = findByKey(root, nodeKey);
         if (node == null) {
             Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
-            return;
+            return false;
         }
 
         Map<String, List<OperationSource>> rootSources = root.getOperationSources();
@@ -649,13 +667,13 @@ public class ProfileAnalyzerCLI {
 
         if (matched == null || matched.isEmpty()) {
             Console.root().println("{\"error\": \"No source found for node: " + escapeJson(nodeKey) + "\"}");
-            return;
+            return false;
         }
 
         String sourceCode = matched.get(0).getSource();
         if (sourceCode == null) {
             Console.root().println("{\"error\": \"Source is null for node: " + escapeJson(nodeKey) + "\"}");
-            return;
+            return false;
         }
 
         String[] lines = sourceCode.split("\n");
@@ -793,6 +811,7 @@ public class ProfileAnalyzerCLI {
 
         json.append("}");
         Console.root().println(String.valueOf(json));
+        return true;
     }
 
     /**
