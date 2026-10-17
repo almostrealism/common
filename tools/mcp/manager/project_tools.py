@@ -179,7 +179,12 @@ def project_verify_branch(
     # on it, so it is refused for the same reason a submit is. History and
     # context stay readable; unarchive the workstream first to verify it.
     if ws.get("archived"):
-        return server._archived_workstream_error("verify the branch", workstream_id)
+        # Pass the already-resolved ``ws`` so the guard reads its archived flag
+        # directly rather than re-fetching through _find_workstream, whose
+        # second lookup could fail transiently and return None — read as "not
+        # archived", dispatching the workflow onto the frozen round.
+        return server._archived_workstream_error(
+            "verify the branch", workstream_id, ws=ws)
 
     server._set_github_org(ws)
 
@@ -288,7 +293,12 @@ def project_commit_plan(
     # archived-aware lookup above is for reads only. History and context stay
     # readable; unarchive the workstream first to commit to it.
     if ws.get("archived"):
-        return server._archived_workstream_error("commit a plan", workstream_id)
+        # Pass the already-resolved ``ws`` so the guard reads its archived flag
+        # directly rather than re-fetching through _find_workstream, whose
+        # second lookup could fail transiently and return None — read as "not
+        # archived", letting the GitHub PUT mutate the frozen round.
+        return server._archived_workstream_error(
+            "commit a plan", workstream_id, ws=ws)
 
     server._set_github_org(ws)
 

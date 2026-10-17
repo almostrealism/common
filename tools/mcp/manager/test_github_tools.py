@@ -1378,3 +1378,40 @@ class TestGithubCreatePrArchived(unittest.TestCase):
         self.assertTrue(result["ok"], msg=result.get("error"))
         mock_find.assert_not_called()
         mock_gh.assert_called_once()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "qa/retro-x", None))
+    @patch.object(server, "_find_workstream",
+                  return_value={"workstreamId": "ws-arch", "archived": True})
+    @patch.object(server, "_github_request")
+    def test_create_pr_archived_guard_uses_resolved_ws_without_refetch(
+            self, mock_gh, mock_find, mock_repo):
+        """The workstream is resolved once and handed to the archived guard, so
+        the guard reads the archived flag directly instead of re-fetching. A
+        transient failure on that second lookup would return None — read as
+        "not archived" — and create the PR on the frozen round."""
+        result = server.github_create_pr(
+            title="T", body="B", workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        self.assertEqual(1, mock_find.call_count)
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_find_workstream")
+    @patch.object(server.github_api, "default_branch", return_value="master")
+    @patch.object(server, "_github_request",
+                  return_value={"number": 11, "html_url": "u", "title": "T"})
+    def test_create_pr_direct_org_repo_ignores_archived_workstream(
+            self, mock_gh, mock_default, mock_find, mock_repo):
+        """Direct org/repo addressing bypasses workstream resolution, so a PR
+        created that way is NOT gated by an also-supplied archived workstream_id
+        (or an archived token): the PR targets the named repository, not the
+        archived round's branch."""
+        result = server.github_create_pr(
+            title="T", body="B", org="org", repo="repo", head="feature/x",
+            workstream_id="ws-arch")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_find.assert_not_called()
+        mock_gh.assert_called_once()

@@ -877,15 +877,22 @@ def workstream_context(
         safe_job_limit = max(0, int(job_limit))
     except (TypeError, ValueError):
         safe_job_limit = 0
-    # Resolve the workstream whose job timeline to fetch. A caller that
-    # addressed the branch by workstream_id uses it directly; a caller that
-    # passed repo_url + branch has its workstream resolved here (archived
-    # rounds included) so the timeline is available either way, not only
-    # when an id was supplied. The resolution is skipped when no timeline
-    # was asked for (job_limit=0) or the branch context did not resolve.
-    jobs_workstream_id = workstream_id
-    if (not jobs_workstream_id and safe_job_limit > 0
-            and effective_repo and effective_branch):
+    # Resolve the workstream whose job timeline to fetch, mirroring the
+    # precedence _resolve_branch_context used for the memories, commits and PR
+    # above: an explicit repo_url + branch identifies the round even when a
+    # workstream_id is also supplied, so the timeline describes the same round
+    # as the rest of the response rather than an unrelated id. A workstream_id
+    # is used directly only when it was the authoritative source of the branch
+    # context (no explicit repo_url + branch was given); otherwise the round is
+    # resolved from the effective branch (archived rounds included), and an
+    # explicit branch that names no registered round leaves the timeline unset
+    # rather than falling back to the id and attaching the wrong round's jobs.
+    # The branch resolution is skipped when no timeline was asked for
+    # (job_limit=0) or the branch context did not resolve.
+    jobs_workstream_id = ""
+    if workstream_id and not (repo_url and branch):
+        jobs_workstream_id = workstream_id
+    elif safe_job_limit > 0 and effective_repo and effective_branch:
         ws_by_branch = server._find_workstream_by_branch(
             effective_repo, effective_branch)
         if ws_by_branch:

@@ -861,6 +861,43 @@ class TestArchivedWorkstreamReadOnly(unittest.TestCase):
         self.assertIn("/api/workstreams/ws-arch/jobs",
                       mock_get.call_args[0][0])
 
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_get_memory_client")
+    def test_context_jobs_prefer_explicit_branch_over_workstream_id(
+            self, mock_client_fn, mock_by_branch, mock_get, mock_pr):
+        """When a caller supplies both an explicit repo_url + branch and a
+        workstream_id, _resolve_branch_context keys the memories/commits/PR on
+        the explicit branch; the job timeline must follow the same round rather
+        than the unrelated id, or the response would attach one round's jobs to
+        another's branch."""
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_pr.return_value = {"ok": True, "found": False}
+        mock_by_branch.return_value = {"workstreamId": "ws-branch"}
+        mock_get.return_value = [
+            {"jobId": "job-branch", "timestamp": "2026-10-10T00:00:00Z",
+             "status": "SUCCESS", "description": "retro"},
+        ]
+
+        result = server.workstream_context(
+            repo_url="git@github.com:org/repo.git",
+            branch="qa/retro-x",
+            workstream_id="ws-other",
+            include_commits=False,
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual([j["jobId"] for j in result["jobs"]], ["job-branch"])
+        # The timeline is the branch-resolved round, not the supplied id.
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/repo.git", "qa/retro-x")
+        self.assertIn("/api/workstreams/ws-branch/jobs",
+                      mock_get.call_args[0][0])
+        self.assertNotIn("ws-other", mock_get.call_args[0][0])
+
     @patch.object(server, "_controller_post")
     @patch.object(server, "_find_workstream_by_branch")
     @patch.object(server, "_find_workstream")
@@ -954,4 +991,80 @@ class TestArchivedWorkstreamReadOnly(unittest.TestCase):
         result = server.project_verify_branch(workstream_id="ws-arch")
         self.assertFalse(result["ok"])
         self.assertIn("archived", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_submit_unknown_workstream_id_falls_back_to_branch(
+            self, mock_find, mock_by_branch, mock_post):
+        """An unknown workstream_id does not short-circuit the branch guard. The
+        controller's resolveOrRegister ignores an unknown body workstreamId and
+        then resolves targetBranch, so a submission carrying both an unknown id
+        and an archived target_branch would be routed to the archived round; the
+        guard must fall back to branch resolution and refuse it."""
+        mock_find.return_value = None  # the workstream_id does not resolve
+        mock_by_branch.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug",
+            workstream_id="ws-unknown",
+            repo_url="git@github.com:org/repo.git",
+            target_branch="qa/retro-x",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/repo.git", "qa/retro-x")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream")
+    def test_submit_archived_guard_uses_resolved_ws_without_refetch(
+            self, mock_find, mock_post):
+        """The resolved workstream dict is handed to the guard, so the archived
+        flag is read once rather than re-fetched — a second lookup that failed
+        transiently would otherwise be read as "not archived"."""
+        mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug", workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        self.assertEqual(1, mock_find.call_count)
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_find_workstream")
+    def test_commit_plan_archived_guard_uses_resolved_ws_without_refetch(
+            self, mock_find, mock_gh):
+        """project_commit_plan hands its already-resolved workstream to the
+        guard, so the archived check does not re-fetch (and cannot fail open on
+        a transient second lookup)."""
+        mock_find.return_value = {
+            "workstreamId": "ws-arch", "archived": True,
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "qa/retro-x",
+        }
+        result = server.project_commit_plan(
+            workstream_id="ws-arch", content="# Plan")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        self.assertEqual(1, mock_find.call_count)
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_find_workstream")
+    def test_verify_branch_archived_guard_uses_resolved_ws_without_refetch(
+            self, mock_find, mock_gh):
+        """project_verify_branch hands its already-resolved workstream to the
+        guard, so the archived check does not re-fetch (and cannot fail open on
+        a transient second lookup)."""
+        mock_find.return_value = {
+            "workstreamId": "ws-arch", "archived": True,
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "qa/retro-x",
+        }
+        result = server.project_verify_branch(workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        self.assertEqual(1, mock_find.call_count)
         mock_gh.assert_not_called()
