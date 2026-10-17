@@ -327,9 +327,9 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	 * @throws UnsupportedOperationException if variable count operands are encountered when custom delta is enabled
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		if (!enableCustomDelta || axis != ReduceAxis.NONE) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		Optional<Producer<PackedCollection>> match = matchInput(target);
@@ -338,10 +338,10 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 			// If there are multiple matches, or the match is
 			// not the base, then there is not currently a
 			// shortcut for computing the delta
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		} else if (getChildren().stream().anyMatch(o -> !Countable.isFixedCount(o))) {
 			warn("Exponent delta not implemented for variable count operands");
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		List<Supplier<Evaluable<? extends PackedCollection>>> operands =

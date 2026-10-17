@@ -271,9 +271,9 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(int...)
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		if (axis != ReduceAxis.NONE) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		TraversalPolicy targetShape = shape(target);
@@ -296,7 +296,7 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 		}
 
 		if (!supported) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		TraversalPolicy shape = getShape().append(targetShape);
@@ -322,7 +322,7 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * @return the product of every other operand, or null if an operand has no shape
 	 */
 	@Override
-	protected CollectionProducer elementwisePartial(int index) {
+	protected CollectionProducer deltaElement(int index) {
 		TraversalPolicy shape = getShape();
 		List<Producer<PackedCollection>> inputs = getInputs();
 		CollectionProducer partial = null;

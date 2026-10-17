@@ -430,10 +430,10 @@ public class PackedCollectionRepeat
 	 * implementation.
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		Producer<PackedCollection> child = getInputs().get(1);
 		if (axis == ReduceAxis.NONE || !(child instanceof Shape)) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		CollectionProducer input = c(child);
@@ -443,7 +443,7 @@ public class PackedCollectionRepeat
 
 		if (getShape().getTotalSizeLong() != copies * inputShape.getTotalSizeLong() ||
 				inputShape.getTotalSizeLong() % size != 0) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		if (axis == ReduceAxis.IN) {

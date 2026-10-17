@@ -196,7 +196,7 @@ public class CollectionConcatenateComputation extends TransitiveDeltaExpressionC
 	 * @return A {@link CollectionProducer} that computes the derivative
 	 */
 	@Override
-	protected CollectionProducer jacobian(Producer<?> target) {
+	protected CollectionProducer deltaMatrix(Producer<?> target) {
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy fullShape = getShape().append(targetShape);
 

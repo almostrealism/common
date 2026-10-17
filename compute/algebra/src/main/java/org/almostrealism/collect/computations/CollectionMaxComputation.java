@@ -178,12 +178,12 @@ public class CollectionMaxComputation extends AggregatedProducerComputation {
 	 * the maximum.
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		Producer<PackedCollection> child = getInputs().get(1);
 		if (axis == ReduceAxis.NONE) {
 			return select(child).delta(target);
 		} else if (!(child instanceof Shape)) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		} else if (axis == ReduceAxis.OUT) {
 			return select(child).delta(target, axis, weight);
 		}

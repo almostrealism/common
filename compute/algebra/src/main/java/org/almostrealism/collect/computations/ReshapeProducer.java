@@ -535,12 +535,13 @@ public class ReshapeProducer
 	 * A reshape only reinterprets the layout of its producer's values, so its delta is that
 	 * of the underlying producer: the Jacobian and a delta that keeps the output axis are
 	 * presented in this reshape's shape, and the weight of the output axis is presented in
-	 * the underlying producer's shape.
+	 * the underlying producer's shape. A target that this reshape cannot depend on, or is,
+	 * is left to the general implementation.
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
-		if (!(producer instanceof CollectionProducer)) {
-			return CollectionProducerParallelProcess.super.differentiate(target, axis, weight);
+	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (!(producer instanceof CollectionProducer) || cannotMatch(target) || refersTo(target)) {
+			return CollectionProducerParallelProcess.super.delta(target, axis, weight);
 		}
 
 		CollectionProducer underlying = (CollectionProducer) producer;

@@ -410,7 +410,7 @@ public class WeightedSumComputation
 	 * has a traversal that cannot be transposed, the general implementation is used.</p>
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		Producer<PackedCollection> input = getInputs().get(1);
 		Producer<PackedCollection> weights = getInputs().get(2);
 
@@ -429,13 +429,14 @@ public class WeightedSumComputation
 						input);
 			}
 
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		} else if (input.equals(weights)) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		CollectionProducer gradient = axis == ReduceAxis.IN ? null :
-				(weight == null ? constant(plainResultShape(), 1.0) : c(weight).reshape(plainResultShape()));
+				(weight == null ? constant(resultShape.extentShape().traverse(0), 1.0) :
+						c(weight).reshape(resultShape.extentShape().traverse(0)));
 		List<Producer<?>> terms = new ArrayList<>();
 
 		for (int operand = 1; operand <= 2; operand++) {
@@ -448,12 +449,12 @@ public class WeightedSumComputation
 				terms.add(replaceInput(producer, reshape(shape, c(producer).delta(target, axis, weight))));
 			} else {
 				CollectionProducer local = transposedSum(operand == 1, gradient);
-				if (local == null) return super.differentiate(target, axis, weight);
+				if (local == null) return super.deltaDependent(target, axis, weight);
 				terms.add(c(producer).delta(target, axis, local.reshape(shape)));
 			}
 		}
 
-		if (terms.isEmpty()) return super.differentiate(target, axis, weight);
+		if (terms.isEmpty()) return super.deltaDependent(target, axis, weight);
 		return terms.size() == 1 ? (CollectionProducer) terms.get(0) : add(terms);
 	}
 
@@ -490,7 +491,7 @@ public class WeightedSumComputation
 			return null;
 		}
 
-		TraversalPolicy result = new TraversalPolicy(shape.extentLong());
+		TraversalPolicy result = shape.extentShape().traverse(0);
 		TraversalPolicy gradientPositions = result;
 		TraversalPolicy operandPositions = result;
 		long[] members = new long[result.getDimensions()];
@@ -521,15 +522,6 @@ public class WeightedSumComputation
 		TraversalPolicy memberShape = new TraversalPolicy(members);
 		return new WeightedSumComputation(result, gradientPositions, operandPositions,
 				memberShape, memberShape, gradient, getInputs().get(wrtInput ? 2 : 1));
-	}
-
-	/**
-	 * Returns the result shape without its traversal axis.
-	 *
-	 * @return the dimensions of the result
-	 */
-	private TraversalPolicy plainResultShape() {
-		return new TraversalPolicy(resultShape.extentLong());
 	}
 
 	/**

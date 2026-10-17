@@ -100,7 +100,7 @@ public class CollectionQuotientComputation extends TraversableExpressionComputat
 	 *         has no shape
 	 */
 	@Override
-	protected CollectionProducer elementwisePartial(int index) {
+	protected CollectionProducer deltaElement(int index) {
 		List<Producer<PackedCollection>> inputs = getInputs();
 		if (!(inputs.get(1) instanceof Shape) || !(inputs.get(2) instanceof Shape)) return null;
 

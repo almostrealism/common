@@ -180,7 +180,7 @@ public abstract class TraversableExpressionComputation
 	 * @return true, indicating chain rule support is available
 	 */
 	@Override
-	public boolean isChainRuleSupported() { return true; }
+	protected boolean isChainRuleSupported() { return true; }
 
 	/**
 	 * Differentiates the expression of this computation, as a {@link TraversableDeltaComputation},
@@ -191,7 +191,7 @@ public abstract class TraversableExpressionComputation
 	 * @see TraversableDeltaComputation
 	 */
 	@Override
-	protected CollectionProducer jacobian(Producer<?> target) {
+	protected CollectionProducer deltaMatrix(Producer<?> target) {
 		return TraversableDeltaComputation.create(
 				"\u03B4" + getName(), getShape(), shape(target),
 				this::getExpression, target,

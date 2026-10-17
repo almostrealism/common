@@ -211,9 +211,9 @@ public class DynamicIndexProjectionProducerComputation
 	}
 
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		if (axis != ReduceAxis.NONE) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		} else if (enableChainDelta) {
 			TraversableDeltaComputation delta =
 					TraversableDeltaComputation.create("delta", getShape(), shape(target),

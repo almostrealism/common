@@ -218,7 +218,7 @@ public abstract class TransitiveDeltaExpressionComputation
 	 * <h3>Computation Process</h3>
 	 * <ol>
 	 *   <li>Is reached when no identity, elementwise or chain rule case applies
-	 *       (see {@link #differentiate})</li>
+	 *       (see {@link #deltaDependent})</li>
 	 *   <li>Validates that all operands are {@link CollectionProducer}s with fixed counts</li>
 	 *   <li>For each operand:
 	 *     <ul>
@@ -244,11 +244,11 @@ public abstract class TransitiveDeltaExpressionComputation
 	 *         with respect to the target, reshaped to include the target dimensions
 	 * @throws IllegalStateException if transitive delta is not supported for variable count operands
 	 * @see #isTransitiveArgumentIndex(int)
-	 * @see #differentiate
+	 * @see #deltaDependent
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(TraversalPolicy)
 	 */
 	@Override
-	protected CollectionProducer jacobian(Producer<?> target) {
+	protected CollectionProducer deltaMatrix(Producer<?> target) {
 		TraversalPolicy targetShape = shape(target);
 
 		List<CollectionProducer> operands = List.of(
@@ -266,7 +266,7 @@ public abstract class TransitiveDeltaExpressionComputation
 		}
 
 		if (!supported) {
-			return super.jacobian(target);
+			return super.deltaMatrix(target);
 		}
 
 		List<Process<?, ?>> deltas = new ArrayList<>();
@@ -292,9 +292,9 @@ public abstract class TransitiveDeltaExpressionComputation
 	 * implementation is used.
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		if (axis != ReduceAxis.IN) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		List<Process<?, ?>> tangents = new ArrayList<>();
@@ -309,7 +309,7 @@ public abstract class TransitiveDeltaExpressionComputation
 			} else if (child instanceof CollectionProducer && ((CollectionProducer) child).isFixedCount()) {
 				tangents.add((Process) ((CollectionProducer) child).delta(target, axis, weight));
 			} else {
-				return super.differentiate(target, axis, weight);
+				return super.deltaDependent(target, axis, weight);
 			}
 		}
 
