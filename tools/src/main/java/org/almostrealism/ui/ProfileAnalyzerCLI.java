@@ -60,9 +60,25 @@ public class ProfileAnalyzerCLI {
      * @param args command-line arguments: {@code <command> <file> [args...]}
      */
     public static void main(String[] args) {
+        System.exit(run(args));
+    }
+
+    /**
+     * Parses the command-line arguments, dispatches to the appropriate analysis
+     * routine, and prints results as JSON to standard output.
+     *
+     * <p>This is the testable core of {@link #main(String[])}: it never calls
+     * {@link System#exit(int)}, instead returning the process exit code so the
+     * usage, unknown-command and analysis-error paths can be exercised without
+     * terminating the JVM.</p>
+     *
+     * @param args command-line arguments: {@code <command> <file> [args...]}
+     * @return {@code 0} on success, or {@code 1} on bad arguments or an analysis error
+     */
+    public static int run(String... args) {
         if (args.length < 2) {
             printUsage();
-            System.exit(1);
+            return 1;
         }
 
         String command = args[0];
@@ -92,21 +108,21 @@ public class ProfileAnalyzerCLI {
                 case "search":
                     if (args.length < 3) {
                         Console.root().warn("Error: search requires a pattern argument", null);
-                        System.exit(1);
+                        return 1;
                     }
                     searchOperations(filePath, args[2]);
                     break;
                 case "breakdown":
                     if (args.length < 3) {
                         Console.root().warn("Error: breakdown requires a node_key argument", null);
-                        System.exit(1);
+                        return 1;
                     }
                     printBreakdown(filePath, args[2]);
                     break;
                 case "source":
                     if (args.length < 3) {
                         Console.root().warn("Error: source requires a node_key argument", null);
-                        System.exit(1);
+                        return 1;
                     }
                     int maxLines = 200;
                     if (args.length > 3) {
@@ -117,20 +133,22 @@ public class ProfileAnalyzerCLI {
                 case "source-summary":
                     if (args.length < 3) {
                         Console.root().warn("Error: source-summary requires a node_key argument", null);
-                        System.exit(1);
+                        return 1;
                     }
                     printSourceSummary(filePath, args[2]);
                     break;
                 default:
                     Console.root().warn("Unknown command: " + command, null);
                     printUsage();
-                    System.exit(1);
+                    return 1;
             }
         } catch (Exception e) {
             Console.root().println("{\"error\": \"" + escapeJson(e.getMessage()) + "\", " +
                     "\"type\": \"" + e.getClass().getSimpleName() + "\"}");
-            System.exit(1);
+            return 1;
         }
+
+        return 0;
     }
 
     /**
@@ -174,7 +192,7 @@ public class ProfileAnalyzerCLI {
         int nodeCount = allNodes.size();
         json.append("  \"node_count\": ").append(nodeCount).append(",\n");
 
-        int compiledCount = countCompiledNodes(root);
+        int compiledCount = countCompiledNodes(root, root);
         json.append("  \"compiled_operations\": ").append(compiledCount).append(",\n");
 
         List<OperationProfileNode> topOps = allNodes.stream()
@@ -259,7 +277,7 @@ public class ProfileAnalyzerCLI {
                 }
             }
 
-            json.append("\"has_source\": ").append(hasSource(n));
+            json.append("\"has_source\": ").append(hasSource(root, n));
             json.append("}");
             if (i < slowest.size() - 1) json.append(",");
             json.append("\n");
@@ -405,7 +423,7 @@ public class ProfileAnalyzerCLI {
             json.append("\"duration_formatted\": \"").append(formatDuration(c.getTotalDuration())).append("\", ");
             json.append("\"percentage\": ").append(round(pct, 1)).append(", ");
             json.append("\"has_children\": ").append(c.getChildren() != null && !c.getChildren().isEmpty()).append(", ");
-            json.append("\"has_source\": ").append(hasSource(c));
+            json.append("\"has_source\": ").append(hasSource(root, c));
             json.append("}");
             if (i < sortedChildren.size() - 1) json.append(",");
             json.append("\n");
@@ -459,7 +477,7 @@ public class ProfileAnalyzerCLI {
             json.append("\"detail\": \"").append(escapeJson(metadataDetail)).append("\", ");
             json.append("\"duration\": ").append(round(n.getTotalDuration(), 6)).append(", ");
             json.append("\"duration_formatted\": \"").append(formatDuration(n.getTotalDuration())).append("\", ");
-            json.append("\"has_source\": ").append(hasSource(n));
+            json.append("\"has_source\": ").append(hasSource(root, n));
             json.append("}");
             if (i < matches.size() - 1) json.append(",");
             json.append("\n");
@@ -828,14 +846,15 @@ public class ProfileAnalyzerCLI {
     /**
      * Counts the number of nodes in the subtree rooted at {@code node} that have associated source code.
      *
-     * @param node the root of the subtree
+     * @param root the root of the profile tree, which holds the operation sources map
+     * @param node the root of the subtree being counted
      * @return the number of nodes with at least one {@code OperationSource} entry
      */
-    private static int countCompiledNodes(OperationProfileNode node) {
-        int count = hasSource(node) ? 1 : 0;
+    private static int countCompiledNodes(OperationProfileNode root, OperationProfileNode node) {
+        int count = hasSource(root, node) ? 1 : 0;
         if (node.getChildren() != null) {
             for (OperationProfileNode child : node.getChildren()) {
-                count += countCompiledNodes(child);
+                count += countCompiledNodes(root, child);
             }
         }
         return count;
@@ -866,11 +885,16 @@ public class ProfileAnalyzerCLI {
     /**
      * Returns {@code true} if the given node has at least one associated {@code OperationSource} entry.
      *
+     * <p>Operation sources are stored on the root of the profile, keyed by node key, so the lookup
+     * must consult the root rather than the node itself (whose own source map is empty for every
+     * non-root node). This mirrors {@link OperationProfileNodeInfo#isCompiled()}.</p>
+     *
+     * @param root the root of the profile tree, which holds the operation sources map
      * @param node the node to inspect
-     * @return {@code true} if node-level source code is available
+     * @return {@code true} if source code is registered for the node under its key
      */
-    private static boolean hasSource(OperationProfileNode node) {
-        Map<String, List<OperationSource>> sources = node.getOperationSources();
+    private static boolean hasSource(OperationProfileNode root, OperationProfileNode node) {
+        Map<String, List<OperationSource>> sources = root.getOperationSources();
         if (sources == null || sources.isEmpty()) {
             return false;
         }

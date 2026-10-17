@@ -65,21 +65,17 @@ public class ProfileAnalyzerCLITest extends OperationProfileTestBase {
 	/**
 	 * Runs the CLI with the given arguments and parses the JSON document it prints.
 	 *
+	 * <p>Invokes {@link ProfileAnalyzerCLI#run(String...)} rather than
+	 * {@link ProfileAnalyzerCLI#main(String[])} so that a failing command returns an
+	 * exit code instead of calling {@link System#exit(int)} and tearing down the
+	 * Surefire fork.</p>
+	 *
 	 * @param args the CLI arguments
 	 * @return the parsed JSON output
 	 * @throws IOException if the output is not valid JSON
 	 */
 	private JsonNode run(String... args) throws IOException {
-		List<String> chunks = new ArrayList<>();
-		Consumer<String> listener = chunks::add;
-		Console.root().addListener(listener);
-
-		// TODO(review): ProfileAnalyzerCLI.main calls System.exit(1) on any exception, so a regression here kills the surefire fork instead of failing the test
-		try {
-			ProfileAnalyzerCLI.main(args);
-		} finally {
-			Console.root().removeListener(listener);
-		}
+		List<String> chunks = captureOutput(args);
 
 		for (String chunk : chunks) {
 			if (JSON_LINE.matcher(chunk).find()) {
@@ -89,6 +85,44 @@ public class ProfileAnalyzerCLITest extends OperationProfileTestBase {
 
 		Assert.fail("No JSON document was printed for " + String.join(" ", args) + ": " + chunks);
 		return null;
+	}
+
+	/**
+	 * Runs the CLI with the given arguments, capturing everything printed to the root
+	 * {@link Console}, and returns the exit code reported by {@link ProfileAnalyzerCLI#run(String...)}.
+	 *
+	 * @param output a list that receives the captured console chunks
+	 * @param args   the CLI arguments
+	 * @return the CLI exit code ({@code 0} on success, {@code 1} on failure)
+	 */
+	private int runForExit(List<String> output, String... args) {
+		List<String> chunks = captureOutput(args);
+		output.addAll(chunks);
+		return lastExit;
+	}
+
+	/** Exit code reported by the most recent {@link #captureOutput(String...)} invocation. */
+	private int lastExit;
+
+	/**
+	 * Invokes {@link ProfileAnalyzerCLI#run(String...)}, recording its exit code and
+	 * returning the chunks printed to the root {@link Console} during the call.
+	 *
+	 * @param args the CLI arguments
+	 * @return the captured console chunks
+	 */
+	private List<String> captureOutput(String... args) {
+		List<String> chunks = new ArrayList<>();
+		Consumer<String> listener = chunks::add;
+		Console.root().addListener(listener);
+
+		try {
+			lastExit = ProfileAnalyzerCLI.run(args);
+		} finally {
+			Console.root().removeListener(listener);
+		}
+
+		return chunks;
 	}
 
 	/**
@@ -501,5 +535,98 @@ public class ProfileAnalyzerCLITest extends OperationProfileTestBase {
 				run("source-summary", file, SOFTMAX_KEY).get("error").asText());
 		Assert.assertEquals("Source is null for node: " + COPY_KEY,
 				run("source-summary", file, COPY_KEY).get("error").asText());
+	}
+
+	/**
+	 * The summary reports the number of compiled operations by consulting the operation
+	 * sources stored on the root of the profile (keyed by node key), which for this
+	 * fixture are the matrix-multiply and copy nodes.
+	 */
+	@Test(timeout = 60000)
+	public void summaryCountsCompiledOperationsFromRootSources() throws IOException {
+		JsonNode json = run("summary", saveSampleProfile());
+
+		Assert.assertEquals("MatMul and Copy have sources registered under their keys",
+				2, json.get("compiled_operations").asInt());
+	}
+
+	/**
+	 * The slowest command reports {@code has_source} per node from the root's operation
+	 * sources: the matrix-multiply node has a source registered under its key, whereas the
+	 * softmax node's source is registered under a different key and so is not matched.
+	 */
+	@Test(timeout = 60000)
+	public void slowestReportsHasSourceFromRootSources() throws IOException {
+		JsonNode json = run("slowest", saveSampleProfile());
+
+		JsonNode matmul = entry(json.get("slowest"), MATMUL_KEY);
+		Assert.assertTrue("MatMul source is keyed by its node key", matmul.get("has_source").asBoolean());
+
+		JsonNode softmax = entry(json.get("slowest"), SOFTMAX_KEY);
+		Assert.assertFalse("Softmax source is keyed by name, not key", softmax.get("has_source").asBoolean());
+	}
+
+	/**
+	 * Invoked with fewer than two arguments the CLI prints usage and reports a non-zero
+	 * exit code without terminating the JVM.
+	 */
+	@Test(timeout = 60000)
+	public void tooFewArgumentsReportNonZeroExit() {
+		Assert.assertEquals(1, runForExit(new ArrayList<>()));
+		Assert.assertEquals(1, runForExit(new ArrayList<>(), "summary"));
+	}
+
+	/**
+	 * An unrecognized command reports a non-zero exit code.
+	 */
+	@Test(timeout = 60000)
+	public void unknownCommandReportsNonZeroExit() throws IOException {
+		Assert.assertEquals(1, runForExit(new ArrayList<>(), "bogus", saveSampleProfile()));
+	}
+
+	/**
+	 * A command that requires a node-key or pattern argument reports a non-zero exit code
+	 * when that argument is omitted.
+	 */
+	@Test(timeout = 60000)
+	public void missingRequiredArgumentReportsNonZeroExit() throws IOException {
+		String file = saveSampleProfile();
+		Assert.assertEquals(1, runForExit(new ArrayList<>(), "search", file));
+		Assert.assertEquals(1, runForExit(new ArrayList<>(), "breakdown", file));
+		Assert.assertEquals(1, runForExit(new ArrayList<>(), "source", file));
+		Assert.assertEquals(1, runForExit(new ArrayList<>(), "source-summary", file));
+	}
+
+	/**
+	 * An unreadable profile path is caught and reported as an error JSON document with a
+	 * non-zero exit code, rather than killing the process.
+	 */
+	@Test(timeout = 60000)
+	public void unreadableProfileReportsErrorJsonAndNonZeroExit() throws IOException {
+		List<String> output = new ArrayList<>();
+		int exit = runForExit(output, "summary", "/no/such/profile-analyzer-missing.xml");
+
+		Assert.assertEquals(1, exit);
+		boolean sawError = false;
+		for (String chunk : output) {
+			if (JSON_LINE.matcher(chunk).find()) {
+				JsonNode json = mapper.readTree(chunk.substring(chunk.indexOf('{')));
+				if (json.has("error")) {
+					Assert.assertTrue(json.has("type"));
+					sawError = true;
+				}
+			}
+		}
+		Assert.assertTrue("An error JSON document should be printed", sawError);
+	}
+
+	/**
+	 * A non-numeric line limit for the source command is caught (as a parse failure) and
+	 * reported with a non-zero exit code rather than crashing the fork.
+	 */
+	@Test(timeout = 60000)
+	public void nonNumericArgumentReportsNonZeroExit() throws IOException {
+		Assert.assertEquals(1,
+				runForExit(new ArrayList<>(), "source", saveSampleProfile(), MATMUL_KEY, "not-a-number"));
 	}
 }
