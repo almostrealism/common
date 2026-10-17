@@ -43,8 +43,8 @@ import java.util.function.Function;
  * <p>Every comparison is made on the whole dense operator built by
  * {@link LayerFeatures#denseOperator} (output reshape of the optional bias addition of the
  * matrix multiply), so a reduction that fails to pass through those wrappers is caught. The
- * side under test is {@link #combineGradient}, which the backward pass uses and which is the
- * {@link ReduceAxis#OUT output-reduced} delta weighted by the upstream gradient; the
+ * side under test is the {@link ReduceAxis#OUT output-reduced} delta weighted by the upstream
+ * gradient, which the backward pass uses; the
  * full-Jacobian reference is {@link #jacobianGradient}, which materializes the Jacobian
  * regardless of the structure of the operator, and for dense operators both are also
  * compared with the gradient computed on the host from its definition. Inputs are sequences
@@ -297,7 +297,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 			}
 		}
 
-		PackedCollection actual = evaluate(combineGradient(dense.add(x), x, cp(gradient)));
+		PackedCollection actual = evaluate(dense.add(x).delta(x, ReduceAxis.OUT, cp(gradient)));
 		assertValuesMatch("residual", reference, actual.toArray(0, rows * size));
 		actual.destroy();
 	}
@@ -379,7 +379,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 			}
 		}
 
-		CollectionProducer reduced = combineGradient(broadcast, p(weights), cp(gradient));
+		CollectionProducer reduced = broadcast.delta(p(weights), ReduceAxis.OUT, cp(gradient));
 		assertNoLargerThanForward(broadcast, reduced);
 		PackedCollection actual = evaluate(reduced);
 		assertValuesMatch("broadcast", reference, actual.toArray(0, nodes * size));
@@ -583,7 +583,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	private void assertGradientsMatch(CollectionProducer function, Producer<PackedCollection> target,
 									  Producer<PackedCollection> gradient, boolean expectReduced,
 									  double[] reference, boolean jacobianReliable) {
-		CollectionProducer reduced = combineGradient(function, target, gradient);
+		CollectionProducer reduced = function.delta(target, ReduceAxis.OUT, gradient);
 
 		int size = shape(target).getTotalSize();
 		if (expectReduced) {

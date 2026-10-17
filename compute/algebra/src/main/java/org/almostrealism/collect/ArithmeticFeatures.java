@@ -18,8 +18,6 @@ package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.CollectionProducerBase;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.Absolute;
@@ -39,6 +37,7 @@ import org.almostrealism.collect.computations.CollectionExponentialComputation;
 import org.almostrealism.collect.computations.CollectionLogarithmComputation;
 import org.almostrealism.collect.computations.CollectionMinusComputation;
 import org.almostrealism.collect.computations.CollectionProductComputation;
+import org.almostrealism.collect.computations.CollectionQuotientComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.EpsilonConstantComputation;
 import org.almostrealism.collect.computations.SingleConstantComputation;
@@ -48,7 +47,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.function.Predicate;
-import java.util.stream.Stream;
 
 /**
  * Factory interface for arithmetic and mathematical operations on collections.
@@ -308,29 +306,41 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			return zeros(outputShape(a, b));
 		}
 
-		if (CollectionProducerBase.isDirectlyComputable(a) && CollectionProducerBase.isDirectlyComputable(b)) {
-			OptionalDouble constantA = Algebraic.getConstant(a);
-			OptionalDouble constantB = Algebraic.getConstant(b);
+		OptionalDouble constantA = Algebraic.getConstant(a);
+		OptionalDouble constantB = Algebraic.getConstant(b);
 
-			if (shape(a).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, a)) {
-				return CollectionFeatures.getInstance().c(b).withShortCircuit(shortCircuit);
-			} else if (shape(b).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, b)) {
-				return CollectionFeatures.getInstance().c(a).withShortCircuit(shortCircuit);
-			} else if (constantA.isPresent() && constantB.isPresent()) {
-				return constant(outputShape(a, b), constantA.getAsDouble() * constantB.getAsDouble());
-			}
-
-			if (constantA.isPresent()) {
-				CollectionProducer result = multiply(constantA.getAsDouble(), b);
-				if (result != null) return result.withShortCircuit(shortCircuit);
-			}
-
-			if (constantB.isPresent()) {
-				CollectionProducer result = multiply(constantB.getAsDouble(), a);
-				if (result != null) return result.withShortCircuit(shortCircuit);
-			}
+		if (shape(a).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, a)) {
+			return CollectionFeatures.getInstance().c(b).withShortCircuit(shortCircuit);
+		} else if (shape(b).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, b)) {
+			return CollectionFeatures.getInstance().c(a).withShortCircuit(shortCircuit);
+		} else if (constantA.isPresent() && constantB.isPresent()) {
+			return constant(outputShape(a, b), constantA.getAsDouble() * constantB.getAsDouble());
 		}
 
+		long size = outputShape(a, b).getTotalSizeLong();
+
+		if (constantA.isPresent() && shape(b).getTotalSizeLong() == size) {
+			return CollectionFeatures.getInstance().c(b)
+					.multiply(constantA.getAsDouble()).withShortCircuit(shortCircuit);
+		} else if (constantB.isPresent() && shape(a).getTotalSizeLong() == size) {
+			return CollectionFeatures.getInstance().c(a)
+					.multiply(constantB.getAsDouble()).withShortCircuit(shortCircuit);
+		}
+
+		return product(a, b).withShortCircuit(shortCircuit);
+	}
+
+	/**
+	 * Forms the element-wise product of two collections as a computation, without any of
+	 * the algebraic simplifications that {@link #multiply(Producer, Producer)} applies to
+	 * its operands. Operands are broadcast to the {@link #outputShape output shape}, and a
+	 * product with an operand known to be zero is still zeros.
+	 *
+	 * @param a the first collection to multiply
+	 * @param b the second collection to multiply
+	 * @return a {@link CollectionProducer} that generates the element-wise product
+	 */
+	default CollectionProducer product(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		return CollectionFeatures.getInstance().compute((shape, args) -> {
 					if (args.stream().anyMatch(Algebraic::isZero)) {
 						// Mathematical optimization: anything * 0 = 0
@@ -340,19 +350,18 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 
 					return (Producer<PackedCollection>) new CollectionProductComputation(shape, args.toArray(new Producer[0]));
 				},
-				args -> String.join(" * ", CollectionFeatures.getInstance().applyParentheses(args)), a, b)
-				.withShortCircuit(shortCircuit);
+				args -> String.join(" * ", CollectionFeatures.getInstance().applyParentheses(args)), a, b);
 	}
 
 	/**
-	 * Multiplies a collection by a scalar value.
-	 * This is an optimized operation for scaling all elements of a collection
-	 * by the same constant factor.
+	 * Multiplies a collection by a scalar value, using whatever representation of the
+	 * scaled collection the collection itself provides (see
+	 * {@link CollectionProducer#multiply(double)}).
 	 *
 	 * @param scale the scalar value to multiply by
 	 * @param a the collection to scale
-	 * @return a {@link CollectionProducer} that generates the scaled collection, or null if no optimization available
-	 * 
+	 * @return a {@link CollectionProducer} that generates the scaled collection
+	 *
 	 *
 	 * <pre>{@code
 	 * // Scale a vector by 2
@@ -370,24 +379,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * }</pre>
 	 */
 	default CollectionProducer multiply(double scale, Producer<PackedCollection> a) {
-		if (scale == 0) {
-			// Mathematical optimization: 0 * anything = 0
-			// Returns CollectionZerosComputation with same shape as input
-			return zeros(shape(a));
-		} else if (scale == 1.0) {
-			return CollectionFeatures.getInstance().c(a);
-		} else if (scale == -1.0) {
-			return minus(a);
-		}
-
-		Producer<PackedCollection> scaled = CollectionProducer.attemptMultiply(a, scale);
-		if (scaled != null) {
-			return CollectionFeatures.getInstance().c(scaled);
-		} else if (a.isConstant()) {
-			return multiply(shape(a), scale, a.get());
-		} else {
-			return null;
-		}
+		return CollectionFeatures.getInstance().c(a).multiply(scale);
 	}
 
 	/**
@@ -438,12 +430,9 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			return zeros(outputShape(a, b));
 		}
 
-		CollectionProducer p = CollectionFeatures.getInstance().compute("divide",
-				shape -> (args) ->
-						quotient(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
-				(List<String> args) -> String.join(" / ", CollectionFeatures.getInstance().applyParentheses(args)), a, b);
-
-		return p.withDeltaAlternate(multiply(a, pow(b, c(-1.0))));
+		return CollectionFeatures.getInstance().compute((shape, args) ->
+						new CollectionQuotientComputation(shape, args.get(0), args.get(1)),
+				args -> String.join(" / ", CollectionFeatures.getInstance().applyParentheses(args)), a, b);
 	}
 
 	/**

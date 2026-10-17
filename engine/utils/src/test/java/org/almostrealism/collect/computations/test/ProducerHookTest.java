@@ -46,9 +46,8 @@ import java.util.function.Function;
 
 /**
  * Verifies the polymorphic hooks that replaced type checks and casts in the collection
- * features: {@link CollectionProducer#attemptMultiply(double)},
- * {@link CollectionProducer#isReduction()},
- * {@link io.almostrealism.collect.CollectionProducerBase#isDirectlyComputable()}, the
+ * features: {@link CollectionProducer#multiply(double)},
+ * {@link CollectionProducer#isReduction()}, the
  * {@code with...} declarations on {@link CollectionProducer} (and their delegation
  * through {@link ReshapeProducer}), and {@link TraversalPolicy#forKernelLength}.
  *
@@ -76,31 +75,35 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
-	 * An arithmetic sequence scales itself by rescaling its parameters, and
-	 * {@code multiply(double, Producer)} uses that representation; a producer without
-	 * one (and is not constant) declines, so {@code multiply(double, Producer)} returns null
-	 * and the product of producers forms the product instead.
+	 * An arithmetic sequence scales itself by rescaling its parameters, and the product
+	 * of a constant with it, in either order, uses that representation; a producer without
+	 * one is scaled by the product with the constant.
 	 */
 	@Test(timeout = 60000)
-	public void attemptMultiply() {
+	public void multiplyByConstant() {
 		ArithmeticSequenceComputation sequence =
 				new ArithmeticSequenceComputation(shape(5), true, 1.0, 2.0);
 
-		CollectionProducer scaled = sequence.attemptMultiply(3.0);
+		CollectionProducer scaled = sequence.multiply(3.0);
 		Assert.assertTrue(scaled instanceof ArithmeticSequenceComputation);
 		assertValues(scaled.evaluate(), 3.0, 9.0, 15.0, 21.0, 27.0);
 		assertValues(multiply(3.0, sequence).evaluate(), 3.0, 9.0, 15.0, 21.0, 27.0);
 
-		Producer<PackedCollection> generic = sequence;
-		CollectionProducer delegated = CollectionProducer.attemptMultiply(generic, -2.0);
-		Assert.assertTrue(delegated instanceof ArithmeticSequenceComputation);
-		assertValues(delegated.evaluate(), -2.0, -6.0, -10.0, -14.0, -18.0);
+		CollectionProducer left = multiply(c(-2.0), sequence);
+		Assert.assertTrue(left instanceof ArithmeticSequenceComputation);
+		assertValues(left.evaluate(), -2.0, -6.0, -10.0, -14.0, -18.0);
+
+		CollectionProducer right = multiply(sequence, c(-2.0));
+		Assert.assertTrue(right instanceof ArithmeticSequenceComputation);
+		assertValues(right.evaluate(), -2.0, -6.0, -10.0, -14.0, -18.0);
 
 		CollectionProducer values = cp(pack(1.0, 2.0, 3.0));
-		Assert.assertNull(values.attemptMultiply(3.0));
-		Assert.assertNull(CollectionProducer.attemptMultiply(values, 3.0));
-		Assert.assertNull(multiply(3.0, values));
+		Assert.assertFalse(values.multiply(3.0) instanceof ArithmeticSequenceComputation);
+		assertValues(values.multiply(3.0).evaluate(), 3.0, 6.0, 9.0);
+		assertValues(multiply(3.0, values).evaluate(), 3.0, 6.0, 9.0);
 		assertValues(multiply(c(3.0), values).evaluate(), 3.0, 6.0, 9.0);
+		Assert.assertSame(values, values.multiply(1.0));
+		Assert.assertTrue(Algebraic.isZero(values.multiply(0.0)));
 	}
 
 	/**
@@ -145,21 +148,19 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
-	 * Collection computations and provided values are directly computable, also through a
-	 * reshape; a producer evaluated by a host function is not, and neither is a reshape of it.
+	 * The algebraic simplifications of a product apply to a producer evaluated by a host
+	 * function as they do to any other: multiplying it by one leaves it unchanged, and
+	 * multiplying it by another constant scales its values.
 	 */
 	@Test(timeout = 30000)
-	public void isDirectlyComputable() {
+	public void multiplyHostFunction() {
 		PackedCollection x = pack(1.0, 2.0, 3.0, 4.0);
-
-		Assert.assertTrue(cp(x).isDirectlyComputable());
-		Assert.assertTrue(cp(x).add(cp(x)).isDirectlyComputable());
-		Assert.assertTrue(new ReshapeProducer(shape(2, 2), cp(x)).isDirectlyComputable());
-
 		Function<Object[], PackedCollection> function = args -> x;
 		DynamicCollectionProducer dynamic = new DynamicCollectionProducer(shape(4), function);
-		Assert.assertFalse(dynamic.isDirectlyComputable());
-		Assert.assertFalse(new ReshapeProducer(shape(2, 2), dynamic).isDirectlyComputable());
+
+		Assert.assertSame(dynamic, multiply(c(1.0), dynamic));
+		assertValues(multiply(c(2.0), dynamic).evaluate(), 2.0, 4.0, 6.0, 8.0);
+		assertValues(multiply(dynamic, cp(x)).evaluate(), 1.0, 4.0, 9.0, 16.0);
 	}
 
 	/**

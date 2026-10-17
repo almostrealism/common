@@ -105,16 +105,6 @@ public interface CollectionProducerComputation extends
 	boolean enableShapeTrim = false;
 
 	/**
-	 * A collection computation is evaluated directly as a kernel.
-	 *
-	 * @return true
-	 */
-	@Override
-	default boolean isDirectlyComputable() {
-		return true;
-	}
-
-	/**
 	 * Differentiates this computation with respect to one of its own terms using its
 	 * {@link #getDeltaStrategy() multi-term delta strategy}.
 	 *

@@ -17,7 +17,6 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Shape;
@@ -633,15 +632,6 @@ public class ReshapeProducer
 	@Override
 	public boolean isReduction() {
 		return CollectionProducer.isReduction(producer);
-	}
-
-	/**
-	 * A reshape only reinterprets the shape of the underlying producer, so it is
-	 * directly computable exactly when that producer is.
-	 */
-	@Override
-	public boolean isDirectlyComputable() {
-		return CollectionProducerBase.isDirectlyComputable(producer);
 	}
 
 	/**

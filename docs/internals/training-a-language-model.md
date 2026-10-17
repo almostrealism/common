@@ -83,9 +83,9 @@ multiply-and-sum lowering is built from exactly those computations, so a dense l
 yields `Σ_r g_r ⊗ x_r`, `Wᵀ · g_r` and the row-summed bias gradient without any code that
 recognizes a matrix multiply. A computation without a reduced form of its own contracts its full
 Jacobian, which is what `GradientFeatures.jacobianGradient` always does; the weighted-sum lowering
-that `matmul` uses for outputs wider than 1000 is one of these. `GradientFeatures.combineGradient`,
-which `DefaultGradientPropagation` uses for both the input gradient and every weight gradient, is
-the output-reduced delta weighted by the upstream gradient.
+that `matmul` uses for outputs wider than 1000 is one of these. `DefaultGradientPropagation` forms
+both the input gradient and every weight gradient as the output-reduced delta weighted by the
+upstream gradient.
 
 `DenseVectorJacobianProductTest` compares the reduced delta of the whole dense operator with the
 forced full-Jacobian gradient and with the gradient computed on the host from its definition, for

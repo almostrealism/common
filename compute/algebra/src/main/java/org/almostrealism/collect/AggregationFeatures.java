@@ -25,7 +25,6 @@ import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.computations.CollectionMaxComputation;
 import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.CumulativeProductComputation;
-import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
 
 import java.util.function.Function;
@@ -43,9 +42,6 @@ import java.util.function.Function;
  * @see CollectionFeatures
  */
 public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatures {
-	/** When true, uses an index-projection computation as the delta alternate for max operations. */
-	boolean enableIndexProjectionDeltaAlt = true;
-
 	/** When true, enables a unary (single-input) form of the weighted sum computation. */
 	boolean enableUnaryWeightedSum = false;
 
@@ -79,13 +75,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	 * }</pre>
 	 */
 	default CollectionProducer max(Producer<PackedCollection> input) {
-		CollectionMaxComputation max = new CollectionMaxComputation(input);
-		if (!enableIndexProjectionDeltaAlt) return max;
-
-		return max.withDeltaAlternate(
-				new DynamicIndexProjectionProducerComputation("projectMax", shape(input).replace(shape(1)),
-						(args, idx) -> args[2].getValueAt(idx).toInt(),
-						true, input, indexOfMax(input)));
+		return new CollectionMaxComputation(input);
 	}
 
 	/**

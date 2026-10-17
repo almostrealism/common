@@ -29,9 +29,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -315,57 +313,32 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	}
 
 	/**
-	 * Applies the product rule to the reduced delta. Each output of an element-wise product
-	 * depends only on the matching element of every operand, with a derivative equal to the
-	 * product of the other operands at that element, so for operands {@code a_i}:
-	 * <pre>
-	 * OUT:  Σ_i a_i.delta(x, OUT, g ⊙ Π_{j≠i} a_j)
-	 * IN:   Σ_i a_i.delta(x, IN, t) ⊙ Π_{j≠i} a_j
-	 * </pre>
-	 * <p>Operands that cannot depend on the target contribute nothing. When an operand is
-	 * broadcast into the product (its size differs from the product's) the general
-	 * implementation is used.</p>
+	 * The product rule: each output of an element-wise product depends only on the matching
+	 * element of every operand, with a derivative equal to the product of the other operands
+	 * at that element. This gives the {@link ReduceAxis reduced} delta of the product for any
+	 * number of operands, each of which has the size of the product or a single element.
+	 *
+	 * @param index the position of the operand among {@link #getInputs()}
+	 * @return the product of every other operand, or null if an operand has no shape
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
-		if (hasDirectDelta(target)) return super.delta(target, axis, weight);
-
+	protected CollectionProducer elementwisePartial(int index) {
 		TraversalPolicy shape = getShape();
-		List<CollectionProducer> operands = new ArrayList<>();
+		List<Producer<PackedCollection>> inputs = getInputs();
+		CollectionProducer partial = null;
 
-		for (Process<?, ?> child : getChildren().stream().skip(1).collect(Collectors.toList())) {
-			if (!(child instanceof Shape) ||
-					((Shape<?>) child).getShape().getTotalSizeLong() != shape.getTotalSizeLong()) {
-				return super.delta(target, axis, weight);
+		for (int j = 1; j < inputs.size(); j++) {
+			if (j == index) continue;
+			if (!(inputs.get(j) instanceof Shape)) return null;
+
+			CollectionProducer other = c(inputs.get(j));
+			if (other.getShape().getTotalSizeLong() == shape.getTotalSizeLong()) {
+				other = other.reshape(shape);
 			}
 
-			operands.add(c((Producer) child));
+			partial = partial == null ? other : multiply(partial, other);
 		}
 
-		List<Producer<?>> terms = new ArrayList<>();
-
-		for (int i = 0; i < operands.size(); i++) {
-			CollectionProducer operand = operands.get(i);
-			if (operand.cannotMatch(target)) continue;
-
-			CollectionProducer factor = weight == null || axis == ReduceAxis.IN ? null : c(weight).reshape(shape);
-			for (int j = 0; j < operands.size(); j++) {
-				if (j == i) continue;
-
-				CollectionProducer other = operands.get(j).reshape(shape);
-				factor = factor == null ? other : multiply(factor, other);
-			}
-
-			if (axis == ReduceAxis.OUT) {
-				terms.add(operand.delta(target, axis,
-						factor == null ? null : factor.reshape(operand.getShape())));
-			} else {
-				CollectionProducer tangent = operand.delta(target, axis, weight).reshape(shape);
-				terms.add(factor == null ? tangent : multiply(tangent, factor));
-			}
-		}
-
-		if (terms.isEmpty()) return zeros(axis.resultShape(shape, shape(target)));
-		return terms.size() == 1 ? (CollectionProducer) terms.get(0) : add(terms);
+		return partial == null ? constant(shape, 1.0) : partial;
 	}
 }

@@ -97,7 +97,7 @@ import java.util.stream.Stream;
  *       {@code subtractMean}, {@code max}, {@code indexOfMax}, {@code subdivide}</li>
  *   <li>{@link ComparisonFeatures} - {@code equals}, {@code greaterThan}, {@code lessThan}
  *       (and conditional-selection overloads), {@code and}</li>
- *   <li>{@link GradientFeatures} - {@code delta}, {@code combineGradient},
+ *   <li>{@link GradientFeatures} - {@code delta}, {@code jacobianGradient},
  *       {@code multiplyGradient}</li>
  *   <li>{@link CollectionFeatures} (this interface) - {@code concat}, element indexing
  *       ({@code c(collection, index)}, {@code index}, {@code sizeOf}), {@code a} (assignment),
@@ -189,10 +189,6 @@ public interface CollectionFeatures extends GradientFeatures {
 	/** When true, logs a warning when operations are attempted on collections with no defined shape. */
 	boolean enableShapelessWarning = false;
 
-	// Should be flipped and removed
-	/** When true, uses the alternative delta computation path for index projection operations. */
-	boolean enableIndexProjectionDeltaAlt = true;
-
 	/** When true, uses the collection size for index expressions instead of a fixed constant. */
 	boolean enableCollectionIndexSize = false;
 
@@ -211,15 +207,6 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * chain per input and inflates gradient expression trees).
 	 */
 	boolean enableConcatenateComputation = true;
-
-	/**
-	 * Returns whether the alternative index projection delta computation path is enabled.
-	 *
-	 * @return true if the alternative delta path is active
-	 */
-	static boolean isEnableIndexProjectionDeltaAlt() {
-		return enableIndexProjectionDeltaAlt;
-	}
 
 	/** Shared console logger for collection feature operations. */
 	Console console = Computation.console.child();

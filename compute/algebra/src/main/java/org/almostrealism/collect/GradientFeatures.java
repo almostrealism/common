@@ -21,8 +21,9 @@ import org.almostrealism.calculus.ReduceAxis;
 
 /**
  * Factory interface for gradient and differentiation operations on collections.
- * This interface provides methods for computing deltas, combining gradients,
- * and multiplying gradients for backpropagation.
+ * This interface provides methods for computing deltas and for contracting a full
+ * Jacobian with an upstream gradient, the reference that a
+ * {@link ReduceAxis#OUT output-reduced} delta must agree with.
  *
  * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
  * operations should <em>implement</em> this interface (the methods are stateless
@@ -51,27 +52,6 @@ public interface GradientFeatures extends ComparisonFeatures {
 		if (result != null) return result;
 
 		return p.delta(target);
-	}
-
-	/**
-	 * Combines a function's derivative with an upstream gradient to produce the gradient
-	 * with respect to {@code input} via the chain rule (the vector-Jacobian product).
-	 *
-	 * <p>This is the {@link ReduceAxis#OUT output-reduced} delta of the function weighted
-	 * by the upstream gradient, so a function whose structure is known (a matrix multiply,
-	 * for example) never forms its Jacobian.</p>
-	 *
-	 * @param func     the differentiable collection producer representing the forward function
-	 * @param input    the input collection producer for which the gradient is computed
-	 * @param gradient the upstream gradient producer (output gradient from the next layer)
-	 * @return a {@link CollectionProducer} of shape {@code [inSize]}, traversed per element,
-	 *         containing the gradient with respect to {@code input}
-	 */
-	default CollectionProducer combineGradient(
-			CollectionProducer func,
-			Producer<?> input, Producer<PackedCollection> gradient) {
-		return func.delta(input, ReduceAxis.OUT, gradient)
-				.reshape(shape(shape(input).getTotalSize())).each();
 	}
 
 	/**

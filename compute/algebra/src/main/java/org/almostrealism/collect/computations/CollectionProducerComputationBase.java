@@ -49,7 +49,9 @@ import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiFunction;
@@ -288,6 +290,9 @@ public abstract class CollectionProducerComputationBase
 	 *
 	 * <ol>
 	 *   <li>First tries the direct cases of {@link #attemptDirectDelta(Producer)}</li>
+	 *   <li>When this computation is {@link #elementwisePartial element-wise} in every input
+	 *       that may depend on the target, scales the Jacobian of each such input by its
+	 *       partial</li>
 	 *   <li>Matches the target among this computation's inputs using {@link #matchInput}:
 	 *       no match returns null, an independent target returns zeros</li>
 	 *   <li>If the target is a direct input, delegates to {@link #applyDeltaStrategy(Producer)}</li>
@@ -306,6 +311,9 @@ public abstract class CollectionProducerComputationBase
 			warn("Cannot compute partial delta for variable Producer");
 			return null;
 		}
+
+		CollectionProducer elementwise = elementwiseJacobian(target);
+		if (elementwise != null) return elementwise;
 
 		TraversalPolicy shape = getShape();
 		TraversalPolicy targetShape = shape(target);
@@ -352,21 +360,51 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
-	 * Computes the reduced delta of this computation by the multivariate chain rule when
-	 * the target is reached through exactly one of its inputs {@code h}, passing the
-	 * reduction on to that input so that neither this computation's Jacobian with respect
-	 * to the target nor that of {@code h} is formed:
+	 * Returns the derivative of each element of this computation with respect to the
+	 * element of one of its inputs that it is computed from, when this computation is
+	 * element-wise in that input: output {@code i} depends on that input only through its
+	 * element {@code i}, or, for an input of a single element, through that element. The
+	 * result has the shape of this computation (or broadcasts to it) and is a computation
+	 * of the inputs' values, so the derivative of this computation with respect to the
+	 * input is the diagonal matrix it describes. Computations that are not element-wise in
+	 * the input return null, which is the default.
+	 *
+	 * @param index the position of the input among {@link #getInputs()}, where the
+	 *              destination is at position zero
+	 * @return the element-wise partial derivative, or null if this computation is not
+	 *         element-wise in that input
+	 */
+	protected CollectionProducer elementwisePartial(int index) {
+		return null;
+	}
+
+	/**
+	 * Computes the reduced delta of this computation by the multivariate chain rule,
+	 * passing the reduction on to the inputs {@code h} through which it depends on the
+	 * target, so that neither this computation's Jacobian with respect to the target nor
+	 * that of any {@code h} is formed:
 	 * <pre>
-	 * OUT:  gᵀ d(this)/dx = (gᵀ d(this)/dh) dh/dx    -  h.delta(x, OUT, this.delta(h, OUT, g))
-	 * IN:   d(this)/dx t  = d(this)/dh (dh/dx t)      -  this.delta(h, IN, h.delta(x, IN, t))
+	 * OUT:  gᵀ d(this)/dx = Σ_h (gᵀ d(this)/dh) dh/dx    -  Σ_h h.delta(x, OUT, this.delta(h, OUT, g))
+	 * IN:   d(this)/dx t  = Σ_h d(this)/dh (dh/dx t)      -  Σ_h this.delta(h, IN, h.delta(x, IN, t))
 	 * </pre>
-	 * <p>The delta with respect to {@code h} holds every other input constant (see
-	 * {@link #isolatedDelta(Producer)}). Every other case is left to the general
-	 * implementation.</p>
+	 * <p>When this computation is {@link #elementwisePartial element-wise} in every such
+	 * input, its delta with respect to each is that partial, applied to the weight or the
+	 * tangent element by element, and any number of inputs may depend on the target.
+	 * Otherwise the chain rule is applied when exactly one input depends on the target,
+	 * using the delta of this computation with respect to that input with every other input
+	 * held constant (see {@link #isolatedDelta(Producer)}). Every other case is left to the
+	 * general implementation.</p>
 	 */
 	@Override
 	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
-		if (hasDirectDelta(target) || !isChainRuleSupported() || !isFixedCount()) {
+		if (hasDirectDelta(target) || !isFixedCount()) {
+			return CollectionProducerComputation.super.delta(target, axis, weight);
+		}
+
+		CollectionProducer elementwise = elementwiseDelta(target, axis, weight);
+		if (elementwise != null) return elementwise;
+
+		if (!isChainRuleSupported()) {
 			return CollectionProducerComputation.super.delta(target, axis, weight);
 		}
 
@@ -385,6 +423,120 @@ public abstract class CollectionProducerComputationBase
 		}
 
 		return isolated.delta(stub, axis, c(in).delta(target, axis, weight));
+	}
+
+	/**
+	 * Computes the reduced delta from the {@link #elementwisePartial element-wise partial}
+	 * derivatives of this computation, summing over every input that may depend on the
+	 * target. An input that appears more than once contributes the sum of its partials. For
+	 * an input {@code h} with partial {@code p}:
+	 * <pre>
+	 * OUT:  h.delta(x, OUT, g ⊙ p)     (summed over the outputs when h is a single element)
+	 * IN:   p ⊙ h.delta(x, IN, t)
+	 * </pre>
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   the axis of the Jacobian to sum away
+	 * @param weight the weight of each entry along that axis, or null to weight every
+	 *               entry by one
+	 * @return the reduced delta, or null if this computation is not element-wise in every
+	 *         input that may depend on the target
+	 */
+	private CollectionProducer elementwiseDelta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		Map<Producer<PackedCollection>, CollectionProducer> partials = elementwisePartials(target);
+		if (partials == null) return null;
+
+		TraversalPolicy shape = getShape();
+		List<Producer<?>> terms = new ArrayList<>();
+
+		for (Map.Entry<Producer<PackedCollection>, CollectionProducer> entry : partials.entrySet()) {
+			CollectionProducer in = c(entry.getKey());
+			CollectionProducer partial = entry.getValue();
+			boolean scalar = in.getShape().getTotalSizeLong() != shape.getTotalSizeLong();
+
+			if (axis == ReduceAxis.OUT) {
+				CollectionProducer local = multiply(
+						weight == null ? constant(shape, 1.0) : c(weight).reshape(shape), partial);
+				if (scalar) local = local.reshape(shape.getTotalSize()).sum();
+				terms.add(in.delta(target, axis, local.reshape(in.getShape())));
+			} else {
+				CollectionProducer tangent = in.delta(target, axis, weight);
+				terms.add(multiply(scalar ? tangent : tangent.reshape(shape), partial).reshape(shape));
+			}
+		}
+
+		return terms.size() == 1 ? (CollectionProducer) terms.get(0) : add(terms);
+	}
+
+	/**
+	 * Computes the full Jacobian of this computation from its
+	 * {@link #elementwisePartial element-wise partial} derivatives: each input {@code h}
+	 * contributes its own Jacobian with every row scaled by the partial of the matching
+	 * output, or, when {@code h} is a single element, the outer product of the partial
+	 * with that element's Jacobian.
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @return the Jacobian, in the shape of this computation followed by that of the
+	 *         target, or null if this computation is not element-wise in every input that
+	 *         may depend on the target
+	 */
+	private CollectionProducer elementwiseJacobian(Producer<?> target) {
+		Map<Producer<PackedCollection>, CollectionProducer> partials = elementwisePartials(target);
+		if (partials == null) return null;
+
+		TraversalPolicy shape = getShape();
+		int outSize = shape.getTotalSize();
+		int targetSize = shape(target).getTotalSize();
+		List<Producer<?>> terms = new ArrayList<>();
+
+		for (Map.Entry<Producer<PackedCollection>, CollectionProducer> entry : partials.entrySet()) {
+			CollectionProducer in = c(entry.getKey());
+			CollectionProducer jacobian = in.delta(target);
+
+			if (in.getShape().getTotalSize() == outSize) {
+				jacobian = jacobian.reshape(outSize, targetSize);
+			} else {
+				jacobian = jacobian.reshape(targetSize).repeat(outSize).reshape(outSize, targetSize);
+			}
+
+			CollectionProducer partial = multiply(constant(shape, 1.0), entry.getValue())
+					.reshape(outSize).traverse(1).repeat(targetSize).reshape(outSize, targetSize);
+			terms.add(multiply(jacobian, partial));
+		}
+
+		CollectionProducer jacobian = terms.size() == 1 ? (CollectionProducer) terms.get(0) : add(terms);
+		return jacobian.reshape(shape.append(shape(target)));
+	}
+
+	/**
+	 * Returns the {@link #elementwisePartial element-wise partial} derivative of this
+	 * computation with respect to each input that may depend on the target, the partials
+	 * of an input that appears more than once summed.
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @return the partial derivative of each such input, or null if there are none or this
+	 *         computation is not element-wise in every one of them
+	 */
+	private Map<Producer<PackedCollection>, CollectionProducer> elementwisePartials(Producer<?> target) {
+		long size = getShape().getTotalSizeLong();
+		List<Producer<PackedCollection>> inputs = getInputs();
+		Map<Producer<PackedCollection>, CollectionProducer> partials = new LinkedHashMap<>();
+
+		for (int i = 1; i < inputs.size(); i++) {
+			Producer<PackedCollection> in = inputs.get(i);
+			if (in.cannotMatch(target)) continue;
+			if (!(in instanceof Shape)) return null;
+
+			long inSize = ((Shape<?>) in).getShape().getTotalSizeLong();
+			if (inSize != size && inSize != 1) return null;
+
+			CollectionProducer partial = elementwisePartial(i);
+			if (partial == null) return null;
+
+			partials.merge(in, partial, (p, q) -> add(p, q));
+		}
+
+		return partials.isEmpty() ? null : partials;
 	}
 
 	/**

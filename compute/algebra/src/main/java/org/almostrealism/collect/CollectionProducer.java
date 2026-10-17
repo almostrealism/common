@@ -430,14 +430,29 @@ public interface CollectionProducer extends
 	}
 
 	/**
-	 * Multiplies every element of this collection by the given scalar.
+	 * Multiplies every element of this collection by the given scalar. A producer with a
+	 * representation of its own scaled values, such as an arithmetic sequence that rescales
+	 * its parameters, overrides this to return that representation; otherwise the
+	 * {@link #product(Producer, Producer) product} with the scalar is formed. Every
+	 * scalar-by-collection product built by {@link #multiply(Producer, Producer)} goes
+	 * through this method.
 	 *
 	 * @param <T>   the collection type
 	 * @param value the scalar multiplier
 	 * @return a producer for the scaled collection
 	 */
 	default <T extends PackedCollection> CollectionProducer multiply(double value) {
-		return multiply(this, c(value));
+		if (value == 0) {
+			return zeros(getShape());
+		} else if (value == 1.0) {
+			return this;
+		} else if (value == -1.0) {
+			return minus();
+		} else if (isConstant()) {
+			return multiply(getShape(), value, get());
+		}
+
+		return product(this, c(value));
 	}
 
 	/**
@@ -1054,34 +1069,6 @@ public interface CollectionProducer extends
 	}
 
 	/**
-	 * Attempts to scale this producer by a constant factor using a representation
-	 * specific to this producer, such as rescaling the parameters of a sequence rather
-	 * than wrapping it in a product. Returns {@code null} when this producer has no such
-	 * representation, in which case the caller must form the product.
-	 *
-	 * @param factor the constant to scale by
-	 * @return this producer scaled by {@code factor}, or {@code null} if no shortcut applies
-	 */
-	default CollectionProducer attemptMultiply(double factor) {
-		return null;
-	}
-
-	/**
-	 * Attempts to scale an arbitrary producer by a constant factor, as
-	 * {@link #attemptMultiply(double)} does for a {@link CollectionProducer}. A producer
-	 * that is not a {@link CollectionProducer} offers no such representation, so
-	 * {@code null} is returned for it and the caller must form the product.
-	 *
-	 * @param producer the producer to scale
-	 * @param factor   the constant to scale by
-	 * @return the producer scaled by {@code factor}, or {@code null} if no shortcut applies
-	 */
-	static CollectionProducer attemptMultiply(Producer<?> producer, double factor) {
-		if (!(producer instanceof CollectionProducer)) return null;
-		return ((CollectionProducer) producer).attemptMultiply(factor);
-	}
-
-	/**
 	 * Indicates whether this producer is itself a reduction, combining groups of its
 	 * input elements into single outputs (an aggregation or a weighted sum). A reduction
 	 * already compiles to an accumulation, so a reduction applied to its output (see
@@ -1117,17 +1104,6 @@ public interface CollectionProducer extends
 	default boolean isIsolationPermitted() {
 		return Process.isolationPermitted(this) &&
 				getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
-	}
-
-	/**
-	 * Combines the gradient of this computation with the upstream gradient using the chain rule.
-	 *
-	 * @param target   the parameter with respect to which the gradient is being computed
-	 * @param gradient the upstream gradient producer
-	 * @return a producer for the combined gradient
-	 */
-	default CollectionProducer grad(Producer<?> target, Producer<PackedCollection> gradient) {
-		return combineGradient(this, target, gradient);
 	}
 
 	/**
