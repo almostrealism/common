@@ -664,10 +664,12 @@ def _archived_workstream_error(operation: str, workstream_id: str) -> Optional[d
 
     An unknown or out-of-scope workstream resolves to ``None`` here so the
     caller's existing not-found / scope handling still runs; this guard
-    speaks only to the archived case. Addressing by ``workstream_id`` is the
-    path it protects — a caller that resolves a workstream another way (an
-    operator submitting by ``target_branch`` with no id) is left to the
-    controller's own archived handling.
+    speaks only to the archived case. It protects a workstream addressed by
+    id, so every caller resolves its target to an id before calling: the
+    submit tool resolves a ``target_branch`` through
+    :func:`_find_workstream_by_branch`, and ``memory_store`` resolves both an
+    explicit ``repo_url`` + ``branch`` and the token-bound workstream, rather
+    than leaving any of those forms to the controller's own archived handling.
 
     Args:
         operation: What the caller was attempting, phrased to complete

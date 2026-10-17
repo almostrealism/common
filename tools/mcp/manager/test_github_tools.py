@@ -1317,3 +1317,64 @@ class TestGithubToolsDirectAddressing(unittest.TestCase):
             server.github_pr_find(org="Plytrix", repo="plytrix-platform",
                                   branch="feature/x")
         mock_gh.assert_not_called()
+
+
+class TestGithubCreatePrArchived(unittest.TestCase):
+    """``github_create_pr`` refuses an archived workstream.
+
+    Archived workstreams are read-only. Resolving an archived workstream's
+    ownership now succeeds, which reopened this mutating GitHub path: a PR
+    raised from the archived round's default branch is a new artifact against
+    a frozen record, so it must be refused before the POST, as the other
+    pipeline mutation paths already are. Direct org/repo addressing carries no
+    workstream and stays unaffected.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        server._set_token_context("", "")
+
+    def tearDown(self):
+        server._set_token_context("", "")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "qa/retro-x", None))
+    @patch.object(server, "_find_workstream",
+                  return_value={"workstreamId": "ws-arch", "archived": True})
+    @patch.object(server, "_github_request")
+    def test_create_pr_rejected_for_archived_workstream(
+            self, mock_gh, mock_find, mock_repo):
+        result = server.github_create_pr(
+            title="T", body="B", workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_find_workstream",
+                  return_value={"workstreamId": "ws-live", "baseBranch": "master"})
+    @patch.object(server, "_github_request",
+                  return_value={"number": 5, "html_url": "u", "title": "T"})
+    def test_create_pr_allowed_for_live_workstream(
+            self, mock_gh, mock_find, mock_repo):
+        result = server.github_create_pr(
+            title="T", body="B", workstream_id="ws-live")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_gh.assert_called_once()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_find_workstream")
+    @patch.object(server.github_api, "default_branch", return_value="master")
+    @patch.object(server, "_github_request",
+                  return_value={"number": 9, "html_url": "u", "title": "T"})
+    def test_create_pr_direct_org_repo_not_guarded(
+            self, mock_gh, mock_default, mock_find, mock_repo):
+        """Direct org/repo addressing resolves no workstream, so the archived
+        guard short-circuits and the PR is created."""
+        result = server.github_create_pr(
+            title="T", body="B", org="org", repo="repo", head="feature/x")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_find.assert_not_called()
+        mock_gh.assert_called_once()

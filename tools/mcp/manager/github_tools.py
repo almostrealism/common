@@ -532,6 +532,18 @@ def github_create_pr(
 
     effective_ws = workstream_id or server._get_token_workstream_id() or ""
     ws = server._find_workstream(effective_ws) if effective_ws else None
+
+    # Archived workstreams are read-only. Resolving an archived workstream's
+    # ownership now succeeds (see _find_workstream), so creating a PR from its
+    # default branch — a new artifact raised against the frozen round — must be
+    # refused here, as project_commit_plan and project_verify_branch already are.
+    # Direct org/repo addressing carries no workstream to guard (effective_ws is
+    # empty and _archived_workstream_error short-circuits); the review-interaction
+    # tools stay unguarded so an archived round's PR can still be reviewed.
+    archived_err = server._archived_workstream_error("create a pull request", effective_ws)
+    if archived_err:
+        return archived_err
+
     effective_base = (base or (ws or {}).get("baseBranch", "")
                       or github_api.default_branch(owner, repo))
     effective_head = head or default_branch

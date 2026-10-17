@@ -1193,6 +1193,45 @@ class TestMemoryStoreArchived(unittest.TestCase):
 
     @patch.object(server, "_get_memory_client")
     @patch.object(server, "_find_workstream")
+    def test_store_rejected_for_archived_via_token(
+            self, mock_find, mock_client_fn):
+        """A minimal ``content``-only call whose temp token is bound to a
+        workstream archived mid-run is refused, matching the send_message
+        guard — a token can briefly outlive the job that minted it."""
+        server._set_token_context("ws-arch", "job-arch")
+        mock_find.return_value = {
+            "workstreamId": "ws-arch", "archived": True,
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "qa/retro-x",
+        }
+        client = MagicMock()
+        mock_client_fn.return_value = client
+        result = server.memory_store(content="note")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        client.store.assert_not_called()
+        client.store_dual.assert_not_called()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream")
+    def test_store_allowed_for_live_token(self, mock_find, mock_client_fn):
+        """A content-only call whose token resolves to a live workstream is
+        unaffected by the archived guard (no false positive on the hot path)."""
+        server._set_token_context("ws-live", "job-live")
+        mock_find.return_value = {
+            "workstreamId": "ws-live",
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/live",
+        }
+        client = MagicMock()
+        client.store.return_value = {"id": "new-1", "content": "note"}
+        mock_client_fn.return_value = client
+        result = server.memory_store(content="note")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        client.store.assert_called_once()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream")
     @patch.object(server, "_find_workstream_by_branch")
     def test_store_allowed_for_live_repo_branch(
             self, mock_by_branch, mock_find, mock_client_fn):

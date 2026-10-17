@@ -300,16 +300,20 @@ def memory_store(
     # appending one mutates the frozen record — the same category of write the
     # send_message guard refuses on the conversation history. Resolving an
     # archived workstream's ownership now succeeds, so this explicit refusal is
-    # what keeps new memories off an archived round. The round is addressed
-    # either directly by workstream_id or by an explicit repo_url + branch; the
-    # token-fallback path (no explicit identifier) is left alone because no
-    # agent runs on an archived workstream (submit is refused), so its own
-    # memories never target one. Unarchive it first to record against it.
+    # what keeps new memories off an archived round. Every way of addressing the
+    # round is resolved to an id and checked: directly by workstream_id, by an
+    # explicit repo_url + branch, or — matching the send_message guard — by the
+    # workstream the in-flight request's HMAC temp token is bound to. A temp
+    # token can briefly outlive the job that minted it, so the token-fallback
+    # path is guarded too rather than trusted to never name an archived round.
+    # Unarchive it first to record against it.
     archived_target = workstream_id
     if not archived_target and repo_url and branch:
         ws_by_branch = server._find_workstream_by_branch(repo_url, branch)
         if ws_by_branch:
             archived_target = ws_by_branch.get("workstreamId", "") or ""
+    if not archived_target:
+        archived_target = server._get_token_workstream_id() or ""
     archived_err = server._archived_workstream_error("store a memory", archived_target)
     if archived_err:
         return archived_err
