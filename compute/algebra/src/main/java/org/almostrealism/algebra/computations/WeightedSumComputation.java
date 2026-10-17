@@ -26,7 +26,6 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -62,8 +61,8 @@ import java.util.List;
  * TraversalPolicy weightPos = shape(3, 4);  // Position policy for x
  * TraversalPolicy groupShape = shape(1, 4); // Sum over dimension 1
  *
- * WeightedSumComputation<PackedCollection> matmul =
- *     new WeightedSumComputation<>(
+ * WeightedSumComputation matmul =
+ *     new WeightedSumComputation(
  *         resultShape, inputPos, weightPos,
  *         groupShape, groupShape,
  *         matrixA, vectorX
@@ -206,15 +205,22 @@ public class WeightedSumComputation
 		init();
 	}
 
+	/** A weighted sum reduces each group of input elements to a single output. */
+	@Override
+	public boolean isReduction() {
+		return true;
+	}
+
 	/**
 	 * Extends the standard computation signature with the traversal policies
 	 * that determine the generated kernel. The position and group policies are
 	 * not derivable from the input and output shapes alone, so two weighted
 	 * sums over identically shaped operands would otherwise share a signature
-	 * while generating different kernels. Position policies are constructed
-	 * with per-axis rates, which their standard descriptions omit, so the
-	 * rates are rendered explicitly here, as is the number of members summed
-	 * by each iteration when the kernel is generated as a loop.
+	 * while generating different kernels. Each policy contributes its
+	 * {@link TraversalPolicy#signature() signature}, which includes the
+	 * per-axis rates position policies are constructed with, and the number
+	 * of members summed by each iteration is appended when the kernel is
+	 * generated as a loop.
 	 *
 	 * @return The signature string, or null when the base signature is unavailable
 	 */
@@ -235,14 +241,7 @@ public class WeightedSumComputation
 		};
 
 		for (TraversalPolicy policy : policies) {
-			detail.append("{").append(policy.toStringDetail());
-
-			for (int i = 0; i < policy.getDimensions(); i++) {
-				detail.append("|").append(policy.rateNumeratorLong(i))
-						.append(":").append(policy.rateDenominatorLong(i));
-			}
-
-			detail.append("}");
+			detail.append("{").append(policy.signature()).append("}");
 		}
 
 		if (isLooped()) {
@@ -407,13 +406,13 @@ public class WeightedSumComputation
 	 */
 	@Override
 	public CollectionProducer delta(Producer<?> target) {
-		if (AlgebraFeatures.match(getInputs().get(1), target) && AlgebraFeatures.cannotMatch(getInputs().get(2), target)) {
+		if (getInputs().get(1).refersTo(target) && getInputs().get(2).cannotMatch(target)) {
 			return new DefaultTraversableExpressionComputation("weightedSumDelta",
 					getShape().append(shape(target)),
 					args ->
 							new WeightedSumDeltaExpression(getShape(), shape(target), getInputTraversal(), getWeightsTraversal(), args[1]),
 					getInputs().get(2));
-		} else if (AlgebraFeatures.match(getInputs().get(2), target) && AlgebraFeatures.cannotMatch(getInputs().get(1), target)) {
+		} else if (getInputs().get(2).refersTo(target) && getInputs().get(1).cannotMatch(target)) {
 			return new DefaultTraversableExpressionComputation("weightedSumDelta",
 					getShape().append(shape(target)),
 					args ->

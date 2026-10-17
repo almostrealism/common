@@ -203,7 +203,7 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	 * the surrounding fused expression.</p>
 	 *
 	 * <p>Reaching this method therefore signals that some operation accepted a zeros as a child
-	 * without respecting {@link io.almostrealism.collect.Algebraic#isZero(Object)} — the correct
+	 * without respecting {@link io.almostrealism.collect.Algebraic#isZero()} — the correct
 	 * fix is to make that operation collapse the zero (e.g. {@code multiply(x, 0.0)} returns a
 	 * zeros, a reshaped zeros returns a zeros), not to permit isolation here.</p>
 	 *
@@ -299,7 +299,7 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	 * 
 	 * @see Producer
 	 * @see TraversalPolicy#append(TraversalPolicy)
-	 * @see org.almostrealism.calculus.DeltaFeatures
+	 * @see org.almostrealism.collect.CollectionProducer#delta(Producer)
 	 */
 	@Override
 	public CollectionProducer delta(Producer<?> target) {

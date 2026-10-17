@@ -24,6 +24,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;

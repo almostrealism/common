@@ -20,7 +20,7 @@ import io.almostrealism.sequence.ArrayIndexSequence;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexValues;
-import io.almostrealism.collect.CollectionExpressionAdapter;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.scope.Scope;
@@ -173,8 +173,8 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 
 		int valueCount = input.getValueCount();
 		Index index = valueCount > 0 ?
-				CollectionExpressionAdapter.generateTemporaryIndex(valueCount)
-				: CollectionExpressionAdapter.generateTemporaryIndex();
+				DefaultIndex.temporary(valueCount)
+				: DefaultIndex.temporary();
 		Expression<O> e = function.apply((Expression) index);
 		if (!(e instanceof Mask)) return null;
 

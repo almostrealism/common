@@ -229,6 +229,18 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	}
 
 	/**
+	 * Returns the producer arguments of this producer. They are evaluated on the host
+	 * rather than exposed as process children, so they are presented here for matching;
+	 * otherwise a producer computed from a target would be reported as independent of it.
+	 *
+	 * @return the producer arguments, empty when there are none
+	 */
+	@Override
+	public Stream<? extends Producer<?>> matchableInputs() {
+		return args == null ? Stream.empty() : Stream.of(args);
+	}
+
+	/**
 	 * Creates a new {@link CollectionProducer} that traverses along the specified axis.
 	 * This operation changes how the collection is accessed and iterated, effectively
 	 * creating a view that processes the collection differently along the given dimension.

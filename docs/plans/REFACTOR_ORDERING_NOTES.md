@@ -66,7 +66,7 @@ The five items:
   `MemoryDataDestination.createDestination(size)` → provider lambda →
   `MemoryDataDestinationProducer.getDestinationFactory()` → **back into the
   owning Computation** (`CollectionProducerComputationBase.adjustDestination`
-  → `shapeForLength(getShape(), getCount(), isFixedCount(), len)` → allocate).
+  → `shapeForLength(len)` → allocate).
 - **The information actually consumed is small and mostly static**: the
   computation's `TraversalPolicy` shape, its count, its fixed-count flag —
   plus the kernel size known only at dispatch. Nothing else from the

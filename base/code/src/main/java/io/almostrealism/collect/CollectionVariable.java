@@ -19,6 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.sequence.Index;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -233,6 +234,17 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	}
 
 	/**
+	 * A collection variable is itself a {@link TraversableExpression}, so it answers
+	 * with itself whenever it reports that it is traversable.
+	 *
+	 * @return this variable, or {@code null} if it is not traversable
+	 */
+	@Override
+	public TraversableExpression<?> getTraversableExpression() {
+		return isTraversable() ? this : null;
+	}
+
+	/**
 	 * Computes a unique non-zero offset for the given indices, if one exists.
 	 * This method checks if the underlying producer is a {@link TraversableExpression}
 	 * and delegates to its offset calculation, otherwise falls back to the default
@@ -273,12 +285,11 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 * {@link #hasMatchingProducer has matching producers}. Otherwise, falls back to the default {@link CollectionExpression}
 	 * matching logic.
 	 *
-	 * @param other the other algebraic expression to compare against
-	 * @param <A>   the type of algebraic expression
+	 * @param other the other computation to compare against
 	 * @return {@code true} if the expressions match algebraically, {@code false} otherwise
 	 */
 	@Override
-	public <A extends Algebraic> boolean matches(A other) {
+	public boolean matches(Computable other) {
 		if (other instanceof Variable && hasMatchingProducer((Variable<?, ?>) other)) {
 			return true;
 		}

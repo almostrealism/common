@@ -228,6 +228,14 @@ public class CollectionProviderProducer<T extends Shape>
 	public boolean isProvider() { return true; }
 
 	/**
+	 * A provided collection is directly available to a kernel as an argument.
+	 *
+	 * @return true
+	 */
+	@Override
+	public boolean isDirectlyComputable() { return true; }
+
+	/**
 	 * Creates a traversal view of this producer along the specified axis.
 	 *
 	 * <p>Delegates to the {@link CollectionFeatures#traverse(int, Producer)} helper method
@@ -278,6 +286,15 @@ public class CollectionProviderProducer<T extends Shape>
 	 */
 	@Override
 	public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }
+
+	/**
+	 * Returns {@code true}, since a provider introduces its value into the graph
+	 * rather than deriving it from inputs.
+	 *
+	 * @return {@code true}
+	 */
+	@Override
+	public boolean isMatchRoot() { return true; }
 
 	/**
 	 * Generates a process with the specified child processes.

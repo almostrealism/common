@@ -587,6 +587,12 @@ public abstract class Expression<T> implements
 	}
 
 	/**
+	 * Returns {@code true} if this expression reads a declared {@link Variable} directly,
+	 * so its value is only known at runtime and can be the destination of an assignment.
+	 */
+	public boolean isVariableReference() { return false; }
+
+	/**
 	 * Checks whether the bounds of this expression prove that it can never
 	 * produce the given value.
 	 *
@@ -1197,6 +1203,17 @@ public abstract class Expression<T> implements
 		KernelStructureContext ctx = getStructureContext();
 		if (ctx == null) ctx = new NoOpKernelStructureContext();
 		return simplify(ctx);
+	}
+
+	/**
+	 * Simplifies this expression only when its node count exceeds {@code threshold},
+	 * avoiding the cost of simplification for expressions that are already small.
+	 *
+	 * @param threshold the node count above which simplification is applied
+	 * @return the simplified expression, or this expression if it is within the threshold
+	 */
+	public Expression<?> simplifyAbove(int threshold) {
+		return countNodes() > threshold ? simplify() : this;
 	}
 
 	/**

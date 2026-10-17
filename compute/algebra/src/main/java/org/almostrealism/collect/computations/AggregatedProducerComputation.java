@@ -33,7 +33,6 @@ import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -330,6 +329,12 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		return enableChainRule || super.isChainRuleSupported();
 	}
 
+	/** An aggregation reduces each group of input elements to a single output. */
+	@Override
+	public boolean isReduction() {
+		return true;
+	}
+
 	@Override
 	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
@@ -501,7 +506,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 			int outLength = ((CollectionProducer) getInputs().get(1)).getShape().getTotalSize();
 			int inLength = shape(target).getTotalSize();
 
-			if (AlgebraFeatures.match(getInputs().get(1), target)) {
+			if (getInputs().get(1).refersTo(target)) {
 				delta = identity(shape(inLength, outLength))
 						.reshape(inLength, outLength, 1).traverse(0);
 			} else {

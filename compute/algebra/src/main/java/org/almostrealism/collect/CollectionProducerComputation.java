@@ -26,21 +26,19 @@ import io.almostrealism.compute.Isolated;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -71,7 +69,7 @@ import java.util.stream.Stream;
  * <h2>Lifecycle</h2>
  * <pre>{@code
  * // 1. Create computation
- * CollectionProducerComputation<PackedCollection> comp = ...;
+ * CollectionProducerComputation comp = ...;
  *
  * // 2. Get evaluable (compiles to hardware)
  * Evaluable<PackedCollection> ev = comp.get();
@@ -106,21 +104,87 @@ public interface CollectionProducerComputation extends
 	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
 
+	/**
+	 * A collection computation is evaluated directly as a kernel.
+	 *
+	 * @return true
+	 */
 	@Override
-	default <V extends PackedCollection> CollectionProducer applyDeltaStrategy(CollectionProducer producer,
-																			   Producer<?> target) {
-		Collection<Producer<?>> terms;
+	default boolean isDirectlyComputable() {
+		return true;
+	}
 
-		if (producer instanceof Parent) {
-			terms = ((Parent<?>) producer).getChildren().stream()
-					.map(t -> (Producer<?>) t)
-					.collect(Collectors.toList());
-		} else {
-			return CollectionProducerParallelProcess.super.applyDeltaStrategy(producer, target);
-		}
+	/**
+	 * Differentiates this computation with respect to one of its own terms using its
+	 * {@link #getDeltaStrategy() multi-term delta strategy}.
+	 *
+	 * @param target  the variable to differentiate with respect to
+	 * @return the gradient computation, or null if the strategy does not apply
+	 * @see MultiTermDeltaStrategy#delta(CollectionProducerComputation, Producer)
+	 */
+	@Override
+	default CollectionProducer applyDeltaStrategy(Producer<?> target) {
+		return getDeltaStrategy().delta(this, target);
+	}
 
-		return deltaStrategyProcessor(producer.getDeltaStrategy(),
-				producerFactory(this), shape(producer), target).apply(terms);
+	/**
+	 * Returns the inputs of this computation, its destination first. These are the
+	 * producers the computation was built from, including any that are not a
+	 * {@link Process}, which {@link #getChildren()} would wrap.
+	 *
+	 * @return the inputs of this computation
+	 */
+	List<Producer<PackedCollection>> getInputs();
+
+	/**
+	 * Presents the {@link #getInputs() inputs} of this computation for matching, so that
+	 * an input that is not a {@link Process} (which {@link #getChildren()} presents only
+	 * wrapped) is still recognized as something this computation depends on.
+	 *
+	 * @return the inputs of this computation, empty when they are not set
+	 */
+	@Override
+	default Stream<? extends Producer<?>> matchableInputs() {
+		List<Producer<PackedCollection>> inputs = getInputs();
+		return inputs == null ? Stream.empty() : inputs.stream();
+	}
+
+	/**
+	 * Returns the terms of this computation, its destination first.
+	 *
+	 * @return the inputs of this computation
+	 */
+	private List<Producer<?>> getTerms() {
+		return new ArrayList<>(getInputs());
+	}
+
+	/**
+	 * Counts the terms of this computation that {@link Producer#refersTo refer to}
+	 * the given target.
+	 *
+	 * @param target  the producer to look for among this computation's terms
+	 * @return the number of matching terms
+	 */
+	default long countTerms(Producer<?> target) {
+		return getTerms().stream()
+				.filter(t -> t.refersTo(target))
+				.count();
+	}
+
+	/**
+	 * Rebuilds this computation from every term except those that
+	 * {@link Producer#refersTo refer to} the given target. When a single
+	 * term remains, that term is returned directly.
+	 *
+	 * @param target  the term to leave out
+	 * @return this computation over the remaining terms, or null if it cannot be rebuilt:
+	 *         several terms remain and one of them is not a {@link Process}, or the single
+	 *         remaining term is neither a {@link CollectionProducer} nor a {@link Shape}
+	 */
+	default CollectionProducer excludeTerm(Producer<?> target) {
+		return generateFromTerms(getTerms().stream()
+				.filter(t -> !t.refersTo(target))
+				.collect(Collectors.toList()));
 	}
 
 	@Override
@@ -238,57 +302,40 @@ public interface CollectionProducerComputation extends
 	}
 
 	/**
-	 * Evaluates this computation and converts the result to a typed data adapter
-	 * using the provided factory function.
+	 * Generates a new {@link CollectionProducer} from a list of children, using the
+	 * structure of this computation as the template. The first child is the destination;
+	 * if only one term follows it, that term is returned directly, viewed through a
+	 * {@link ReshapeProducer} when it is a {@link Shape} but not a {@link CollectionProducer}.
+	 * A single term that is neither has no shape to present it by, and null is returned.
 	 *
-	 * @param <T>     the type of the resulting data adapter
-	 * @param factory a function that creates a data adapter from the output shape
-	 * @return the evaluated and converted result
-	 */
-	default <T extends MemoryDataAdapter> T collect(Function<TraversalPolicy, T> factory) {
-		PackedCollection c = get().evaluate();
-		T data = factory.apply(c.getShape());
-		data.setDelegate(c, 0);
-		return data;
-	}
-
-	/**
-	 * Creates a factory function that generates a new {@link CollectionProducer} from a list of
-	 * input producers, using the structure of an existing computation as the template.
-	 * If only one non-null input is present, that input is returned directly.
+	 * <p>Several terms can only be rebuilt through {@link #generate(List)}, whose children
+	 * must each be a {@link Process} that is also the {@link Producer} it stands for. A
+	 * term that is not a {@link Process} cannot be presented that way ({@link Process#of}
+	 * would wrap it in something that is not a {@link Producer}), so the computation is
+	 * not rebuilt and null is returned instead.</p>
 	 *
-	 * @param <T>      the collection type of the computation
-	 * @param original the computation to use as a template for generating the new producer
-	 * @return a function that takes a list of producers and returns a new CollectionProducer
+	 * @param args  the children of the new computation, destination first
+	 * @return the computation over the given terms, or null if they include a term that
+	 *         is not a {@link Process} and more than one term remains, or if the single
+	 *         remaining term is neither a {@link CollectionProducer} nor a {@link Shape}
 	 */
-	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer>
-				producerFactory(CollectionProducerComputation original) {
-		return args -> {
-			List<Producer<?>> terms = new ArrayList<>();
-			args.stream().skip(1).forEach(terms::add);
-
-			if (terms.isEmpty()) {
-				throw new IllegalArgumentException();
-			} else if (terms.size() == 1) {
-				return (CollectionProducer) terms.get(0);
+	private CollectionProducer generateFromTerms(List<Producer<?>> args) {
+		if (args.size() < 2) {
+			throw new IllegalArgumentException("No terms remain");
+		} else if (args.size() == 2) {
+			Producer<?> term = args.get(1);
+			if (term instanceof CollectionProducer) {
+				return (CollectionProducer) term;
+			} else if (term instanceof Shape) {
+				return new ReshapeProducer(((Shape) term).getShape().getTraversalAxis(), (Producer) term);
 			} else {
-				return original.generate((List) args.stream()
-						.map(t -> (Process) t).collect(Collectors.toList()));
+				return null;
 			}
-		};
-	}
-
-	/**
-	 * Returns true if the given producer may be isolated into an independent process.
-	 * Isolation is permitted only when the process supports it and the total collection
-	 * size does not exceed the maximum memory reservation limit.
-	 *
-	 * @param op the collection producer to test
-	 * @return true if isolation is permitted
-	 */
-	static <T extends PackedCollection> boolean isIsolationPermitted(CollectionProducer op) {
-		return Process.isolationPermitted(op) &&
-				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
+		} else if (!args.stream().allMatch(t -> t instanceof Process)) {
+			return null;
+		} else {
+			return generate((List) args);
+		}
 	}
 
 	/**
@@ -301,38 +348,17 @@ public interface CollectionProducerComputation extends
 	 * <p>The shape calculation follows these rules:</p>
 	 * <ul>
 	 *   <li>For fixed-count computations, returns the original shape</li>
-	 *   <li>When kernel length equals target count, returns the original shape</li>
+	 *   <li>When kernel length is less than, or equal to, the count, returns the original shape</li>
 	 *   <li>Otherwise, prepends a dimension to accommodate the length difference</li>
 	 * </ul>
 	 *
 	 * @param len The length of the kernel execution context
 	 * @return The appropriate traversal policy for the given length
 	 * @see #isFixedCount()
-	 * @see TraversalPolicy#prependDimension(int)
+	 * @see TraversalPolicy#forKernelLength(int, boolean, int)
 	 */
-	static TraversalPolicy shapeForLength(TraversalPolicy computationShape,
-										  int computationCount,
-										  boolean fixedCount, int len) {
-		TraversalPolicy shape;
-
-		if (fixedCount) {
-			shape = computationShape;
-		} else {
-			int count = len / computationCount;
-
-			// When kernel length is less than, or identical to the output count, an
-			// assumption is made that the intended shape is the original shape.
-			// This is a bit of a hack, but it's by far the simplest solution
-			// available
-			if (count == 0 || len == computationCount) {
-				// It is not necessary to prepend a (usually) unnecessary dimension
-				shape = computationShape;
-			} else {
-				shape = computationShape.prependDimension(count);
-			}
-		}
-
-		return shape;
+	default TraversalPolicy shapeForLength(int len) {
+		return getShape().forKernelLength(getCount(), isFixedCount(), len);
 	}
 
 	/**

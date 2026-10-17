@@ -26,6 +26,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 
 import java.util.List;

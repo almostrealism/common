@@ -65,7 +65,7 @@ import org.almostrealism.collect.PackedCollection;
  * @param <T>  the packed collection type
  * @author  Michael Murray
  * @see org.almostrealism.collect.CollectionProducer#delta
- * @see DeltaFeatures
+ * @see org.almostrealism.collect.CollectionProducer#delta
  */
 public interface DeltaAlternate<T extends PackedCollection> {
 	/**

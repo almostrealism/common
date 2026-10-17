@@ -21,6 +21,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -132,11 +134,11 @@ public abstract class TransitiveDeltaExpressionComputation
 	 * are algebraically zero.
 	 *
 	 * @return {@code true} if this computation produces only zero values, {@code false} otherwise
-	 * @see io.almostrealism.collect.Algebraic#isZero()
+	 * @see Algebraic#isZero()
 	 */
 	@Override
 	public boolean isZero() {
-		return super.isZero() || getChildren().stream().skip(1).allMatch(Algebraic::isZero);
+		return super.isZero() || getInputs().stream().skip(1).allMatch(Algebraic::isZero);
 	}
 
 	/**
@@ -146,11 +148,11 @@ public abstract class TransitiveDeltaExpressionComputation
 	 *
 	 * @param width The width of the target diagonal matrix
 	 * @return {@code true} if this computation represents a diagonal matrix, {@code false} otherwise
-	 * @see io.almostrealism.collect.Algebraic#isDiagonal(int, Object)
+	 * @see Algebraic#isDiagonal(int)
 	 */
 	@Override
 	public boolean isDiagonal(int width) {
-		return isIdentity(width) || getChildren().stream().skip(1)
+		return isIdentity(width) || getInputs().stream().skip(1)
 				.allMatch(p -> Algebraic.isDiagonal(width, p));
 	}
 
@@ -166,11 +168,11 @@ public abstract class TransitiveDeltaExpressionComputation
 	 * @param width The width of the target diagonal matrix
 	 * @return An {@link Optional} containing the scalar computation if extraction is successful,
 	 *         or empty if the computation is not diagonal or scalar extraction fails
-	 * @see io.almostrealism.collect.Algebraic#getDiagonalScalar(int, Object)
+	 * @see Algebraic#getDiagonalScalar(int)
 	 */
 	@Override
 	public Optional<Computable> getDiagonalScalar(int width) {
-		List<Process<?, ?>> scalars = isDiagonal(width) ? getChildren().stream().skip(1)
+		List<Process<?, ?>> scalars = isDiagonal(width) ? getInputs().stream().skip(1)
 				.map(p -> Algebraic.getDiagonalScalar(width, p))
 				.filter(Optional::isPresent)
 				.map(Optional::get)
@@ -285,5 +287,38 @@ public abstract class TransitiveDeltaExpressionComputation
 		}
 
 		return generate(deltas).reshape(getShape().append(targetShape));
+	}
+
+	/**
+	 * This computation is linear in its transitive arguments, so its
+	 * {@link ReduceAxis#IN input-reduced} delta (the Jacobian-vector product) is this
+	 * computation applied to the input-reduced deltas of those arguments, with every other
+	 * argument unchanged. The output-reduced delta depends on how each argument is laid
+	 * out in the output, which subclasses that know it provide; otherwise the general
+	 * implementation is used.
+	 */
+	@Override
+	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.IN || hasDirectDelta(target)) {
+			return super.delta(target, axis, weight);
+		}
+
+		List<Process<?, ?>> tangents = new ArrayList<>();
+		tangents.add(null);
+
+		List<Producer<PackedCollection>> inputs = getInputs();
+		for (int i = 1; i < inputs.size(); i++) {
+			Producer<PackedCollection> child = inputs.get(i);
+
+			if (!isTransitiveArgumentIndex(i)) {
+				tangents.add((Process<?, ?>) child);
+			} else if (child instanceof CollectionProducer && ((CollectionProducer) child).isFixedCount()) {
+				tangents.add((Process) ((CollectionProducer) child).delta(target, axis, weight));
+			} else {
+				return super.delta(target, axis, weight);
+			}
+		}
+
+		return generate(tangents);
 	}
 }

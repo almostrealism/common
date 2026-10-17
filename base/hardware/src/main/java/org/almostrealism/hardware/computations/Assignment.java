@@ -154,7 +154,7 @@ import java.util.stream.Collectors;
  *
  * <pre>{@code
  * // Multi-dimensional output
- * TraversableExpression out = TraversableExpression.traverse(output);
+ * TraversableExpression out = output.getTraversableExpression();
  *
  * // Generated:
  * // out.getValueAt(global_id * memLength + i) = value[i];
@@ -336,14 +336,14 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			Expression index = new KernelIndex(context);
 			if (len > 1) index = index.multiply(len).add(i);
 
-			TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
+			TraversableExpression exp = getArgument(1).getTraversableExpression();
 			Expression<Double> value = exp == null ? getArgument(1).reference(index) : exp.getValueAt(index);
 			if (value == null) {
 				throw new UnsupportedOperationException();
 			}
 
 			ExpressionAssignment<?> v;
-			TraversableExpression out = TraversableExpression.traverse(output);
+			TraversableExpression out = output.getTraversableExpression();
 
 			if (out == null) {
 				v = output.reference(index).assign(value);

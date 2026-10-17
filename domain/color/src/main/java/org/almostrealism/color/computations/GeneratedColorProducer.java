@@ -34,6 +34,7 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 
 /**
  * A {@link CollectionProducerComputation} that pairs a generator object with a lazily-evaluated
@@ -115,6 +116,18 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<PackedCo
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		return p instanceof Process ? ((Process) p).getChildren() : Collections.emptyList();
+	}
+
+	/**
+	 * Returns the inputs of the wrapped producer when it is a collection computation,
+	 * matching {@link #getChildren()}, which presents the wrapped producer's children.
+	 *
+	 * @return the inputs of the wrapped computation, or an empty list
+	 */
+	@Override
+	public List<Producer<PackedCollection>> getInputs() {
+		return p instanceof CollectionProducerComputation ?
+				((CollectionProducerComputation) p).getInputs() : Collections.emptyList();
 	}
 
 	@Override
