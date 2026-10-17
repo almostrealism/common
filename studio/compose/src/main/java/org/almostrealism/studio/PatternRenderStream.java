@@ -285,6 +285,7 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	 * @param thread the producer thread to wait for
 	 */
 	private void awaitTermination(Thread thread) {
+		// TODO(review): stop() invoked on the producer thread itself (e.g. from renderOp) would self-join forever; consider guarding thread == Thread.currentThread()
 		boolean interrupted = false;
 		boolean warned = false;
 
