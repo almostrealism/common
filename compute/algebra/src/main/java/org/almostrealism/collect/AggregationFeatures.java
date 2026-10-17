@@ -100,9 +100,9 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 
 		return new TraversableRepeatedProducerComputation("indexOfMax", shape.replace(shape(1)), size,
 				(args, index) -> e(0),
-				(args, currentIndex) -> index ->
-						conditional(args[1].getValueAt(kernel().multiply(size).add(index))
-										.greaterThan(args[1].getValueAt(kernel().multiply(size).add(currentIndex))),
+				(args, position, currentIndex) -> index ->
+						conditional(args[1].getValueAt(position.multiply(size).add(index))
+										.greaterThan(args[1].getValueAt(position.multiply(size).add(currentIndex))),
 								index, currentIndex),
 				input);
 	}
