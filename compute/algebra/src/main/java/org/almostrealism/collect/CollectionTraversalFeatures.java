@@ -18,7 +18,6 @@ package org.almostrealism.collect;
 
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ReshapeProducer;
@@ -26,7 +25,6 @@ import org.almostrealism.collect.computations.ReshapeProducer;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.stream.Collectors;
 
 /**
  * Factory interface for traversal and reshape operations on collections.
@@ -43,9 +41,6 @@ import java.util.stream.Collectors;
  * @see CollectionFeatures
  */
 public interface CollectionTraversalFeatures extends TraversalPolicyFeatures {
-	/** When true, repeat operations are permitted even for producers with variable (non-fixed) counts. */
-	boolean enableVariableRepeat = false;
-
 	/**
 	 * Changes the traversal axis of a collection producer.
 	 * This operation modifies how the collection is traversed during computation
@@ -177,19 +172,7 @@ public interface CollectionTraversalFeatures extends TraversalPolicyFeatures {
 	 */
 	default <T, P extends Producer<PackedCollection>> Producer<PackedCollection> alignTraversalAxes(
 			List<Producer<PackedCollection>> producers, BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor) {
-		return TraversalPolicy
-				.alignTraversalAxes(
-						producers.stream().map(this::shape).collect(Collectors.toList()),
-						producers,
-						(i, p) -> traverse(i, p),
-						(i, p) -> {
-							if (enableVariableRepeat || Countable.isFixedCount(p)) {
-								return CollectionFeatures.getInstance().repeat(i, p);
-							} else {
-								return p;
-							}
-						},
-						processor);
+		return new CollectionTraversalAxisAlignment(producers).align(processor);
 	}
 
 	/**

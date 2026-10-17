@@ -27,7 +27,7 @@ import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -282,7 +282,7 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	 * <p>The method performs the following steps:
 	 * <ol>
 	 *   <li>Checks if custom delta computation is enabled via {@link #enableCustomDelta}</li>
-	 *   <li>Uses {@link org.almostrealism.algebra.AlgebraFeatures#matchInput} to find which input depends on the target</li>
+	 *   <li>Uses {@link Producer#matchInput} to find which input depends on the target</li>
 	 *   <li>Verifies the match is the base operand (first input after destination)</li>
 	 *   <li>Ensures all operands have fixed counts (no variable-length collections)</li>
 	 *   <li>Applies the power rule: v * u^(v-1) * du/dx</li>
@@ -322,7 +322,7 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	 * @return A {@link CollectionProducer} that computes the derivative, or delegates to the parent class
 	 *         if custom delta is disabled or the computation doesn't match the supported pattern
 	 *
-	 * @see org.almostrealism.algebra.AlgebraFeatures#matchInput
+	 * @see Producer#matchInput
 	 * @see #enableCustomDelta
 	 * @throws UnsupportedOperationException if variable count operands are encountered when custom delta is enabled
 	 */
@@ -332,7 +332,7 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 			return super.delta(target);
 		}
 
-		Optional<Producer<PackedCollection>> match = AlgebraFeatures.matchInput(this, target);
+		Optional<Producer<PackedCollection>> match = matchInput(target);
 
 		if (match == null || match.orElse(null) != getInputs().get(1)) {
 			// If there are multiple matches, or the match is

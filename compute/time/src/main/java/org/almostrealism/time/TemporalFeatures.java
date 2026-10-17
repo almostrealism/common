@@ -29,7 +29,7 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
-import org.almostrealism.calculus.DeltaFeatures;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -888,7 +888,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 		TraversalPolicy shape = shape(y);
 		return new DefaultTraversableExpressionComputation("atan2",
 				shape,
-				DeltaFeatures.MultiTermDeltaStrategy.NONE,
+				MultiTermDeltaStrategy.NONE,
 				true,
 				args -> new UniformCollectionExpression(
 						"atan2",

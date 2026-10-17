@@ -19,7 +19,12 @@ package io.almostrealism.relation;
 import io.almostrealism.compute.Process;
 import io.almostrealism.lifecycle.Destroyable;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * A {@link Producer} represents a computational operation that can produce an {@link Evaluable}
@@ -132,5 +137,135 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	 */
 	default T evaluate(Object... args) {
 		return get().evaluate(args);
+	}
+
+	/**
+	 * Returns the {@link Producer} whose value this one presents without transforming it,
+	 * which is the producer to compare when deciding whether two producers refer to the
+	 * same value. A producer that only reinterprets or redirects another producer's value
+	 * (a reshape, a destination wrapper) returns the match root of that producer; every
+	 * other producer is its own match root.
+	 *
+	 * @return the producer that identifies the value of this one
+	 */
+	default Producer<?> getMatchRoot() {
+		return this;
+	}
+
+	/**
+	 * Returns {@code true} if this producer introduces a value into a computation graph
+	 * (a provided value, a kernel argument, an input placeholder) rather than deriving it
+	 * from other producers. Two such producers refer to the same value only if they match
+	 * each other directly, so neither can contain the other as an input.
+	 *
+	 * @return {@code true} if this producer is a source of values with no inputs to match
+	 */
+	default boolean isMatchRoot() {
+		return false;
+	}
+
+	/**
+	 * Returns {@code true} if this producer refers to the same value as {@code other}:
+	 * their {@link #getMatchRoot() match roots} {@link Computable#matches(Computable) match}.
+	 *
+	 * @param other the producer to compare against
+	 * @return {@code true} if both producers refer to the same value
+	 */
+	default boolean refersTo(Producer<?> other) {
+		return getMatchRoot().matches(other.getMatchRoot());
+	}
+
+	/**
+	 * Returns {@code true} if this producer, or any producer among its inputs at any
+	 * depth, {@link #refersTo(Producer) refers to} the target.
+	 *
+	 * @param target the producer to search for
+	 * @return {@code true} if the target is found
+	 */
+	default boolean containsMatch(Producer<?> target) {
+		return refersTo(target) || matchableInputs().anyMatch(in -> in.containsMatch(target));
+	}
+
+	/**
+	 * Returns the producers this producer is computed from, which are searched when
+	 * matching a target against its inputs. By default these are the producers among this
+	 * producer's {@link Process#getChildren() process children}. A producer that keeps
+	 * its inputs elsewhere, or whose process children present some inputs wrapped rather
+	 * than as producers, must override this method to expose them, or it will be reported
+	 * as independent of those inputs.
+	 *
+	 * @return the inputs of this producer, empty when it has none
+	 */
+	default Stream<? extends Producer<?>> matchableInputs() {
+		if (!(this instanceof Process)) return Stream.empty();
+
+		Collection<? extends Process<?, ?>> children = ((Process<?, ?>) this).getChildren();
+		if (children == null) return Stream.empty();
+
+		return children.stream()
+				.filter(child -> child instanceof Producer)
+				.map(child -> (Producer<?>) child);
+	}
+
+	/**
+	 * Returns every one of this producer's {@link #matchableInputs() inputs} that
+	 * {@link #containsMatch(Producer) contains} the target. Used in automatic
+	 * differentiation to find the inputs through which this producer depends on a variable.
+	 *
+	 * @param target the producer to search for
+	 * @return the matching inputs, which is empty when this producer has no inputs
+	 */
+	default List<Producer<T>> matchingInputs(Producer<?> target) {
+		return matchableInputs()
+				.filter(in -> in.containsMatch(target))
+				.map(in -> (Producer<T>) in)
+				.collect(Collectors.toList());
+	}
+
+	/**
+	 * Returns the single input of this producer that {@link #containsMatch(Producer) contains}
+	 * the target.
+	 *
+	 * @param target the producer to search for
+	 * @return the matching input if exactly one exists, an empty {@link Optional} if none
+	 *         does, or {@code null} if several do
+	 */
+	default Optional<Producer<T>> matchInput(Producer<?> target) {
+		List<Producer<T>> matched = matchingInputs(target);
+
+		if (matched.isEmpty()) {
+			return Optional.empty();
+		} else if (matched.size() == 1) {
+			return Optional.of(matched.get(0));
+		}
+
+		// TODO(review): a null Optional encodes "ambiguous"; consider a result type that names the three cases
+		return null;
+	}
+
+	/**
+	 * Returns {@code true} if it can be determined that this producer does not depend on
+	 * the target. A producer that {@link #refersTo(Producer) refers to} the target depends
+	 * on it. Otherwise both are reduced to their {@link #getMatchRoot() match roots}: two
+	 * {@link #isMatchRoot() match roots} are independent, and any other producer is
+	 * independent of the target when none of its inputs contains it. The result is
+	 * {@code false} whenever independence cannot be established, including when several
+	 * inputs contain the target.
+	 *
+	 * @param target the producer to search for
+	 * @return {@code true} if this producer is known not to depend on the target
+	 */
+	default boolean cannotMatch(Producer<?> target) {
+		if (refersTo(target)) return false;
+
+		Producer<?> root = getMatchRoot();
+		Producer<?> targetRoot = target.getMatchRoot();
+
+		if (root.isMatchRoot() && targetRoot.isMatchRoot()) {
+			return true;
+		}
+
+		Optional<? extends Producer<?>> matched = root.matchInput(targetRoot);
+		return matched != null && matched.isEmpty();
 	}
 }

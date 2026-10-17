@@ -467,7 +467,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	default CollectionProducerComputation enumerate(TraversalPolicy shape, Producer<?> collection) {
 		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate(shape, collection);
 
-		if (Algebraic.isZero(enumerate)) {
+		if (enumerate.isZero()) {
 			return zeros(enumerate.getShape());
 		}
 
@@ -485,7 +485,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	default CollectionProducerComputation enumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
 		PackedCollectionEnumerate enumerate = new PackedCollectionEnumerate(shape, stride, collection);
 
-		if (Algebraic.isZero(enumerate)) {
+		if (enumerate.isZero()) {
 			return zeros(enumerate.getShape());
 		}
 
@@ -522,7 +522,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * }</pre>
 	 * 
 	 * <p><strong>Optimization:</strong> If the input collection is zero (as determined by
-	 * {@link Algebraic#isZero(Object)}), this method returns an optimized zero collection
+	 * {@link Algebraic#isZero()}), this method returns an optimized zero collection
 	 * with the permuted shape instead of creating a full computation.</p>
 	 *
 	 * @param collection The input collection to permute. Must implement {@link io.almostrealism.collect.Shape}
@@ -646,7 +646,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * and input positioning through TraversalPolicy objects.
 	 * 
 	 * <p>This method directly instantiates a {@link PackedCollectionPad} computation that implements
-	 * the padding logic. If the input collection is known to be zero (via {@link Algebraic#isZero}),
+	 * the padding logic. If the input collection is known to be zero (via {@link Algebraic#isZero()}),
 	 * this method optimizes by returning a zeros collection instead.</p>
 	 * 
 	 * <p><strong>Usage in Neural Networks:</strong></p>
@@ -665,7 +665,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * 
 	 * @see PackedCollectionPad
 	 * @see TraversalPolicy
-	 * @see Algebraic#isZero(Object) 
+	 * @see Algebraic#isZero() 
 	 */
 	default CollectionProducerComputation pad(TraversalPolicy shape, TraversalPolicy position, Producer<?> collection) {
 		if (Algebraic.isZero(collection)) {

@@ -34,6 +34,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.calculus.DeltaAlternate;
+import org.almostrealism.calculus.InputStub;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -129,7 +131,7 @@ public abstract class CollectionProducerComputationBase
 	 * during computation execution. Primarily used for debugging memory management issues.
 	 * 
 	 * @see #destinationLog(Runnable)
-	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
+	 * @see CollectionProducerComputation#shapeForLength(int)
 	 */
 	public static boolean enableDestinationLogging = false;
 
@@ -153,7 +155,7 @@ public abstract class CollectionProducerComputationBase
 
 	/** Alternative producer for delta computations (derivatives/gradients). */
 	private CollectionProducer deltaAlternate;
-	
+
 	/** Custom description function for generating human-readable computation descriptions. */
 	private Function<List<String>, String> description;
 
@@ -246,7 +248,7 @@ public abstract class CollectionProducerComputationBase
 	 * in automatic differentiation scenarios.
 	 * 
 	 * @return The delta alternate producer, or null if none is set
-	 * @see #setDeltaAlternate(CollectionProducer)
+	 * @see #withDeltaAlternate(CollectionProducer)
 	 */
 	@Override
 	public CollectionProducer getDeltaAlternate() {
@@ -254,15 +256,159 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
-	 * Sets the delta alternate producer for this computation.
-	 * This is used in automatic differentiation to provide an alternative
-	 * computation path for calculating derivatives and gradients.
-	 * 
-	 * @param deltaAlternate The delta alternate producer to set
-	 * @see #getDeltaAlternate()
+	 * Keeps the delta alternate producer for this computation, which
+	 * {@link #getDeltaAlternate()} returns to automatic differentiation.
+	 *
+	 * @param deltaAlternate The delta alternate producer, or null to clear it
+	 * @return this computation
 	 */
-	public void setDeltaAlternate(CollectionProducer deltaAlternate) {
+	@Override
+	public CollectionProducerComputationBase withDeltaAlternate(CollectionProducer deltaAlternate) {
 		this.deltaAlternate = deltaAlternate;
+		return this;
+	}
+
+	/**
+	 * Indicates whether {@link #attemptDelta(Producer)} may differentiate this computation
+	 * through an intermediate input using the multivariate chain rule. Subclasses whose
+	 * expression can be differentiated with respect to a stubbed input return true.
+	 *
+	 * @return true if chain rule differentiation is supported (default: false)
+	 */
+	public boolean isChainRuleSupported() {
+		return false;
+	}
+
+	/**
+	 * Attempts to compute the delta (gradient) of this computation with respect to a target,
+	 * applying the multivariate chain rule when {@link #isChainRuleSupported() supported}:
+	 * <pre>
+	 * For h(x) = f(g(x)), compute: dh/dx = (df/dg) . (dg/dx)
+	 * </pre>
+	 *
+	 * <ol>
+	 *   <li>First tries the direct cases of {@link #attemptDirectDelta(Producer)}</li>
+	 *   <li>Matches the target among this computation's inputs using {@link #matchInput}:
+	 *       no match returns null, an independent target returns zeros</li>
+	 *   <li>If the target is a direct input, delegates to {@link #applyDeltaStrategy(Producer)}</li>
+	 *   <li>Otherwise multiplies df/dg, from {@link #isolatedDelta(Producer)}, by dg/dx</li>
+	 * </ol>
+	 *
+	 * @param target  the variable to differentiate with respect to
+	 * @return the gradient computation, or null if unable to compute
+	 */
+	@Override
+	public CollectionProducer attemptDelta(Producer<?> target) {
+		CollectionProducer result = attemptDirectDelta(target);
+		if (result != null || !isChainRuleSupported()) return result;
+
+		if (!isFixedCount()) {
+			warn("Cannot compute partial delta for variable Producer");
+			return null;
+		}
+
+		TraversalPolicy shape = getShape();
+		TraversalPolicy targetShape = shape(target);
+		Optional<Producer<PackedCollection>> match = matchInput(target);
+
+		if (match == null) {
+			return null;
+		} else if (match.isEmpty()) {
+			return zeros(shape.append(targetShape));
+		}
+
+		Producer<?> in = match.get();
+
+		if (in.refersTo(target)) {
+			return applyDeltaStrategy(target);
+		}
+
+		if (!(in instanceof CollectionProducer)) return null;
+
+		CollectionProducer f = isolatedDelta(in);
+		CollectionProducer g = ((CollectionProducer) in).delta(target);
+
+		int finalLength = shape.getTotalSize();
+		int outLength = shape(in).getTotalSize();
+		int inLength = targetShape.getTotalSize();
+
+		return matmul(reshape(shape(finalLength, outLength), f),
+				reshape(shape(outLength, inLength), g))
+				.reshape(shape.append(targetShape));
+	}
+
+	/**
+	 * Computes the partial derivative of this computation with respect to one of its
+	 * inputs, holding every other input constant. The input is replaced by an
+	 * {@link InputStub} in a regenerated copy of this computation, and that copy is
+	 * differentiated with respect to the stub.
+	 *
+	 * @param input  the input of this computation to differentiate with respect to
+	 * @return the partial derivative of this computation with respect to the input
+	 */
+	public CollectionProducer isolatedDelta(Producer<?> input) {
+		InputStub stub = new InputStub((Producer) input);
+		return replaceInput(input, stub).delta(stub);
+	}
+
+	/**
+	 * Computes the reduced delta of this computation by the multivariate chain rule when
+	 * the target is reached through exactly one of its inputs {@code h}, passing the
+	 * reduction on to that input so that neither this computation's Jacobian with respect
+	 * to the target nor that of {@code h} is formed:
+	 * <pre>
+	 * OUT:  gᵀ d(this)/dx = (gᵀ d(this)/dh) dh/dx    -  h.delta(x, OUT, this.delta(h, OUT, g))
+	 * IN:   d(this)/dx t  = d(this)/dh (dh/dx t)      -  this.delta(h, IN, h.delta(x, IN, t))
+	 * </pre>
+	 * <p>The delta with respect to {@code h} holds every other input constant (see
+	 * {@link #isolatedDelta(Producer)}). Every other case is left to the general
+	 * implementation.</p>
+	 */
+	@Override
+	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (hasDirectDelta(target) || !isChainRuleSupported() || !isFixedCount()) {
+			return CollectionProducerComputation.super.delta(target, axis, weight);
+		}
+
+		Optional<Producer<PackedCollection>> match = matchInput(target);
+		if (match == null || match.isEmpty() || match.get().refersTo(target) ||
+				!(match.get() instanceof Shape)) {
+			return CollectionProducerComputation.super.delta(target, axis, weight);
+		}
+
+		Producer<PackedCollection> in = match.get();
+		InputStub stub = new InputStub(in);
+		CollectionProducer isolated = replaceInput(in, stub);
+
+		if (axis == ReduceAxis.OUT) {
+			return c(in).delta(target, axis, isolated.delta(stub, axis, weight));
+		}
+
+		return isolated.delta(stub, axis, c(in).delta(target, axis, weight));
+	}
+
+	/**
+	 * Returns a copy of this computation with one of its inputs replaced by another
+	 * producer of the same shape, leaving every other input in place.
+	 *
+	 * @param input       the input to replace
+	 * @param replacement the producer to use in its place
+	 * @return the regenerated computation
+	 * @throws IllegalArgumentException if {@code input} is not an input of this computation
+	 */
+	public CollectionProducer replaceInput(Producer<?> input, Producer<?> replacement) {
+		List<Producer<PackedCollection>> current = getInputs();
+		if (current.stream().skip(1).noneMatch(input::equals)) {
+			throw new IllegalArgumentException(input + " is not an input of " + describe());
+		}
+
+		List<Process<?, ?>> inputs = new ArrayList<>();
+		inputs.add(null);
+		current.stream().skip(1)
+				.map(in -> input.equals(in) ? (Process<?, ?>) replacement : (Process<?, ?>) in)
+				.forEach(inputs::add);
+
+		return generate(inputs);
 	}
 
 	/**
@@ -359,7 +505,7 @@ public abstract class CollectionProducerComputationBase
 	 * @param len The required length for the destination buffer
 	 * @return Adjusted memory bank, or null if length is invalid
 	 * @throws IllegalArgumentException if len is null
-	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
+	 * @see CollectionProducerComputation#shapeForLength(int)
 	 */
 	protected MemoryBank<PackedCollection> adjustDestination(MemoryBank<?> existing, Integer len) {
 		if (len == null) {
@@ -372,8 +518,7 @@ public abstract class CollectionProducerComputationBase
 			return null;
 		}
 
-		TraversalPolicy shape = CollectionProducerComputation.shapeForLength(
-				getShape(), getCount(), isFixedCount(), len);
+		TraversalPolicy shape = shapeForLength(len);
 
 		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
 				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
@@ -558,6 +703,16 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
+	 * Keeps the short-circuit for use when this computation is evaluated.
+	 *
+	 * @see #setShortCircuit(Evaluable)
+	 */
+	@Override
+	public CollectionProducerComputationBase withShortCircuit(Evaluable<PackedCollection> shortCircuit) {
+		return setShortCircuit(shortCircuit);
+	}
+
+	/**
 	 * Returns the custom description function for this computation.
 	 * This function can be used to generate human-readable descriptions
 	 * of the computation for debugging and profiling purposes.
@@ -589,12 +744,14 @@ public abstract class CollectionProducerComputationBase
 	 * allowing efficient traversal of multi-dimensional input data.
 	 * 
 	 * @param index The index expression for the current computation position
-	 * @return Array of traversable expressions for each input argument
+	 * @return Array of traversable expressions for each input argument, with a {@code null}
+	 *         entry for any input that has no traversable kernel argument
 	 */
 	protected TraversableExpression[] getTraversableArguments(Expression<?> index) {
 		TraversableExpression[] vars = new TraversableExpression[getInputs().size()];
 		for (int i = 0; i < vars.length; i++) {
-			vars[i] = TraversableExpression.traverse(getArgumentForInput(getInputs().get(i)));
+			ArrayVariable<?> arg = getArgumentForInput(getInputs().get(i));
+			vars[i] = arg == null ? null : arg.getTraversableExpression();
 		}
 		return vars;
 	}
@@ -816,43 +973,5 @@ public abstract class CollectionProducerComputationBase
 		} finally {
 			enableDestinationLogging = log;
 		}
-	}
-
-	/**
-	 * Assigns a delta alternate producer to the given producer for automatic differentiation.
-	 * This utility method handles unwrapping reshaped producers to set the delta alternate
-	 * on the underlying computation.
-	 *
-	 * <p>The method performs the following steps:</p>
-	 * <ul>
-	 *   <li>Unwraps {@link ReshapeProducer} to access the underlying computation</li>
-	 *   <li>Verifies the computation is a {@link CollectionProducerComputationBase}</li>
-	 *   <li>Assigns the alternate producer via {@link #setDeltaAlternate(CollectionProducer)}</li>
-	 * </ul>
-	 *
-	 * @param producer The producer to assign the delta alternate to
-	 * @param alternate The alternative producer to use for delta computations
-	 * @return The original producer (for method chaining)
-	 * @throws IllegalArgumentException if the producer is not a {@link CollectionProducerComputationBase}
-	 * @see #setDeltaAlternate(CollectionProducer)
-	 * @see ReshapeProducer
-	 */
-	public static CollectionProducer assignDeltaAlternate(
-			CollectionProducer producer, CollectionProducer alternate) {
-		Producer computation;
-
-		if (producer instanceof ReshapeProducer) {
-			computation = ((ReshapeProducer) producer).getComputation();
-		} else {
-			computation = producer;
-		}
-
-		if (computation instanceof CollectionProducerComputationBase) {
-			((CollectionProducerComputationBase) computation).setDeltaAlternate(alternate);
-		} else {
-			throw new IllegalArgumentException();
-		}
-
-		return producer;
 	}
 }

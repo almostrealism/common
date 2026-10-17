@@ -23,7 +23,6 @@ import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.DiagonalMatrixComputation;
 import org.almostrealism.algebra.computations.IdentityMatrixComputation;
-import org.almostrealism.calculus.DeltaAlternate;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -153,6 +152,63 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	}
 
 	/**
+	 * Scales each row of a matrix by the corresponding element of a vector, computing
+	 * {@code diagonal(vector) . matrix} without forming the diagonal matrix.
+	 *
+	 * <p>
+	 * The vector is expanded along the columns of the matrix and multiplied element-wise.
+	 * When the matrix is an identity whose size matches the vector, the result is simply
+	 * {@link #diagonal(Producer) diagonal(vector)}. Delta implementations use this to apply
+	 * the chain rule for element-wise functions: d f(u)/dx = diag(f'(u)) . du/dx.
+	 * </p>
+	 *
+	 * @param vector  the row scale factors (must be 1-dimensional)
+	 * @param matrix  the matrix whose rows are scaled
+	 * @return the row-scaled matrix
+	 * @throws IllegalArgumentException if vector is not 1-dimensional
+	 */
+	default CollectionProducer expandAndMultiply(
+			CollectionProducer vector, CollectionProducer matrix) {
+		if (vector.getShape().getDimensions() != 1) {
+			throw new IllegalArgumentException("Row scale factors must be 1-dimensional, not " + vector.getShape());
+		} else if (Algebraic.isIdentity(shape(vector).length(0), matrix)) {
+			return diagonal(vector);
+		} else {
+			CollectionProducer expanded = vector.traverse(1).repeat(matrix.getShape().length(1));
+			return multiply(expanded, matrix);
+		}
+	}
+
+	/**
+	 * Multiplies a matrix by the transpose of another, computing {@code a · bᵀ} as an
+	 * element-wise product of repeated rows followed by a sum, so that both operands are
+	 * read along their rows and neither transpose is materialized.
+	 *
+	 * <p>
+	 * Entry {@code (i, j)} of the result is the dot product of row {@code i} of {@code a}
+	 * with row {@code j} of {@code b}.
+	 * </p>
+	 *
+	 * @param a  the left matrix, of shape {@code (p, k)}
+	 * @param b  the right matrix, of shape {@code (q, k)}, whose transpose is applied
+	 * @return the product, of shape {@code (p, q)}
+	 * @throws IllegalArgumentException if either operand is not 2-dimensional or
+	 *                                  their rows differ in length
+	 */
+	default CollectionProducer multiplyTransposed(CollectionProducer a, CollectionProducer b) {
+		TraversalPolicy aShape = shape(a);
+		TraversalPolicy bShape = shape(b);
+		if (aShape.getDimensions() != 2 || bShape.getDimensions() != 2 ||
+				aShape.length(1) != bShape.length(1)) {
+			throw new IllegalArgumentException("Cannot multiply " + aShape + " by the transpose of " + bShape);
+		}
+
+		return a.traverse(1).repeat(bShape.length(0))
+				.multiply(b.traverse(0).repeat(aShape.length(0)))
+				.traverse(2).sum();
+	}
+
+	/**
 	 * Performs matrix multiplication between a matrix and a vector or between two matrices.
 	 *
 	 * <p>
@@ -173,6 +229,14 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 *   <li>Vector-specific path -> uses element-wise multiply + sum instead of full matmul</li>
 	 * </ul>
 	 * </p>
+	 *
+	 * <p>
+	 * On the vector-specific path the whole matrix is repeated for every vector explicitly
+	 * (along a new leading axis, whatever axis the matrix is traversed along) rather than left to an implicit broadcast against the repeated vectors, which, for a
+	 * batch holding exactly as many vectors as the matrix has rows, would pair each matrix
+	 * row with one vector instead of applying every row to every vector.
+	 * </p>
+	 *
 	 *
 	 * @param matrix  the matrix (left operand)
 	 * @param vector  the vector or matrix (right operand)
@@ -240,8 +304,11 @@ public interface MatrixFeatures extends AlgebraFeatures {
 				}
 
 				int batchAxis = vShape.getDimensions();
-				CollectionProducer a = c(matrix);
 				CollectionProducer b = repeat(outputSize, vector);
+
+				long vectors = vShape.getTotalSizeLong() / mShape.length(1);
+				CollectionProducer a = vectors > 1 && vShape.getTotalSizeLong() % mShape.length(1) == 0 ?
+						repeat(0, (int) vectors, matrix).reshape(b.getShape()) : c(matrix);
 				return multiply(traverseEach(a), traverseEach(b)).traverse(batchAxis).sum();
 			}
 			// For large outputs, continue to weightedSum path with original vShape/vector
@@ -467,44 +534,6 @@ public interface MatrixFeatures extends AlgebraFeatures {
 				reshape(leftShape, c(a)),
 				reshape(rightShape, c(b)))
 				.reshape(outputShape);
-	}
-
-	/**
-	 * Attempts to compute the delta (Jacobian/gradient) of a producer with respect to a target.
-	 *
-	 * <p>
-	 * This method is used in automatic differentiation to compute gradients. It handles
-	 * several special cases:
-	 * <ul>
-	 *   <li>If the producer implements {@link DeltaAlternate}, uses the alternative delta computation</li>
-	 *   <li>If the producer cannot match the target, returns zeros</li>
-	 *   <li>If the producer matches the target exactly, returns an identity matrix</li>
-	 *   <li>Otherwise, returns null to indicate no simplified delta is available</li>
-	 * </ul>
-	 * </p>
-	 *
-	 * @param producer  the producer to differentiate
-	 * @param target    the target variable to differentiate with respect to
-	 * @return the delta computation, or null if no simplified form is available
-	 */
-	default CollectionProducer attemptDelta(Producer<PackedCollection> producer,
-																		 Producer<?> target) {
-		if (producer instanceof DeltaAlternate) {
-			CollectionProducer alt = ((DeltaAlternate) producer).getDeltaAlternate();
-			if (alt != null) return alt.delta(target);
-		}
-
-		TraversalPolicy shape = shape(producer);
-		TraversalPolicy targetShape = shape(target);
-
-		if (AlgebraFeatures.cannotMatch(producer, target)) {
-			return zeros(shape.append(targetShape));
-		} else if (AlgebraFeatures.match(producer, target)) {
-			return identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
-					.reshape(shape.append(targetShape));
-		}
-
-		return null;
 	}
 
 	/**

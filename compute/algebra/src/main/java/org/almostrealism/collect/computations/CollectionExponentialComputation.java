@@ -25,7 +25,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.MatrixFeatures;
+import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -218,7 +218,7 @@ public class CollectionExponentialComputation extends TraversableExpressionCompu
 	 */
 	@Override
 	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = MatrixFeatures.getInstance().attemptDelta(this, target);
+		CollectionProducer delta = attemptDirectDelta(target);
 		if (delta != null) {
 			return delta;
 		}

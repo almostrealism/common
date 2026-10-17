@@ -236,6 +236,15 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	}
 
 	/**
+	 * A scaled arithmetic sequence is itself an arithmetic sequence, so scaling is
+	 * always expressed by {@link #multiply(double)}.
+	 */
+	@Override
+	public CollectionProducer attemptMultiply(double factor) {
+		return multiply(factor);
+	}
+
+	/**
 	 * Returns whether this sequence has a fixed count determined at construction time.
 	 *
 	 * <p>When {@code true}, the sequence length is determined by the {@link TraversalPolicy}

@@ -48,6 +48,13 @@ import java.util.stream.Stream;
  *       is applied to the weights via the corresponding {@link ParameterUpdate}.</li>
  * </ul>
  *
+ * <p>Both gradients are formed by {@link #combineGradient}, which asks the operator for
+ * its {@link org.almostrealism.calculus.ReduceAxis#OUT output-reduced} delta weighted by
+ * the upstream gradient, so an operator whose computations know their structure (a dense
+ * layer's matrix multiply of at most 1000 nodes, for its weights and its input) never
+ * forms its full Jacobian. Computations without a reduced delta contract their full
+ * Jacobian instead.</p>
+ *
  * <p>Diagnostic flags ({@link #enableDiagnosticGrad}, {@link #enableDiagnosticWeight})
  * can be enabled to wrap operations in {@code OperationWithInfo} for profiling.</p>
  *
@@ -202,15 +209,8 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 			int weightSize = shape(weights[i]).getTotalSize();
 			Producer<PackedCollection> weightFlat = reshape(shape(weightSize), weights[i]);
 
-			Producer<PackedCollection> deltaOutDeltaWeight = function.get().delta(weights[i])
-					.reshape(outSize, weightSize)
-					.traverse(1)
-					.multiply(c(gradient).reshape(outSize).traverse(1).repeat(weightSize))
-					.traverse(0)
-					.enumerate(1, 1)
-					.sum(1)
-					.reshape(shape(weightSize))
-					.each();
+			Producer<PackedCollection> deltaOutDeltaWeight =
+					combineGradient(function.get(), weights[i], gradient);
 
 			Supplier<Runnable> weightUpdateAssignment = updates[i].apply(getName(), weightFlat, deltaOutDeltaWeight);
 

@@ -24,7 +24,6 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
@@ -265,7 +264,7 @@ public class CollectionConcatenateComputation extends TransitiveDeltaExpressionC
 	private Expression<?>[] extractSubsetOffsets(Object input, Producer<?> target, double[] scale) {
 		if (input instanceof CollectionSubsetComputation) {
 			CollectionSubsetComputation subset = (CollectionSubsetComputation) input;
-			if (AlgebraFeatures.match(subset.getInputs().get(1), target)) {
+			if (subset.getInputs().get(1).refersTo(target)) {
 				return subset.getPosition();
 			}
 		} else if (input instanceof CollectionMinusComputation) {

@@ -17,6 +17,7 @@
 package org.almostrealism.music.pattern;
 
 import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.music.arrange.AudioSceneContext;
@@ -546,7 +547,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 				throw new UnsupportedOperationException("Lazy destination not compatible with computing max");
 			}
 
-			Producer<PackedCollection> max = (Producer) cp(destination).traverse(0).max().isolate();
+			Producer<PackedCollection> max = (Producer) Process.isolated(cp(destination).traverse(0).max());
 			CollectionProducer auto = greaterThan(max, c(0.0), c(0.8).divide(max), c(1.0));
 			op.add(a(1, p(volume), auto));
 		}

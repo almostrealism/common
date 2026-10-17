@@ -19,13 +19,13 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputationBase;
-import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
@@ -339,6 +339,15 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	public int getReferencedArgumentIndex() { return argIndex; }
 
 	/**
+	 * Returns {@code true}, since a kernel argument introduces its value into the graph
+	 * rather than deriving it from inputs.
+	 *
+	 * @return {@code true}
+	 */
+	@Override
+	public boolean isMatchRoot() { return true; }
+
+	/**
 	 * Returns the memory length in bytes.
 	 *
 	 * @return The size from the traversal shape
@@ -484,16 +493,15 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	/**
-	 * Returns whether this producer matches another algebraic expression.
+	 * Returns whether this producer matches another computation.
 	 *
 	 * <p>Matches if the other is a {@link ProducerArgumentReference} with the same argument index.</p>
 	 *
-	 * @param other The expression to match against
-	 * @param <A> The algebraic type
+	 * @param other The computation to match against
 	 * @return true if both reference the same argument index
 	 */
 	@Override
-	public <A extends Algebraic> boolean matches(A other) {
+	public boolean matches(Computable other) {
 		if ((other instanceof ProducerArgumentReference)) {
 			if (!(other instanceof PassThroughProducer)) {
 				// This should not be an issue, but it is something that might be
@@ -530,11 +538,11 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 
 	@Override
 	public boolean equals(Object obj) {
-		if (!Objects.equals(getClass(), obj.getClass()) || !(obj instanceof Algebraic)) {
+		if (!Objects.equals(getClass(), obj.getClass())) {
 			return false;
 		}
 
-		return matches((Algebraic) obj);
+		return matches((Computable) obj);
 	}
 
 	@Override

@@ -18,8 +18,6 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
@@ -231,11 +229,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		CollectionExpression delta = sum(target.getShape(),
 				getChildren().stream().map(e -> e.delta(target)).collect(Collectors.toList()));
-		return ExpressionMatchingCollectionExpression.create(
-				new ConstantCollectionExpression(target.getShape(), this),
-				target,
-				new ConstantCollectionExpression(target.getShape(), new IntegerConstant(1)),
-				delta);
+		return deltaUnlessTarget(target, delta);
 	}
 
 	@Override

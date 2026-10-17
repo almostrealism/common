@@ -668,6 +668,30 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	}
 
 	/**
+	 * {@link Expression#simplifyAbove(int)} returns the expression itself when its node
+	 * count is at or below the threshold, and the result of {@link Expression#simplify()}
+	 * once the node count exceeds it.
+	 */
+	@Test(timeout = 30000)
+	public void simplifyAboveThreshold() {
+		ArrayVariable v = new ArrayVariable(Double.class, "v", e(4));
+		Expression ref0 = v.valueAt(0);
+		Expression ref1 = v.valueAt(1);
+		Expression<?> e = ref0.add(ref0.add(ref1).divide(2.0).minus())
+				.multiply(ref1.add(ref0.add(ref1).divide(2.0).minus()));
+		int nodes = e.countNodes();
+		Assert.assertTrue("expression too small to exercise the threshold: " + nodes, nodes > 2);
+
+		Assert.assertSame(e, e.simplifyAbove(nodes));
+		Assert.assertSame(e, e.simplifyAbove(Integer.MAX_VALUE));
+
+		String simplified = e.simplify().getExpression(lang);
+		Assert.assertEquals(simplified, e.simplifyAbove(nodes - 1).getExpression(lang));
+		Assert.assertEquals(simplified, e.simplifyAbove(0).getExpression(lang));
+		Assert.assertEquals(simplified, e.simplifyAbove(-1).getExpression(lang));
+	}
+
+	/**
 	 * Tests kernel multi sum operation 1.
 	 */
 	@Test(timeout = 30000)

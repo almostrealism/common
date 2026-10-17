@@ -362,6 +362,50 @@ public class TraversalPolicyTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that {@link TraversalPolicy#repetitionsToFill} counts how many copies of a
+	 * shape make up a larger one, yields zero for a size that does not divide evenly while
+	 * {@link TraversalPolicy#enableDivisibleSizes} is set, and rejects an empty shape.
+	 */
+	@Test(timeout = 10000)
+	public void repetitionsToFill() {
+		TraversalPolicy target = new TraversalPolicy(4, 6);
+
+		assertEquals(4, new TraversalPolicy(6).repetitionsToFill(target));
+		assertEquals(1, new TraversalPolicy(24).repetitionsToFill(target));
+		assertEquals(0, new TraversalPolicy(5).repetitionsToFill(target));
+
+		try {
+			new TraversalPolicy(0).repetitionsToFill(target);
+			Assert.fail("An empty shape should not be repeatable");
+		} catch (IllegalArgumentException expected) {
+			// An empty shape cannot fill any target
+		}
+	}
+
+	/**
+	 * Verifies that {@link TraversalPolicy#broadcast} leaves an axis that already has the
+	 * target length unchanged, repeats an axis of length one up to it, and rejects any
+	 * other length.
+	 */
+	@Test(timeout = 10000)
+	public void broadcast() {
+		TraversalPolicy full = new TraversalPolicy(4, 6);
+		Assert.assertSame(full, full.broadcast(0, 4));
+
+		TraversalPolicy repeated = new TraversalPolicy(1, 6).broadcast(0, 4);
+		assertEquals(4, repeated.length(0));
+		assertEquals(6, repeated.length(1));
+		assertEquals(24, repeated.getTotalSizeLong());
+
+		try {
+			new TraversalPolicy(3, 6).broadcast(0, 4);
+			Assert.fail("An axis of length 3 should not broadcast to length 4");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertEquals("Axis 0 of length 3 cannot be broadcast to length 4", expected.getMessage());
+		}
+	}
+
+	/**
 	 * Trimming an all-ones shape must not throw. {@link TraversalPolicy#trim()}
 	 * removes trailing unit dimensions, but a single-element collection such as
 	 * {@code (1)} or {@code (1, 1)} is a legal shape whose trailing unit cannot
