@@ -917,7 +917,16 @@ No existing test changes.
    positive of exactly the kind this plan sets out to remove. Python's short-option grammar is small
    enough that a narrower rule is cheap: only `-c`, `-m`, `-W` and `-X` take a value, so walking the
    cluster's letters and refusing (or scanning, for `c`) only when a `c` is reached before any other
-   value-taking letter closes `-Ec'…'` without touching `-OO`/`-IS`. The approver should choose
+   value-taking letter closes `-Ec'…'` without touching `-OO`/`-IS`. A per-letter walk must also
+   define what a buried value-taking letter *other than* `c` does, because `m`, `W` and `X` each
+   consume the rest of the token (or the next word) and end option parsing at that point, so the walk
+   should stop at the first of them it reaches. For `m` this means routing the buried module name to
+   the same `NETWORK_MODULES` check the generic `-m` handler applies to the separated
+   `python3 -E -m http.server` form, so that a clustered `python3 -Emhttp.server` is not skipped past
+   that check; `W` and `X` take a non-module value and simply terminate the letter scan. This is not a
+   regression — master's attached-form `-E` match already swallows `mhttp.server` as `-E`'s code and
+   skips the check too — but a walk added for precision should close it rather than reproduce it. The
+   approver should choose
    between the minimal refusal (accepting that over-block) and this per-letter Python walk; the
    regressions above should then also assert that `python3 -OO /nonexistent/script.py` blocks on the
    unreadable script, not on the cluster refusal, if the narrower rule is taken.
