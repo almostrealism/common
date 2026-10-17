@@ -174,6 +174,13 @@ def project_verify_branch(
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
 
+    # Archived workstreams are read-only. Dispatching the verify-completion
+    # workflow runs an agent on the archived round's branch, which is new work
+    # on it, so it is refused for the same reason a submit is. History and
+    # context stay readable; unarchive the workstream first to verify it.
+    if ws.get("archived"):
+        return server._archived_workstream_error("verify the branch", workstream_id)
+
     server._set_github_org(ws)
 
     repo_url = ws.get("repoUrl")
@@ -275,6 +282,13 @@ def project_commit_plan(
             "error": f"Workstream '{workstream_id}' not found",
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
+
+    # Archived workstreams are read-only. Committing a plan is a GitHub PUT
+    # that mutates the archived round's branch, so it is refused here — the
+    # archived-aware lookup above is for reads only. History and context stay
+    # readable; unarchive the workstream first to commit to it.
+    if ws.get("archived"):
+        return server._archived_workstream_error("commit a plan", workstream_id)
 
     server._set_github_org(ws)
 

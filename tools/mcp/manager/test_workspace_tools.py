@@ -785,3 +785,77 @@ class TestArchivedWorkstreamReadOnly(unittest.TestCase):
         # The timeline was fetched for the branch-resolved workstream.
         self.assertIn("/api/workstreams/ws-arch/jobs",
                       mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_submit_rejected_for_archived_via_target_branch(
+            self, mock_find, mock_by_branch, mock_post):
+        """The archived guard also covers the target_branch path: a submission
+        with no workstream_id but a repo_url + target_branch that resolves to
+        an archived round is refused before the controller — which has no
+        archived check of its own — is contacted."""
+        mock_by_branch.return_value = {"workstreamId": "ws-arch", "archived": True}
+        mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug",
+            repo_url="git@github.com:org/repo.git",
+            target_branch="qa/retro-x",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/repo.git", "qa/retro-x")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_submit_allowed_for_live_target_branch(
+            self, mock_find, mock_by_branch, mock_post):
+        """A target_branch that resolves to a live workstream is unaffected by
+        the archived guard."""
+        mock_by_branch.return_value = {"workstreamId": "ws-live"}
+        mock_find.return_value = {"workstreamId": "ws-live"}
+        mock_post.return_value = {"ok": True, "jobId": "job-1",
+                                  "workstreamId": "ws-live"}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug",
+            repo_url="git@github.com:org/repo.git",
+            target_branch="feature/live",
+        )
+        self.assertTrue(result["ok"])
+        mock_post.assert_called_once()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_find_workstream")
+    def test_commit_plan_rejected_for_archived(self, mock_find, mock_gh):
+        """project_commit_plan is a GitHub PUT on the branch; it must refuse an
+        archived workstream rather than mutating it, and must not contact
+        GitHub to do so."""
+        mock_find.return_value = {
+            "workstreamId": "ws-arch", "archived": True,
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "qa/retro-x",
+        }
+        result = server.project_commit_plan(
+            workstream_id="ws-arch", content="# Plan")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_find_workstream")
+    def test_verify_branch_rejected_for_archived(self, mock_find, mock_gh):
+        """project_verify_branch dispatches an agent onto the branch, which is
+        new work on an archived round; it must be refused without dispatching
+        the workflow."""
+        mock_find.return_value = {
+            "workstreamId": "ws-arch", "archived": True,
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "qa/retro-x",
+        }
+        result = server.project_verify_branch(workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_gh.assert_not_called()
