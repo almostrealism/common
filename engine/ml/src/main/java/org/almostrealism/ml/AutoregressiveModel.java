@@ -417,15 +417,7 @@ public class AutoregressiveModel<T> implements Destroyable {
 		double[] values = logits.toArray(0, vocabSize);
 
 		if (temperature <= 0.0 || random == null) {
-			int maxIdx = 0;
-			double maxVal = values[0];
-			for (int i = 1; i < vocabSize; i++) {
-				if (values[i] > maxVal) {
-					maxVal = values[i];
-					maxIdx = i;
-				}
-			}
-			return maxIdx;
+			return Ops.o().argmax(values);
 		}
 
 		double[] probs = new double[vocabSize];
