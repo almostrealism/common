@@ -25,6 +25,7 @@ import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Nameable;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
@@ -40,7 +41,7 @@ import java.util.stream.Stream;
  * to compute gradients and update learnable weights.
  *
  * <p>Given a forward operator (a {@link Factor} that maps input to output), this class
- * uses the operator's {@code grad} and {@code delta} methods to compute:</p>
+ * uses the operator's {@code delta} to compute:</p>
  * <ul>
  *   <li>The gradient with respect to the layer input ({@code δOut/δIn}), which is
  *       propagated upstream via the provided {@link Receptor}.</li>
@@ -48,9 +49,8 @@ import java.util.stream.Stream;
  *       is applied to the weights via the corresponding {@link ParameterUpdate}.</li>
  * </ul>
  *
- * <p>Both gradients are formed by {@link #combineGradient}, which asks the operator for
- * its {@link org.almostrealism.calculus.ReduceAxis#OUT output-reduced} delta weighted by
- * the upstream gradient, so an operator whose computations know their structure (a dense
+ * <p>Both gradients are the operator's {@link ReduceAxis#OUT output-reduced} delta weighted
+ * by the upstream gradient, so an operator whose computations know their structure (a dense
  * layer's matrix multiply of at most 1000 nodes, for its weights and its input) never
  * forms its full Jacobian. Computations without a reduced delta contract their full
  * Jacobian instead.</p>
@@ -181,7 +181,8 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 		OperationList op = new OperationList("Gradient Propagation");
 
 		if (next != null) {
-			Producer<PackedCollection> deltaOutDeltaIn = function.get().grad(input, gradient);
+			Producer<PackedCollection> deltaOutDeltaIn =
+					function.get().delta(input, ReduceAxis.OUT, gradient).reshape(inSize).each();
 
 			if (enableDiagnosticGrad) {
 				PackedCollection deltaOut = new PackedCollection(shape(outSize, inSize)).traverse(1);
@@ -210,7 +211,7 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 			Producer<PackedCollection> weightFlat = reshape(shape(weightSize), weights[i]);
 
 			Producer<PackedCollection> deltaOutDeltaWeight =
-					combineGradient(function.get(), weights[i], gradient);
+					function.get().delta(weights[i], ReduceAxis.OUT, gradient).reshape(weightSize).each();
 
 			Supplier<Runnable> weightUpdateAssignment = updates[i].apply(getName(), weightFlat, deltaOutDeltaWeight);
 

@@ -25,6 +25,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
@@ -228,11 +229,9 @@ public class CollectionSubsetComputation extends TransitiveDeltaExpressionComput
 	 * @return A {@link CollectionProducer} that computes the projection matrix Jacobian
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		// First try the standard optimizations (same producer, no match, etc.)
-		CollectionProducer delta = attemptDirectDelta(target);
-		if (delta != null) {
-			return delta;
+	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.NONE) {
+			return super.differentiate(target, axis, weight);
 		}
 
 		// Get the input producer
@@ -246,7 +245,7 @@ public class CollectionSubsetComputation extends TransitiveDeltaExpressionComput
 
 		// For the chain rule case: d(subset(f(x)))/dx = d(subset)/df * df/dx
 		// Use the transitive delta pattern from the superclass
-		return super.delta(target);
+		return super.differentiate(target, axis, weight);
 	}
 
 	/**

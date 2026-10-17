@@ -27,7 +27,6 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -36,10 +35,8 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.io.SystemUtils;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -62,7 +59,7 @@ import java.util.stream.Stream;
  *   <li><b>Hardware Acceleration:</b> Automatic compilation to optimized kernels via {@link #get()}</li>
  *   <li><b>Shape Management:</b> Flexible shape handling with {@link #postProcessOutput} and {@link #shapeForLength}</li>
  *   <li><b>Process Isolation:</b> {@link IsolatedProcess} for independent execution contexts</li>
- *   <li><b>Delta Computation:</b> Automatic differentiation support via {@link #applyDeltaStrategy}</li>
+ *   <li><b>Delta Computation:</b> Automatic differentiation support via {@link #delta}</li>
  *   <li><b>Result Postprocessing:</b> Shape adjustment and wrapping via {@link #postProcessOutput}</li>
  * </ul>
  *
@@ -105,29 +102,6 @@ public interface CollectionProducerComputation extends
 	boolean enableShapeTrim = false;
 
 	/**
-	 * A collection computation is evaluated directly as a kernel.
-	 *
-	 * @return true
-	 */
-	@Override
-	default boolean isDirectlyComputable() {
-		return true;
-	}
-
-	/**
-	 * Differentiates this computation with respect to one of its own terms using its
-	 * {@link #getDeltaStrategy() multi-term delta strategy}.
-	 *
-	 * @param target  the variable to differentiate with respect to
-	 * @return the gradient computation, or null if the strategy does not apply
-	 * @see MultiTermDeltaStrategy#delta(CollectionProducerComputation, Producer)
-	 */
-	@Override
-	default CollectionProducer applyDeltaStrategy(Producer<?> target) {
-		return getDeltaStrategy().delta(this, target);
-	}
-
-	/**
 	 * Returns the inputs of this computation, its destination first. These are the
 	 * producers the computation was built from, including any that are not a
 	 * {@link Process}, which {@link #getChildren()} would wrap.
@@ -147,44 +121,6 @@ public interface CollectionProducerComputation extends
 	default Stream<? extends Producer<?>> matchableInputs() {
 		List<Producer<PackedCollection>> inputs = getInputs();
 		return inputs == null ? Stream.empty() : inputs.stream();
-	}
-
-	/**
-	 * Returns the terms of this computation, its destination first.
-	 *
-	 * @return the inputs of this computation
-	 */
-	private List<Producer<?>> getTerms() {
-		return new ArrayList<>(getInputs());
-	}
-
-	/**
-	 * Counts the terms of this computation that {@link Producer#refersTo refer to}
-	 * the given target.
-	 *
-	 * @param target  the producer to look for among this computation's terms
-	 * @return the number of matching terms
-	 */
-	default long countTerms(Producer<?> target) {
-		return getTerms().stream()
-				.filter(t -> t.refersTo(target))
-				.count();
-	}
-
-	/**
-	 * Rebuilds this computation from every term except those that
-	 * {@link Producer#refersTo refer to} the given target. When a single
-	 * term remains, that term is returned directly.
-	 *
-	 * @param target  the term to leave out
-	 * @return this computation over the remaining terms, or null if it cannot be rebuilt:
-	 *         several terms remain and one of them is not a {@link Process}, or the single
-	 *         remaining term is neither a {@link CollectionProducer} nor a {@link Shape}
-	 */
-	default CollectionProducer excludeTerm(Producer<?> target) {
-		return generateFromTerms(getTerms().stream()
-				.filter(t -> !t.refersTo(target))
-				.collect(Collectors.toList()));
 	}
 
 	@Override
@@ -299,43 +235,6 @@ public interface CollectionProducerComputation extends
 	@Override
 	default CollectionProducer reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
-	}
-
-	/**
-	 * Generates a new {@link CollectionProducer} from a list of children, using the
-	 * structure of this computation as the template. The first child is the destination;
-	 * if only one term follows it, that term is returned directly, viewed through a
-	 * {@link ReshapeProducer} when it is a {@link Shape} but not a {@link CollectionProducer}.
-	 * A single term that is neither has no shape to present it by, and null is returned.
-	 *
-	 * <p>Several terms can only be rebuilt through {@link #generate(List)}, whose children
-	 * must each be a {@link Process} that is also the {@link Producer} it stands for. A
-	 * term that is not a {@link Process} cannot be presented that way ({@link Process#of}
-	 * would wrap it in something that is not a {@link Producer}), so the computation is
-	 * not rebuilt and null is returned instead.</p>
-	 *
-	 * @param args  the children of the new computation, destination first
-	 * @return the computation over the given terms, or null if they include a term that
-	 *         is not a {@link Process} and more than one term remains, or if the single
-	 *         remaining term is neither a {@link CollectionProducer} nor a {@link Shape}
-	 */
-	private CollectionProducer generateFromTerms(List<Producer<?>> args) {
-		if (args.size() < 2) {
-			throw new IllegalArgumentException("No terms remain");
-		} else if (args.size() == 2) {
-			Producer<?> term = args.get(1);
-			if (term instanceof CollectionProducer) {
-				return (CollectionProducer) term;
-			} else if (term instanceof Shape) {
-				return new ReshapeProducer(((Shape) term).getShape().getTraversalAxis(), (Producer) term);
-			} else {
-				return null;
-			}
-		} else if (!args.stream().allMatch(t -> t instanceof Process)) {
-			return null;
-		} else {
-			return generate((List) args);
-		}
 	}
 
 	/**

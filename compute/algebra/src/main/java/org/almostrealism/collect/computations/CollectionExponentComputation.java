@@ -27,7 +27,7 @@ import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -193,7 +193,7 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	protected CollectionExponentComputation(String name, TraversalPolicy shape,
 											Producer<PackedCollection> base,
 											Producer<PackedCollection> exponent) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, base, exponent);
+		super(name, shape, base, exponent);
 	}
 
 	/**
@@ -327,9 +327,9 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	 * @throws UnsupportedOperationException if variable count operands are encountered when custom delta is enabled
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		if (!enableCustomDelta) {
-			return super.delta(target);
+	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (!enableCustomDelta || axis != ReduceAxis.NONE) {
+			return super.differentiate(target, axis, weight);
 		}
 
 		Optional<Producer<PackedCollection>> match = matchInput(target);
@@ -338,10 +338,10 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 			// If there are multiple matches, or the match is
 			// not the base, then there is not currently a
 			// shortcut for computing the delta
-			return super.delta(target);
+			return super.differentiate(target, axis, weight);
 		} else if (getChildren().stream().anyMatch(o -> !Countable.isFixedCount(o))) {
 			warn("Exponent delta not implemented for variable count operands");
-			return super.delta(target);
+			return super.differentiate(target, axis, weight);
 		}
 
 		List<Supplier<Evaluable<? extends PackedCollection>>> operands =

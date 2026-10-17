@@ -23,6 +23,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -325,15 +326,15 @@ public class PackedCollectionSubset
 	 * @return A CollectionProducer representing the Jacobian matrix
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		if (pos != null && getInputs().get(1).refersTo(target)) {
+	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis == ReduceAxis.NONE && pos != null && getInputs().get(1).refersTo(target)) {
 			TraversalPolicy outputShape = getShape();
 			TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 			TraversalPolicy jacobianShape = outputShape.append(inputShape);
 			return new SubsetProjectionComputation(jacobianShape, outputShape, inputShape, pos);
 		}
 
-		return super.delta(target);
+		return super.differentiate(target, axis, weight);
 	}
 
 	/**

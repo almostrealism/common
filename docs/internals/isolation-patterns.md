@@ -214,7 +214,7 @@ CollectionProducer gradient = output.delta(input);
 ```java
 public class MyComputation extends TransitiveDeltaExpressionComputation {
     @Override
-    public CollectionProducer delta(Producer<?> target) {
+    protected CollectionProducer jacobian(Producer<?> target) {
         // Create isolated delta computation
         List<Process<?, ?>> deltas = computeInputDeltas(target);
         return generate(deltas).reshape(outputShape.append(targetShape));

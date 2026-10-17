@@ -349,8 +349,9 @@ CollectionProducer y = x.pow(2).sum();
 CollectionProducer gradient = y.delta(x);
 // Result: 2x (derivative of x^2)
 
-// Combine gradients for backpropagation
-CollectionProducer combined = y.grad(x, upstreamGradient);
+// Vector-Jacobian product for backpropagation: the gradient with respect to x
+// of the upstream gradient times dy/dx, without forming the Jacobian
+CollectionProducer combined = y.delta(x, ReduceAxis.OUT, upstreamGradient);
 ```
 
 ---

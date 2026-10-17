@@ -252,6 +252,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	public TraversalOrdering getOrder() { return order; }
 
 	/**
+	 * Returns {@code true} if the axes of the output space are a permutation, other than
+	 * the identity, of the axes of the input space.
+	 *
+	 * @return {@code true} if any output axis maps to a different input axis
+	 */
+	public boolean isPermuted() {
+		return IntStream.range(0, dimsOrder.length).anyMatch(i -> dimsOrder[i] != i);
+	}
+
+	/**
 	 * The length of the collection along the specified axis
 	 * of the output space.
 	 */

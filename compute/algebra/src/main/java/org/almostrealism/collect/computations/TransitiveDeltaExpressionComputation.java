@@ -21,7 +21,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -99,9 +98,6 @@ public abstract class TransitiveDeltaExpressionComputation
 
 	/**
 	 * Constructs a new transitive delta expression computation with the specified parameters.
-	 * This constructor initializes the computation with {@link MultiTermDeltaStrategy#NONE}
-	 * as the delta strategy, since transitive delta computations handle multi-term differentiation
-	 * through their own specialized logic.
 	 *
 	 * @param name The name of this computation, used for debugging and code generation
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
@@ -109,7 +105,7 @@ public abstract class TransitiveDeltaExpressionComputation
 	 */
 	protected TransitiveDeltaExpressionComputation(String name, TraversalPolicy shape,
 												   Producer<PackedCollection>... arguments) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
+		super(name, shape, arguments);
 	}
 
 	/**
@@ -221,7 +217,8 @@ public abstract class TransitiveDeltaExpressionComputation
 	 *
 	 * <h3>Computation Process</h3>
 	 * <ol>
-	 *   <li>First attempts optimized delta computation via {@link #attemptDelta(Producer)}</li>
+	 *   <li>Is reached when no identity, elementwise or chain rule case applies
+	 *       (see {@link #differentiate})</li>
 	 *   <li>Validates that all operands are {@link CollectionProducer}s with fixed counts</li>
 	 *   <li>For each operand:
 	 *     <ul>
@@ -247,14 +244,11 @@ public abstract class TransitiveDeltaExpressionComputation
 	 *         with respect to the target, reshaped to include the target dimensions
 	 * @throws IllegalStateException if transitive delta is not supported for variable count operands
 	 * @see #isTransitiveArgumentIndex(int)
-	 * @see #attemptDelta(Producer)
+	 * @see #differentiate
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(TraversalPolicy)
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDelta(target);
-		if (delta != null) return delta;
-
+	protected CollectionProducer jacobian(Producer<?> target) {
 		TraversalPolicy targetShape = shape(target);
 
 		List<CollectionProducer> operands = List.of(
@@ -272,7 +266,7 @@ public abstract class TransitiveDeltaExpressionComputation
 		}
 
 		if (!supported) {
-			return super.delta(target);
+			return super.jacobian(target);
 		}
 
 		List<Process<?, ?>> deltas = new ArrayList<>();
@@ -298,9 +292,9 @@ public abstract class TransitiveDeltaExpressionComputation
 	 * implementation is used.
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
-		if (axis != ReduceAxis.IN || hasDirectDelta(target)) {
-			return super.delta(target, axis, weight);
+	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.IN) {
+			return super.differentiate(target, axis, weight);
 		}
 
 		List<Process<?, ?>> tangents = new ArrayList<>();
@@ -315,7 +309,7 @@ public abstract class TransitiveDeltaExpressionComputation
 			} else if (child instanceof CollectionProducer && ((CollectionProducer) child).isFixedCount()) {
 				tangents.add((Process) ((CollectionProducer) child).delta(target, axis, weight));
 			} else {
-				return super.delta(target, axis, weight);
+				return super.differentiate(target, axis, weight);
 			}
 		}
 

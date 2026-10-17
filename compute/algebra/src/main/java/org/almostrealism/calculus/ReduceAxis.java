@@ -19,7 +19,7 @@ package org.almostrealism.calculus;
 import io.almostrealism.collect.TraversalPolicy;
 
 /**
- * The axis of a Jacobian that a reduced delta sums away.
+ * The axis of a Jacobian that a delta sums away, if any.
  *
  * <p>The Jacobian of a computation {@code f} with respect to a target {@code x} has an
  * output axis (index 0, one entry per element of {@code f}) and an input axis (index 1,
@@ -34,12 +34,17 @@ import io.almostrealism.collect.TraversalPolicy;
  *       {@code t}: the Jacobian-vector product {@code J t}, with the shape of the
  *       computation. This is forward-mode differentiation.</li>
  * </ul>
- * <p>Without a weight every entry along the reduced axis is weighted by one.</p>
+ * <p>{@link #NONE} sums away neither axis, and the delta is the Jacobian itself, in the
+ * shape of the computation followed by that of the target. Without a weight every entry
+ * along the reduced axis is weighted by one.</p>
  *
  * @author Michael Murray
  * @see org.almostrealism.collect.CollectionProducer#delta(io.almostrealism.relation.Producer, ReduceAxis, io.almostrealism.relation.Producer)
  */
 public enum ReduceAxis {
+	/** Neither axis is summed away: the delta is the full Jacobian. */
+	NONE(-1),
+
 	/** The output axis (index 0) is summed away, producing a vector-Jacobian product. */
 	OUT(0),
 
@@ -63,8 +68,10 @@ public enum ReduceAxis {
 	 * input axis.
 	 *
 	 * @return the axis index
+	 * @throws UnsupportedOperationException for {@link #NONE}, which is not an axis
 	 */
 	public int getIndex() {
+		if (this == NONE) throw new UnsupportedOperationException("No axis is reduced");
 		return index;
 	}
 
@@ -74,9 +81,11 @@ public enum ReduceAxis {
 	 *
 	 * @param outputShape the shape of the computation being differentiated
 	 * @param targetShape the shape of the target of differentiation
-	 * @return the target shape for {@link #OUT}, or the output shape for {@link #IN}
+	 * @return the target shape for {@link #OUT}, the output shape for {@link #IN}, or the
+	 *         output shape followed by the target shape for {@link #NONE}
 	 */
 	public TraversalPolicy resultShape(TraversalPolicy outputShape, TraversalPolicy targetShape) {
+		if (this == NONE) return outputShape.append(targetShape);
 		return this == OUT ? targetShape : outputShape;
 	}
 
@@ -87,8 +96,10 @@ public enum ReduceAxis {
 	 * @param outputShape the shape of the computation being differentiated
 	 * @param targetShape the shape of the target of differentiation
 	 * @return the output shape for {@link #OUT}, or the target shape for {@link #IN}
+	 * @throws UnsupportedOperationException for {@link #NONE}, which takes no weight
 	 */
 	public TraversalPolicy weightShape(TraversalPolicy outputShape, TraversalPolicy targetShape) {
+		if (this == NONE) throw new UnsupportedOperationException("No axis is reduced");
 		return this == OUT ? outputShape : targetShape;
 	}
 
@@ -101,7 +112,7 @@ public enum ReduceAxis {
 	 */
 	public static ReduceAxis of(int index) {
 		for (ReduceAxis axis : values()) {
-			if (axis.index == index) return axis;
+			if (axis != NONE && axis.index == index) return axis;
 		}
 
 		throw new IllegalArgumentException("A Jacobian has no axis " + index);
