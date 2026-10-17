@@ -179,12 +179,52 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 
 	/**
 	 * An output wider than 1000 lowers the matrix multiply to a weighted sum rather than a
-	 * multiply and sum. The weighted sum has no reduced delta of its own yet, so its
-	 * gradient is the contracted Jacobian, and must agree with the definition.
+	 * multiply and sum. The weighted sum's output-reduced delta is the transposed weighted
+	 * sum of the upstream gradient with the other operand, so its gradients are formed
+	 * without the Jacobian and must agree with the definition and with the Jacobian.
 	 */
 	@Test(timeout = 10 * 60000)
 	public void wideOutputWeightedSum() {
-		assertDenseGradientsMatch(shape(1, 3, 8), 1200, true, false);
+		assertDenseGradientsMatch(shape(1, 3, 8), 1200, true, true);
+	}
+
+	/**
+	 * The {@link ReduceAxis#IN input-reduced} delta of a weighted sum, as a matrix multiply
+	 * wider than 1000 outputs lowers to, is the weighted sum of each operand's tangent with
+	 * the other operand: {@code Σ_j T[i][j] x_r[j]} for a tangent {@code T} of the weight and
+	 * {@code Σ_j W[i][j] X_r[j]} for a tangent {@code X} of the input.
+	 */
+	@Test(timeout = 10 * 60000)
+	public void wideOutputWeightedSumTangent() {
+		int rows = 3;
+		int size = 8;
+		int nodes = 1200;
+		TraversalPolicy inputShape = shape(1, rows, size);
+		PackedCollection weights = new PackedCollection(shape(nodes, size)).randnFill();
+		PackedCollection input = new PackedCollection(inputShape).randnFill();
+		PackedCollection weightTangent = new PackedCollection(shape(nodes, size)).randnFill();
+		PackedCollection inputTangent = new PackedCollection(inputShape).randnFill();
+
+		Producer<PackedCollection> in = cp(input);
+		CollectionProducer out = (CollectionProducer) denseOperator(inputShape, weights, null).getResultant(in);
+
+		double[] w = weights.toArray(0, nodes * size);
+		double[] x = input.toArray(0, rows * size);
+		double[] tw = weightTangent.toArray(0, nodes * size);
+		double[] tx = inputTangent.toArray(0, rows * size);
+		double[] weightProduct = new double[rows * nodes];
+		double[] inputProduct = new double[rows * nodes];
+		for (int r = 0; r < rows; r++) {
+			for (int i = 0; i < nodes; i++) {
+				for (int j = 0; j < size; j++) {
+					weightProduct[r * nodes + i] += tw[i * size + j] * x[r * size + j];
+					inputProduct[r * nodes + i] += w[i * size + j] * tx[r * size + j];
+				}
+			}
+		}
+
+		assertTangentMatches(out, p(weights), cp(weightTangent), weightProduct);
+		assertTangentMatches(out, in, cp(inputTangent), inputProduct);
 	}
 
 	/**

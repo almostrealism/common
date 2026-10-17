@@ -23,6 +23,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
@@ -302,8 +303,8 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	 * @see org.almostrealism.collect.CollectionProducer#delta(Producer)
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		return new CollectionZerosComputation(getShape().append(shape(target)));
+	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		return new CollectionZerosComputation(axis.resultShape(getShape(), shape(target)));
 	}
 }
 

@@ -37,21 +37,15 @@ public interface GradientFeatures extends ComparisonFeatures {
 
 	/**
 	 * Computes the derivative of a collection producer with respect to a target producer,
-	 * for use in automatic differentiation and gradient computation. The
-	 * {@link CollectionProducer#attemptDirectDelta direct cases} are attempted first; if
-	 * unavailable, the computation falls back to the standard
-	 * {@link CollectionProducer#delta} mechanism.
+	 * for use in automatic differentiation and gradient computation, by way of
+	 * {@link CollectionProducer#delta(Producer)}.
 	 *
 	 * @param producer the collection producer to differentiate
 	 * @param target   the producer with respect to which the derivative is taken
 	 * @return a {@link CollectionProducer} representing the derivative
 	 */
 	default CollectionProducer delta(Producer<PackedCollection> producer, Producer<?> target) {
-		CollectionProducer p = CollectionFeatures.getInstance().c(producer);
-		CollectionProducer result = p.attemptDirectDelta(target);
-		if (result != null) return result;
-
-		return p.delta(target);
+		return CollectionFeatures.getInstance().c(producer).delta(target);
 	}
 
 	/**

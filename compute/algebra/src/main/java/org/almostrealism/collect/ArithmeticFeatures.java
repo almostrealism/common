@@ -29,7 +29,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.algebra.computations.ScalarMatrixComputation;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
@@ -716,7 +715,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	default CollectionProducer abs(Producer<PackedCollection> value) {
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation(
-				"abs", shape, MultiTermDeltaStrategy.NONE, true,
+				"abs", shape, true,
 				args -> new UniformCollectionExpression("abs", shape, in -> new Absolute(in[0]), args[1]),
 				value);
 	}

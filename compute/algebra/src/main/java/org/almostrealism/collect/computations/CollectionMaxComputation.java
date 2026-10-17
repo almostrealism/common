@@ -172,27 +172,18 @@ public class CollectionMaxComputation extends AggregatedProducerComputation {
 	/**
 	 * The maximum is not a linear aggregation, so its derivative is not the maximum of the
 	 * input's derivatives: it is the derivative of the element that the maximum
-	 * {@link #select selects}.
+	 * {@link #select selects}. The Jacobian and the {@link ReduceAxis#OUT output-reduced}
+	 * delta are those of the selection, and the {@link ReduceAxis#IN input-reduced} delta
+	 * selects, from the input's own input-reduced delta, the element at the position of
+	 * the maximum.
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer direct = attemptDirectDelta(target);
-		if (direct != null) return direct;
-
-		return select(getInputs().get(1)).delta(target);
-	}
-
-	/**
-	 * Only the element that the maximum selects contributes to it, so the
-	 * {@link ReduceAxis#IN input-reduced} delta selects, from the input's own input-reduced
-	 * delta, the element at the position of the maximum, and the
-	 * {@link ReduceAxis#OUT output-reduced} delta is that of the {@link #select selection}.
-	 */
-	@Override
-	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		Producer<PackedCollection> child = getInputs().get(1);
-		if (hasDirectDelta(target) || !(child instanceof Shape)) {
-			return super.delta(target, axis, weight);
+		if (axis == ReduceAxis.NONE) {
+			return select(child).delta(target);
+		} else if (!(child instanceof Shape)) {
+			return super.differentiate(target, axis, weight);
 		} else if (axis == ReduceAxis.OUT) {
 			return select(child).delta(target, axis, weight);
 		}

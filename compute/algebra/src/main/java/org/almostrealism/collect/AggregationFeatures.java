@@ -185,11 +185,7 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 					input, c(1.0).reshape(shape)).reshape(resultShape);
 		}
 
-		if (result == null) {
-			return new CollectionSumComputation(input);
-		} else {
-			return result.withDeltaAlternate(new CollectionSumComputation(input));
-		}
+		return result == null ? new CollectionSumComputation(input) : result;
 	}
 
 	/**

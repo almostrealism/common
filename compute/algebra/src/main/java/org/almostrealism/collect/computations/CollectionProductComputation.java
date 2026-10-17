@@ -23,7 +23,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
@@ -127,16 +126,13 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * This constructor allows subclasses or specialized versions to use different names
 	 * for debugging and profiling purposes.
 	 *
-	 * <p>Note: This constructor uses {@link MultiTermDeltaStrategy#NONE} because
-	 * the delta computation is handled by the custom {@link #delta(Producer)} method.</p>
-	 *
 	 * @param name The name identifier for this computation
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param arguments Variable number of input {@link Producer}s to be multiplied together
 	 */
 	protected CollectionProductComputation(String name, TraversalPolicy shape,
 										   Producer<PackedCollection>... arguments) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
+		super(name, shape, arguments);
 	}
 
 	/**
@@ -275,7 +271,11 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(int...)
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
+	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.NONE) {
+			return super.differentiate(target, axis, weight);
+		}
+
 		TraversalPolicy targetShape = shape(target);
 
 		List<CollectionProducer> operands = List.of(
@@ -296,7 +296,7 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 		}
 
 		if (!supported) {
-			return super.delta(target);
+			return super.differentiate(target, axis, weight);
 		}
 
 		TraversalPolicy shape = getShape().append(targetShape);

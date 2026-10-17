@@ -593,8 +593,9 @@ public abstract class CollectionProducerComputationAdapter
 	 * 
 	 * <p>The delta computation process follows these steps:</p>
 	 * <ol>
-	 *   <li>Attempts to use an optimized delta computation if available via {@link #attemptDelta(Producer)}</li>
-	 *   <li>If no optimized version exists, creates a {@link TraversableDeltaComputation} that
+	 *   <li>Is reached when no identity, elementwise or chain rule case applies
+	 *       (see {@link #differentiate})</li>
+	 *   <li>Creates a {@link TraversableDeltaComputation} that
 	 *       implements the chain rule for automatic differentiation</li>
 	 *   <li>Configures the delta computation with proper shape matching and expression handling</li>
 	 * </ol>
@@ -616,21 +617,17 @@ public abstract class CollectionProducerComputationAdapter
 	 *         with respect to the target. The returned producer has the same shape as this
 	 *         computation and produces gradient values when evaluated.
 	 * 
-	 * @see #attemptDelta(Producer)
+	 * @see #differentiate
 	 * @see TraversableDeltaComputation
 	 * @see io.almostrealism.collect.CollectionExpression
 	 * @see org.almostrealism.collect.CollectionFeatures#shape(Supplier)
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDelta(target);
-		if (delta != null) return delta;
-
-		delta = TraversableDeltaComputation.create("delta", getShape(), shape(target),
+	protected CollectionProducer jacobian(Producer<?> target) {
+		return TraversableDeltaComputation.create("delta", getShape(), shape(target),
 				args -> CollectionExpression.create(getShape(), idx -> args[1].getValueAt(idx)), target,
 				this)
 				.setDescription(args -> "delta(" + description(args) + ")");
-		return delta;
 	}
 
 	/**

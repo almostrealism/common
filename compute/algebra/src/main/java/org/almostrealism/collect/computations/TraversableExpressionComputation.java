@@ -24,7 +24,6 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -40,7 +39,7 @@ import org.almostrealism.hardware.HardwareFeatures;
  *   <li>Accepting input collections with defined {@link TraversalPolicy} shapes</li>
  *   <li>Transforming inputs into {@link TraversableExpression} objects that represent the data traversal</li>
  *   <li>Applying an expression function to generate {@link CollectionExpression} results</li>
- *   <li>Supporting automatic differentiation through delta computation strategies</li>
+ *   <li>Supporting automatic differentiation of its expression</li>
  * </ul>
  * 
  * <h3>Usage Examples</h3>
@@ -83,7 +82,7 @@ import org.almostrealism.hardware.HardwareFeatures;
  *   <li><strong>Multi-dimensional Support:</strong> Handles collections with arbitrary dimensions</li>
  *   <li><strong>Traversal Control:</strong> Uses {@link TraversalPolicy} to define data access patterns</li>
  *   <li><strong>Expression-based:</strong> Leverages mathematical expressions for computation logic</li>
- *   <li><strong>Differentiation Support:</strong> Includes automatic differentiation through delta strategies</li>
+ *   <li><strong>Differentiation Support:</strong> Differentiates its own expression when the chain rule does not apply</li>
  *   <li><strong>GPU Acceleration:</strong> Compiles to hardware-accelerated kernels when possible</li>
  * </ul>
  * 
@@ -95,7 +94,6 @@ import org.almostrealism.hardware.HardwareFeatures;
  * @see TraversalPolicy
  * @see TraversableExpression
  * @see CollectionExpression
- * @see MultiTermDeltaStrategy
  *
  * @author Michael Murray
  */
@@ -103,50 +101,20 @@ public abstract class TraversableExpressionComputation
 		extends CollectionProducerComputationAdapter implements HardwareFeatures {
 
 	/**
-	 * The strategy used for handling multi-term delta (derivative) computations.
-	 * This controls how automatic differentiation is performed when multiple
-	 * input terms are present in the computation.
-	 * 
-	 * @see MultiTermDeltaStrategy
-	 */
-	private final MultiTermDeltaStrategy deltaStrategy;
-
-	/**
-	 * Constructs a new TraversableExpressionComputation with default delta strategy.
-	 * This constructor uses {@link MultiTermDeltaStrategy#NONE} as the default
-	 * strategy for handling multi-term derivatives.
-	 * 
-	 * @param name The name of this computation, used for debugging and identification
-	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
-	 * @param args Variable number of input suppliers that provide evaluable collections
-	 */
-	@SafeVarargs
-	public TraversableExpressionComputation(String name, TraversalPolicy shape,
-											Producer<PackedCollection>... args) {
-		this(name, shape, MultiTermDeltaStrategy.NONE, args);
-	}
-
-	/**
-	 * Constructs a new TraversableExpressionComputation with a specified delta strategy.
-	 * This constructor allows full control over how automatic differentiation is handled
-	 * for computations involving multiple input terms.
-	 * 
+	 * Constructs a new TraversableExpressionComputation.
+	 *
 	 * @param name The name of this computation, used for debugging and identification.
 	 *             If null, a warning will be logged.
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern.
 	 *              This determines how the output collection is structured and accessed.
-	 * @param deltaStrategy The {@link MultiTermDeltaStrategy} to use for handling derivatives
-	 *                     when multiple input terms are present. Controls automatic differentiation behavior.
 	 * @param args Variable number of input suppliers that provide evaluable collections.
 	 *             These represent the inputs to the computation and will be transformed
 	 *             into traversable expressions.
 	 */
 	@SafeVarargs
 	public TraversableExpressionComputation(String name, TraversalPolicy shape,
-											MultiTermDeltaStrategy deltaStrategy,
 											Producer<PackedCollection>... args) {
 		super(name, shape, validateArgs(args));
-		this.deltaStrategy = deltaStrategy;
 
 		if (name == null) {
 			warn("Name is null for " + getClass().getSimpleName());
@@ -215,39 +183,19 @@ public abstract class TraversableExpressionComputation
 	public boolean isChainRuleSupported() { return true; }
 
 	/**
-	 * Gets the delta strategy used for handling multi-term derivatives.
-	 * This strategy controls how automatic differentiation is performed when
-	 * the computation involves multiple terms that need to be differentiated.
-	 * 
-	 * @return The {@link MultiTermDeltaStrategy} for this computation
-	 * @see MultiTermDeltaStrategy
-	 */
-	@Override
-	public MultiTermDeltaStrategy getDeltaStrategy() { return deltaStrategy; }
-
-	/**
-	 * Computes the derivative (delta) of this computation with respect to a target producer.
-	 * This method implements automatic differentiation by creating a new computation that
-	 * represents the gradient of the current computation with respect to the specified target.
-	 * 
-	 * <p>The method first attempts to compute a delta using standard differentiation techniques.
-	 * If that fails, it falls back to creating a {@link TraversableDeltaComputation} that
-	 * can handle more complex differentiation scenarios.
-	 * 
+	 * Differentiates the expression of this computation, as a {@link TraversableDeltaComputation},
+	 * when the Jacobian is not obtained from those of its inputs.
+	 *
 	 * @param target The {@link Producer} with respect to which the derivative should be computed
 	 * @return A {@link CollectionProducer} representing the computed derivative
 	 * @see TraversableDeltaComputation
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDelta(target);
-		if (delta != null) return delta;
-
-		delta = TraversableDeltaComputation.create(
+	protected CollectionProducer jacobian(Producer<?> target) {
+		return TraversableDeltaComputation.create(
 				"\u03B4" + getName(), getShape(), shape(target),
 				this::getExpression, target,
 				getInputs().stream().skip(1).toArray(Producer[]::new));
-		return delta;
 	}
 
 	/**

@@ -24,6 +24,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -253,7 +254,11 @@ public class PackedCollectionPad extends TraversableExpressionComputation {
 	 * @see TraversableExpressionComputation#delta(Producer)
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
+	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.NONE) {
+			return super.differentiate(target, axis, weight);
+		}
+
 		Supplier in = getInputs().get(1);
 
 		TraversalPolicy shape = getShape();
