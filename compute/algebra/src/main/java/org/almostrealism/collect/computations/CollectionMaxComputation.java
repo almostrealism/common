@@ -16,12 +16,15 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -148,6 +151,45 @@ public class CollectionMaxComputation extends AggregatedProducerComputation {
 	@Override
 	public CollectionMaxComputation generate(List<Process<?, ?>> children) {
 		return new CollectionMaxComputation((Producer<PackedCollection>) children.get(1));
+	}
+
+	/**
+	 * Selects, from each group of {@code values}, the element at the position of the
+	 * maximum of the same group of this computation's input. Applied to the input itself
+	 * this is equal in value to this computation; applied to the derivative of the input it
+	 * is the derivative of the maximum, which is that of the element the maximum selects.
+	 *
+	 * @param values a collection with the shape of the input
+	 * @return the selected elements, one for each group
+	 */
+	protected CollectionProducer select(Producer<PackedCollection> values) {
+		Producer<PackedCollection> input = getInputs().get(1);
+		return new DynamicIndexProjectionProducerComputation("projectMax", shape(input).replace(shape(1)),
+				(args, idx) -> args[2].getValueAt(idx).toInt(),
+				true, values, indexOfMax(input));
+	}
+
+	/**
+	 * The maximum is not a linear aggregation, so its derivative is not the maximum of the
+	 * input's derivatives: it is the derivative of the element that the maximum
+	 * {@link #select selects}. The Jacobian and the {@link ReduceAxis#OUT output-reduced}
+	 * delta are those of the selection, and the {@link ReduceAxis#IN input-reduced} delta
+	 * selects, from the input's own input-reduced delta, the element at the position of
+	 * the maximum.
+	 */
+	@Override
+	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		Producer<PackedCollection> child = getInputs().get(1);
+		if (axis == ReduceAxis.NONE) {
+			return select(child).delta(target);
+		} else if (!(child instanceof Shape)) {
+			return super.differentiate(target, axis, weight);
+		} else if (axis == ReduceAxis.OUT) {
+			return select(child).delta(target, axis, weight);
+		}
+
+		CollectionProducer input = c(child);
+		return select(reshape(input.getShape(), input.delta(target, axis, weight)));
 	}
 
 	/**

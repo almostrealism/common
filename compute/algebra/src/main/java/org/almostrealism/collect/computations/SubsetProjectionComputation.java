@@ -25,7 +25,6 @@ import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 
 import java.util.List;
@@ -78,7 +77,7 @@ public class SubsetProjectionComputation extends TraversableExpressionComputatio
 									   TraversalPolicy outputShape,
 									   TraversalPolicy inputShape,
 									   Expression<?>[] positionOffsets) {
-		super("subsetProjection", jacobianShape, MultiTermDeltaStrategy.NONE);
+		super("subsetProjection", jacobianShape);
 		this.outputShape = outputShape;
 		this.inputShape = inputShape;
 		this.positionOffsets = positionOffsets;

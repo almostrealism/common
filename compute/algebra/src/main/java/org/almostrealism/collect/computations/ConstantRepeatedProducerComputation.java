@@ -268,14 +268,14 @@ public class ConstantRepeatedProducerComputation
 	 * Computes the derivative of this computation with respect to the specified target.
 	 * 
 	 * <p>This method implements automatic differentiation for repeated computations with
-	 * constant iteration counts. It first attempts to use the base class's delta computation
-	 * strategy, and if that fails, creates a specialized {@link ConstantRepeatedDeltaComputation}
-	 * optimized for constant iteration scenarios.</p>
-	 * 
+	 * constant iteration counts. It is reached when the base class's
+	 * {@link #differentiate} finds no identity, elementwise or chain rule case, and creates a
+	 * specialized {@link ConstantRepeatedDeltaComputation} optimized for constant iteration
+	 * scenarios.</p>
+	 *
 	 * <p>The differentiation process:</p>
 	 * <ol>
-	 *   <li>Attempts standard delta computation via {@link #attemptDelta(Producer)}</li>
-	 *   <li>If unsuccessful, creates a {@link ConstantRepeatedDeltaComputation} with:
+	 *   <li>Creates a {@link ConstantRepeatedDeltaComputation} with:
 	 *     <ul>
 	 *       <li>The same iteration count as this computation</li>
 	 *       <li>Specialized expression that computes derivatives at each iteration</li>
@@ -301,13 +301,10 @@ public class ConstantRepeatedProducerComputation
 	 * @throws IllegalArgumentException if the target is not compatible with this computation
 	 * 
 	 * @see ConstantRepeatedDeltaComputation
-	 * @see RepeatedProducerComputation#attemptDelta(Producer)
+	 * @see #differentiate
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDelta(target);
-		if (delta != null) return delta;
-
+	protected CollectionProducer jacobian(Producer<?> target) {
 		return ConstantRepeatedDeltaComputation.create(
 				getShape(), shape(target),
 				count, (args, localIndex) -> getExpression(args, null, localIndex), target,

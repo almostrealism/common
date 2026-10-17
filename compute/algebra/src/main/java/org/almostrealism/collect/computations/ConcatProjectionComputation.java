@@ -26,7 +26,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 
 import java.util.List;
@@ -88,7 +87,7 @@ public class ConcatProjectionComputation extends TraversableExpressionComputatio
 									   int[] segmentBoundaries,
 									   Expression<?>[][] segmentOffsets,
 									   double[] segmentScales) {
-		super("concatProjection", jacobianShape, MultiTermDeltaStrategy.NONE);
+		super("concatProjection", jacobianShape);
 		this.outputShape = outputShape;
 		this.targetShape = targetShape;
 		this.axis = axis;

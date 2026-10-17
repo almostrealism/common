@@ -43,8 +43,8 @@ import java.util.function.Function;
  * <p>Every comparison is made on the whole dense operator built by
  * {@link LayerFeatures#denseOperator} (output reshape of the optional bias addition of the
  * matrix multiply), so a reduction that fails to pass through those wrappers is caught. The
- * side under test is {@link #combineGradient}, which the backward pass uses and which is the
- * {@link ReduceAxis#OUT output-reduced} delta weighted by the upstream gradient; the
+ * side under test is the {@link ReduceAxis#OUT output-reduced} delta weighted by the upstream
+ * gradient, which the backward pass uses; the
  * full-Jacobian reference is {@link #jacobianGradient}, which materializes the Jacobian
  * regardless of the structure of the operator, and for dense operators both are also
  * compared with the gradient computed on the host from its definition. Inputs are sequences
@@ -179,12 +179,52 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 
 	/**
 	 * An output wider than 1000 lowers the matrix multiply to a weighted sum rather than a
-	 * multiply and sum. The weighted sum has no reduced delta of its own yet, so its
-	 * gradient is the contracted Jacobian, and must agree with the definition.
+	 * multiply and sum. The weighted sum's output-reduced delta is the transposed weighted
+	 * sum of the upstream gradient with the other operand, so its gradients are formed
+	 * without the Jacobian and must agree with the definition and with the Jacobian.
 	 */
 	@Test(timeout = 10 * 60000)
 	public void wideOutputWeightedSum() {
-		assertDenseGradientsMatch(shape(1, 3, 8), 1200, true, false);
+		assertDenseGradientsMatch(shape(1, 3, 8), 1200, true, true);
+	}
+
+	/**
+	 * The {@link ReduceAxis#IN input-reduced} delta of a weighted sum, as a matrix multiply
+	 * wider than 1000 outputs lowers to, is the weighted sum of each operand's tangent with
+	 * the other operand: {@code Σ_j T[i][j] x_r[j]} for a tangent {@code T} of the weight and
+	 * {@code Σ_j W[i][j] X_r[j]} for a tangent {@code X} of the input.
+	 */
+	@Test(timeout = 10 * 60000)
+	public void wideOutputWeightedSumTangent() {
+		int rows = 3;
+		int size = 8;
+		int nodes = 1200;
+		TraversalPolicy inputShape = shape(1, rows, size);
+		PackedCollection weights = new PackedCollection(shape(nodes, size)).randnFill();
+		PackedCollection input = new PackedCollection(inputShape).randnFill();
+		PackedCollection weightTangent = new PackedCollection(shape(nodes, size)).randnFill();
+		PackedCollection inputTangent = new PackedCollection(inputShape).randnFill();
+
+		Producer<PackedCollection> in = cp(input);
+		CollectionProducer out = (CollectionProducer) denseOperator(inputShape, weights, null).getResultant(in);
+
+		double[] w = weights.toArray(0, nodes * size);
+		double[] x = input.toArray(0, rows * size);
+		double[] tw = weightTangent.toArray(0, nodes * size);
+		double[] tx = inputTangent.toArray(0, rows * size);
+		double[] weightProduct = new double[rows * nodes];
+		double[] inputProduct = new double[rows * nodes];
+		for (int r = 0; r < rows; r++) {
+			for (int i = 0; i < nodes; i++) {
+				for (int j = 0; j < size; j++) {
+					weightProduct[r * nodes + i] += tw[i * size + j] * x[r * size + j];
+					inputProduct[r * nodes + i] += w[i * size + j] * tx[r * size + j];
+				}
+			}
+		}
+
+		assertTangentMatches(out, p(weights), cp(weightTangent), weightProduct);
+		assertTangentMatches(out, in, cp(inputTangent), inputProduct);
 	}
 
 	/**
@@ -297,7 +337,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 			}
 		}
 
-		PackedCollection actual = evaluate(combineGradient(dense.add(x), x, cp(gradient)));
+		PackedCollection actual = evaluate(dense.add(x).delta(x, ReduceAxis.OUT, cp(gradient)));
 		assertValuesMatch("residual", reference, actual.toArray(0, rows * size));
 		actual.destroy();
 	}
@@ -379,7 +419,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 			}
 		}
 
-		CollectionProducer reduced = combineGradient(broadcast, p(weights), cp(gradient));
+		CollectionProducer reduced = broadcast.delta(p(weights), ReduceAxis.OUT, cp(gradient));
 		assertNoLargerThanForward(broadcast, reduced);
 		PackedCollection actual = evaluate(reduced);
 		assertValuesMatch("broadcast", reference, actual.toArray(0, nodes * size));
@@ -583,7 +623,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	private void assertGradientsMatch(CollectionProducer function, Producer<PackedCollection> target,
 									  Producer<PackedCollection> gradient, boolean expectReduced,
 									  double[] reference, boolean jacobianReliable) {
-		CollectionProducer reduced = combineGradient(function, target, gradient);
+		CollectionProducer reduced = function.delta(target, ReduceAxis.OUT, gradient);
 
 		int size = shape(target).getTotalSize();
 		if (expectReduced) {
