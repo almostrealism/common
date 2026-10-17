@@ -64,4 +64,16 @@ public interface ChannelSection extends AudioProcessor, Destroyable {
 
 	/** Length of the section, in measures. */
 	int getLength();
+
+	/**
+	 * Returns {@code true} if the given measure position falls within this section,
+	 * that is, at or after {@link #getPosition()} and before
+	 * {@link #getPosition()} + {@link #getLength()}.
+	 *
+	 * @param measure the measure position to test
+	 * @return {@code true} if this section covers the given measure position
+	 */
+	default boolean contains(double measure) {
+		return getPosition() <= measure && measure < (getPosition() + getLength());
+	}
 }

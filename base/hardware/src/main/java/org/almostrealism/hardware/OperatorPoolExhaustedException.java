@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware;
 
+import java.util.Optional;
+
 /**
  * Thrown when the runtime native-lib template class pool is exhausted and
  * no further operators can be obtained for an accelerated operation.
@@ -42,5 +44,30 @@ public class OperatorPoolExhaustedException extends HardwareException {
 	 */
 	public OperatorPoolExhaustedException(Exception cause) {
 		super("Could not obtain operator", cause);
+	}
+
+	/**
+	 * Returns the first {@code OperatorPoolExhaustedException} found in the cause
+	 * chain of the given throwable, starting with the throwable itself.
+	 *
+	 * <p>Pool exhaustion is a terminal condition that is frequently wrapped by
+	 * the time it surfaces to a caller (for example inside a
+	 * {@link HardwareException} raised while evaluating a computation), so
+	 * callers that must distinguish exhaustion from an ordinary failure search
+	 * the whole chain rather than the top-level type. Callers that only need to
+	 * know whether exhaustion occurred use {@code causeOf(t).isPresent()}.</p>
+	 *
+	 * @param t the throwable to inspect (may be {@code null})
+	 * @return the outermost exhaustion in the chain, or empty if there is none
+	 */
+	public static Optional<OperatorPoolExhaustedException> causeOf(Throwable t) {
+		Throwable cursor = t;
+		while (cursor != null) {
+			if (cursor instanceof OperatorPoolExhaustedException) {
+				return Optional.of((OperatorPoolExhaustedException) cursor);
+			}
+			cursor = cursor.getCause();
+		}
+		return Optional.empty();
 	}
 }

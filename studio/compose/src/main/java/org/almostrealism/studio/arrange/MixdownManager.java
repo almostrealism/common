@@ -164,6 +164,44 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	public static boolean enablePdslMixdown =
 			SystemUtils.isEnabled("AR_PDSL_MIXDOWN").orElse(true);
 
+	/**
+	 * Returns whether the PDSL mixdown path can faithfully render the given channel
+	 * selection. This is the capability contract behind {@link #enablePdslMixdown}: a
+	 * build only routes through {@link MixdownManagerPdslAdapter} when both the flag is
+	 * set and the selection is supported here; otherwise it falls back to the Java
+	 * {@link #createCells} path.
+	 *
+	 * <p>Two selection shapes are supported:</p>
+	 * <ul>
+	 *   <li><b>Any single channel</b> {@code [c]} — including a non-zero selection. The
+	 *       adapter maps bank position 0 to channel {@code c}'s genome (via
+	 *       {@link MixdownManagerPdslAdapter.Config#channel(int)}), so the PDSL render
+	 *       reads the same genes the Java path reads for that channel.</li>
+	 *   <li><b>The zero-based contiguous multi-channel prefix</b> {@code [0, 1, ..., n-1]}
+	 *       — the full-scene render. Here the channel mapping is the identity, so the
+	 *       per-channel genome reads land on the matching pattern channels.</li>
+	 * </ul>
+	 *
+	 * <p>A non-contiguous multi-channel selection (e.g. {@code [0, 2]}) is not yet
+	 * validated and must render through the Java path instead: the cross-channel
+	 * transmission feedback grid is indexed by bank position rather than scene channel,
+	 * so an arbitrary multi-channel subset would not faithfully reproduce the routing.</p>
+	 *
+	 * @param channels the resolved channel indices
+	 * @return true when the PDSL path can faithfully render this selection
+	 */
+	public static boolean supportsPdslMixdown(List<Integer> channels) {
+		if (channels.isEmpty() || channels.stream().anyMatch(c -> c == null)) return false;
+
+		// Any single channel is supported — the adapter maps its genome reads to the
+		// selected channel index, so a non-zero [c] renders channel c's genes.
+		if (channels.size() == 1) return true;
+
+		// Multi-channel: still require the zero-based contiguous prefix [0, 1, ..., n-1].
+		return IntStream.range(0, channels.size())
+				.allMatch(i -> channels.get(i) == i);
+	}
+
 	/** Global reverb wet-level multiplier applied during reverb processing. */
 	protected static double reverbLevel = 2.0;
 
