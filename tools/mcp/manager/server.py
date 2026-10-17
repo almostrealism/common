@@ -266,6 +266,7 @@ from workspace_map import (
     _find_workstream,
     _find_workstream_by_branch,
     _archived_workstream_error,
+    _archived_branch_error,
 )
 
 # ---------------------------------------------------------------------------

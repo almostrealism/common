@@ -1068,3 +1068,185 @@ class TestArchivedWorkstreamReadOnly(unittest.TestCase):
         self.assertIn("archived", result["error"])
         self.assertEqual(1, mock_find.call_count)
         mock_gh.assert_not_called()
+
+    @patch.object(server, "_find_workstream_by_branch")
+    def test_archived_branch_error_fires_for_archived_round(self, mock_by_branch):
+        """The branch guard resolves the round without the scope filter and
+        refuses an archived one, naming the round in the error."""
+        mock_by_branch.return_value = {"workstreamId": "ws-arch", "archived": True}
+        err = server._archived_branch_error(
+            "commit a plan", "git@github.com:org/repo.git", "qa/retro-x")
+        self.assertIsNotNone(err)
+        self.assertFalse(err["ok"])
+        self.assertIn("Cannot commit a plan", err["error"])
+        self.assertIn("ws-arch", err["error"])
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/repo.git", "qa/retro-x", enforce_scope=False)
+
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_find_workstream_by_branch")
+    def test_archived_branch_error_silent_for_live_and_unregistered(
+            self, mock_by_branch, mock_find):
+        """A live round and a branch no round owns both pass, without a
+        second (scope-filtered) lookup of the resolved round."""
+        mock_by_branch.return_value = {"workstreamId": "ws-live"}
+        self.assertIsNone(server._archived_branch_error(
+            "commit a plan", "git@github.com:org/repo.git", "feature/live"))
+        mock_by_branch.return_value = None
+        self.assertIsNone(server._archived_branch_error(
+            "commit a plan", "git@github.com:org/repo.git", "feature/new"))
+        mock_find.assert_not_called()
+
+    def _live_ws(self):
+        return {
+            "workstreamId": "ws-live",
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/live",
+        }
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_verify_branch_rejected_for_archived_branch_override(
+            self, mock_find, mock_by_branch, mock_gh):
+        """A live workstream_id plus an archived round's branch must not
+        dispatch the verify workflow onto that archived branch."""
+        mock_find.return_value = self._live_ws()
+        mock_by_branch.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.project_verify_branch(
+            workstream_id="ws-live", branch="qa/retro-x")
+        self.assertFalse(result["ok"])
+        self.assertIn("ws-arch", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "https://github.com/org/repo", "qa/retro-x", enforce_scope=False)
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_verify_branch_allowed_for_live_branch_override(
+            self, mock_find, mock_by_branch, mock_gh):
+        """An override naming a branch no archived round owns is dispatched on
+        that branch."""
+        mock_find.return_value = self._live_ws()
+        mock_by_branch.return_value = None
+        mock_gh.return_value = {"ok": True, "status": 204}
+        result = server.project_verify_branch(
+            workstream_id="ws-live", branch="feature/side")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual("feature/side", result["branch"])
+        self.assertEqual("feature/side", mock_gh.call_args[0][2]["ref"])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_verify_branch_own_default_branch_skips_branch_lookup(
+            self, mock_find, mock_by_branch, mock_gh):
+        """No override (or an override equal to the workstream's own default
+        branch) is covered by the id guard alone."""
+        mock_find.return_value = self._live_ws()
+        mock_gh.return_value = {"ok": True, "status": 204}
+        self.assertTrue(server.project_verify_branch(workstream_id="ws-live")["ok"])
+        self.assertTrue(server.project_verify_branch(
+            workstream_id="ws-live", branch="feature/live")["ok"])
+        mock_by_branch.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_commit_plan_rejected_for_archived_branch_override(
+            self, mock_find, mock_by_branch, mock_gh):
+        """A live workstream_id plus an archived round's branch must not commit
+        the plan onto that archived branch."""
+        mock_find.return_value = self._live_ws()
+        mock_by_branch.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.project_commit_plan(
+            workstream_id="ws-live", content="# Plan", branch="qa/retro-x")
+        self.assertFalse(result["ok"])
+        self.assertIn("Cannot commit a plan", result["error"])
+        self.assertIn("ws-arch", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_commit_plan_live_branch_override_passes_guard(
+            self, mock_find, mock_by_branch, mock_gh):
+        """An override naming a live round passes the guard and reaches
+        GitHub."""
+        mock_find.return_value = self._live_ws()
+        mock_by_branch.return_value = {"workstreamId": "ws-other"}
+        mock_gh.return_value = {"ok": False, "error": "stop here"}
+        server.project_commit_plan(
+            workstream_id="ws-live", content="# Plan", branch="feature/other")
+        mock_by_branch.assert_called_once()
+        mock_gh.assert_called()
+
+    def _context_with_override(self, mock_client_fn, mock_by_branch, mock_get,
+                               mock_pr, mock_find, **kwargs):
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+        mock_pr.return_value = {"ok": True, "found": False}
+        mock_find.return_value = {
+            "workstreamId": "ws-live",
+            "repoUrl": "git@github.com:org/repo.git",
+            "defaultBranch": "feature/live",
+        }
+        mock_by_branch.return_value = {"workstreamId": "ws-branch"}
+        mock_get.return_value = [
+            {"jobId": "job-branch", "timestamp": "2026-10-10T00:00:00Z",
+             "status": "SUCCESS", "description": "retro"},
+        ]
+        return server.workstream_context(
+            workstream_id="ws-live", include_commits=False, **kwargs)
+
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_get_memory_client")
+    def test_context_jobs_follow_branch_override_on_workstream_id(
+            self, mock_client_fn, mock_by_branch, mock_get, mock_pr, mock_find):
+        """A workstream_id with only a branch override keys memories on the
+        override branch, so the job timeline must follow that round rather
+        than attaching the id's own jobs to the overridden branch."""
+        result = self._context_with_override(
+            mock_client_fn, mock_by_branch, mock_get, mock_pr, mock_find,
+            branch="qa/retro-x")
+        self.assertTrue(result["ok"])
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/repo.git", "qa/retro-x")
+        self.assertIn("/api/workstreams/ws-branch/jobs", mock_get.call_args[0][0])
+        self.assertEqual([j["jobId"] for j in result["jobs"]], ["job-branch"])
+
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_get_memory_client")
+    def test_context_jobs_follow_repo_override_on_workstream_id(
+            self, mock_client_fn, mock_by_branch, mock_get, mock_pr, mock_find):
+        """A workstream_id with only a repo_url override resolves the timeline
+        from the overridden repository and the id's default branch."""
+        result = self._context_with_override(
+            mock_client_fn, mock_by_branch, mock_get, mock_pr, mock_find,
+            repo_url="git@github.com:org/fork.git")
+        self.assertTrue(result["ok"])
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/fork.git", "feature/live")
+        self.assertIn("/api/workstreams/ws-branch/jobs", mock_get.call_args[0][0])
+
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_get_memory_client")
+    def test_context_jobs_use_workstream_id_without_overrides(
+            self, mock_client_fn, mock_by_branch, mock_get, mock_pr, mock_find):
+        """With no override the id is the sole source, used directly."""
+        result = self._context_with_override(
+            mock_client_fn, mock_by_branch, mock_get, mock_pr, mock_find)
+        self.assertTrue(result["ok"])
+        mock_by_branch.assert_not_called()
+        self.assertIn("/api/workstreams/ws-live/jobs", mock_get.call_args[0][0])

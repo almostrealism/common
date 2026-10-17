@@ -722,3 +722,40 @@ def _archived_workstream_error(
             "Or target a live workstream — workstream_list marks which are archived",
         ],
     }
+
+
+def _archived_branch_error(
+        operation: str, repo_url: str, branch: str) -> Optional[dict]:
+    """Return an error dict when the round whose default branch is *branch*
+    in *repo_url* is archived, or ``None`` when it is live or unregistered.
+
+    The write tools that accept an explicit branch alongside a workstream
+    (``memory_store``, ``project_verify_branch``, ``project_commit_plan``,
+    ``github_create_pr``) act on that branch, not on the workstream record
+    they resolved it through. A live workstream id combined with an archived
+    round's branch would pass a guard keyed on the id while the write lands on
+    the archived round, so these tools guard the branch they actually write
+    to through here.
+
+    The lookup uses ``enforce_scope=False`` and hands its dict to
+    :func:`_archived_workstream_error` directly: an archived round is frozen
+    for every caller regardless of workspace, and a scope-filtered lookup
+    would hide an out-of-scope archived round and let the write through.
+
+    Args:
+        operation: What the caller was attempting, phrased to complete
+            "Cannot <operation>:" — e.g. ``"store a memory"``.
+        repo_url: The repository the branch belongs to; empty for a
+            branch-only lookup (which resolves only an unambiguous match).
+        branch: The branch the write targets.
+
+    Returns:
+        An ``{"ok": False, ...}`` dict naming archiving as the reason, or
+        ``None`` when no archived round has *branch* as its default branch.
+    """
+    import sys as _sys
+    _by_branch = (getattr(_sys.modules.get('server'), '_find_workstream_by_branch', None)
+                  or _find_workstream_by_branch)
+    ws = _by_branch(repo_url, branch, enforce_scope=False)
+    target = (ws.get("workstreamId", "") or "") if ws else ""
+    return _archived_workstream_error(operation, target, ws=ws)

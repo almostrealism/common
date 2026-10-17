@@ -558,6 +558,14 @@ def github_create_pr(
         "create a pull request", effective_ws, ws=ws)
     if archived_err:
         return archived_err
+    # An explicit head is the branch the PR is raised from, so a live
+    # workstream must not carry a new PR from another round's archived branch
+    # in the same repository.
+    if ws and head and head != ws.get("defaultBranch"):
+        archived_err = server._archived_branch_error(
+            "create a pull request", ws.get("repoUrl", ""), head)
+        if archived_err:
+            return archived_err
 
     effective_base = (base or (ws or {}).get("baseBranch", "")
                       or github_api.default_branch(owner, repo))

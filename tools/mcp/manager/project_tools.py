@@ -185,6 +185,14 @@ def project_verify_branch(
         # archived", dispatching the workflow onto the frozen round.
         return server._archived_workstream_error(
             "verify the branch", workstream_id, ws=ws)
+    # An explicit branch override is the branch the workflow runs on, so a
+    # live workstream_id must not carry a dispatch onto another round's
+    # archived branch in the same repository.
+    if branch and branch != ws.get("defaultBranch"):
+        archived_err = server._archived_branch_error(
+            "verify the branch", ws.get("repoUrl", ""), branch)
+        if archived_err:
+            return archived_err
 
     server._set_github_org(ws)
 
@@ -299,6 +307,14 @@ def project_commit_plan(
         # archived", letting the GitHub PUT mutate the frozen round.
         return server._archived_workstream_error(
             "commit a plan", workstream_id, ws=ws)
+    # An explicit branch override is the branch the PUT commits to, so a live
+    # workstream_id must not carry a commit onto another round's archived
+    # branch in the same repository.
+    if branch and branch != ws.get("defaultBranch"):
+        archived_err = server._archived_branch_error(
+            "commit a plan", ws.get("repoUrl", ""), branch)
+        if archived_err:
+            return archived_err
 
     server._set_github_org(ws)
 

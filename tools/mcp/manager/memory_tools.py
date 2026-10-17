@@ -316,19 +316,12 @@ def memory_store(
     # branch (require_branch defaults to True), so both effective values are
     # non-empty once the error check above has passed.
     #
-    # The lookup uses enforce_scope=False and its dict is handed to the guard
-    # directly: an archived round is frozen for every caller regardless of
-    # workspace, and memory_store applies no workspace scope of its own, so a
-    # scope-filtered lookup would hide an out-of-scope archived round and let
-    # the write through. A temp token can briefly outlive the job that minted
-    # it, so the token-fallback round (reached through effective_* here) is
-    # guarded too rather than trusted to never name an archived round.
-    # Unarchive it first to record against it.
-    archived_ws = server._find_workstream_by_branch(
-        effective_repo, effective_branch, enforce_scope=False)
-    archived_target = archived_ws.get("workstreamId", "") or "" if archived_ws else ""
-    archived_err = server._archived_workstream_error(
-        "store a memory", archived_target, ws=archived_ws)
+    # A temp token can briefly outlive the job that minted it, so the
+    # token-fallback round (reached through effective_* here) is guarded too
+    # rather than trusted to never name an archived round. Unarchive it first
+    # to record against it.
+    archived_err = server._archived_branch_error(
+        "store a memory", effective_repo, effective_branch)
     if archived_err:
         return archived_err
 
