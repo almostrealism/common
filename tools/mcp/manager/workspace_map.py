@@ -578,7 +578,8 @@ def _find_workstream(workstream_id: str) -> Optional[dict]:
     return None
 
 
-def _find_workstream_by_branch(repo_url: str, branch: str) -> Optional[dict]:
+def _find_workstream_by_branch(
+        repo_url: str, branch: str, enforce_scope: bool = True) -> Optional[dict]:
     """Find a workstream by its default branch, optionally scoped to a
     repository.
 
@@ -604,17 +605,26 @@ def _find_workstream_by_branch(repo_url: str, branch: str) -> Optional[dict]:
 
     Enforces workspace scope exactly as :func:`_find_workstream` does: a
     match owned by an out-of-scope workspace is skipped, so existence is
-    not leaked to a scoped caller.
+    not leaked to a scoped caller. The archived read-only guard is the one
+    caller that passes ``enforce_scope=False``: an archived round is frozen
+    for every caller regardless of workspace, and the scope filter would
+    otherwise hide an out-of-scope archived round from the guard and let a
+    write through (``memory_store`` applies no workspace scope of its own).
 
     Args:
         repo_url: The repository to scope the match to; empty for a
             branch-only lookup across every repository.
         branch: The ``defaultBranch`` to match. Required.
+        enforce_scope: When True (the default) a match owned by an
+            out-of-scope workspace is skipped. Pass False only for the
+            archived-write guard, which must see an archived round even
+            when the caller's scope would hide it.
 
     Returns:
-        The in-scope workstream dict whose ``defaultBranch`` equals *branch*
-        (the unique match when *repo_url* is empty), or ``None`` when there
-        is no match or a branch-only lookup is ambiguous.
+        The workstream dict whose ``defaultBranch`` equals *branch* (the
+        unique match when *repo_url* is empty), or ``None`` when there is no
+        match or a branch-only lookup is ambiguous. When *enforce_scope* is
+        True an out-of-scope match counts as no match.
     """
     if not branch:
         return None
@@ -636,7 +646,7 @@ def _find_workstream_by_branch(repo_url: str, branch: str) -> Optional[dict]:
     for ws in entries:
         if not isinstance(ws, dict) or ws.get("defaultBranch") != branch:
             continue
-        if _get_workspace_scopes() and not _is_workspace_allowed(
+        if enforce_scope and _get_workspace_scopes() and not _is_workspace_allowed(
                 ws.get("workspaceId") or ws.get("slackWorkspaceId")):
             continue
         matches.append(ws)
@@ -648,7 +658,9 @@ def _find_workstream_by_branch(repo_url: str, branch: str) -> Optional[dict]:
     return None
 
 
-def _archived_workstream_error(operation: str, workstream_id: str) -> Optional[dict]:
+def _archived_workstream_error(
+        operation: str, workstream_id: str,
+        ws: Optional[dict] = None) -> Optional[dict]:
     """Return an error dict when *workstream_id* names an archived
     workstream, or ``None`` when it is live, unknown, or out of scope.
 
@@ -671,10 +683,19 @@ def _archived_workstream_error(operation: str, workstream_id: str) -> Optional[d
     explicit ``repo_url`` + ``branch`` and the token-bound workstream, rather
     than leaving any of those forms to the controller's own archived handling.
 
+    A caller that has already resolved the workstream dict (possibly through
+    a scope-independent lookup) passes it as *ws* so this guard reads its
+    ``archived`` flag directly instead of re-fetching through the
+    scope-filtered :func:`_find_workstream`, which would re-hide an
+    out-of-scope archived round the caller deliberately resolved.
+
     Args:
         operation: What the caller was attempting, phrased to complete
             "Cannot <operation>:" — e.g. ``"submit a task"``.
         workstream_id: The workstream the write was aimed at.
+        ws: An already-resolved workstream dict for *workstream_id*. When
+            given it is used directly; when ``None`` the workstream is
+            fetched via the scope-filtered :func:`_find_workstream`.
 
     Returns:
         An ``{"ok": False, ...}`` dict naming archiving as the reason, or
@@ -682,9 +703,10 @@ def _archived_workstream_error(operation: str, workstream_id: str) -> Optional[d
     """
     if not workstream_id:
         return None
-    import sys as _sys
-    _find = getattr(_sys.modules.get('server'), '_find_workstream', None) or _find_workstream
-    ws = _find(workstream_id)
+    if ws is None:
+        import sys as _sys
+        _find = getattr(_sys.modules.get('server'), '_find_workstream', None) or _find_workstream
+        ws = _find(workstream_id)
     if not ws or not ws.get("archived"):
         return None
     return {

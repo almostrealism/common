@@ -733,6 +733,49 @@ class TestArchivedWorkstreamReadOnly(unittest.TestCase):
         ]
         self.assertIsNone(server._find_workstream_by_branch("", "shared"))
 
+    @patch.object(server, "_controller_get")
+    def test_find_workstream_by_branch_scope_hides_out_of_scope(self, mock_get):
+        """By default an out-of-scope match is hidden, so a scoped caller
+        cannot resolve a round in another workspace by branch."""
+        _set_workspaces("TAAA")
+        mock_get.return_value = [
+            {"workstreamId": "ws-arch", "defaultBranch": "qa/retro-x",
+             "workspaceId": "TBBB", "archived": True},
+        ]
+        self.assertIsNone(server._find_workstream_by_branch(
+            "git@github.com:org/repo.git", "qa/retro-x"))
+
+    @patch.object(server, "_controller_get")
+    def test_find_workstream_by_branch_enforce_scope_false_sees_archived(
+            self, mock_get):
+        """enforce_scope=False bypasses the workspace filter so the archived
+        read-only guard sees a round the caller's scope would otherwise hide —
+        an archived round is frozen for every caller, and memory_store applies
+        no workspace scope of its own to catch it."""
+        _set_workspaces("TAAA")
+        mock_get.return_value = [
+            {"workstreamId": "ws-arch", "defaultBranch": "qa/retro-x",
+             "workspaceId": "TBBB", "archived": True},
+        ]
+        ws = server._find_workstream_by_branch(
+            "git@github.com:org/repo.git", "qa/retro-x", enforce_scope=False)
+        self.assertIsNotNone(ws)
+        self.assertEqual("ws-arch", ws["workstreamId"])
+        self.assertTrue(ws.get("archived"))
+
+    @patch.object(server, "_find_workstream")
+    def test_archived_error_uses_supplied_ws_without_refetch(self, mock_find):
+        """When a pre-resolved dict is supplied, the guard reads its archived
+        flag directly and does not re-fetch through the scope-filtered
+        _find_workstream (which would re-hide an out-of-scope archived round)."""
+        err = server._archived_workstream_error(
+            "store a memory", "ws-arch",
+            ws={"workstreamId": "ws-arch", "archived": True})
+        self.assertIsNotNone(err)
+        self.assertFalse(err["ok"])
+        self.assertIn("archived", err["error"])
+        mock_find.assert_not_called()
+
     @patch.object(server, "_find_workstream")
     def test_archived_error_fires_for_archived(self, mock_find):
         mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
