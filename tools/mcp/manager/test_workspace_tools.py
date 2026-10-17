@@ -701,6 +701,38 @@ class TestArchivedWorkstreamReadOnly(unittest.TestCase):
         self.assertEqual("ws-arch", ws["workstreamId"])
         self.assertIn("includeArchived=true", mock_get.call_args[0][0])
 
+    @patch.object(server, "_controller_get")
+    def test_find_workstream_by_branch_resolves_branch_only_unique(self, mock_get):
+        """With no repo_url, a branch that uniquely names one archived round
+        still resolves — mirroring the controller's branch-only resolution,
+        which the submit guard must cover (the controller has no archived
+        check and accepts target_branch with no repoUrl)."""
+        mock_get.return_value = [
+            {"workstreamId": "ws-live", "defaultBranch": "feature/other",
+             "workspaceId": "TAAA"},
+            {"workstreamId": "ws-arch", "defaultBranch": "qa/retro-x",
+             "workspaceId": "TBBB", "archived": True},
+        ]
+        ws = server._find_workstream_by_branch("", "qa/retro-x")
+        self.assertIsNotNone(ws)
+        self.assertEqual("ws-arch", ws["workstreamId"])
+        # A branch-only lookup must not pin the query to any repository.
+        self.assertNotIn("repoUrl", mock_get.call_args[0][0])
+        self.assertIn("includeArchived=true", mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_get")
+    def test_find_workstream_by_branch_branch_only_ambiguous_is_none(self, mock_get):
+        """A branch shared by two repositories does not resolve branch-only —
+        the controller refuses to route it, so the guard must not treat it as
+        a resolved (archived) target either."""
+        mock_get.return_value = [
+            {"workstreamId": "ws-a", "defaultBranch": "shared",
+             "workspaceId": "TAAA", "archived": True},
+            {"workstreamId": "ws-b", "defaultBranch": "shared",
+             "workspaceId": "TBBB"},
+        ]
+        self.assertIsNone(server._find_workstream_by_branch("", "shared"))
+
     @patch.object(server, "_find_workstream")
     def test_archived_error_fires_for_archived(self, mock_find):
         mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
@@ -806,6 +838,27 @@ class TestArchivedWorkstreamReadOnly(unittest.TestCase):
         self.assertIn("archived", result["error"])
         mock_by_branch.assert_called_once_with(
             "git@github.com:org/repo.git", "qa/retro-x")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_submit_rejected_for_archived_via_branch_only(
+            self, mock_find, mock_by_branch, mock_post):
+        """The guard covers the branch-only submit form too: a target_branch
+        with no repo_url that the controller would resolve to an archived
+        round is refused here. Without this, the ar-manager guard's old
+        repo_url requirement let that form reach the controller, which has no
+        archived check and accepts target_branch with no repoUrl."""
+        mock_by_branch.return_value = {"workstreamId": "ws-arch", "archived": True}
+        mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.workstream_submit_task(
+            prompt="Fix the bug",
+            target_branch="qa/retro-x",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_by_branch.assert_called_once_with("", "qa/retro-x")
         mock_post.assert_not_called()
 
     @patch.object(server, "_controller_post")

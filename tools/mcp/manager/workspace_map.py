@@ -579,30 +579,52 @@ def _find_workstream(workstream_id: str) -> Optional[dict]:
 
 
 def _find_workstream_by_branch(repo_url: str, branch: str) -> Optional[dict]:
-    """Find a workstream by its repository and default branch.
+    """Find a workstream by its default branch, optionally scoped to a
+    repository.
 
     Archived workstreams are included, so a caller that addresses a branch
-    by ``repo_url`` + ``branch`` (rather than by id) can still resolve an
-    archived round — the shape a retrospective survey uses for a merged,
-    archived QA round it found through ``workstream_list``. This is what
-    lets :func:`workstream_context` return a job timeline for the
-    repo+branch form, not only when a ``workstream_id`` was supplied.
+    (rather than an id) can still resolve an archived round — the shape a
+    retrospective survey uses for a merged, archived QA round it found
+    through ``workstream_list``. This is what lets :func:`workstream_context`
+    return a job timeline for the repo+branch form, not only when a
+    ``workstream_id`` was supplied, and what lets
+    :func:`workstream_submit_task` refuse a branch-addressed submission to an
+    archived round before the controller — which has no archived check — is
+    contacted.
+
+    Mirrors the controller's own branch resolution
+    (``NotifierRegistry.resolveBranch``): with a ``repo_url`` the lookup is
+    unambiguous and the single ``(branch, repo)`` match is returned; without
+    one it falls back to branch-only matching and resolves **only** when
+    exactly one workstream carries that default branch. An ambiguous
+    branch-only match (two repositories sharing a branch) resolves to
+    ``None`` here exactly as the controller refuses to route it — so the
+    submit guard neither mis-attributes the ambiguity to archiving nor lets
+    an archived round through on a branch the controller would reject anyway.
 
     Enforces workspace scope exactly as :func:`_find_workstream` does: a
     match owned by an out-of-scope workspace is skipped, so existence is
     not leaked to a scoped caller.
 
+    Args:
+        repo_url: The repository to scope the match to; empty for a
+            branch-only lookup across every repository.
+        branch: The ``defaultBranch`` to match. Required.
+
     Returns:
-        The first in-scope workstream dict whose ``defaultBranch`` equals
-        *branch* on the given repository, or ``None`` when there is none.
+        The in-scope workstream dict whose ``defaultBranch`` equals *branch*
+        (the unique match when *repo_url* is empty), or ``None`` when there
+        is no match or a branch-only lookup is ambiguous.
     """
-    if not repo_url or not branch:
+    if not branch:
         return None
     import sys as _sys
     _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
     from urllib.parse import urlencode
-    path = "/api/workstreams?" + urlencode(
-        {"includeArchived": "true", "repoUrl": repo_url})
+    params = {"includeArchived": "true"}
+    if repo_url:
+        params["repoUrl"] = repo_url
+    path = "/api/workstreams?" + urlencode(params)
     result = _cget(path)
     if isinstance(result, list):
         entries = result
@@ -610,13 +632,19 @@ def _find_workstream_by_branch(repo_url: str, branch: str) -> Optional[dict]:
         entries = result["workstreams"]
     else:
         return None
+    matches = []
     for ws in entries:
         if not isinstance(ws, dict) or ws.get("defaultBranch") != branch:
             continue
         if _get_workspace_scopes() and not _is_workspace_allowed(
                 ws.get("workspaceId") or ws.get("slackWorkspaceId")):
             continue
-        return ws
+        matches.append(ws)
+        if repo_url:
+            # (branch, repo) is unique; no need to scan further.
+            return ws
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 

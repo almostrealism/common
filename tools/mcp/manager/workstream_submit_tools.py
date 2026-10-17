@@ -657,13 +657,16 @@ def workstream_submit_task(
     # they accept no new work. Resolving an archived workstream's ownership
     # now succeeds, so this explicit refusal — checked before the controller
     # is contacted — is what holds that line. The controller's own submit path
-    # has no archived check, so both ways of addressing a workstream are
-    # resolved to an id here: a direct workstream_id, or a target_branch +
-    # repo_url that names an existing (possibly archived) round by its default
-    # branch. A target_branch that resolves to nothing is a new workstream and
-    # is left to the controller.
+    # has no archived check, so every way of addressing a workstream is
+    # resolved to an id here: a direct workstream_id, or a target_branch that
+    # names an existing (possibly archived) round by its default branch. The
+    # branch match mirrors the controller's resolveBranch — a repo_url makes
+    # it unambiguous, and a branch alone resolves only when exactly one round
+    # carries it (the branch-only form the controller itself accepts with no
+    # repo_url). A target_branch that resolves to nothing is a new workstream
+    # and is left to the controller.
     archived_target = workstream_id
-    if not archived_target and target_branch and repo_url:
+    if not archived_target and target_branch:
         ws_by_branch = server._find_workstream_by_branch(repo_url, target_branch)
         if ws_by_branch:
             archived_target = ws_by_branch.get("workstreamId", "") or ""
