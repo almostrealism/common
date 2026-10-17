@@ -230,7 +230,7 @@ return JobCompletionEvent.success(taskId, getTaskString());
 
 `JobWorkOutcome.describeUnpublishedWork()` reports work the job produced but never committed (uncommitted changes to non-excluded files, or an authored commit message with no commit behind it), so a job whose output was dropped on the way out fails instead of reporting success.
 
-`CodingAgentJob` overrides `createEvent()` to delegate to `CodingAgentJobEvent.forJob(job, accumulator, error)`, which returns a `CodingAgentJobEvent` and applies additional checks: `FAILED` for a thrown error, a hard-failed primary phase, or a non-zero agent exit code; `DEGRADED` when the post-completion command pass cap was hit or every change was dropped by staging guardrails; `FAILED` for unpublished work; and `DEGRADED` when the agent abandoned test-runner runs. Otherwise the event is `SUCCESS`.
+`CodingAgentJob` overrides `createEvent()` to delegate to `CodingAgentJobEvent.forJob(job, error)`, which returns a `CodingAgentJobEvent` and applies additional checks: `FAILED` for a thrown error, a hard-failed primary phase, or a non-zero agent exit code; `DEGRADED` when the post-completion command pass cap was hit or every change was dropped by staging guardrails; `FAILED` for unpublished work; and `DEGRADED` when the agent abandoned test-runner runs. Otherwise the event is `SUCCESS`.
 
 ### Stage 2: Population
 
