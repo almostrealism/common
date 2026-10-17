@@ -1122,3 +1122,91 @@ class TestMemoryStore(unittest.TestCase):
             branch="feature/x",
         )
         self.assertFalse(result["ok"])
+
+
+class TestMemoryStoreArchived(unittest.TestCase):
+    """``memory_store`` refuses an archived workstream.
+
+    Archived workstreams are read-only: their memories stay readable but the
+    record is frozen. A memory keyed to an archived round's branch is part of
+    what ``workstream_context`` and ``memory_recall`` return for it, so
+    appending one mutates the frozen record — the same category of write the
+    ``send_message`` guard refuses on the conversation history. Resolving an
+    archived workstream's ownership now succeeds (so the read tools can see
+    it), which reopened this write path; these tests pin that the explicit
+    archived guard closes it again, for both the ``workstream_id`` and the
+    explicit ``repo_url`` + ``branch`` addressing forms, and that a live
+    workstream is unaffected.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        # Clear any token context so the guard is exercised on the explicit
+        # identifier, not a token-fallback workstream from a sibling test.
+        server._set_token_context("", "")
+
+    def tearDown(self):
+        server._set_token_context("", "")
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream")
+    def test_store_rejected_for_archived_via_workstream_id(
+            self, mock_find, mock_client_fn):
+        """A memory aimed at an archived workstream by id is refused before the
+        memory backend is contacted."""
+        mock_find.return_value = {
+            "workstreamId": "ws-arch", "archived": True,
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "qa/retro-x",
+        }
+        client = MagicMock()
+        mock_client_fn.return_value = client
+        result = server.memory_store(content="note", workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        client.store.assert_not_called()
+        client.store_dual.assert_not_called()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_find_workstream_by_branch")
+    def test_store_rejected_for_archived_via_repo_branch(
+            self, mock_by_branch, mock_find, mock_client_fn):
+        """The explicit repo_url + branch form resolves to the archived round
+        and is refused too — the controller/backend has no archived check."""
+        mock_by_branch.return_value = {
+            "workstreamId": "ws-arch", "archived": True}
+        mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
+        client = MagicMock()
+        mock_client_fn.return_value = client
+        result = server.memory_store(
+            content="note",
+            repo_url="https://github.com/org/repo",
+            branch="qa/retro-x",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "https://github.com/org/repo", "qa/retro-x")
+        client.store.assert_not_called()
+        client.store_dual.assert_not_called()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_find_workstream_by_branch")
+    def test_store_allowed_for_live_repo_branch(
+            self, mock_by_branch, mock_find, mock_client_fn):
+        """A repo_url + branch that resolves to a live workstream is unaffected
+        by the archived guard."""
+        mock_by_branch.return_value = {"workstreamId": "ws-live"}
+        mock_find.return_value = {"workstreamId": "ws-live"}
+        client = MagicMock()
+        client.store.return_value = {"id": "new-1", "content": "note"}
+        mock_client_fn.return_value = client
+        result = server.memory_store(
+            content="note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/live",
+        )
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        client.store.assert_called_once()

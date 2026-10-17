@@ -294,6 +294,26 @@ def memory_store(
     if err:
         return err
 
+    # Archived workstreams are read-only: their memories stay readable but the
+    # record is frozen. A memory keyed to an archived round's branch becomes
+    # part of what workstream_context and memory_recall return for it, so
+    # appending one mutates the frozen record — the same category of write the
+    # send_message guard refuses on the conversation history. Resolving an
+    # archived workstream's ownership now succeeds, so this explicit refusal is
+    # what keeps new memories off an archived round. The round is addressed
+    # either directly by workstream_id or by an explicit repo_url + branch; the
+    # token-fallback path (no explicit identifier) is left alone because no
+    # agent runs on an archived workstream (submit is refused), so its own
+    # memories never target one. Unarchive it first to record against it.
+    archived_target = workstream_id
+    if not archived_target and repo_url and branch:
+        ws_by_branch = server._find_workstream_by_branch(repo_url, branch)
+        if ws_by_branch:
+            archived_target = ws_by_branch.get("workstreamId", "") or ""
+    archived_err = server._archived_workstream_error("store a memory", archived_target)
+    if archived_err:
+        return archived_err
+
     client = server._get_memory_client()
     if client is None:
         return {
