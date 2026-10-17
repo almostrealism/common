@@ -17,12 +17,14 @@
 package org.almostrealism.studio;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Verifies the shutdown contract of {@link PatternRenderStream}: {@link PatternRenderStream#stop()}
@@ -122,6 +124,49 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 
 			stream.start(1);
 			Assert.assertTrue("A restarted stream should render again", stream.buffersRendered() >= 1);
+		} finally {
+			stream.destroy();
+			workingInput.destroy();
+		}
+	}
+
+	/**
+	 * A render that calls {@link PatternRenderStream#stop()} on its own producer thread must be
+	 * rejected with {@link IllegalStateException} rather than waiting for its own termination. The
+	 * rejection surfaces as a prefill failure, and no buffer is recorded as rendered.
+	 */
+	@Test(timeout = 60000)
+	public void stopFromProducerThreadIsRejected() {
+		PatternRenderStream[] holder = new PatternRenderStream[1];
+		AtomicReference<Throwable> fromProducer = new AtomicReference<>();
+
+		Runnable selfStop = () -> {
+			try {
+				holder[0].stop();
+			} catch (Throwable t) {
+				fromProducer.set(t);
+				throw t;
+			}
+		};
+
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream stream = new PatternRenderStream(selfStop, new long[1],
+				workingInput, SLOTS, 1, BUFFER_SIZE);
+		holder[0] = stream;
+
+		try {
+			HardwareException thrown = null;
+			try {
+				stream.start(1);
+			} catch (HardwareException e) {
+				thrown = e;
+			}
+
+			Assert.assertNotNull("A producer-thread stop() should surface as a prefill failure", thrown);
+			Assert.assertTrue("stop() on the producer thread should be rejected with IllegalStateException, was "
+					+ fromProducer.get(), fromProducer.get() instanceof IllegalStateException);
+			Assert.assertEquals("No buffer should be recorded when the producer rejects its own stop()",
+					0, stream.buffersRendered());
 		} finally {
 			stream.destroy();
 			workingInput.destroy();

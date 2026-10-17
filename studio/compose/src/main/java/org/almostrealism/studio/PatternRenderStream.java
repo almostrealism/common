@@ -261,8 +261,22 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	 * returning while it runs would let a caller release those resources (as
 	 * {@link #destroy()} and the owning runner's teardown do immediately afterwards) underneath
 	 * it. A render that outlasts {@link #STOP_WARNING_MILLIS} is reported and then awaited.</p>
+	 *
+	 * <p>Shutdown must be driven from a thread other than the producer. Calling this (or
+	 * {@link #destroy()}) from the producer thread itself — for instance from {@code renderOp}
+	 * or a callback it reaches — would make the producer wait for its own termination, which can
+	 * never arrive while the callback is on the stack. Such a call is rejected with
+	 * {@link IllegalStateException} rather than skipped, because skipping the wait would let
+	 * {@code destroy()} release the ring while the render that triggered the call is still using
+	 * it.</p>
+	 *
+	 * @throws IllegalStateException if invoked on the producer thread
 	 */
 	public void stop() {
+		if (producer == Thread.currentThread()) {
+			throw new IllegalStateException("stop() must not be called on the render-ahead producer thread");
+		}
+
 		running = false;
 		if (producer != null) {
 			producer.interrupt();
@@ -280,12 +294,12 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	 * Blocks until the given producer thread has terminated, warning once if it is still
 	 * running after {@link #STOP_WARNING_MILLIS}. An interrupt of the calling thread does not
 	 * cut the wait short, since the producer may still be using the stream's resources; the
-	 * interrupt status is restored once the producer has exited.
+	 * interrupt status is restored once the producer has exited. {@link #stop()} rejects a
+	 * producer-thread shutdown before reaching here, so {@code thread} is never the caller.
 	 *
 	 * @param thread the producer thread to wait for
 	 */
 	private void awaitTermination(Thread thread) {
-		// TODO(review): stop() invoked on the producer thread itself (e.g. from renderOp) would self-join forever; consider guarding thread == Thread.currentThread()
 		boolean interrupted = false;
 		boolean warned = false;
 
