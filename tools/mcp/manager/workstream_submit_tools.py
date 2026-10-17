@@ -653,6 +653,52 @@ def workstream_submit_task(
                 ],
             }
 
+    # Archived workstreams are read-only: their history stays queryable but
+    # they accept no new work. Resolving an archived workstream's ownership
+    # now succeeds, so this explicit refusal — checked before the controller
+    # is contacted — is what holds that line. The controller's own submit path
+    # has no archived check, so every way of addressing a workstream is
+    # resolved to an id here: a direct workstream_id, or a target_branch that
+    # names an existing (possibly archived) round by its default branch.
+    #
+    # A workstream_id is only trusted once it resolves. The controller's
+    # resolveOrRegister ignores an unknown body workstreamId and then falls
+    # back to resolving targetBranch, so a submission carrying BOTH an unknown
+    # workstream_id and a target_branch that names an archived round would be
+    # routed there by the controller while a guard keyed on the unknown id saw
+    # nothing. So an unresolved id falls through to the branch resolution
+    # rather than short-circuiting it. The branch match mirrors the
+    # controller's resolveBranch — a repo_url makes it unambiguous, and a
+    # branch alone resolves only when exactly one round carries it (the
+    # branch-only form the controller itself accepts with no repo_url). A
+    # target_branch that resolves to nothing is a new workstream and is left to
+    # the controller. The resolved dict is handed to the guard as ``ws`` so it
+    # reads the archived flag directly instead of re-fetching, whose transient
+    # failure would otherwise be read as "not archived".
+    archived_target = ""
+    archived_ws = None
+    if workstream_id:
+        archived_ws = server._find_workstream(workstream_id)
+        if archived_ws:
+            archived_target = workstream_id
+    if not archived_target and target_branch:
+        archived_ws = server._find_workstream_by_branch(repo_url, target_branch)
+        if archived_ws:
+            archived_target = archived_ws.get("workstreamId", "") or ""
+    archived_err = server._archived_workstream_error(
+        "submit a task", archived_target, ws=archived_ws)
+    if archived_err:
+        return archived_err
+    # The controller selects the workstream by a resolved id but still checks
+    # the job out on targetBranch (Workstream.newJobFactory), so a live id
+    # must not carry a submission onto another round's archived branch.
+    if (archived_ws and archived_target == workstream_id and target_branch
+            and target_branch != archived_ws.get("defaultBranch")):
+        archived_err = server._archived_branch_error(
+            "submit a task", repo_url or archived_ws.get("repoUrl", "") or "",
+            target_branch)
+        if archived_err:
+            return archived_err
     server._require_workstream_in_scope(workstream_id)
     server._audit("workstream_submit_task", workstream_id=workstream_id,
            target_branch=target_branch, repo_url=repo_url,
