@@ -61,6 +61,11 @@ needs `AR_HARDWARE_MEMORY_SCALE=6`.
 
 ## Weight gradients of dense layers
 
+This section explains the reduced delta only as far as a dense layer needs it. The general
+mechanism — the `ReduceAxis` contract, the computation extension points, the expression-level
+Jacobian, and the backward pass — is documented in
+[Automatic Differentiation](automatic-differentiation.md).
+
 For a matrix multiply `y_r = W · x_r` applied to every row `x_r` of a sequence, the gradients the
 backward pass needs are vector-Jacobian products with known structure:
 
@@ -82,8 +87,11 @@ multiply-and-sum lowering is built from exactly those computations, so a dense l
 (`LayerFeatures.denseOperator`: the output reshape of the bias addition of the matrix multiply)
 yields `Σ_r g_r ⊗ x_r`, `Wᵀ · g_r` and the row-summed bias gradient without any code that
 recognizes a matrix multiply. A computation without a reduced form of its own contracts its full
-Jacobian, which is what `GradientFeatures.jacobianGradient` always does; the weighted-sum lowering
-that `matmul` uses for outputs wider than 1000 is one of these. `DefaultGradientPropagation` forms
+Jacobian, which is what `GradientFeatures.jacobianGradient` always does. The weighted-sum lowering
+(`WeightedSumComputation`) that `matmul` uses for outputs wider than 1000 is not one of these: it
+builds its own reduced delta for both axes from a transposed weighted sum, falling back to the full
+Jacobian only for a traversal that cannot be transposed, such as a convolution's sliding window.
+`DefaultGradientPropagation` forms
 both the input gradient and every weight gradient as the output-reduced delta weighted by the
 upstream gradient.
 
