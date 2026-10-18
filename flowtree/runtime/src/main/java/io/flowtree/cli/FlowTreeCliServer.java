@@ -113,7 +113,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	private int jobSize;
 
 	/** The singleton instance created and managed by {@link #start(String[])}. */
-	private static FlowTreeCliServer current;
+	private static volatile FlowTreeCliServer current;
 
 	/** Server socket accepting raw TCP terminal connections. */
 	private final ServerSocket socket;
@@ -332,7 +332,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 * @throws IOException if the server socket cannot be bound
 	 */
 	public FlowTreeCliServer(String httpwww, int jobSize, int port, boolean gui) throws IOException {
-		FlowTreeCliServer.current = this;
+		FlowTreeCliServer.publishCurrentInstance(this);
 		this.httpwww = httpwww;
 		this.jobSize = jobSize;
 		
@@ -597,9 +597,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			}
 		}
 
-		if (FlowTreeCliServer.current == this) {
-			FlowTreeCliServer.current = null;
-		}
+		FlowTreeCliServer.clearCurrentInstance(this);
 	}
 
 	/**
@@ -713,6 +711,34 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 * @return the current instance, or {@code null}
 	 */
 	public static FlowTreeCliServer getCurrentInstance() { return FlowTreeCliServer.current; }
+
+	/**
+	 * Publishes the given instance as the process-wide {@link #getCurrentInstance()
+	 * current} server. Synchronized on the class monitor so that it is atomic with
+	 * respect to {@link #clearCurrentInstance(FlowTreeCliServer)}: a concurrent
+	 * {@link #close()} of a superseded server cannot observe this instance and then
+	 * clear it after a newer server has replaced it.
+	 *
+	 * @param instance the server to publish as current
+	 */
+	private static synchronized void publishCurrentInstance(FlowTreeCliServer instance) {
+		FlowTreeCliServer.current = instance;
+	}
+
+	/**
+	 * Clears the process-wide {@link #getCurrentInstance() current} server, but only
+	 * if it still refers to the given instance. Synchronized on the class monitor so
+	 * that the identity check and the clear are atomic with respect to
+	 * {@link #publishCurrentInstance(FlowTreeCliServer)}, which prevents a superseded
+	 * server's {@link #close()} from clearing a newer server published concurrently.
+	 *
+	 * @param instance the server that is closing and should be cleared if current
+	 */
+	private static synchronized void clearCurrentInstance(FlowTreeCliServer instance) {
+		if (FlowTreeCliServer.current == instance) {
+			FlowTreeCliServer.current = null;
+		}
+	}
 
 	/**
 	 * Parses and dispatches a CLI command using the built-in command vocabulary
