@@ -254,6 +254,13 @@ run_case "a failed prune is reported without failing a deploy that worked" 0 \
     flowtree-controller -- \
     MOCK_DOCKER_FAIL_ON="builder prune"
 
+run_case "a failed image prune is reported without failing a deploy that worked" 0 \
+    "WARNING: docker image prune failed" "" \
+    flowtree-controller -- \
+    MOCK_DOCKER_FAIL_ON="image prune"
+check_docker_log "the build cache is still trimmed when the image prune fails" \
+    prunes_follow_restart 20gb
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
   echo "All $PASS tests passed."
