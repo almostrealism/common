@@ -119,6 +119,10 @@ keep working when any of those rules is changed.
 | `alias x=curl; x …`, `f() { curl …; }; f` | definition + network word → block |
 | `echo <b64> \| base64 -d \| sh` | pipe into shell → block |
 | `cat script \| python3`, `python3 - <<EOF` | pipe → block; heredoc body scanned |
+| Words after the program (`python3 - "$f" <<EOF`, `python3 -c 'x' data.txt`, `perl -e 'x' file`) | once `-`, an inline-code flag or a script path fixes the program, later words are its arguments and are not read as scripts; the inline-code flags are each family's own (Python `-c`, Perl `-e`/`-E`, Ruby `-e`, Node `-e`/`-p`/`-pe`/`--eval`/`--print`), so an argument-less switch such as `python3 -E` or `perl -p` no longer swallows the script after it |
+| A program hidden in a later word of a Perl/Ruby/Node inline command (`perl -e 'x' ${more[@]}`, `"-$opt"`, `-I ${more[@]}`, `-M${more[@]}`, an option cluster such as `-pe` after `-e`) | block — the shell could expand the word into a further `-e` and its code, so it is refused rather than returned past; Python's `-c` remainder is always `sys.argv`, so `python3 -c 'x' "$f"` is allowed |
+| An inline program's stdin (`python3 -c 'eval(…stdin…)' <<EOF`, `cat x \| perl -e 'eval <STDIN>'`) | heredoc body scanned as code; pipe → block (Python, Perl, Ruby and Node) |
+| Perl's `-mModule`, a Python cluster burying `-c`/`-m` (`-Ec'…'`, `-Emhttp.server`), `--` (`perl -- -e` runs the file `-e`) | `-m` keeps parsing like `-M`; the cluster's code is scanned and its module checked; after `--` the next word is read as the script, and after an inline program `--` makes the rest argv data |
 | Hex/base64 payload piped into a network tool | the network tool itself is judged; destination still needs allowlisting |
 | Writing a script then running it | file is read and scanned; unreadable blocks |
 | `xargs curl`, `find -exec curl`, `timeout 30 curl`, `sudo curl`, `env X=1 curl` | wrappers unwrapped |
@@ -227,6 +231,19 @@ State these plainly; do not assume the guard closes them.
 - **Interpreter scripts are scanned by pattern**, not executed symbolically. A
   program that assembles `"soc" + "ket"` at run time and imports it dynamically is
   not caught. Pipe-fed programs are refused precisely because of this.
+- **An inline program's arguments are data, as a script's are.** The guard scans
+  the program an interpreter runs, not the files handed to it as arguments: as
+  `python3 runner.py payload.py` never reads `payload.py`, neither does
+  `python3 -c 'import runpy,sys; runpy.run_path(sys.argv[1])' payload.py`. A
+  program that loads code from a path it is given at run time is outside what a
+  static scan can see. The stdin an inline program may execute is inspected only
+  when the guard can see it — a heredoc body or a pipe — and only for Python, Perl,
+  Ruby and Node: an input redirection (`< file`) or a here-string (`<<<`) is not
+  read, and an interpreter with no modelled option grammar (`php -r`, `lua -e`)
+  keeps reading the word after its inline code as a script but has its stdin
+  left alone. A short-option cluster such as `perl -lne 'code' file`, reached
+  before any inline program, is not parsed; its code word is read as a script,
+  so it blocks unless that word happens to name a readable file.
 - **A preloaded package name is not scanned.** `node -r ./setup.js` and `ruby -r ./x`
   are read like scripts (a path that cannot be read blocks), and a value spelled as a
   URI (`--import`/`--loader` accept ES module specifiers, not just paths) is handled
@@ -314,5 +331,6 @@ For a human holding a legitimate blocked command:
 | `.claude/hooks/exfil-allowlist.txt` | lab hosts and git remotes, read from `HEAD` |
 | `.claude/settings.json` | the `PreToolUse` registration, covering `Artifact`, `SendUserFile` and `Bash` |
 | `.claude/hooks/lib/test_exfiltration_guard_check.py` | the behavioral authority — every rule above has cases here |
+| `.claude/hooks/lib/test_exfiltration_guard_interpreter.py` | the interpreter argument walk: what fixes the program, what after it is data, and what is refused |
 | `tools/ci/agent-protection/verify-exfiltration-guard.sh` | CI check: presence on `HEAD`, registration coverage, and (off `ci/` branches) no change against the base; its header documents the exit codes |
 | `tools/ci/agent-protection/exfil_guard_registration.py` | shared registration parsing, used by the verifier and its tests |
