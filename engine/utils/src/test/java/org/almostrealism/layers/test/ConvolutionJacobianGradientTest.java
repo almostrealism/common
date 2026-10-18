@@ -113,6 +113,38 @@ public class ConvolutionJacobianGradientTest extends TestSuiteBase implements La
 	}
 
 	/**
+	 * The convolution operator rejects an input or filters that are not 4-D, and filters
+	 * whose channel count differs from the input's, before any computation is built.
+	 */
+	@Test(timeout = 60000)
+	public void operatorRejectsMismatchedShapes() {
+		PackedCollection filters = new PackedCollection(shape(FILTERS, CHANNELS, KERNEL, KERNEL));
+
+		assertRejected(shape(CHANNELS, SIZE, SIZE), filters);
+		assertRejected(shape(1, CHANNELS + 1, SIZE, SIZE), filters);
+		assertRejected(shape(1, CHANNELS, SIZE, SIZE),
+				new PackedCollection(shape(FILTERS, CHANNELS, KERNEL * KERNEL)));
+
+		Assert.assertNotNull(convolution2dOperator(shape(2, CHANNELS, SIZE, SIZE), filters, null));
+		filters.destroy();
+	}
+
+	/**
+	 * Asserts that building the convolution operator for the given shapes is rejected.
+	 *
+	 * @param inputShape the input shape
+	 * @param filters    the filters
+	 */
+	private void assertRejected(TraversalPolicy inputShape, PackedCollection filters) {
+		try {
+			convolution2dOperator(inputShape, filters, null);
+			Assert.fail("input " + inputShape + " with filters " + filters.getShape() + " should be rejected");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains(inputShape.toString()));
+		}
+	}
+
+	/**
 	 * Asserts that the output-reduced delta of a function weighted by the upstream gradient
 	 * agrees with the gradient computed from its definition, and that the full-Jacobian
 	 * gradient, formed and evaluated anew {@link #JACOBIAN_EVALUATIONS} times, agrees with

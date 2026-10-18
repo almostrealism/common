@@ -560,7 +560,8 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 		TraversalPolicy filterShape = filters.getShape();
 		if (inputShape.getDimensions() != 4 || filterShape.getDimensions() != 4
 				|| filterShape.length(1) != inputShape.length(1)) {
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Convolution requires a 4-D input and 4-D filters "
+					+ "with matching channels, not input " + inputShape + " and filters " + filterShape);
 		}
 
 		int batch = inputShape.length(0);
