@@ -363,8 +363,16 @@ class TestBaselineReport(unittest.TestCase):
 
     def test_report_renders(self):
         text = render_report(self.summary, {"mode": "replay"})
-        self.assertIn("Consult evaluation baseline", text)
+        self.assertIn("# Consult evaluation report — milestone `baseline`", text)
         self.assertIn("E1", text)
+
+    def test_report_heading_names_the_milestone(self):
+        # A later-milestone report must be distinguishable from the baseline:
+        # the heading carries the milestone and is not fixed to "baseline".
+        summary = build_report(self.cases, self.responses, "step2")
+        text = render_report(summary, {"mode": "replay"})
+        self.assertIn("# Consult evaluation report — milestone `step2`", text)
+        self.assertNotIn("milestone `baseline`", text)
 
 
 if __name__ == "__main__":

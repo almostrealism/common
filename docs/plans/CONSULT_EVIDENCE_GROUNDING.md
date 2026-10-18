@@ -77,13 +77,15 @@ These are two separate filters, and they disagree with each other.
 
 **Copy filter — the `docs` stage of `tools/mcp/manager/Dockerfile`.** It
 copies `docs/`, the root `CLAUDE.md`, `base/`, `compute/`, `domain/`,
-`engine/`, `extern/`, `studio/`, `flowtree/` and `tools/`, then deletes every
-file that is not `*.md` or `*.html`. The result is baked in at
-`/app/docs-root`, with `AR_DOCS_DIR=/app/docs-root/docs`. The following are
-**never copied**: `.github/`, `.claude/`, the root `README.md`, and the
-top-level stray files (`HOST_ARRAY_AUDIT.md`, `PR_REVIEW_CARRYOVER.md`).
-`.dockerignore` excludes git history, so the image cannot tell which commit
-its corpus came from. **The corpus has no snapshot identifier.**
+`engine/`, `extern/`, `studio/`, `flowtree/`, `tools/`, and — since the Step 2
+coverage fix — `.github/` and `.claude/`, then deletes every file that is not
+`*.md` or `*.html`. The result is baked in at `/app/docs-root`, with
+`AR_DOCS_DIR=/app/docs-root/docs`. The following are **not copied**: the root
+`README.md` and the top-level stray files (`HOST_ARRAY_AUDIT.md`,
+`PR_REVIEW_CARRYOVER.md`). (Section 3.1 records the pre-fix state, when
+`.github/` and `.claude/` were also absent.) `.dockerignore` excludes git
+history, so the image cannot tell which commit its corpus came from. **The
+corpus has no snapshot identifier.**
 
 **Index filter — `DocsRetriever._markdown_files` / `_all_doc_files`.**
 Retrieval does not walk the copied tree. It reads a fixed allowlist:
@@ -99,9 +101,11 @@ Retrieval does not walk the copied tree. It reads a fixed allowlist:
 On a checkout taken 2026-10-17 this comes to **130 files**. Section 3.1
 lists the gaps.
 
-There is a third, hidden filter: `_read_file` keeps only the **first
-50 000 characters** of each file. Anything later in a long document cannot
-be retrieved, with no warning.
+There is a third, hidden filter: `_read_file` keeps only the first
+`_MAX_DOC_CHARS` characters of each file — **50 000** before the Step 2 fix,
+raised to **200 000** by it. Anything past the cap cannot be retrieved, with
+no warning. (The raise is what lets E1's facts, which sit past char 50 000 in
+`.github/CLAUDE.md`, be reached at all; see section 3.1.)
 
 ### 1.3 Documentation retrieval and ranking
 
@@ -184,9 +188,9 @@ can make up.
 
 ### 1.6 What the observed failures show
 
-| Observed failure (2026-10-17) | Mechanism in today's code |
+| Observed failure (2026-10-17) | Mechanism at the time of the observation |
 |---|---|
-| Master Agent Dispatch QA rounds → "Not documented", even though three relevant memories were retrieved | `.github/CLAUDE.md` is not copied (1.2). The retrieved notes held the answer, but the prompt forbids a note from supplying a fact the documentation lacks (1.5), and the post-processing turns "Not documented" into a bare `note`. |
+| Master Agent Dispatch QA rounds → "Not documented", even though three relevant memories were retrieved | `.github/CLAUDE.md` was not copied (1.2; the Step 2 coverage fix now copies it and lifts the read cap). The retrieved notes held the answer, but the prompt forbids a note from supplying a fact the documentation lacks (1.5), and the post-processing turns "Not documented" into a bare `note`. |
 | `validate-agent-commit.sh` → correct description, but "exit 2 per `flowtree/runtime/docs/claude-code-job.md:330`" | The chunk at that label is the `detect-test-hiding.sh` section (exit codes 0/2/1, around lines 330–340). The model attached a chunk's label to a claim about a different subject. The real value (`exit 3`, last line of `tools/ci/agent-protection/validate-agent-commit.sh`) is in no document at all — only in the script. Free-text citations meant nothing caught it (1.3, 1.5). |
 | `ObjectOrientedDesignRule` verdict location → guessed from an unrelated April memory about `runCorrectionSession`. It also surfaced April memories naming `ClaudeCodeJob` | The real path, `.flowtree/oop-review.md`, is the `VERDICT_PATH` constant in `ObjectOrientedDesignRule.java` and appears in no document. `ClaudeCodeJob.java` was deleted on 2026-05-16 (commit "Pluggable agents"; `CodingAgentJob` took its place). Nothing told the model that the note was five months old or that it named a class that no longer exists (1.4, 1.5). |
 | `check-branch-entropy.sh` (no such script) → "Not documented" | Correct abstention. It should stay correct after every change below. With a path index (2.5) it could also say "no such file exists in the snapshot", which is a stronger answer. |
