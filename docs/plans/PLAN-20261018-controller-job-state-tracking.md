@@ -3,7 +3,8 @@
 **Tracker task:** `f720b554-e88b-4043-ae27-fcc5d717371d` — "Track FlowTree job
 state at the controller: record submissions, job-sent heartbeats, and flag
 lost/dead jobs"
-**Release:** Common 0.76
+**Release:** the release currently under development (the one whose name matches
+the version in the root `pom.xml`).
 
 ## Motivation
 
@@ -51,23 +52,23 @@ Already present:
   `wallClockCeiling × 2`) through `endpoint::completeJob`, wired by
   `CompletionListenerFanoutWiring.wire()`.
 - `FlowTreeApiEndpoint.handleStatusEvent` records a heartbeat on *every* status
-  event (line ~1248); the heartbeat/phase HTTP surface already exists and is
+  event; the heartbeat/phase HTTP surface already exists and is
   dispatched via `StatsQueryHandler.recordHeartbeat` / `recordPhase`.
 
 Missing — the gaps this task closes:
 
 1. **STARTED persistence is owned by the notifier, not the controller.**
-   `handleStatusEvent` (line ~1250) calls
+   `handleStatusEvent` calls
    `notifiers.completionListener(ws).onJobStarted(...)`, and
-   `SlackNotifier.onJobStarted` (line ~590) is what calls
+   `SlackNotifier.onJobStarted` is what calls
    `JobStatsStore.recordJobStarted`. That method returns early on "Unknown
-   workstream" (line ~583). With no Slack notifier for the workspace, or a stale
+   workstream". With no Slack notifier for the workspace, or a stale
    workstream map for a newly registered workstream, **no row is ever written**,
    so `recordHeartbeat` is a no-op, `getActiveJobs`/`StuckJobScanner` never see
    the job, and the completion path falls back to `started_at = completedAt`.
-2. **Submissions are never persisted.** At submit (`handleSubmit`, line ~1054)
+2. **Submissions are never persisted.** At submit (`handleSubmit`)
    the controller has `factory.getTaskId()` (the job id), the resolved
-   `workstreamId`, and the resolved `requiredLabels` (lines ~1001–1002), but only
+   `workstreamId`, and the resolved `requiredLabels`, but only
    fires `onJobSubmitted` (a Slack message). Nothing writes a row, so
    "submitted but never started" cannot be represented at all.
 3. **No agent-side periodic heartbeat.** The heartbeat is recorded only as a
@@ -137,19 +138,32 @@ name `JobLifecycleRecorder`) that owns the controller-side writes to
 
 - `recordSubmitted(jobId, workstreamId, description, submittedBy, requiredLabels, submittedAt)`
 - `recordStarted(jobId, workstreamId, description, node, startedAt)`
-- terminal recording delegating to the existing `recordJobCompleted`.
+- `recordTerminal(workstreamId, event)` delegating to the existing
+  `JobStatsStore.recordJobCompleted`.
 
-`FlowTreeApiEndpoint` calls it directly:
+`FlowTreeApiEndpoint` calls it directly at all three transitions:
 
-- in `handleSubmit`, right where `onJobSubmitted` is fired today (line ~1054),
-  so a row exists the instant the controller accepts the job; and
-- in `handleStatusEvent`, in the `STARTED` branch (line ~1250), so STARTED
-  persistence no longer depends on `SlackNotifier.onJobStarted`.
+- in `handleSubmit`, right where `onJobSubmitted` is fired today,
+  so a row exists the instant the controller accepts the job;
+- in `handleStatusEvent`, in the `STARTED` branch, so STARTED
+  persistence no longer depends on `SlackNotifier.onJobStarted`; and
+- in `completeJob`, the controller's single terminal choke point, so terminal
+  persistence no longer depends on `SlackNotifier.onJobCompleted`.
+
+The terminal wiring point is load-bearing and must be `completeJob`
+specifically, not the `handleStatusEvent` terminal branch: `completeJob` is the
+one path every terminal event travels, including the synthetic completions
+`StuckJobScanner` routes through `endpoint::completeJob`. Wiring the recorder
+there — before or after the existing `onJobCompleted` fan-out — means a
+scanner-failed job and an ordinary completion both update `job_timing`, with or
+without a Slack notifier. Wiring it only into the status-event branch would
+leave scanner failures (the DEAD path this very plan adds) unpersisted.
 
 `SlackNotifier.onJobStarted`/`onJobCompleted` stop being the persistence owners
 and go back to doing only what a notifier should — posting messages. This is the
 crux of root cause #1: a workspace with no Slack notifier, or a notifier with a
-stale workstream map, must still get a complete job row.
+stale workstream map, must still get a complete job row — at submit, at start,
+and at terminal.
 
 Because `FlowTreeApiEndpoint`, `CodingAgentJob`, and `CodingAgentJobFactory` all
 run close to the 1600-line Checkstyle `FileLength` limit, the recorder is a
@@ -239,7 +253,13 @@ A reviewer can confirm the task is done when:
   event lands, and to a terminal state on completion — verified by a unit test
   that drives the controller-owned recorder with no notifier present.
 - `recordJobStarted` is no longer reachable only through
-  `SlackNotifier.onJobStarted`; the controller records STARTED on its own path.
+  `SlackNotifier.onJobStarted`, and `recordJobCompleted` no longer only through
+  `SlackNotifier.onJobCompleted`; the controller records STARTED and terminal
+  state on its own path (`completeJob`), so the same no-notifier workspace that
+  gets a SUBMITTED and STARTED row also gets its terminal row.
+- A job failed by `StuckJobScanner` (the DEAD path) — a synthetic completion
+  routed through `endpoint::completeJob` — persists its terminal state, verified
+  without any notifier configured.
 - The harness posts heartbeats on a timer independent of agent messages, and a
   started-then-silent job becomes UNRESPONSIVE after `T_silent` and DEAD (failed
   via `completeJob`, firing listeners) after `T_dead`, while a job that keeps
@@ -285,6 +305,14 @@ collaborator and any extraction must stay under the 1600-line `FileLength` cap.
 - **Node / pid identity source.** Confirm how the harness names its node and
   obtains its pid for the heartbeat payload, and whether a `node` column on
   `job_timing` is the right home for the started-worker identity.
+- **Trusted source for `submitted_by`.** `handleSubmit` has no `submittedBy`
+  field today — the submit path resolves a workstream, labels and config, but
+  nothing that identifies the submitter. Decide where the value comes from and
+  whether it is trustworthy: the temporary ar-manager token's subject, an
+  explicit `submittedBy` field on the submit payload, or the authenticated
+  caller identity. An unauthenticated, caller-supplied string is worth little;
+  if no trusted source exists yet, the column may start nullable and be
+  populated once one does. This affects the `recordSubmitted` signature above.
 - **Does a LOST job also get a terminal event?** It never ran, so there is no
   worker to fail; surfacing it may be enough, or the controller may want to emit
   a terminal `FAILED`/`LOST` event so dependent chains are released. Needs a
