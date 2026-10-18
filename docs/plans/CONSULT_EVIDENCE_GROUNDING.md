@@ -308,12 +308,25 @@ directly from consult would quietly let a `memory-read`-only token learn PR
 state it could not otherwise see. Proposed contract:
 
 - consult performs the branch-state lookup only when the caller's token also
-  holds `github`;
-- otherwise every note gets `branch_state: unknown`, the response carries
-  `degraded: ["branch_state"]`, and tiering proceeds on the remaining
-  signals (`unknown` is already handled conservatively, below);
+  holds `github`, and only for the note's own repository, resolved through
+  the same `server._resolve_github_repo` path the GitHub tools use. The
+  `github` scope is not the only gate on that path: `_resolve_github_repo`
+  also applies the workspace/org scope gate before it will resolve an
+  explicit repository. consult must reuse that check so a `github`-scoped
+  *workspace* token cannot supply an arbitrary `repo_url` and read another
+  organization's PR state through that org's configured PAT — consult looks
+  up only the branch of the note's stored `repo_url`, under the same gate,
+  never a repository named by the caller;
+- otherwise every note gets `branch_state: unknown`. `degraded` stays the
+  boolean it is today (`memory_tools.py` sets `degraded: true` on synthesis
+  failure and `test_memory_tools.py` asserts it as a boolean), so the
+  branch-state degradation is reported through a new
+  `degraded_reasons: ["branch_state"]` list rather than by turning `degraded`
+  itself into a list. Tiering proceeds on the remaining signals (`unknown`
+  is already handled conservatively, below);
 - a lookup that fails (GitHub unreachable, rate limit) degrades the same
-  way, never fails the call.
+  way — `branch_state` is added to `degraded_reasons` — and never fails the
+  call.
 
 Whether a `memory-read`-only caller should be allowed to see derived merge
 state at all is open question Q9.
@@ -324,17 +337,26 @@ because a branch name can be reused by a later PR. Proposed: cache per
 entries expire after about 10 minutes; merged/closed entries are
 revalidated after a bounded TTL (proposed 24 hours), and a revalidation that
 finds a *different* most-recent PR for the same branch replaces the entry.
-A note is then tiered against the PR that was current when it was written:
-if the note's `created_at` falls before the cached PR's `created_at`, the
-note belongs to an earlier use of the branch and its state is `unknown`. A
-memory store with ~10⁴ notes spans a few hundred distinct branches, so the
-cache stays small.
-<!-- TODO(review): notes are usually written before the branch's first PR is opened, so "note older than the PR => unknown" would demote most notes; compare against the previous PR's closed/merged time instead. -->
+A note is then tiered against the PR that was current when it was written,
+but *note-before-PR is not by itself evidence of branch reuse.* Agents
+routinely store a memory before the branch's first PR is opened, so a note
+whose `created_at` merely precedes the current PR's `created_at` must still
+be tiered against that current PR — demoting it on that basis alone would
+send most notes on most branches to `unknown` and defeat tiering for the
+common case. A note is treated as belonging to an *earlier* incarnation of
+the branch — and so mapped to `unknown` — only on positive evidence of
+reuse: the note predates the `closed_at`/`merged_at` of a *previous* PR for
+the same head branch (or, failing that, the first commit on the branch after
+that previous PR closed). A branch with no previous PR has had only one
+incarnation, so every note on it is tiered against the current PR regardless
+of order. A memory store with ~10⁴ notes spans a few hundred distinct
+branches, so the cache stays small.
 
 Edge cases:
 
-- branch names that are reused (handled above: a note older than the
-  current PR maps to `unknown`);
+- branch names that are reused (handled above: a note predating a
+  *previous* PR's close maps to `unknown`; a note that merely predates the
+  current PR does not);
 - notes with no branch;
 - `qa/*` branches whose PR was closed and then superseded.
 
@@ -478,13 +500,30 @@ CONFLICTS: N1 vs D2 — <one line>; …
 
 JSON output was considered and rejected for the first step: small quantized
 models break JSON often, and a broken trailer is easier to recover from
-than broken JSON. If the trailer is missing, `BASIS` is derived from the
-cited IDs and `CONFLICTS` is left empty, with
-`format_warning: "trailer missing"` set in the response.
+than broken JSON.
 
-`build_consult_prompt` is shared with the retired consultant code path and
-with `memory_recall`'s grounding. The new layout should replace it in place,
-not sit beside it, so that one prompt is maintained.
+The model's `BASIS:` line is never trusted as written. A weak model can
+declare `BASIS: documentation` while citing only `[Nk]` note IDs, or declare
+`none` while actually citing evidence — either of which would mislabel
+`answer_basis` (2.7) or abstain incorrectly. So the server always
+**recomputes** the basis from the evidence IDs the answer actually cites
+(any `[Dk]` → includes documentation, any `[Nk]` → includes notes, nothing
+cited → `none`) and uses that computed value for `answer_basis` and the
+post-processing. The written `BASIS:` line is kept only as a cross-check: a
+disagreement between the stated and the computed basis sets
+`format_warning: "basis mismatch"`. If the trailer is missing entirely, the
+computed basis stands, `CONFLICTS` is treated as empty, and
+`format_warning: "trailer missing"` is set.
+
+`build_consult_prompt` backs `consult` (through `llm.consult`) and the
+retired consultant code path. `memory_recall`'s grounding does **not** go
+through it today: `memory_recall` assembles its own `## Relevant
+Documentation` / `## Retrieved Memories` / `## Task` sections and calls
+`llm.synthesize` directly. So the new evidence layout should replace
+`build_consult_prompt` in place (not sit beside it), **and** move
+`memory_recall`'s hand-built sections onto the same shared builder in the
+same step — otherwise that grounding path keeps the old contract and the
+"one prompt is maintained" goal is not met.
 
 ### 2.7 When a note may answer what the documentation lacks
 
@@ -631,6 +670,8 @@ evidence: [{id, tier, kind, file|memory_id, range, section, created_at,
 history: "<text>"               only when C/C✗ supplied rationale
 conflicts: [...]
 citation_warnings: [...], uncited_claims: n
+degraded                        boolean, as today (synthesis failure)
+degraded_reasons: [...]         e.g. ["branch_state"] when the PR lookup was skipped or failed (2.4)
 corpus: {commit, built_at}
 sources, html_refs              (as today)
 related_memories                (as today, plus id, created_at, branch, tier)
@@ -759,7 +800,12 @@ apart. Proposal:
    - `docs/plans/`;
    - `.pytest_cache/`;
    - `docs/journals/` if its content proves to be noise;
-   - root stray files.
+   - the root `README.md` — the `docs` stage copies only the root
+     `CLAUDE.md`, not `README.md`, so `README.md` is absent from the copied
+     tree and would fail the closed-world test below (neither indexed nor
+     excluded) unless it is listed here or copied and indexed on purpose;
+   - the other root stray files (`HOST_ARRAY_AUDIT.md`,
+     `PR_REVIEW_CARRYOVER.md`).
 
    Each module's `CLAUDE.md` and extra `*.md` then come in automatically.
 3. **A packaging test** (alongside `test_dockerfile_packaging.py`) asserts
@@ -805,8 +851,14 @@ point at evidence from the previous answer ("N2 — is that branch merged?").
 ### 4.2 API
 
 - `consult` gains `conversation_id: str = ""`. If it is empty, a new
-  conversation starts. The response always returns `conversation_id` and
-  `turn`.
+  conversation starts. The response returns `conversation_id` and `turn` for
+  every *stateful* call — that is, every call made with a job temp token.
+  The one exception is a static-token caller, which is always stateless
+  (4.5): such a call returns neither field, and a non-empty
+  `conversation_id` passed on a static token is rejected. So the two fields
+  are present whenever the caller is capable of a conversation and absent
+  otherwise, and the parameter/response tests assert exactly that split
+  rather than treating the fields as unconditionally mandatory.
 - No new tool in the first step. Expiry ends conversations. A later
   `consult_transcript(conversation_id)` read tool may be added for the exit
   interview (4.6). It would follow the full new-tool checklist in
@@ -845,6 +897,18 @@ State per conversation:
 - absolute TTL 4 hours;
 - at most 12 turns;
 - at most a few hundred conversations.
+
+ar-manager serves synchronous tools on a thread pool (`auth.py` documents the
+thread-local fallback it keeps "if contextvars don't propagate into FastMCP's
+sync-tool thread pool"), so two consult calls can touch this store at once.
+The store must therefore be synchronized: a single lock (or an equivalent
+atomic store) guards the whole read-modify-write of each operation, so that
+the identity/ownership check, the turn allocation and the LRU/TTL eviction
+for a conversation happen atomically. Without it, two concurrent turns on the
+same `conversation_id` can race and interleave a turn across callers or
+corrupt the turn list. The ownership check in particular must be inside the
+same critical section as the mutation it guards, not a separate step before
+it.
 
 When a conversation has expired or the server restarted, an unknown id
 returns
@@ -1028,7 +1092,7 @@ counts as a fail only for expectations that need it.
 
 | ID | Question | Correct answer (verified against the tree) | Today | Expectation |
 |---|---|---|---|---|
-| **E1** | Which QA rounds does Master Agent Dispatch run, their branch prefixes, and the open-PR limit? | The jobs are `doc-qa`, `defect-hunt`, `coverage-qa`, `consolidation-qa`, `performance-qa`, `pdsl-qa` and `qa-retrospective`. Their prefixes are `qa/docs-`, `qa/defect-`, `qa/coverage-`, `qa/consolidate-`, `qa/performance-`, `qa/pdsl-` and `qa/retro-`. The open-PR limit is `MAX_OPEN_PRS` = 7, enforced by `tools/ci/open-pr-backlog.sh` for the planning rounds. Sources: `.github/CLAUDE.md` § "What the Master Agent Dispatch workflow does" and around line 891; `.github/workflows/master-agent-dispatch.yaml`. | "Not documented", even though three relevant memories were retrieved | `outcome: answer`. Must include all seven prefixes and `7`. Before the coverage step, passes only with `basis: notes` from the fixture's B-tier notes. After it, must cite `.github/CLAUDE.md`. Fixture: the three memories retrieved on 2026-10-17. |
+| **E1** | Which QA rounds does Master Agent Dispatch run, their branch prefixes, and the open-PR limit? | The jobs are `doc-qa`, `defect-hunt`, `coverage-qa`, `consolidation-qa`, `performance-qa`, `pdsl-qa` and `qa-retrospective`. Their prefixes are `qa/docs-`, `qa/defect-`, `qa/coverage-`, `qa/consolidate-`, `qa/performance-`, `qa/pdsl-` and `qa/retro-`. The open-PR limit is `MAX_OPEN_PRS` = 7, enforced by `tools/ci/open-pr-backlog.sh` for the planning rounds. Sources: `.github/CLAUDE.md` § "What the Master Agent Dispatch workflow does" and around line 891; `.github/workflows/master-agent-dispatch.yaml`. | "Not documented", even though three relevant memories were retrieved | Milestone-dependent (the implementation order gates it). Baseline through step 7: `outcome: abstain` — today's false abstention, and notes are not yet allowed to answer (step 5 keeps them from answering). After step 2 (coverage fix: `.github/CLAUDE.md` copied, the read cap lifted): `outcome: answer` citing `.github/CLAUDE.md`, including all seven prefixes and `7` — the intended fix, not dependent on notes. After step 8 (notes may answer): were coverage still absent, `outcome: answer` with `answer_basis: notes` from the fixture's B-tier notes would also be acceptable. The grader selects the expectation by the milestone the run targets. Fixture: the three memories retrieved on 2026-10-17. |
 | **E2** | What does `validate-agent-commit.sh` block and what exit code does it use? | It rejects a change set whose only content is edits to test files that exist on the base branch (at the merge-base), with no new test, and exits **3** (`block_reason=only_base_test_edits`). Sources: `tools/ci/README.md` script table; root `CLAUDE.md`; the script's final `exit 3`. | Correct description; "exit 2" cited to `claude-code-job.md:330` (the `detect-test-hiding.sh` section) | `outcome: answer`. `exit 2` forbidden. Citing that range for an exit-code claim forbidden. Either `exit 3` with a citation to the script or index, or an explicit statement that the exit code is not documented. Measures citation integrity first, then the script-header index. |
 | **E3** | Where does `ObjectOrientedDesignRule` record its verdicts? | `.flowtree/oop-review.md` (`ObjectOrientedDesignRule.VERDICT_PATH`). No document states it. | Guessed from an unrelated April memory about `runCorrectionSession`; surfaced April memories naming `ClaudeCodeJob` (deleted 2026-05-16) | `outcome: answer` (once constants are indexed) or `abstain`. `runCorrectionSession` must not appear as the answer. Must flag `ClaudeCodeJob` as absent (`must_flag_stale`). Fixture: the April memories. |
 | **E4** | How does `check-branch-entropy.sh` decide drift? | No such script exists anywhere in the tree. | "Not documented" (correct) | `outcome: abstain`, and `nonexistent` once the path index lands. Any substantive description fails. **Regression guard:** every step must keep this passing. |
