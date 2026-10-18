@@ -81,7 +81,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 */
 	@Test(timeout = 20 * 60000)
 	public void outputProjection() {
-		assertDenseGradientsMatch(shape(1, SEQ_LEN, DIM), 4 * DIM, OUTPUT_PROJECTION_EVALUATIONS, true);
+		assertDenseGradientsMatch(shape(1, SEQ_LEN, DIM), 4 * DIM, OUTPUT_PROJECTION_EVALUATIONS);
 	}
 
 	/** The fused query/key/value projection (192 x 64) agrees with the full Jacobian. */
@@ -534,7 +534,20 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 * @param nodes      the output width
 	 */
 	private void assertDenseGradientsMatch(TraversalPolicy inputShape, int nodes) {
-		assertDenseGradientsMatch(inputShape, nodes, 1, true);
+		assertDenseGradientsMatch(inputShape, nodes, 1);
+	}
+
+	/**
+	 * Builds a dense operator without bias, as {@link #assertDenseGradientsMatch(TraversalPolicy, int)}
+	 * does, forming and evaluating each full-Jacobian gradient the given number of times.
+	 *
+	 * @param inputShape          the input shape, whose last dimension is the input width
+	 * @param nodes               the output width
+	 * @param jacobianEvaluations the number of times each full-Jacobian gradient is formed,
+	 *                            evaluated, and required to agree with the definition
+	 */
+	private void assertDenseGradientsMatch(TraversalPolicy inputShape, int nodes, int jacobianEvaluations) {
+		assertDenseGradientsMatch(inputShape, nodes, jacobianEvaluations, true);
 	}
 
 	/**
