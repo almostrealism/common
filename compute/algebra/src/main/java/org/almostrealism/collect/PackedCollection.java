@@ -977,14 +977,14 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	/**
-	 * Returns the index of the element with the largest value in this collection.
+	 * Returns the index of the element with the largest value in this collection,
+	 * as computed by {@link #argmax(double[])}.
 	 *
-	 * @return the zero-based index of the maximum element, or -1 if the collection is empty
+	 * @return the zero-based index of the maximum element (the first one when the
+	 *         maximum is tied), or -1 if the collection is empty
 	 */
 	public int argmax() {
-		return IntStream.range(0, getMemLength())
-				.reduce((a, b) -> toDouble(a) > toDouble(b) ? a : b)
-				.orElse(-1);
+		return argmax(doubleStream(0, getMemLength()).toArray());
 	}
 
 	@Override

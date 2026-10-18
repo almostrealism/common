@@ -730,7 +730,8 @@ public interface CollectionFeatures extends GradientFeatures {
 	}
 
 	/**
-	 * Returns the index of the maximum value in the array.
+	 * Returns the index of the maximum value in the array. When the maximum occurs
+	 * more than once, the first occurrence is returned.
 	 *
 	 * @param values the array to search
 	 * @return the index of the maximum value, or -1 if the array is empty

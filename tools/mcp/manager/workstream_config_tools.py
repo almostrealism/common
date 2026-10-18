@@ -527,6 +527,13 @@ def workstream_update_config(
     parsed_phase_configs, phase_configs_err = server._parse_phase_configs_json(phase_configs)
     if phase_configs_err:
         return phase_configs_err
+    # Archived workstreams are read-only: history stays queryable but the
+    # configuration is frozen. Resolving an archived workstream's ownership
+    # now succeeds, so this explicit refusal is what keeps config edits off
+    # an archived workstream. Unarchive it first to change it.
+    archived_err = server._archived_workstream_error("update configuration", workstream_id)
+    if archived_err:
+        return archived_err
     server._require_workstream_in_scope(workstream_id)
     server._audit("workstream_update_config", workstream_id=workstream_id)
 

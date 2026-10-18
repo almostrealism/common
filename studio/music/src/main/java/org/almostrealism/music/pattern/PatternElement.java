@@ -376,7 +376,7 @@ public class PatternElement implements CodeFeatures {
 													  DoubleFunction<PatternNoteAudio> audioSelection,
 													  DoubleUnaryOperator timeForDuration,
 													  PackedCollection offset, int frameCount) {
-		KeyPosition<?> k = details.isMelodic() ? details.getTarget() : null;
+		KeyPosition<?> k = details.getMelodicTarget();
 		double duration = getEffectiveDuration(details, audioSelection, timeForDuration);
 		return getNote(details.getVoicing()).getAudio(k,
 				details.getStereoChannel().getIndex(), duration,
