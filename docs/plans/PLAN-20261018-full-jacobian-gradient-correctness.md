@@ -22,18 +22,21 @@ sequence, `jacobianGradient` produces a gradient that **disagrees with the defin
 tenth of its 16,384 entries, and does so nondeterministically** — two profiled runs on Metal gave
 1,728 and 1,536 wrong entries, the errors always beginning at weight row 64. The 192×64 and 128×64
 projections are correct. This is recorded honestly in the tree today: a `TODO(review)` on
-`GradientFeatures.jacobianGradient`, the "known limits" prose in
-`docs/internals/training-a-language-model.md` and `docs/internals/automatic-differentiation.md`,
-and `DenseVectorJacobianProductTest.outputProjection`, which logs the disagreement count but does
-**not** assert on the full-Jacobian weight gradient at this size (it asserts only the reduced delta
-against the definition).
+`GradientFeatures.jacobianGradient`, the "Known limits" section of
+`docs/internals/automatic-differentiation.md`, the "Weight gradients of dense layers" section of
+`docs/internals/training-a-language-model.md` (which says the cause "is not yet diagnosed"),
+and `DenseVectorJacobianProductTest.outputProjection` (its javadoc describes the defect). That test
+logs the disagreement count but does **not** assert on the full-Jacobian weight gradient at this
+size: for the weight it asserts only the reduced delta against the definition (the input gradient
+is still asserted against the full Jacobian).
 
 The cost of leaving it is real and compounding:
 
 - **The platform's first self-hosted training runs trained the output projection with partly wrong
   gradients.** `trainOnDocumentation` ran before the structural VJP existed, so its output
   projection learned from this fallback. The VJP now bypasses the defect for matmul, but the
-  fallback is still the only path for every non-matmul operator.
+  fallback is still the path for every operator that has no structural reduced form (see the last
+  bullet for which operators that is).
 - **It is the reference every reduced-delta test trusts.** A wrong ground truth means a future
   reduced delta could be declared correct against a value that is itself wrong, at any size where
   the fallback misbehaves. `DenseVectorJacobianProductTest` already had to special-case the output
@@ -168,11 +171,14 @@ Concrete, bounded deliverables:
    `DenseVectorJacobianProductTest` uses. Record the result as reporting; fixing a second operator
    family is out of scope unless the root-cause fix from item 2 already covers it.
 
-5. **Update the documentation** that currently records the defect as a known limit: the "known
-   limits" sections of `docs/internals/automatic-differentiation.md` and
-   `docs/internals/training-a-language-model.md`, and remove the `TODO(review)` comment on
-   `GradientFeatures.jacobianGradient`. State what the cause was and that it is fixed and
-   regression-tested.
+5. **Update the documentation** that currently records the defect as a known limit: the "Known
+   limits" section of `docs/internals/automatic-differentiation.md` (its first item), the "Weight
+   gradients of dense layers" section of `docs/internals/training-a-language-model.md` (the
+   paragraph beginning "The full-Jacobian weight gradient is wrong for the output projection"),
+   and the javadoc of `DenseVectorJacobianProductTest.outputProjection`; and remove the
+   `TODO(review)` comment on `GradientFeatures.jacobianGradient`. State what the cause was and
+   that it is fixed and regression-tested. The training page's statement that the documentation
+   runs trained the output projection with partly wrong gradients is history and stays true.
 
 Explicitly **out of scope:** any change to the structural reduced-delta / VJP path (it is already
 correct and bypasses this bug); re-running `trainOnDocumentation` (that is the proof-of-value track,
@@ -186,7 +192,8 @@ a later cycle); broad convolution-gradient rework beyond the reporting check in 
    read `GradientFeatures.jacobianGradient`,
    `DenseVectorJacobianProductTest`, and `MemoryDataArgumentMap`. Confirm the current behavior by
    running `DenseVectorJacobianProductTest.outputProjection` on the Metal node and observing the
-   logged `jacobianDisagreements` count over several evaluations.
+   logged `jacobianDisagreements` count over several runs (the test evaluates the full-Jacobian
+   gradient once per run, so repetition means re-running it).
 
 2. **Capture a profile** of the output-projection gradient (reuse the test's graph; save an
    `OperationProfile` XML under the module's `results/` if none exists) and inspect the sum node and

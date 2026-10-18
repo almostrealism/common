@@ -61,7 +61,8 @@ repeats one byte), the weighted-sum `matmul` reduced form, the `io.almostrealism
 
 A learning system whose *reference gradient* is silently, intermittently wrong is the most
 consequential kind of foundation defect: the platform's first self-hosted training runs trained the
-output projection from this path, every non-matmul operator still falls back to it, and it is the
+output projection from this path, every operator without a structural reduced form still falls
+back to it, and it is the
 ground truth the whole reduced-delta suite trusts. Correctness of the differentiation engine sits in
 the second category and ranks above performance and proof of value — and this is a concrete,
 falsifiable instance of it, now unblocked by the documentation it needed.
