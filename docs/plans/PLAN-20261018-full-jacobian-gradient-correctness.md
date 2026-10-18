@@ -3,7 +3,7 @@
 **Category:** Code Quality (correctness — a silent wrong-gradient defect in the autodiff engine)
 **Branch:** `project/plan-20261018-174738`
 **Estimated complexity:** Medium
-**Requires:** a macOS / Metal node (see `project/plan-20261018-174738-workstream.yaml` and *Dependencies*)
+**Requires:** a macOS / Metal node (see `docs/plans/plan-20261018-174738-workstream.yaml` and *Dependencies*)
 
 ---
 
@@ -72,16 +72,22 @@ What `ar-profile-analyzer` actually found (captured in the `bugs` memory namespa
   (`bugs` memory, branch `feature/ml-dit-memory-tokens`, 2026-06-21,
   `docs/journals/INVALID_KERNEL_AGGREGATION.md`). There, a kernel read operands from a **baked
   aggregate slot offset** that depended on transient host/device **residence**, so the *same*
-  computation compiled to two kernels reading different memory — and setting
-  `AR_HARDWARE_OFF_HEAP_SIZE=0` (aggregation disabled) made the result deterministic and correct.
-  The aggregation machinery lives in `MemoryDataArgumentMap` (`isAggregationTarget`,
-  `aggregatePositions`) in `base/hardware`. The nondeterminism signature here is the same family of
-  symptom, and that is the first lead to run down.
+  computation compiled to two kernels reading different memory — and disabling argument aggregation
+  made the result deterministic and correct. (The journal records this as `AR_HARDWARE_OFF_HEAP_SIZE=0`,
+  which at the time forced every reservation provider-owned and so switched aggregation off as a side
+  effect, back when the off-heap threshold defaulted to 1024. That is no longer the lever: the off-heap
+  default is now `0` — `Hardware.DEFAULT_OFF_HEAP_SIZE` — so `AR_HARDWARE_OFF_HEAP_SIZE=0` is a no-op
+  against the default, and aggregation is toggled directly by `AR_HARDWARE_ARGUMENT_AGGREGATION`; see
+  the experiment below.) The aggregation machinery lives in `MemoryDataArgumentMap`
+  (`enableArgumentAggregation`, `isAggregationTarget`) in `base/hardware`, with the per-kernel
+  aggregate layout carried on `ScopeInstructionsManager` (`aggregatePositions`). The nondeterminism
+  signature here is the same family of symptom, and that is the first lead to run down.
 
 The two leads are testable and mutually exclusive enough to separate quickly:
 
-1. **Aggregation / residence** (favored by the nondeterminism): disable aggregation
-   (`AR_HARDWARE_OFF_HEAP_SIZE=0`) and re-run. If the gradient becomes deterministic and correct,
+1. **Aggregation / residence** (favored by the nondeterminism): disable aggregation by setting
+   `AR_HARDWARE_ARGUMENT_AGGREGATION` to a disabled value (it defaults to enabled; the flag maps to
+   `MemoryDataArgumentMap.enableArgumentAggregation`) and re-run. If the gradient becomes deterministic and correct,
    the root cause is in how operands of the repeat/sum kernels are addressed under aggregation, in
    the `MemoryDataArgumentMap` family — exactly the class of bug the journal already documents.
 2. **Index typing** (the original note): if disabling aggregation does *not* fix it, inspect the
@@ -101,7 +107,7 @@ Concrete, bounded deliverables:
    projection, using `ar-profile-analyzer` on a captured profile of exactly that gradient
    (`DenseVectorJacobianProductTest.outputProjection` already builds the graph; add a profiled
    reproduction if no saved profile covers it). Separate the two leads above with the
-   `AR_HARDWARE_OFF_HEAP_SIZE=0` experiment first. Record the finding (kernel node, the buffer and
+   `AR_HARDWARE_ARGUMENT_AGGREGATION` (disabled) experiment first. Record the finding (kernel node, the buffer and
    argument bindings involved, the mechanism) in a `docs/journals/` entry and in the `bugs` memory
    namespace before changing any code.
 
@@ -157,7 +163,7 @@ a later cycle); broad convolution-gradient rework beyond the reporting check in 
    the repeat buffer it reads with `ar-profile-analyzer` (`list_children`, `get_source`,
    `get_source_summary`) — argument offsets/sizes especially.
 
-3. **Separate the leads** with the `AR_HARDWARE_OFF_HEAP_SIZE=0` experiment. Decide aggregation vs
+3. **Separate the leads** with the `AR_HARDWARE_ARGUMENT_AGGREGATION` (disabled) experiment. Decide aggregation vs
    index-typing from the result, not from the arithmetic.
 
 4. **Fix at the root** per item 2 of Scope, in `base/hardware` or the index-generation layer. Keep
@@ -196,7 +202,7 @@ bounds and would fail `test-integrity-check`.
 - **A macOS / Metal node.** The defect is observed only on Metal, its nondeterminism is tied to the
   Metal backend's memory residence/aggregation behavior, and both reproduction and verification
   require `ar-profile-analyzer` on a Metal-captured profile. The accompanying
-  `project/plan-20261018-174738-workstream.yaml` requests `platform: macos`.
+  `docs/plans/plan-20261018-174738-workstream.yaml` requests `platform: macos`.
 - The autodiff internals page (`docs/internals/automatic-differentiation.md`) — **already landed**
   (PR #670); it was named the prerequisite for this diagnosis in the prior Manager Log entry.
 - No new modules, no `pom.xml` changes, no dependency additions.

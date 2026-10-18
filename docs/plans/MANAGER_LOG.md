@@ -73,8 +73,10 @@ does not. The nondeterminism, and the ~1M-element `(64,256,64)` repeat buffer th
 point instead at memory residence / aggregation — the same family as the already-journaled layernorm
 "invalid kernel" defect (`INVALID_KERNEL_AGGREGATION.md`), where a baked aggregate slot offset tied
 to transient residence made one computation compile to two kernels reading different memory, and
-`AR_HARDWARE_OFF_HEAP_SIZE=0` restored determinism. So the plan separates the two leads with that
-one experiment first, reads the generated kernel with `ar-profile-analyzer` before theorizing, fixes
+disabling argument aggregation restored determinism (`AR_HARDWARE_ARGUMENT_AGGREGATION` in the
+current tree; the journal used `AR_HARDWARE_OFF_HEAP_SIZE=0`, which disabled aggregation as a side
+effect under the old off-heap default of 1024, but that default is now 0). So the plan separates the
+two leads with that one experiment first, reads the generated kernel with `ar-profile-analyzer` before theorizing, fixes
 the general mechanism (not the one shape), and tightens the existing test to *assert* agreement on
 repeated evaluation. Weakening the test to go green is out of bounds and the plan says so.
 
