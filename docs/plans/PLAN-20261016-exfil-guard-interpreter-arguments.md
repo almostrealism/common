@@ -740,9 +740,9 @@ No existing test changes.
 
 - **Landing branch.** `.claude/hooks/lib/` and `tools/ci/` are under the CI-file lock and the
   enforcement-tampering check, and the harness protects them from staging on other branches.
-  This planning branch is `project/task-…`, so the implementation must run on a `ci/...`
-  branch (the task says so explicitly). The person approving the plan needs to start the
-  implementation on, or move it to, a `ci/...` branch; otherwise the edits cannot be staged.
+  **Decision:** the implementation was run on this `project/task-…` branch as a job submitted
+  with a controller-signed sensitive-file bypass, whose `Sensitive-File-Bypass` trailer
+  satisfies the CI-file lock; it did not move to a `ci/...` branch.
 - No other tracker task blocks this one.
 
 ## Open questions
@@ -757,6 +757,8 @@ No existing test changes.
    absolute, a `cd` between the write and the run). Fail-closed is defensible.
    **Recommendation:** leave it out of this change and file it as a follow-up task, so the bug
    fix lands small. If the reviewer wants it in, it is a second, separable phase.
+   **Decision:** adopted. It is left out of this change and filed as follow-up tracker task
+   `cf086796-3a13-4299-a765-47d244baf0fa`.
 2. **Options after an inline program (resolved).** For Python, everything after `-c CODE` is
    `sys.argv`, so `python3 -c 'x' -m http.server` must pass `-m http.server` as arguments rather
    than be refused as a network module — the same class of false positive this change targets.
@@ -931,6 +933,17 @@ No existing test changes.
    regressions above should then also assert that `python3 -OO /nonexistent/script.py` blocks on the
    unreadable script, not on the cluster refusal, if the narrower rule is taken.
 
+   **Decision:** the recommendation is adopted in its narrowest form. For Perl, Ruby and Node, an
+   unrecognised single-`-` cluster longer than two characters is refused only once `inline_seen`
+   is set, so `perl -e 'print 1' -pe 'use IO::Socket;' file` blocks. The no-inline cluster
+   (`perl -lne 'code' file`) is unchanged and remains a follow-up. For Python, the per-letter walk
+   is taken instead of the minimal refusal. The walk stops at the first of `c`, `m`, `W` and `X`.
+   A buried `c` has its code scanned as `-c` would (so a clustered `-Ec'…'` carrying a network
+   call blocks, and `python3 -Ec'print(1)'` allows). A buried `m` reaches the `NETWORK_MODULES`
+   check (so `python3 -Emhttp.server` blocks). A buried `W` or `X` consumes its value. A cluster
+   of argument-less switches (`-OO`, `-IS`) is still skipped, so the script after it is read as
+   before.
+
 5. **Pipe vs heredoc on the inline-program stdin path (in scope; one decision for the approver).**
    Because an inline program can read and execute its own stdin, Scope item 2 requires every
    *modeled-family* inline-program path to inspect the command's stdin, reusing
@@ -960,6 +973,10 @@ No existing test changes.
    The recommendation is to refuse the pipe uniformly; the over-block it costs is small and in
    the safe direction, and it keeps the stdin rule a single, honest statement rather than a set of
    per-form exceptions.
+
+   **Decision:** adopted. The pipe is refused, and heredoc bodies are scanned, at the three sites
+   above, for the four modeled families only. The input-redirection/here-string gap and the
+   grammar-less stdin gap described below stay out of scope.
 
    **Input redirections and here-strings are out of scope (pre-existing gap).** The stdin
    inspection above can only see what `_simple_commands` threads through to the runner — a pipe and
@@ -1066,6 +1083,9 @@ No existing test changes.
    return, the `inline_seen` early return and the tests listed above, but not the stdin or
    expansion handling.
 
+   **Decision:** the first option is adopted. Argv is treated as data, as it is for scripts, and
+   the `runpy` case is asserted as the accepted boundary.
+
 8. **The `--` end-of-options marker (not modelled; one pre-existing fail-open, one avoidable
    over-block).** `_check_interpreter` has no case for `--`. It starts with `-`, so it reaches the
    generic `tok.startswith("-")` skip and is dropped like any other option. The Approach above
@@ -1110,6 +1130,13 @@ No existing test changes.
    prefers to keep this change minimal, part (a) is a separate follow-up, since the fail-open is
    pre-existing. Part (b) only removes an over-block, so it can also wait. The cost of waiting is
    that `perl -e '…' -- "$f"` loops stay blocked.
+
+   **Decision:** both halves are adopted for the four families with an option grammar. Two details
+   were settled during implementation. First, part (a) applies whenever no inline program has been
+   seen (`not inline_seen`), not only when `not code_seen`. So after a bare Perl `-M`, which sets
+   `code_seen` but fixes no program, `perl -MFoo -- -e 'x'` still reads the file `-e`. Second, a
+   `-` straight after `--` is treated as the stdin program, as it is without `--`, rather than
+   being read as a file named `-`.
 
 ## Estimated complexity
 
