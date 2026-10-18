@@ -43,6 +43,12 @@ Environment variables consulted by --agents / --agents-only:
   CLAUDE_CODE_OAUTH_TOKEN
                          agent OAuth token, when not supplied by that file
 
+Environment variables consulted on every run:
+  BUILD_CACHE_MAX_USED_SPACE
+                         Docker build cache kept after the post-deploy prune
+                         (default: 20gb). Superseded untagged images are
+                         always removed.
+
 Environment variables consulted by --with-llm:
   LLM_MODEL          ollama model identifier (default: qwen3-coder:30b)
   LLM_PORT           host port the ollama server listens on (default: 11434)
@@ -492,6 +498,33 @@ if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
   # replica service, whose names the explicit agent-N services now reuse.
   docker compose -f "${AGENT_COMPOSE}" up -d --force-recreate --remove-orphans
 fi
+
+# ── Reclaim superseded images and build cache ──────────────────────
+#
+# Every deploy builds with --no-cache --pull and recreates the containers,
+# so the images it replaced are left untagged and each build writes a fresh
+# set of BuildKit cache records. None of that is ever reused, and on Docker
+# Desktop it all lives on the same fixed-size VM disk as every container's
+# writable layer — which is where agents clone, build and test. Left alone
+# it filled that disk and agents failed with "No space left on device".
+#
+# `image prune` removes only dangling (untagged) images, so nothing a
+# container still runs — and no other project's tagged image — is touched.
+# It frees little by itself: the superseded layers stay referenced by the
+# build cache, which is what `builder prune` reclaims. The cache is trimmed
+# to a budget rather than emptied, so a later --cache run still has the most
+# recent layers to fall back on. BUILD_CACHE_MAX_USED_SPACE overrides it.
+#
+# Reached only after every build and restart above succeeded (set -e). A
+# failed prune is reported but does not fail a deploy that already worked.
+
+BUILD_CACHE_MAX_USED_SPACE="${BUILD_CACHE_MAX_USED_SPACE:-20gb}"
+echo "Pruning superseded images and build cache beyond ${BUILD_CACHE_MAX_USED_SPACE}..."
+docker image prune -f \
+  || echo "WARNING: docker image prune failed; superseded images were not removed"
+docker builder prune -f --max-used-space "${BUILD_CACHE_MAX_USED_SPACE}" \
+  || echo "WARNING: docker builder prune failed; build cache was not trimmed"
+docker system df || true
 
 echo "Done."
 

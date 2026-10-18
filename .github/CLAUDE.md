@@ -762,6 +762,17 @@ the job. Set the repository variable `FLOWTREE_DEPLOY_AGENTS=false` (or answer
 `false` to the `redeploy_agents` input on a manual run) to deploy the controller
 stack alone.
 
+**Each deploy prunes what it superseded.** Because every build is
+`--no-cache --pull`, a deploy leaves the previous images untagged and writes a
+fresh set of BuildKit cache records; on the Docker Desktop host these share one
+fixed-size VM disk with the agents' writable layers, and unpruned they filled
+it until agents failed with "No space left on device". After the restart
+succeeds, `rebuild.sh` removes dangling images and trims the build cache to
+`BUILD_CACHE_MAX_USED_SPACE` (default `20gb`). `docker image prune` alone frees
+almost nothing — the superseded layers stay referenced by the build cache —
+so never drop the `builder prune`. The prune lives in `rebuild.sh`, not in this
+workflow, so hand-run rebuilds get it too.
+
 The stack includes `fleet-db` and `fleet-grafana` (runner-fleet monitoring,
 `tools/fleet/README.md`). `rebuild.sh` generates their password files beside
 the shared secret and binds their ports to the host's tailnet address, which it
