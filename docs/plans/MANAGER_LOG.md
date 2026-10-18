@@ -28,6 +28,80 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-18 — Fix the nondeterministic full-Jacobian weight gradient for the output projection
+
+**Category:** Code Quality (correctness — a silent wrong-gradient defect in the autodiff engine)
+**Branch:** `project/plan-20261018-174738`
+**Plan:** [`PLAN-20261018-full-jacobian-gradient-correctness.md`](PLAN-20261018-full-jacobian-gradient-correctness.md)
+
+#### What changed since last cycle
+
+The autodiff internals page landed (PR #670, with follow-ups #667/#673): the backward half of the
+execution story is now documented end to end, and the prior entry named that page as the
+**prerequisite** for the correctness work below. So the gate it set is now open. Everything else the
+last entry promised is still queued behind it: non-degenerate LM generation (greedy decoding still
+repeats one byte), the weighted-sum `matmul` reduced form, the `io.almostrealism.collect` split.
+
+#### Category assessment (priority order)
+
+- **Documentation — excellent, and newly complete where it mattered.** The internals corpus is 38
+  pages and now includes `automatic-differentiation.md`; `consult` finds no flagship gap. The only
+  standing items (the ONNX-pressure note, line-number hygiene) are low-priority and owned by
+  continuous QA. Moved on.
+- **Code quality — the category, because of a specific, evidenced correctness defect.** It is not a
+  style or coverage gap: `GradientFeatures.jacobianGradient`, the full-Jacobian fallback that is the
+  *reference every reduced-delta test is checked against*, produces a **nondeterministically wrong**
+  weight gradient for the 256×64 output projection over 64 rows — ~1/10 of 16,384 entries, 1,728 on
+  one profiled Metal run and 1,536 on another, always from weight row 64 onward. It is recorded
+  honestly today (a `TODO(review)`, the "known limits" prose, and
+  `DenseVectorJacobianProductTest.outputProjection` logging the disagreement instead of asserting
+  it), and it was explicitly deferred to "its own plan" by the VJP review. This is that plan.
+
+#### Why this task
+
+A learning system whose *reference gradient* is silently, intermittently wrong is the most
+consequential kind of foundation defect: the platform's first self-hosted training runs trained the
+output projection from this path, every non-matmul operator still falls back to it, and it is the
+ground truth the whole reduced-delta suite trusts. Correctness of the differentiation engine sits in
+the second category and ranks above performance and proof of value — and this is a concrete,
+falsifiable instance of it, now unblocked by the documentation it needed.
+
+The plan follows evidence, not the first hypothesis. The `TODO(review)` guesses a 32-bit index
+overflow (2³⁴ iteration space, errors beginning at flat index 2³²), but the profiling already done
+*contradicts* that: a deterministic overflow would miscompute the same entries every run, and this
+does not. The nondeterminism, and the ~1M-element `(64,256,64)` repeat buffer the sum kernel reads,
+point instead at memory residence / aggregation — the same family as the already-journaled layernorm
+"invalid kernel" defect (`INVALID_KERNEL_AGGREGATION.md`), where a baked aggregate slot offset tied
+to transient residence made one computation compile to two kernels reading different memory, and
+`AR_HARDWARE_OFF_HEAP_SIZE=0` restored determinism. So the plan separates the two leads with that
+one experiment first, reads the generated kernel with `ar-profile-analyzer` before theorizing, fixes
+the general mechanism (not the one shape), and tightens the existing test to *assert* agreement on
+repeated evaluation. Weakening the test to go green is out of bounds and the plan says so.
+
+#### Balance across categories
+
+The last several cycles alternated foundation documentation with proof-of-value milestones, and the
+proof-of-value track (a trained LM that beats its baseline, PR #628) is one honest step from
+speaking. But it cannot speak on a gradient that is sometimes wrong — and the degenerate single-byte
+generation may itself be a symptom of an output projection trained on this very defect. Fixing the
+reference gradient is the right move before the next generation push: it is cheaper now (the
+diagnosis is half-done and journaled), it protects every later LM step, and it keeps the platform
+honest about its own learning machinery.
+
+#### What comes next
+
+1. This plan: diagnose the nondeterministic output-projection fallback on Metal via
+   `ar-profile-analyzer`, fix it at the general argument-mapping/ordering (or index-typing) layer,
+   assert the agreement in `DenseVectorJacobianProductTest`, check convolution for the same defect,
+   and update the "known limits" docs and the `TODO(review)`.
+2. **Proof of value — non-degenerate generation**, revisited with a now-trustworthy gradient:
+   temperature/top-p in the sliding-window generator, a KV-cache decode, more steps/larger context.
+   Re-run `trainOnDocumentation` to see whether the corrected gradient moves the held-out score.
+3. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000),
+   the last Jacobian-contracting path on a dense layer.
+4. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
+   trained model read the platform's own *source*.
+
 ### 2026-10-17 — Document automatic differentiation from `delta` to the backward pass
 
 **Category:** Documentation
