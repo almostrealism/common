@@ -37,7 +37,6 @@ import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.util.TestSuiteBase;
-import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -72,7 +71,7 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 	 */
 	@Test(timeout = 30_000)
 	public void fixChoices() throws IOException {
-		Assume.assumeTrue("pattern-factory.json required",
+		requireLocalResource("pattern factory " + new File("pattern-factory.json").getAbsolutePath(), null,
 				new File("pattern-factory.json").exists() || new File("pattern-factory.json.old").exists());
 		List<NoteAudioChoice> choices = readChoices();
 		new ObjectMapper().writeValue(new File("pattern-factory-new.json"), choices);
@@ -143,11 +142,14 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 	 */
 	@Test(timeout = 300_000)
 	public void runLayers() throws IOException {
-		Assume.assumeTrue("Library directory required", new File(LIBRARY).exists());
-		Assume.assumeTrue("pattern-factory.json required",
-				new File("pattern-factory.json").exists());
-		Assume.assumeTrue("scene-settings.json required",
-				new File(SystemUtils.getLocalDestination("scene-settings.json")).exists());
+		File patternFactory = new File("pattern-factory.json");
+		requireLocalResource("pattern factory " + patternFactory.getAbsolutePath(), null,
+				patternFactory.exists());
+		File sceneSettings = new File(SystemUtils.getLocalDestination("scene-settings.json"));
+		requireLocalResource("scene settings " + sceneSettings.getAbsolutePath(), null,
+				sceneSettings.exists());
+		requireResource("sample library " + new File(LIBRARY).getAbsolutePath(), "AR_RINGS_LIBRARY",
+				new File(LIBRARY).isDirectory());
 		Frequency bpm = bpm(120);
 
 		int measures = 32;

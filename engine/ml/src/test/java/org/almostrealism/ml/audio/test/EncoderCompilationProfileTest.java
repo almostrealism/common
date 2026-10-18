@@ -80,10 +80,8 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void profileEncoderConstruction() throws IOException {
-		if (!Files.exists(AUTOENCODER_DIR)) {
-			log("Autoencoder weights not found at " + AUTOENCODER_DIR + ", skipping");
-			return;
-		}
+		requireLocalResource("autoencoder weights at " + AUTOENCODER_DIR.toAbsolutePath(), null,
+				Files.exists(AUTOENCODER_DIR));
 
 		log("=== Profiling Encoder Construction (no compilation) ===");
 		StateDictionary weights = new StateDictionary(AUTOENCODER_DIR.toString());
@@ -124,10 +122,8 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void profileEncoderCompilationOnly() throws IOException {
-		if (!Files.exists(AUTOENCODER_DIR)) {
-			log("Autoencoder weights not found at " + AUTOENCODER_DIR + ", skipping");
-			return;
-		}
+		requireLocalResource("autoencoder weights at " + AUTOENCODER_DIR.toAbsolutePath(), null,
+				Files.exists(AUTOENCODER_DIR));
 
 		log("=== Profiling Encoder Compilation Only ===");
 		StateDictionary weights = new StateDictionary(AUTOENCODER_DIR.toString());
@@ -169,10 +165,8 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 	 * @param profileName name for the output profile file
 	 */
 	private void profileEncoder(double seconds, String profileName) throws IOException {
-		if (!Files.exists(AUTOENCODER_DIR)) {
-			log("Autoencoder weights not found at " + AUTOENCODER_DIR + ", skipping");
-			return;
-		}
+		requireLocalResource("autoencoder weights at " + AUTOENCODER_DIR.toAbsolutePath(), null,
+				Files.exists(AUTOENCODER_DIR));
 
 		log("=== Profiling Encoder: " + seconds + " seconds ===");
 		StateDictionary weights = new StateDictionary(AUTOENCODER_DIR.toString());

@@ -214,3 +214,153 @@ search cost the same on CUDA, the render loop is ≈550 s there, ≈5.5 s per ge
 5. The `GenerateAudioFileTest` render-ahead NPE and the `HeapPatternRenderingTest`
    `argument 1 RAM is null` failures are correctness races, not timing; they should be
    investigated separately.
+
+---
+
+## 6. Missing-resource silent passes: audit and fix (2026-10-18)
+
+**Why.** A new CI runner without the curated sample library let tests that should have
+failed report a pass, and damaging changes merged to master. The policy now enforced:
+
+- A missing resource may make a test decline to run **only** on a host with no GPU
+  accelerator at all, and only as a JUnit *skip*, never as a pass.
+- On any GPU host (Metal, OpenCL on a GPU device, CUDA), and on any host that declares the
+  resource's location (`AR_RINGS_LIBRARY`, `AR_RINGS_PATTERNS`, ...), a missing resource
+  **fails**.
+
+### 6.1 The shared decision
+
+`TestFeatures` (engine/utils), inherited by every `TestSuiteBase`, now decides this in one
+place:
+
+- `isGpuAvailable()`: `Hardware.isAvailable(ComputeRequirement.GPU)`. It filters the
+  initialized contexts strictly, so the CPU-only `native` lane reports false and Metal, CL
+  (GPU device) and CUDA report true. It moved here from `AudioSceneTestBase`.
+- `requireResource(resource, locationProperty, available)`: returns when the resource is
+  present. When it is absent, the test fails if `locationProperty` is set or a GPU is
+  present, and otherwise skips.
+- `requireLocalResource(resource, locationProperty, available)`: for resources **no lane
+  carries** (model weights, developer-local data, the application's local-destination
+  `pattern-factory.json`). It fails only if `locationProperty` is set, and otherwise
+  skips. It exists because applying the GPU rule to model weights would turn every GPU
+  lane red at once: `engine/ml` runs on `test-mac` / `test-cl` / `test-cuda` and no lane
+  provisions weights. This is a deliberate, reviewable choice. If the owner wants weights
+  to be mandatory on some lane, that lane sets the location property and the same tests
+  start failing there.
+
+`AudioSceneTestBase.requireSampleLibrary()` (library only) and `requireCuratedLibrary()`
+(library plus pattern factory) delegate to `requireResource`. Behaviour changes from the
+old `requireCuratedLibrary`:
+
+1. A CPU-only host that **declares** `AR_RINGS_LIBRARY` now fails instead of skipping.
+2. A library directory that exists but is **empty** (a bind-mount of a missing host path,
+   or a sync that never ran) fails on every host.
+
+### 6.2 Sites converted (curated sample library: fail on GPU / declaring hosts)
+
+| Test | Before | Now |
+|---|---|---|
+| `AudioSceneMultiGenomeTest#multiGenomePatternRender`, `#multiGenomeFullRunner` | `if (!samplesDir.exists()) { log("Skipping..."); return; }`, a **silent pass** (reported as 0.001 s passes on `test-media`, §1) | `requireSampleLibrary()` |
+| `ArrangementGenerationNoHeapTest#generateArrangementsWithoutHeap` | log + `return` (silent pass) | `requireCuratedLibrary()` |
+| `ArrangementGenerationProcessTest` (studio/spatial) `#processAttachesScoredNetworksWithStems`, `#rendersSurviveAcrossCycles` | log + `return` (silent pass) | `requireCuratedScene()` → `requireResource` for library and pattern factory |
+| `AudioSceneBaselineTest` (4 methods) | `assumeTrue(samplesDir.exists())`, a skip on every host | `requireSampleLibrary()` |
+| `RealTimeRendererCorrectnessTest` (`@Before`) | `assumeTrue` | `requireSampleLibrary()` |
+| `BatchedRealSceneRenderTest.requireRealAssets` | two `Assume` calls | `requireCuratedLibrary()` |
+| `OptimizerSceneDiagnosticTest` (5 methods), `AudioSceneOptimizationTest` (`@Before`), `AudioSceneTest#runScene`, `PatternFactoryTest#runLayers`, `ReproduceRefreshBug` | `Assume` on `AudioSceneOptimizer.LIBRARY` / `AR_RINGS_LIBRARY` (`ReproduceRefreshBug`: log + `return`) | `requireResource(..., "AR_RINGS_LIBRARY", ...)` for the library; local-only inputs are checked first with `requireLocalResource` (below) |
+
+### 6.3 Sites converted to `requireLocalResource` (no lane carries the resource)
+
+- studio/compose: the local-destination / working-directory `pattern-factory.json` and
+  `scene-settings.json` (`OptimizerSceneDiagnosticTest`, `AudioSceneOptimizationTest`,
+  `PatternFactoryTest`); the protobuf store (`ReproduceRefreshBug`,
+  `PrototypeDiscoveryTest`, both previously log + `return`);
+  `PrototypeDiscoveryPersistenceTest` (`ar.test.samples`, previously log + `return`);
+  `GenerateAudioFileTest#spectrogramExistingRender` (an earlier render's output,
+  previously log + `return`); `AudioSceneRealTimeTest` and
+  `RealTimeTestHelper.requireLibraryDir` (a developer-local `Library` directory);
+  `AudioSynthesizerTests` (local model `Library`).
+- Model weights, tokenizers, reference activations and local data sets in engine/ml,
+  studio/compose `ml`/`midi` and studio/experiments. These were all log + `return`
+  silent passes and are now visible skips (fails where their location property is set).
+  See §6.6 for the file list.
+
+### 6.4 CI-side check
+
+`test-media-mac` now declares `AR_RINGS_LIBRARY=/Users/Shared/Music/Samples` and
+`AR_RINGS_PATTERNS=/Users/Shared/Music/pattern-factory.json`, as the CL and CUDA media
+lanes already did. All three GPU media lanes (`test-media-mac`, `test-media-cl`,
+`test-media-cuda`) run a `Verify curated sample library` step right after checkout. It
+fails the job when the library is missing or empty or the pattern factory is missing, so
+the cause is reported once, before any test runs. `.github/CLAUDE.md` and
+`tools/ci/macos/README.md` describe this. The CPU `test-media` lane is unchanged: it has
+no GPU and does not declare the library, so library tests skip there.
+
+*CI-file lock.* These edits are under `.github/workflows/` on a `feature/` branch. The job
+was submitted with sensitive-file protection lifted. If the harness drops them anyway, the
+Java-side policy still fails every library test on the GPU lanes without the library. The
+one exception is the optimizer-library tests on `test-media-mac`
+(`AudioSceneOptimizer.LIBRARY` defaults to the relative `Library`), which then need the
+`AR_RINGS_LIBRARY` declaration to find the fleet's copy.
+
+### 6.5 Left as is, deliberately
+
+- **Synthetic fallback by design** (`getSamplesDir()` / `RealTimeTestHelper.requireSamplesDir()`
+  returning `null`): `AudioSceneRealTimeCorrectnessTest`, `AudioSceneBufferConsolidationTest`,
+  `HeapPatternRenderingTest`, `AudioScenePdslBenchmarkTest`, the two `getSamplesDir` methods
+  of `AudioScenePdslCutoverTest`, `AudioSceneSingleVsMultiChannelTest`,
+  `MixdownManagerPdslVerificationTest`. These run real work on synthetic samples and are
+  not passes of skipped work. Finding: the baseline scene's sample names are not resolved
+  under the curated library at all (they are looked up at the library root, but live in
+  subdirectories), so `createBaselineScene` always uses synthetic samples. Filed as
+  follow-up task `9834c8a4-e034-434d-850b-ff311ee6779d`.
+- **"No working genome found - skipping test" returns** (about 20 sites in
+  `AudioSceneRealTimeCorrectnessTest`, `AudioSceneBufferConsolidationTest`,
+  `AudioSceneMultiGenomeTest`, `AudioSceneBaselineTest`). These are silent passes, but not
+  missing resources, and this job's edits to existing tests were limited to the resource
+  policy. Filed as follow-up task `3e55373a-5241-4608-94ff-fa2884aa3b16`.
+- **Backend guards** (`if (metal == null) return;` and similar in engine/utils hardware
+  tests, CL provider checks), and audio or MIDI device checks. These are not provisioned
+  resources.
+- **studio/music `Library/<file>.wav` fixtures** (`PatternAudioTest`, `SequenceTest`,
+  `GrainTest`, `EnvelopeTests`). These are already `Assume` skips, which are reported as
+  skips rather than passes, of developer-local files that no lane carries.
+- Several converted tests contain no assertions at all (`AudioSynthesizerTests`,
+  `PatternFactoryTest`, `PrototypeDiscovery*Test`, most `OptimizerSceneDiagnosticTest`
+  variants, `multiGenomePatternRender`). Assertions were out of scope for this change.
+- `AudioSceneRealTimeTest` / `RealTimeTestHelper.LIBRARY_PATH` names a private
+  downstream checkout as its default path. This predates this change.
+
+### 6.6 Model-weight and local-data sites (`requireLocalResource`)
+
+Each one was a log + `return` silent pass. The location property is in parentheses where
+the resource has one.
+
+- engine/ml: `OobleckValidationBase.requireWeights()`, used by `OobleckValidationTest`,
+  `OobleckLayerValidationTest`, `OobleckBlock3ValidationTest` and
+  `ResidualBlockSubComponentTest`; `SAMEResamplingParityTest`, `SAMEAutoEncoderParityTest`
+  (`AR_SAME_WEIGHTS`, `AR_SAME_REFERENCES`); `StableAudio3ConditionerParityTest`,
+  `StableAudio3TransformerParityTest`, `StableAudio3GenerationTest` (`AR_SA3_*`,
+  `AR_T5GEMMA_*`); `T5GemmaEncoderParityTest`, `T5GemmaEncoderStageParityTest`;
+  `SentencePieceBPETokenizerTest` (`AR_T5GEMMA_TOKENIZER`); `Qwen3TokenizerTest`;
+  `DiffusionTransformerTests` (`ditWeightsDir`); `EndToEndFineTuningTest`;
+  `EncoderCompilationProfileTest`.
+- studio/compose: `StableAudio3WavOutputTest`, `DiffusionTransformerForwardTest`,
+  `AudioTrainingDataCollectorTest`, `MoonbeamFineTuningTest`.
+- studio/experiments: `DrawingGenerationEndToEndTest`.
+
+### 6.7 Verification (Metal host with the curated library present)
+
+- New `ResourceRequirementTest` (engine/utils), which pins the policy: 5/5 pass.
+- With the library present, `RealTimeRendererCorrectnessTest#testBufferSizeConsistency`
+  and `AudioSceneBaselineTest#baselineAudioGeneration` both pass.
+- With `-DAR_RINGS_LIBRARY=/nonexistent/Samples`, the same `RealTimeRendererCorrectnessTest`
+  method and `AudioSceneMultiGenomeTest#multiGenomePatternRender` both **fail** with
+  "Required resource not available: curated sample library ...". Before this change
+  `multiGenomePatternRender` returned and reported a pass.
+- `OobleckBlock3ValidationTest` with no weights: 5 skipped, 0 passed. Before, all 5
+  reported a pass.
+- Build validator (checkstyle, code policy, test timeouts, duplicate code, invalid
+  files): all passed. The Pattern 2 (net assertion) rule of `detect-test-hiding.sh`,
+  applied to the working-tree diff, found no net assertion loss in any changed file.
+- Not run here: the spatial `ArrangementGenerationProcessTest` (15–25 min renders). It
+  compiles, and its change is the same two-line `requireResource` call.

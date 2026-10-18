@@ -46,6 +46,20 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 	private static final int MAX_DURATION_SECONDS = 8;
 
 	/**
+	 * Requires the curated sample library and pattern factory the curated scene is
+	 * loaded from, via {@link #requireResource(String, String, boolean)}: a miss fails
+	 * on any GPU host or host that declares the location, and skips only on a
+	 * CPU-only host that did not.
+	 */
+	// TODO(review): duplicates AudioSceneTestBase.requireCuratedLibrary but omits its empty-library-directory failure
+	private void requireCuratedScene() {
+		requireResource("curated sample library " + new File(CuratedArrangementFixture.SAMPLES).getAbsolutePath(),
+				"AR_RINGS_LIBRARY", new File(CuratedArrangementFixture.SAMPLES).isDirectory());
+		requireResource("curated pattern factory " + new File(CuratedArrangementFixture.PATTERN_FACTORY).getAbsolutePath(),
+				"AR_RINGS_PATTERNS", new File(CuratedArrangementFixture.PATTERN_FACTORY).isFile());
+	}
+
+	/**
 	 * Runs one optimization cycle over a two-genome population from a fresh start
 	 * and asserts every delivered score attaches to its record with a full set of
 	 * stems, surviving the process's own persistence round trip.
@@ -55,10 +69,7 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 	@Test(timeout = 900_000)
 	@TestDepth(2)
 	public void processAttachesScoredNetworksWithStems() throws Exception {
-		if (!CuratedArrangementFixture.curatedSceneAvailable()) {
-			log("Skipping processAttachesScoredNetworksWithStems - no curated library");
-			return;
-		}
+		requireCuratedScene();
 
 		CuratedArrangementFixture.enableRealtimeMixdown();
 
@@ -140,10 +151,7 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 	@Test(timeout = 1_500_000)
 	@TestDepth(2)
 	public void rendersSurviveAcrossCycles() throws Exception {
-		if (!CuratedArrangementFixture.curatedSceneAvailable()) {
-			log("Skipping rendersSurviveAcrossCycles - no curated library");
-			return;
-		}
+		requireCuratedScene();
 
 		CuratedArrangementFixture.enableRealtimeMixdown();
 

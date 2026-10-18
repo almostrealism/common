@@ -51,10 +51,8 @@ public class PrototypeDiscoveryTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void runDiscovery() throws Exception {
 		File protobufFile = new File(PROTOBUF_PREFIX + "_0.bin");
-		if (!protobufFile.exists()) {
-			log("Protobuf file not found: " + protobufFile);
-			return;
-		}
+		requireLocalResource("protobuf store " + protobufFile.getAbsolutePath(), "AR_RINGS_PROTOBUF",
+				protobufFile.exists());
 
 		PrototypeDiscovery discovery = new PrototypeDiscovery(
 				PROTOBUF_PREFIX,

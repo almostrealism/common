@@ -61,11 +61,7 @@ public class OobleckValidationTest extends OobleckValidationBase {
 	@TestDepth(1)
 	public void testEncoderAgainstPyTorchReference() throws IOException {
 		// Skip if test data not available
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping validation test - weights not found at " + WEIGHTS_DIR);
-			log("Run extract_stable_audio_autoencoder.py to generate test data.");
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/encoder_validation.log"));
@@ -131,10 +127,7 @@ public class OobleckValidationTest extends OobleckValidationBase {
 	@TestDepth(2)
 	public void testEncoderIntermediatesAgainstPyTorch() throws IOException {
 		// Skip if test data not available
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping validation test - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/encoder_intermediates_validation.log"));
@@ -170,10 +163,7 @@ public class OobleckValidationTest extends OobleckValidationBase {
 	@TestDepth(1)
 	public void testDecoderAgainstPyTorchReference() throws IOException {
 		// Skip if test data not available
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping validation test - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/decoder_validation.log"));
@@ -309,10 +299,7 @@ public class OobleckValidationTest extends OobleckValidationBase {
 	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testDecoderBlockByBlockComparison() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				TEST_DATA_DIR.resolve("block_comparison.log").toString()));
@@ -500,10 +487,7 @@ public class OobleckValidationTest extends OobleckValidationBase {
 	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testBlock1SubComponents() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				TEST_DATA_DIR.resolve("block1_subcomponents.log").toString()));

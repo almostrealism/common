@@ -52,10 +52,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testFirstWNConv1dOnly() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_first_wnconv1d.log"));
@@ -153,10 +150,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testFirstWNConvTranspose1dOnly() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_first_wnconvtranspose.log"));
@@ -264,10 +258,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testFirstConvPlusSnake() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_conv_plus_snake.log"));
@@ -344,10 +335,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testThroughFirstDecoderBlock() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_through_block1.log"));
@@ -453,10 +441,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testSingleResidualBlock() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_single_residual.log"));
@@ -596,10 +581,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testTwoResidualBlocks() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_two_residuals.log"));
@@ -741,10 +723,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testCompleteFirstDecoderBlock() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_complete_block1.log"));
@@ -881,10 +860,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testDecoderBlocks1And2() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_blocks_1_2.log"));
@@ -1020,10 +996,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testDecoderBlocks1To3() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_blocks_1_2_3.log"));
@@ -1160,10 +1133,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testAllBlocksWithoutOutputProj() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_all_blocks_no_output.log"));
@@ -1311,10 +1281,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testOutputProjectionIsolation() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_output_proj_isolation.log"));

@@ -20,6 +20,7 @@ import org.almostrealism.ml.SAMEResamplingTestBase;
 import org.almostrealism.ml.StateDictionary;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
 
@@ -97,11 +98,12 @@ public class StableAudio3ConditionerParityTest extends SAMEResamplingTestBase {
 		File encoderDir = firstExisting(ENCODER_DIRS, "encoder.norm.weight");
 		File refDir = firstExisting(REFERENCE_DIRS, "dit_cross_attn_cond");
 
-		if (conditionerDir == null || encoderDir == null || refDir == null) {
-			log("skipping conditioner parity; gated inputs absent (conditioner=" + conditionerDir
-					+ ", encoder=" + encoderDir + ", refs=" + refDir + ")");
-			return;
-		}
+		requireLocalResource("SA3 conditioner weights (tried " + Arrays.toString(CONDITIONER_DIRS) + ")",
+				"AR_SA3_CONDITIONER_WEIGHTS", conditionerDir != null);
+		requireLocalResource("T5Gemma encoder weights (tried " + Arrays.toString(ENCODER_DIRS) + ")",
+				"AR_T5GEMMA_WEIGHTS", encoderDir != null);
+		requireLocalResource("SA3 DiT reference activations (tried " + Arrays.toString(REFERENCE_DIRS) + ")",
+				"AR_SA3_DIT_REFERENCES", refDir != null);
 
 		StateDictionary conditionerWeights = null;
 		StateDictionary encoderWeights = null;

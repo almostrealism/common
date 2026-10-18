@@ -41,7 +41,6 @@ import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;
-import org.junit.Assume;
 
 import java.io.File;
 import java.io.IOException;
@@ -67,8 +66,9 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * Curated sample library location, overridable via {@code AR_RINGS_LIBRARY}. Defaults to
 	 * the absolute curated-library path (the same directory that holds {@link #PATTERN_FACTORY}).
 	 * Kept absolute so no repo-root symlink to an out-of-repo location is required; when the
-	 * library is absent (e.g. on CI) {@link #getSamplesDir()} returns {@code null} and synthetic
-	 * fallback samples are used.
+	 * library is absent {@link #getSamplesDir()} returns {@code null} and synthetic fallback
+	 * samples are used. A test that needs the real library calls {@link #requireSampleLibrary()}
+	 * or {@link #requireCuratedLibrary()} instead.
 	 */
 	protected static final String SAMPLES_PATH =
 			SystemUtils.getProperty("AR_RINGS_LIBRARY", "/Users/Shared/Music/Samples");
@@ -86,40 +86,46 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	}
 
 	/**
-	 * Returns the curated sample library, skipping or failing the test when the library (or its
-	 * pattern factory) is not present on this host — the choice depends on whether a GPU driver
-	 * is available.
+	 * Returns the curated sample library, failing or skipping the test when the library is not
+	 * present on this host, as decided by {@link #requireResource(String, String, boolean)}.
 	 * <p>
-	 * The real-sample media benchmarks once skipped silently — logging a message and returning — when
-	 * the library was absent, which a runner that never mounts {@link #SAMPLES_PATH} reports as a pass,
-	 * hiding the difference between hosts. Every GPU runner is expected to mount the curated library and
-	 * run the real workload, so a GPU host that is missing it is misconfigured — regardless of test
-	 * profile or whether it declared an {@code AR_RINGS_LIBRARY} mount. The only host allowed to skip is
-	 * one with no GPU at all (the CPU-only native Linux jobs), which is not expected to mount the
-	 * library. So:
-	 * <ul>
-	 *   <li>library present → return it and run the real workload;</li>
-	 *   <li>library absent and <em>no</em> GPU driver available → {@code Assume}-skip (a CPU-only host
-	 *       that is not expected to mount the library, e.g. the native Linux jobs);</li>
-	 *   <li>library absent but a GPU driver <em>is</em> available → {@link Assert#fail} (a GPU host is
-	 *       expected to mount the library; a miss is a real misconfiguration that must not report a
-	 *       false pass, and no GPU job may pass merely by omitting the library).</li>
-	 * </ul>
+	 * The real-sample media tests once skipped silently — logging a message and returning — when
+	 * the library was absent, which a runner that never mounts {@link #SAMPLES_PATH} reports as a pass.
+	 * A new runner without the library let tests that should have failed pass this way. Every GPU
+	 * runner, and every runner that declares {@code AR_RINGS_LIBRARY}, is expected to carry the library
+	 * and run the real workload, so a miss there fails. The only host allowed to skip is one with no
+	 * GPU at all that did not declare the library (the CPU-only native Linux lane).
+	 * <p>
+	 * A library directory that exists but is empty always fails: that is a mount point whose content
+	 * never arrived (a bind-mount of a missing host path, or a sync that did not run), not a host that
+	 * was never meant to have the library.
+	 * <p>
+	 * A test that needs the real library must call this (or {@link #requireCuratedLibrary()}) rather
+	 * than check {@link #getSamplesDir()} itself.
+	 *
+	 * @return the curated sample library directory
+	 */
+	protected File requireSampleLibrary() {
+		File library = new File(SAMPLES_PATH);
+		requireResource("curated sample library " + library.getAbsolutePath(),
+				"AR_RINGS_LIBRARY", library.isDirectory());
+
+		String[] entries = library.list();
+		Assert.assertTrue("Curated sample library " + library.getAbsolutePath() + " exists but is empty;"
+				+ " the mount or sync that should populate it did not run.", entries != null && entries.length > 0);
+		return library;
+	}
+
+	/**
+	 * Returns the curated sample library, as {@link #requireSampleLibrary()} does, and additionally
+	 * requires the curated {@link #PATTERN_FACTORY} beside it, under the same policy.
 	 *
 	 * @return the curated sample library directory (its {@link #PATTERN_FACTORY} is guaranteed to exist)
 	 */
 	protected File requireCuratedLibrary() {
-		File library = getSamplesDir();
-		if (library != null && new File(PATTERN_FACTORY).exists()) {
-			return library;
-		}
-
-		String detail = "Curated sample library " + SAMPLES_PATH + " / pattern factory "
-				+ PATTERN_FACTORY + " not available on this host.";
-		Assume.assumeTrue(detail + " No GPU driver is available, so this is a CPU-only host that is not"
-				+ " expected to mount the library; skipping rather than failing.", isGpuAvailable());
-		Assert.fail(detail + " A GPU driver IS available, so this host is expected to mount the curated"
-				+ " library; failing rather than reporting a false pass for a workload it did not run.");
+		File library = requireSampleLibrary();
+		requireResource("curated pattern factory " + new File(PATTERN_FACTORY).getAbsolutePath(),
+				"AR_RINGS_PATTERNS", new File(PATTERN_FACTORY).isFile());
 		return library;
 	}
 
@@ -135,27 +141,6 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	protected boolean isMetalAvailable() {
 		return Hardware.getLocalHardware()
 				.getDataContext(false, true, ComputeRequirement.MTL) != null;
-	}
-
-	/**
-	 * Returns whether a real GPU accelerator — Metal or OpenCL — is present on this host, used by
-	 * {@link #requireCuratedLibrary()} to decide whether a missing sample library is an expected skip
-	 * (a CPU-only host, such as the {@code native} Linux runners) or a genuine failure. Every GPU host
-	 * is expected to mount the curated library — the Metal {@code test-media-mac} and OpenCL
-	 * {@code test-media-cl} runners, and any local GPU host — so a missing library on any of them is a
-	 * failure regardless of test profile; only a host with no GPU at all is allowed to skip.
-	 *
-	 * <p>Delegates to {@link Hardware#isAvailable(ComputeRequirement...)} with
-	 * {@link ComputeRequirement#GPU}, which strictly filters the data contexts built from
-	 * {@code AR_HARDWARE_DRIVER} and so reports false on a CPU-only host and true on a Metal or OpenCL
-	 * host. This is not {@code getDataContext(..., GPU) != null} or {@code getComputeContext(GPU)}:
-	 * when only one data context exists, both return the sole (native) context regardless of the
-	 * requirement, falsely reporting a GPU on a CPU-only host.</p>
-	 *
-	 * @return whether a real GPU accelerator (Metal or OpenCL) is present on this host
-	 */
-	protected boolean isGpuAvailable() {
-		return Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU);
 	}
 
 	/** Curated pattern factory; the real arrangement that decides which samples play where. */

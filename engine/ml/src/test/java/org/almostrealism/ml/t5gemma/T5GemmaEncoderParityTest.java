@@ -22,6 +22,7 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
 
@@ -70,10 +71,10 @@ public class T5GemmaEncoderParityTest extends TestSuiteBase {
 	public void lastHiddenStateMatchesReference() throws IOException {
 		File weightDir = ReferenceActivations.firstExisting(WEIGHT_DIRS, "weights");
 		ReferenceActivations references = ReferenceActivations.locate(REFERENCE_DIRS, "t5_last_hidden_state");
-		if (weightDir == null || references == null) {
-			log("skipping T5Gemma parity; gated inputs absent (weights=" + weightDir + ", refs=" + references + ")");
-			return;
-		}
+		requireLocalResource("T5Gemma weights (tried " + Arrays.toString(WEIGHT_DIRS) + ")",
+				"AR_T5GEMMA_WEIGHTS", weightDir != null);
+		requireLocalResource("T5Gemma reference activations (tried " + Arrays.toString(REFERENCE_DIRS) + ")",
+				"AR_T5GEMMA_REFERENCES", references != null);
 
 		T5GemmaConfig config = T5GemmaConfig.baseUl2();
 		// Destroy the reference shards (and, once created, the encoder weights) in a finally

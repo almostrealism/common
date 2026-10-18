@@ -23,6 +23,7 @@ import org.almostrealism.ml.tokenization.SentencePieceBPETokenizer;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
 import java.util.function.Consumer;
@@ -117,10 +118,8 @@ public class StableAudio3GenerationTest extends TestSuiteBase {
 	public void generatesAudioFromATextPrompt() throws IOException {
 		File exported = firstFile(TOKENIZER_PATHS);
 
-		if (exported == null) {
-			log("skipping text-prompt generation; exported tokenizer absent");
-			return;
-		}
+		requireLocalResource("exported T5Gemma tokenizer (tried " + Arrays.toString(TOKENIZER_PATHS) + ")",
+				"AR_T5GEMMA_TOKENIZER", exported != null);
 
 		SentencePieceBPETokenizer tokenizer = new SentencePieceBPETokenizer(exported.getPath());
 
@@ -166,11 +165,14 @@ public class StableAudio3GenerationTest extends TestSuiteBase {
 				"conditioner.conditioners.prompt.padding_embedding");
 		File encoder = ReferenceActivations.firstExisting(ENCODER_DIRS, "encoder.norm.weight");
 
-		if (dit == null || ae == null || conditioner == null || encoder == null) {
-			log("skipping released-weight generation; weights absent (dit=" + dit + ", ae=" + ae
-					+ ", conditioner=" + conditioner + ", encoder=" + encoder + ")");
-			return;
-		}
+		requireLocalResource("SA3 DiT weights (tried " + Arrays.toString(DIT_DIRS) + ")",
+				"AR_SA3_DIT_WEIGHTS", dit != null);
+		requireLocalResource("SA3 autoencoder weights (tried " + Arrays.toString(AE_DIRS) + ")",
+				"AR_SA3_AE_WEIGHTS", ae != null);
+		requireLocalResource("SA3 conditioner weights (tried " + Arrays.toString(CONDITIONER_DIRS) + ")",
+				"AR_SA3_CONDITIONER_WEIGHTS", conditioner != null);
+		requireLocalResource("T5Gemma encoder weights (tried " + Arrays.toString(ENCODER_DIRS) + ")",
+				"AR_T5GEMMA_WEIGHTS", encoder != null);
 
 		StateDictionary ditWeights = null;
 		StateDictionary conditionerWeights = null;
