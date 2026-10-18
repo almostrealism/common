@@ -20,6 +20,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.SequentialBlock;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -91,10 +92,8 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	public void encoderParity() throws IOException {
 		File weightDir = firstExisting(WEIGHT_DIRS, "encoder.layers.0.mapping.weight");
 		File refDir = firstExisting(REFERENCE_DIRS, "enc_resamp_input");
-		if (weightDir == null || refDir == null) {
-			log("skipping encoder parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
-			return;
-		}
+		requireLocalResource("SAME weights (tried " + Arrays.toString(WEIGHT_DIRS) + ")", "AR_SAME_WEIGHTS", weightDir != null);
+		requireLocalResource("SAME reference activations (tried " + Arrays.toString(REFERENCE_DIRS) + ")", "AR_SAME_REFERENCES", refDir != null);
 
 		ResamplingConfig config = sameEncoderConfig();
 		String prefix = "encoder.layers.0";
@@ -170,10 +169,8 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 		// means a stale ref directory from an older dump skips cleanly here rather than failing partway
 		// through with a FileNotFoundException when one of the new references is loaded below.
 		File refDir = firstExisting(REFERENCE_DIRS, "dec_poststack");
-		if (weightDir == null || refDir == null) {
-			log("skipping decoder parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
-			return;
-		}
+		requireLocalResource("SAME weights (tried " + Arrays.toString(WEIGHT_DIRS) + ")", "AR_SAME_WEIGHTS", weightDir != null);
+		requireLocalResource("SAME reference activations (tried " + Arrays.toString(REFERENCE_DIRS) + ")", "AR_SAME_REFERENCES", refDir != null);
 
 		ResamplingConfig config = sameDecoderConfig();
 		String prefix = "decoder.layers.3";

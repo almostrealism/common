@@ -27,6 +27,7 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -109,11 +110,10 @@ public class StableAudio3WavOutputTest extends TestSuiteBase {
 			dirs.add(firstDirectory(candidates));
 		}
 
-		if (tokenizerFile == null || dirs.contains(null)) {
-			log("skipping WAV output; gated inputs absent (tokenizer=" + tokenizerFile
-					+ ", weights=" + dirs + ")");
-			return;
-		}
+		requireLocalResource("exported T5Gemma tokenizer (tried " + Arrays.toString(TOKENIZER_PATHS) + ")",
+				"AR_T5GEMMA_TOKENIZER", tokenizerFile != null);
+		requireLocalResource("SA3 weight sets (tried " + Arrays.deepToString(WEIGHT_DIRS) + ", found " + dirs + ")",
+				null, !dirs.contains(null));
 
 		List<StateDictionary> weights = new ArrayList<>();
 		StableAudio3 model = null;

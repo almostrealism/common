@@ -36,6 +36,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -81,7 +82,17 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 	 * @return the choice
 	 */
 	private NoteAudioChoice percussion() {
-		NoteAudioChoice choice = NoteAudioChoice.fromSource("Percussion",
+		return percussion("Percussion");
+	}
+
+	/**
+	 * Creates a named percussive choice backed by a short generated sample on channel 0.
+	 *
+	 * @param name the choice name
+	 * @return the choice
+	 */
+	private NoteAudioChoice percussion(String name) {
+		NoteAudioChoice choice = NoteAudioChoice.fromSource(name,
 				new FileNoteSource(getNamedTestWavPath("plm_hit.wav", 220.0, 0.25, true),
 						WesternChromatic.C1), 0, 9, false);
 		choice.setTuning(new DefaultKeyboardTuning());
@@ -519,6 +530,56 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 		plm.removeLayer();
 		Assert.assertEquals(1, plm.depth());
 		Assert.assertEquals(4, plm.getAllElements(0.0, 4.0).size());
+	}
+
+	/**
+	 * When each layer of the hierarchy is drawn from a different choice, the elements
+	 * grouped by choice are keyed in layer order (the order the traversal first reaches
+	 * each choice), not in the order the choices are listed and not in identity-hash
+	 * order, so the render order of choices is the same in every JVM run. Each choice
+	 * is admitted at exactly one layer scale: the seed at whole measures, then one
+	 * choice each at half, quarter and eighth measures.
+	 */
+	@Test(timeout = 180000)
+	public void elementsByChoiceAreKeyedInLayerOrder() {
+		NoteAudioChoice seed = percussion("Seed");
+		seed.setBias(0.5);
+		seed.setMinScale(1.0);
+		seed.setGranularitySelection(ParameterizedPositionFunctionTest.constantFunction(0.5));
+
+		List<NoteAudioChoice> layerChoices = new ArrayList<>();
+		layerChoices.add(seed);
+		for (double scale : new double[] { 0.5, 0.25, 0.125 }) {
+			NoteAudioChoice choice = percussion("Layer " + scale);
+			choice.setSeed(false);
+			choice.setBias(0.5);
+			choice.setMinScale(0.75 * scale);
+			choice.setMaxScale(1.25 * scale);
+			layerChoices.add(choice);
+		}
+
+		List<NoteAudioChoice> listed = new ArrayList<>(layerChoices);
+		Collections.reverse(listed);
+		PatternLayerManager plm = manager(listed, 4.0, false);
+
+		PatternLayerManager.Settings settings = plm.getSettings();
+		settings.setFactorySelection(ParameterizedPositionFunctionTest.constantFunction(0.3));
+		plm.setSettings(settings);
+
+		PatternElementFactory factory = new PatternElementFactory();
+		factory.setNoteSelection(ParameterizedPositionFunctionTest.constantAtWholeMeasures(0.3));
+		factory.setNoteLayerSelections(List.of(
+				ParameterizedPositionFunctionTest.constantAtWholeMeasures(0.1),
+				ParameterizedPositionFunctionTest.constantAtWholeMeasures(0.2),
+				ParameterizedPositionFunctionTest.constantAtWholeMeasures(0.3)));
+		plm.setElementFactory(factory);
+
+		plm.setLayerCount(4);
+		Assert.assertEquals(4, plm.depth());
+
+		Map<NoteAudioChoice, List<PatternElement>> byChoice = plm.getAllElementsByChoice(0.0, 4.0);
+		Assert.assertEquals(layerChoices, new ArrayList<>(byChoice.keySet()));
+		Assert.assertEquals(List.of(0.0, 1.0, 2.0, 3.0), sortedPositions(byChoice.get(seed)));
 	}
 
 	/** Channel and destination bookkeeping only registers the manager's own channel. */

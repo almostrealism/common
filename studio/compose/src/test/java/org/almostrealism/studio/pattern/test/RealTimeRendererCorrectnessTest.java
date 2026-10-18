@@ -31,7 +31,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.*;
-import static org.junit.Assume.assumeTrue;
 
 /**
  * Tests the real-time rendering pipeline for buffer-size invariance and
@@ -59,8 +58,7 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 		helper = new RealTimeTestHelper(this);
 		helper.disableEffects();
 
-		samplesDir = new File(SAMPLES_PATH);
-		assumeTrue("Samples directory required", samplesDir.exists());
+		samplesDir = requireSampleLibrary();
 
 		// Ensure results directory exists
 		new File(RESULTS_DIR).mkdirs();

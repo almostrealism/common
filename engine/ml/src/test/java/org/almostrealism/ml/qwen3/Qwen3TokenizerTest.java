@@ -155,10 +155,7 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 	public void testRealTokenizerEncoding() throws Exception {
 		String tokenizerPath = "/workspace/project/common/ml/qwen3_weights/tokenizer.bin";
 		File f = new File(tokenizerPath);
-		if (!f.exists()) {
-			log("Skipping: tokenizer.bin not found at " + tokenizerPath);
-			return;
-		}
+		requireLocalResource("Qwen3 tokenizer at " + f.getAbsolutePath(), null, f.exists());
 
 		Qwen3Tokenizer tokenizer = new Qwen3Tokenizer(tokenizerPath);
 		log("Real tokenizer vocab size: " + tokenizer.getVocabSize());

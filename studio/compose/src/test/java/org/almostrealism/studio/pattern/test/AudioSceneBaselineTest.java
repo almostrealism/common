@@ -36,7 +36,6 @@ import java.io.File;
 import java.util.List;
 
 import static org.junit.Assert.*;
-import static org.junit.Assume.assumeTrue;
 
 /**
  * Baseline tests for AudioScene audio generation without {@link org.almostrealism.studio.optimize.AudioSceneOptimizer}.
@@ -50,8 +49,8 @@ import static org.junit.Assume.assumeTrue;
  * {@code seedBiasAdjustment}. These tests try multiple genomes to find one that produces
  * audio, mirroring the multi-evaluation approach used by the optimizer.</p>
  *
- * <p>The test uses the curated sample library (see {@link AudioSceneTestBase#SAMPLES_PATH});
- * when it is absent it falls back to synthetic samples.</p>
+ * <p>The test uses the curated sample library (see {@link AudioSceneTestBase#requireSampleLibrary()}),
+ * which fails on a host meant to carry it and skips only on a host with no GPU that did not declare it.</p>
  *
  * @see AudioScene
  * @see StableDurationHealthComputation
@@ -74,9 +73,7 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	@Test(timeout = 300_000)
 	@TestDepth(2)
 	public void baselineAudioGeneration() {
-		File samplesDir = new File(SAMPLES_PATH);
-		assumeTrue("Samples directory required: " + samplesDir.getAbsolutePath(),
-				samplesDir.exists());
+		File samplesDir = requireSampleLibrary();
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;
@@ -141,9 +138,7 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void baselineHealthComputation() {
-		File samplesDir = new File(SAMPLES_PATH);
-		assumeTrue("Samples directory required: " + samplesDir.getAbsolutePath(),
-				samplesDir.exists());
+		File samplesDir = requireSampleLibrary();
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;
@@ -197,9 +192,7 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 60_000)
 	public void cellPipelineDiagnostic() {
-		File samplesDir = new File(SAMPLES_PATH);
-		assumeTrue("Samples directory required: " + samplesDir.getAbsolutePath(),
-				samplesDir.exists());
+		File samplesDir = requireSampleLibrary();
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;
@@ -256,9 +249,7 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 30_000)
 	public void baselineMelodicContent() {
-		File samplesDir = new File(SAMPLES_PATH);
-		assumeTrue("Samples directory required: " + samplesDir.getAbsolutePath(),
-				samplesDir.exists());
+		File samplesDir = requireSampleLibrary();
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;

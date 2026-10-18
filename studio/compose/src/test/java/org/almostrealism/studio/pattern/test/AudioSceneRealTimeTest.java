@@ -45,7 +45,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.*;
-import static org.junit.Assume.assumeTrue;
 
 /**
  * Integration tests for AudioScene real-time rendering.
@@ -84,8 +83,8 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 	@Test(timeout = 120_000)
 	public void traditionalRenderBaseline() {
 		File libraryDir = new File(LIBRARY_PATH);
-		assumeTrue("Library directory required: " + libraryDir.getAbsolutePath(),
-				libraryDir.exists());
+		requireLocalResource("local Library directory " + libraryDir.getAbsolutePath(),
+				null, libraryDir.exists());
 
 		// Disable effects for cleaner comparison
 		MixdownManager.enableMainFilterUp = false;
@@ -169,8 +168,8 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 	@TestDepth(2)
 	public void realTimeWithTimingMeasurements() {
 		File libraryDir = new File(LIBRARY_PATH);
-		assumeTrue("Library directory required: " + libraryDir.getAbsolutePath(),
-				libraryDir.exists());
+		requireLocalResource("local Library directory " + libraryDir.getAbsolutePath(),
+				null, libraryDir.exists());
 
 		// First, generate spectrograms of source samples for comparison
 		generateSourceSampleSpectrograms(libraryDir);
@@ -277,8 +276,8 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 	@TestDepth(2)
 	public void multipleBufferCycles() {
 		File libraryDir = new File(LIBRARY_PATH);
-		assumeTrue("Library directory required: " + libraryDir.getAbsolutePath(),
-				libraryDir.exists());
+		requireLocalResource("local Library directory " + libraryDir.getAbsolutePath(),
+				null, libraryDir.exists());
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;

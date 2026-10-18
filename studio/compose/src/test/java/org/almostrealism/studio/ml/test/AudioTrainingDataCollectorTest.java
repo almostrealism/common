@@ -48,10 +48,8 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120_000)
 	public void testBasicCollection() throws IOException {
-		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("Bass loops directory not found, skipping test");
-			return;
-		}
+		requireLocalResource("bass loops directory at " + BASS_LOOPS_DIR.toAbsolutePath(), null,
+				Files.exists(BASS_LOOPS_DIR));
 
 		// Use just 3 files for quick testing
 		List<Path> audioFiles = getAudioFiles(3);
@@ -91,10 +89,8 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120_000)
 	public void testAmplitudeNormalization() throws IOException {
-		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("Bass loops directory not found, skipping test");
-			return;
-		}
+		requireLocalResource("bass loops directory at " + BASS_LOOPS_DIR.toAbsolutePath(), null,
+				Files.exists(BASS_LOOPS_DIR));
 
 		List<Path> audioFiles = getAudioFiles(2);
 		Assert.assertFalse("Should have audio files", audioFiles.isEmpty());
@@ -126,10 +122,8 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120_000)
 	public void testTrainValidationSplit() throws IOException {
-		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("Bass loops directory not found, skipping test");
-			return;
-		}
+		requireLocalResource("bass loops directory at " + BASS_LOOPS_DIR.toAbsolutePath(), null,
+				Files.exists(BASS_LOOPS_DIR));
 
 		List<Path> audioFiles = getAudioFiles(5);
 		Assert.assertFalse("Should have audio files", audioFiles.isEmpty());
@@ -160,10 +154,8 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120_000)
 	public void testAugmentation() throws IOException {
-		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("Bass loops directory not found, skipping test");
-			return;
-		}
+		requireLocalResource("bass loops directory at " + BASS_LOOPS_DIR.toAbsolutePath(), null,
+				Files.exists(BASS_LOOPS_DIR));
 
 		List<Path> audioFiles = getAudioFiles(2);
 		Assert.assertFalse("Should have audio files", audioFiles.isEmpty());
@@ -204,10 +196,8 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120_000)
 	public void testCollectFromDirectory() throws IOException {
-		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("Bass loops directory not found, skipping test");
-			return;
-		}
+		requireLocalResource("bass loops directory at " + BASS_LOOPS_DIR.toAbsolutePath(), null,
+				Files.exists(BASS_LOOPS_DIR));
 
 		DataCollectionConfig config = DataCollectionConfig.forTesting()
 				.segmentLength(2.0)
@@ -231,10 +221,8 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120_000)
 	public void testSegmentLength() throws IOException {
-		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("Bass loops directory not found, skipping test");
-			return;
-		}
+		requireLocalResource("bass loops directory at " + BASS_LOOPS_DIR.toAbsolutePath(), null,
+				Files.exists(BASS_LOOPS_DIR));
 
 		List<Path> audioFiles = getAudioFiles(1);
 		Assert.assertFalse("Should have audio files", audioFiles.isEmpty());

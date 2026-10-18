@@ -37,7 +37,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
-import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -115,7 +114,8 @@ public class AudioSynthesizerTests extends TestSuiteBase {
 	 * Generates audio from a file using the specified pattern and key positions.
 	 */
 	public void generateFromFile(String name, String pattern, KeyPosition<?> origin, KeyPosition<?> target) {
-		Assume.assumeTrue("Library directory required", new File(LIBRARY).exists());
+		requireLocalResource("local model Library directory " + new File(LIBRARY).getAbsolutePath(), null,
+				new File(LIBRARY).exists());
 		KeyboardTuning tuning = new DefaultKeyboardTuning();
 
 		GeneratedSourceLibrary models = new GeneratedSourceLibrary(library);

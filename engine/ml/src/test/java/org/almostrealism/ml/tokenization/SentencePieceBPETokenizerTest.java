@@ -547,11 +547,8 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	public void releasedPromptMatchesTheReference() throws IOException {
 		File exported = tokenizerFile();
 
-		if (exported == null) {
-			log("skipping tokenizer parity; exported tokenizer absent (tried "
-					+ Arrays.toString(TOKENIZER_PATHS) + ")");
-			return;
-		}
+		requireLocalResource("exported T5Gemma tokenizer (tried " + Arrays.toString(TOKENIZER_PATHS) + ")",
+				"AR_T5GEMMA_TOKENIZER", exported != null);
 
 		SentencePieceBPETokenizer tokenizer = new SentencePieceBPETokenizer(exported.getPath());
 		long[] encoded = tokenizer.encodeAsLong(PROMPT);
@@ -576,10 +573,8 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	public void unknownCharactersSurviveAsByteTokens() throws IOException {
 		File exported = tokenizerFile();
 
-		if (exported == null) {
-			log("skipping byte-fallback check; exported tokenizer absent");
-			return;
-		}
+		requireLocalResource("exported T5Gemma tokenizer (tried " + Arrays.toString(TOKENIZER_PATHS) + ")",
+				"AR_T5GEMMA_TOKENIZER", exported != null);
 
 		SentencePieceBPETokenizer tokenizer = new SentencePieceBPETokenizer(exported.getPath());
 

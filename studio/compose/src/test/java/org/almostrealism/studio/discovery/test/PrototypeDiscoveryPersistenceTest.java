@@ -92,10 +92,8 @@ public class PrototypeDiscoveryPersistenceTest extends TestSuiteBase {
 		int maxPrototypes = Integer.getInteger("ar.test.maxPrototypes", DEFAULT_MAX_PROTOTYPES);
 
 		File samplesDir = new File(samplesPath);
-		if (!samplesDir.isDirectory()) {
-			log("Samples directory not found: " + samplesDir);
-			return;
-		}
+		requireLocalResource("local samples directory " + samplesDir.getAbsolutePath(), "ar.test.samples",
+				samplesDir.isDirectory());
 
 		File storeDir = new File(storePath);
 
