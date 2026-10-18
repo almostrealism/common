@@ -124,6 +124,14 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 */
 	private volatile boolean closed;
 
+	/**
+	 * The terminal connection currently being served by {@link #run()}, or
+	 * {@code null} between connections. Closed by {@link #close()} so that a
+	 * session blocked in {@link #read()} ends promptly rather than lingering until
+	 * its idle timeout.
+	 */
+	private volatile Socket activeConnection;
+
 	/** Input stream of the currently active terminal connection. */
 	private InputStream in;
 
@@ -518,6 +526,8 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	public void run() {
 		while (!closed) {
 			try (Socket connection = this.socket.accept()) {
+				this.activeConnection = connection;
+				if (closed) break;
 				log("Accepted connection...");
 
 				this.in = connection.getInputStream();
@@ -554,17 +564,19 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			} catch (Exception e) {
 				warn(String.valueOf(e));
 			} finally {
+				this.activeConnection = null;
 				JythonJob.closeInterpreter();
 			}
 		}
 	}
 
 	/**
-	 * Closes the terminal server socket and, when this instance is the current
-	 * singleton, clears {@link #getCurrentInstance()}. The {@link #run()} accept
-	 * loop observes the closed flag and exits cleanly after its pending
-	 * {@code accept} unblocks. Closing an already-closed server has no further
-	 * effect.
+	 * Closes the terminal server socket and any terminal connection currently
+	 * being served and, when this instance is the current singleton, clears
+	 * {@link #getCurrentInstance()}. A {@link #run()} loop blocked in
+	 * {@code accept} or in {@link #read()} on the active connection observes the
+	 * closed flag and exits promptly. Closing an already-closed server has no
+	 * further effect.
 	 */
 	@Override
 	public void close() {
@@ -574,6 +586,15 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			this.socket.close();
 		} catch (IOException ioe) {
 			warn("IO error closing terminal socket (" + ioe.getMessage() + ")");
+		}
+
+		Socket connection = this.activeConnection;
+		if (connection != null) {
+			try {
+				connection.close();
+			} catch (IOException ioe) {
+				warn("IO error closing terminal connection (" + ioe.getMessage() + ")");
+			}
 		}
 
 		if (FlowTreeCliServer.current == this) {
@@ -599,8 +620,8 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	/**
 	 * Reads available bytes from the current terminal connection's input stream,
 	 * blocking in 500 ms intervals until at least one byte arrives. Returns
-	 * {@code null} if no data has arrived within three minutes (180 000 ms) or
-	 * if an I/O error occurs.
+	 * {@code null} if no data has arrived within three minutes (180 000 ms), if
+	 * the server has been {@link #close() closed}, or if an I/O error occurs.
 	 *
 	 * @return the bytes decoded as a US-ASCII string, or {@code null} on timeout
 	 *         or error
@@ -609,7 +630,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		long s = System.currentTimeMillis();
 		
 		try {
-			while (true) {
+			while (!closed) {
 				if (this.in.available() >= 1) {
 					byte[] b = new byte[in.available()];
 					this.in.read(b);
@@ -629,6 +650,14 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	}
 	
 	/**
+	 * Returns the local port the terminal server socket is bound to. This is the
+	 * port the OS assigned when the server was constructed with port {@code 0}.
+	 *
+	 * @return the bound terminal port
+	 */
+	public int getPort() { return this.socket.getLocalPort(); }
+
+	/**
 	 * Returns the {@link PrintStream} wrapping the current connection's output.
 	 * If the stream has not yet been created it is constructed lazily from
 	 * {@link #out}.
@@ -645,7 +674,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 
 	/**
 	 * Registers a custom {@link Command} implementation under the given name so
-	 * that it is recognised by {@link #runCommand(String, PrintStream, java.util.Hashtable)}.
+	 * that it is recognised by {@link #runCommand(String, PrintStream, LinkedHashMap)}.
 	 *
 	 * @param name the command name token (without the {@code ::} prefix)
 	 * @param c    the {@link Command} implementation to associate with the name

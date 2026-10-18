@@ -21,7 +21,10 @@ import org.junit.After;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -228,6 +231,37 @@ public class FlowTreeCliServerTest extends TestSuiteBase {
 
 		server.close();
 		assertNull(FlowTreeCliServer.getCurrentInstance());
+	}
+
+	/**
+	 * {@link FlowTreeCliServer#close()} ends a terminal session that is in
+	 * progress: with a client connected and the {@link FlowTreeCliServer#run()}
+	 * thread blocked waiting for its next command, closing the server must close
+	 * the active connection and let the run loop terminate promptly, rather than
+	 * leaving the thread alive until the three-minute idle timeout.
+	 */
+	@Test(timeout = 30000)
+	public void closeTerminatesActiveSession() throws Exception {
+		FlowTreeCliServer server = newServer();
+		Thread runner = new Thread(server, "cli-server-close-test");
+		runner.setDaemon(true);
+		runner.start();
+
+		try (Socket client = new Socket(InetAddress.getLoopbackAddress(), server.getPort())) {
+			InputStream in = client.getInputStream();
+			String prompt = "[----]> ";
+			StringBuilder received = new StringBuilder();
+			while (!received.toString().endsWith(prompt)) {
+				int b = in.read();
+				assertTrue("connection ended before the prompt: " + received, b >= 0);
+				received.append((char) b);
+			}
+			assertEquals("Welcome to FlowTree.io\n" + prompt, received.toString());
+
+			server.close();
+			runner.join(10000);
+			assertFalse("run loop should exit once the server is closed", runner.isAlive());
+		}
 	}
 
 	/**
