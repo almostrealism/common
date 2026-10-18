@@ -332,14 +332,13 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 * @throws IOException if the server socket cannot be bound
 	 */
 	public FlowTreeCliServer(String httpwww, int jobSize, int port, boolean gui) throws IOException {
-		FlowTreeCliServer.publishCurrentInstance(this);
 		this.httpwww = httpwww;
 		this.jobSize = jobSize;
-		
+
 		this.commands = new LinkedHashMap();
-		
+
 		this.socket = new ServerSocket(port);
-		
+
 		if (gui) {
 			JFrame graphFrame = new JFrame("Graphs");
 			graphFrame.setSize(100, 200);
@@ -479,8 +478,10 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			t.setDaemon(true);
 			t.start();
 		}
+
+		FlowTreeCliServer.publishCurrentInstance(this);
 	}
-	
+
 	/**
 	 * Loads the four tray icon images ({@code active.gif}, {@code inactive.gif},
 	 * {@code sleep.gif}, {@code close.gif}) from the classpath. If a resource

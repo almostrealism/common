@@ -220,6 +220,27 @@ public class FlowTreeCliServerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The instance is published as the current singleton only once it is fully
+	 * constructed: by the time {@link FlowTreeCliServer#getCurrentInstance()}
+	 * returns it, its server socket is bound (so {@link FlowTreeCliServer#getPort()}
+	 * reports the OS-assigned port) and its configuration drives dispatch. This
+	 * guards against republishing the escape of {@code this} from the constructor,
+	 * where a concurrent reader could have observed the instance before its socket
+	 * and configuration were assigned.
+	 */
+	@Test(timeout = 30000)
+	public void publishedCurrentInstanceIsFullyInitialized() throws Exception {
+		FlowTreeCliServer server = newServer();
+
+		FlowTreeCliServer published = FlowTreeCliServer.getCurrentInstance();
+		assertSame(server, published);
+		assertTrue("published instance must have a bound socket", published.getPort() > 0);
+
+		String out = FlowTreeCliServer.runCommand("::render scene.xml", null);
+		assertTrue(out, out.startsWith("Started render thread:"));
+	}
+
+	/**
 	 * {@link FlowTreeCliServer#close()} clears the process-wide current instance
 	 * when it is the server being closed, so a shared JVM does not retain a stale
 	 * pointer to a server whose socket has been released.
