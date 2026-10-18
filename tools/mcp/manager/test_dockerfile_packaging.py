@@ -168,6 +168,19 @@ class DocsCorpusPackagingTests(unittest.TestCase):
         self.assertIn("! -name '*.md' ! -name '*.html' -delete",
                       _dockerfile_text())
 
+    def test_github_and_claude_docs_are_staged(self):
+        """The CI and hook/agent documentation live under dot-directories that
+        the layer-module COPYs do not reach. The corpus-coverage fix copies them
+        explicitly so .github/CLAUDE.md (and the other CI docs) can be indexed;
+        a regression that drops either COPY makes those answers disappear."""
+        text = _dockerfile_text()
+        for directory in (".github", ".claude"):
+            self.assertIn(
+                f"COPY {directory}/ ./{directory}/", text,
+                f"the docs stage of tools/mcp/manager/Dockerfile must copy "
+                f"{directory}/ so its markdown reaches the corpus",
+            )
+
 
 class DockerfilePackagingTests(unittest.TestCase):
     """Verify the image packages everything server.py needs to import."""

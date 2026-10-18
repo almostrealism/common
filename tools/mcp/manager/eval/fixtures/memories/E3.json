@@ -1,0 +1,20 @@
+[
+  {
+    "id": "e3-note-1",
+    "content": "ClaudeCodeJob.runCorrectionSession dispatches a follow-up agent when a review fails; the correction session re-runs the design review.",
+    "score": 0.39,
+    "namespace": "decisions",
+    "created_at": "2026-04-22T00:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "feature/pluggable-agents"
+  },
+  {
+    "id": "e3-note-2",
+    "content": "ClaudeCodeJob owns the job lifecycle and writes its artifacts under the job directory.",
+    "score": 0.51,
+    "namespace": "context",
+    "created_at": "2026-04-10T00:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "feature/pluggable-agents"
+  }
+]

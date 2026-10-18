@@ -1,0 +1,98 @@
+{
+  "_comment": "Version-controlled consult evaluation cases. Each case has a baseline 'expect' describing today's bar and, where behaviour is gated on an implementation milestone, a 'milestones' map of per-milestone overrides (an override replaces the keys it names). 'answerable' records whether the question has an answer in the snapshot/notes at all, so a baseline abstention can be counted as a false abstention rather than a correct one. 'observed' records the 2026-10-17 behaviour; the frozen response is in fixtures/observed/<id>.json.",
+  "cases": [
+    {
+      "id": "E1",
+      "question": "Which QA rounds does Master Agent Dispatch run, their branch prefixes, and the open-PR limit?",
+      "keywords": ["Master Agent Dispatch", "QA rounds", "BRANCH_PREFIX", "MAX_OPEN_PRS"],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-17",
+        "summary": "'Not documented' even though three relevant memories were retrieved; .github/CLAUDE.md was not in the corpus."
+      },
+      "memories": "fixtures/memories/E1.json",
+      "observed_response": "fixtures/observed/E1.json",
+      "expect": {
+        "outcome": "abstain"
+      },
+      "milestones": {
+        "step2": {
+          "outcome": "answer",
+          "must_cite_any": [".github/CLAUDE.md"],
+          "must_include": ["qa/docs-", "qa/defect-", "qa/coverage-", "qa/consolidate-", "qa/performance-", "qa/pdsl-", "qa/retro-"],
+          "must_include_any": [["\\b7\\b", "seven"]]
+        }
+      }
+    },
+    {
+      "id": "E2",
+      "question": "What does validate-agent-commit.sh block and what exit code does it use?",
+      "keywords": ["validate-agent-commit.sh", "agent-commit-validation"],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-17",
+        "summary": "Right description; 'exit 2' cited to claude-code-job.md:330 (the detect-test-hiding.sh section). Real value is 'exit 3', in the script alone."
+      },
+      "memories": "fixtures/memories/E2.json",
+      "observed_response": "fixtures/observed/E2.json",
+      "expect": {
+        "outcome": "answer",
+        "must_include": ["test files", "base branch", "no new test"],
+        "must_include_any": [["exits?\\s+3", "exit code 3", "not documented", "does not state", "not stated"]],
+        "must_not_include": ["exits?\\s+2", "exit code 2"],
+        "must_not_cite": [
+          {"file": "flowtree/runtime/docs/claude-code-job.md", "lines": [320, 345], "with": "validate-agent-commit"}
+        ]
+      }
+    },
+    {
+      "id": "E3",
+      "question": "Where does ObjectOrientedDesignRule record its verdicts?",
+      "keywords": ["ObjectOrientedDesignRule", "VERDICT_PATH", "oop-review"],
+      "answerable": false,
+      "observed": {
+        "date": "2026-10-17",
+        "summary": "Guessed from an unrelated April memory about runCorrectionSession; surfaced April memories naming ClaudeCodeJob (deleted 2026-05-16). Real answer .flowtree/oop-review.md is in no document."
+      },
+      "memories": "fixtures/memories/E3.json",
+      "observed_response": "fixtures/observed/E3.json",
+      "expect": {
+        "must_not_include": ["runCorrectionSession"]
+      },
+      "milestones": {
+        "step9": {
+          "must_not_include": ["runCorrectionSession"],
+          "must_flag_stale": ["ClaudeCodeJob"]
+        },
+        "step12": {
+          "outcome": "answer",
+          "must_include": ["\\.flowtree/oop-review\\.md"],
+          "must_not_include": ["runCorrectionSession"],
+          "must_flag_stale": ["ClaudeCodeJob"]
+        }
+      }
+    },
+    {
+      "id": "E4",
+      "question": "How does check-branch-entropy.sh decide drift?",
+      "keywords": ["check-branch-entropy.sh", "branch entropy", "drift"],
+      "answerable": false,
+      "observed": {
+        "date": "2026-10-17",
+        "summary": "'Not documented' — correct abstention. No such script exists anywhere in the tree."
+      },
+      "memories": "fixtures/memories/E4.json",
+      "observed_response": "fixtures/observed/E4.json",
+      "expect": {
+        "outcome": "abstain",
+        "must_not_include": ["entropy is computed", "computes drift", "measures drift by"]
+      },
+      "milestones": {
+        "step9": {
+          "outcome": "nonexistent",
+          "must_not_include": ["entropy is computed", "computes drift", "measures drift by"]
+        }
+      }
+    }
+  ]
+}

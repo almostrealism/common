@@ -18,6 +18,14 @@ COPY extern/ ./extern/
 COPY studio/ ./studio/
 COPY flowtree/ ./flowtree/
 COPY tools/ ./tools/
+# .github/ holds the authoritative CI-pipeline and Master Agent Dispatch
+# documentation (.github/CLAUDE.md, .github/CI_ARCHITECTURE.md); .claude/ holds
+# hook/agent/command docs. Neither is excluded by .dockerignore, so the build
+# context already carries them. Markdown survives the prune below; the scripts
+# and settings beside it are deleted with everything else. Only the markdown
+# listed in STANDALONE_MD_ROOTS (docs_retriever.py) is actually indexed.
+COPY .github/ ./.github/
+COPY .claude/ ./.claude/
 
 RUN find . -type f ! -name '*.md' ! -name '*.html' -delete \
     && find . -type d -empty -delete
