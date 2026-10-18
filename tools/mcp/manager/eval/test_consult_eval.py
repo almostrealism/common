@@ -150,6 +150,25 @@ class TestCaseSchema(unittest.TestCase):
                 load_cases()
         self.assertIn("at least one check", str(ctx.exception))
 
+    def test_load_cases_raises_on_duplicate_case_id(self):
+        case = {"id": "X", "question": "q", "expect": {"outcome": "answer"}}
+        data = {"cases": [case, dict(case)]}
+        with mock.patch.object(run_consult_eval, "_load_json",
+                               return_value=data):
+            with self.assertRaises(ValueError) as ctx:
+                load_cases()
+        self.assertIn("X: duplicate case id", str(ctx.exception))
+
+    def test_load_cases_raises_on_non_string_case_id(self):
+        data = {"cases": [{"id": 7, "question": "q",
+                           "expect": {"outcome": "answer"}}]}
+        with mock.patch.object(run_consult_eval, "_load_json",
+                               return_value=data):
+            with self.assertRaises(ValueError) as ctx:
+                load_cases()
+        self.assertIn("7: 'id' must be a non-empty string",
+                      str(ctx.exception))
+
     def test_load_cases_raises_on_empty_case_list(self):
         with mock.patch.object(run_consult_eval, "_load_json",
                                return_value={"cases": []}):
@@ -597,6 +616,52 @@ class TestLocalRunLifecycle(unittest.TestCase):
             if prior is not None:
                 os.environ["AR_DOCS_DIR"] = prior
             shutil.rmtree(staging, ignore_errors=True)
+
+
+    def test_run_local_rebinds_imported_docs_retriever_module(self):
+        """docs_retriever reads AR_DOCS_DIR at import time, so an imported
+        module must be reloaded to see this run's staged corpus, and reloaded
+        again afterwards to see the restored environment."""
+        cases = [{"id": "X", "question": "q", "keywords": ["k"]}]
+        module_dir = tempfile.mkdtemp(prefix="eval-fake-retriever-")
+        with open(os.path.join(module_dir, "docs_retriever.py"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("import os\n"
+                         "COMMON_DIR = os.environ.get('AR_DOCS_DIR')\n")
+        staging = tempfile.mkdtemp(prefix="eval-fake-staging-")
+        seen_common_dir = []
+        fake = self._fake_server([])
+
+        def consult(**kwargs):
+            seen_common_dir.append(sys.modules["docs_retriever"].COMMON_DIR)
+            return {"ok": True, "answer": "ok"}
+
+        fake.consult = consult
+        prior = os.environ.get("AR_DOCS_DIR")
+        os.environ["AR_DOCS_DIR"] = "/stale/first-run/docs"
+        sys.path.insert(0, module_dir)
+        try:
+            with mock.patch.dict(sys.modules):
+                sys.modules.pop("docs_retriever", None)
+                import docs_retriever  # bound to the stale tree
+                self.assertEqual(docs_retriever.COMMON_DIR,
+                                 "/stale/first-run/docs")
+                sys.modules["server"] = fake
+                with mock.patch.object(run_consult_eval, "_stage_corpus",
+                                       return_value=staging):
+                    run_consult_eval._run_local(cases, k=1)
+                self.assertEqual(seen_common_dir,
+                                 [os.path.join(staging, "docs")])
+                self.assertEqual(sys.modules["docs_retriever"].COMMON_DIR,
+                                 "/stale/first-run/docs")
+        finally:
+            sys.path.remove(module_dir)
+            if prior is None:
+                os.environ.pop("AR_DOCS_DIR", None)
+            else:
+                os.environ["AR_DOCS_DIR"] = prior
+            shutil.rmtree(staging, ignore_errors=True)
+            shutil.rmtree(module_dir, ignore_errors=True)
 
 
 class TestBaselineReport(unittest.TestCase):

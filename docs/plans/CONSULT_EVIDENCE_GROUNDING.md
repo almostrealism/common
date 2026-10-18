@@ -267,7 +267,7 @@ Fields:
 | `created_at` | memory row | now (stored, currently dropped) |
 | `branch`, `repo_url` | memory row | now (stored, currently dropped) |
 | `namespace` | memory row | now |
-| `branch_state` — `master`, `merged@<date>`, `open`, `closed-unmerged`, `unknown` | GitHub PR lookup by head branch, cached (2.4) | first step |
+| `branch_state` — `master`, `merged@<date>` (with the PR's base branch), `open`, `closed-unmerged`, `unknown` | GitHub PR lookup by head branch, recording the PR's `base` ref, cached (2.4) | first step |
 | `same_branch_as_caller` | compare with the caller's resolved branch | now |
 | `named_symbols` with present/absent flags | mention extraction plus the snapshot index (2.5) | needs the index step |
 | `section_path` for doc chunks | heading trail above the chunk | needs the chunking step (2.9) |
@@ -282,10 +282,18 @@ Proposed tiers:
 | Tier | Label shown to the model | Assigned when |
 |---|---|---|
 | **A** | `DOC (snapshot <sha>, <date>)` | A documentation chunk. |
-| **B** | `NOTE current` | Note on `master`, or on a branch merged into its base branch (whether that merge predates **or follows** the snapshot date; see the post-snapshot note below), or on the caller's own branch; younger than the recency window; no named symbol absent from the snapshot. |
+| **B** | `NOTE current` | Note on the target branch, or on a branch whose PR merged into the target branch (whether that merge predates **or follows** the snapshot date; see the post-snapshot note below), or on the caller's own branch; younger than the recency window; no named symbol absent from the snapshot. |
 | **B′** | `NOTE branch-local (<branch>, <state>)` | Note on an open or unmerged branch other than the caller's. It is true *of that branch* and not established for master. |
 | **C** | `NOTE historical (<age>)` | Older than the recency window, or on a closed-unmerged branch, and no named symbol absent. |
 | **C✗** | `NOTE stale — names absent from snapshot: X, Y` | Any note that names a type or path the snapshot index does not contain, whatever its age. |
+
+Throughout this table "the target branch" is the branch the question is
+about, resolved before tiering and passed to `tier` as part of `caller`: the
+caller's workstream `baseBranch` (workstreams configure it — see
+`workstream_config_tools.py`), defaulting to `master`. A note whose PR merged
+into some *other* base (for example `develop`) is **B′** for a question about
+`master`, not **B**: merged somewhere is not merged into the branch being
+asked about. Wherever this section says "`master`", read "the target branch".
 
 Rules the model gets (short, one per tier, written into `SYSTEM_PROMPT`):
 
@@ -312,7 +320,16 @@ demoted to C✗ on a snapshot-absence alone; the absence is recorded (and can be
 surfaced as "present on master, not yet in the snapshot `<sha>`") but does not
 override the B tier that the merge establishes. A note on a branch that closed
 **unmerged** after the snapshot is C (closed-unmerged), exactly as the table's
-C row already states; only the merged-after case needed the explicit rule.
+C row already states.
+
+The same lag applies to a note written *directly* on the target branch (or
+on the caller's own branch) after the snapshot was built: it can name a
+symbol added after the snapshot, which the snapshot index cannot contain.
+The exception is therefore keyed on time, not on how the note reached the
+branch: for any note that would otherwise be **B**, a snapshot-absent name
+demotes it to C✗ only when the note's `created_at` precedes the snapshot
+date. A note written after the snapshot keeps **B**, with the absent names
+recorded as "not yet in the snapshot `<sha>`".
 
 **The recency window.** The first step uses a fixed window (proposed: 45
 days before the snapshot date). It is coarse but easy to understand. A later
@@ -335,13 +352,18 @@ state it could not otherwise see. Proposed contract:
 - consult performs the branch-state lookup only when the caller's token also
   holds `github`, and only for the note's own repository, resolved through
   the same `server._resolve_github_repo` path the GitHub tools use. The
-  `github` scope is not the only gate on that path: `_resolve_github_repo`
-  also applies the workspace/org scope gate before it will resolve an
-  explicit repository. consult must reuse that check so a `github`-scoped
-  *workspace* token cannot supply an arbitrary `repo_url` and read another
-  organization's PR state through that org's configured PAT — consult looks
-  up only the branch of the note's stored `repo_url`, under the same gate,
-  never a repository named by the caller;
+  `github` scope is not the only gate needed, and the resolver does not
+  supply the other one: `_resolve_github_repo` (`github_api.py`) requires
+  its callers to apply the workspace/org scope gate,
+  `_require_org_in_scope` (`workspace_map.py`), *before* calling it, and
+  its explicit owner/repo branch only records the org. consult must
+  therefore parse the owner from the note's stored `repo_url` and call
+  `_require_org_in_scope(owner)` explicitly before the resolver or any
+  GitHub request, so a `github`-scoped *workspace* token cannot read another
+  organization's PR state through that org's configured PAT. A note whose
+  org fails the gate gets `branch_state: unknown`. consult looks up only the
+  branch of the note's stored `repo_url`, never a repository named by the
+  caller;
 - otherwise every note gets `branch_state: unknown`. `degraded` stays the
   boolean it is today (`memory_tools.py` sets `degraded: true` on synthesis
   failure and `test_memory_tools.py` asserts it as a boolean), so the
@@ -727,7 +749,14 @@ sentence with a marker:
    cited chunk names only `detect-test-hiding.sh`.
 3. **Value check:** every number or quoted literal in the sentence must
    appear verbatim in a cited item.
-4. A sentence that fails gets `citation_warnings: [{sentence, marker,
+4. **Tier check:** a sentence whose only support is C or C✗ items must be
+   framed as history (past tense or an explicit "historically"/"used to"
+   marker). A present-tense claim resting only on C/C✗ fails with reason
+   `tier`, even when its tokens and values match the note, and is excluded
+   from `answer_basis`: the tier rules (2.4) forbid those notes from
+   supplying present fact, so token agreement cannot make the claim
+   supported.
+5. A sentence that fails gets `citation_warnings: [{sentence, marker,
    reason}]`. In the first step the sentence is also annotated *in the
    answer* with `[unsupported]`, so a caller reading only `answer` still
    sees it.
@@ -831,7 +860,13 @@ signature and in `McpToolDiscoveryTest`'s parameter assertions.
      namespace with the same query and a
      per-namespace limit, and merge in consult. Cost: one HTTP round trip
      and one query embedding per namespace (the embedding is recomputed on
-     each call); with the handful of namespaces in use this is acceptable.
+     each call). Namespaces are caller-defined, so the count is not bounded
+     by anything consult controls; the fan-out is therefore capped — an
+     allowlist of the semantic namespaces in use, plus a hard ceiling
+     (proposed: 6) applied newest-write-first from `memory_namespaces` —
+     and a namespace skipped by the cap is reported as
+     `degraded_reasons: ["memory_namespaces_capped"]` rather than dropped
+     silently.
   2. *A server-side multi-namespace search:* `namespace` accepts a list (or
      `*`), the store embeds the query once, searches each index, and merges
      by L2 distance before the repo/branch post-filter. Distances from
@@ -844,6 +879,16 @@ signature and in `McpToolDiscoveryTest`'s parameter assertions.
   over-fetches only `limit * 4` candidates, so a namespace dominated by
   other repositories can still return fewer than `limit`; that limitation is
   unchanged by either option.
+
+  **Either option fails closed on scope.** Today consult discards the error
+  returned by `server._resolve_scope_context` (`memory_tools.py`) and
+  searches with whatever repo/branch filters remain — empty ones, if
+  resolution failed — which reaches memories outside the requested
+  repository. Multiplying that path across namespaces would multiply the
+  leak. The widened search must stop memory retrieval when the resolver
+  returns an error (reporting `degraded_reasons: ["memory_scope"]` and
+  answering from documentation alone), and must pass the same resolved
+  repo/branch filters to every per-namespace search.
 - Query with `question` plus the caller's `keywords`, not with `question`
   alone.
 - Retrieve about 8 candidates and present 3–5 after tier selection. The
@@ -1007,7 +1052,12 @@ State per conversation:
 - id;
 - caller identity — the workstream and job resolved from the HMAC temp
   token (`auth.py` labels these `tmp:<workstream>/<job>`);
-- repo and branch scope;
+- repo and branch scope, fixed by the first turn. A follow-up turn's
+  `repo_url`, `branch` and `workstream_id` must either be omitted or resolve
+  to the same scope; a mismatch is rejected with an error naming the
+  conversation's scope (the caller starts a new conversation instead), so
+  one conversation can never mix evidence or stable IDs from two
+  repositories or pivot to another repository mid-conversation;
 - the turn list: question, keywords, answer, cited evidence records,
   response flags, timestamps;
 - the evidence pool with its stable IDs;

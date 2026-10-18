@@ -29,6 +29,7 @@ themselves tested.
 """
 
 import argparse
+import importlib
 import json
 import os
 import re
@@ -66,8 +67,20 @@ def load_cases() -> list[dict]:
             "invalid consult_cases.json:\n"
             "'cases' must be a non-empty list")
     errors: list[str] = []
+    seen_ids: set[str] = set()
     for case in cases:
         errors.extend(validate_case(case))
+        # Responses are keyed by id, so a reused id would grade two cases
+        # against one fixture; validate_case already reports a missing id.
+        cid = case.get("id") if isinstance(case, dict) else None
+        if cid is None:
+            continue
+        if not isinstance(cid, str) or not cid:
+            errors.append(f"{cid!r}: 'id' must be a non-empty string")
+        elif cid in seen_ids:
+            errors.append(f"{cid}: duplicate case id")
+        else:
+            seen_ids.add(cid)
     if errors:
         raise ValueError("invalid consult_cases.json:\n" + "\n".join(errors))
     return cases
@@ -292,6 +305,7 @@ def _run_local(cases: list[dict], k: int) -> dict:
         # freshly staged corpus rather than reading an emptied one.
         server._docs_retriever = None
         server._docs_init_failed = False
+        _rebind_docs_retriever()
 
         responses: dict = {}
         for case in cases:
@@ -326,6 +340,22 @@ def _run_local(cases: list[dict], k: int) -> dict:
             os.environ.pop("AR_DOCS_DIR", None)
         else:
             os.environ["AR_DOCS_DIR"] = prior_docs_dir
+        _rebind_docs_retriever()
+
+
+def _rebind_docs_retriever() -> None:
+    """Re-read ``AR_DOCS_DIR`` into an already-imported ``docs_retriever``.
+
+    ``docs_retriever`` resolves its default corpus root (``COMMON_DIR``) from
+    ``AR_DOCS_DIR`` once, at import time, so clearing the server's cached
+    retriever alone would rebuild it against whichever tree was current when
+    the module was first imported. Reloading makes the next ``DocsRetriever``
+    bind to the current environment; a module not yet imported reads it fresh
+    on first import and needs nothing.
+    """
+    module = sys.modules.get("docs_retriever")
+    if module is not None:
+        importlib.reload(module)
 
 
 def report_passed(summary: dict) -> bool:
