@@ -191,6 +191,44 @@ class TestCaseSchema(unittest.TestCase):
                 load_cases()
         self.assertIn("case must be an object", str(ctx.exception))
 
+    def test_validate_case_rejects_explicit_null_id(self):
+        # A present ``"id": null`` is not a missing id: it must be reported,
+        # since responses are keyed by id.
+        bad = {"id": None, "question": "q", "expect": {"outcome": "answer"}}
+        self.assertEqual(validate_case(bad),
+                         ["None: 'id' must be a non-empty string"])
+
+    def test_validate_case_rejects_empty_string_id(self):
+        bad = {"id": "", "question": "q", "expect": {"outcome": "answer"}}
+        self.assertEqual(validate_case(bad),
+                         ["'': 'id' must be a non-empty string"])
+
+    def test_load_cases_raises_on_null_case_id(self):
+        data = {"cases": [{"id": None, "question": "q",
+                           "expect": {"outcome": "answer"}}]}
+        with mock.patch.object(run_consult_eval, "_load_json",
+                               return_value=data):
+            with self.assertRaises(ValueError) as ctx:
+                load_cases()
+        self.assertIn("None: 'id' must be a non-empty string",
+                      str(ctx.exception))
+
+    def test_load_cases_raises_on_missing_cases_key(self):
+        with mock.patch.object(run_consult_eval, "_load_json",
+                               return_value={"_comment": "no cases"}):
+            with self.assertRaises(ValueError) as ctx:
+                load_cases()
+        self.assertIn("'cases' must be a non-empty list", str(ctx.exception))
+
+    def test_load_cases_raises_on_non_object_document(self):
+        for document in ([], "cases", None):
+            with mock.patch.object(run_consult_eval, "_load_json",
+                                   return_value=document):
+                with self.assertRaises(ValueError) as ctx:
+                    load_cases()
+            self.assertIn("'cases' must be a non-empty list",
+                          str(ctx.exception))
+
     def test_load_cases_raises_on_empty_case_list(self):
         with mock.patch.object(run_consult_eval, "_load_json",
                                return_value={"cases": []}):
@@ -244,6 +282,30 @@ class TestGraderTeeth(unittest.TestCase):
         case = self._case("E3")
         result = grade(observed_response(case), resolve_expect(case))
         self.assertFalse(result.passed)  # runCorrectionSession is forbidden
+
+    def test_e3_baseline_rejects_any_hallucinated_answer(self):
+        # E3 is unanswerable at baseline, so a confident answer that avoids the
+        # one forbidden literal must still fail on outcome, and an abstention
+        # must pass.
+        case = self._case("E3")
+        guess = {"ok": True,
+                 "answer": "ObjectOrientedDesignRule writes its verdicts to /tmp."}
+        result = grade(guess, resolve_expect(case))
+        self.assertFalse(result.passed)
+        self.assertEqual(result.failures,
+                         ["outcome: got 'answer', expected 'abstain'"])
+        abstained = {"ok": True, "answer": "", "note": "Not documented."}
+        self.assertTrue(grade(abstained, resolve_expect(case)).passed)
+
+    def test_e3_step12_still_permits_the_indexed_answer(self):
+        case = self._case("E3")
+        indexed = {
+            "ok": True,
+            "answer": "Verdicts are written to .flowtree/oop-review.md.",
+            "evidence": [{"named_symbols": {"absent": ["ClaudeCodeJob"]}}],
+        }
+        result = grade(indexed, resolve_expect(case, "step12"))
+        self.assertTrue(result.passed, result.failures)
 
     def test_e1_observed_is_a_false_abstention(self):
         case = self._case("E1")
@@ -342,6 +404,49 @@ class TestMustNotCiteWithToken(unittest.TestCase):
                        "claude-code-job.md:330."),
         }
         self.assertFalse(grade(response, {"must_not_cite": self._spec()}).passed)
+
+    def test_forbidden_evidence_range_fails_when_prose_mentions_token(self):
+        # Moving the misattributed citation out of the sentence and into the
+        # structured evidence list must not evade the check.
+        response = {
+            "ok": True,
+            "answer": "validate-agent-commit.sh exits 3.",
+            "evidence": [{"file": "flowtree/runtime/docs/claude-code-job.md",
+                          "range": [328, 336]}],
+        }
+        result = grade(response, {"must_not_cite": self._spec()})
+        self.assertFalse(result.passed)
+        self.assertEqual(
+            result.failures,
+            ["must_not_cite: evidence cites "
+             "flowtree/runtime/docs/claude-code-job.md range [328, 336]"])
+
+    def test_forbidden_evidence_range_allowed_when_token_absent(self):
+        response = {
+            "ok": True,
+            "answer": "detect-test-hiding.sh exits 2.",
+            "evidence": [{"file": "flowtree/runtime/docs/claude-code-job.md",
+                          "range": [328, 336]}],
+        }
+        self.assertTrue(grade(response, {"must_not_cite": self._spec()}).passed)
+
+    def test_evidence_range_outside_forbidden_lines_is_allowed(self):
+        response = {
+            "ok": True,
+            "answer": "validate-agent-commit.sh exits 3.",
+            "evidence": [{"file": "flowtree/runtime/docs/claude-code-job.md",
+                          "range": [346, 360]}],
+        }
+        self.assertTrue(grade(response, {"must_not_cite": self._spec()}).passed)
+
+    def test_non_numeric_evidence_range_is_ignored_not_raised(self):
+        response = {
+            "ok": True,
+            "answer": "validate-agent-commit.sh exits 3.",
+            "evidence": [{"file": "flowtree/runtime/docs/claude-code-job.md",
+                          "range": ["start", None]}],
+        }
+        self.assertTrue(grade(response, {"must_not_cite": self._spec()}).passed)
 
 
 class TestFileMatches(unittest.TestCase):
@@ -638,6 +743,65 @@ class TestLocalRunLifecycle(unittest.TestCase):
             if prior is not None:
                 os.environ["AR_DOCS_DIR"] = prior
             shutil.rmtree(staging, ignore_errors=True)
+
+    def _run_with_real_scopes(self, seen_scopes):
+        """Run _run_local with a fake server whose _set_scopes is the real
+        auth one, recording the scopes each consult sees."""
+        import auth
+        cases = [{"id": "X", "question": "q", "keywords": ["k"]}]
+        fake = self._fake_server([])
+        fake._set_scopes = auth._set_scopes
+
+        def consult(**kwargs):
+            seen_scopes.append((auth._get_scopes(), auth._get_token_label()))
+            return {"ok": True, "answer": "ok"}
+
+        fake.consult = consult
+        staging = tempfile.mkdtemp(prefix="eval-fake-staging-")
+        prior = os.environ.get("AR_DOCS_DIR")
+        try:
+            with mock.patch.dict(sys.modules, {"server": fake}), \
+                 mock.patch.object(run_consult_eval, "_stage_corpus",
+                                   return_value=staging):
+                run_consult_eval._run_local(cases, k=2)
+        finally:
+            if prior is None:
+                os.environ.pop("AR_DOCS_DIR", None)
+            else:
+                os.environ["AR_DOCS_DIR"] = prior
+            shutil.rmtree(staging, ignore_errors=True)
+        return auth
+
+    def test_run_local_restores_prior_auth_context(self):
+        import auth
+        snapshot = auth._snapshot_scopes()
+        auth._set_scopes(["read"], label="caller")
+        try:
+            seen = []
+            self._run_with_real_scopes(seen)
+            # Each repetition ran under the synthetic eval scope ...
+            self.assertEqual(seen, [(["memory-read"], "eval")] * 2)
+            # ... and the caller's own scope is back afterwards.
+            self.assertEqual(auth._get_scopes(), ["read"])
+            self.assertEqual(auth._get_token_label(), "caller")
+            self.assertEqual(auth._thread_local.scopes, ["read"])
+            self.assertEqual(auth._thread_local.token_label, "caller")
+        finally:
+            auth._restore_scopes(snapshot)
+
+    def test_run_local_clears_auth_context_when_none_was_set(self):
+        import auth
+        snapshot = auth._snapshot_scopes()
+        auth._restore_scopes((None, None, auth._UNSET, auth._UNSET))
+        try:
+            self._run_with_real_scopes([])
+            # No synthetic memory-read authorization or eval label survives.
+            self.assertIsNone(auth._get_scopes())
+            self.assertEqual(auth._get_token_label(), "anonymous")
+            self.assertFalse(hasattr(auth._thread_local, "scopes"))
+            self.assertFalse(hasattr(auth._thread_local, "token_label"))
+        finally:
+            auth._restore_scopes(snapshot)
 
 
     def test_run_local_rebinds_imported_docs_retriever_module(self):

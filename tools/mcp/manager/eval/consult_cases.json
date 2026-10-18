@@ -57,6 +57,7 @@
       "memories": "fixtures/memories/E3.json",
       "observed_response": "fixtures/observed/E3.json",
       "expect": {
+        "outcome": "abstain",
         "must_not_include": ["runCorrectionSession"]
       },
       "milestones": {

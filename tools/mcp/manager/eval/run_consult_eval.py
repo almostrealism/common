@@ -59,9 +59,11 @@ def _load_json(relpath: str):
 
 
 def load_cases() -> list[dict]:
-    """Load and schema-validate the cases; raise on any schema error."""
+    """Load and schema-validate the cases; raise ``ValueError`` on any schema
+    error, including a top-level document that is not an object or has no
+    ``cases`` list."""
     data = _load_json("consult_cases.json")
-    cases = data["cases"]
+    cases = data.get("cases") if isinstance(data, dict) else None
     if not isinstance(cases, list) or not cases:
         raise ValueError(
             "invalid consult_cases.json:\n"
@@ -71,13 +73,12 @@ def load_cases() -> list[dict]:
     for case in cases:
         errors.extend(validate_case(case))
         # Responses are keyed by id, so a reused id would grade two cases
-        # against one fixture; validate_case already reports a missing id.
+        # against one fixture; validate_case already reports a missing or
+        # non-string id, so only well-formed ids are checked for reuse.
         cid = case.get("id") if isinstance(case, dict) else None
-        if cid is None:
-            continue
         if not isinstance(cid, str) or not cid:
-            errors.append(f"{cid!r}: 'id' must be a non-empty string")
-        elif cid in seen_ids:
+            continue
+        if cid in seen_ids:
             errors.append(f"{cid}: duplicate case id")
         else:
             seen_ids.add(cid)
@@ -290,11 +291,18 @@ def _run_local(cases: list[dict], k: int) -> dict:
     before the server is imported, so ``DocsRetriever`` reads the shipped
     corpus rather than the live checkout. Returns, per case, the list of all
     ``k`` responses so the report can grade and aggregate every repetition.
+
+    Each repetition seeds a synthetic ``eval`` scope; the caller's scope
+    context is snapshotted first and restored on the way out, so a later tool
+    call in the same process does not inherit that authorization.
     """
     from unittest import mock
 
+    import auth
+
     staging = _stage_corpus()
     prior_docs_dir = os.environ.get("AR_DOCS_DIR")
+    prior_scopes = auth._snapshot_scopes()
     os.environ["AR_DOCS_DIR"] = os.path.join(staging, "docs")
     try:
         import server  # imported after AR_DOCS_DIR is set so the corpus binds
@@ -341,6 +349,7 @@ def _run_local(cases: list[dict], k: int) -> dict:
         else:
             os.environ["AR_DOCS_DIR"] = prior_docs_dir
         _rebind_docs_retriever()
+        auth._restore_scopes(prior_scopes)
 
 
 def _rebind_docs_retriever() -> None:

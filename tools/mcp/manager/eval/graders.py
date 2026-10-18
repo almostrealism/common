@@ -178,6 +178,13 @@ def _violates_must_not_cite(response: dict, spec: dict) -> Optional[str]:
     sentence that also mentions that token counts — this is how E2 is graded:
     citing ``claude-code-job.md`` in its 320–345 range is forbidden *only* for
     a sentence about ``validate-agent-commit``.
+
+    Structured ``evidence`` items carry no sentence context, so they cannot be
+    tied to the claim they support. They are judged conservatively: a
+    forbidden range in the evidence list is a violation whenever the prose
+    mentions the ``with`` token at all (always, for an unqualified spec). A
+    response could otherwise move the misattributed citation out of the
+    sentence and into the evidence list and pass.
     """
     wanted = spec["file"]
     lo, hi = spec["lines"]
@@ -192,18 +199,22 @@ def _violates_must_not_cite(response: dict, spec: dict) -> Optional[str]:
             if _file_matches(wanted, path) and lo <= int(line) <= hi:
                 return f"cited {path}:{line} (forbidden range {lo}-{hi})"
 
-    # Structured evidence ranges carry no sentence context, so they can only be
-    # judged against an unqualified spec.
-    if not token:
-        for item in response.get("evidence", []) or []:
-            if not isinstance(item, dict):
-                continue
-            if not _file_matches(wanted, str(item.get("file", ""))):
-                continue
-            rng = item.get("range")
-            if isinstance(rng, (list, tuple)) and len(rng) == 2:
-                if int(rng[0]) <= hi and int(rng[1]) >= lo:
-                    return f"evidence cites {item.get('file')} range {rng}"
+    if token and token.lower() not in text.lower():
+        return None
+    for item in response.get("evidence", []) or []:
+        if not isinstance(item, dict):
+            continue
+        if not _file_matches(wanted, str(item.get("file", ""))):
+            continue
+        rng = item.get("range")
+        if not isinstance(rng, (list, tuple)) or len(rng) != 2:
+            continue
+        try:
+            start, end = int(rng[0]), int(rng[1])
+        except (TypeError, ValueError):
+            continue
+        if start <= hi and end >= lo:
+            return f"evidence cites {item.get('file')} range {rng}"
     return None
 
 
@@ -321,6 +332,10 @@ def validate_case(case: dict) -> list[str]:
     for key in ("id", "question", "expect"):
         if key not in case:
             errors.append(f"{cid}: missing required key {key!r}")
+    # A present ``id`` is the key responses are looked up by, so it must be a
+    # non-empty string; an explicit ``null`` is not the same as a missing key.
+    if "id" in case and (not isinstance(case["id"], str) or not case["id"]):
+        errors.append(f"{case['id']!r}: 'id' must be a non-empty string")
 
     def _check_expect(label: str, expect: dict) -> None:
         unknown = set(expect) - EXPECT_KEYS
