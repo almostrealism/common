@@ -48,7 +48,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.function.Supplier;
+import java.util.function.LongFunction;
 
 /**
  * Shared test infrastructure for AudioScene tests.
@@ -215,6 +215,16 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	}
 
 	/**
+	 * Restores an unseeded {@link ParameterFunction} source. Scene construction here seeds
+	 * that process-global source with {@link #ARRANGEMENT_SEED}; clearing it keeps a later
+	 * test class in the same JVM from inheriting this test's fixed draws.
+	 */
+	@After
+	public void clearArrangementSeed() {
+		ParameterFunction.clearRandomSeed();
+	}
+
+	/**
 	 * Creates a baseline AudioScene with the default source count (6 channels).
 	 *
 	 * @param samplesDir directory containing sample WAV files
@@ -247,11 +257,28 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * @param samplesDir  directory containing sample WAV files
 	 * @param sourceCount number of source channels to create
 	 * @return configured AudioScene ready for genome assignment
+	 *
+	 * @see #createBaselineScene(File, int, long)
 	 */
 	protected AudioScene<?> createBaselineScene(File samplesDir, int sourceCount) {
+		return createBaselineScene(samplesDir, sourceCount, ARRANGEMENT_SEED);
+	}
+
+	/**
+	 * Creates a baseline AudioScene, as {@link #createBaselineScene(File, int)} does, whose
+	 * arrangement is drawn from {@code arrangementSeed}. Every call with the same arguments
+	 * builds the identical scene, so this is a valid {@link #renderUntilAudible} factory:
+	 * {@code seed -> createBaselineScene(dir, count, seed)}.
+	 *
+	 * @param samplesDir      directory containing sample WAV files
+	 * @param sourceCount     number of source channels to create
+	 * @param arrangementSeed seed for the selection functions drawn while the scene is built
+	 * @return configured AudioScene ready for genome assignment
+	 */
+	protected AudioScene<?> createBaselineScene(File samplesDir, int sourceCount, long arrangementSeed) {
 		int delayLayers = AudioScene.DEFAULT_DELAY_LAYERS;
 
-		ParameterFunction.setRandomSeed(ARRANGEMENT_SEED);
+		ParameterFunction.setRandomSeed(arrangementSeed);
 
 		AudioScene<?> scene = new AudioScene<>(120.0, sourceCount, delayLayers, SAMPLE_RATE);
 		createdScenes.add(scene);
@@ -287,11 +314,30 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * @param totalMeasures  total measures in the arrangement
 	 * @return a freshly loaded scene
 	 * @throws IOException if the scene cannot be loaded
+	 *
+	 * @see #loadCuratedScene(File, File, double, int, long)
 	 */
 	protected AudioScene<?> loadCuratedScene(File library, File patternFactory,
 											 double bpm, int totalMeasures) throws IOException {
+		return loadCuratedScene(library, patternFactory, bpm, totalMeasures, ARRANGEMENT_SEED);
+	}
+
+	/**
+	 * Loads a fresh curated scene, as {@link #loadCuratedScene(File, File, double, int)} does,
+	 * drawing its random selection functions from {@code arrangementSeed}.
+	 *
+	 * @param library         the recursive sample library root
+	 * @param patternFactory  the curated pattern factory JSON
+	 * @param bpm             tempo for the scene
+	 * @param totalMeasures   total measures in the arrangement
+	 * @param arrangementSeed seed for the selection functions drawn while the scene is loaded
+	 * @return a freshly loaded scene
+	 * @throws IOException if the scene cannot be loaded
+	 */
+	protected AudioScene<?> loadCuratedScene(File library, File patternFactory, double bpm,
+											 int totalMeasures, long arrangementSeed) throws IOException {
 		File settings = new File(SCENE_SETTINGS);
-		ParameterFunction.setRandomSeed(ARRANGEMENT_SEED);
+		ParameterFunction.setRandomSeed(arrangementSeed);
 		AudioScene<?> scene = AudioScene.load(
 				settings.exists() ? settings.getAbsolutePath() : null,
 				patternFactory.getAbsolutePath(),
@@ -634,13 +680,15 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * which no pre-render count fully predicts (see {@link #findGenomeSeedForChannels}). Rather than gamble
 	 * on a single arrangement, this rebuilds the arrangement (a fresh {@code sceneFactory} scene) and
 	 * re-renders up to {@link #MAX_RENDER_ATTEMPTS} times, returning the first render whose peak exceeds
-	 * {@link #SILENCE_THRESHOLD}. Attempt {@code n} draws its arrangement from
-	 * {@code ARRANGEMENT_SEED + n}, so the attempts differ from one another but the sequence, and
-	 * therefore which attempt succeeds, is the same in every run. Cold kernel compilation is amortized across attempts by the cross-instance
+	 * {@link #SILENCE_THRESHOLD}. Attempt {@code n} passes {@code ARRANGEMENT_SEED + n} to the factory,
+	 * with {@link ParameterFunction} already reseeded to it, so the attempts differ from one another but
+	 * the sequence, and therefore which attempt succeeds, is the same in every run. A factory that reseeds
+	 * itself must reseed with the seed it is given, or every attempt would draw the same arrangement.
+	 * Cold kernel compilation is amortized across attempts by the cross-instance
 	 * instruction cache, so a retry is cheaper than the first render. Each attempt's scene is destroyed
 	 * before the next; the returned result references a written WAV file that outlives it.</p>
 	 *
-	 * @param sceneFactory     builds a fresh, randomly-arranged scene each attempt
+	 * @param sceneFactory     builds a fresh scene each attempt, drawing its arrangement from the given seed
 	 * @param totalMeasures    arrangement length to render
 	 * @param requiredChannels channels that must carry notes (a cheap pre-filter before rendering)
 	 * @param renderer         renders a prepared scene, returning the result
@@ -649,15 +697,15 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * @return the first render result whose peak exceeds {@link #SILENCE_THRESHOLD}
 	 * @throws Exception if a render or peak extraction fails, or if no arrangement was audible
 	 */
-	protected <T> T renderUntilAudible(Supplier<AudioScene<?>> sceneFactory, int totalMeasures,
+	protected <T> T renderUntilAudible(LongFunction<AudioScene<?>> sceneFactory, int totalMeasures,
 									   List<Integer> requiredChannels, SceneRenderer<T> renderer,
 									   PeakExtractor<T> peakOf) throws Exception {
 		double lastPeak = 0.0;
 
 		for (int attempt = 1; attempt <= MAX_RENDER_ATTEMPTS; attempt++) {
-			// TODO(review): a sceneFactory that reseeds itself (createBaselineScene/loadCuratedScene) overrides this per-attempt seed, making every attempt identical
-			ParameterFunction.setRandomSeed(ARRANGEMENT_SEED + attempt);
-			AudioScene<?> scene = sceneFactory.get();
+			long arrangementSeed = ARRANGEMENT_SEED + attempt;
+			ParameterFunction.setRandomSeed(arrangementSeed);
+			AudioScene<?> scene = sceneFactory.apply(arrangementSeed);
 			try {
 				scene.setTotalMeasures(totalMeasures);
 

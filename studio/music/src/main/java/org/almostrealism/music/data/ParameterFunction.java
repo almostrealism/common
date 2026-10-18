@@ -145,7 +145,16 @@ public class ParameterFunction implements Function<ParameterSet, Double> {
 	 * @param seed the seed for subsequent random coefficient draws
 	 */
 	public static void setRandomSeed(long seed) {
-		// TODO(review): process-global state; callers (ParameterFunctionTest, AudioSceneTestBase) never restore an unseeded source, so later tests in the same JVM inherit a fixed seed
 		randomSource = new Random(seed);
+	}
+
+	/**
+	 * Restores an arbitrarily seeded source for {@link #random(double)}, undoing any
+	 * earlier {@link #setRandomSeed(long)}. The source is process-global, so a caller
+	 * that seeds it for a bounded piece of work calls this afterwards to avoid fixing
+	 * the draws of unrelated code that runs later in the same JVM.
+	 */
+	public static void clearRandomSeed() {
+		randomSource = new Random();
 	}
 }

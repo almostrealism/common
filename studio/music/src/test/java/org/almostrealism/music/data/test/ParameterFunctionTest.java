@@ -19,6 +19,7 @@ package org.almostrealism.music.data.test;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.music.data.ParameterSet;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -48,13 +49,52 @@ public class ParameterFunctionTest extends TestSuiteBase {
 		ParameterSet params = new ParameterSet(0.3, 0.6, 0.9);
 
 		ParameterFunction.setRandomSeed(7);
-		double[] first = IntStream.range(0, 8).mapToDouble(i -> ParameterFunction.random().apply(params)).toArray();
+		double[] first = draws(params, 8);
 		ParameterFunction.setRandomSeed(7);
-		double[] second = IntStream.range(0, 8).mapToDouble(i -> ParameterFunction.random().apply(params)).toArray();
+		double[] second = draws(params, 8);
 		ParameterFunction.setRandomSeed(8);
-		double[] other = IntStream.range(0, 8).mapToDouble(i -> ParameterFunction.random().apply(params)).toArray();
+		double[] other = draws(params, 8);
 
 		Assert.assertArrayEquals(first, second, 0.0);
 		Assert.assertFalse(Arrays.equals(first, other));
+	}
+
+	/**
+	 * Clearing the seed stops later draws from repeating the seeded sequence: after
+	 * {@link ParameterFunction#clearRandomSeed()} the draws no longer match those made
+	 * from the same seed, and two cleared sources draw different sequences.
+	 */
+	@Test(timeout = 10_000)
+	public void clearRandomSeedRestoresUnseededDraws() {
+		ParameterSet params = new ParameterSet(0.3, 0.6, 0.9);
+
+		ParameterFunction.setRandomSeed(7);
+		double[] seeded = draws(params, 8);
+
+		ParameterFunction.setRandomSeed(7);
+		ParameterFunction.clearRandomSeed();
+		double[] cleared = draws(params, 8);
+		ParameterFunction.clearRandomSeed();
+		double[] clearedAgain = draws(params, 8);
+
+		Assert.assertFalse(Arrays.equals(seeded, cleared));
+		Assert.assertFalse(Arrays.equals(cleared, clearedAgain));
+	}
+
+	/** Leaves the process-global random source unseeded for whatever runs next. */
+	@After
+	public void clearRandomSeed() {
+		ParameterFunction.clearRandomSeed();
+	}
+
+	/**
+	 * Evaluates {@code count} freshly drawn random functions at {@code params}.
+	 *
+	 * @param params the parameters to evaluate each function at
+	 * @param count  the number of functions to draw
+	 * @return the value of each drawn function, in draw order
+	 */
+	private static double[] draws(ParameterSet params, int count) {
+		return IntStream.range(0, count).mapToDouble(i -> ParameterFunction.random().apply(params)).toArray();
 	}
 }

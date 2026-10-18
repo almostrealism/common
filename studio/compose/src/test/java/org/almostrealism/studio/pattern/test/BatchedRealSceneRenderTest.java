@@ -126,7 +126,7 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 		PatternLayerManager.enableBatched = true;
 		try {
 			AudioSceneBenchmark.BenchmarkResult result = renderUntilAudible(
-					AudioSceneOptimizer::createScene, MEASURES, List.of(LEAD_CHANNEL),
+					seed -> AudioSceneOptimizer.createScene(), MEASURES, List.of(LEAD_CHANNEL),
 					(scene, genome) -> {
 						BatchedPatternLayerRenderer.resetCounters();
 						return AudioSceneBenchmark.runSingleChannel(scene, MEASURES, LEAD_CHANNEL, 7, BUFFER,
@@ -322,7 +322,7 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 		try {
 			List<Integer> channels = allChannels();
 			AudioSceneBenchmark.BenchmarkResult result = renderUntilAudible(
-					AudioSceneOptimizer::createScene, MEASURES, List.of(LEAD_CHANNEL),
+					seed -> AudioSceneOptimizer.createScene(), MEASURES, List.of(LEAD_CHANNEL),
 					(scene, genome) -> {
 						BatchedPatternLayerRenderer.resetCounters();
 						return AudioSceneBenchmark.runMultiChannel(scene, MEASURES, channels, 7, BUFFER,
@@ -384,7 +384,7 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 		PatternLayerManager.enableBatched = true;
 		try {
 			AudioSceneBenchmark.BenchmarkResult result = renderUntilAudible(
-					AudioSceneOptimizer::createScene, MEASURES, List.of(LEAD_CHANNEL),
+					seed -> AudioSceneOptimizer.createScene(), MEASURES, List.of(LEAD_CHANNEL),
 					(scene, genome) -> {
 						BatchedPatternLayerRenderer.resetCounters();
 						return AudioSceneBenchmark.runSingleChannel(scene, MEASURES, LEAD_CHANNEL, 7, BUFFER,
