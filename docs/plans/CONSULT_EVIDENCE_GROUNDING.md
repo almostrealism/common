@@ -297,14 +297,44 @@ dates in the index (2.5). It is a better signal than age, because a
 six-month-old note about a file nobody has touched since is still current.
 
 **Merge state.** ar-manager already talks to GitHub for `github_pr_find`.
-Branch state comes from looking up the most recent PR by head branch. It is
-cached per `(repo, branch)`: indefinitely once merged or closed, and for
-about 10 minutes while open. A memory store with ~10⁴ notes spans a few
-hundred distinct branches, so the cache is small.
+Branch state comes from looking up the most recent PR by head branch.
+
+*Authorization has to be settled first.* `consult` requires only the
+`memory-read` scope, while `github_pr_find` and the other GitHub tools call
+`server._require_scope("github")` (`github_tools.py`). Neither obvious route
+is acceptable as it stands: calling the tool would make every consult from a
+token without `github` fail, and calling the underlying GitHub helper
+directly from consult would quietly let a `memory-read`-only token learn PR
+state it could not otherwise see. Proposed contract:
+
+- consult performs the branch-state lookup only when the caller's token also
+  holds `github`;
+- otherwise every note gets `branch_state: unknown`, the response carries
+  `degraded: ["branch_state"]`, and tiering proceeds on the remaining
+  signals (`unknown` is already handled conservatively, below);
+- a lookup that fails (GitHub unreachable, rate limit) degrades the same
+  way, never fails the call.
+
+Whether a `memory-read`-only caller should be allowed to see derived merge
+state at all is open question Q9.
+
+*Caching.* The cache key must identify the PR, not just the branch name,
+because a branch name can be reused by a later PR. Proposed: cache per
+`(repo, branch)` with the PR number and head SHA stored in the entry; open
+entries expire after about 10 minutes; merged/closed entries are
+revalidated after a bounded TTL (proposed 24 hours), and a revalidation that
+finds a *different* most-recent PR for the same branch replaces the entry.
+A note is then tiered against the PR that was current when it was written:
+if the note's `created_at` falls before the cached PR's `created_at`, the
+note belongs to an earlier use of the branch and its state is `unknown`. A
+memory store with ~10⁴ notes spans a few hundred distinct branches, so the
+cache stays small.
+<!-- TODO(review): notes are usually written before the branch's first PR is opened, so "note older than the PR => unknown" would demote most notes; compare against the previous PR's closed/merged time instead. -->
 
 Edge cases:
 
-- branch names that are reused;
+- branch names that are reused (handled above: a note older than the
+  current PR maps to `unknown`);
 - notes with no branch;
 - `qa/*` branches whose PR was closed and then superseded.
 
@@ -325,22 +355,50 @@ tier.
 The corpus keeps only `.md`/`.html`. So consult cannot answer "does
 `ClaudeCodeJob` exist?", even though the build stage had the full tree in
 hand before deleting it. **Proposal:** in the Dockerfile's `docs` stage,
-*before* the `find … -delete`, generate a small `snapshot-index.json` and
-ship it next to the corpus.
+generate a small `snapshot-index.json` from the full tree and ship it next
+to the corpus.
+
+**Ordering against the prune.** The stage's prune is
+`find . -type f ! -name '*.md' ! -name '*.html' -delete`, which would delete
+a `snapshot-index.json` written into the same tree. The index must be
+*computed* before the prune (the tree it describes is gone afterwards) but
+*written* outside `/src` — for example to `/snapshot/snapshot-index.json`,
+copied into the runtime image by its own `COPY --from=docs` — or the prune
+must explicitly spare that one filename. Writing outside the pruned tree is
+preferred: it keeps the prune rule simple, and the packaging test can assert
+that the file exists in the final image.
 
 First version (cheap, high value):
 
 - `commit` and `built_at`. The commit comes in as a build arg
-  (`--build-arg CORPUS_COMMIT=$(git rev-parse HEAD)`) because `.git` is
-  excluded from the context.
+  (`--build-arg CORPUS_COMMIT=$(git rev-parse HEAD)`) because `.dockerignore`
+  excludes `.git/`. **Neither current caller passes it:** the CI image build
+  in `.github/workflows/analysis.yaml` (job step running
+  `docker build -f tools/mcp/manager/Dockerfile -t ar-manager:ci .`) and the
+  deployment build in `flowtree/runtime/controller/docker-compose.yml`
+  (`dockerfile: tools/mcp/manager/Dockerfile`, which would need a
+  `build.args` entry). Both must be updated in the same step, and the
+  Dockerfile must default the argument to an explicit sentinel
+  (`ARG CORPUS_COMMIT=unknown`) so that a build that omits it yields
+  `corpus.commit: "unknown"`, never an empty string that looks like a
+  value. The analysis.yaml edit falls under the CI-file lock, so that part
+  has to land on a `ci/...` branch (or be applied by a person); the plan
+  step cannot be completed on an ordinary feature branch.
 - `paths`: every file path in the copied trees plus `.github/`, with build
-  output excluded. Today that is about 10⁴ paths and ~770 KB of raw text,
-  much smaller with prefix compression.
+  output excluded. Today that is about 10⁴ paths (`git ls-files` lists
+  ~9.9×10³ tracked files) and ~770 KB of raw text, much smaller with prefix
+  compression.
 - `java_types`: map from simple type name to path(s), taken from file names
   (~9×10³ `*.java`). File names are enough because the codebase keeps one
   top-level type per file.
-- `scripts`: basename to path, for `*.sh` and `*.py` under `tools/` and
-  `scripts/`.
+- `scripts`: basename to path, for `*.sh` and `*.py` under `tools/`, and
+  under `.github/` once that is copied. The repository's top-level
+  `scripts/` directory (`generate-llms-full.sh`,
+  `check-python-file-lengths.sh` and others) is **not** copied by the `docs`
+  stage today, so indexing it requires adding `COPY scripts/ ./scripts/` to
+  that stage as well (its contents are pruned like everything else; only the
+  index records them). This plan proposes adding that `COPY` in the same
+  step.
 
 Later versions, in rough order of value:
 
@@ -348,9 +406,13 @@ Later versions, in rough order of value:
    leading comment block of each `tools/ci/**/*.sh` plus its literal
    `exit N` lines. These scripts *are* the documentation of their own
    behaviour (see seed case E2).
-2. **Public constants with string values** (`VERDICT_PATH =
-   ".flowtree/oop-review.md"`). Seed case E3 is answerable from nothing
-   else.
+2. **`static final String` constants, regardless of visibility**
+   (`VERDICT_PATH = ".flowtree/oop-review.md"`). Seed case E3 is answerable
+   from nothing else, and `ObjectOrientedDesignRule.VERDICT_PATH` is
+   package-private (`static final String`, no `public`), so restricting
+   extraction to public constants would leave E3 unanswerable. Extraction
+   should take every `static final String` field initialised with a single
+   string literal, recording its visibility, and skip computed initialisers.
 3. **Per-path last-modified commit date**, which powers the
    change-since-note signal described in 2.4.
 4. **Rename map** from `git log --diff-filter=R`. This turns "absent" into
@@ -592,9 +654,40 @@ signature and in `McpToolDiscoveryTest`'s parameter assertions.
 
 ### 2.13 Memory retrieval changes that come along with this
 
-- Search every semantic namespace except `messages`, not only `default`.
-  Merge by distance, then select by tier: at most one C/C✗ item, prefer the
-  caller's branch and B items.
+- Search every semantic namespace, not only `default`. (`messages` is
+  already non-semantic by default — `AR_MEMORY_NON_SEMANTIC_NAMESPACES`
+  defaults to `messages` in `tools/mcp/memory/store.py` — so it has no index
+  and is excluded automatically.) Merge by distance, then select by tier: at
+  most one C/C✗ item, prefer the caller's branch and B items.
+
+  **The memory API cannot do this today.** `MemoryStore.search` and
+  `MemoryHttpClient.search` (`POST /api/memory/search`) each take exactly
+  one namespace, because each namespace has its own FAISS index. The only
+  cross-namespace route, `search_by_branch` with an empty namespace, is a
+  non-semantic, exact-branch, newest-first listing — it cannot rank by
+  relevance and cannot reach other branches. This step therefore needs one
+  of:
+
+  1. *Client-side fan-out (no ar-memory change):* list the namespaces
+     (`GET /api/memory/namespaces`, the endpoint `memory_namespaces` reads;
+     a non-semantic namespace simply returns no search results, because
+     `MemoryStore.search` returns `[]` for it), call `search` once per
+     namespace with the same query and a
+     per-namespace limit, and merge in consult. Cost: one HTTP round trip
+     and one query embedding per namespace (the embedding is recomputed on
+     each call); with the handful of namespaces in use this is acceptable.
+  2. *A server-side multi-namespace search:* `namespace` accepts a list (or
+     `*`), the store embeds the query once, searches each index, and merges
+     by L2 distance before the repo/branch post-filter. Distances from
+     separate indices are comparable because every index uses the same
+     embedder and metric.
+
+  Recommendation: option 1 for the first step (it touches only consult and
+  is enough to measure E5), option 2 once the evaluation shows the
+  namespace widening is worth keeping. Note that the per-index post-filter
+  over-fetches only `limit * 4` candidates, so a namespace dominated by
+  other repositories can still return fewer than `limit`; that limitation is
+  unchanged by either option.
 - Query with `question` plus the caller's `keywords`, not with `question`
   alone.
 - Retrieve about 8 candidates and present 3–5 after tier selection. The
@@ -739,7 +832,7 @@ State per conversation:
 
 - id;
 - caller identity — the workstream and job resolved from the HMAC temp
-  token, or the static token's subject;
+  token (`auth.py` labels these `tmp:<workstream>/<job>`);
 - repo and branch scope;
 - the turn list: question, keywords, answer, cited evidence records,
   response flags, timestamps;
@@ -778,11 +871,31 @@ caller's repo and branch. It is then retrievable by branch and recency, like
 
 - A conversation can be continued or read only by the identity that started
   it. A job's temp token cannot read another job's conversations.
+- **Static tokens get no conversations in the first step.** The auth
+  middleware records only a static token's scopes and its configured
+  `label`; there is no per-caller subject, and one static token can be
+  shared by several callers (an operator's Slack flow and a script, say).
+  Binding a conversation to the label would let any holder of the token
+  continue or read another holder's conversation. So a static-token call
+  that passes `conversation_id` is rejected with
+  `{ok: false, error: "conversations require a job token"}`, and a
+  static-token call without one stays stateless (no `conversation_id` is
+  returned). Opening conversations to static tokens needs a real per-caller
+  credential binding first (open question Q10).
 - `context` (code snippets, error output) is held in state. Transcripts that
   are persisted must go through the same secret-redaction expectations as
-  logs (`tools/mcp/CLAUDE.md`, "Security Rules for Workspace Secrets"). The
-  safe first rule is to persist questions, answers and evidence IDs, but
-  **not** the raw `context`.
+  logs (`tools/mcp/CLAUDE.md`, "Security Rules for Workspace Secrets").
+  Leaving out the raw `context` is necessary but **not sufficient**: the
+  caller can paste a credential into the `question`, and the model can echo
+  a credential from `context` into the `answer`. So **every persisted text
+  field** — question, keywords, answer, `history`, conflict summaries and
+  citation-warning sentences — passes through one redaction function before
+  it is written, and a turn in which redaction cannot run (for example it
+  raises) is not persisted at all rather than persisted raw. The raw
+  `context` is still never persisted. Which patterns that redaction function
+  recognises (known token prefixes, `KEY=value` shapes, values of workspace
+  secrets the server can see) is part of the durable-transcript step, not of
+  the in-process first step, which persists nothing.
 - A conversation is read-only towards memories. Nothing in it writes a
   note.
 
@@ -826,6 +939,7 @@ Changes to consult should be judged by measurement. The set is:
 
 ```
 tools/mcp/manager/eval/
+  __init__.py                 makes eval/ a package so unittest discovery reaches it
   consult_cases.json          the cases (JSON: the manager image has no YAML dependency)
   fixtures/memories/*.json    frozen memory sets per case
   run_consult_eval.py         the runner
@@ -900,7 +1014,15 @@ counts as a fail only for expectations that need it.
 - **CI:** the model-backed run is not in CI, because it needs a model.
   `test_consult_eval.py` (schema validity, plus graders run against canned
   answers that include today's observed failures) runs wherever the other
-  manager Python tests run.
+  manager Python tests run. The CI step for those is
+  `python3 -m unittest discover -v -s tools/mcp/manager -p "test_*.py"`
+  (in `.github/workflows/analysis.yaml`). `unittest` discovery recurses only
+  into directories that are importable packages — the existing
+  `tools/mcp/manager/tests/` is reached because it has an `__init__.py` — so
+  `eval/__init__.py` is required, not optional; without it the tests exist
+  but never run in CI. Step 1 should confirm the test is reached by running
+  that exact discover command locally and checking the test appears in its
+  output.
 
 ### 5.5 Seed cases (observed 2026-10-17)
 
@@ -947,15 +1069,20 @@ then verify citations, and only then let notes answer.**
    `STANDALONE_MD_ROOTS`. Raise or remove the `_read_file` 50 000-character
    truncation, which today cuts `.github/CLAUDE.md` off at line 839, before
    the facts E1 needs. Re-run the evaluation; E1 should pass.
-3. **Corpus snapshot identity.** Add the `CORPUS_COMMIT` build arg and
-   `corpus: {commit, built_at}` in the consult response. This is small, but
-   everything in section 2 refers to "the snapshot".
-4. **Memory retrieval fixes.** Search all semantic namespaces except
-   `messages`; query with question plus keywords; retrieve 8 and present
-   3–5; return `id`, `created_at`, `branch` and `namespace` in
-   `related_memories`; label distance correctly in `memory_recall`. Add E5.
+3. **Corpus snapshot identity.** Add the `CORPUS_COMMIT` build arg (default
+   `unknown`), pass it from both image builds (`analysis.yaml` and the
+   controller `docker-compose.yml`), and return `corpus: {commit, built_at}`
+   in the consult response. This is small, but everything in section 2
+   refers to "the snapshot". The `analysis.yaml` half needs a `ci/...`
+   branch (2.5).
+4. **Memory retrieval fixes.** Search all semantic namespaces by client-side
+   fan-out and merge (2.13, option 1); query with question plus keywords;
+   retrieve 8 and present 3–5; return `id`, `created_at`, `branch` and
+   `namespace` in `related_memories`; label distance correctly in
+   `memory_recall`. Add E5.
 5. **Provenance and tiers, without the index.** Add `branch_state` lookup
-   with a cache, the pure `tier()` function with unit tests, the evidence
+   with a PR-keyed cache, gated on the caller's `github` scope and degrading
+   to `unknown` otherwise (2.4), the pure `tier()` function with unit tests, the evidence
    list with IDs in the prompt, `SYSTEM_PROMPT` tier rules and examples,
    and `evidence` in the response. Notes are *still not* allowed to answer;
    only presentation changes. Add E6 and E7.
@@ -971,7 +1098,9 @@ then verify citations, and only then let notes answer.**
    post-processing, and `abstained_with_evidence`. Add E8. Confirm that E4
    still passes and that the false-answer count did not rise.
 9. **Snapshot index, version 1.** Paths, Java type names and script names
-   built in the Dockerfile `docs` stage, plus a packaging test. Mention
+   computed in the Dockerfile `docs` stage before the prune and written
+   outside the pruned tree (`COPY scripts/` added to that stage), plus a
+   packaging test that the index ships in the final image. Mention
    extraction, the C✗ tier, structural conflicts and the `nonexistent`
    abstention. E3's `must_flag_stale` and E4's `nonexistent` should pass.
 10. **Corpus coverage, systematic fix.** Replace the index allowlist with a
@@ -980,10 +1109,12 @@ then verify citations, and only then let notes answer.**
 11. **Multi-turn, in-process.** The `conversation_id` parameter (with
     `McpToolDiscoveryTest` assertions), the store with TTL and LRU, evidence
     carry-forward with stable IDs, the history budget, and identity
-    binding. Build the store as a separate component (4.6, item 3).
+    binding to job temp tokens (static tokens refused, 4.5). Build the store
+    as a separate component (4.6, item 3).
 12. **Snapshot index, version 2.** Script header comments and exit codes,
-    and string constants. E2 should answer `exit 3` from the index and E3
-    should answer `.flowtree/oop-review.md`.
+    and `static final String` literal constants of any visibility. E2
+    should answer `exit 3` from the index and E3 should answer
+    `.flowtree/oop-review.md`.
 
 Later refinements, not yet scheduled:
 
@@ -1021,10 +1152,22 @@ Later refinements, not yet scheduled:
    committed baselines, given that the deployed backend is chosen by
    `AutoBackend` at runtime?
 7. **Transcript retention.** For the durable `consultations` namespace,
-   what retention period is acceptable, and is persisting questions and
-   answers (but not raw `context`) the right redaction line?
+   what retention period is acceptable, and is redacting every persisted
+   field (4.5) — with raw `context` never persisted — a strong enough line,
+   or should transcripts keep only evidence IDs and response flags, with no
+   free text at all?
 8. **Who acts on stale flags.** Consult only *reports* that a note names
    absent symbols. Should something eventually mark such notes in the
    memory store (via the `SCHEMA_EVOLUTION_PROPOSAL.md` lifecycle)? If so,
    should that be a QA round, the retrospective round, or a separate
    maintenance job?
+9. **Merge state for `memory-read`-only callers.** The plan gates the
+   branch-state lookup on the caller also holding the `github` scope (2.4),
+   so those callers get coarser tiers. Is merge state of a branch sensitive
+   enough to warrant that, or should consult be allowed to derive it for
+   every caller (and document that it does) so tiering is the same for
+   everyone?
+10. **Conversations for static-token callers.** Static tokens carry no
+    per-caller subject, so the plan refuses conversations for them (4.5).
+    Is that acceptable for the operator-facing clients that use static
+    tokens, or does the auth layer need per-caller credentials first?
