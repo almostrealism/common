@@ -305,7 +305,16 @@ def resolve_expect(case: dict, milestone: str = "baseline") -> dict:
 
 
 def validate_case(case: dict) -> list[str]:
-    """Return a list of schema problems with a case, empty when it is valid."""
+    """Return a list of schema problems with a case, empty when it is valid.
+
+    A case that is not an object (``null``, a string, a list) is itself a
+    schema error, reported as such rather than crashing: ``load_cases`` calls
+    this on every element of the case file and promises a controlled
+    ``ValueError`` for malformed data, so a non-mapping entry must not raise an
+    ``AttributeError`` on the first ``.get`` below.
+    """
+    if not isinstance(case, dict):
+        return [f"<case {type(case).__name__}>: case must be an object"]
     errors: list[str] = []
     cid = case.get("id", "<no id>")
 

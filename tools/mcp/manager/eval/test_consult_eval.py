@@ -80,6 +80,16 @@ class TestCaseSchema(unittest.TestCase):
         bad = {"id": "X", "question": "q", "expect": ["outcome"]}
         self.assertEqual(validate_case(bad), ["X: 'expect' must be an object"])
 
+    def test_validate_case_rejects_non_object_case(self):
+        # A non-mapping case entry used to raise AttributeError at the first
+        # ``case.get`` instead of being reported as a schema error.
+        self.assertEqual(validate_case(None),
+                         ["<case NoneType>: case must be an object"])
+        self.assertEqual(validate_case("X"),
+                         ["<case str>: case must be an object"])
+        self.assertEqual(validate_case(["id"]),
+                         ["<case list>: case must be an object"])
+
     def test_validate_case_accepts_single_check_expect(self):
         ok = {"id": "X", "question": "q", "expect": {"outcome": "abstain"}}
         self.assertEqual(validate_case(ok), [])
@@ -168,6 +178,18 @@ class TestCaseSchema(unittest.TestCase):
                 load_cases()
         self.assertIn("7: 'id' must be a non-empty string",
                       str(ctx.exception))
+
+    def test_load_cases_raises_on_non_object_case_entry(self):
+        # A malformed element (``null``, a string) must surface as a controlled
+        # ValueError from the schema validator, not an AttributeError crash.
+        data = {"cases": [None,
+                          {"id": "X", "question": "q",
+                           "expect": {"outcome": "answer"}}]}
+        with mock.patch.object(run_consult_eval, "_load_json",
+                               return_value=data):
+            with self.assertRaises(ValueError) as ctx:
+                load_cases()
+        self.assertIn("case must be an object", str(ctx.exception))
 
     def test_load_cases_raises_on_empty_case_list(self):
         with mock.patch.object(run_consult_eval, "_load_json",
