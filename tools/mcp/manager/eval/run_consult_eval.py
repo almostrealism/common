@@ -194,16 +194,19 @@ def _docs_stage_copies() -> list[str]:
     one: a ``COPY`` added or removed there changes what local evaluation sees,
     which is the whole point of staging rather than reading the live checkout.
     Only plain (non-``--from``) copies in the ``AS docs`` stage are returned,
-    as repo-root-relative source paths.
+    as repo-root-relative source paths. Every ``FROM`` — named or not — ends
+    the current stage, so copies in an unnamed runtime stage that follows
+    ``docs`` are not mistaken for corpus copies.
     """
     sources: list[str] = []
     in_docs_stage = False
     with open(_DOCKERFILE, encoding="utf-8") as handle:
         for line in handle:
             stripped = line.strip()
-            from_match = re.match(r"(?i)^FROM\s+.*\bAS\s+(\S+)", stripped)
-            if from_match:
-                in_docs_stage = from_match.group(1).lower() == "docs"
+            if re.match(r"(?i)^FROM\s", stripped):
+                alias = re.search(r"(?i)\bAS\s+(\S+)\s*$", stripped)
+                in_docs_stage = (alias is not None
+                                 and alias.group(1).lower() == "docs")
                 continue
             if not in_docs_stage:
                 continue

@@ -68,6 +68,29 @@ class TestCaseSchema(unittest.TestCase):
         bad = {"id": "X", "question": "q", "expect": {"outcome": "maybe"}}
         self.assertTrue(any("outcome" in e for e in validate_case(bad)))
 
+    def test_validate_case_rejects_empty_expect(self):
+        # An empty expectation grades no checks, so it would pass any response.
+        bad = {"id": "X", "question": "q", "expect": {}}
+        errors = validate_case(bad)
+        self.assertEqual(errors, ["X: 'expect' must state at least one check"])
+        self.assertTrue(grade({"answer": "anything"}, {}).passed)
+
+    def test_validate_case_rejects_non_object_expect(self):
+        bad = {"id": "X", "question": "q", "expect": ["outcome"]}
+        self.assertEqual(validate_case(bad), ["X: 'expect' must be an object"])
+
+    def test_validate_case_accepts_single_check_expect(self):
+        ok = {"id": "X", "question": "q", "expect": {"outcome": "abstain"}}
+        self.assertEqual(validate_case(ok), [])
+
+    def test_load_cases_raises_on_empty_expect(self):
+        data = {"cases": [{"id": "X", "question": "q", "expect": {}}]}
+        with mock.patch.object(run_consult_eval, "_load_json",
+                               return_value=data):
+            with self.assertRaises(ValueError) as ctx:
+                load_cases()
+        self.assertIn("at least one check", str(ctx.exception))
+
 
 class TestGraderTeeth(unittest.TestCase):
     """The graders must flag today's failures and pass a correct answer."""
@@ -284,6 +307,31 @@ class TestCorpusStaging(unittest.TestCase):
         self.assertIn("CLAUDE.md", sources)
         # --from copies (the runtime stage) must not leak in.
         self.assertNotIn("/src", sources)
+        # Nor may plain copies from the unnamed runtime stage that follows.
+        self.assertNotIn("tools/mcp/common", sources)
+        self.assertNotIn("tools/mcp/manager/*.py", sources)
+        self.assertNotIn("tools/mcp/manager/requirements.txt", sources)
+
+    def test_unnamed_from_ends_the_docs_stage(self):
+        root = tempfile.mkdtemp(prefix="eval-fake-dockerfile-")
+        dockerfile = os.path.join(root, "Dockerfile")
+        try:
+            with open(dockerfile, "w") as h:
+                h.write(
+                    "FROM python:3.11-slim AS builder\n"
+                    "COPY setup/ ./setup/\n"
+                    "FROM python:3.11-slim AS docs\n"
+                    "COPY docs/ ./docs/\n"
+                    "FROM python:3.11-slim\n"
+                    "COPY .claude/ ./.claude/\n"
+                    "COPY --from=docs /src /app/docs-root\n"
+                    "FROM python:3.11-slim AS docs-extra\n"
+                    "COPY extra/ ./extra/\n")
+            with mock.patch.object(run_consult_eval, "_DOCKERFILE", dockerfile):
+                # A COPY moved into the unnamed runtime stage is not corpus.
+                self.assertEqual(_docs_stage_copies(), ["docs"])
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
 
     def _fake_repo(self):
         root = tempfile.mkdtemp(prefix="eval-fake-repo-")

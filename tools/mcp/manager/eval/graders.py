@@ -304,8 +304,15 @@ def validate_case(case: dict) -> list[str]:
                 errors.append(
                     f"{cid}: {label} must_not_cite 'lines' must be [lo, hi]")
 
-    if isinstance(case.get("expect"), dict):
-        _check_expect("expect", case["expect"])
+    expect = case.get("expect")
+    if "expect" in case and not isinstance(expect, dict):
+        errors.append(f"{cid}: 'expect' must be an object")
+    elif isinstance(expect, dict):
+        # An empty expectation records no checks, and GradeResult.passed is
+        # vacuously true over no checks — the case would pass any response.
+        if not expect:
+            errors.append(f"{cid}: 'expect' must state at least one check")
+        _check_expect("expect", expect)
     for name, override in (case.get("milestones") or {}).items():
         if isinstance(override, dict):
             _check_expect(f"milestones.{name}", override)
