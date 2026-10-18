@@ -116,6 +116,15 @@ class TestCaseSchema(unittest.TestCase):
         self.assertEqual(validate_case(bad),
                          ["X: 'milestones' must be an object"])
 
+    def test_validate_case_rejects_falsy_non_object_milestones(self):
+        # A present-but-falsy non-dict (``[]``, ``""``) must be reported, not
+        # coerced to {}: resolve_expect does milestones.get(...) and would
+        # raise AttributeError on a non-baseline milestone otherwise.
+        bad = {"id": "X", "question": "q", "expect": {"outcome": "answer"},
+               "milestones": []}
+        self.assertEqual(validate_case(bad),
+                         ["X: 'milestones' must be an object"])
+
     def test_validate_case_rejects_non_object_milestone_override(self):
         bad = {"id": "X", "question": "q", "expect": {"outcome": "answer"},
                "milestones": {"step2": None}}
@@ -139,6 +148,13 @@ class TestCaseSchema(unittest.TestCase):
             with self.assertRaises(ValueError) as ctx:
                 load_cases()
         self.assertIn("at least one check", str(ctx.exception))
+
+    def test_load_cases_raises_on_empty_case_list(self):
+        with mock.patch.object(run_consult_eval, "_load_json",
+                               return_value={"cases": []}):
+            with self.assertRaises(ValueError) as ctx:
+                load_cases()
+        self.assertIn("non-empty list", str(ctx.exception))
 
 
 class TestGraderTeeth(unittest.TestCase):
@@ -562,6 +578,11 @@ class TestExitStatus(unittest.TestCase):
     def test_report_passed_treats_no_response_as_failure(self):
         self.assertFalse(report_passed({"cases": [
             {"id": "A", "passed": True}, {"id": "B", "status": "no-response"}]}))
+
+    def test_report_passed_fails_on_empty_case_list(self):
+        # all() is vacuously True for an empty list; the gate must not report
+        # success for a run that graded nothing.
+        self.assertFalse(report_passed({"cases": []}))
 
     def test_known_failing_baseline_exits_zero_without_check(self):
         self.assertEqual(self._main(), 0)

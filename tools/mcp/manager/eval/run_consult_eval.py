@@ -61,6 +61,10 @@ def load_cases() -> list[dict]:
     """Load and schema-validate the cases; raise on any schema error."""
     data = _load_json("consult_cases.json")
     cases = data["cases"]
+    if not isinstance(cases, list) or not cases:
+        raise ValueError(
+            "invalid consult_cases.json:\n"
+            "'cases' must be a non-empty list")
     errors: list[str] = []
     for case in cases:
         errors.extend(validate_case(case))
@@ -309,10 +313,13 @@ def report_passed(summary: dict) -> bool:
     """Whether every case in a report has a response and passed.
 
     A ``no-response`` case counts as a failure: a gate that skipped a case
-    must not report success for it.
+    must not report success for it. A report with no cases at all is a
+    failure too: ``all(...)`` is vacuously true for an empty list, so without
+    this guard a malformed or accidentally emptied case set would let
+    ``--check`` exit 0 having graded nothing.
     """
-    # TODO(review): all() is vacuously True for an empty case list; decide whether --check should fail when nothing was graded.
-    return all(c.get("passed") is True for c in summary["cases"])
+    cases = summary["cases"]
+    return bool(cases) and all(c.get("passed") is True for c in cases)
 
 
 def main(argv=None) -> int:

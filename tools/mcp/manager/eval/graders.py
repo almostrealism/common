@@ -345,7 +345,11 @@ def validate_case(case: dict) -> list[str]:
         if not expect:
             errors.append(f"{cid}: 'expect' must state at least one check")
         _check_expect("expect", expect)
-    milestones = case.get("milestones") or {}
+    # Use a default of {} only when the key is absent; a present-but-falsy
+    # non-dict (``[]``, ``""``, ``null``) must reach the isinstance check and
+    # be reported, because resolve_expect does ``milestones.get(...)`` and
+    # would otherwise raise AttributeError on a non-baseline milestone.
+    milestones = case.get("milestones", {})
     if not isinstance(milestones, dict):
         errors.append(f"{cid}: 'milestones' must be an object")
         milestones = {}
