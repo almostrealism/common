@@ -24,8 +24,6 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
-import org.almostrealism.calculus.DeltaAlternate;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.calculus.ReduceAxis;
 
 import java.util.function.Function;
@@ -430,14 +428,29 @@ public interface CollectionProducer extends
 	}
 
 	/**
-	 * Multiplies every element of this collection by the given scalar.
+	 * Multiplies every element of this collection by the given scalar. A producer with a
+	 * representation of its own scaled values, such as an arithmetic sequence that rescales
+	 * its parameters, overrides this to return that representation; otherwise the
+	 * {@link #product(Producer, Producer) product} with the scalar is formed. Every
+	 * scalar-by-collection product built by {@link #multiply(Producer, Producer)} goes
+	 * through this method.
 	 *
 	 * @param <T>   the collection type
 	 * @param value the scalar multiplier
 	 * @return a producer for the scaled collection
 	 */
 	default <T extends PackedCollection> CollectionProducer multiply(double value) {
-		return multiply(this, c(value));
+		if (value == 0) {
+			return zeros(getShape());
+		} else if (value == 1.0) {
+			return this;
+		} else if (value == -1.0) {
+			return minus();
+		} else if (isConstant()) {
+			return multiply(getShape(), value, get());
+		}
+
+		return product(this, c(value));
 	}
 
 	/**
@@ -878,94 +891,37 @@ public interface CollectionProducer extends
 	}
 
 	/**
-	 * Attempts to compute the gradient of this computation with respect to the given target producer.
-	 * Returns null if the gradient cannot be determined (e.g., target is not a dependency).
+	 * Computes the full Jacobian of this producer with respect to the given target: the
+	 * {@link #delta(Producer, ReduceAxis, Producer) delta} with
+	 * {@link ReduceAxis#NONE no axis} summed away.
 	 *
 	 * @param target the producer with respect to which to differentiate
-	 * @return a CollectionProducer for the gradient, or null if not computable
-	 */
-	default CollectionProducer attemptDelta(Producer<?> target) {
-		return attemptDirectDelta(target);
-	}
-
-	/**
-	 * Attempts the cases of differentiation that need nothing beyond this producer's
-	 * identity and its {@link #getDeltaAlternate() delta alternate}, without descending
-	 * into its inputs:
-	 * <ul>
-	 *   <li>If this producer has a delta alternate, the delta of the alternate</li>
-	 *   <li>If this producer cannot depend on the target, zeros</li>
-	 *   <li>If this producer is the target, an identity matrix</li>
-	 *   <li>Otherwise, null to indicate that no direct form is available</li>
-	 * </ul>
-	 *
-	 * <p>Computations that override {@link #attemptDelta(Producer)} or
-	 * {@link #delta(Producer)} with their own derivative try these cases first.</p>
-	 *
-	 * @param target the producer with respect to which to differentiate
-	 * @return the delta, in the shape of this producer followed by that of the target,
-	 *         or null if no direct form is available
-	 */
-	default CollectionProducer attemptDirectDelta(Producer<?> target) {
-		CollectionProducer alternate = getDeltaAlternate();
-		if (alternate != null) return alternate.delta(target);
-
-		TraversalPolicy shape = getShape();
-		TraversalPolicy targetShape = shape(target);
-
-		if (cannotMatch(target)) {
-			return zeros(shape.append(targetShape));
-		} else if (refersTo(target)) {
-			return identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
-					.reshape(shape.append(targetShape));
-		}
-
-		return null;
-	}
-
-	/**
-	 * Returns the computation, equal in value to this one, whose delta is used in place of
-	 * this producer's own (see {@link DeltaAlternate} and
-	 * {@link #withDeltaAlternate(CollectionProducer)}).
-	 *
-	 * @return the delta alternate, or null if this producer has none
-	 */
-	default CollectionProducer getDeltaAlternate() {
-		return null;
-	}
-
-	/**
-	 * Computes the gradient of this computation with respect to the given target producer.
-	 * Throws an exception if the gradient cannot be computed.
-	 *
-	 * @param target the producer with respect to which to differentiate
-	 * @return a CollectionProducer for the gradient
-	 * @throws UnsupportedOperationException if the gradient cannot be determined
+	 * @return the Jacobian, in the shape of this producer followed by that of the target
+	 * @throws UnsupportedOperationException if this producer cannot be differentiated
 	 */
 	default CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDelta(target);
-		if (delta != null) return delta;
-
-		throw new UnsupportedOperationException();
+		return delta(target, ReduceAxis.NONE, null);
 	}
 
 	/**
-	 * Computes the delta of this computation with respect to {@code target}, with one axis
-	 * of the Jacobian summed away and every entry along it weighted by one. See
+	 * Computes the delta of this computation with respect to {@code target}, with every
+	 * entry along the reduced axis weighted by one. See
 	 * {@link #delta(Producer, ReduceAxis, Producer)}.
 	 *
 	 * @param target the producer with respect to which to differentiate
 	 * @param axis   the axis of the Jacobian to sum away
-	 * @return the reduced delta, in the shape of the axis that remains
+	 * @return the delta, in the shape of the axes that remain
 	 */
 	default CollectionProducer delta(Producer<?> target, ReduceAxis axis) {
 		return delta(target, axis, null);
 	}
 
 	/**
-	 * Computes the delta of this computation with respect to {@code target}, with one axis
-	 * of the Jacobian {@code J} summed away after weighting each entry along it:
+	 * Computes the delta of this computation with respect to {@code target}: its Jacobian
+	 * {@code J}, with one axis summed away after weighting each entry along it, or none.
 	 * <ul>
+	 *   <li>{@link ReduceAxis#NONE} produces {@code J} itself, in the shape of this
+	 *       computation followed by that of the target, and takes no weight.</li>
 	 *   <li>{@link ReduceAxis#OUT} produces the vector-Jacobian product {@code gᵀJ} for a
 	 *       weight {@code g} with the shape of this computation, and has the shape of the
 	 *       target.</li>
@@ -974,70 +930,45 @@ public interface CollectionProducer extends
 	 *       computation.</li>
 	 * </ul>
 	 *
-	 * <p>Because the caller says how the Jacobian will be reduced, a computation can
-	 * produce the reduced result directly from its own structure, and pass the reduction on
-	 * to its inputs through the chain rule, without ever forming {@code J}. Computations
-	 * that know such a form override this method. This implementation handles a target that
-	 * this producer is, or cannot depend on, and otherwise contracts the full
-	 * {@link #delta(Producer) Jacobian}, which is always correct and is what any override
-	 * must agree with.</p>
+	 * <p>This is the only method through which a delta is obtained. This implementation
+	 * answers the cases determined by this producer's identity alone: a target this
+	 * producer cannot depend on gives zeros, and a target this producer is gives the
+	 * identity (the weight itself, once reduced). A producer with no derivative of its own
+	 * has no Jacobian with respect to anything else, and its reduced deltas are
+	 * {@link #jacobianContraction contractions} of that Jacobian.</p>
+	 *
+	 * <p>A producer that knows its derivative overrides this method, and leaves the
+	 * identity cases above to this implementation by deferring to it whenever
+	 * {@link #cannotMatch(Producer)} or {@link #refersTo(Producer)} holds for the target.
+	 * Computations do not override it:
+	 * {@link org.almostrealism.collect.computations.CollectionProducerComputationBase} does so
+	 * on their behalf, and offers protected extension points for the derivative of a
+	 * computation instead.</p>
 	 *
 	 * @param target the producer with respect to which to differentiate
 	 * @param axis   the axis of the Jacobian to sum away
 	 * @param weight the weight of each entry along that axis, or null to weight every
 	 *               entry by one
-	 * @return the reduced delta, in the shape of the axis that remains
+	 * @return the delta, in the shape of the axes that remain
+	 * @throws UnsupportedOperationException if this producer cannot be differentiated
+	 *                                       with respect to the target
 	 */
 	default CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
-		CollectionProducer alternate = getDeltaAlternate();
-		if (alternate != null) return alternate.delta(target, axis, weight);
-
 		TraversalPolicy resultShape = axis.resultShape(getShape(), shape(target));
 
 		if (cannotMatch(target)) {
 			return zeros(resultShape);
-		} else if (refersTo(target)) {
-			return weight == null ? constant(resultShape, 1.0) : c(weight).reshape(resultShape);
-		} else if (axis == ReduceAxis.OUT) {
-			return jacobianGradient(this, target, weight).reshape(resultShape);
+		} else if (!refersTo(target)) {
+			if (axis == ReduceAxis.NONE) {
+				throw new UnsupportedOperationException("No Jacobian of " + describe());
+			}
+
+			return jacobianContraction(this, target, axis, weight);
+		} else if (axis == ReduceAxis.NONE) {
+			return identity(shape(getShape().getTotalSize(), shape(target).getTotalSize())).reshape(resultShape);
 		}
 
-		int outSize = getShape().getTotalSize();
-		int inSize = shape(target).getTotalSize();
-		CollectionProducer jacobian = delta(target).reshape(outSize, inSize).traverse(1);
-		if (weight != null) {
-			jacobian = jacobian.multiply(c(weight).reshape(shape(inSize)).repeat(outSize));
-		}
-
-		return jacobian.traverse(1).sum().reshape(resultShape);
-	}
-
-	/**
-	 * Indicates whether the delta of this producer with respect to {@code target} is
-	 * determined without the structure of its inputs: this producer has a
-	 * {@link #getDeltaAlternate() delta alternate}, is the target, or cannot depend on it.
-	 * Overrides of {@link #delta(Producer, ReduceAxis, Producer)} that differentiate
-	 * through their inputs leave these cases to the general implementation.
-	 *
-	 * @param target the producer with respect to which to differentiate
-	 * @return true if the delta does not depend on the structure of the inputs
-	 */
-	default boolean hasDirectDelta(Producer<?> target) {
-		return getDeltaAlternate() != null || refersTo(target) || cannotMatch(target);
-	}
-
-	/**
-	 * Declares an alternative computation whose {@link #delta(Producer) delta} is used
-	 * in place of this computation's own (see {@link DeltaAlternate}). The alternate
-	 * must compute the same values as this computation, so it changes how the gradient
-	 * is derived and never what it is: a producer that has nowhere to keep it ignores
-	 * it and is differentiated directly.
-	 *
-	 * @param alternate a computation equal in value to this one, with a cheaper delta
-	 * @return this producer (for method chaining)
-	 */
-	default CollectionProducer withDeltaAlternate(CollectionProducer alternate) {
-		return this;
+		return weight == null ? constant(resultShape, 1.0) : c(weight).reshape(resultShape);
 	}
 
 	/**
@@ -1051,34 +982,6 @@ public interface CollectionProducer extends
 	 */
 	default CollectionProducer withShortCircuit(Evaluable<PackedCollection> shortCircuit) {
 		return this;
-	}
-
-	/**
-	 * Attempts to scale this producer by a constant factor using a representation
-	 * specific to this producer, such as rescaling the parameters of a sequence rather
-	 * than wrapping it in a product. Returns {@code null} when this producer has no such
-	 * representation, in which case the caller must form the product.
-	 *
-	 * @param factor the constant to scale by
-	 * @return this producer scaled by {@code factor}, or {@code null} if no shortcut applies
-	 */
-	default CollectionProducer attemptMultiply(double factor) {
-		return null;
-	}
-
-	/**
-	 * Attempts to scale an arbitrary producer by a constant factor, as
-	 * {@link #attemptMultiply(double)} does for a {@link CollectionProducer}. A producer
-	 * that is not a {@link CollectionProducer} offers no such representation, so
-	 * {@code null} is returned for it and the caller must form the product.
-	 *
-	 * @param producer the producer to scale
-	 * @param factor   the constant to scale by
-	 * @return the producer scaled by {@code factor}, or {@code null} if no shortcut applies
-	 */
-	static CollectionProducer attemptMultiply(Producer<?> producer, double factor) {
-		if (!(producer instanceof CollectionProducer)) return null;
-		return ((CollectionProducer) producer).attemptMultiply(factor);
 	}
 
 	/**
@@ -1117,39 +1020,5 @@ public interface CollectionProducer extends
 	default boolean isIsolationPermitted() {
 		return Process.isolationPermitted(this) &&
 				getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
-	}
-
-	/**
-	 * Combines the gradient of this computation with the upstream gradient using the chain rule.
-	 *
-	 * @param target   the parameter with respect to which the gradient is being computed
-	 * @param gradient the upstream gradient producer
-	 * @return a producer for the combined gradient
-	 */
-	default CollectionProducer grad(Producer<?> target, Producer<PackedCollection> gradient) {
-		return combineGradient(this, target, gradient);
-	}
-
-	/**
-	 * Returns the delta (gradient) strategy to use when multiple terms contribute gradients.
-	 * The default is {@link MultiTermDeltaStrategy#NONE}.
-	 *
-	 * @return the strategy for combining multi-term gradients
-	 */
-	default MultiTermDeltaStrategy getDeltaStrategy() {
-		return MultiTermDeltaStrategy.NONE;
-	}
-
-	/**
-	 * Computes the gradient of this producer with respect to a target that appears
-	 * directly among its inputs, using this producer's own delta strategy.
-	 * Producers that combine several terms override this to apply their
-	 * {@link #getDeltaStrategy() multi-term delta strategy}.
-	 *
-	 * @param target  the variable to differentiate with respect to
-	 * @return the gradient computation, or null to use default behavior
-	 */
-	default CollectionProducer applyDeltaStrategy(Producer<?> target) {
-		return null;
 	}
 }

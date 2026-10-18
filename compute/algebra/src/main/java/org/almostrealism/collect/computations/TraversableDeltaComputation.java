@@ -30,6 +30,7 @@ import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -469,7 +470,7 @@ public class TraversableDeltaComputation
 	 * @throws UnsupportedOperationException Always thrown - second-order derivatives not supported
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		throw new UnsupportedOperationException();
 	}
 

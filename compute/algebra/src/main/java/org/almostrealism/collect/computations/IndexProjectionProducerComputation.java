@@ -26,6 +26,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ScopeSettings;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -397,7 +398,11 @@ public class IndexProjectionProducerComputation
 
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.NONE) {
+			return super.deltaDependent(target, axis, weight);
+		}
+
 		Producer<PackedCollection> in = getInputs().get(1);
 
 		if (in.cannotMatch(target)) {
@@ -441,6 +446,6 @@ public class IndexProjectionProducerComputation
 					new IndexProjectionProducerComputation("projectDelta", shape.traverseEach(), project, delta));
 		}
 
-		return super.delta(target);
+		return super.deltaDependent(target, axis, weight);
 	}
 }

@@ -65,29 +65,4 @@ public interface CollectionProducerBase<T, P extends Producer<T>> extends Produc
 				(isFixedCount() ? " (fixed) " : " (variable) ") +
 				getShape().toString();
 	}
-
-	/**
-	 * Indicates whether this producer is directly computable as a collection computation,
-	 * meaning it can participate in kernel-level evaluation without additional wrapping.
-	 * Algebraic simplifications that replace one operand with another are only applied
-	 * to directly computable operands.
-	 *
-	 * @return true if this producer is directly computable, false otherwise
-	 */
-	default boolean isDirectlyComputable() {
-		return false;
-	}
-
-	/**
-	 * Indicates whether an arbitrary producer is directly computable, as
-	 * {@link #isDirectlyComputable()} does for a {@link CollectionProducerBase}.
-	 * A producer that is not a {@link CollectionProducerBase} is not directly computable.
-	 *
-	 * @param producer the producer to inspect
-	 * @return true if the producer is directly computable, false otherwise
-	 */
-	static boolean isDirectlyComputable(Producer<?> producer) {
-		return producer instanceof CollectionProducerBase &&
-				((CollectionProducerBase<?, ?>) producer).isDirectlyComputable();
-	}
 }

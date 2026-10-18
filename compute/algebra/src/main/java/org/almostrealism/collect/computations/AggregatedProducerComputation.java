@@ -325,7 +325,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	protected boolean isSignatureSupported() { return true; }
 
 	@Override
-	public boolean isChainRuleSupported() {
+	protected boolean isChainRuleSupported() {
 		return enableChainRule || super.isChainRuleSupported();
 	}
 
@@ -498,9 +498,8 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	}
 
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDelta(target);
-		if (delta != null) return delta;
+	protected CollectionProducer deltaMatrix(Producer<?> target) {
+		CollectionProducer delta;
 
 		if (enableTransitiveDelta && getInputs().size() == 2 && getInputs().get(1) instanceof CollectionProducer) {
 			int outLength = ((CollectionProducer) getInputs().get(1)).getShape().getTotalSize();
@@ -520,7 +519,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 						count, initial, expression, replaceLoop, delta)
 					.reshape(getShape().append(shape(target)));
 		} else {
-			delta = super.delta(target);
+			delta = super.deltaMatrix(target);
 			if (delta instanceof ConstantRepeatedDeltaComputation) {
 				TraversableDeltaComputation traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
 						args -> CollectionExpression.create(getShape(), this::getValueAt), target,

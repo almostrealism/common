@@ -159,10 +159,10 @@ public class CollectionSumComputation extends AggregatedProducerComputation {
 	 * sum of the input's own input-reduced delta.
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		Producer<PackedCollection> child = getInputs().get(1);
-		if (hasDirectDelta(target) || !(child instanceof Shape)) {
-			return super.delta(target, axis, weight);
+		if (axis == ReduceAxis.NONE || !(child instanceof Shape)) {
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		CollectionProducer input = c(child);

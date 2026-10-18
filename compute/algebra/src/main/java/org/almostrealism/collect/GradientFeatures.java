@@ -21,8 +21,9 @@ import org.almostrealism.calculus.ReduceAxis;
 
 /**
  * Factory interface for gradient and differentiation operations on collections.
- * This interface provides methods for computing deltas, combining gradients,
- * and multiplying gradients for backpropagation.
+ * This interface provides methods for computing deltas and for contracting a full
+ * Jacobian with an upstream gradient, the reference that a
+ * {@link ReduceAxis#OUT output-reduced} delta must agree with.
  *
  * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
  * operations should <em>implement</em> this interface (the methods are stateless
@@ -36,42 +37,15 @@ public interface GradientFeatures extends ComparisonFeatures {
 
 	/**
 	 * Computes the derivative of a collection producer with respect to a target producer,
-	 * for use in automatic differentiation and gradient computation. The
-	 * {@link CollectionProducer#attemptDirectDelta direct cases} are attempted first; if
-	 * unavailable, the computation falls back to the standard
-	 * {@link CollectionProducer#delta} mechanism.
+	 * for use in automatic differentiation and gradient computation, by way of
+	 * {@link CollectionProducer#delta(Producer)}.
 	 *
 	 * @param producer the collection producer to differentiate
 	 * @param target   the producer with respect to which the derivative is taken
 	 * @return a {@link CollectionProducer} representing the derivative
 	 */
 	default CollectionProducer delta(Producer<PackedCollection> producer, Producer<?> target) {
-		CollectionProducer p = CollectionFeatures.getInstance().c(producer);
-		CollectionProducer result = p.attemptDirectDelta(target);
-		if (result != null) return result;
-
-		return p.delta(target);
-	}
-
-	/**
-	 * Combines a function's derivative with an upstream gradient to produce the gradient
-	 * with respect to {@code input} via the chain rule (the vector-Jacobian product).
-	 *
-	 * <p>This is the {@link ReduceAxis#OUT output-reduced} delta of the function weighted
-	 * by the upstream gradient, so a function whose structure is known (a matrix multiply,
-	 * for example) never forms its Jacobian.</p>
-	 *
-	 * @param func     the differentiable collection producer representing the forward function
-	 * @param input    the input collection producer for which the gradient is computed
-	 * @param gradient the upstream gradient producer (output gradient from the next layer)
-	 * @return a {@link CollectionProducer} of shape {@code [inSize]}, traversed per element,
-	 *         containing the gradient with respect to {@code input}
-	 */
-	default CollectionProducer combineGradient(
-			CollectionProducer func,
-			Producer<?> input, Producer<PackedCollection> gradient) {
-		return func.delta(input, ReduceAxis.OUT, gradient)
-				.reshape(shape(shape(input).getTotalSize())).each();
+		return CollectionFeatures.getInstance().c(producer).delta(target);
 	}
 
 	/**
@@ -108,6 +82,42 @@ public interface GradientFeatures extends ComparisonFeatures {
 				.sum(1)
 				.reshape(shape(inSize))
 				.each();
+	}
+
+	/**
+	 * Computes a {@link ReduceAxis reduced} delta of a collection producer by contracting
+	 * its full Jacobian, {@code func.delta(target)}: the
+	 * {@link #jacobianGradient vector-Jacobian product} for {@link ReduceAxis#OUT}, and the
+	 * Jacobian-vector product for {@link ReduceAxis#IN}. This always materializes the
+	 * Jacobian, so it is the fallback for a producer that has no reduced delta of its own,
+	 * and the reference that any such delta must agree with.
+	 *
+	 * @param func   the collection producer to differentiate
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   the axis of the Jacobian to sum away, {@link ReduceAxis#OUT} or
+	 *               {@link ReduceAxis#IN}
+	 * @param weight the weight of each entry along that axis, or null to weight every
+	 *               entry by one
+	 * @return the reduced delta, in the shape of the axis that remains
+	 * @throws IllegalArgumentException if {@code axis} is {@link ReduceAxis#NONE}, for
+	 *                                  which there is nothing to contract
+	 */
+	default CollectionProducer jacobianContraction(CollectionProducer func, Producer<?> target,
+												  ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis == ReduceAxis.NONE) {
+			throw new IllegalArgumentException("The Jacobian of " + func.describe() + " has no axis to contract");
+		} else if (axis == ReduceAxis.OUT) {
+			return jacobianGradient(func, target, weight).reshape(axis.resultShape(func.getShape(), shape(target)));
+		}
+
+		int outSize = func.getShape().getTotalSize();
+		int inSize = shape(target).getTotalSize();
+		CollectionProducer jacobian = func.delta(target).reshape(outSize, inSize).traverse(1);
+		if (weight != null) {
+			jacobian = jacobian.multiply(CollectionFeatures.getInstance().c(weight).reshape(shape(inSize)).repeat(outSize));
+		}
+
+		return jacobian.traverse(1).sum().reshape(axis.resultShape(func.getShape(), shape(target)));
 	}
 
 	/**

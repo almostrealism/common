@@ -23,11 +23,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
-import org.almostrealism.calculus.DeltaAlternate;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
 import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.CollectionAddComputation;
@@ -46,11 +43,11 @@ import java.util.function.Function;
 
 /**
  * Verifies the polymorphic hooks that replaced type checks and casts in the collection
- * features: {@link CollectionProducer#attemptMultiply(double)},
- * {@link CollectionProducer#isReduction()},
- * {@link io.almostrealism.collect.CollectionProducerBase#isDirectlyComputable()}, the
- * {@code with...} declarations on {@link CollectionProducer} (and their delegation
- * through {@link ReshapeProducer}), and {@link TraversalPolicy#forKernelLength}.
+ * features: {@link CollectionProducer#multiply(double)},
+ * {@link CollectionProducer#isReduction()}, the short-circuit declaration on a computation,
+ * producer matching, the identity-determined cases of {@link CollectionProducer#delta}
+ * (and its delegation through {@link ReshapeProducer}), and
+ * {@link TraversalPolicy#forKernelLength}.
  *
  * @author Michael Murray
  */
@@ -76,31 +73,35 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
-	 * An arithmetic sequence scales itself by rescaling its parameters, and
-	 * {@code multiply(double, Producer)} uses that representation; a producer without
-	 * one (and is not constant) declines, so {@code multiply(double, Producer)} returns null
-	 * and the product of producers forms the product instead.
+	 * An arithmetic sequence scales itself by rescaling its parameters, and the product
+	 * of a constant with it, in either order, uses that representation; a producer without
+	 * one is scaled by the product with the constant.
 	 */
 	@Test(timeout = 60000)
-	public void attemptMultiply() {
+	public void multiplyByConstant() {
 		ArithmeticSequenceComputation sequence =
 				new ArithmeticSequenceComputation(shape(5), true, 1.0, 2.0);
 
-		CollectionProducer scaled = sequence.attemptMultiply(3.0);
+		CollectionProducer scaled = sequence.multiply(3.0);
 		Assert.assertTrue(scaled instanceof ArithmeticSequenceComputation);
 		assertValues(scaled.evaluate(), 3.0, 9.0, 15.0, 21.0, 27.0);
 		assertValues(multiply(3.0, sequence).evaluate(), 3.0, 9.0, 15.0, 21.0, 27.0);
 
-		Producer<PackedCollection> generic = sequence;
-		CollectionProducer delegated = CollectionProducer.attemptMultiply(generic, -2.0);
-		Assert.assertTrue(delegated instanceof ArithmeticSequenceComputation);
-		assertValues(delegated.evaluate(), -2.0, -6.0, -10.0, -14.0, -18.0);
+		CollectionProducer left = multiply(c(-2.0), sequence);
+		Assert.assertTrue(left instanceof ArithmeticSequenceComputation);
+		assertValues(left.evaluate(), -2.0, -6.0, -10.0, -14.0, -18.0);
+
+		CollectionProducer right = multiply(sequence, c(-2.0));
+		Assert.assertTrue(right instanceof ArithmeticSequenceComputation);
+		assertValues(right.evaluate(), -2.0, -6.0, -10.0, -14.0, -18.0);
 
 		CollectionProducer values = cp(pack(1.0, 2.0, 3.0));
-		Assert.assertNull(values.attemptMultiply(3.0));
-		Assert.assertNull(CollectionProducer.attemptMultiply(values, 3.0));
-		Assert.assertNull(multiply(3.0, values));
+		Assert.assertFalse(values.multiply(3.0) instanceof ArithmeticSequenceComputation);
+		assertValues(values.multiply(3.0).evaluate(), 3.0, 6.0, 9.0);
+		assertValues(multiply(3.0, values).evaluate(), 3.0, 6.0, 9.0);
 		assertValues(multiply(c(3.0), values).evaluate(), 3.0, 6.0, 9.0);
+		Assert.assertSame(values, values.multiply(1.0));
+		Assert.assertTrue(Algebraic.isZero(values.multiply(0.0)));
 	}
 
 	/**
@@ -145,55 +146,36 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
-	 * Collection computations and provided values are directly computable, also through a
-	 * reshape; a producer evaluated by a host function is not, and neither is a reshape of it.
+	 * The algebraic simplifications of a product apply to a producer evaluated by a host
+	 * function as they do to any other: multiplying it by one leaves it unchanged, and
+	 * multiplying it by another constant scales its values.
 	 */
 	@Test(timeout = 30000)
-	public void isDirectlyComputable() {
+	public void multiplyHostFunction() {
 		PackedCollection x = pack(1.0, 2.0, 3.0, 4.0);
-
-		Assert.assertTrue(cp(x).isDirectlyComputable());
-		Assert.assertTrue(cp(x).add(cp(x)).isDirectlyComputable());
-		Assert.assertTrue(new ReshapeProducer(shape(2, 2), cp(x)).isDirectlyComputable());
-
 		Function<Object[], PackedCollection> function = args -> x;
 		DynamicCollectionProducer dynamic = new DynamicCollectionProducer(shape(4), function);
-		Assert.assertFalse(dynamic.isDirectlyComputable());
-		Assert.assertFalse(new ReshapeProducer(shape(2, 2), dynamic).isDirectlyComputable());
+
+		Assert.assertSame(dynamic, multiply(c(1.0), dynamic));
+		assertValues(multiply(c(2.0), dynamic).evaluate(), 2.0, 4.0, 6.0, 8.0);
+		assertValues(multiply(dynamic, cp(x)).evaluate(), 1.0, 4.0, 9.0, 16.0);
 	}
 
 	/**
-	 * A computation keeps the delta alternate and short-circuit it is given; a reshape keeps
-	 * the alternate itself and leaves the computation it reshapes unchanged; a producer that
-	 * has nowhere to keep either returns itself unchanged rather than failing.
+	 * A computation keeps the short-circuit it is given; a producer that has nowhere to
+	 * keep one returns itself unchanged rather than failing.
 	 */
 	@Test(timeout = 30000)
-	public void withDeltaAlternateAndShortCircuit() {
+	public void withShortCircuit() {
 		PackedCollection x = pack(1.0, 2.0, 3.0, 4.0);
-		CollectionProducer alternate = cp(x).multiply(2.0);
 
 		CollectionProducer sum = cp(x).add(cp(x));
-		Assert.assertSame(sum, sum.withDeltaAlternate(alternate));
-		Assert.assertSame(alternate, ((DeltaAlternate) sum).getDeltaAlternate());
-
 		Evaluable<PackedCollection> shortCircuit = args -> x;
 		Assert.assertSame(sum, sum.withShortCircuit(shortCircuit));
 		Assert.assertSame(shortCircuit, ((CollectionProducerComputationBase) sum).getShortCircuit());
 
-		CollectionProducer inner = cp(x).add(cp(x));
-		ReshapeProducer reshaped = new ReshapeProducer(shape(2, 2), inner);
-		Assert.assertSame(reshaped, reshaped.withDeltaAlternate(alternate));
-		Assert.assertSame(alternate, reshaped.getDeltaAlternate());
-		Assert.assertNull(((DeltaAlternate) inner).getDeltaAlternate());
-
-		CollectionProducer provided = cp(x);
-		Assert.assertSame(provided, provided.withDeltaAlternate(alternate));
-		Assert.assertSame(alternate, provided.getDeltaAlternate());
-
 		Function<Object[], PackedCollection> function = args -> x;
 		CollectionProducer dynamic = new DynamicCollectionProducer(shape(4), function);
-		Assert.assertSame(dynamic, dynamic.withDeltaAlternate(alternate));
-		Assert.assertNull(dynamic.getDeltaAlternate());
 		Assert.assertSame(dynamic, dynamic.withShortCircuit(shortCircuit));
 	}
 
@@ -222,47 +204,26 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
-	 * Declarations made on a reshape do not leak onto a computation shared with another
-	 * consumer, survive a further reshape or traversal (which wraps the computation rather
-	 * than the reshape) and regeneration, and the alternate's delta is the one used, in
-	 * this reshape's shape followed by the target's.
+	 * The Jacobian of a reshape is that of the computation it reshapes, in the reshape's
+	 * shape followed by the target's, also through a further reshape or traversal (which
+	 * wraps the computation rather than the reshape) and regeneration.
 	 */
 	@Test(timeout = 60000)
-	public void reshapeDeclarationsAreNotShared() {
+	public void jacobianThroughReshape() {
 		PackedCollection x = pack(1.0, 2.0, 3.0, 4.0);
 		Producer<PackedCollection> target = cp(x);
-		Producer<PackedCollection> gradient = cp(pack(1.0, -1.0, 0.5, 2.0));
 
-		CollectionProducer shared = c(target).multiply(2.0);
-		ReshapeProducer declaring = new ReshapeProducer(shape(2, 2), shared);
-		ReshapeProducer other = new ReshapeProducer(shape(4, 1), shared);
-		CollectionProducer alternate = c(target).multiply(3.0).reshape(shape(2, 2));
-		declaring.withDeltaAlternate(alternate);
+		CollectionProducer shared = c(target).multiply(3.0);
+		ReshapeProducer reshaped = new ReshapeProducer(shape(2, 2), shared);
 
-		assertValues(other.delta(target, ReduceAxis.OUT, gradient).evaluate(), 2.0, -2.0, 1.0, 4.0);
-		Assert.assertNull(other.getDeltaAlternate());
-		Assert.assertNull(shared.getDeltaAlternate());
-
-		CollectionProducer delta = declaring.delta(target);
+		CollectionProducer delta = reshaped.delta(target);
 		Assert.assertEquals(List.of(2, 2, 4), List.of(delta.getShape().length(0),
 				delta.getShape().length(1), delta.getShape().length(2)));
 		assertTripledIdentity(delta);
-		assertTripledIdentity(shared.delta(target).multiply(1.5));
-
-		assertValues(declaring.delta(target, ReduceAxis.OUT, gradient).evaluate(), 3.0, -3.0, 1.5, 6.0);
-
-		CollectionProducer flattened = declaring.reshape(shape(4));
-		assertValues(flattened.delta(target, ReduceAxis.OUT, gradient).evaluate(), 3.0, -3.0, 1.5, 6.0);
-		Assert.assertEquals(shape(4), flattened.getDeltaAlternate().getShape());
-		assertTripledIdentity(flattened.delta(target));
-
-		CollectionProducer traversed = declaring.traverse(1);
-		assertValues(traversed.delta(target, ReduceAxis.OUT, gradient).evaluate(), 3.0, -3.0, 1.5, 6.0);
-		assertTripledIdentity(traversed.delta(target));
-
-		ReshapeProducer generated = declaring.generate(List.of((Process<?, ?>) shared));
-		assertValues(generated.delta(target, ReduceAxis.OUT, gradient).evaluate(), 3.0, -3.0, 1.5, 6.0);
-		Assert.assertSame(alternate, generated.getDeltaAlternate());
+		assertTripledIdentity(shared.delta(target));
+		assertTripledIdentity(reshaped.reshape(shape(4)).delta(target));
+		assertTripledIdentity(reshaped.traverse(1).delta(target));
+		assertTripledIdentity(reshaped.generate(List.of((Process<?, ?>) shared)).delta(target));
 	}
 
 	/** Asserts that a delta with respect to a four-element target is three times the identity. */
@@ -342,96 +303,30 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 		Assert.assertTrue(dynamic.containsMatch(a));
 		Assert.assertFalse(dynamic.cannotMatch(a));
 		Assert.assertFalse(dynamic.reshape(shape(2, 2)).cannotMatch(a));
-		Assert.assertNull(dynamic.attemptDirectDelta(a));
 
 		Assert.assertTrue(dynamic.matchingInputs(b).isEmpty());
 		Assert.assertFalse(dynamic.containsMatch(b));
 		Assert.assertTrue(dynamic.cannotMatch(b));
-		assertValues(dynamic.attemptDirectDelta(b).evaluate(), new double[16]);
+		assertValues(dynamic.delta(b).evaluate(), new double[16]);
 
 		assertValues(dynamic.evaluate(), 2.0, 4.0, 6.0, 8.0);
 	}
 
 	/**
-	 * The terms of a computation are its inputs, including one that is not a
-	 * {@link Process} (which its process children would only present wrapped): such a term
-	 * is counted, and excluding it leaves exactly the other term.
+	 * A product with an operand that has a shape but is neither a {@link CollectionProducer}
+	 * nor a {@link Process} is differentiated with respect to its other operand as the
+	 * diagonal of that operand's values.
 	 */
 	@Test(timeout = 60000)
-	public void termsIncludeNonProcessInputs() {
-		PackedCollection x = pack(1.0, 2.0, 3.0);
-		Producer<PackedCollection> raw = () -> args -> x;
-		Assert.assertFalse(raw instanceof Process);
-
-		CollectionProducer other = cp(pack(4.0, 5.0, 6.0));
-		CollectionAddComputation sum = new CollectionAddComputation(shape(3), raw, other);
-
-		Assert.assertEquals(1, sum.countTerms(raw));
-		Assert.assertEquals(1, sum.countTerms(other));
-		Assert.assertEquals(0, sum.countTerms(cp(pack(7.0, 8.0, 9.0))));
-		Assert.assertSame(other, sum.excludeTerm(raw));
-	}
-
-	/**
-	 * Excluding one term of a three-term computation rebuilds it from the remaining two
-	 * when both are {@link Process}es. When one of the remaining terms is not a
-	 * {@link Process} the computation cannot be rebuilt: the exclusion returns null rather
-	 * than failing, and {@link MultiTermDeltaStrategy#COMBINE} declines for that reason.
-	 */
-	@Test(timeout = 60000)
-	public void excludeTermRebuildsOnlyFromProcesses() {
-		CollectionProducer first = cp(pack(1.0, 2.0, 3.0));
-		CollectionProducer other = cp(pack(4.0, 5.0, 6.0));
-		CollectionProducer excluded = cp(pack(7.0, 8.0, 9.0));
-
-		CollectionProducer remaining =
-				new CollectionAddComputation(shape(3), first, other, excluded).excludeTerm(excluded);
-		Assert.assertTrue(remaining instanceof CollectionProducerComputation);
-		Assert.assertEquals(1, remaining.matchingInputs(first).size());
-		Assert.assertEquals(1, remaining.matchingInputs(other).size());
-		Assert.assertTrue(remaining.matchingInputs(excluded).isEmpty());
-		assertValues(remaining.evaluate(), 5.0, 7.0, 9.0);
-
-		PackedCollection x = pack(1.0, 2.0, 3.0);
-		Producer<PackedCollection> raw = () -> args -> x;
-		Assert.assertNull(new CollectionAddComputation(shape(3), raw, other, excluded)
-				.excludeTerm(excluded));
-
-		CollectionProductComputation product =
-				new CollectionProductComputation(shape(3), raw, other, excluded);
-		Assert.assertNull(MultiTermDeltaStrategy.COMBINE.delta(product, excluded));
-	}
-
-	/**
-	 * Excluding one term of a two-term computation leaves a single term. A term that is
-	 * neither a {@link CollectionProducer} nor a {@link Shape} has
-	 * no shape to present it by, so the exclusion returns null and
-	 * {@link MultiTermDeltaStrategy#COMBINE} declines rather than failing with a
-	 * {@link ClassCastException}. A term that has a shape is presented through a
-	 * {@link ReshapeProducer}, and the product's delta is the diagonal of its values.
-	 */
-	@Test(timeout = 60000)
-	public void excludeTermPresentsSingleRemainingTerm() {
+	public void productDeltaWithShapedOperand() {
 		PackedCollection x = pack(1.0, 2.0, 3.0);
 		CollectionProducer other = cp(pack(4.0, 5.0, 6.0));
-
-		Producer<PackedCollection> raw = () -> args -> x;
-		CollectionProductComputation rawProduct = new CollectionProductComputation(shape(3), raw, other);
-		Assert.assertNull(rawProduct.excludeTerm(other));
-		Assert.assertNull(MultiTermDeltaStrategy.COMBINE.delta(rawProduct, other));
-		Assert.assertSame(other, rawProduct.excludeTerm(raw));
 
 		ShapedProducer shaped = new ShapedProducer(x);
 		Assert.assertFalse(shaped instanceof Process);
-		CollectionProductComputation shapedProduct =
-				new CollectionProductComputation(shape(3), shaped, other);
+		CollectionProductComputation product = new CollectionProductComputation(shape(3), shaped, other);
 
-		CollectionProducer remaining = shapedProduct.excludeTerm(other);
-		Assert.assertEquals(3, remaining.getShape().getTotalSize());
-		Assert.assertTrue(remaining.containsMatch(shaped));
-		assertValues(remaining.evaluate(), 1.0, 2.0, 3.0);
-
-		CollectionProducer delta = MultiTermDeltaStrategy.COMBINE.delta(shapedProduct, other);
+		CollectionProducer delta = product.delta(other);
 		Assert.assertEquals(shape(3, 3), delta.getShape());
 		assertValues(delta.evaluate(),
 				1.0, 0.0, 0.0,
@@ -456,7 +351,6 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 		Assert.assertTrue(sum.containsMatch(raw));
 		Assert.assertFalse(sum.cannotMatch(raw));
 		Assert.assertSame(raw, sum.matchInput(raw).orElseThrow());
-		Assert.assertNull(sum.attemptDirectDelta(raw));
 
 		Producer<PackedCollection> unrelated = p(pack(7.0, 8.0, 9.0));
 		Assert.assertFalse(sum.containsMatch(unrelated));
@@ -499,81 +393,76 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
-	 * The direct delta of a producer with respect to itself is the identity, not the zeros
+	 * The delta of a producer with respect to itself is the identity, not the zeros
 	 * of an independent producer, also for a producer that is neither a value source nor
 	 * has any inputs; with respect to an unrelated value it is zeros.
 	 */
 	@Test(timeout = 60000)
 	public void directDeltaWithRespectToItself() {
 		CollectionProducer scaled = cp(pack(1.0, 2.0, 3.0)).multiply(2.0);
-		assertValues(scaled.attemptDirectDelta(scaled).evaluate(),
+		assertValues(scaled.delta(scaled).evaluate(),
 				1.0, 0.0, 0.0,
 				0.0, 1.0, 0.0,
 				0.0, 0.0, 1.0);
-		assertValues(scaled.attemptDirectDelta(cp(pack(4.0, 5.0))).evaluate(),
+		assertValues(scaled.delta(cp(pack(4.0, 5.0))).evaluate(),
 				0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
 		PackedCollection x = pack(1.0, 2.0);
 		Function<Object[], PackedCollection> function = args -> x;
 		DynamicCollectionProducer dynamic = new DynamicCollectionProducer(shape(2), function);
-		assertValues(dynamic.attemptDirectDelta(dynamic).evaluate(),
+		assertValues(dynamic.delta(dynamic).evaluate(),
 				1.0, 0.0,
 				0.0, 1.0);
 	}
 
 	/**
-	 * A multi-term strategy returns a Jacobian shaped as the computation's shape followed by
-	 * the target's shape: zeros of that shape for a target in none of the terms, and the
-	 * identity for an additive term; {@link MultiTermDeltaStrategy#NONE} declines.
+	 * The Jacobian of a sum is shaped as the sum's shape followed by the target's shape:
+	 * zeros of that shape for a target in none of the terms, the identity for a target that
+	 * is one term, and twice the identity for a target that is both.
 	 */
 	@Test(timeout = 60000)
-	public void multiTermDeltaShapes() {
+	public void sumJacobian() {
 		CollectionProducer a = cp(pack(1.0, 2.0, 3.0));
 		CollectionProducer sum = a.add(cp(pack(4.0, 5.0, 6.0)));
-		Assert.assertTrue(sum instanceof CollectionProducerComputation);
-		CollectionProducerComputation computation = (CollectionProducerComputation) sum;
 
-		CollectionProducer independent =
-				MultiTermDeltaStrategy.IGNORE.delta(computation, cp(pack(7.0, 8.0)));
-		Assert.assertEquals(2, independent.getShape().getDimensions());
-		Assert.assertEquals(3, independent.getShape().length(0));
-		Assert.assertEquals(2, independent.getShape().length(1));
+		CollectionProducer independent = sum.delta(cp(pack(7.0, 8.0)));
+		Assert.assertEquals(shape(3, 2), independent.getShape());
 		assertValues(independent.evaluate(), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
-		CollectionProducer term = MultiTermDeltaStrategy.IGNORE.delta(computation, a);
-		Assert.assertEquals(3, term.getShape().length(0));
-		Assert.assertEquals(3, term.getShape().length(1));
+		CollectionProducer term = sum.delta(a);
+		Assert.assertEquals(shape(3, 3), term.getShape());
 		assertValues(term.evaluate(),
 				1.0, 0.0, 0.0,
 				0.0, 1.0, 0.0,
 				0.0, 0.0, 1.0);
 
-		Assert.assertNull(MultiTermDeltaStrategy.NONE.delta(computation, a));
+		assertValues(a.add(a).delta(a).evaluate(),
+				2.0, 0.0, 0.0,
+				0.0, 2.0, 0.0,
+				0.0, 0.0, 2.0);
 	}
 
 	/**
-	 * {@link MultiTermDeltaStrategy#COMBINE} differentiates a product with respect to one
-	 * factor as the diagonal of the other factors, and declines (returns null) when the
-	 * target is more than one of the terms.
+	 * The Jacobian of a product with respect to one factor is the diagonal of the other
+	 * factor, and with respect to a factor that is both operands it is the diagonal of
+	 * twice that factor.
 	 */
 	@Test(timeout = 60000)
-	public void multiTermDeltaCombine() {
+	public void productJacobian() {
 		CollectionProducer a = cp(pack(1.0, 2.0, 3.0));
 		CollectionProducer product = a.multiply(cp(pack(4.0, 5.0, 6.0)));
-		Assert.assertTrue(product instanceof CollectionProducerComputation);
 
-		CollectionProducer diagonal =
-				MultiTermDeltaStrategy.COMBINE.delta((CollectionProducerComputation) product, a);
-		Assert.assertEquals(3, diagonal.getShape().length(0));
-		Assert.assertEquals(3, diagonal.getShape().length(1));
+		CollectionProducer diagonal = product.delta(a);
+		Assert.assertEquals(shape(3, 3), diagonal.getShape());
 		assertValues(diagonal.evaluate(),
 				4.0, 0.0, 0.0,
 				0.0, 5.0, 0.0,
 				0.0, 0.0, 6.0);
 
-		CollectionProducer twice = a.add(a);
-		Assert.assertTrue(twice instanceof CollectionProducerComputation);
-		Assert.assertNull(MultiTermDeltaStrategy.COMBINE.delta((CollectionProducerComputation) twice, a));
+		assertValues(a.multiply(a).delta(a).evaluate(),
+				2.0, 0.0, 0.0,
+				0.0, 4.0, 0.0,
+				0.0, 0.0, 6.0);
 	}
 
 	/**

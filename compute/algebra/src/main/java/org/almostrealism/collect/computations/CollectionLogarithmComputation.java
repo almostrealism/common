@@ -23,7 +23,7 @@ import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Logarithm;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -133,7 +133,7 @@ public class CollectionLogarithmComputation extends TraversableExpressionComputa
 	 */
 	protected CollectionLogarithmComputation(String name, TraversalPolicy shape,
 											   Producer<PackedCollection> input) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, input);
+		super(name, shape, input);
 	}
 
 	/**
@@ -178,14 +178,9 @@ public class CollectionLogarithmComputation extends TraversableExpressionComputa
 	 *         to the parent if custom delta is disabled
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		if (!enableCustomDelta) {
-			return super.delta(target);
-		}
-
-		CollectionProducer delta = attemptDirectDelta(target);
-		if (delta != null) {
-			return delta;
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (!enableCustomDelta || axis != ReduceAxis.NONE) {
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		TraversalPolicy targetShape = shape(target);

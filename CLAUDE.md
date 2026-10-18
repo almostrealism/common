@@ -430,6 +430,11 @@ Never add dependencies. Write code assuming the dependency exists, run `mvn comp
 
 Never include specific version numbers in any file. Versions change constantly. Refer to pom.xml as the source of truth.
 
+The version in the root `pom.xml` is also the release currently being worked on. In the
+tracker, the release under development is the one whose name matches that version (e.g.
+`Common <version>`), so a task meant for upcoming work belongs in that release. Read the
+version from `pom.xml` each time rather than remembering it.
+
 ## CRITICAL: Verify Changes Against Relevant Tests Before Declaring Done
 
 The full project test suite takes hours — do NOT run it. For every code file you modified

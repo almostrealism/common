@@ -22,7 +22,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -73,7 +73,7 @@ public abstract class UnaryCollectionComputation extends TraversableExpressionCo
 										 TraversalPolicy shape,
 										 Function<Expression<Double>, Expression<Double>> expressionFunction,
 										 Producer<PackedCollection> input) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, input);
+		super(name, shape, input);
 		this.expressionFunction = expressionFunction;
 	}
 
@@ -125,10 +125,9 @@ public abstract class UnaryCollectionComputation extends TraversableExpressionCo
 	 * @return A {@link CollectionProducer} that computes the derivative
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDirectDelta(target);
-		if (delta != null) {
-			return delta;
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.NONE) {
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		TraversalPolicy targetShape = shape(target);

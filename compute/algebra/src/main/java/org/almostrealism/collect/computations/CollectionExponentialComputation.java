@@ -25,7 +25,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.MultiTermDeltaStrategy;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -155,7 +155,7 @@ public class CollectionExponentialComputation extends TraversableExpressionCompu
 	 */
 	protected CollectionExponentialComputation(String name, TraversalPolicy shape, boolean ignoreZero,
 											   Producer<PackedCollection> input) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, input);
+		super(name, shape, input);
 		this.ignoreZero = ignoreZero;
 	}
 
@@ -217,10 +217,9 @@ public class CollectionExponentialComputation extends TraversableExpressionCompu
 	 * @return A {@link CollectionProducer} that computes the derivative
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDirectDelta(target);
-		if (delta != null) {
-			return delta;
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.NONE) {
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		TraversalPolicy targetShape = shape(target);

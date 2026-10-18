@@ -191,7 +191,7 @@ public interface AlgebraFeatures extends CollectionComparisonFeatures {
 																		TraversalPolicy weightGroupShape,
 																		Producer<T> input,
 																		Producer<T> weights) {
-		return weightedSum(name, new TraversalPolicy(inputPositions.extent()),
+		return weightedSum(name, inputPositions.extentShape().traverse(0),
 				inputPositions, weightPositions, inputGroupShape, weightGroupShape, input, weights);
 	}
 

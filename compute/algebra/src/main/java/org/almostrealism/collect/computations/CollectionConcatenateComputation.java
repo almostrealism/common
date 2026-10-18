@@ -196,10 +196,7 @@ public class CollectionConcatenateComputation extends TransitiveDeltaExpressionC
 	 * @return A {@link CollectionProducer} that computes the derivative
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDelta(target);
-		if (delta != null) return delta;
-
+	protected CollectionProducer deltaMatrix(Producer<?> target) {
 		TraversalPolicy targetShape = shape(target);
 		TraversalPolicy fullShape = getShape().append(targetShape);
 
