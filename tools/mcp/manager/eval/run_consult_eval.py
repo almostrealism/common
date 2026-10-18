@@ -17,6 +17,9 @@ Two modes:
   runs ``--k`` times, every repetition is graded, and the report records the
   pass fraction.
 
+Either mode exits 0 by default, since the committed baseline is known to fail;
+pass ``--check`` to make the run a gate that exits 1 unless every case passed.
+
 A ``live`` mode (calling a deployed ar-manager over MCP) is described in the
 plan but not implemented here; its numbers are not comparable across runs.
 
@@ -302,7 +305,24 @@ def _run_local(cases: list[dict], k: int) -> dict:
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def report_passed(summary: dict) -> bool:
+    """Whether every case in a report has a response and passed.
+
+    A ``no-response`` case counts as a failure: a gate that skipped a case
+    must not report success for it.
+    """
+    # TODO(review): all() is vacuously True for an empty case list; decide whether --check should fail when nothing was graded.
+    return all(c.get("passed") is True for c in summary["cases"])
+
+
 def main(argv=None) -> int:
+    """Run the evaluation set and write or print the report.
+
+    Returns 0 by default, because the committed baseline is known to fail
+    (it records the starting point, not a target). With ``--check`` the run is
+    a gate: it returns 1 unless every case passed, so a caller such as CI or a
+    milestone script cannot mistake a failing evaluation for a passing one.
+    """
     parser = argparse.ArgumentParser(description="Run the consult eval set.")
     parser.add_argument("--mode", choices=["replay", "local"], default="replay")
     parser.add_argument("--milestone", default="baseline")
@@ -310,6 +330,8 @@ def main(argv=None) -> int:
                         help="repetitions per case in local mode")
     parser.add_argument("--out", default="",
                         help="write the markdown report to this path")
+    parser.add_argument("--check", action="store_true",
+                        help="exit 1 unless every case passed")
     args = parser.parse_args(argv)
 
     cases = load_cases()
@@ -329,6 +351,8 @@ def main(argv=None) -> int:
             handle.write(report)
     else:
         print(report)
+    if args.check and not report_passed(summary):
+        return 1
     return 0
 
 

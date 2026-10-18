@@ -1204,7 +1204,8 @@ counts as a fail only for expectations that need it.
 
 - **Local (reproducible; the mode to use for measuring a change — the runner
   defaults to `--mode replay`, so a change measurement must pass `--mode
-  local` explicitly):**
+  local` explicitly; add `--check` when the run is a gate, so a failing case
+  exits nonzero rather than 0):**
   - builds the corpus with the *same* logic as the Dockerfile's `docs`
     stage, so coverage fixes are measured as shipped. This argues for
     moving that logic into a script that both the Dockerfile and the runner

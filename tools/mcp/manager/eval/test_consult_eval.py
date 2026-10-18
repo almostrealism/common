@@ -28,7 +28,7 @@ from graders import (  # noqa: E402
 import run_consult_eval  # noqa: E402
 from run_consult_eval import (  # noqa: E402
     load_cases, observed_response, build_report, render_report,
-    _docs_stage_copies, _stage_corpus,
+    _docs_stage_copies, _stage_corpus, report_passed,
 )
 
 
@@ -82,6 +82,55 @@ class TestCaseSchema(unittest.TestCase):
     def test_validate_case_accepts_single_check_expect(self):
         ok = {"id": "X", "question": "q", "expect": {"outcome": "abstain"}}
         self.assertEqual(validate_case(ok), [])
+
+    def test_validate_case_rejects_non_object_must_not_cite_entry(self):
+        # A null entry used to raise TypeError at the membership check instead
+        # of being reported as a schema error.
+        bad = {"id": "X", "question": "q",
+               "expect": {"must_not_cite": [None, "a.md"]}}
+        self.assertEqual(validate_case(bad), [
+            "X: expect must_not_cite entries must be objects",
+            "X: expect must_not_cite entries must be objects",
+        ])
+
+    def test_validate_case_rejects_non_list_must_not_cite(self):
+        bad = {"id": "X", "question": "q",
+               "expect": {"must_not_cite": {"file": "a.md", "lines": [1, 2]}}}
+        self.assertEqual(validate_case(bad),
+                         ["X: expect must_not_cite must be a list"])
+
+    def test_validate_case_checks_must_not_cite_in_milestones(self):
+        bad = {"id": "X", "question": "q", "expect": {"outcome": "answer"},
+               "milestones": {"step2": {"must_not_cite": [None]}}}
+        self.assertEqual(validate_case(bad), [
+            "X: milestones.step2 must_not_cite entries must be objects"])
+
+    def test_validate_case_accepts_well_formed_must_not_cite(self):
+        ok = {"id": "X", "question": "q", "expect": {
+            "must_not_cite": [{"file": "a.md", "lines": [1, 2]}]}}
+        self.assertEqual(validate_case(ok), [])
+
+    def test_validate_case_rejects_non_object_milestones(self):
+        bad = {"id": "X", "question": "q", "expect": {"outcome": "answer"},
+               "milestones": ["step2"]}
+        self.assertEqual(validate_case(bad),
+                         ["X: 'milestones' must be an object"])
+
+    def test_validate_case_rejects_non_object_milestone_override(self):
+        bad = {"id": "X", "question": "q", "expect": {"outcome": "answer"},
+               "milestones": {"step2": None}}
+        self.assertEqual(validate_case(bad),
+                         ["X: milestones.step2 must be an object"])
+
+    def test_load_cases_raises_on_null_must_not_cite_entry(self):
+        data = {"cases": [{"id": "X", "question": "q",
+                           "expect": {"must_not_cite": [None]}}]}
+        with mock.patch.object(run_consult_eval, "_load_json",
+                               return_value=data):
+            with self.assertRaises(ValueError) as ctx:
+                load_cases()
+        self.assertIn("must_not_cite entries must be objects",
+                      str(ctx.exception))
 
     def test_load_cases_raises_on_empty_expect(self):
         data = {"cases": [{"id": "X", "question": "q", "expect": {}}]}
@@ -495,6 +544,41 @@ class TestBaselineReport(unittest.TestCase):
         text = render_report(summary, {"mode": "replay"})
         self.assertIn("# Consult evaluation report — milestone `step2`", text)
         self.assertNotIn("milestone `baseline`", text)
+
+
+class TestExitStatus(unittest.TestCase):
+    """``main`` is non-gating by default and gates on ``--check``."""
+
+    def _main(self, *argv):
+        with mock.patch("builtins.print"):
+            return run_consult_eval.main(["--mode", "replay", *argv])
+
+    def test_report_passed_requires_every_case(self):
+        self.assertTrue(report_passed({"cases": [
+            {"id": "A", "passed": True}, {"id": "B", "passed": True}]}))
+        self.assertFalse(report_passed({"cases": [
+            {"id": "A", "passed": True}, {"id": "B", "passed": False}]}))
+
+    def test_report_passed_treats_no_response_as_failure(self):
+        self.assertFalse(report_passed({"cases": [
+            {"id": "A", "passed": True}, {"id": "B", "status": "no-response"}]}))
+
+    def test_known_failing_baseline_exits_zero_without_check(self):
+        self.assertEqual(self._main(), 0)
+
+    def test_known_failing_baseline_exits_one_with_check(self):
+        self.assertEqual(self._main("--check"), 1)
+
+    def test_check_exits_zero_when_every_case_passes(self):
+        passing = {"milestone": "baseline", "total": 1, "passed": 1,
+                   "false_abstention": 0, "false_answer": 0,
+                   "cases": [{"id": "E1", "outcome": "answer", "passed": True,
+                              "runs": 1, "passed_runs": 1, "pass_fraction": 1.0,
+                              "failures": [], "false_abstention": False,
+                              "false_answer": False}]}
+        with mock.patch.object(run_consult_eval, "build_report",
+                               return_value=passing):
+            self.assertEqual(self._main("--check"), 0)
 
 
 if __name__ == "__main__":

@@ -321,8 +321,15 @@ def validate_case(case: dict) -> list[str]:
         if outcome is not None and outcome not in KNOWN_OUTCOMES:
             errors.append(
                 f"{cid}: {label} outcome {outcome!r} not in {KNOWN_OUTCOMES}")
-        for spec in expect.get("must_not_cite", []):
-            if "file" not in spec or "lines" not in spec:
+        specs = expect.get("must_not_cite", [])
+        if not isinstance(specs, list):
+            errors.append(f"{cid}: {label} must_not_cite must be a list")
+            specs = []
+        for spec in specs:
+            if not isinstance(spec, dict):
+                errors.append(
+                    f"{cid}: {label} must_not_cite entries must be objects")
+            elif "file" not in spec or "lines" not in spec:
                 errors.append(f"{cid}: {label} must_not_cite needs file+lines")
             elif (not isinstance(spec["lines"], list)
                   or len(spec["lines"]) != 2):
@@ -338,9 +345,15 @@ def validate_case(case: dict) -> list[str]:
         if not expect:
             errors.append(f"{cid}: 'expect' must state at least one check")
         _check_expect("expect", expect)
-    for name, override in (case.get("milestones") or {}).items():
+    milestones = case.get("milestones") or {}
+    if not isinstance(milestones, dict):
+        errors.append(f"{cid}: 'milestones' must be an object")
+        milestones = {}
+    for name, override in milestones.items():
         if isinstance(override, dict):
             _check_expect(f"milestones.{name}", override)
+        else:
+            errors.append(f"{cid}: milestones.{name} must be an object")
 
     if "answerable" in case and not isinstance(case["answerable"], bool):
         errors.append(f"{cid}: 'answerable' must be a boolean")
