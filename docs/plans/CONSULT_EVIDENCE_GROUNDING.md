@@ -337,6 +337,21 @@ because a branch name can be reused by a later PR. Proposed: cache per
 entries expire after about 10 minutes; merged/closed entries are
 revalidated after a bounded TTL (proposed 24 hours), and a revalidation that
 finds a *different* most-recent PR for the same branch replaces the entry.
+
+The cache is shared across requests, but branch-state availability depends on
+the *caller's* authorization, so the two must not be conflated. The entry
+stores only the objective branch state — the most-recent PR's number, head
+SHA and merged/closed/open status for a `(repo, branch)` — which is a property
+of the repository, not of any caller. It never stores a caller-derived
+`unknown`. Authorization is therefore a *precondition for touching the cache*,
+not part of its key: the `github`-scope and workspace/org gate (above) are
+re-checked on every call *before* the cache is read. A caller that fails the
+gate (no `github` scope, or the note's `repo_url` outside its workspace/org)
+gets `branch_state: unknown` with `branch_state` in `degraded_reasons`, and
+neither reads nor writes the entry — so an authorization-skipped lookup can
+never poison a later authorized read with a stale `unknown`, and a populated
+(privileged) entry is never served to a caller that has not just passed the
+same gate. Only a caller that passes the gate reads or populates the state.
 A note is then tiered against the PR that was current when it was written,
 but *note-before-PR is not by itself evidence of branch reuse.* Agents
 routinely store a memory before the branch's first PR is opened, so a note
