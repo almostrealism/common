@@ -262,7 +262,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 										 BiFunction<Expression, Expression, Expression> expression,
 										 boolean replaceLoop,
 										 Producer<PackedCollection>... arguments) {
-		super(name, shape, count, initial, null, arguments);
+		super(name, shape, count, initial, arguments);
 		this.expression = expression;
 		this.count = count;
 		this.replaceLoop = replaceLoop;
