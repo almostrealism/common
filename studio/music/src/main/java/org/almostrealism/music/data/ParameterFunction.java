@@ -16,6 +16,7 @@
 
 package org.almostrealism.music.data;
 
+import java.util.Random;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 
@@ -33,6 +34,15 @@ import java.util.function.Function;
  * @see MultipleParameterFunction
  */
 public class ParameterFunction implements Function<ParameterSet, Double> {
+	/**
+	 * Source of the coefficients drawn by {@link #random(double)}. Every randomly
+	 * initialized selection function in the pattern system (default pattern settings,
+	 * element factories, envelopes, note audio choices) draws from this one source, so
+	 * reseeding it with {@link #setRandomSeed(long)} makes the arrangement built by the
+	 * draws that follow reproducible.
+	 */
+	private static volatile Random randomSource = new Random();
+
 	/** Coefficients of the sinusoidal function (x, y, z, constant). */
 	private double x, y, z, c;
 
@@ -120,7 +130,22 @@ public class ParameterFunction implements Function<ParameterSet, Double> {
 	 * @return a new randomly initialized instance
 	 */
 	public static ParameterFunction random(double scale) {
-		DoubleSupplier rand = () -> (Math.random() - 0.5) * 2.0 * scale;
+		Random source = randomSource;
+		DoubleSupplier rand = () -> (source.nextDouble() - 0.5) * 2.0 * scale;
 		return new ParameterFunction(rand.getAsDouble(), rand.getAsDouble(), rand.getAsDouble(), rand.getAsDouble());
+	}
+
+	/**
+	 * Reseeds the source that {@link #random(double)} draws from. Constructing the same
+	 * scene configuration immediately after reseeding with the same value reproduces the
+	 * identical set of randomly initialized selection functions, provided the construction
+	 * is single-threaded. Until this is called the source is seeded arbitrarily, so each
+	 * JVM run draws a different arrangement.
+	 *
+	 * @param seed the seed for subsequent random coefficient draws
+	 */
+	public static void setRandomSeed(long seed) {
+		// TODO(review): process-global state; callers (ParameterFunctionTest, AudioSceneTestBase) never restore an unseeded source, so later tests in the same JVM inherit a fixed seed
+		randomSource = new Random(seed);
 	}
 }

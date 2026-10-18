@@ -40,6 +40,7 @@ import org.almostrealism.heredity.ProjectedChromosome;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -231,10 +232,10 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, D
 	 *
 	 * @param start the inclusive start position
 	 * @param end   the exclusive end position
-	 * @return a map from choice to list of elements
+	 * @return a map from choice to list of elements, iterated in pattern order
 	 */
 	public Map<NoteAudioChoice, List<PatternElement>> getPatternElements(double start, double end) {
-		Map<NoteAudioChoice, List<PatternElement>> elements = new HashMap<>();
+		Map<NoteAudioChoice, List<PatternElement>> elements = new LinkedHashMap<>();
 
 		patterns.forEach(layer -> {
 			layer.getAllElementsByChoice(start, end).forEach((k, v) ->

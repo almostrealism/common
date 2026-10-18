@@ -19,8 +19,10 @@ package org.almostrealism.music.data.test;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.music.data.ParameterSet;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.stream.IntStream;
 
 /**
@@ -35,5 +37,24 @@ public class ParameterFunctionTest extends TestSuiteBase {
 	public void power() {
 		ParameterFunction f = ParameterFunction.random();
 		IntStream.range(0, 10).mapToObj(i -> ParameterSet.random()).mapToDouble(f.power(2.0, 3, -3)::apply).forEach(System.out::println);
+	}
+
+	/**
+	 * Reseeding with the same value reproduces the same sequence of random functions,
+	 * and a different seed produces a different sequence.
+	 */
+	@Test(timeout = 10_000)
+	public void randomSeedReproducesDraws() {
+		ParameterSet params = new ParameterSet(0.3, 0.6, 0.9);
+
+		ParameterFunction.setRandomSeed(7);
+		double[] first = IntStream.range(0, 8).mapToDouble(i -> ParameterFunction.random().apply(params)).toArray();
+		ParameterFunction.setRandomSeed(7);
+		double[] second = IntStream.range(0, 8).mapToDouble(i -> ParameterFunction.random().apply(params)).toArray();
+		ParameterFunction.setRandomSeed(8);
+		double[] other = IntStream.range(0, 8).mapToDouble(i -> ParameterFunction.random().apply(params)).toArray();
+
+		Assert.assertArrayEquals(first, second, 0.0);
+		Assert.assertFalse(Arrays.equals(first, other));
 	}
 }
