@@ -355,10 +355,15 @@ The rules that make this work:
 - **No product names here.** This repository is public. Every product-specific
   value reaches a reusable workflow as an input; its defaults describe the
   framework's own layout.
-- **This repository calls its own reusable workflows.** Once a round is
-  extracted into a reusable workflow, `master-agent-dispatch.yaml` calls it like
-  any consumer does. There is one implementation, exercised constantly by this
-  repository's own pipeline.
+- **This repository will call its own reusable workflows.** The goal is a
+  single implementation rather than a framework copy and a consumer copy: as
+  each round is extracted and this repository's own triggers are pointed at the
+  reusable workflow, `master-agent-dispatch.yaml` (or a sibling caller) calls it
+  the way any consumer does, so this repository's pipeline exercises the same
+  code every consumer runs. This is not yet true of the first reusable workflow:
+  `release-steward.yaml` has no caller in this repository today, so the
+  decomposition round is exercised only by its tests and by a consumer's caller
+  until this repository's self-caller is wired up.
 - **Callers pin `@master` to begin with.** A fix here then reaches every
   consumer immediately; so does a breakage. A release tag can replace it once
   the workflows settle.
