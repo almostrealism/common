@@ -62,9 +62,19 @@ fi
 # read(ByteBuffer)/read(InputStream) host-to-device ingest, and the allocate->put->read
 # staging triple (the documented policy evasion) — mirror of the block-computed-ingest.py
 # PreToolUse block and the SetMemLiteralsDetector ingest rules.
-if grep -qE '\.read\(\s*(ByteBuffer|InputStream)' "$FILE_PATH" 2>/dev/null; then
-    LINES=$(grep -nE '\.read\(\s*(ByteBuffer|InputStream)' "$FILE_PATH" | head -5 | sed 's/^/      /')
-    VIOLATIONS+=("read(ByteBuffer)/read(InputStream) ingest call — ingest is for data from OUTSIDE the process; allowed only in enumerated ingest-allowlist.txt deserializers\n${LINES}")
+#
+# The warning fires for any instance-receiver .read(<arg>), so it covers the
+# variable and chained forms the evasion actually uses — dest.read(buffer),
+# dest.read(buffer.flip()), getData().read(bytes) — not only a literal
+# read(ByteBuffer...) argument. The receiver must be lowercase-initial (a
+# type-name receiver such as ImageIO.read(...) is a static call, never the
+# MemoryData instance surface); as a non-blocking heuristic it may also flag a
+# host InputStream/channel read, which the CI detector and the block hook resolve
+# precisely by argument and receiver type.
+INGEST_READ='(^|[^A-Za-z0-9_$.])[a-z_$][A-Za-z0-9_$]*(\(\))?\.read\(\s*[^) ]'
+if grep -qE "$INGEST_READ" "$FILE_PATH" 2>/dev/null; then
+    LINES=$(grep -nE "$INGEST_READ" "$FILE_PATH" | head -5 | sed 's/^/      /')
+    VIOLATIONS+=("read(...) host-to-device ingest call — ingest is for data from OUTSIDE the process; allowed only in enumerated ingest-allowlist.txt deserializers\n${LINES}")
 fi
 if grep -qE 'ByteBuffer\.(allocate|wrap)' "$FILE_PATH" 2>/dev/null \
         && grep -qE '\.put[A-Za-z]*\(' "$FILE_PATH" 2>/dev/null \

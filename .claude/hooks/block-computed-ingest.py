@@ -51,17 +51,31 @@ SANCTIONED_SURFACE = (
 COMPUTATION_LAYER = re.compile(
     r"/(base|compute|domain|engine|studio)/[^ ]*/src/(main|test)/java/.*\.java$")
 
-# A ByteBuffer local: <id> = ByteBuffer.allocate(...) / ByteBuffer.wrap(...).
-BUFFER_ORIGIN = re.compile(
-    r"\b([A-Za-z_$][\w$]*)\s*=\s*ByteBuffer\s*\.\s*(?:allocate|allocateDirect|wrap)\s*\(")
+# A ByteBuffer local assignment suffix: = ByteBuffer.allocate(...) / wrap(...),
+# accepting the fully qualified java.nio.ByteBuffer form as well. Prefixed with a
+# quoted buffer identifier at the call site.
+BUFFER_ORIGIN_SUFFIX = (
+    r"\s*=\s*(?:java\.nio\.)?ByteBuffer\s*\.\s*(?:allocate|allocateDirect|wrap)\s*\(")
 
 # <lowercase-receiver>.read( -- an instance read (a type-name receiver is static).
-READ_CALL = re.compile(r"\b([a-z_$][\w$]*)\s*\.\s*read\s*\(")
+# An optional empty argument list ((?:\(\s*\))?) lets a method-call receiver such
+# as getData().read(buffer) be matched as well as a plain or qualified identifier.
+READ_CALL = re.compile(r"\b([a-z_$][\w$]*)\s*(?:\(\s*\))?\s*\.\s*read\s*\(")
 
 TRAILING_BUFFER_METHOD = re.compile(
     r"(?:\.\s*(?:flip|rewind|duplicate|slice|asReadOnlyBuffer|clear|mark|reset)\s*\(\s*\))+$")
 
 IDENTIFIER = re.compile(r"^[A-Za-z_$][\w$]*$")
+
+
+def path_matches(path, entry):
+    """True if path is the allowlist entry, anchored at a path boundary. Entries
+    are canonical repo-relative paths, matched as a suffix of the (absolute or
+    relative) file path rather than an unanchored substring, so a file sharing
+    only a basename with an allowlisted deserializer does not inherit its
+    exemption. Mirrors SetMemLiteralsDetector.isIngestAllowlisted."""
+    norm = entry.replace("\\", "/")
+    return path == norm or path.endswith("/" + norm)
 
 
 def allowlist_fragments():
@@ -140,51 +154,133 @@ def declared_buffer_or_stream(text, ident):
         text) is not None
 
 
+def declared_byte_array(text, ident):
+    """True if ident is declared as a byte[] (or byte... vararg) in text."""
+    return re.search(
+        r"byte\s*(?:\[\s*\]|\.\.\.)\s+" + re.escape(ident) + r"\b", text) is not None
+
+
+def declared_channel(text, ident):
+    """True if ident is declared as a *Channel in text (mirrors the detector's
+    isDeclaredChannel). A java.nio channel shares the read(ByteBuffer) signature
+    but reads external bytes into a host buffer, never device memory, so it is
+    not the MemoryData ingest surface this hook guards."""
+    return re.search(
+        r"(?:[A-Za-z_$][\w$]*)?Channel(?:\s*<[^;{}=]*>)?\s+" + re.escape(ident) + r"\b",
+        text) is not None
+
+
+def declared_host_reader(text, ident):
+    """True if ident is declared as an InputStream or Reader in text. These share
+    the read(byte[])/read(char[]) signature with MemoryData's byte-array ingest
+    overload but perform host I/O, so a byte-array read on such a receiver is not
+    MemoryData ingest."""
+    return re.search(
+        r"(?:[A-Za-z_$][\w$]*)?(?:InputStream|Reader)\s+" + re.escape(ident) + r"\b",
+        text) is not None
+
+
 def is_ingest_arg(arg, text):
-    """True if a read(...) argument resolves to a ByteBuffer or InputStream."""
+    """True if a read(...) argument resolves to a ByteBuffer or InputStream,
+    accepting the fully qualified java.nio.ByteBuffer forms as well."""
     core = TRAILING_BUFFER_METHOD.sub("", arg.strip()).strip()
-    if core.startswith("ByteBuffer."):
+    if core.startswith("ByteBuffer.") or core.startswith("java.nio.ByteBuffer."):
         return True
-    if re.match(r"\(\s*ByteBuffer\s*\)", core):
+    if re.match(r"\(\s*(?:java\.nio\.)?ByteBuffer\s*\)", core):
         return True
     if re.match(r"new\s+\w*InputStream\b", core):
         return True
     return bool(IDENTIFIER.match(core)) and declared_buffer_or_stream(text, core)
 
 
-# TODO(review): unlike SetMemLiteralsDetector.isDeclaredChannel, this hook does not exclude
-# *Channel receivers, so a newly-introduced FileChannel.read(ByteBuffer) (host file I/O, not
-# MemoryData ingest) is a false-positive BLOCK here while the CI detector passes it -- mirror
-# the channel exclusion so the hook and detector cannot drift.
+def is_byte_array_arg(arg, text):
+    """True if a read(...) argument resolves to a byte[] -- a new byte[...] or a
+    bare identifier declared as a byte[]. MemoryData.read(byte[]) delegates to
+    read(ByteBuffer), so a computed byte[] is another host-to-device upload."""
+    core = arg.strip()
+    if re.match(r"new\s+byte\s*\[", core):
+        return True
+    return bool(IDENTIFIER.match(core)) and declared_byte_array(text, core)
+
+
+def split_top_level(arg):
+    """Split on top-level commas, ignoring commas nested in (), [] or {}."""
+    args = []
+    depth = 0
+    cur = []
+    for c in arg:
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        if c == "," and depth == 0:
+            args.append("".join(cur).strip())
+            cur = []
+        else:
+            cur.append(c)
+    last = "".join(cur).strip()
+    if last:
+        args.append(last)
+    return [a for a in args if a]
+
+
 def ingest_reads(text):
-    """List of (receiver, buffer_id_or_None) for each ingest read in text."""
+    """List of (receiver, buffer_id_or_None, read_start) for each ingest read in text.
+
+    Mirrors SetMemLiteralsDetector.scanIngestReads: a *Channel receiver is a
+    java.nio channel, not MemoryData, and is excluded; the argument list is split
+    on top-level commas (so a nested comma in ByteBuffer.wrap(bytes, 0, len) does
+    not make a single read look like a multi-argument call); and the single
+    argument must resolve to a ByteBuffer/InputStream, or to a byte[] whose
+    receiver is not a host InputStream/Reader (read(byte[]) ingest)."""
     reads = []
     for m in READ_CALL.finditer(text):
+        receiver = m.group(1)
+        if declared_channel(text, receiver):
+            continue
         args_start = m.end()
         args_end = matching_paren(text, args_start)
         if args_end < 0:
             continue
-        arg = text[args_start:args_end]
-        if "," in arg:               # more than one top-level arg is not MemoryData.read
+        args = split_top_level(text[args_start:args_end])
+        if len(args) != 1:           # MemoryData.read takes exactly one argument
             continue
-        if not arg.strip() or not is_ingest_arg(arg, text):
+        single = args[0]
+        ingest = is_ingest_arg(single, text)
+        byte_arr = not ingest and is_byte_array_arg(single, text)
+        if byte_arr and declared_host_reader(text, receiver):
             continue
-        core = TRAILING_BUFFER_METHOD.sub("", arg.strip()).strip()
+        if not ingest and not byte_arr:
+            continue
+        core = TRAILING_BUFFER_METHOD.sub("", single).strip()
         buffer_id = core if IDENTIFIER.match(core) else None
-        reads.append((m.group(1), buffer_id))
+        reads.append((receiver, buffer_id, m.start()))
     return reads
+
+
+def is_host_staged(text, buffer_id, read_start):
+    """True if buffer_id was allocate/wrap'd and then put* into BEFORE the read at
+    read_start (mirrors the detector's isHostStaged ordering check), so a legitimate
+    allocate -> external read -> later reuse/put is not treated as staging."""
+    origin = re.compile(r"\b" + re.escape(buffer_id) + BUFFER_ORIGIN_SUFFIX)
+    decl_pos = -1
+    for m in origin.finditer(text):
+        if m.start() < read_start:
+            decl_pos = m.start()
+        else:
+            break
+    if decl_pos < 0:
+        return False
+    put = re.compile(r"\b" + re.escape(buffer_id) + r"\s*(?:\.|::)\s*put")
+    return any(decl_pos < m.start() < read_start for m in put.finditer(text))
 
 
 def staged_buffers(text):
     """Names of buffers that are allocate/wrap'd, put* into, then passed to read()."""
-    read_ids = {b for _, b in ingest_reads(text) if b}
     staged = set()
-    for m in BUFFER_ORIGIN.finditer(text):
-        name = m.group(1)
-        if name not in read_ids:
-            continue
-        if re.search(r"\b" + re.escape(name) + r"\s*(?:\.|::)\s*put", text):
-            staged.add(name)
+    for _, buffer_id, read_start in ingest_reads(text):
+        if buffer_id and is_host_staged(text, buffer_id, read_start):
+            staged.add(buffer_id)
     return staged
 
 
@@ -238,7 +334,7 @@ def main():
         sys.exit(0)
     before, after = masked(texts[0]), masked(texts[1])
 
-    allowlisted = any(fragment in norm for fragment in allowlist_fragments())
+    allowlisted = any(path_matches(norm, entry) for entry in allowlist_fragments())
 
     blocks = []
 
@@ -252,8 +348,9 @@ def main():
             "is forbidden even in an allowlisted deserializer.")
 
     if not allowlisted:
-        before_reads, after_reads = ingest_reads(before), ingest_reads(after)
-        added = [r for r in after_reads if after_reads.count(r) > before_reads.count(r)]
+        before_keys = [(r[0], r[1]) for r in ingest_reads(before)]
+        after_keys = [(r[0], r[1]) for r in ingest_reads(after)]
+        added = [k for k in after_keys if after_keys.count(k) > before_keys.count(k)]
         if added:
             receivers = sorted({recv for recv, _ in added})
             blocks.append(

@@ -20,10 +20,14 @@
 # a deserializer does not license staging host-computed values through it (that is
 # what stops the evasion from simply moving into an allowlisted file).
 #
-# Format: one path fragment per line, matched as a substring of the file path
-# exactly as SANCTIONED_WRITE_SURFACE is. Text after '#' is a justification comment.
+# Format: one canonical repo-relative path per line, matched as an ANCHORED suffix
+# of the scanned file path (path == entry, or path ends with "/" + entry) by both
+# the detector (isIngestAllowlisted) and the hook (path_matches) — not an unanchored
+# substring, so a file sharing only a basename with an allowlisted deserializer
+# (another module's GraphPersist.java, for instance) does not inherit the exemption.
+# Text after '#' is a justification comment.
 
-/persist/assets/CollectionEncoder.java              # decodes a serialized protobuf Collections.CollectionData message into a collection
-/hardware/external/LocalExternalMemoryProvider.java # reads a memory image back from an on-disk binary file
-/GraphPersist.java                                  # reconstructs a collection from a database blob in the persisted graph store
-/hardware/test/MemoryDataSerializationTest.java     # exercises the read(ByteBuffer) ingest surface as its explicit subject under test
+engine/ml/src/main/java/org/almostrealism/persist/assets/CollectionEncoder.java                 # decodes a serialized protobuf Collections.CollectionData message into a collection
+base/hardware/src/main/java/org/almostrealism/hardware/external/LocalExternalMemoryProvider.java # reads a memory image back from an on-disk binary file
+flowtree/graphpersist/src/main/java/io/almostrealism/GraphPersist.java                           # reconstructs a collection from a database blob in the persisted graph store
+engine/utils/src/test/java/org/almostrealism/hardware/test/MemoryDataSerializationTest.java      # exercises the read(ByteBuffer) ingest surface as its explicit subject under test

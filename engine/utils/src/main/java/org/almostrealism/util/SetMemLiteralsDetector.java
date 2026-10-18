@@ -73,8 +73,9 @@ import java.util.regex.Pattern;
  * a call split across lines or containing a commented-out fragment cannot evade detection.
  *
  * <p>The same "computed by Java" question governs the <em>ingest</em> surface —
- * {@code read(ByteBuffer)} / {@code read(InputStream)} on a {@code MemoryData} — which exists
- * for data entering the process from outside it, never for shipping values Java has just
+ * {@code read(ByteBuffer)} / {@code read(InputStream)} / {@code read(byte[])} on a
+ * {@code MemoryData} (the {@code byte[]} overload delegates to {@code read(ByteBuffer)}) — which
+ * exists for data entering the process from outside it, never for shipping values Java has just
  * computed. Two rules guard it. {@link #INGEST_RULE_A INGEST_OUTSIDE_SANCTIONED_SURFACE}
  * reports every such {@code read} from a file that is not on the
  * {@linkplain #ingestAllowlist() ingest allowlist} — a closed set of genuine deserializers,
@@ -138,9 +139,11 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * Classpath location of the ingest allowlist — the closed set of files permitted to call the
 	 * {@code read(ByteBuffer)}/{@code read(InputStream)} ingest surface. Read as a classpath
 	 * resource here and from the same path in the working tree by {@code block-computed-ingest.py},
-	 * so the detector and the hook share one list. Each non-comment line is a path fragment matched
-	 * as a substring (exactly like {@link #SANCTIONED_WRITE_SURFACE}); text after {@code #} is a
-	 * justification naming the outside source that entry reads.
+	 * so the detector and the hook share one list. Each non-comment line is a canonical
+	 * repo-relative path matched as an anchored suffix of the scanned file path (see
+	 * {@link #isIngestAllowlisted(Path)}), not an unanchored substring, so a file that shares only
+	 * a basename with an allowlisted deserializer does not inherit its exemption; text after
+	 * {@code #} is a justification naming the outside source that entry reads.
 	 */
 	public static final String INGEST_ALLOWLIST_RESOURCE = "/org/almostrealism/util/ingest-allowlist.txt";
 
@@ -321,12 +324,26 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private static final Pattern PACK_CALL = Pattern.compile("(?<![\\w.$])pack\\s*\\(");
 
 	/**
-	 * Locates each {@code <receiver>.read(} call, capturing the receiver identifier. Only
-	 * lowercase-initial receivers are treated as instance calls; an uppercase-initial receiver
-	 * is a type name (a static call such as {@code ImageIO.read(...)}), which is never the
+	 * Locates each {@code <receiver>.read(} call, capturing the name governing the read. The
+	 * receiver may be a plain or qualified identifier ({@code data.read(...)},
+	 * {@code this.data.read(...)}) or a no-argument method call ({@code getData().read(...)}); in
+	 * every case the captured group is the trailing identifier, so a member- or method-qualified
+	 * receiver is scanned rather than skipped. Only lowercase-initial names are treated as
+	 * instance calls; an uppercase-initial name is a type name (a static call such as
+	 * {@code ImageIO.read(...)}), which is never the
 	 * {@link org.almostrealism.hardware.MemoryData} instance ingest surface.
 	 */
-	private static final Pattern READ_CALL = Pattern.compile("([A-Za-z_$][\\w$]*)\\s*\\.\\s*read\\s*\\(");
+	private static final Pattern READ_CALL = Pattern.compile(
+			"([A-Za-z_$][\\w$]*)\\s*(?:\\(\\s*\\))?\\s*\\.\\s*read\\s*\\(");
+
+	/**
+	 * Whitespace-tolerant prefilter for a {@code .read(} call. The file-content {@code contains}
+	 * gate that skips files with no relevant call cannot use the literal {@code ".read("}, because
+	 * {@link #READ_CALL} tolerates whitespace around the dot and before the parenthesis
+	 * ({@code dest.read (buffer)}, {@code dest . read(buffer)}) and the literal would skip the
+	 * whole file before that tolerance ever applied.
+	 */
+	private static final Pattern READ_MENTION = Pattern.compile("\\.\\s*read\\s*\\(");
 
 	/**
 	 * Trailing {@link java.nio.Buffer} positional methods that return the buffer itself, stripped
@@ -336,9 +353,12 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private static final Pattern TRAILING_BUFFER_METHOD = Pattern.compile(
 			"(?:\\.\\s*(?:flip|rewind|duplicate|slice|asReadOnlyBuffer|clear|mark|reset)\\s*\\(\\s*\\))+$");
 
-	/** A ByteBuffer origin: {@code <id> = ByteBuffer.allocate(...)} / {@code ByteBuffer.wrap(...)}. */
+	/**
+	 * A ByteBuffer origin: {@code <id> = ByteBuffer.allocate(...)} / {@code ByteBuffer.wrap(...)},
+	 * accepting the fully qualified {@code java.nio.ByteBuffer} form as well.
+	 */
 	private static final String BYTE_BUFFER_ORIGIN =
-			"\\s*=\\s*ByteBuffer\\s*\\.\\s*(?:allocate|allocateDirect|wrap)\\s*\\(";
+			"\\s*=\\s*(?:java\\.nio\\.)?ByteBuffer\\s*\\.\\s*(?:allocate|allocateDirect|wrap)\\s*\\(";
 
 	/** The maximum number of individual scalar arguments a {@code fill}/{@code pack} call may pass. */
 	private static final int SCALAR_ALLOWANCE = 16;
@@ -493,7 +513,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			String content = Files.readString(file);
 			if (!content.contains(".setMem(") && !content.contains(".of(")
 					&& !content.contains(".fill(") && !content.contains("pack(")
-					&& !content.contains(".read(")) {
+					&& !READ_MENTION.matcher(content).find()) {
 				return this;
 			}
 
@@ -599,8 +619,12 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 *
 	 * <p>An ingest read is an instance {@code <receiver>.read(arg)} whose single argument resolves
 	 * to a {@code ByteBuffer} or an {@code InputStream} — the only {@code read} overloads taking
-	 * those types belong to {@code MemoryData} — with a lowercase-initial receiver (an
-	 * uppercase-initial receiver is a type name, i.e. a static call, never the instance surface).
+	 * those types belong to {@code MemoryData} — or to a {@code byte[]} on a receiver that is not a
+	 * host {@code InputStream}/{@code Reader} ({@code MemoryData.read(byte[])} delegates to
+	 * {@code read(ByteBuffer)}). The receiver is a lowercase-initial plain, member-qualified or
+	 * method-call name ({@code data}, {@code this.data}, {@code getData()}); an uppercase-initial
+	 * name is a type name, i.e. a static call, never the instance surface, and a declared
+	 * {@code *Channel} receiver is a java.nio channel, not {@code MemoryData}.
 	 * Each such read draws {@link #STAGED_RULE} when the buffer was host-filled
 	 * ({@code ByteBuffer.allocate}/{@code wrap} then {@code put*} before the read), whatever file
 	 * it lives in; and {@link #INGEST_RULE_A} when the file is not on the ingest allowlist. Both
@@ -624,12 +648,21 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			if (argsEnd < 0) continue;
 
 			List<String> args = splitTopLevel(masked.substring(argsStart, argsEnd));
-			if (args.size() != 1 || !isIngestArgument(args.get(0), masked)) continue;
+			if (args.size() != 1) continue;
+
+			String arg = args.get(0);
+			boolean ingest = isIngestArgument(arg, masked);
+			boolean byteArray = !ingest && isByteArrayArgument(arg, masked);
+			// A byte[] read is MemoryData.read(byte[]) ingest, but InputStream/Reader share the
+			// read(byte[])/read(char[]) signature for host I/O; skip those receivers (channels
+			// are already skipped above) so a host read is not mistaken for device ingest.
+			if (byteArray && isDeclaredHostReader(masked, m.group(1))) continue;
+			if (!ingest && !byteArray) continue;
 
 			int lineNum = countLines(content, m.start());
 			String line = lineText(content, lineNum);
 
-			String bufferId = bufferIdentifier(args.get(0));
+			String bufferId = bufferIdentifier(arg);
 			if (bufferId != null && isHostStaged(masked, bufferId, m.start())
 					&& !isKnownExclusion(file, line) && !consumeBaseline(file, line)) {
 				violations.add(new Violation(file, lineNum, line, STAGED_RULE, STAGED_GUIDANCE));
@@ -650,8 +683,9 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 */
 	private boolean isIngestAllowlisted(Path file) {
 		String path = file.toString().replace('\\', '/');
-		for (String fragment : INGEST_ALLOWLIST) {
-			if (path.contains(fragment)) return true;
+		for (String entry : INGEST_ALLOWLIST) {
+			String normalized = entry.replace('\\', '/');
+			if (path.equals(normalized) || path.endsWith("/" + normalized)) return true;
 		}
 		return false;
 	}
@@ -669,10 +703,27 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 */
 	private boolean isIngestArgument(String arg, String masked) {
 		String core = TRAILING_BUFFER_METHOD.matcher(arg.trim()).replaceFirst("").trim();
-		if (core.startsWith("ByteBuffer.")) return true;
-		if (core.matches("\\(\\s*ByteBuffer\\s*\\)[\\s\\S]*")) return true;
+		if (core.startsWith("ByteBuffer.") || core.startsWith("java.nio.ByteBuffer.")) return true;
+		if (core.matches("\\(\\s*(?:java\\.nio\\.)?ByteBuffer\\s*\\)[\\s\\S]*")) return true;
 		if (core.matches("new\\s+\\w*InputStream\\b[\\s\\S]*")) return true;
 		return IDENTIFIER.matcher(core).matches() && isDeclaredBufferOrStream(masked, core);
+	}
+
+	/**
+	 * Returns {@code true} if a {@code read(...)} argument resolves to a {@code byte[]}: a
+	 * {@code new byte[...]} expression or a bare identifier declared as a {@code byte[]} (or
+	 * {@code byte...} vararg). {@code MemoryData.read(byte[])} delegates to
+	 * {@code read(ByteBuffer.wrap(bytes))}, so a computed {@code byte[]} handed to it is another
+	 * host-to-device upload, caught on the same ingest surface as the {@code ByteBuffer} overload.
+	 *
+	 * @param arg     the raw argument text (comment/string masked)
+	 * @param masked  the whole masked file, used to resolve an identifier's declared type
+	 * @return        whether the argument is a {@code byte[]}
+	 */
+	private boolean isByteArrayArgument(String arg, String masked) {
+		String core = arg.trim();
+		if (core.matches("new\\s+byte\\s*\\[[\\s\\S]*")) return true;
+		return IDENTIFIER.matcher(core).matches() && isDeclaredByteArray(masked, core);
 	}
 
 	/**
@@ -741,6 +792,39 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private boolean isDeclaredBufferOrStream(String masked, String ident) {
 		Pattern decl = Pattern.compile(
 				"(?:ByteBuffer|[A-Za-z_$][\\w$]*InputStream|InputStream)\\s+" + Pattern.quote(ident) + "\\b");
+		return decl.matcher(masked).find();
+	}
+
+	/**
+	 * Returns {@code true} if {@code ident} is declared in the (masked) file as a {@code byte[]}
+	 * or {@code byte...} vararg — the argument type of the {@code MemoryData.read(byte[])} ingest
+	 * overload.
+	 *
+	 * @param masked  the comment/string-masked file content
+	 * @param ident   the identifier to look up
+	 * @return        whether the identifier names a {@code byte[]}
+	 */
+	private boolean isDeclaredByteArray(String masked, String ident) {
+		Pattern decl = Pattern.compile(
+				"byte\\s*(?:\\[\\s*\\]|\\.\\.\\.)\\s+" + Pattern.quote(ident) + "\\b");
+		return decl.matcher(masked).find();
+	}
+
+	/**
+	 * Returns {@code true} if {@code ident} is declared in the (masked) file as an
+	 * {@code InputStream} or {@code Reader}. These perform host I/O through {@code read(byte[])} /
+	 * {@code read(char[])}, which shares the {@code byte[]} argument shape with
+	 * {@code MemoryData.read(byte[])}; a {@code byte[]} read on such a receiver is host I/O, not
+	 * device ingest, so this exclusion keeps it off the ingest surface (channels are excluded by
+	 * {@link #isDeclaredChannel(String, String)}).
+	 *
+	 * @param masked  the comment/string-masked file content
+	 * @param ident   the receiver identifier
+	 * @return        whether the receiver is an InputStream or Reader rather than a MemoryData
+	 */
+	private boolean isDeclaredHostReader(String masked, String ident) {
+		Pattern decl = Pattern.compile(
+				"(?:[A-Za-z_$][\\w$]*)?(?:InputStream|Reader)\\s+" + Pattern.quote(ident) + "\\b");
 		return decl.matcher(masked).find();
 	}
 
