@@ -238,8 +238,9 @@ came out of.
 
 ### 2.3 The per-item provenance record
 
-Every evidence item — a documentation chunk or a note — becomes a record
-with a short ID, assigned before the prompt is built.
+Every evidence item — a documentation chunk, a note, or (once the
+value-extracting index versions land, 2.5) an index-derived fact — becomes a
+record with a short ID, assigned before the prompt is built.
 
 ```
 D1  doc    .github/CLAUDE.md:850-862  § "What the Master Agent Dispatch workflow does"
@@ -273,7 +274,7 @@ Proposed tiers:
 | Tier | Label shown to the model | Assigned when |
 |---|---|---|
 | **A** | `DOC (snapshot <sha>, <date>)` | A documentation chunk. |
-| **B** | `NOTE current` | Note on `master`, or on a branch merged **before** the snapshot date, or on the caller's own branch; younger than the recency window; no named symbol absent from the snapshot. |
+| **B** | `NOTE current` | Note on `master`, or on a branch merged into its base branch (whether that merge predates **or follows** the snapshot date; see the post-snapshot note below), or on the caller's own branch; younger than the recency window; no named symbol absent from the snapshot. |
 | **B′** | `NOTE branch-local (<branch>, <state>)` | Note on an open or unmerged branch other than the caller's. It is true *of that branch* and not established for master. |
 | **C** | `NOTE historical (<age>)` | Older than the recency window, or on a closed-unmerged branch, and no named symbol absent. |
 | **C✗** | `NOTE stale — names absent from snapshot: X, Y` | Any note that names a type or path the snapshot index does not contain, whatever its age. |
@@ -288,6 +289,22 @@ Rules the model gets (short, one per tier, written into `SYSTEM_PROMPT`):
 - **C** and **C✗** may supply history and rationale ("this used to be…",
   "it was introduced because…"). They never supply present-tense fact. For
   **C✗**, the model must say which names are gone.
+
+**Post-snapshot branch changes.** Branch state is looked up live at consult
+time (2.4), while the corpus is a fixed snapshot, so the two can disagree: a
+note's branch can be merged (or closed) *after* the corpus was built. The
+table must stay total for that case. A note on a branch that merged after the
+snapshot is **B** — it describes work that is now on `master` even though the
+snapshot predates it — and this is precisely the B case where a note supplies
+a present fact the documentation snapshot does not yet carry (2.7). One
+interaction follows from the lag: a symbol the note introduces may be absent
+from the *snapshot* index purely because the snapshot predates the merge, not
+because the symbol is stale. A merged-after-snapshot note is therefore **not**
+demoted to C✗ on a snapshot-absence alone; the absence is recorded (and can be
+surfaced as "present on master, not yet in the snapshot `<sha>`") but does not
+override the B tier that the merge establishes. A note on a branch that closed
+**unmerged** after the snapshot is C (closed-unmerged), exactly as the table's
+C row already states; only the merged-after case needed the explicit rule.
 
 **The recency window.** The first step uses a fixed window (proposed: 45
 days before the snapshot date). It is coarse but easy to understand. A later
@@ -366,6 +383,22 @@ that previous PR closed). A branch with no previous PR has had only one
 incarnation, so every note on it is tiered against the current PR regardless
 of order. A memory store with ~10⁴ notes spans a few hundred distinct
 branches, so the cache stays small.
+
+*Detecting a previous incarnation needs a PR-history lookup, not the
+most-recent one.* The reuse rule above compares against a **previous** PR's
+close/merge time, but the lookup that populates the cache,
+`server._find_recent_pr_by_branch`, uses `state="all"`, which
+`_PR_STATE_QUERIES` maps to `per_page=1` — it returns only the single
+most-recently-updated PR, so once the current PR is known no earlier
+incarnation is visible from it. Establishing reuse therefore requires a
+separate history query for the head branch — the `closed`/`merged` listing
+already pages with `per_page=100` and can surface earlier PRs — run only when
+a branch actually has more than one PR. Until that history query is added,
+reuse cannot be established and a note is tiered against the current PR (the
+common, safe default, since branch reuse across distinct PRs is rare); this
+plan schedules the history lookup with the tier step and treats
+previous-incarnation demotion as a refinement on top of it, not a precondition
+for tiering.
 
 Edge cases:
 
@@ -468,6 +501,29 @@ Later versions, in rough order of value:
 5. Public method names per type. This makes the index much larger, so it
    should wait until evaluation shows a need for it.
 
+**Index-derived facts are evidence items too.** The first versions of the
+index only answer *presence* questions (does this path/type/script exist?),
+which feed tiering and the `nonexistent` abstention (2.10) rather than the
+answer prose. But the later versions (script header comments and `exit N`
+lines, `static final String` constants) are expected to *answer* seed cases
+E2 and E3, and an answer has to be grounded, cited and assigned a basis under
+the same contract as documentation and notes. The evidence model (2.3) is
+therefore extended with a third item kind, `I` (index-derived), carrying its
+own IDs (`[I1]`, `[I2]`, …) alongside `[Dk]` and `[Nk]`. An `I` item records
+the snapshot path and the extracted value (the exit code, the constant's
+string, the header line) and is **tier A**: the index is generated from the
+same corpus commit as the documentation, so an index fact is objective
+snapshot fact, as authoritative as a doc chunk and with the same present-tense
+standing. The server expands an `[Ik]` citation to the snapshot path (and
+line, where the extractor recorded one) exactly as it expands `[Dk]`, so the
+citation verifier (2.9) checks it the same way. Because an `I` item is tier A,
+it contributes to the **`documentation`** component of `answer_basis` (2.6);
+no new `answer_basis` value is introduced. This keeps E2's "`exit 3` with a
+citation to the script or index" and E3's constant answer inside the grounding
+contract instead of arriving as an un-citable code-generated string. Until the
+value-extracting index versions land (steps 9 and 12), no `I` items are
+produced and the kind is simply unused.
+
 **Mention extraction** (memory side) only checks tokens that are shaped like
 something checkable:
 
@@ -537,9 +593,15 @@ the basis only when `D3`/`N2` is an item that was actually presented. A
 fabricated or out-of-range marker — `[D999]`, `[N0]`, a prefix that was
 never offered — is *not* counted, because otherwise a weak model could type
 `[D999]` and obtain a non-`none` basis without citing any supplied item, so
-bypassing abstention. From the resolved IDs: any valid `[Dk]` → includes
-documentation, any valid `[Nk]` → includes notes, nothing valid cited →
-`none`; that computed value feeds `answer_basis` and the post-processing. An
+bypassing abstention. From the resolved IDs: any valid `[Dk]` **or `[Ik]`**
+(index-derived facts are tier A snapshot fact, 2.5) → includes documentation;
+a valid `[Nk]` → includes notes **only when that note is tier B or B′**,
+because C and C✗ notes are forbidden from supplying present-tense fact and are
+cited only from the separate `history` field (2.7) — a `[Nk]` that resolves to
+a C/C✗ note therefore never raises `answer_basis` to include `notes`, so an
+answer that cites documentation for its claim and a C note only for rationale
+is labelled `documentation`, not `documentation+notes`; nothing valid cited →
+`none`. That computed value feeds `answer_basis` and the post-processing. An
 unresolved marker is recorded as a citation warning
 (`format_warning: "unknown citation"`) and otherwise ignored, so it can
 neither raise nor lower the basis. The written `BASIS:` line is kept only as
@@ -719,7 +781,7 @@ degraded                        boolean, as today (synthesis failure)
 degraded_reasons: [...]         e.g. ["branch_state"] when the PR lookup was skipped or failed (2.4)
 corpus: {commit, built_at}
 sources, html_refs              (as today)
-related_memories                (as today, plus id, created_at, branch, tier)
+related_memories                (as today, plus id, created_at, branch, namespace, tier)
 ```
 
 `consult`'s docstring is the agent-facing contract, and it changes with
@@ -854,9 +916,16 @@ apart. Proposal:
 
    Each module's `CLAUDE.md` and extra `*.md` then come in automatically.
 3. **A packaging test** (alongside `test_dockerfile_packaging.py`) asserts
-   that every `*.md` in the repository is either indexed or matched by the
-   exclusion list. Coverage then fails closed: a new document is either
-   searchable or excluded on purpose.
+   that every `*.md` **and every `*.html`** in the repository is either
+   indexed or matched by the exclusion list. HTML must be covered because
+   `DocsRetriever` indexes HTML too (`docs/modules/*.html` and
+   `docs/tutorials/*.html`, per 1.2) — a test that checks only Markdown would
+   let a newly added HTML document be copied into the image yet stay invisible
+   to retrieval without failing the invariant. The exclusion list likewise
+   covers both suffixes (`docs/index.html` is the one HTML file not indexed
+   today, so it is either indexed by the walk or named in the exclusions).
+   Coverage then fails closed: a new document is either searchable or excluded
+   on purpose.
 
 **Trade-off.** A larger index means more fuzzy-match candidates competing
 for 5 chunks, so precision can drop. Section-aware chunks (2.9) and the
@@ -954,6 +1023,33 @@ same `conversation_id` can race and interleave a turn across callers or
 corrupt the turn list. The ownership check in particular must be inside the
 same critical section as the mutation it guards, not a separate step before
 it.
+
+**Serialize the turn, not only each store access.** Making each individual
+read-modify-write atomic stops the turn *list* from being corrupted, but it
+does not serialize a *consultation* against itself. A turn is not one store
+access — it reads the prior state, then retrieves and synthesizes (a slow,
+unlocked step), then commits. If the per-access lock were the only guard, two
+turns submitted on the same `conversation_id` could both read the same prior
+state, both synthesize against it, and then commit in either order; the later
+commit would allocate turn N+2 from a snapshot that never saw turn N+1,
+breaking the "previous questions verbatim / IDs stable within a conversation"
+contract (4.3) even though no list was corrupted. Two ways to close this, in
+order of preference:
+
+- a **per-conversation operation lock** held across the whole turn
+  (read → retrieve/synthesize → commit) so turns on one conversation run one
+  at a time, while different conversations still run concurrently. The lock is
+  per-id, not the single store lock, so synthesis does not serialize the whole
+  server;
+- or an **optimistic version check**: each conversation carries a version (its
+  turn count); a commit that carries a stale version is rejected with
+  `{ok: false, error: "conversation busy", next_steps: ["retry the follow-up"]}`
+  rather than appended out of order.
+
+The first step should take the per-conversation lock — it is the simpler of
+the two to reason about and a consultation turn is short enough that briefly
+serializing a single conversation is acceptable. The version check is noted as
+the alternative for if holding a lock across synthesis proves too coarse.
 
 When a conversation has expired or the server restarted, an unknown id
 returns
@@ -1106,6 +1202,30 @@ counts as a fail only for expectations that need it.
   - injects the case's frozen memories through a stub memory client;
   - runs `consult` in-process against the backend selected by
     `AR_CONSULTANT_BACKEND`.
+
+  Freezing the memory fixture alone is **not** enough to make a run
+  reproducible once tiering lands (step 5 on). Tier assignment also reads live
+  state: the GitHub PR/branch-state lookup (2.4), the current date against the
+  recency window (2.4), the caller's scopes, and the corpus identity
+  (`commit`, `built_at`). Any of these drifting between two local runs can flip
+  a case's tier and therefore its outcome, which would contradict the
+  "reproducible" claim. The local mode therefore also freezes them:
+
+  - a **frozen clock** (an injected "now") so the recency window is evaluated
+    against a fixed date, named per case;
+  - a **branch-state fixture** that stubs the PR lookup — each fixture note's
+    `branch_state` (and, where a case exercises reuse, the previous-PR history)
+    is supplied by the case, not fetched from GitHub, so no network call and no
+    live PR state enters a local run;
+  - a **fixed caller scope** (which `github`/`memory-read` scopes the stubbed
+    caller holds), since that gates whether branch state is looked up at all
+    (2.4);
+  - a **pinned corpus identity** (`commit`/`built_at`) matching the corpus the
+    run builds, so `corpus.*` and any snapshot-relative tier rule are stable.
+
+  A case may leave any of these unspecified only when its expectation does not
+  depend on it (the graders already treat a field a case does not assert as
+  not-checked, 5.3).
 - **Live (spot check, not reproducible):** calls a deployed ar-manager over
   MCP HTTP with the real memory store. It is useful for confirming that a
   deployment behaves like the local run. Its numbers are not compared
@@ -1214,16 +1334,19 @@ then verify citations, and only then let notes answer.**
    abstention. E3's `must_flag_stale` and E4's `nonexistent` should pass.
 10. **Corpus coverage, systematic fix.** Replace the index allowlist with a
     walk of the copied tree plus an exclusion list, and add the packaging
-    test that every `*.md` is indexed or excluded. Re-measure precision.
+    test that every `*.md` and `*.html` is indexed or excluded. Re-measure
+    precision.
 11. **Multi-turn, in-process.** The `conversation_id` parameter (with
-    `McpToolDiscoveryTest` assertions), the store with TTL and LRU, evidence
+    `McpToolDiscoveryTest` assertions), the store with TTL and LRU,
+    per-conversation turn serialization (4.4), evidence
     carry-forward with stable IDs, the history budget, and identity
     binding to job temp tokens (static tokens refused, 4.5). Build the store
     as a separate component (4.6, item 3).
 12. **Snapshot index, version 2.** Script header comments and exit codes,
-    and `static final String` literal constants of any visibility. E2
-    should answer `exit 3` from the index and E3 should answer
-    `.flowtree/oop-review.md`.
+    and `static final String` literal constants of any visibility, presented
+    as tier-A `[Ik]` index-derived evidence items (2.5) so the answers are
+    cited and grounded like documentation. E2 should answer `exit 3` from the
+    index and E3 should answer `.flowtree/oop-review.md`.
 
 Later refinements, not yet scheduled:
 
