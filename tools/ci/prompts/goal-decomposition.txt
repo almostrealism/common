@@ -34,12 +34,15 @@ repository is the framework, and every task goes in that one release.
 2. Use `consult` (`mcp__ar-manager__consult`) for the framework components the
    plan touches. It knows the framework's documentation and the notes of
    earlier sessions.
-3. The framework repository (${FRAMEWORK_REPOSITORY}) is checked out beside
-   this one; your instructions list its path as a dependent repository. Its
-   checkout can lag behind, so before reading it run, in that directory,
-   `git fetch origin ${FRAMEWORK_BRANCH}` and then
+3. When the framework is a separate repository — which it is whenever
+   ${FRAMEWORK_REPOSITORY} differs from ${REPOSITORY} — it is checked out
+   beside this one and your instructions list its path as a dependent
+   repository. Its checkout can lag behind, so before reading it run, in that
+   directory, `git fetch origin ${FRAMEWORK_BRANCH}` and then
    `git checkout --detach origin/${FRAMEWORK_BRANCH}`. Read its code where you
    need to know whether a capability already exists, and where it would go.
+   When this repository is the framework (the two are the same), there is no
+   separate checkout: read the framework's code in place, in step 4.
 4. Read this repository's code where you need to know what a change touches.
 
 ## Step 2: Take stock of the tracker

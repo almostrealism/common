@@ -266,6 +266,8 @@ class ReleaseStewardWorkflowTests(unittest.TestCase):
         condition = _job().get("if", "")
         self.assertIn("github.ref_name", condition)
         self.assertIn("github.event.repository.default_branch", condition)
+        # A tag sharing the default branch's name must not satisfy the guard.
+        self.assertIn("github.ref_type == 'branch'", condition)
 
     def test_runs_in_one_repository_are_serialized_and_not_cancelled(self):
         concurrency = _job()["concurrency"]
