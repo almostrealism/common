@@ -59,14 +59,17 @@ public class AutomaticDifferentiationExamplesTest extends TestSuiteBase {
 
 		// NONE: the full Jacobian J has shape (1, n) and equals 2·xⱼ in column j.
 		PackedCollection jacobian = y.delta(px).evaluate();
-		Assert.assertEquals(n, jacobian.getShape().getTotalSize());
+		Assert.assertEquals(2, jacobian.getShape().getDimensions());
+		Assert.assertEquals(1, jacobian.getShape().length(0));
+		Assert.assertEquals(n, jacobian.getShape().length(1));
 		for (int j = 0; j < n; j++) {
 			Assert.assertEquals(2.0 * x.toDouble(j), jacobian.toDouble(j), tolerance);
 		}
 
 		// OUT: the vector-Jacobian product gᵀJ has the target's shape (n); here g is a single output.
 		PackedCollection out = y.delta(px, ReduceAxis.OUT, cp(g)).evaluate();
-		Assert.assertEquals(n, out.getShape().getTotalSize());
+		Assert.assertEquals(1, out.getShape().getDimensions());
+		Assert.assertEquals(n, out.getShape().length(0));
 		for (int j = 0; j < n; j++) {
 			Assert.assertEquals(g.toDouble(0) * 2.0 * x.toDouble(j), out.toDouble(j), tolerance);
 		}
@@ -75,7 +78,8 @@ public class AutomaticDifferentiationExamplesTest extends TestSuiteBase {
 		// square s = x² the Jacobian is diagonal (2·xⱼ), so J t is 2·xⱼ·tⱼ in the input's shape (n).
 		CollectionProducer square = c(px).pow(2.0);
 		PackedCollection in = square.delta(px, ReduceAxis.IN, cp(t)).evaluate();
-		Assert.assertEquals(n, in.getShape().getTotalSize());
+		Assert.assertEquals(1, in.getShape().getDimensions());
+		Assert.assertEquals(n, in.getShape().length(0));
 		for (int j = 0; j < n; j++) {
 			Assert.assertEquals(2.0 * x.toDouble(j) * t.toDouble(j), in.toDouble(j), tolerance);
 		}

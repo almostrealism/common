@@ -134,7 +134,8 @@ tries:
    contracted. This is the fallback that a reduced form exists to avoid.
 
 For the full Jacobian (`NONE`) the order is analogous: `deltaElementMatrix` (from `deltaElement`
-partials), then the chain-rule matrix, then `deltaMatrix` as the last resort.
+partials), then `deltaInput` (the direct-input route of step 2 above, when the target *is* one
+input), then the chain-rule matrix, then `deltaMatrix` as the last resort.
 
 ### Worked examples (each verified against source)
 
@@ -185,9 +186,13 @@ repeat, a reshape — so the dense operator (`LayerFeatures.denseOperator`) yiel
 alone. The full account, with measured iteration-space costs, is in
 [Training a Language Model — Weight gradients of dense layers](training-a-language-model.md).
 
-One lowering still has **no reduced form of its own**: the weighted sum (`WeightedSumComputation`)
-that `matmul` chooses for outputs wider than 1000. It contracts its full Jacobian through
-`jacobianContraction`. This is the known-limit of §8 rather than a property of the contract.
+The weighted sum (`WeightedSumComputation`) that `matmul` chooses for outputs wider than 1000 has
+its own reduced form for both axes: `deltaDependent` builds each operand's reduced delta from a
+**transposed weighted sum** of the upstream gradient with the other operand, so the standard
+large-output `matmul` path never materializes a full Jacobian. It falls back to
+`jacobianContraction` only for a traversal that cannot be transposed into a weighted sum — a sliding
+window such as a convolution's — which is the known-limit of §8 rather than a property of the
+contract.
 
 ---
 
@@ -291,20 +296,23 @@ longer holds should be dropped from this list, not restated.
    agrees exactly; the cause inside the sparse-Jacobian machinery is undiagnosed (a 32-bit index
    overflow over the `2^34`-position enumeration is the standing hypothesis). Measured in
    [Training a Language Model](training-a-language-model.md).
-2. **The weighted-sum lowering has no reduced form.** `WeightedSumComputation` (used by `matmul` for
-   outputs wider than 1000, and for reductions of at least `loopThreshold` = 256 members) contracts
-   its full Jacobian rather than producing a reduced delta of its own. Correct, but it is the
-   Jacobian-fallback cost a reduced form would remove.
+2. **The weighted-sum lowering has no reduced form for non-transposable traversals.**
+   `WeightedSumComputation` (used by `matmul` for outputs wider than 1000, and for reductions of at
+   least `loopThreshold` = 256 members) produces its own reduced delta through a transposed weighted
+   sum wherever the traversal can be transposed — the matrix multiply, broadcast sums and scaled dot
+   products. For a traversal that cannot (a sliding window such as a convolution's) it contracts its
+   full Jacobian through `jacobianContraction` instead. Correct, but it is the Jacobian-fallback
+   cost a reduced form would remove for those windowed cases.
 3. **Cross-attention keys and values enter as constants.** The `scaledDotProductAttention` of
    `SequenceAttentionFeatures` (used by `sequenceCrossAttention`) binds the keys and values as
    constants, so — as its own Javadoc states — "no gradient flows to whatever produced them."
    Attention that trains its own keys and values (`sequenceAttention`) reads them from branches of
    its asset layer instead.
-4. **Buffered full-sequence self-attention drops gradients to the fused projection.**
-   `SequenceAttentionFeatures` carries the marker
+4. **Buffered cross-attention drops gradients to the fused projection.** Inside
+   `sequenceCrossAttention`, `SequenceAttentionFeatures` carries the marker
    `// TODO(review): K/V buffering drops gradients to toKvWeight; feed K and V to the products as
-   branch operands, as sequence_attention.pdsl does`: the buffered K/V path does not wire gradients
-   back to the fused projection that produced them.
+   branch operands, as sequence_attention.pdsl does`: the context branch's buffered K/V path does
+   not wire gradients back to the fused `toKvWeight` projection that produced them.
 
 ---
 

@@ -69,9 +69,10 @@ able to explain about itself.
       (`CollectionMaxComputation`, subset/pad). A decision guide: "I am adding a computation —
       which point do I override, and how do I verify it?"
    4. *How a matrix multiply's gradient falls out of its parts.* Brief, linking to the training
-      page rather than repeating it; state which `matmul` lowering (the weighted sum used for
-      outputs wider than 1000, `WeightedSumComputation`) still has no reduced form and therefore
-      contracts its Jacobian.
+      page rather than repeating it; note that the weighted sum used for outputs wider than 1000
+      (`WeightedSumComputation`) has its own reduced form — a transposed weighted sum — for
+      transposable traversals including `matmul`, and contracts its Jacobian only for a
+      non-transposable traversal such as a convolution's sliding window.
    5. *The expression level.* `CollectionExpression.delta` and the per-expression rules in
       `base/code` (`Exponent`, `Logarithm`, `Max`, `Mask`, `ProductCollectionExpression`,
       `IndexProjectionExpression`, `SubsetTraversalWeightedSumExpression`, ...);
@@ -79,9 +80,10 @@ able to explain about itself.
       `ExpressionMatrix` represents a sparse Jacobian and why its enumeration space (for example
       2^34 positions for the 256 by 64 output projection) is the cost a reduced delta avoids.
    6. *From deltas to a backward pass.* How a layer's backward is built: `BackPropagation` /
-      `DefaultGradientPropagation` (input gradient and every trainable weight's gradient as the
-      `OUT`-reduced delta weighted by the upstream gradient; frozen weights are never
-      differentiated), `BackPropagationCell`, `Learning` and `ParameterUpdate`, gradient routing
+      `DefaultGradientPropagation` (input gradient and every weight's gradient as the
+      `OUT`-reduced delta weighted by the upstream gradient; a frozen weight's gradient is still
+      computed, `ParameterUpdate.disabled()` only makes applying it a no-op), `BackPropagationCell`,
+      `Learning` and `ParameterUpdate`, gradient routing
       through `LayerRoutingFeatures` and `BranchBlock`, `CompiledModel.backward`, and the loss and
       `ModelOptimizer` at the top. One diagram of the forward and backward cells of a two-layer
       model.
