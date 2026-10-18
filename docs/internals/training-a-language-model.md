@@ -61,6 +61,11 @@ needs `AR_HARDWARE_MEMORY_SCALE=6`.
 
 ## Weight gradients of dense layers
 
+This section explains the reduced delta only as far as a dense layer needs it. The general
+mechanism — the `ReduceAxis` contract, the computation extension points, the expression-level
+Jacobian, and the backward pass — is documented in
+[Automatic Differentiation](automatic-differentiation.md).
+
 For a matrix multiply `y_r = W · x_r` applied to every row `x_r` of a sequence, the gradients the
 backward pass needs are vector-Jacobian products with known structure:
 

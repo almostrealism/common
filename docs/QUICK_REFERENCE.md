@@ -353,6 +353,24 @@ double value = ts.getValue(time);
 
 ---
 
+## Automatic Differentiation
+
+`CollectionProducer.delta(target, ReduceAxis, weight)` is the only public derivative method. The
+`ReduceAxis` names which axis of the Jacobian the caller contracts:
+
+```java
+CollectionProducer y = x.pow(2).sum();
+
+y.delta(x);                            // full Jacobian J (ReduceAxis.NONE), shape (out, in)
+y.delta(x, ReduceAxis.OUT, g);         // vector-Jacobian product gᵀJ — shape of the target (reverse mode)
+y.delta(x, ReduceAxis.IN, t);          // Jacobian-vector product J t — shape of y (forward mode)
+```
+
+A computation produces the reduced delta from its own structure (no full Jacobian). To add a
+differentiable computation, override `deltaElement` (element-wise), set `isChainRuleSupported()`
+(chain rule), or override `deltaDependent` / `deltaMatrix` — see
+[Automatic Differentiation](internals/automatic-differentiation.md).
+
 ## Optimize Module
 
 ### Loss Functions
