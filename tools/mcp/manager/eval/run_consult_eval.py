@@ -112,9 +112,10 @@ def build_report(cases: list[dict], responses_by_id: dict,
     the representative passes still names its failures.
 
     A repetition that is a failed tool call (``ok: False`` — the backend or
-    corpus was unavailable) fails grading outright and is reported with outcome
-    ``error``; it is never counted as a (false) abstention or answer, so an
-    environment failure cannot be mistaken for a tool behaviour.
+    corpus was unavailable) fails grading outright, and a case with *any* such
+    repetition is reported with outcome ``error`` whichever repetition it was;
+    it is never counted as a (false) abstention or answer, so an environment
+    failure cannot be mistaken for a tool behaviour.
 
     ``false_abstention`` and ``false_answer`` are counted separately, as the
     plan requires: a change that trades one for the other must be visible as a
@@ -135,13 +136,11 @@ def build_report(cases: list[dict], responses_by_id: dict,
         passed_runs = sum(1 for g in graded if g.passed)
         case_passed = passed_runs == len(runs)
         representative, first = runs[0], graded[0]
-        rep_failed = is_tool_failure(representative)
-        outcome = "error" if rep_failed else response_outcome(representative)
+        any_failed = any(is_tool_failure(r) for r in runs)
+        outcome = "error" if any_failed else response_outcome(representative)
         is_false_abstention = (
-            not rep_failed
-            and outcome == "abstain" and case.get("answerable") is True)
-        is_false_answer = (
-            not rep_failed and outcome == "answer" and not first.passed)
+            outcome == "abstain" and case.get("answerable") is True)
+        is_false_answer = outcome == "answer" and not first.passed
         # Union of failing checks across every repetition, in first-seen order,
         # so a failing run is named even when the representative passed.
         seen: set[str] = set()

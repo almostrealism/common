@@ -36,6 +36,25 @@ EXPECT_KEYS = frozenset({
     "max_citation_warnings",
 })
 
+# Expectation keys whose value is a list of case-insensitive regexes.
+_REGEX_LIST_KEYS = ("must_include", "must_not_include")
+
+# Expectation keys whose value is a list of plain strings (files, symbols,
+# ``answer_basis`` values), compared literally rather than as regexes.
+_STRING_LIST_KEYS = ("must_cite_any", "must_flag_stale", "basis_in")
+
+
+def _is_string_list(value) -> bool:
+    """Whether ``value`` is a list whose every element is a string. A bare
+    string is rejected: iterating it would yield single characters."""
+    return isinstance(value, list) and all(isinstance(v, str) for v in value)
+
+
+def _is_int(value) -> bool:
+    """Whether ``value`` is an integer, excluding ``bool`` (a JSON ``true``
+    would otherwise pass as ``1``)."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
 # Matches an inline ``path:line`` citation in answer prose, e.g.
 # ``claude-code-job.md:330`` or ``flowtree/runtime/docs/claude-code-job.md:330``.
 _INLINE_CITATION = re.compile(
@@ -323,6 +342,12 @@ def validate_case(case: dict) -> list[str]:
     this on every element of the case file and promises a controlled
     ``ValueError`` for malformed data, so a non-mapping entry must not raise an
     ``AttributeError`` on the first ``.get`` below.
+
+    Every expectation key is type-checked, element by element, against the
+    shape ``grade`` iterates over — regex lists must hold compilable strings,
+    ``must_include_any`` must hold non-empty lists of them, and so on — so a
+    malformed value is a schema error here rather than a crash (or a silent
+    misreading, such as a bare string iterated as characters) during grading.
     """
     if not isinstance(case, dict):
         return [f"<case {type(case).__name__}>: case must be an object"]
@@ -345,6 +370,30 @@ def validate_case(case: dict) -> list[str]:
         if outcome is not None and outcome not in KNOWN_OUTCOMES:
             errors.append(
                 f"{cid}: {label} outcome {outcome!r} not in {KNOWN_OUTCOMES}")
+        for key in _REGEX_LIST_KEYS:
+            if key in expect:
+                _check_regex_list(f"{label} {key}", expect[key])
+        if "must_include_any" in expect:
+            groups = expect["must_include_any"]
+            if not isinstance(groups, list):
+                errors.append(f"{cid}: {label} must_include_any must be a list")
+            else:
+                for group in groups:
+                    if not isinstance(group, list) or not group:
+                        errors.append(
+                            f"{cid}: {label} must_include_any entries must "
+                            f"be non-empty lists")
+                    else:
+                        _check_regex_list(f"{label} must_include_any", group)
+        for key in _STRING_LIST_KEYS:
+            if key in expect and not _is_string_list(expect[key]):
+                errors.append(f"{cid}: {label} {key} must be a list of strings")
+        if "max_citation_warnings" in expect:
+            ceiling = expect["max_citation_warnings"]
+            if not _is_int(ceiling) or ceiling < 0:
+                errors.append(
+                    f"{cid}: {label} max_citation_warnings must be a "
+                    f"non-negative integer")
         specs = expect.get("must_not_cite", [])
         if not isinstance(specs, list):
             errors.append(f"{cid}: {label} must_not_cite must be a list")
@@ -355,10 +404,31 @@ def validate_case(case: dict) -> list[str]:
                     f"{cid}: {label} must_not_cite entries must be objects")
             elif "file" not in spec or "lines" not in spec:
                 errors.append(f"{cid}: {label} must_not_cite needs file+lines")
+            elif not isinstance(spec["file"], str) or not spec["file"]:
+                errors.append(
+                    f"{cid}: {label} must_not_cite 'file' must be a "
+                    f"non-empty string")
             elif (not isinstance(spec["lines"], list)
-                  or len(spec["lines"]) != 2):
+                  or len(spec["lines"]) != 2
+                  or not all(_is_int(n) for n in spec["lines"])
+                  or spec["lines"][0] > spec["lines"][1]):
                 errors.append(
                     f"{cid}: {label} must_not_cite 'lines' must be [lo, hi]")
+            elif "with" in spec and (not isinstance(spec["with"], str)
+                                     or not spec["with"]):
+                errors.append(
+                    f"{cid}: {label} must_not_cite 'with' must be a "
+                    f"non-empty string")
+
+    def _check_regex_list(label: str, patterns) -> None:
+        if not _is_string_list(patterns):
+            errors.append(f"{cid}: {label} must be a list of strings")
+            return
+        for pat in patterns:
+            try:
+                re.compile(pat)
+            except re.error as exc:
+                errors.append(f"{cid}: {label} has invalid regex {pat!r}: {exc}")
 
     expect = case.get("expect")
     if "expect" in case and not isinstance(expect, dict):

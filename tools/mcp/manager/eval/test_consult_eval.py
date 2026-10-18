@@ -121,6 +121,124 @@ class TestCaseSchema(unittest.TestCase):
             "must_not_cite": [{"file": "a.md", "lines": [1, 2]}]}}
         self.assertEqual(validate_case(ok), [])
 
+    def test_validate_case_rejects_null_regex_list(self):
+        # ``must_include: null`` used to pass validation and then raise
+        # TypeError while grade() iterated it.
+        bad = {"id": "X", "question": "q", "expect": {"must_include": None}}
+        self.assertEqual(validate_case(bad),
+                         ["X: expect must_include must be a list of strings"])
+
+    def test_validate_case_rejects_bare_string_regex_list(self):
+        # A bare string would be iterated as single-character patterns.
+        bad = {"id": "X", "question": "q",
+               "expect": {"must_not_include": "exit 2"}}
+        self.assertEqual(validate_case(bad), [
+            "X: expect must_not_include must be a list of strings"])
+
+    def test_validate_case_rejects_non_string_regex_element(self):
+        bad = {"id": "X", "question": "q",
+               "expect": {"must_include": ["ok", 3]}}
+        self.assertEqual(validate_case(bad),
+                         ["X: expect must_include must be a list of strings"])
+
+    def test_validate_case_rejects_uncompilable_regex(self):
+        bad = {"id": "X", "question": "q", "expect": {"must_include": ["("]}}
+        errors = validate_case(bad)
+        self.assertEqual(len(errors), 1)
+        self.assertTrue(errors[0].startswith(
+            "X: expect must_include has invalid regex '('"), errors)
+
+    def test_validate_case_rejects_non_list_must_include_any(self):
+        # A bare string used to be read as a list of one-character groups.
+        bad = {"id": "X", "question": "q",
+               "expect": {"must_include_any": "seven"}}
+        self.assertEqual(validate_case(bad),
+                         ["X: expect must_include_any must be a list"])
+
+    def test_validate_case_rejects_flat_or_empty_must_include_any_group(self):
+        bad = {"id": "X", "question": "q",
+               "expect": {"must_include_any": ["seven", []]}}
+        self.assertEqual(validate_case(bad), [
+            "X: expect must_include_any entries must be non-empty lists",
+            "X: expect must_include_any entries must be non-empty lists",
+        ])
+
+    def test_validate_case_rejects_bad_regex_inside_must_include_any(self):
+        bad = {"id": "X", "question": "q",
+               "expect": {"must_include_any": [["ok", None]]}}
+        self.assertEqual(validate_case(bad), [
+            "X: expect must_include_any must be a list of strings"])
+
+    def test_validate_case_rejects_non_string_list_keys(self):
+        bad = {"id": "X", "question": "q", "expect": {
+            "must_cite_any": ".github/CLAUDE.md",
+            "must_flag_stale": [None],
+            "basis_in": None}}
+        self.assertEqual(validate_case(bad), [
+            "X: expect must_cite_any must be a list of strings",
+            "X: expect must_flag_stale must be a list of strings",
+            "X: expect basis_in must be a list of strings",
+        ])
+
+    def test_validate_case_rejects_bad_max_citation_warnings(self):
+        for value in (-1, "2", True, 1.5, None):
+            bad = {"id": "X", "question": "q",
+                   "expect": {"max_citation_warnings": value}}
+            self.assertEqual(validate_case(bad), [
+                "X: expect max_citation_warnings must be a non-negative "
+                "integer"], value)
+
+    def test_validate_case_accepts_zero_max_citation_warnings(self):
+        ok = {"id": "X", "question": "q",
+              "expect": {"max_citation_warnings": 0}}
+        self.assertEqual(validate_case(ok), [])
+
+    def test_validate_case_rejects_malformed_must_not_cite_fields(self):
+        cases = [
+            ({"file": None, "lines": [1, 2]},
+             "X: expect must_not_cite 'file' must be a non-empty string"),
+            ({"file": "a.md", "lines": ["1", 2]},
+             "X: expect must_not_cite 'lines' must be [lo, hi]"),
+            ({"file": "a.md", "lines": [9, 2]},
+             "X: expect must_not_cite 'lines' must be [lo, hi]"),
+            ({"file": "a.md", "lines": [1, 2], "with": ""},
+             "X: expect must_not_cite 'with' must be a non-empty string"),
+        ]
+        for spec, message in cases:
+            bad = {"id": "X", "question": "q",
+                   "expect": {"must_not_cite": [spec]}}
+            self.assertEqual(validate_case(bad), [message], spec)
+
+    def test_validate_case_type_checks_milestone_overrides(self):
+        bad = {"id": "X", "question": "q", "expect": {"outcome": "answer"},
+               "milestones": {"step2": {"must_include": None}}}
+        self.assertEqual(validate_case(bad), [
+            "X: milestones.step2 must_include must be a list of strings"])
+
+    def test_validate_case_accepts_every_well_formed_key(self):
+        ok = {"id": "X", "question": "q", "expect": {
+            "outcome": "answer",
+            "must_include": ["a\\.md"],
+            "must_not_include": ["exits?\\s+2"],
+            "must_include_any": [["\\b7\\b", "seven"]],
+            "must_cite_any": [".github/CLAUDE.md"],
+            "must_not_cite": [{"file": "a.md", "lines": [3, 3], "with": "x"}],
+            "must_flag_stale": ["ClaudeCodeJob"],
+            "basis_in": ["documentation"],
+            "max_citation_warnings": 0,
+        }}
+        self.assertEqual(validate_case(ok), [])
+
+    def test_load_cases_raises_on_null_must_include(self):
+        data = {"cases": [{"id": "X", "question": "q",
+                           "expect": {"must_include": None}}]}
+        with mock.patch.object(run_consult_eval, "_load_json",
+                               return_value=data):
+            with self.assertRaises(ValueError) as ctx:
+                load_cases()
+        self.assertIn("must_include must be a list of strings",
+                      str(ctx.exception))
+
     def test_validate_case_rejects_non_object_milestones(self):
         bad = {"id": "X", "question": "q", "expect": {"outcome": "answer"},
                "milestones": ["step2"]}
@@ -577,6 +695,41 @@ class TestToolFailureHandling(unittest.TestCase):
         c = summary["cases"][0]
         self.assertFalse(c["passed"])
         self.assertEqual(c["outcome"], "error")
+
+    def test_later_repetition_failure_marks_the_case_as_error(self):
+        # Repetition 1 answers; repetition 2 is a backend failure. The case
+        # used to be classified from repetition 1 alone (outcome "answer").
+        case = {"id": "A", "question": "q", "answerable": True,
+                "expect": {"outcome": "answer"}}
+        runs = [{"ok": True, "answer": "It is documented."}, self._failure()]
+        summary = build_report([case], {"A": runs}, "baseline")
+        c = summary["cases"][0]
+        self.assertEqual(c["outcome"], "error")
+        self.assertFalse(c["passed"])
+        self.assertEqual(c["passed_runs"], 1)
+        self.assertFalse(c["false_answer"])
+        self.assertFalse(c["false_abstention"])
+        self.assertIn("ar-memory server unavailable", " ".join(c["failures"]))
+
+    def test_later_failure_suppresses_false_abstention_count(self):
+        # Repetition 1 abstains on an answerable case, repetition 2 fails: the
+        # environment failure must not be counted as a false abstention.
+        case = self._case("B", answerable=True)
+        runs = [{"ok": True, "abstained": True, "note": "Not documented."},
+                self._failure()]
+        summary = build_report([case], {"B": runs}, "baseline")
+        self.assertEqual(summary["cases"][0]["outcome"], "error")
+        self.assertEqual(summary["false_abstention"], 0)
+
+    def test_all_successful_repetitions_keep_the_representative_outcome(self):
+        case = self._case("C", answerable=True)
+        runs = [{"ok": True, "abstained": True, "note": "Not documented."},
+                {"ok": True, "abstained": True, "note": "Not documented."}]
+        summary = build_report([case], {"C": runs}, "baseline")
+        c = summary["cases"][0]
+        self.assertEqual(c["outcome"], "abstain")
+        self.assertTrue(c["false_abstention"])
+        self.assertEqual(summary["false_abstention"], 1)
 
 
 class TestCorpusStaging(unittest.TestCase):
