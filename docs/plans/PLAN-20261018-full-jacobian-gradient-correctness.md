@@ -40,8 +40,15 @@ The cost of leaving it is real and compounding:
   projection out of the comparison; the next operator that needs the fallback has no such escape.
 - **It is nondeterministic, which is the worst failure mode for a correctness reference.** A test
   that passes four times and fails the fifth erodes trust in the whole suite and in CI.
-- **Other large-shape gradients may share the defect.** Convolution and any operator over a large
-  iteration space take the same fallback; nobody has checked whether they are affected.
+- **Other fallback gradients over large iteration spaces may share the defect.** The fallback is
+  selected by structure, not by size: `CollectionProducerComputationBase.deltaDependent` contracts
+  the full Jacobian (`jacobianContraction` → `jacobianGradient` for `ReduceAxis.OUT`) only when no
+  element-wise, input, or chain-rule form applies, and `WeightedSumComputation.deltaDependent`
+  defers to it only when the input and weights are the same producer or `transposedSum` cannot
+  transpose the traversal — for example a convolution's sliding window. So a large operator that
+  has a structural reduced form does not take this path at all. Which fallback users run at an
+  iteration space comparable to the output projection's (convolution being the obvious candidate)
+  has not been checked.
 
 This is foundation work in the first category that has genuine work left (documentation is
 excellent and complete through the autodiff internals page that just landed). A learning system
@@ -68,32 +75,44 @@ What `ar-profile-analyzer` actually found (captured in the `bugs` memory namespa
   `f_packedCollectionRepeat_42` buffer shaped (64, 256, 64)**. The suspicion recorded is a
   sync/ordering problem between the kernel that *writes* that repeat buffer and the ~1.5 s sum
   kernel that *reads* it.
-- A closely related, already-diagnosed defect exists: the layernorm gamma/beta "invalid kernel"
-  (`bugs` memory, branch `feature/ml-dit-memory-tokens`, 2026-06-21,
-  `docs/journals/INVALID_KERNEL_AGGREGATION.md`). There, a kernel read operands from a **baked
-  aggregate slot offset** that depended on transient host/device **residence**, so the *same*
-  computation compiled to two kernels reading different memory — and disabling argument aggregation
-  made the result deterministic and correct. (The journal records this as `AR_HARDWARE_OFF_HEAP_SIZE=0`,
-  which at the time forced every reservation provider-owned and so switched aggregation off as a side
-  effect, back when the off-heap threshold defaulted to 1024. That is no longer the lever: the off-heap
-  default is now `0` — `Hardware.DEFAULT_OFF_HEAP_SIZE` — so `AR_HARDWARE_OFF_HEAP_SIZE=0` is a no-op
-  against the default, and aggregation is toggled directly by `AR_HARDWARE_ARGUMENT_AGGREGATION`; see
-  the experiment below.) The aggregation machinery lives in `MemoryDataArgumentMap`
-  (`enableArgumentAggregation`, `isAggregationTarget`) in `base/hardware`, with the per-kernel
-  aggregate layout carried on `ScopeInstructionsManager` (`aggregatePositions`). The nondeterminism
-  signature here is the same family of symptom, and that is the first lead to run down.
+- **An untrusted lead, not a precedent:** the layernorm gamma/beta "invalid kernel" journal
+  (`docs/journals/INVALID_KERNEL_AGGREGATION.md`, with `INVALID_KERNEL_AGGREGATION_COMPILATION.md`
+  and `COMPILE_DETERMINISM.md`; `bugs` memory, branch `feature/ml-dit-memory-tokens`, 2026-06-21)
+  claims that a kernel read operands from a **baked aggregate slot offset** tied to transient
+  host/device residence, so one computation compiled to two kernels reading different memory, and
+  that disabling argument aggregation restored determinism. **That diagnosis has been retracted.**
+  `docs/journals/CONCESSION.md` states that the journal's central claim is wrong — the two
+  "divergent" kernels were a mismatched comparison of `pre_norm` against `ff_norm` and are identical
+  once paired correctly — and that the cited journals are raw data, not a diagnosis. Nothing in the
+  tree therefore establishes an aggregation defect, and this plan must not reason from one. The
+  journal is useful only for its method (pairing `get_source` output with argument bindings) and for
+  naming where aggregation lives: `MemoryDataArgumentMap` (`enableArgumentAggregation`,
+  `isAggregationTarget`) in `base/hardware`, with the per-kernel aggregate layout carried on
+  `ScopeInstructionsManager` (`aggregatePositions`). (The journals toggle aggregation with
+  `AR_HARDWARE_OFF_HEAP_SIZE=0`, which only switched it off as a side effect back when the off-heap
+  threshold defaulted to 1024. The default is now `0` — `Hardware.DEFAULT_OFF_HEAP_SIZE` — so that
+  setting is a no-op, and aggregation is toggled directly by `AR_HARDWARE_ARGUMENT_AGGREGATION`.)
+  The reason to test aggregation first is the evidence *here* — nondeterminism, and a large
+  materialized buffer read by a long-running kernel — and the fact that the toggle is a cheap,
+  single-variable experiment; not any prior finding.
 
-The two leads are testable and mutually exclusive enough to separate quickly:
+The leads are testable and can be separated quickly:
 
 1. **Aggregation / residence** (favored by the nondeterminism): disable aggregation by setting
    `AR_HARDWARE_ARGUMENT_AGGREGATION` to a disabled value (it defaults to enabled; the flag maps to
-   `MemoryDataArgumentMap.enableArgumentAggregation`) and re-run. If the gradient becomes deterministic and correct,
-   the root cause is in how operands of the repeat/sum kernels are addressed under aggregation, in
-   the `MemoryDataArgumentMap` family — exactly the class of bug the journal already documents.
-2. **Index typing** (the original note): if disabling aggregation does *not* fix it, inspect the
-   generated index expressions via `ar-profile-analyzer get_source` on the sum node and check
-   whether any flattened `(weight, output, inner)` index is computed in a type that overflows at
-   2³¹/2³².
+   `MemoryDataArgumentMap.enableArgumentAggregation`) and re-run. If the gradient becomes
+   deterministic and correct, the root cause is in how operands of the repeat/sum kernels are
+   addressed under aggregation, in the `MemoryDataArgumentMap` family — confirm it from the two
+   kernels' sources and argument bindings, not from the toggle alone.
+2. **Write/read ordering** (the suspicion recorded in the 2026-10-10 memory): if disabling
+   aggregation does *not* fix it, the remaining nondeterministic mechanism is the sum kernel reading
+   the repeat buffer before the kernel that writes it has completed. Check it by forcing the repeat
+   buffer to be fully evaluated (and the queue synchronized) before the sum kernel runs, and by
+   reading the operation tree (`list_children`) for how the two kernels are sequenced.
+3. **Index typing** (the original note): a pure 32-bit overflow would be deterministic, so it cannot
+   explain the run-to-run variation on its own; inspect it only if 1 and 2 are ruled out, via
+   `ar-profile-analyzer get_source` on the sum node, checking whether any flattened
+   `(weight, output, inner)` index is computed in a type that overflows at 2³¹/2³².
 
 Either way, the mechanical rule applies: **read the generated kernel source and its argument
 bindings with `ar-profile-analyzer` before adding any `log()` probe or asserting a mechanism.** No
@@ -106,8 +125,8 @@ Concrete, bounded deliverables:
 1. **Diagnose the root cause** of the nondeterministic disagreement for the 256×64 / 64-row output
    projection, using `ar-profile-analyzer` on a captured profile of exactly that gradient
    (`DenseVectorJacobianProductTest.outputProjection` already builds the graph; add a profiled
-   reproduction if no saved profile covers it). Separate the two leads above with the
-   `AR_HARDWARE_ARGUMENT_AGGREGATION` (disabled) experiment first. Record the finding (kernel node, the buffer and
+   reproduction if no saved profile covers it). Separate the leads above, starting with the
+   `AR_HARDWARE_ARGUMENT_AGGREGATION` (disabled) experiment. Record the finding (kernel node, the buffer and
    argument bindings involved, the mechanism) in a `docs/journals/` entry and in the `bugs` memory
    namespace before changing any code.
 
@@ -115,13 +134,14 @@ Concrete, bounded deliverables:
    - If aggregation/residence: the fix belongs in the `base/hardware` argument-mapping machinery
      (`MemoryDataArgumentMap` and the kernel-ordering it feeds), so that a kernel's operand offsets
      derive from the operands' actual reservations/sizes rather than a frozen aggregate slot, and
-     the read of a materialized buffer is correctly ordered after its write. This is the same fix
-     direction the layernorm journal names; prefer generalizing/repairing that path over adding a
-     special case.
+     the read of a materialized buffer is correctly ordered after its write. Prefer repairing that
+     path over adding a special case.
+   - If write/read ordering: the fix belongs where kernel dependencies are sequenced for a
+     materialized intermediate, so that every consumer of such a buffer waits on its producer.
    - If index typing: the fix belongs in the expression/index-generation layer (widen the index
      type for iteration spaces that exceed 2³¹, at the point where the flattened index is formed, not
      per-call-site).
-   - In both cases, fix the general mechanism so **every** operator taking the fallback benefits;
+   - In every case, fix the general mechanism so **every** operator taking the fallback benefits;
      do not narrow the fix to the output-projection shape.
 
 3. **Turn the defect into a permanent, asserted regression test.** Change
@@ -134,10 +154,19 @@ Concrete, bounded deliverables:
    cause proves larger than one session, in which case the assertion stays logged and the finding is
    handed to a follow-up plan.
 
-4. **Check whether convolution and other large-shape fallbacks share the defect.** Run the existing
-   `RepeatedDeltaComputationTests` / convolution-delta coverage under the same conditions and record
-   the result (as reporting — fixing a second operator family is out of scope unless the same
-   one-line root-cause fix already covers it).
+4. **Check whether convolution, the most likely other large fallback user, shares the defect.**
+   The existing coverage cannot answer this on its own: `RepeatedDeltaComputationTests.convDeltaSmall`
+   and `convDeltaMedium` take the unreduced Jacobian (`ReduceAxis.NONE`), not `jacobianGradient`;
+   `convDeltaGradSmall` takes the `ReduceAxis.OUT` delta but only logs the result's shape, with no
+   comparison to an independent reference and no repeated evaluation; and `convDeltaGradLarge` is
+   marked `knownIssue`. So this item needs (a) confirmation, from the operation tree, of which path a
+   convolution's `ReduceAxis.OUT` delta actually takes (`WeightedSumComputation` declines to form a
+   transposed sum for a sliding window, but the general `deltaDependent` may still find an
+   element-wise or chain-rule form before contracting the Jacobian), and (b) a **new** test that
+   compares that delta, evaluated several times on the Metal node, against a reference computed on
+   the host from the convolution's definition — the same A/B/reference shape
+   `DenseVectorJacobianProductTest` uses. Record the result as reporting; fixing a second operator
+   family is out of scope unless the root-cause fix from item 2 already covers it.
 
 5. **Update the documentation** that currently records the defect as a known limit: the "known
    limits" sections of `docs/internals/automatic-differentiation.md` and
@@ -152,8 +181,9 @@ a later cycle); broad convolution-gradient rework beyond the reporting check in 
 ## Approach
 
 1. **Recall and read first.** Load the `bugs` memories cited above (the 2026-10-10 Metal Jacobian
-   note and the 2026-06-21 layernorm aggregation journal), read
-   `docs/journals/INVALID_KERNEL_AGGREGATION.md`, and read `GradientFeatures.jacobianGradient`,
+   note and the 2026-06-21 layernorm aggregation note), read `docs/journals/CONCESSION.md` before
+   `docs/journals/INVALID_KERNEL_AGGREGATION.md` (the former retracts the latter's diagnosis), and
+   read `GradientFeatures.jacobianGradient`,
    `DenseVectorJacobianProductTest`, and `MemoryDataArgumentMap`. Confirm the current behavior by
    running `DenseVectorJacobianProductTest.outputProjection` on the Metal node and observing the
    logged `jacobianDisagreements` count over several evaluations.
@@ -163,16 +193,17 @@ a later cycle); broad convolution-gradient rework beyond the reporting check in 
    the repeat buffer it reads with `ar-profile-analyzer` (`list_children`, `get_source`,
    `get_source_summary`) — argument offsets/sizes especially.
 
-3. **Separate the leads** with the `AR_HARDWARE_ARGUMENT_AGGREGATION` (disabled) experiment. Decide aggregation vs
-   index-typing from the result, not from the arithmetic.
+3. **Separate the leads** with the `AR_HARDWARE_ARGUMENT_AGGREGATION` (disabled) experiment, then
+   the forced-ordering check. Decide among aggregation, ordering and index typing from the results
+   and the kernel source, not from the arithmetic.
 
-4. **Fix at the root** per item 2 of Scope, in `base/hardware` or the index-generation layer. Keep
+4. **Fix at the root** per item 2 of Scope, in the layer the evidence names. Keep
    the change general and minimal; honor the memory-model and OO-placement rules (any new behavior
    goes on the type that owns the concept, not a helper).
 
 5. **Verify narrowly.** Run `DenseVectorJacobianProductTest` (the whole class is a bounded, single
    class — within limits) on the Metal node, repeatedly, to confirm determinism and agreement, plus
-   the convolution-delta check for item 4. Run the build validator (checkstyle, code_policy,
+   the new convolution test for item 4. Run the build validator (checkstyle, code_policy,
    test_timeouts, duplicate_code). Do not run broad suites — leave full verification to CI.
 
 6. **Document and record** per items 3 and 5 of Scope; store a `bugs` memory with the confirmed root
@@ -187,7 +218,8 @@ a later cycle); broad convolution-gradient rework beyond the reporting check in 
 - `DenseVectorJacobianProductTest.outputProjection` asserts that agreement (the full-Jacobian weight
   gradient is now a reliable reference at this size), and the assertion holds across repeated runs.
 - The fix is at the general mechanism, so other operators taking the fallback benefit; the
-  convolution-delta check in Scope item 4 is run and its outcome recorded.
+  convolution check in Scope item 4 — the path confirmed and a new reference-comparing test run
+  repeatedly on the Metal node — is done and its outcome recorded.
 - The `TODO(review)` and the "known limits" doc entries are updated to describe the resolved cause.
 - The build validator passes; the targeted tests pass on the Metal node.
 
@@ -199,9 +231,9 @@ bounds and would fail `test-integrity-check`.
 
 ## Dependencies
 
-- **A macOS / Metal node.** The defect is observed only on Metal, its nondeterminism is tied to the
-  Metal backend's memory residence/aggregation behavior, and both reproduction and verification
-  require `ar-profile-analyzer` on a Metal-captured profile. The accompanying
+- **A macOS / Metal node.** The defect has only been measured on Metal (whether other backends are
+  affected is unknown — see *Open questions*), and both reproduction and verification require
+  `ar-profile-analyzer` on a Metal-captured profile. The accompanying
   `docs/plans/plan-20261018-174738-workstream.yaml` requests `platform: macos`.
 - The autodiff internals page (`docs/internals/automatic-differentiation.md`) — **already landed**
   (PR #670); it was named the prerequisite for this diagnosis in the prior Manager Log entry.
@@ -209,9 +241,28 @@ bounds and would fail `test-integrity-check`.
 
 ## Estimated Complexity
 
-**Medium.** The failing case, the diagnostic artifacts, the two candidate root causes, and the exact
-test to tighten are all already identified; a closely analogous aggregation defect is already
-journaled with a named fix direction. The risk is that the root cause lies in shared
+**Medium.** The failing case, the diagnostic artifacts, the candidate root causes, and the exact
+test to tighten are all already identified. There is no verified precedent to borrow a fix from
+(the layernorm aggregation journal's diagnosis was retracted), so the diagnosis starts from this
+kernel's own source and bindings. The risk is that the root cause lies in shared
 argument-mapping/ordering machinery whose fix must stay byte-identical for every other kernel — so
 the work is careful and must be verified against the existing reduced-delta suite, but it is bounded
 and does not touch the structural VJP path.
+
+## Open questions
+
+- **Is the defect Metal-specific?** Only Metal runs have been measured. Running
+  `DenseVectorJacobianProductTest.outputProjection` once on the JNI/OpenCL backend, if a node offers
+  one, would say whether the cause is backend-specific (synchronization, residence) or in the
+  generated program itself, before any fix is chosen.
+- **Does the aggregation toggle change more than aggregation?** Disabling
+  `AR_HARDWARE_ARGUMENT_AGGREGATION` also changes how many kernel arguments there are and how
+  buffers are bound, so a change in outcome narrows the search to argument binding but is not by
+  itself a diagnosis; the plan relies on the kernel source to finish it.
+- **Is convolution's reduced delta reaching the fallback at all?** Scope item 4 assumes it might;
+  if the operation tree shows convolution's `ReduceAxis.OUT` delta never calls `jacobianGradient`,
+  the new test is still worth adding as coverage, but it no longer tests this defect, and another
+  large fallback user would need to be found to check generality.
+- **Should repeated-evaluation assertions be a pattern, not a one-off?** The test change in Scope
+  item 3 asserts determinism for one shape. Whether other gradient-reference tests should also
+  evaluate more than once is a broader decision for the reviewer, not something this plan does.

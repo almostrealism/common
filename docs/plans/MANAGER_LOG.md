@@ -70,15 +70,16 @@ The plan follows evidence, not the first hypothesis. The `TODO(review)` guesses 
 overflow (2³⁴ iteration space, errors beginning at flat index 2³²), but the profiling already done
 *contradicts* that: a deterministic overflow would miscompute the same entries every run, and this
 does not. The nondeterminism, and the ~1M-element `(64,256,64)` repeat buffer the sum kernel reads,
-point instead at memory residence / aggregation — the same family as the already-journaled layernorm
-"invalid kernel" defect (`INVALID_KERNEL_AGGREGATION.md`), where a baked aggregate slot offset tied
-to transient residence made one computation compile to two kernels reading different memory, and
-disabling argument aggregation restored determinism (`AR_HARDWARE_ARGUMENT_AGGREGATION` in the
-current tree; the journal used `AR_HARDWARE_OFF_HEAP_SIZE=0`, which disabled aggregation as a side
-effect under the old off-heap default of 1024, but that default is now 0). So the plan separates the
-two leads with that one experiment first, reads the generated kernel with `ar-profile-analyzer` before theorizing, fixes
-the general mechanism (not the one shape), and tightens the existing test to *assert* agreement on
-repeated evaluation. Weakening the test to go green is out of bounds and the plan says so.
+point instead at argument binding / aggregation or at the ordering of the kernel that writes that
+buffer and the kernel that reads it. The layernorm "invalid kernel" journal
+(`INVALID_KERNEL_AGGREGATION.md`) is cited only as an untrusted lead: `docs/journals/CONCESSION.md`
+retracts its central claim (the "divergent" kernels were a mismatched comparison), so no aggregation
+defect is established and the plan does not reason from one. So the plan separates the leads with
+cheap single-variable experiments — disabling aggregation via `AR_HARDWARE_ARGUMENT_AGGREGATION`,
+then forcing the write/read ordering — reads the generated kernel with `ar-profile-analyzer` before
+theorizing, fixes the general mechanism (not the one shape), and tightens the existing test to
+*assert* agreement on repeated evaluation. Weakening the test to go green is out of bounds and the
+plan says so.
 
 #### Balance across categories
 
@@ -87,14 +88,15 @@ proof-of-value track (a trained LM that beats its baseline, PR #628) is one hone
 speaking. But it cannot speak on a gradient that is sometimes wrong — and the degenerate single-byte
 generation may itself be a symptom of an output projection trained on this very defect. Fixing the
 reference gradient is the right move before the next generation push: it is cheaper now (the
-diagnosis is half-done and journaled), it protects every later LM step, and it keeps the platform
+failing kernel is already profiled and the candidate mechanisms named), it protects every later LM step, and it keeps the platform
 honest about its own learning machinery.
 
 #### What comes next
 
 1. This plan: diagnose the nondeterministic output-projection fallback on Metal via
    `ar-profile-analyzer`, fix it at the general argument-mapping/ordering (or index-typing) layer,
-   assert the agreement in `DenseVectorJacobianProductTest`, check convolution for the same defect,
+   assert the agreement in `DenseVectorJacobianProductTest`, check convolution for the same defect
+   with a new test against a host reference (the existing convolution-delta tests only log shapes),
    and update the "known limits" docs and the `TODO(review)`.
 2. **Proof of value — non-degenerate generation**, revisited with a now-trustworthy gradient:
    temperature/top-p in the sliding-window generator, a KV-cache decode, more steps/larger context.
