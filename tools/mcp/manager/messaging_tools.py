@@ -300,6 +300,17 @@ def send_message(
             return err
 
     server._require_workstream_in_scope(effective_ws)
+    # Archived workstreams are read-only: their conversation stays readable but
+    # accepts no new messages. This POSTs to the workstream's own /messages
+    # endpoint, appending to the archived round's history — a mutation of the
+    # frozen record, not communication with an agent running on it (no agent
+    # runs on an archived workstream, since submit is refused). Resolving an
+    # archived workstream's ownership now succeeds, so this explicit refusal is
+    # what keeps new history off an archived workstream; before it the scope
+    # lookup failed closed for archived ids by accident. Unarchive it to post.
+    archived_err = server._archived_workstream_error("send a message", effective_ws)
+    if archived_err:
+        return archived_err
     server._audit("send_message", workstream_id=effective_ws, job_id=effective_job,
            activity=effective_activity, text=text[:80])
 

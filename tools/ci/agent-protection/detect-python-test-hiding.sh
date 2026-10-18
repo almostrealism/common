@@ -17,7 +17,9 @@
 # claiming a finer check it cannot honestly make.
 #
 # A Python test file is test_*.py, *_test.py, or any module under a tests/
-# directory. Files introduced on this branch are not checked.
+# directory. Files introduced on this branch are not checked; a base-branch
+# test file the branch deletes or renames is, and every test it held counts
+# as removed.
 #
 # Usage:
 #   detect-python-test-hiding.sh <base-branch> [output-file]
@@ -108,6 +110,22 @@ while IFS= read -r FILE; do
     # A here-string has no producer process to signal.
     grep -qE '(^|/)(test_[^/]*|[^/]*_test)\.py$|(^|/)tests/([^/]+/)*[^/]*\.py$' <<< "$FILE" || continue
     grep -qxF -- "$FILE" <<< "$BASE_FILES" || continue
+
+    # A file deleted on the branch — or renamed, since the diff is taken with
+    # --no-renames — has no HEAD revision to read; `git show` on one fails, and
+    # under pipefail that failure would end the script instead of being
+    # reported. Every test it held at the merge-base is removed, so each is a
+    # finding, exactly as if it had been deleted from a surviving file.
+    # TODO(review): a moved test file (tests still present at HEAD elsewhere) is flagged too — this branch's deleted staging copy now exits 2 instead of 128.
+    if ! git cat-file -e "HEAD:${FILE}" 2>/dev/null; then
+        removed=$(test_names "$MERGE_BASE" "$FILE")
+        base_count=$(assertions "$MERGE_BASE" "$FILE")
+        if [ -n "$removed" ] || [ "$base_count" -gt 0 ]; then
+            VIOLATIONS=$((VIOLATIONS + 1))
+            REPORT="${REPORT}- ${FILE}: test file deleted or renamed away, removing ${base_count} assertion(s) and test function(s): $(printf '%s' "$removed" | tr '\n' ' ')\n"
+        fi
+        continue
+    fi
 
     removed=$(LC_ALL=C comm -23 <(test_names "$MERGE_BASE" "$FILE") <(test_names HEAD "$FILE") || true)
     if [ -n "$removed" ]; then

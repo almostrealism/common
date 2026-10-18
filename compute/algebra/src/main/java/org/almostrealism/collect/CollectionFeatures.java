@@ -29,7 +29,6 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.algebra.MatrixFeatures;
-import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.collect.computations.CollectionConcatenateComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
@@ -97,7 +96,7 @@ import java.util.stream.Stream;
  *       {@code subtractMean}, {@code max}, {@code indexOfMax}, {@code subdivide}</li>
  *   <li>{@link ComparisonFeatures} - {@code equals}, {@code greaterThan}, {@code lessThan}
  *       (and conditional-selection overloads), {@code and}</li>
- *   <li>{@link GradientFeatures} - {@code delta}, {@code combineGradient},
+ *   <li>{@link GradientFeatures} - {@code delta}, {@code jacobianGradient},
  *       {@code multiplyGradient}</li>
  *   <li>{@link CollectionFeatures} (this interface) - {@code concat}, element indexing
  *       ({@code c(collection, index)}, {@code index}, {@code sizeOf}), {@code a} (assignment),
@@ -183,18 +182,10 @@ import java.util.stream.Stream;
  * @see PackedCollection
  * @see TraversalPolicy
  * @see MatrixFeatures
- * @see DeltaFeatures
  */
 public interface CollectionFeatures extends GradientFeatures {
 	/** When true, logs a warning when operations are attempted on collections with no defined shape. */
 	boolean enableShapelessWarning = false;
-
-	/** When true, repeat operations are permitted for producers with variable (non-fixed) counts. */
-	boolean enableVariableRepeat = false;
-
-	// Should be flipped and removed
-	/** When true, uses the alternative delta computation path for index projection operations. */
-	boolean enableIndexProjectionDeltaAlt = true;
 
 	/** When true, uses the collection size for index expressions instead of a fixed constant. */
 	boolean enableCollectionIndexSize = false;
@@ -214,15 +205,6 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * chain per input and inflates gradient expression trees).
 	 */
 	boolean enableConcatenateComputation = true;
-
-	/**
-	 * Returns whether the alternative index projection delta computation path is enabled.
-	 *
-	 * @return true if the alternative delta path is active
-	 */
-	static boolean isEnableIndexProjectionDeltaAlt() {
-		return enableIndexProjectionDeltaAlt;
-	}
 
 	/** Shared console logger for collection feature operations. */
 	Console console = Computation.console.child();
@@ -256,7 +238,7 @@ public interface CollectionFeatures extends GradientFeatures {
 		TraversalPolicy valueShape = shape(value);
 
 		if (resultShape.getSize() != valueShape.getSize()) {
-			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape, true);
+			int axis = resultShape.compatibleAxis(valueShape, true);
 			if (axis == -1) {
 				throw new IllegalArgumentException();
 			} else if (axis < resultShape.getTraversalAxis()) {
@@ -506,7 +488,7 @@ public interface CollectionFeatures extends GradientFeatures {
 											Producer<PackedCollection> collection,
 											Producer<PackedCollection> index) {
 		DefaultTraversableExpressionComputation exp = new DefaultTraversableExpressionComputation("valueAtIndex", shape,
-				DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
+				true,
 				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx).toInt())),
 				collection, index);
 		if (shape.getTotalSize() == 1 && Countable.isFixedCount(index)) {
@@ -546,7 +528,7 @@ public interface CollectionFeatures extends GradientFeatures {
 											   Producer<PackedCollection> rowIndex) {
 		long rowLength = shape.length(shape.getDimensions() - 1);
 		return new DefaultTraversableExpressionComputation("rowAtIndex", shape,
-				DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
+				true,
 				args -> CollectionExpression.create(shape, idx -> {
 					Expression<Integer> row = args[2].getValueAt(idx.divide(rowLength)).toInt();
 					return args[1].getValueAt(row.multiply(rowLength).add(idx.imod(rowLength)));
@@ -673,7 +655,7 @@ public interface CollectionFeatures extends GradientFeatures {
 	}
 
 	/**
-	 * Creates a computation from a shape-dependent expression factory using no delta strategy.
+	 * Creates a computation from a shape-dependent expression factory.
 	 *
 	 * @param name the name of the computation
 	 * @param expression a function from output shape to expression factory
@@ -683,7 +665,7 @@ public interface CollectionFeatures extends GradientFeatures {
 	default CollectionProducer compute(
 			String name, Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Producer<PackedCollection>... arguments) {
-		return compute(name, DeltaFeatures.MultiTermDeltaStrategy.NONE, expression, arguments);
+		return compute(name, expression, null, arguments);
 	}
 
 	/**
@@ -699,41 +681,8 @@ public interface CollectionFeatures extends GradientFeatures {
 			String name, Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
 			Function<List<String>, String> description,
 			Producer<PackedCollection>... arguments) {
-		return compute(name, DeltaFeatures.MultiTermDeltaStrategy.NONE, expression, description, arguments);
-	}
-
-	/**
-	 * Creates a computation from a shape-dependent expression factory with an explicit delta strategy.
-	 *
-	 * @param name the name of the computation
-	 * @param deltaStrategy the strategy for computing gradients
-	 * @param expression a function from output shape to expression factory
-	 * @param arguments the input producers for the computation
-	 * @return a collection producer implementing the computation
-	 */
-	default CollectionProducer compute(
-			String name, DeltaFeatures.MultiTermDeltaStrategy deltaStrategy,
-			Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
-			Producer<PackedCollection>... arguments) {
-		return compute(name, deltaStrategy, expression, null, arguments);
-	}
-
-	/**
-	 * Creates a computation from a shape-dependent expression factory with an explicit delta strategy and description.
-	 *
-	 * @param name the name of the computation
-	 * @param deltaStrategy the strategy for computing gradients
-	 * @param expression a function from output shape to expression factory
-	 * @param description a function producing a human-readable description from child descriptions
-	 * @param arguments the input producers for the computation
-	 * @return a collection producer implementing the computation
-	 */
-	default CollectionProducer compute(
-			String name, DeltaFeatures.MultiTermDeltaStrategy deltaStrategy,
-			Function<TraversalPolicy, Function<TraversableExpression[], CollectionExpression>> expression,
-			Function<List<String>, String> description, Producer<PackedCollection>... arguments) {
 		return compute((shape, args) -> (Producer<PackedCollection>) new DefaultTraversableExpressionComputation(
-				name, largestTotalSize(args), deltaStrategy, true, expression.apply(shape),
+				name, largestTotalSize(args), true, expression.apply(shape),
 				args.toArray(Producer[]::new)), description, arguments);
 	}
 
@@ -781,7 +730,8 @@ public interface CollectionFeatures extends GradientFeatures {
 	}
 
 	/**
-	 * Returns the index of the maximum value in the array.
+	 * Returns the index of the maximum value in the array. When the maximum occurs
+	 * more than once, the first occurrence is returned.
 	 *
 	 * @param values the array to search
 	 * @return the index of the maximum value, or -1 if the array is empty

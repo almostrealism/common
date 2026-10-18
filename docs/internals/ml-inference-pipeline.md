@@ -850,6 +850,14 @@ masking. The keys and values are branches of that layer which the score and cont
 as the operands of their products, so the backward pass carries gradients into the key and value
 projections as well as the query projection.
 
+The differential variant (`DifferentialAttentionFeatures.differentialSequenceAttention`, selected
+with `AttentionVariant.DIFFERENTIAL`) is a layer of `engine/ml/src/main/resources/pdsl/differential_attention.pdsl`:
+its fused projection holds five sections, `Q1 K1 K2 V Q2`; an `attention_map` layer forms each of
+the two attention maps from its query, key and value sections with the same `sdpa.pdsl` halves; and
+`accum_blocks` sums the two maps, the second weighted by each head's lambda (and negated) so the sum
+subtracts it, before the heads are merged and projected. `differentialSequenceAttention` binds the
+same arguments as `sequenceAttention` (`sequenceAttentionArguments`) plus the lambda.
+
 ---
 
 ## Related Files

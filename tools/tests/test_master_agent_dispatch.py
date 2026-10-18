@@ -109,6 +109,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
             "consolidation-qa": 2,
             "performance-qa": 2,
             "pdsl-qa": 5,
+            "qa-retrospective": 7,
         }
         actual = {name: int(job["env"]["MIN_INTERVAL_DAYS"])
                   for name, job in self.qa_jobs.items()}
@@ -369,7 +370,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertEqual("project/plan-", env["BRANCH_PREFIX"])
         self.assertEqual("0", env["MIN_INTERVAL_DAYS"])
         self.assertGreater(int(env["PR_GRACE_HOURS"]), 0)
-        self.assertEqual("6", job["env"]["MAX_OPEN_PRS"])
+        self.assertEqual("7", job["env"]["MAX_OPEN_PRS"])
 
         # The backlog limit is applied by the script both planning jobs share.
         backlog = next(i for i, s in enumerate(steps)
@@ -471,13 +472,51 @@ class MasterAgentDispatchTests(unittest.TestCase):
             with self.subTest(job=name):
                 self.assertIn("open-pr-backlog.sh", "\n".join(_run_steps(job)))
                 limits.add(job["env"]["MAX_OPEN_PRS"])
-        self.assertEqual({"6"}, limits)
+        self.assertEqual({"7"}, limits)
 
     def test_the_planning_dispatch_the_mcp_tool_uses_still_exists(self):
         """project_tools.py dispatches this file by name with this selector."""
         self.assertTrue(os.path.basename(_WORKFLOW).endswith("master-agent-dispatch.yaml"))
         self.assertIn("project-manager",
                       self.workflow[_ON]["workflow_dispatch"]["inputs"]["agent"]["options"])
+
+    def test_the_retrospective_round_runs_at_max_effort_with_tests_locked(self):
+        """The retrospective's hardest step is synthesis across many
+        workstreams, jobs and PRs — the judgment a model under-thinks — so
+        it carries the same claude/opus at max effort pin as pdsl-qa and
+        performance-qa, and losing it fails nothing visible. The round is
+        docs-only, so the test lock costs nothing and removes a temptation.
+        It reads tools and writes markdown, so it needs no Metal: a
+        REQUIRED_LABELS here would strand it on a GPU node for no reason."""
+        job = self.qa_jobs["qa-retrospective"]
+        submit = next(s for s in job["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        env = submit["env"]
+        primary = json.loads(env["PHASE_CONFIGS"])["primary"]
+        self.assertEqual("max", primary["effort"])
+        self.assertEqual("opus", primary["model"])
+        # Runner, model and provider must be set together; see the defect
+        # hunt's note in the workflow for why one alone misroutes the phase.
+        self.assertEqual({"runner", "model", "effort", "provider"}, set(primary))
+        self.assertEqual("true", env["PROTECT_TEST_FILES"])
+        self.assertNotIn("REQUIRED_LABELS", env)
+
+    def test_the_retrospective_survey_covers_every_qa_prefix(self):
+        """The survey reads one QA_PREFIXES list, passed from the workflow so
+        the prompt never hard-codes a stale one. It must cover every QA job's
+        BRANCH_PREFIX plus ci/qa- (the pipeline-subject follow-up convention),
+        so a future eighth QA job cannot silently drop out of the survey."""
+        job = self.qa_jobs["qa-retrospective"]
+        # The literal list lives at job level; the build step forwards it to
+        # the builder as the QA_PREFIXES variable.
+        build = next(s for s in job["steps"]
+                     if "build-retrospective-prompt.sh" in s.get("run", ""))
+        self.assertIn("env.QA_PREFIXES", build["env"]["QA_PREFIXES"])
+        prefixes = set(job["env"]["QA_PREFIXES"].split())
+        required = {j["env"]["BRANCH_PREFIX"] for j in self.qa_jobs.values()}
+        required.add("ci/qa-")
+        self.assertLessEqual(required, prefixes,
+                             "QA_PREFIXES misses: " + str(required - prefixes))
 
 
 if __name__ == "__main__":

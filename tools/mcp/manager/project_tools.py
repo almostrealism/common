@@ -174,6 +174,26 @@ def project_verify_branch(
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
 
+    # Archived workstreams are read-only. Dispatching the verify-completion
+    # workflow runs an agent on the archived round's branch, which is new work
+    # on it, so it is refused for the same reason a submit is. History and
+    # context stay readable; unarchive the workstream first to verify it.
+    if ws.get("archived"):
+        # Pass the already-resolved ``ws`` so the guard reads its archived flag
+        # directly rather than re-fetching through _find_workstream, whose
+        # second lookup could fail transiently and return None — read as "not
+        # archived", dispatching the workflow onto the frozen round.
+        return server._archived_workstream_error(
+            "verify the branch", workstream_id, ws=ws)
+    # An explicit branch override is the branch the workflow runs on, so a
+    # live workstream_id must not carry a dispatch onto another round's
+    # archived branch in the same repository.
+    if branch and branch != ws.get("defaultBranch"):
+        archived_err = server._archived_branch_error(
+            "verify the branch", ws.get("repoUrl", ""), branch)
+        if archived_err:
+            return archived_err
+
     server._set_github_org(ws)
 
     repo_url = ws.get("repoUrl")
@@ -275,6 +295,26 @@ def project_commit_plan(
             "error": f"Workstream '{workstream_id}' not found",
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
+
+    # Archived workstreams are read-only. Committing a plan is a GitHub PUT
+    # that mutates the archived round's branch, so it is refused here — the
+    # archived-aware lookup above is for reads only. History and context stay
+    # readable; unarchive the workstream first to commit to it.
+    if ws.get("archived"):
+        # Pass the already-resolved ``ws`` so the guard reads its archived flag
+        # directly rather than re-fetching through _find_workstream, whose
+        # second lookup could fail transiently and return None — read as "not
+        # archived", letting the GitHub PUT mutate the frozen round.
+        return server._archived_workstream_error(
+            "commit a plan", workstream_id, ws=ws)
+    # An explicit branch override is the branch the PUT commits to, so a live
+    # workstream_id must not carry a commit onto another round's archived
+    # branch in the same repository.
+    if branch and branch != ws.get("defaultBranch"):
+        archived_err = server._archived_branch_error(
+            "commit a plan", ws.get("repoUrl", ""), branch)
+        if archived_err:
+            return archived_err
 
     server._set_github_org(ws)
 

@@ -28,6 +28,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -92,6 +95,33 @@ public class AudioScenePopulationLatchTest extends TestSuiteBase {
 			pop.destroy();
 			health.destroy();
 			scene.destroy();
+		}
+	}
+
+	/**
+	 * Verifies that {@link AudioScenePopulation#store(List, java.io.OutputStream)} and
+	 * {@link AudioScenePopulation#read(java.io.InputStream)} round-trip a population's
+	 * genomes through their {@link ProjectedGenome} parameter arrays without loss.
+	 */
+	@Test(timeout = 120000)
+	public void storeReadRoundTripsGenomeParameters() throws IOException {
+		List<Genome<PackedCollection>> genomes = new ArrayList<>();
+		genomes.add(new ProjectedGenome(PackedCollection.of(0.25, -1.5, 3.0)));
+		genomes.add(new ProjectedGenome(PackedCollection.of(7.0, 0.0, -0.125)));
+
+		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+		AudioScenePopulation.store(genomes, buffer);
+
+		List<Genome<PackedCollection>> restored =
+				AudioScenePopulation.read(new ByteArrayInputStream(buffer.toByteArray()));
+
+		Assert.assertEquals(genomes.size(), restored.size());
+
+		for (int i = 0; i < genomes.size(); i++) {
+			double[] expected = ((ProjectedGenome) genomes.get(i)).getParameters().toArray();
+			double[] actual = ((ProjectedGenome) restored.get(i)).getParameters().toArray();
+			Assert.assertArrayEquals("Genome " + i + " parameters must survive serialization",
+					expected, actual, 0.0);
 		}
 	}
 }

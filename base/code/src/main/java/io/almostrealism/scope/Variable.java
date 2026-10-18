@@ -16,11 +16,11 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.collect.Algebraic;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Nameable;
@@ -307,16 +307,18 @@ public class Variable<T, V extends Variable<T, ?>>
 	}
 
 	/**
-	 * Determines whether this variable and {@code other} are produced by {@link Algebraic}
-	 * producers that {@link Algebraic#matches match}, and therefore stand for the same data.
+	 * Determines whether the {@link #getProducerDelegate() producer delegates} of this
+	 * variable and {@code other} are {@link Computable} computations that
+	 * {@link Computable#matches match}, and therefore stand for the same data even when
+	 * either reaches that computation through a {@link Delegated} wrapper.
 	 *
 	 * @param other the variable to compare with
-	 * @return {@code true} if both producers are {@link Algebraic} and match
+	 * @return {@code true} if both producer delegates are {@link Computable} and match
 	 */
 	public boolean hasMatchingProducer(Variable<?, ?> other) {
-		Supplier<?> a = getProducer();
-		Supplier<?> b = other.getProducer();
-		return a instanceof Algebraic && b instanceof Algebraic && ((Algebraic) a).matches((Algebraic) b);
+		Supplier<?> a = getProducerDelegate();
+		Supplier<?> b = other.getProducerDelegate();
+		return a instanceof Computable && b instanceof Computable && ((Computable) a).matches((Computable) b);
 	}
 
 	@Override

@@ -268,6 +268,46 @@ class TestSendMessageIdentity(unittest.TestCase):
         self.assertEqual(result["seq"], 7)
 
 
+class TestSendMessageArchived(unittest.TestCase):
+    """``send_message`` refuses an archived workstream.
+
+    Archived workstreams are read-only: their conversation stays readable but
+    accepts no new messages, because posting appends to the frozen round's own
+    history. Resolving an archived workstream's ownership now succeeds (so the
+    read tools can see it), which reopened this write path for scoped callers;
+    these tests pin that the explicit archived guard closes it again, and that
+    a live workstream is unaffected.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        server._set_token_context(workstream_id="ws-1", job_id="job-1")
+
+    def tearDown(self):
+        server._set_token_context(workstream_id=None, job_id=None)
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream")
+    def test_send_message_rejected_for_archived(self, mock_find, mock_post):
+        """A message aimed at an archived workstream is refused before the
+        controller is contacted."""
+        mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
+        result = server.send_message(text="note", workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    @patch.object(server, "_find_workstream")
+    def test_send_message_allowed_for_live(self, mock_find, mock_post):
+        """A live workstream is unaffected by the archived guard."""
+        mock_find.return_value = {"workstreamId": "ws-live"}
+        mock_post.return_value = {"ok": True, "seq": 1}
+        result = server.send_message(text="note", workstream_id="ws-live")
+        self.assertTrue(result["ok"])
+        mock_post.assert_called_once()
+
+
 class TestAwaitMessageTransportDefault(unittest.TestCase):
     """The default wait must fit under an interactive MCP client's per-call timeout."""
 

@@ -26,7 +26,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ScopeSettings;
-import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -394,14 +394,18 @@ public class IndexProjectionProducerComputation
 	 *               the derivative is computed
 	 * @return A {@link CollectionProducer} representing the derivative of this computation
 	 *
-	 * @see org.almostrealism.algebra.AlgebraFeatures
+	 * @see Producer#cannotMatch
 
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		Supplier in = getInputs().get(1);
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.NONE) {
+			return super.deltaDependent(target, axis, weight);
+		}
 
-		if (AlgebraFeatures.cannotMatch(in, target)) {
+		Producer<PackedCollection> in = getInputs().get(1);
+
+		if (in.cannotMatch(target)) {
 			TraversalPolicy shape = getShape();
 			TraversalPolicy targetShape = shape(target);
 			return zeros(shape.append(targetShape));
@@ -411,7 +415,7 @@ public class IndexProjectionProducerComputation
 
 		if (in instanceof CollectionProducer) {
 			delta = ((CollectionProducer) in).delta(target);
-		} else if (AlgebraFeatures.match(in, target)) {
+		} else if (in.refersTo(target)) {
 			TraversalPolicy shape = shape(in);
 			TraversalPolicy targetShape = shape(target);
 			delta = identity(shape(shape.getTotalSize(), targetShape.getTotalSize()))
@@ -442,6 +446,6 @@ public class IndexProjectionProducerComputation
 					new IndexProjectionProducerComputation("projectDelta", shape.traverseEach(), project, delta));
 		}
 
-		return super.delta(target);
+		return super.deltaDependent(target, axis, weight);
 	}
 }

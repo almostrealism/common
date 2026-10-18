@@ -1,5 +1,0 @@
-      ignore_interval_retrospective:
-        description: "Run the QA retrospective even if its minimum interval has not passed (a round still in progress blocks it)"
-        required: false
-        default: false
-        type: boolean

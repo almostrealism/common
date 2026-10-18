@@ -18,6 +18,7 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.ExpressionMatrix;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.Console;
@@ -126,7 +127,7 @@ public class ExpressionMatchingCollectionExpression extends CollectionExpression
 	 * @return the operand selected at every index, or empty if the selection depends on the index
 	 */
 	private Optional<CollectionExpression> getUniformSelection() {
-		return matchAt(generateTemporaryIndex()).booleanValue().map(this::select);
+		return matchAt(DefaultIndex.temporary()).booleanValue().map(this::select);
 	}
 
 	/**

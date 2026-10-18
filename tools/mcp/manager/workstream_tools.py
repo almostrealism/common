@@ -568,9 +568,10 @@ def workstream_context(
       - **jobs**: a compact timeline of job runs on this workstream
         (timestamp, status, description, commit, PR, error). Not the
         full operational record — just enough to situate memories in
-        time. Present (possibly as an empty list) whenever
-        ``workstream_id`` is supplied and ``job_limit > 0``; omitted
-        otherwise.
+        time. Present (possibly as an empty list) whenever the branch
+        resolves to a workstream — by ``workstream_id``, or by
+        ``repo_url`` + ``branch`` (archived rounds included) — and
+        ``job_limit > 0``; omitted otherwise.
       - **metadata**: resolved repo_url, branch, namespace. Always present.
       - **pull_request**: metadata about the most recent pull request
         associated with the branch (across all states: open, closed,
@@ -876,13 +877,33 @@ def workstream_context(
         safe_job_limit = max(0, int(job_limit))
     except (TypeError, ValueError):
         safe_job_limit = 0
+    # Resolve the workstream whose job timeline to fetch, mirroring the
+    # precedence _resolve_branch_context used for the memories, commits and PR
+    # above: an explicit repo_url or branch overrides the matching field of a
+    # supplied workstream_id, so the timeline describes the same round as the
+    # rest of the response rather than an unrelated id. A workstream_id is used
+    # directly only when it was the sole source of the branch context (neither
+    # repo_url nor branch was given); otherwise the round is
+    # resolved from the effective branch (archived rounds included), and an
+    # explicit branch that names no registered round leaves the timeline unset
+    # rather than falling back to the id and attaching the wrong round's jobs.
+    # The branch resolution is skipped when no timeline was asked for
+    # (job_limit=0) or the branch context did not resolve.
+    jobs_workstream_id = ""
+    if workstream_id and not repo_url and not branch:
+        jobs_workstream_id = workstream_id
+    elif safe_job_limit > 0 and effective_repo and effective_branch:
+        ws_by_branch = server._find_workstream_by_branch(
+            effective_repo, effective_branch)
+        if ws_by_branch:
+            jobs_workstream_id = ws_by_branch.get("workstreamId", "") or ""
     jobs_timeline = []
-    jobs_included = bool(workstream_id) and safe_job_limit > 0
+    jobs_included = bool(jobs_workstream_id) and safe_job_limit > 0
     if jobs_included:
         try:
             params = urlencode({"limit": safe_job_limit})
             jobs_result = server._controller_get(
-                f"/api/workstreams/{quote(workstream_id, safe='')}/jobs?{params}")
+                f"/api/workstreams/{quote(jobs_workstream_id, safe='')}/jobs?{params}")
             if isinstance(jobs_result, list):
                 for job in jobs_result:
                     if not isinstance(job, dict):

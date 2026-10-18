@@ -595,7 +595,10 @@ factory, binds them with the weights and masks, and builds the asset layer for t
 query/key normalization, soft-cap and causal masking. A PDSL program can build the same layers
 directly with the two projection layers bound as arguments. The keys and values are branches of
 the layer that the attention products read as operands, so the backward pass trains the key and
-value projections as well as the query projection.
+value projections as well as the query projection. Differential attention
+(`DifferentialAttentionFeatures.differentialSequenceAttention`) takes the same arguments, bound by
+the shared `sequenceAttentionArguments`, plus a per-head lambda, and builds a layer of the
+`differential_attention.pdsl` asset.
 
 ### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
 

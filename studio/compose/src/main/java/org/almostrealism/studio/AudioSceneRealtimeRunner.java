@@ -17,11 +17,12 @@
 package org.almostrealism.studio;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
+import org.almostrealism.audio.Cells;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.ml.dsl.PdslLoader;
@@ -36,6 +37,8 @@ import org.almostrealism.studio.arrange.MixdownManagerPdslAdapter;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -163,7 +166,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				IntStream.range(0, scene.getChannelCount()).boxed().collect(Collectors.toList());
 
 		if (MixdownManager.enablePdslMixdown) {
-			if (supportsPdsl(resolved)) {
+			if (MixdownManager.supportsPdslMixdown(resolved)) {
 				return createPdsl(output, resolved, bufferSize);
 			}
 
@@ -175,41 +178,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	}
 
 	/**
-	 * Returns whether the PDSL mixdown path supports the given channel selection.
-	 *
-	 * <p>Two selection shapes are supported:</p>
-	 * <ul>
-	 *   <li><b>Any single channel</b> {@code [c]} — including the non-zero selection from
-	 *       {@link AudioScene#renderChannel}. The adapter maps bank position 0 to channel
-	 *       {@code c}'s genome (via {@link MixdownManagerPdslAdapter.Config#channel(int)}),
-	 *       so the PDSL render reads the same genes the CellList path reads for that
-	 *       channel.</li>
-	 *   <li><b>The zero-based contiguous multi-channel prefix</b> {@code [0, 1, ..., n-1]}
-	 *       — the full-scene render. Here the channel mapping is the identity, so the
-	 *       per-channel genome reads land on the matching pattern channels.</li>
-	 * </ul>
-	 *
-	 * <p>A non-contiguous multi-channel selection (e.g. {@code [0, 2]}) is not yet
-	 * validated and renders through the CellList runner instead: the cross-channel
-	 * transmission feedback grid is indexed by bank position rather than scene channel,
-	 * so an arbitrary multi-channel subset would not faithfully reproduce the routing.</p>
-	 *
-	 * @param channels the resolved channel indices
-	 * @return true when the PDSL path can faithfully render this selection
-	 */
-	private boolean supportsPdsl(List<Integer> channels) {
-		if (channels.isEmpty() || channels.stream().anyMatch(c -> c == null)) return false;
-
-		// Any single channel is supported — the adapter maps its genome reads to the
-		// selected channel index, so a non-zero [c] renders channel c's genes.
-		if (channels.size() == 1) return true;
-
-		// Multi-channel: still require the zero-based contiguous prefix [0, 1, ..., n-1].
-		return IntStream.range(0, channels.size())
-				.allMatch(i -> channels.get(i) == i);
-	}
-
-	/**
 	 * Builds the established {@link CellList}-based real-time runner.
 	 *
 	 * <p>Three phases per tick: prepare (Java) renders pattern audio via
@@ -218,6 +186,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * kernel is structurally independent of the genome — only the {@link PackedCollection}
 	 * contents change on {@link AudioScene#assignGenome}, so the runner can be reused
 	 * without recompilation.</p>
+	 *
+	 * <p><b>Construction rollback.</b> The returned runner owns and destroys the per-buffer
+	 * frame index allocated here. Because that ownership transfers only when the runner is
+	 * successfully returned, the allocation is registered in a rollback list as it is made
+	 * and released if a later construction step — {@link AudioScene#getCells}, the
+	 * per-frame operation, or loop-body construction — throws, so a failed build strands no
+	 * native memory until garbage collection. The {@link CellList} itself is the scene's
+	 * active cell list (released by {@link AudioScene#destroy()}), so it is not part of the
+	 * rollback.</p>
 	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
@@ -231,11 +208,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Per-buffer frame index for WaveCell external frame control; tracks position
 		// 0 to bufferSize-1 within each buffer.
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
+
+		List<Runnable> rollback = new ArrayList<>();
+		rollback.add(bufferFrameIndex::destroy);
+
+		try {
 		Producer<PackedCollection> bufferFrameProducer = cp(bufferFrameIndex);
 
 		// Pattern position follows the arrangement timeline (wrapped at breaks),
 		// matching the PDSL path's render-ahead position source.
-		CellList cells = (CellList) scene.getCells(output, channels, bufferSize,
+		Cells cells = scene.getCells(output, channels, bufferSize,
 				() -> (int) scene.getTimeManager().positionForFrame(currentFrame[0]),
 				bufferFrameProducer);
 
@@ -286,7 +268,27 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				cells.reset();
 				scene.getTimeManager().getClock().setFrame(0);
 			}
+
+			/**
+			 * Releases the per-buffer frame index this runner allocated and captured
+			 * in its loop operations. The {@link CellList} this runner drives is the
+			 * scene's active cell list (retained by {@link AudioScene#getCells} and
+			 * released by {@link AudioScene#destroy()}), so it is left untouched here.
+			 */
+			@Override
+			public void destroy() {
+				bufferFrameIndex.destroy();
+			}
 		};
+		} catch (RuntimeException | Error constructionFailure) {
+			Collections.reverse(rollback);
+			try {
+				Destroyable.releaseAll(rollback);
+			} catch (RuntimeException | Error cleanupFailure) {
+				constructionFailure.addSuppressed(cleanupFailure);
+			}
+			throw constructionFailure;
+		}
 	}
 
 	/**
@@ -310,7 +312,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 *       automation, cross-channel transmission feedback grid) — <b>migrated</b>;</li>
 	 *   <li>the reverb network ({@code delay_network}) — <b>migrated</b>;</li>
 	 *   <li>single-channel and zero-based contiguous multi-channel selections are both
-	 *       supported (see {@link #supportsPdsl}); the adapter maps per-channel genome
+	 *       supported (see {@link MixdownManager#supportsPdslMixdown}); the adapter maps per-channel genome
 	 *       reads to the selected scene channels.</li>
 	 * </ul>
 	 *
@@ -359,6 +361,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * (advancing the cursor) and {@code WaveOutput.write} gates on the minimum frame count
 	 * across channels, so the mono master is pushed to both stereo writers each frame.</p>
 	 *
+	 * <p><b>Construction rollback.</b> The returned runner owns and destroys every native
+	 * resource allocated here (the per-buffer frame index, the compiled mixdown model, and
+	 * the optional effects-sum scratch buffer). Because that ownership transfers only when
+	 * the runner is successfully returned, each allocation is registered in a rollback list
+	 * as it is made and the whole list is released if any later construction step — pattern
+	 * buffer preparation, model compilation, output wiring, or the {@link PatternRenderStream}
+	 * constructor — throws, so a failed build strands no native memory until garbage
+	 * collection.</p>
+	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
 	 * @param bufferSize frames per buffer
@@ -373,6 +384,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Frame index within the current buffer, driven by the output-streaming loop
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
 
+		List<Runnable> rollback = new ArrayList<>();
+		rollback.add(bufferFrameIndex::destroy);
+
+		try {
 		// Pattern position follows the arrangement timeline, not the raw render
 		// cursor: the reset schedule wraps it to zero at each break, ahead of playback.
 		Supplier<Runnable> patternSetup = scene.prepareRenderBuffers(channels, bufferSize,
@@ -401,14 +416,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			renderOps.add(renderCell.prepareBatch(false));
 		}
 		Runnable renderOp = renderOps.get();
-		PatternRenderStream renderStream = new PatternRenderStream(
-				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
 
 		Map<String, Object> args = adapter.buildArgsMap();
 		CompiledModel compiled = compileMixdownModel(loader, program, layerName, inputShape, args);
+		rollback.add(compiled::destroy);
 
 		Supplier<Runnable> automationRefresh = adapter.automationRefresh(args);
 
@@ -419,21 +433,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// on both channels, while a mono destination (or one with the master disabled)
 		// has no receptor for the channels it lacks and those are simply not written
 		OperationList outputLoopBody = new OperationList("PDSL Output Stream Body");
-		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
-			Receptor<PackedCollection> master = output.getMaster(stereo);
-			if (master != null) {
-				outputLoopBody.add(master.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
-			}
-		}
+		Producer<PackedCollection> masterFrame = c(shape(1), p(masterOutput), p(bufferFrameIndex));
+		outputLoopBody.add(output.pushMaster(masterFrame));
 
 		// The health computation ends a render early from what these meters see
 		// (clipping, sustained silence); without them every genome runs full length
-		addMeasurePushes(outputLoopBody, output, ChannelInfo.Voicing.MAIN,
-				c(shape(1), p(masterOutput), p(bufferFrameIndex)));
+		outputLoopBody.add(output.pushMeasures(ChannelInfo.Voicing.MAIN, masterFrame));
 		PackedCollection wetSignal = (PackedCollection) args.get("stem_efx");
 		if (wetSignal != null) {
-			addMeasurePushes(outputLoopBody, output, ChannelInfo.Voicing.WET,
-					c(shape(1), p(wetSignal), p(bufferFrameIndex)));
+			outputLoopBody.add(output.pushMeasures(ChannelInfo.Voicing.WET,
+					c(shape(1), p(wetSignal), p(bufferFrameIndex))));
 		}
 
 		outputLoopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
@@ -441,13 +450,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Whole buffers per tick, not per-frame pushes in the output loop, which
 		// multiplied the loop's operation count enough to break the realtime budget
 		OperationList stemAppends = new OperationList("PDSL Stem Appends");
+		// Holds the per-tick effects-sum scratch buffer (when both the efx and reverb
+		// stems are present) so the runner can release it on teardown; null otherwise.
+		final PackedCollection[] fxStemSum = {null};
 		if (output.isStemsActive()) {
 			PackedCollection stemChannels = (PackedCollection) args.get("stem_channels");
 			if (stemChannels != null) {
 				for (int ch = 0; ch < channelCount; ch++) {
-					addStemPushes(stemAppends, output, channels.get(ch),
+					stemAppends.add(output.pushStem(channels.get(ch),
 							p(stemChannels.range(new TraversalPolicy(bufferSize),
-									ch * bufferSize)));
+									ch * bufferSize))));
 				}
 			}
 
@@ -458,22 +470,29 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				if (stemEfx != null && stemReverb != null) {
 					// Summed once per tick, so the writers push plain memory
 					PackedCollection fx = new PackedCollection(bufferSize);
+					fxStemSum[0] = fx;
+					rollback.add(fx::destroy);
 					stemAppends.add(a("PDSL FX Stem Sum",
 							cp(fx).each(),
 							cp(stemEfx.range(new TraversalPolicy(bufferSize), 0))
 									.add(cp(stemReverb.range(
 											new TraversalPolicy(bufferSize), 0)))
 									.each()));
-					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(), p(fx));
+					stemAppends.add(output.pushStem(scene.getEffectsStemIndex(), p(fx)));
 				} else if (stemEfx != null) {
-					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(),
-							p(stemEfx.range(new TraversalPolicy(bufferSize), 0)));
+					stemAppends.add(output.pushStem(scene.getEffectsStemIndex(),
+							p(stemEfx.range(new TraversalPolicy(bufferSize), 0))));
 				} else if (stemReverb != null) {
-					addStemPushes(stemAppends, output, scene.getEffectsStemIndex(),
-							p(stemReverb.range(new TraversalPolicy(bufferSize), 0)));
+					stemAppends.add(output.pushStem(scene.getEffectsStemIndex(),
+							p(stemReverb.range(new TraversalPolicy(bufferSize), 0))));
 				}
 			}
 		}
+
+		// Created only after every fallible construction step above has succeeded, so a
+		// failure never leaves an orphaned stream. The runner owns it and stops it in reset().
+		PatternRenderStream renderStream = new PatternRenderStream(
+				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
 
 		return new TemporalCellular() {
 			/**
@@ -555,45 +574,38 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				adapter.resetState(args);
 				scene.getTimeManager().getClock().setFrame(0);
 			}
+
+			/**
+			 * Releases the native resources this runner created and owns: the
+			 * {@link PatternRenderStream} (its render-ahead ring and compiled slot
+			 * copies), the compiled mixdown {@link CompiledModel}, the per-buffer
+			 * frame index captured in the output-streaming loop, and the effects-sum
+			 * scratch buffer when one was allocated for the stems path. The consolidated
+			 * render buffer is the scene's and is released by {@link AudioScene#destroy()},
+			 * so it is left untouched here.
+			 *
+			 * <p>These releases are independent, so they are aggregated with
+			 * {@link Destroyable#releaseAll(Iterable)}: a failure in any one of them still
+			 * runs the rest, so a cleanup-path exception cannot strand the remaining native
+			 * resources. The first failure is rethrown with any later ones suppressed.</p>
+			 */
+			@Override
+			public void destroy() {
+				Destroyable.releaseAll(List.of(
+						renderStream::destroy,
+						compiled::destroy,
+						bufferFrameIndex::destroy,
+						() -> { if (fxStemSum[0] != null) fxStemSum[0].destroy(); }));
+			}
 		};
-	}
-
-	/**
-	 * Pushes the current frame to the measure {@link Receptor}s for the given
-	 * voicing, once per stereo channel, so the health computation's meters see
-	 * the same per-frame signal the CellList mixdown fed them. A voicing the
-	 * output does not monitor is skipped.
-	 *
-	 * @param ops     the operation list receiving the push operations
-	 * @param output  the destination routing
-	 * @param voicing the signal path voicing the frame belongs to
-	 * @param frame   producer of the current frame
-	 */
-	private void addMeasurePushes(OperationList ops, MultiChannelAudioOutput output,
-								  ChannelInfo.Voicing voicing,
-								  Producer<PackedCollection> frame) {
-		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
-			Receptor<PackedCollection> measure = output.getMeasure(voicing, stereo);
-			if (measure != null) ops.add(measure.push(frame));
-		}
-	}
-
-	/**
-	 * Pushes a captured buffer of frames to the stem {@link Receptor}s for the given
-	 * audio channel, once per stereo channel. The single fx stem — the audio channel
-	 * after the pattern channels, receiving the efx and reverb buses summed — is the
-	 * stem layout consumers of these renders expect, matching the CellList mixdown.
-	 *
-	 * @param ops          the operation list receiving the push operations
-	 * @param output       the destination routing
-	 * @param audioChannel the audio channel whose stem receives the frames
-	 * @param frames       producer of the captured frames to push
-	 */
-	private void addStemPushes(OperationList ops, MultiChannelAudioOutput output,
-							   int audioChannel, Producer<PackedCollection> frames) {
-		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
-			Receptor<PackedCollection> stem = output.getStem(audioChannel, stereo);
-			if (stem != null) ops.add(stem.push(frames));
+		} catch (RuntimeException | Error constructionFailure) {
+			Collections.reverse(rollback);
+			try {
+				Destroyable.releaseAll(rollback);
+			} catch (RuntimeException | Error cleanupFailure) {
+				constructionFailure.addSuppressed(cleanupFailure);
+			}
+			throw constructionFailure;
 		}
 	}
 

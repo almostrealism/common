@@ -138,4 +138,30 @@ public class HardwareMemoryProviderLeaseTest {
 		provider.endAllocation();
 		Assert.assertTrue("The callback should run once every outstanding lease has been released", ran.get());
 	}
+
+	/**
+	 * The first {@code DOUBLE_FREE_DETAIL_LIMIT} (64) prevented double frees are reported in
+	 * full; past that only every {@code DOUBLE_FREE_SUMMARY_INTERVAL} (100,000th) attempt emits a
+	 * running total, and every other attempt is silent.
+	 */
+	@Test(timeout = 30000)
+	public void doubleFreeReportingIsBoundedPastDetailLimit() {
+		Assert.assertEquals(HardwareMemoryProvider.DoubleFreeReport.DETAIL,
+				HardwareMemoryProvider.DoubleFreeReport.forAttempt(1));
+		Assert.assertEquals("the last attempt within the limit is reported in full",
+				HardwareMemoryProvider.DoubleFreeReport.DETAIL,
+				HardwareMemoryProvider.DoubleFreeReport.forAttempt(64));
+		Assert.assertEquals("the first attempt past the limit is silent",
+				HardwareMemoryProvider.DoubleFreeReport.NONE,
+				HardwareMemoryProvider.DoubleFreeReport.forAttempt(65));
+		Assert.assertEquals(HardwareMemoryProvider.DoubleFreeReport.NONE,
+				HardwareMemoryProvider.DoubleFreeReport.forAttempt(99_999));
+		Assert.assertEquals("each multiple of the interval reports the running total",
+				HardwareMemoryProvider.DoubleFreeReport.SUMMARY,
+				HardwareMemoryProvider.DoubleFreeReport.forAttempt(100_000));
+		Assert.assertEquals(HardwareMemoryProvider.DoubleFreeReport.NONE,
+				HardwareMemoryProvider.DoubleFreeReport.forAttempt(100_001));
+		Assert.assertEquals(HardwareMemoryProvider.DoubleFreeReport.SUMMARY,
+				HardwareMemoryProvider.DoubleFreeReport.forAttempt(200_000));
+	}
 }

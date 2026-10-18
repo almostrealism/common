@@ -18,10 +18,12 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -101,7 +103,7 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * computation's operands are fixed at construction ({@link #generate(List)} always
 	 * returns a new instance rather than mutating this one), so the structural property
 	 * can be safely memoized rather than re-derived by walking the operand subgraph on
-	 * every call - which matters because {@link Algebraic#isRowMonomial(Object)} recurses
+	 * every call - which matters because {@link Algebraic#isRowMonomial()} recurses
 	 * into each operand's own {@code isRowMonomial()}, and without memoization a shared
 	 * operand reachable through multiple paths in a DAG (common where a computation feeds
 	 * more than one downstream consumer) would be re-evaluated once per path.
@@ -124,16 +126,13 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * This constructor allows subclasses or specialized versions to use different names
 	 * for debugging and profiling purposes.
 	 *
-	 * <p>Note: This constructor uses {@link MultiTermDeltaStrategy#NONE} because
-	 * the delta computation is handled by the custom {@link #delta(Producer)} method.</p>
-	 *
 	 * @param name The name identifier for this computation
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param arguments Variable number of input {@link Producer}s to be multiplied together
 	 */
 	protected CollectionProductComputation(String name, TraversalPolicy shape,
 										   Producer<PackedCollection>... arguments) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
+		super(name, shape, arguments);
 	}
 
 	/**
@@ -220,7 +219,7 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * collapse is attempted, never what value it reads.</p>
 	 *
 	 * @return true if any operand is recognized as row-monomial
-	 * @see Algebraic#isRowMonomial(Object)
+	 * @see Algebraic#isRowMonomial()
 	 */
 	@Override
 	public boolean isRowMonomial() {
@@ -272,7 +271,11 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(int...)
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.NONE) {
+			return super.deltaDependent(target, axis, weight);
+		}
+
 		TraversalPolicy targetShape = shape(target);
 
 		List<CollectionProducer> operands = List.of(
@@ -293,7 +296,7 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 		}
 
 		if (!supported) {
-			return super.delta(target);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		TraversalPolicy shape = getShape().append(targetShape);
@@ -307,5 +310,35 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 		vDelta = vDelta.reshape(u.getShape().getTotalSize(), -1).traverse(0);
 		return expandAndMultiply(u.flatten(), vDelta)
 				.add(expandAndMultiply(v.flatten(), uDelta)).reshape(shape);
+	}
+
+	/**
+	 * The product rule: each output of an element-wise product depends only on the matching
+	 * element of every operand, with a derivative equal to the product of the other operands
+	 * at that element. This gives the {@link ReduceAxis reduced} delta of the product for any
+	 * number of operands, each of which has the size of the product or a single element.
+	 *
+	 * @param index the position of the operand among {@link #getInputs()}
+	 * @return the product of every other operand, or null if an operand has no shape
+	 */
+	@Override
+	protected CollectionProducer deltaElement(int index) {
+		TraversalPolicy shape = getShape();
+		List<Producer<PackedCollection>> inputs = getInputs();
+		CollectionProducer partial = null;
+
+		for (int j = 1; j < inputs.size(); j++) {
+			if (j == index) continue;
+			if (!(inputs.get(j) instanceof Shape)) return null;
+
+			CollectionProducer other = c(inputs.get(j));
+			if (other.getShape().getTotalSizeLong() == shape.getTotalSizeLong()) {
+				other = other.reshape(shape);
+			}
+
+			partial = partial == null ? other : multiply(partial, other);
+		}
+
+		return partial == null ? constant(shape, 1.0) : partial;
 	}
 }

@@ -16,8 +16,13 @@
 
 package org.almostrealism.studio.test;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.util.TestSuiteBase;
@@ -25,13 +30,14 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Tests the routing of stereo channels to the {@link WaveOutput}s behind a
  * {@link MultiChannelAudioOutput}, in particular that a mono destination
  * exposes no receptor for the channel it does not have.
  */
-public class MultiChannelAudioOutputTest extends TestSuiteBase {
+public class MultiChannelAudioOutputTest extends TestSuiteBase implements CellFeatures {
 	/** Timeline length of the outputs under test; small, since nothing is rendered. */
 	private static final int FRAMES = 1024;
 
@@ -95,6 +101,104 @@ public class MultiChannelAudioOutputTest extends TestSuiteBase {
 			MultiChannelAudioOutput out = new MultiChannelAudioOutput(master);
 			Assert.assertFalse(out.isMeasuresActive());
 			Assert.assertTrue(out.getMeasures(ChannelInfo.StereoChannel.LEFT).isEmpty());
+		}
+	}
+
+	/**
+	 * With a measures factory supplied, each distinct voicing/stereo-channel pair is
+	 * resolved to its own receptor, repeated lookups return the cached instance, and
+	 * {@link MultiChannelAudioOutput#getMeasures} returns only the receptors matching
+	 * the requested stereo channel. A push then covers both present stereo channels.
+	 */
+	@Test(timeout = 60000)
+	public void measuresActiveRoutePerStereoChannel() {
+		MultiChannelAudioOutput out = new MultiChannelAudioOutput(
+				(Function<ChannelInfo.StereoChannel, Receptor<PackedCollection>>) null, null,
+				channel -> protein -> new OperationList(channel.toString()));
+
+		Assert.assertTrue(out.isMeasuresActive());
+
+		Receptor<PackedCollection> left =
+				out.getMeasure(ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
+		Assert.assertNotNull(left);
+		Assert.assertSame("a repeated lookup returns the cached receptor", left,
+				out.getMeasure(ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT));
+
+		Receptor<PackedCollection> right =
+				out.getMeasure(ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.RIGHT);
+		Assert.assertNotSame("each stereo channel resolves to its own receptor", left, right);
+
+		List<Receptor<PackedCollection>> leftMeasures =
+				out.getMeasures(ChannelInfo.StereoChannel.LEFT);
+		Assert.assertEquals(1, leftMeasures.size());
+		Assert.assertSame(left, leftMeasures.get(0));
+
+		Producer<PackedCollection> frame = c(0.0);
+		Assert.assertEquals("a push covers both present stereo channels",
+				2, ((OperationList) out.pushMeasures(ChannelInfo.Voicing.MAIN, frame)).size());
+	}
+
+	/**
+	 * When two pattern channels share a voicing and stereo channel, the by-voicing
+	 * measure lookup is ambiguous and must reject the request rather than silently
+	 * returning one of the matches.
+	 */
+	@Test(timeout = 60000)
+	public void ambiguousMeasureLookupIsRejected() {
+		MultiChannelAudioOutput out = new MultiChannelAudioOutput(
+				(Function<ChannelInfo.StereoChannel, Receptor<PackedCollection>>) null, null,
+				channel -> protein -> new OperationList(channel.toString()));
+
+		out.getMeasure(new ChannelInfo(0, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT));
+		out.getMeasure(new ChannelInfo(1, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT));
+
+		try {
+			out.getMeasure(ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
+			Assert.fail("an ambiguous by-voicing lookup must be rejected");
+		} catch (IllegalArgumentException expected) {
+			// a single voicing/stereo pair must resolve to at most one receptor
+		}
+	}
+
+	/**
+	 * {@link MultiChannelAudioOutput#pushMaster} emits one push per present master
+	 * receptor — two for a stereo master, one for a mono master, none when master
+	 * output is disabled — so a stereo channel with no destination is skipped rather
+	 * than pushed to a null receptor.
+	 */
+	@Test(timeout = 60000)
+	public void pushMasterCoversPresentReceptorsOnly() {
+		Producer<PackedCollection> frame = c(0.0);
+
+		try (WaveOutput stereo = output(true)) {
+			MultiChannelAudioOutput out = new MultiChannelAudioOutput(stereo);
+			Assert.assertEquals(2, ((OperationList) out.pushMaster(frame)).size());
+		}
+
+		try (WaveOutput mono = output(false)) {
+			MultiChannelAudioOutput out = new MultiChannelAudioOutput(mono);
+			Assert.assertEquals(1, ((OperationList) out.pushMaster(frame)).size());
+		}
+
+		MultiChannelAudioOutput disabled = new MultiChannelAudioOutput();
+		Assert.assertTrue(((OperationList) disabled.pushMaster(frame)).isEmpty());
+	}
+
+	/**
+	 * {@link MultiChannelAudioOutput#pushStem} emits one push per present stem
+	 * receptor for the given channel — one for a mono stem — and none when stem
+	 * output is disabled.
+	 */
+	@Test(timeout = 60000)
+	public void pushStemCoversPresentReceptorsOnly() {
+		Producer<PackedCollection> frames = c(0.0);
+
+		try (WaveOutput master = output(false); WaveOutput stem = output(false)) {
+			MultiChannelAudioOutput out = new MultiChannelAudioOutput(master, List.of(stem));
+			Assert.assertEquals(1, ((OperationList) out.pushStem(0, frames)).size());
+
+			MultiChannelAudioOutput noStems = new MultiChannelAudioOutput(master);
+			Assert.assertTrue(((OperationList) noStems.pushStem(0, frames)).isEmpty());
 		}
 	}
 }

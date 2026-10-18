@@ -270,7 +270,7 @@ public class PackedCollectionEnumerate
 	 * 
 	 * @return true if the enumeration output will be all zeros
 	 * 
-	 * @see Algebraic#isZero(Object)
+	 * @see Algebraic#isZero()
 	 */
 	@Override
 	public boolean isZero() {
@@ -290,7 +290,7 @@ public class PackedCollectionEnumerate
 	 * projection and its aggregation.</p>
 	 *
 	 * @return true if the enumerated input is row-monomial
-	 * @see Algebraic#isRowMonomial(Object)
+	 * @see Algebraic#isRowMonomial()
 	 */
 	@Override
 	public boolean isRowMonomial() {

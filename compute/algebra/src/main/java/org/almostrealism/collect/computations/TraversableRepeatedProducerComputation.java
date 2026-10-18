@@ -67,9 +67,9 @@ import java.util.function.BiFunction;
  *         // Initial: start with index 0
  *         (args, index) -&gt; e(0),
  *         // Expression: compare values and update index if larger value found
- *         (args, currentIndex) -&gt; index -&gt;
- *             conditional(args[1].getValueAt(index)
- *                         .greaterThan(args[1].getValueAt(currentIndex)),
+ *         (args, position, currentIndex) -&gt; index -&gt;
+ *             conditional(args[1].getValueAt(position.multiply(size).add(index))
+ *                         .greaterThan(args[1].getValueAt(position.multiply(size).add(currentIndex))),
  *                         index, currentIndex),
  *         input);
  * </code></pre>
@@ -124,18 +124,37 @@ public class TraversableRepeatedProducerComputation
 	public static int isolationCountThreshold = 16; // Integer.MAX_VALUE;
 
 	/**
+	 * The computation logic applied at each iteration of a
+	 * {@link TraversableRepeatedProducerComputation}.
+	 */
+	@FunctionalInterface
+	public interface Step {
+		/**
+		 * Returns the next state of the computation for the output element at the given
+		 * position. The returned expression is indexed by the iteration number.
+		 *
+		 * <p>The position is the only valid way to locate the inputs that belong to the
+		 * output element. When the computation is embedded in a kernel of a different
+		 * size, the kernel index identifies an element of that kernel rather than of
+		 * this computation, so it must not be used for that purpose.</p>
+		 *
+		 * @param args     The traversable arguments, where args[0] is the output
+		 * @param position The index of the output element being computed
+		 * @param current  The accumulated value so far
+		 * @return A {@link TraversableExpression} for the next state, indexed by iteration
+		 */
+		TraversableExpression<Double> apply(TraversableExpression[] args,
+											Expression<?> position, Expression<?> current);
+	}
+
+	/**
 	 * The function that defines the computation logic applied at each iteration.
-	 *
-	 * <p>This function receives the traversable arguments and the current accumulated
-	 * value, then returns a {@link TraversableExpression} representing the next state.
-	 * The returned traversable expression allows for index-based access to intermediate
-	 * results during computation, enabling complex accumulation and reduction patterns.</p>
 	 *
 	 * <p>Unlike the parent class which uses simple {@link Expression}s, this field
 	 * uses {@link TraversableExpression}s to provide more flexible access patterns
 	 * and better integration with traversable computation graphs.</p>
 	 */
-	private final BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression;
+	private final Step expression;
 
 	/**
 	 * Constructs a new TraversableRepeatedProducerComputation with the specified
@@ -154,9 +173,9 @@ public class TraversableRepeatedProducerComputation
 	 *     shape.replace(shape(1)),         // shape: output dimensions
 	 *     collection.getSize(),            // count: iterate over all elements
 	 *     (args, index) -&gt; e(0),          // initial: start with index 0
-	 *     (args, currentIndex) -&gt; index -&gt; // expression: compare and update
-	 *         conditional(args[1].getValueAt(index)
-	 *                     .greaterThan(args[1].getValueAt(currentIndex)),
+	 *     (args, position, currentIndex) -&gt; index -&gt; // expression: compare and update
+	 *         conditional(args[1].getValueAt(position.multiply(size).add(index))
+	 *                     .greaterThan(args[1].getValueAt(position.multiply(size).add(currentIndex))),
 	 *                     index, currentIndex),
 	 *     input                            // arguments: input collection
 	 * );
@@ -172,7 +191,8 @@ public class TraversableRepeatedProducerComputation
 	 *                arguments and current index, returns the initial value expression.
 	 *                Called once before the iteration loop begins
 	 * @param expression The core computation function applied on each iteration. Takes
-	 *                   input arguments and current accumulated value, returns a
+	 *                   input arguments, the position of the output element, and the
+	 *                   current accumulated value, and returns a
 	 *                   {@link TraversableExpression} for the next iteration state
 	 * @param arguments Variable number of input suppliers, typically {@link io.almostrealism.relation.Producer}
 	 *                  instances that provide the data to be processed
@@ -186,7 +206,7 @@ public class TraversableRepeatedProducerComputation
 	@SafeVarargs
 	public TraversableRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
 												  BiFunction<TraversableExpression[], Expression, Expression> initial,
-												  BiFunction<TraversableExpression[], Expression, TraversableExpression<Double>> expression,
+												  Step expression,
 												  Producer<PackedCollection>... arguments) {
 		super(name, shape, count, initial, null, arguments);
 		this.expression = expression;
@@ -266,7 +286,7 @@ public class TraversableRepeatedProducerComputation
 		Expression value = initial.apply(args, e(0));
 
 		for (int i = 0; i < count; i++) {
-			value = expression.apply(args, value).getValueAt(e(i));
+			value = expression.apply(args, index, value).getValueAt(e(i));
 			value = value.generate(value.flatten());
 		}
 
@@ -299,9 +319,9 @@ public class TraversableRepeatedProducerComputation
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
 		CollectionVariable variable = (CollectionVariable) args[0];
-		Expression currentValue = variable.reference(
-				new KernelIndex().multiply(variable.length())); // TODO Should this be globalIndex instead of KernelIndex?
-		return expression.apply(args, currentValue).getValueAt(localIndex);
+		Expression<?> position = new KernelIndex().multiply(variable.length()); // TODO Should this be globalIndex instead of KernelIndex?
+		Expression currentValue = variable.reference(position);
+		return expression.apply(args, position, currentValue).getValueAt(localIndex);
 	}
 
 	/**

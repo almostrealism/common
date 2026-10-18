@@ -21,6 +21,7 @@ import io.almostrealism.sequence.DefaultIndex;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * A {@link UniformCollectionExpression} that computes the element-wise product of its operands.
@@ -69,14 +70,14 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 		List<TraversableExpression<Double>> others = new ArrayList<>();
 
 		getOperands().forEach(e -> {
-			if (TraversableExpression.match(e, target)) {
+			if (Objects.equals(e, target)) {
 				matches.add(e);
 			} else {
 				others.add(e);
 			}
 		});
 
-		DefaultIndex index = generateTemporaryIndex();
+		DefaultIndex index = DefaultIndex.temporary();
 
 		if (matches.size() != 1 || others.isEmpty() ||
 				others.stream().map(e -> e.getValueAt(index)).anyMatch(target::isReferencedBy)) {

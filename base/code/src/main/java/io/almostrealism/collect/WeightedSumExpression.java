@@ -54,8 +54,8 @@ public class WeightedSumExpression extends BinaryGroupExpression {
 		super("weightedSum", shape, memberCount, a, b, (input, weights) -> {
 			Expression<?> result = new IntegerConstant(0);
 			for (int i = 0; i < input.length; i++) {
-				input[i] = simplify(simplifyThreshold, input[i]);
-				weights[i] = simplify(simplifyThreshold, weights[i]);
+				input[i] = input[i].simplifyAbove(simplifyThreshold);
+				weights[i] = weights[i].simplifyAbove(simplifyThreshold);
 
 				result = result.add(input[i].multiply(weights[i]));
 				result = result.generate(result.flatten());

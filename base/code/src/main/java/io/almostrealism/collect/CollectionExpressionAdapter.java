@@ -17,12 +17,10 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.sequence.DefaultIndex;
 
 /**
  * Abstract base class providing common functionality for {@link CollectionExpression}
- * implementations, including shape management, naming, and utility methods for
- * expression simplification and temporary index generation.
+ * implementations, including shape management and naming.
  *
  * <p>{@link CollectionExpressionAdapter} serves as the foundation for most concrete
  * collection expression types in the framework. It extends {@link CollectionExpressionBase}
@@ -34,10 +32,6 @@ import io.almostrealism.sequence.DefaultIndex;
  *       this expression represents a subset of a larger collection</li>
  *   <li><b>Naming support</b> - Associates a descriptive name with the expression
  *       for debugging and description purposes</li>
- *   <li><b>Expression simplification</b> - Provides threshold-based simplification
- *       to optimize complex expression trees</li>
- *   <li><b>Index generation</b> - Generates unique temporary indices for use in
- *       expression construction</li>
  * </ul>
  *
  * <h2>Subclassing Guidelines</h2>
@@ -71,12 +65,6 @@ import io.almostrealism.sequence.DefaultIndex;
  * @author Michael Murray
  */
 public abstract class CollectionExpressionAdapter extends CollectionExpressionBase {
-	/**
-	 * Counter used to generate unique identifiers for temporary indices.
-	 * This counter is shared across all instances to ensure uniqueness.
-	 */
-	protected static long idxCount;
-
 	/**
 	 * The optional descriptive name for this collection expression.
 	 * Used in {@link #describe()} output for debugging purposes.
@@ -159,54 +147,5 @@ public abstract class CollectionExpressionAdapter extends CollectionExpressionBa
 	@Override
 	public String describe() {
 		return name + " " + super.describe();
-	}
-
-	/**
-	 * Conditionally simplifies an expression if its complexity exceeds a threshold.
-	 *
-	 * <p>This utility method counts the nodes in the expression tree and applies
-	 * simplification only when the count exceeds the specified threshold. This
-	 * avoids the overhead of simplification for already-simple expressions while
-	 * ensuring complex expressions are optimized.
-	 *
-	 * @param <T> the type of the expression value
-	 * @param threshold the minimum node count that triggers simplification
-	 * @param e the expression to potentially simplify
-	 * @return the simplified expression if threshold was exceeded, or the original
-	 *         expression otherwise
-	 */
-	public static <T> Expression<?> simplify(int threshold, Expression<T> e) {
-		if (e.countNodes() > threshold) {
-			return e.simplify();
-		}
-
-		return e;
-	}
-
-	/**
-	 * Generates a new unique temporary index with no limit.
-	 *
-	 * <p>The generated index has a name in the format "ci_N" where N is a
-	 * monotonically increasing counter value. These indices are useful for
-	 * constructing intermediate expressions that require unique variable names.
-	 *
-	 * @return a new {@link DefaultIndex} with a unique name
-	 */
-	public static DefaultIndex generateTemporaryIndex() {
-		return new DefaultIndex("ci_" + idxCount++);
-	}
-
-	/**
-	 * Generates a new unique temporary index with the specified limit.
-	 *
-	 * <p>The generated index has a name in the format "ci_N" where N is a
-	 * monotonically increasing counter value. The limit constrains the valid
-	 * range of the index, which can be used for bounds checking and optimization.
-	 *
-	 * @param limit the upper bound (exclusive) for valid index values
-	 * @return a new {@link DefaultIndex} with a unique name and the specified limit
-	 */
-	public static DefaultIndex generateTemporaryIndex(int limit) {
-		return new DefaultIndex("ci_" + idxCount++, limit);
 	}
 }

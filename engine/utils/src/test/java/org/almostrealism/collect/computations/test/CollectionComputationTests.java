@@ -17,6 +17,8 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
@@ -25,12 +27,16 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.stream.IntStream;
 
 /**
@@ -521,6 +527,77 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		assertEquals(0.0, m.toDouble(0));
 		assertEquals(1.0, m.toDouble(1));
+	}
+
+	/**
+	 * Tests the index of max value when it is embedded in a kernel of a different size,
+	 * a one-hot mask over each row, where each row is short enough to be embedded rather
+	 * than isolated.
+	 */
+	@Test(timeout = 30000)
+	public void indexOfMaxEmbedded() throws IOException {
+		assertIndexOfMaxMask(4);
+	}
+
+	/**
+	 * Tests the index of max value when it is used by a kernel of a different size,
+	 * a one-hot mask over each row, where each row is long enough to be isolated.
+	 */
+	@Test(timeout = 30000)
+	public void indexOfMaxIsolated() throws IOException {
+		assertIndexOfMaxMask(20);
+	}
+
+	/**
+	 * Builds a one-hot mask of the maximum of each of three rows of the given size,
+	 * each row peaking at a different column,
+	 * optimizes it so that isolation is considered, and verifies that each row selects
+	 * its own maximum.
+	 *
+	 * @param size the length of each row
+	 */
+	protected void assertIndexOfMaxMask(int size) throws IOException {
+		int rows = 3;
+		int step = (size - 1) / (rows - 1);
+		int[] expected = IntStream.range(0, rows).map(r -> r * step).toArray();
+
+		// Row r is a parabola peaking at column r * step
+		CollectionProducer offset = integers(0, rows * size).mod(size)
+				.subtract(floor(integers(0, rows * size).divide(size)).multiply(step));
+		PackedCollection value = offset.multiply(offset).multiply(-1.0)
+				.evaluate().reshape(rows, size);
+
+		PackedCollection index = indexOfMax(cp(value.traverse(1))).evaluate();
+		for (int r = 0; r < rows; r++) {
+			assertEquals(expected[r], index.toDouble(r));
+		}
+
+		CollectionProducer mask = equals(
+				integers(0, rows * size).mod(size).reshape(shape(rows, size)),
+				c(indexOfMax(cp(value.traverse(1)))).reshape(shape(rows, 1))
+						.repeat(1, size).reshape(shape(rows, size)),
+				c(1.0), c(0.0));
+
+		OperationProfileNode profile = new OperationProfileNode("indexOfMaxMask" + size);
+		Hardware.getLocalHardware().assignProfile(profile);
+
+		PackedCollection m;
+
+		try {
+			m = Process.optimized(mask).get().evaluate();
+		} finally {
+			Hardware.getLocalHardware().assignProfile(null);
+			Files.createDirectories(Path.of("target/test-profiles"));
+			profile.save("target/test-profiles/indexOfMaxMask" + size + ".xml");
+		}
+
+		m.reshape(rows, size).print();
+
+		for (int r = 0; r < rows; r++) {
+			for (int i = 0; i < size; i++) {
+				assertEquals(i == expected[r] ? 1.0 : 0.0, m.toDouble(r * size + i));
+			}
+		}
 	}
 
 	/**
