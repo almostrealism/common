@@ -203,6 +203,23 @@ public class SystemUtils {
 	}
 
 	/**
+	 * Gets a property value, treating an empty value the same as a missing one.
+	 *
+	 * <p>Unlike {@link #getProperty(String, String)}, which returns an empty
+	 * string when the property is set to one, this returns the default. Use it
+	 * for settings where an empty value is never meaningful, such as a service
+	 * URL a deployment may declare as {@code KEY=} to mean "use the default".</p>
+	 *
+	 * @param key the property key
+	 * @param defaultValue the value to use when the property is missing or empty
+	 * @return the property value, or defaultValue if it is missing or empty
+	 */
+	public static String getNonEmptyProperty(String key, String defaultValue) {
+		String value = getProperty(key);
+		return value == null || value.isEmpty() ? defaultValue : value;
+	}
+
+	/**
 	 * Gets a property value as an integer.
 	 *
 	 * @param key the property key

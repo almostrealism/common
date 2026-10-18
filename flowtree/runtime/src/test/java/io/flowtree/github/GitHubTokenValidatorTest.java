@@ -375,4 +375,99 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		// No tokens configured — should return empty results without throwing
 		assertTrue("No GitHub tokens should produce empty results", results.isEmpty());
 	}
+
+	/**
+	 * Verifies that suffix-less GitHub SSH and HTTPS URLs, and unrecognised input,
+	 * yield the same slug as {@link GitHubProxyHandler#extractOwnerRepo(String)}.
+	 * (For a non-GitHub host the two diverge — this validator rejects it, see
+	 * {@link #extractOwnerRepoRejectsNonGitHubHost()} — but the proxy handler,
+	 * which only ever receives GitHub URLs, does not.)
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoMatchesProxyHandlerForPlainForms() {
+		String[] urls = {
+				"git@github.com:almostrealism/common",
+				"https://github.com/almostrealism/common",
+				"not-a-url"
+		};
+
+		for (String url : urls) {
+			assertEquals(GitHubProxyHandler.extractOwnerRepo(url),
+					GitHubTokenValidator.extractOwnerRepo(url));
+		}
+
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo("git@github.com:almostrealism/common"));
+		assertNull(GitHubTokenValidator.extractOwnerRepo("not-a-url"));
+	}
+
+	/**
+	 * Verifies that an {@code ssh://} URL yields the {@code owner/repo} slug rather than
+	 * a path cut at the scheme's colon.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoFromSshSchemeUrl() {
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo("ssh://git@github.com/almostrealism/common.git"));
+	}
+
+	/**
+	 * Verifies that an HTTPS URL carrying credentials yields the {@code owner/repo} slug,
+	 * so that the owner used for per-org token lookup is the real organisation.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoFromCredentialedHttpsUrl() {
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo(
+						"https://x-access-token:secret@github.com/almostrealism/common.git"));
+	}
+
+	/**
+	 * Verifies that a trailing slash is not carried into the {@code owner/repo} slug.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoFromUrlWithTrailingSlash() {
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo("https://github.com/almostrealism/common/"));
+	}
+
+	/**
+	 * Verifies that a non-GitHub host is rejected, so that a repository hosted
+	 * elsewhere is never validated against the GitHub API.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoRejectsNonGitHubHost() {
+		assertNull(GitHubTokenValidator.extractOwnerRepo("https://gitlab.com/acme/repo.git"));
+		assertNull(GitHubTokenValidator.extractOwnerRepo("git@gitlab.com:acme/repo.git"));
+	}
+
+	/**
+	 * Verifies that a look-alike host is rejected: the host must match exactly,
+	 * not merely contain the {@code github.com} substring.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoRejectsLookAlikeGitHubHost() {
+		assertNull(GitHubTokenValidator.extractOwnerRepo("https://github.com.evil.example/acme/repo.git"));
+	}
+
+	/**
+	 * Verifies that an uppercase GitHub host is accepted, since the host guard
+	 * compares case-insensitively and hostnames are case-insensitive.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoAcceptsUppercaseHost() {
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo("https://GITHUB.COM/almostrealism/common.git"));
+	}
+
+	/**
+	 * Verifies that an explicit port on the GitHub host is accepted: the port is
+	 * not part of the host, so the credentialed org used for token lookup is
+	 * still the real organisation rather than {@code null}.
+	 */
+	@Test(timeout = 10000)
+	public void extractOwnerRepoAcceptsHostWithPort() {
+		assertEquals("almostrealism/common",
+				GitHubTokenValidator.extractOwnerRepo("https://github.com:443/almostrealism/common.git"));
+	}
 }

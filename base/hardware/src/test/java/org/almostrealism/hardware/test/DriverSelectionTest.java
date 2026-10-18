@@ -125,6 +125,19 @@ public class DriverSelectionTest {
 	}
 
 	/**
+	 * Memory is shared by default wherever Metal is selected, and not for the native, OpenCL or
+	 * CUDA backends, whatever device CUDA would use.
+	 */
+	@Test(timeout = 30000)
+	public void hostAccessibleMemoryFollowsTheSelectedBackends() {
+		Assert.assertTrue(DriverSelection.parse("mtl", true, true).sharesMemoryByDefault());
+		Assert.assertTrue(DriverSelection.parse("native,mtl", true, true).sharesMemoryByDefault());
+		Assert.assertFalse(DriverSelection.parse("native", false, false).sharesMemoryByDefault());
+		Assert.assertFalse(DriverSelection.parse("native,cl", false, false).sharesMemoryByDefault());
+		Assert.assertFalse(DriverSelection.parse("native,cuda", false, false).sharesMemoryByDefault());
+	}
+
+	/**
 	 * Uniform precision follows OpenCL being named. Tolerating OpenCL through the
 	 * wildcard must not constrain the precision of every other backend.
 	 */
@@ -175,5 +188,28 @@ public class DriverSelectionTest {
 		} catch (UnsupportedOperationException expected) {
 			// the selection is a value, and reporting it must not expose it to change
 		}
+	}
+
+	/** {@code cuda} names the CUDA backend and commits to it, alone or alongside another. */
+	@Test(timeout = 30000)
+	public void cudaIsANamedDriver() {
+		DriverSelection alone = DriverSelection.parse("cuda", false, true);
+		Assert.assertEquals(Arrays.asList(ComputeRequirement.CUDA), alone.getRequirements());
+		Assert.assertTrue(alone.isRequired(ComputeRequirement.CUDA));
+
+		DriverSelection paired = DriverSelection.parse("native,CUDA", false, true);
+		Assert.assertEquals(Arrays.asList(ComputeRequirement.JNI, ComputeRequirement.CUDA),
+				paired.getRequirements());
+		Assert.assertTrue(paired.isRequired(ComputeRequirement.JNI));
+		Assert.assertTrue(paired.isRequired(ComputeRequirement.CUDA));
+	}
+
+	/** The wildcard does not yet offer CUDA, so existing wildcard selections are unchanged. */
+	@Test(timeout = 30000)
+	public void wildcardDoesNotOfferCuda() {
+		Assert.assertFalse(DriverSelection.parse("*", false, true)
+				.getRequirements().contains(ComputeRequirement.CUDA));
+		Assert.assertFalse(DriverSelection.parse("*", false, false)
+				.getRequirements().contains(ComputeRequirement.CUDA));
 	}
 }

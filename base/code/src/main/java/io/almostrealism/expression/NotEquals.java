@@ -76,7 +76,7 @@ public class NotEquals extends Comparison {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static Expression of(Expression<?> left, Expression<?> right) {
-		return Expression.process(create(left, right));
+		return create(left, right).process();
 	}
 
 	/**

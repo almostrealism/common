@@ -16,11 +16,14 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -96,6 +99,18 @@ import java.util.stream.Stream;
 public class CollectionProductComputation extends TraversableExpressionComputation {
 
 	/**
+	 * Cached result of {@link #isRowMonomial()}, computed lazily on first access. This
+	 * computation's operands are fixed at construction ({@link #generate(List)} always
+	 * returns a new instance rather than mutating this one), so the structural property
+	 * can be safely memoized rather than re-derived by walking the operand subgraph on
+	 * every call - which matters because {@link Algebraic#isRowMonomial()} recurses
+	 * into each operand's own {@code isRowMonomial()}, and without memoization a shared
+	 * operand reachable through multiple paths in a DAG (common where a computation feeds
+	 * more than one downstream consumer) would be re-evaluated once per path.
+	 */
+	private Boolean rowMonomial;
+
+	/**
 	 * Constructs a new product computation with default name "multiply".
 	 *
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
@@ -111,16 +126,13 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * This constructor allows subclasses or specialized versions to use different names
 	 * for debugging and profiling purposes.
 	 *
-	 * <p>Note: This constructor uses {@link MultiTermDeltaStrategy#NONE} because
-	 * the delta computation is handled by the custom {@link #delta(Producer)} method.</p>
-	 *
 	 * @param name The name identifier for this computation
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param arguments Variable number of input {@link Producer}s to be multiplied together
 	 */
 	protected CollectionProductComputation(String name, TraversalPolicy shape,
 										   Producer<PackedCollection>... arguments) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, arguments);
+		super(name, shape, arguments);
 	}
 
 	/**
@@ -171,6 +183,54 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	}
 
 	/**
+	 * Determines if this element-wise product preserves a row-monomial structure from
+	 * one of its operands.
+	 *
+	 * <p>A Hadamard product {@code result[idx] = a[idx] * b[idx] * ...} is zero at every
+	 * index where any operand is zero. When one operand is row-monomial (at most one
+	 * non-zero entry per row), the product is therefore zero everywhere that operand is
+	 * zero, so it has at most as many non-zero entries per row as that operand does - the
+	 * product remains row-monomial regardless of what the other operands contain. This
+	 * mirrors {@link PackedCollectionEnumerate#isRowMonomial()}, which propagates the same
+	 * property through a structural reindexing; here it propagates through element-wise
+	 * multiplication, which is what allows the property to survive the product-rule
+	 * {@link #delta(Producer)} of a computation (such as convolution) that multiplies a
+	 * row-monomial Jacobian by an index-independent factor.</p>
+	 *
+	 * <p>If the other operand happens to be zero at the row-monomial operand's one candidate
+	 * column, the product's row is entirely zero rather than having exactly one non-zero
+	 * entry - still consistent with {@link Algebraic#isRowMonomial()}'s "at most one" contract.
+	 * This is sound because the gather collapse this enables reads the true product value at
+	 * the candidate column (via the normal expression evaluation path) rather than assuming
+	 * that value is non-zero.</p>
+	 *
+	 * <p>Propagation is based on an operand's declared property, not on how that operand is
+	 * aligned into this product. A shape-changing wrapper can therefore leave the flag
+	 * {@code true} even when the aligned row no longer has at most one non-zero entry: a
+	 * {@code reshape} that merges rows delegates the flag through unchanged, and a broadcast
+	 * that repeats a lower-rank {@code (rows, 1)} operand across the {@code (rows, columns)}
+	 * output copies its single non-zero into every column of each row. Both are false positives
+	 * of the row-monomial property, but neither corrupts a result, for the same reason the
+	 * annihilating case above does not:
+	 * {@link io.almostrealism.compute.RowMonomialOptimization} only uses the flag to keep the
+	 * operand inline, and the gather collapse it enables is an independent value-based analysis
+	 * that reads the true value at each row and declines to collapse any row whose non-zero
+	 * entry is not unique, falling back to the dense reduction. The flag gates only whether the
+	 * collapse is attempted, never what value it reads.</p>
+	 *
+	 * @return true if any operand is recognized as row-monomial
+	 * @see Algebraic#isRowMonomial()
+	 */
+	@Override
+	public boolean isRowMonomial() {
+		if (rowMonomial == null) {
+			rowMonomial = getInputs().stream().skip(1).anyMatch(Algebraic::isRowMonomial);
+		}
+
+		return rowMonomial;
+	}
+
+	/**
 	 * Computes the derivative (delta) of this product computation with respect to the
 	 * specified target using the product rule for automatic differentiation.
 	 *
@@ -211,7 +271,11 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	 * @see org.almostrealism.collect.CollectionProducer#reshape(int...)
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.NONE) {
+			return super.deltaDependent(target, axis, weight);
+		}
+
 		TraversalPolicy targetShape = shape(target);
 
 		List<CollectionProducer> operands = List.of(
@@ -232,7 +296,7 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 		}
 
 		if (!supported) {
-			return super.delta(target);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		TraversalPolicy shape = getShape().append(targetShape);
@@ -246,5 +310,35 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 		vDelta = vDelta.reshape(u.getShape().getTotalSize(), -1).traverse(0);
 		return expandAndMultiply(u.flatten(), vDelta)
 				.add(expandAndMultiply(v.flatten(), uDelta)).reshape(shape);
+	}
+
+	/**
+	 * The product rule: each output of an element-wise product depends only on the matching
+	 * element of every operand, with a derivative equal to the product of the other operands
+	 * at that element. This gives the {@link ReduceAxis reduced} delta of the product for any
+	 * number of operands, each of which has the size of the product or a single element.
+	 *
+	 * @param index the position of the operand among {@link #getInputs()}
+	 * @return the product of every other operand, or null if an operand has no shape
+	 */
+	@Override
+	protected CollectionProducer deltaElement(int index) {
+		TraversalPolicy shape = getShape();
+		List<Producer<PackedCollection>> inputs = getInputs();
+		CollectionProducer partial = null;
+
+		for (int j = 1; j < inputs.size(); j++) {
+			if (j == index) continue;
+			if (!(inputs.get(j) instanceof Shape)) return null;
+
+			CollectionProducer other = c(inputs.get(j));
+			if (other.getShape().getTotalSizeLong() == shape.getTotalSizeLong()) {
+				other = other.reshape(shape);
+			}
+
+			partial = partial == null ? other : multiply(partial, other);
+		}
+
+		return partial == null ? constant(shape, 1.0) : partial;
 	}
 }

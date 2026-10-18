@@ -25,18 +25,14 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Describable;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
-import java.util.TreeSet;
-import java.util.function.BiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -62,7 +58,7 @@ import java.util.stream.Stream;
  * @author  Michael Murray
  * @see Countable#isFixedCount()
  */
-public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable, ExpressionFeatures, ConsoleFeatures {
+public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable, Signature, ExpressionFeatures, ConsoleFeatures {
 	/** Whether to enforce strict validation of dimension sizes during construction. */
 	public static boolean enableStrictSizes = true;
 
@@ -256,6 +252,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	public TraversalOrdering getOrder() { return order; }
 
 	/**
+	 * Returns {@code true} if the axes of the output space are a permutation, other than
+	 * the identity, of the axes of the input space.
+	 *
+	 * @return {@code true} if any output axis maps to a different input axis
+	 */
+	public boolean isPermuted() {
+		return IntStream.range(0, dimsOrder.length).anyMatch(i -> dimsOrder[i] != i);
+	}
+
+	/**
 	 * The length of the collection along the specified axis
 	 * of the output space.
 	 */
@@ -341,6 +347,14 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 */
 	public long rateDenominatorLong(int axis) {
 		return rateDenominator == null || axis == -1 ? 1 : rateDenominator[axis];
+	}
+
+	/** Reindexes a per-axis rate array after a structural change (a dimension added, inserted, or removed): {@code mapping[i]} is the source axis in {@code rates}, or {@code -1} for a newly introduced axis, which takes the neutral rate of {@code 1}. Returns {@code null} when {@code rates} is {@code null}, since that already denotes the all-ones default. */
+	private static long[] reindexRates(long[] rates, int[] mapping) {
+		if (rates == null) return null;
+		long[] result = new long[mapping.length];
+		for (int i = 0; i < mapping.length; i++) result[i] = mapping[i] < 0 ? 1 : rates[mapping[i]];
+		return result;
 	}
 
 	/**
@@ -471,10 +485,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		// Calculate index using internal positions
 		int index = 0;
 		for (int i = 0; i < internalPos.length; i++) {
-			// Use the internal dimension index for rate calculations
-			long rateNum = rateNumerator == null || i == -1 ? 1 : rateNumerator[i];
-			long rateDen = rateDenominator == null || i == -1 ? 1 : rateDenominator[i];
-			index += (internalPos[i] / rateDen) * rateNum * inputSize(i + 1);
+			index += (internalPos[i] / rateDenominatorLong(i)) * rateNumeratorLong(i) * inputSize(i + 1);
 		}
 		return index;
 	}
@@ -499,12 +510,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 		for (int i = 0; i < internalPos.length; i++) {
 			Expression p = internalPos[i];
-			// Use the internal dimension index for rate calculations
-			long rateNum = rateNumerator == null || i == -1 ? 1 : rateNumerator[i];
-			long rateDen = rateDenominator == null || i == -1 ? 1 : rateDenominator[i];
-			
-			p = Quotient.of(p, e(rateDen));
-			p = Product.of(p, e(rateNum));
+			p = Quotient.of(p, e(rateDenominatorLong(i)));
+			p = Product.of(p, e(rateNumeratorLong(i)));
 
 			Expression s = e(inputSizeLong(i + 1));
 			index = Sum.of(index, Product.of(p, s));
@@ -804,6 +811,27 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	/**
+	 * Returns a policy whose given axis has the given length under broadcasting rules:
+	 * this policy unchanged if the axis already has that length, or the axis
+	 * {@link #repeat(int, long) repeated} if it has length 1.
+	 *
+	 * @param axis   the dimension axis to broadcast
+	 * @param length the target length of the axis
+	 * @return the broadcast policy
+	 * @throws IllegalArgumentException if the axis has neither the target length nor length 1
+	 */
+	public TraversalPolicy broadcast(int axis, long length) {
+		if (length(axis) == length) {
+			return this;
+		} else if (length(axis) == 1) {
+			return repeat(axis, length);
+		} else {
+			throw new IllegalArgumentException("Axis " + axis + " of length " + length(axis)
+					+ " cannot be broadcast to length " + length);
+		}
+	}
+
+	/**
 	 * Returns a copy of this policy with a new dimension of the given size prepended at
 	 * the beginning.
 	 *
@@ -811,65 +839,50 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * @return the extended policy
 	 */
 	public TraversalPolicy prependDimension(int size) {
-		long newDims[] = new long[getDimensions() + 1];
-		newDims[0] = size;
-		for (int i = 0; i < getDimensions(); i++) newDims[i + 1] = lengthLong(i);
-
-		// Create new dimsOrder with shifted indices
-		int newDimsOrder[] = new int[newDims.length];
-		newDimsOrder[0] = 0; // New dimension maps to itself
-		for (int i = 0; i < getDimensions(); i++) {
-			newDimsOrder[i + 1] = dimsOrder[i] + 1;
-		}
-
-		TraversalPolicy p = new TraversalPolicy(
-				order, true, false,
-				newDims, newDimsOrder, rateNumerator, rateDenominator, fixed);
-		p.traversalAxis = traversalAxis + 1;
-		return p;
+		return insertDimension(0, size);
 	}
 
 	/**
 	 * Returns a new policy that concatenates the dimensions of this policy with those
-	 * of the given shape.
+	 * of the given shape. Each axis keeps the traversal rate it had in the policy it came
+	 * from, so a rated operand still reads its own (smaller) input along its axes.
 	 *
 	 * @param shape the policy whose dimensions are appended
 	 * @return the concatenated policy
 	 */
 	public TraversalPolicy append(TraversalPolicy shape) {
-		long newDims[] = new long[getDimensions() + shape.getDimensions()];
-		for (int i = 0; i < getDimensions(); i++) newDims[i] = lengthLong(i);
-		for (int i = 0; i < shape.getDimensions(); i++) newDims[i + getDimensions()] = shape.length(i);
+		int n = getDimensions();
+		long newDims[] = new long[n + shape.getDimensions()];
+		long newNum[] = rateNumerator == null && shape.rateNumerator == null ? null : new long[newDims.length];
+		long newDen[] = rateDenominator == null && shape.rateDenominator == null ? null : new long[newDims.length];
+
+		for (int i = 0; i < newDims.length; i++) {
+			TraversalPolicy source = i < n ? this : shape;
+			int axis = i < n ? i : i - n;
+			newDims[i] = source.lengthLong(axis);
+			if (newNum != null) newNum[i] = source.rateNumeratorLong(axis);
+			if (newDen != null) newDen[i] = source.rateDenominatorLong(axis);
+		}
 
 		TraversalPolicy p = new TraversalPolicy(
-				order, true, false,
-				newDims, null, rateNumerator, rateDenominator, fixed);
+				order, true, false, newDims, null, newNum, newDen, fixed);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
 
 	/**
 	 * Returns a copy of this policy with one additional dimension of the given size appended
-	 * at the end.
+	 * at the end. The traversal axis is never shifted: the new dimension is added past every
+	 * existing axis, so for a fully traversed policy ({@code traversalAxis == getDimensions()})
+	 * the appended dimension becomes the item shape rather than part of the traversal count.
+	 * In that case this differs from {@code insertDimension(getDimensions(), size)}, which
+	 * shifts the axis because the insertion point equals it.
 	 *
 	 * @param size the size of the new trailing dimension
 	 * @return the extended policy
 	 */
 	public TraversalPolicy appendDimension(int size) {
-		long newDims[] = new long[getDimensions() + 1];
-		for (int i = 0; i < getDimensions(); i++) newDims[i] = lengthLong(i);
-		newDims[newDims.length - 1] = size;
-
-		// Create new dimsOrder with existing mappings plus new dimension
-		int newDimsOrder[] = new int[newDims.length];
-		for (int i = 0; i < getDimensions(); i++) {
-			newDimsOrder[i] = dimsOrder[i];
-		}
-		newDimsOrder[newDims.length - 1] = newDims.length - 1; // New dimension maps to itself
-
-		TraversalPolicy p = new TraversalPolicy(
-				order, true, false,
-				newDims, newDimsOrder, rateNumerator, rateDenominator, fixed);
+		TraversalPolicy p = insertDimension(getDimensions(), size);
 		p.traversalAxis = traversalAxis;
 		return p;
 	}
@@ -915,7 +928,9 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 	/**
 	 * Returns a copy of this policy with a new dimension of the given size inserted at
-	 * the specified axis.
+	 * the specified axis. Inserting at or before the traversal axis shifts the traversal
+	 * axis one position to the right so it keeps tracking the same logical dimension,
+	 * mirroring the adjustment {@link #subset(int)} makes when leading dimensions are dropped.
 	 *
 	 * @param axis the position at which to insert the new dimension
 	 * @param size the size of the new dimension
@@ -938,10 +953,12 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		for (int i = axis; i < getDimensions(); i++)
 			newDimsOrder[i + 1] = dimsOrder[i] >= axis ? dimsOrder[i] + 1 : dimsOrder[i];
 
+		int rateMap[] = IntStream.range(0, newDims.length)
+				.map(i -> i == axis ? -1 : (i < axis ? i : i - 1)).toArray();
 		TraversalPolicy p = new TraversalPolicy(
-				order, true, false,
-				newDims, newDimsOrder, rateNumerator, rateDenominator, fixed);
-		p.traversalAxis = traversalAxis;
+				order, true, false, newDims, newDimsOrder,
+				reindexRates(rateNumerator, rateMap), reindexRates(rateDenominator, rateMap), fixed);
+		p.traversalAxis = axis <= traversalAxis ? traversalAxis + 1 : traversalAxis;
 		return p;
 	}
 
@@ -979,9 +996,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 			newDimsOrder[i] = dimsOrder[i + depth] - depth;
 		}
 
+		int rateMap[] = IntStream.range(0, newDims.length).map(i -> i + depth).toArray();
 		TraversalPolicy p = new TraversalPolicy(
-				order, true, false,
-				newDims, newDimsOrder, rateNumerator, rateDenominator, fixed);
+				order, true, false, newDims, newDimsOrder,
+				reindexRates(rateNumerator, rateMap), reindexRates(rateDenominator, rateMap), fixed);
 		p.traversalAxis = traversalAxis > depth ? traversalAxis - depth : 0;
 		return p;
 	}
@@ -1020,7 +1038,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * @return the trimmed policy, or this policy if no trailing unit dimensions exist
 	 */
 	public TraversalPolicy trim() {
-		if (length(getDimensions() - 1) == 1) {
+		if (getDimensions() > 1 && length(getDimensions() - 1) == 1) {
 			return traverse(getDimensions() - 1)
 					.replace(new TraversalPolicy(true))
 					.traverse(getTraversalAxis())
@@ -1139,6 +1157,20 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 
 		return this;
+	}
+
+	/**
+	 * Returns the output shape of a kernel of length {@code len} that produces {@code count} elements
+	 * of this shape per pass, prepending a dimension for the repetitions unless the count is fixed or not exceeded.
+	 *
+	 * @param count      the number of elements of this shape produced per kernel pass
+	 * @param fixedCount whether the count is fixed, in which case no dimension is prepended
+	 * @param len        the kernel length
+	 * @return this policy, or this policy with a leading dimension of {@code len / count} repetitions
+	 */
+	public TraversalPolicy forKernelLength(int count, boolean fixedCount, int len) {
+		int repetitions = fixedCount ? 0 : len / count;
+		return repetitions == 0 || len == count ? this : prependDimension(repetitions);
 	}
 
 	/**
@@ -1403,6 +1435,26 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		return this + "[axis=" + getTraversalAxis() + "|" + dim + "]";
 	}
 
+	/**
+	 * Returns the {@link #toStringDetail() detail} of this policy followed by the rate of
+	 * every axis. The standard descriptions omit the per-axis rates, so two policies that
+	 * traverse the same dimensions at different rates share a detail string; the signature
+	 * distinguishes them.
+	 *
+	 * @return the detail string with each axis rendered as {@code |numerator:denominator}
+	 */
+	@Override
+	public String signature() {
+		StringBuilder signature = new StringBuilder(toStringDetail());
+
+		for (int i = 0; i < getDimensions(); i++) {
+			signature.append("|").append(rateNumeratorLong(i))
+					.append(":").append(rateDenominatorLong(i));
+		}
+
+		return signature.toString();
+	}
+
 	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
@@ -1452,127 +1504,19 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	/**
-	 * Aligns the traversal axes of multiple values with their associated shapes so that all
-	 * values have a compatible traversal axis.
-	 *
-	 * <p>Uses {@link #enableStrictSizes} to determine whether identical total sizes are required.</p>
-	 *
-	 * @param <T>               the result type produced by {@code resultProcessor}
-	 * @param <V>               the value type being aligned
-	 * @param shapes            the shapes corresponding to each value
-	 * @param values            the values to align
-	 * @param traversalFunction a function that adjusts a value to a given traversal axis
-	 * @param expandFunction    a function that expands a value to a given repeat count
-	 * @param resultProcessor   a function that produces the final result from the aligned shape and values
-	 * @return the aligned result, or {@code null} if no compatible axis was found
-	 */
-	public static <T, V> T alignTraversalAxes(List<TraversalPolicy> shapes, List<V> values,
-											  BiFunction<Integer, V, V> traversalFunction,
-											  BiFunction<Integer, V, V> expandFunction,
-											  BiFunction<TraversalPolicy, List<V>, T> resultProcessor) {
-		return alignTraversalAxes(shapes, values,
-				enableStrictSizes || shapes.stream().noneMatch(s -> s.getDimensions() > 1),
-				traversalFunction, expandFunction, resultProcessor);
-	}
-
-	/**
-	 * Aligns the traversal axes of multiple values with their associated shapes, with explicit
-	 * control over whether identical total sizes are required.
-	 *
-	 * @param <T>                        the result type produced by {@code resultProcessor}
-	 * @param <V>                        the value type being aligned
-	 * @param shapes                     the shapes corresponding to each value
-	 * @param values                     the values to align
-	 * @param requireIdenticalTotalSize  {@code true} to require all shapes to have the same total size
-	 * @param traversalFunction          a function that adjusts a value to a given traversal axis
-	 * @param expandFunction             a function that expands a value to a given repeat count
-	 * @param resultProcessor            a function that produces the final result from the aligned shape and values
-	 * @return the aligned result, or {@code null} if no compatible axis was found
-	 */
-	public static <T, V> T alignTraversalAxes(List<TraversalPolicy> shapes, List<V> values,
-											  boolean requireIdenticalTotalSize, BiFunction<Integer, V, V> traversalFunction,
-											  BiFunction<Integer, V, V> expandFunction,
-											  BiFunction<TraversalPolicy, List<V>, T> resultProcessor) {
-		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSizeLong));
-		sortedShapes.addAll(shapes);
-
-		s: for (TraversalPolicy shape : sortedShapes) {
-			int[] compatibleAxes =
-					IntStream.range(0, values.size())
-							.map(i -> compatibleAxis(shapes.get(i), shape, requireIdenticalTotalSize))
-							.filter(i -> i >= 0).toArray();
-			if (compatibleAxes.length != values.size()) continue s;
-
-			List<V> vals = new ArrayList<>();
-			for (int i = 0; i < values.size(); i++) {
-				vals.add(traversalFunction.apply(compatibleAxes[i], values.get(i)));
-			}
-
-			return resultProcessor.apply(shape, vals);
-		}
-
-		sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getTotalSizeLong).reversed());
-		sortedShapes.addAll(shapes);
-
-		long largest = sortedShapes.iterator().next().getTotalSizeLong();
-		int depth = sortedShapes.iterator().next().getDimensions();
-
-		s: for (TraversalPolicy shape : sortedShapes) {
-			if (shape.getTotalSizeLong() < largest) {
-				break s;
-			}
-
-			int minDepth = (enableStrictSizes || depth <= 1) ? -1 : 0;
-
-			int[] matchDepths =
-					IntStream.range(0, values.size())
-							.map(i -> matchDepth(shapes.get(i), shape))
-							.filter(i -> i > minDepth).toArray();
-			if (matchDepths.length != values.size()) continue s;
-
-			List<V> vals = new ArrayList<>();
-			for (int i = 0; i < values.size(); i++) {
-				long repeat;
-
-				if (shapes.get(i).getTotalSizeLong() == 0) {
-					throw new IllegalArgumentException();
-				}
-
-				if (enableDivisibleSizes && shape.getTotalSizeLong() % shapes.get(i).getTotalSizeLong() != 0) {
-					repeat = 0;
-				} else {
-					repeat = shape.getTotalSizeLong() / shapes.get(i).getTotalSizeLong();
-				}
-
-				if (repeat > Integer.MAX_VALUE) {
-					throw new UnsupportedOperationException();
-				}
-
-				V v = traversalFunction.apply(matchDepths[i], values.get(i));
-				if (repeat > 1) v = expandFunction.apply(Math.toIntExact(repeat), v);
-				vals.add(v);
-			}
-
-			return resultProcessor.apply(shape, vals);
-		}
-
-		throw new IllegalArgumentException("No compatible traversal axes");
-	}
-
-	/**
-	 * Returns the axis of {@code shape} at which its size matches the size of {@code target},
+	 * Returns the axis of this shape at which its size matches the size of {@code target},
 	 * optionally requiring the total sizes to match as well.
 	 *
-	 * @param shape                     the shape to search for a compatible axis
 	 * @param target                    the target shape whose size to match
 	 * @param requireIdenticalTotalSize {@code true} to also require equal total sizes
 	 * @return the compatible axis index, or {@code -1} if none is found
+	 * @see TraversalAxisAlignment
 	 */
-	public static int compatibleAxis(TraversalPolicy shape, TraversalPolicy target, boolean requireIdenticalTotalSize) {
-		for (int i = 0; i < shape.getDimensions() + 1; i++) {
-			if (shape.sizeLong(i) == target.getSizeLong() &&
+	public int compatibleAxis(TraversalPolicy target, boolean requireIdenticalTotalSize) {
+		for (int i = 0; i < getDimensions() + 1; i++) {
+			if (sizeLong(i) == target.getSizeLong() &&
 					(!requireIdenticalTotalSize ||
-							shape.getTotalSizeLong() == target.getTotalSizeLong())) {
+							getTotalSizeLong() == target.getTotalSizeLong())) {
 				return i;
 			}
 		}
@@ -1581,20 +1525,48 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	/**
-	 * Returns the number of leading dimensions that match between {@code shape} and {@code target}.
+	 * Returns the number of leading dimensions that match between this shape and {@code target}.
 	 *
-	 * @param shape  the shape to examine
 	 * @param target the target shape to compare against
 	 * @return the number of leading dimensions with equal lengths
+	 * @see TraversalAxisAlignment
 	 */
-	public static int matchDepth(TraversalPolicy shape, TraversalPolicy target) {
+	public int matchDepth(TraversalPolicy target) {
 		int i;
 
-		i: for (i = 0; i < shape.getDimensions(); i++) {
-			if (target.getDimensions() <= i || shape.length(i) != target.length(i)) {
+		i: for (i = 0; i < getDimensions(); i++) {
+			if (target.getDimensions() <= i || length(i) != target.length(i)) {
 				break i;
 			}
 		}
 		return i;
+	}
+
+	/**
+	 * Returns the number of times this shape must be repeated to fill the total size of
+	 * {@code target}. When {@link #enableDivisibleSizes} is set and the total size of
+	 * {@code target} is not a multiple of the total size of this shape, the result is zero.
+	 *
+	 * @param target the shape to fill
+	 * @return the number of repetitions of this shape that make up {@code target}
+	 * @throws IllegalArgumentException if this shape has no elements
+	 * @throws UnsupportedOperationException if the number of repetitions exceeds the range of an int
+	 * @see TraversalAxisAlignment
+	 */
+	public int repetitionsToFill(TraversalPolicy target) {
+		if (getTotalSizeLong() == 0) {
+			throw new IllegalArgumentException("A shape with no elements cannot be repeated");
+		}
+
+		if (enableDivisibleSizes && target.getTotalSizeLong() % getTotalSizeLong() != 0) {
+			return 0;
+		}
+
+		long repeat = target.getTotalSizeLong() / getTotalSizeLong();
+		if (repeat > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
+
+		return (int) repeat;
 	}
 }

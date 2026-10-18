@@ -38,7 +38,7 @@ Specific class references:
   - `buildAgentRunRequest` (line ~1180–1196) passes the same `model`/`effort` for every phase.
 - `flowtree/runtime/src/main/java/io/flowtree/jobs/CodingAgentJobFactory.java`
   - Mirrors `CodingAgentJob`: factory-level `model`/`effort` singletons, plus `defaultRunner`/`runnerByPhase`.
-  - Wire-format encoding lives in `Phase.encodeRunnerMap` / `Phase.decodeRunnerMap`.
+  - Wire-format encoding lives in `PhaseRunnerConfig.encodeRunnerMap` / `PhaseRunnerConfig.applyRunnerMap`.
 - `flowtree/agents/src/main/java/io/flowtree/jobs/agent/AgentRunRequest.java`
   - Per-invocation parameter object built by `buildAgentRunRequest`. Already
     carries `model` and `effort` per invocation — the data model below the
@@ -379,7 +379,7 @@ key=value record (see `set("model", …)`, `set("effort", …)`,
 
 - `defaultPhaseConfig` — a compact comma-separated triple, e.g.
   `runner=claude,model=claude-opus-4-7,effort=high`. Use a key/value
-  format similar to `Phase.encodeRunnerMap` for symmetry.
+  format similar to `PhaseRunnerConfig.encodeRunnerMap` for symmetry.
 - `phaseConfigs` — repeated semicolon-separated entries of the same form,
   one per phase, prefixed with the phase wire name:
   `review:runner=opencode,model=qwen3-coder-30b;commit-message:runner=opencode`.

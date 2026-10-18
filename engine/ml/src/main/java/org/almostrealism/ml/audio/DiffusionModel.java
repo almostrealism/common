@@ -38,11 +38,18 @@ public interface DiffusionModel extends Destroyable {
 	/**
 	 * Runs the model forward pass.
 	 *
+	 * <p>The returned buffer is owned by this model, not the caller: an implementation
+	 * may return the same buffer on every call (overwriting its contents each time) or
+	 * replace and release the previous call's buffer before returning the next one.
+	 * Either way, the caller ({@link DiffusionSampler}) must never destroy the buffer
+	 * this method returns, and must copy any value it needs to keep once a later call
+	 * to this method (or to {@link #destroy()}) may invalidate it.</p>
+	 *
 	 * @param x Current noisy sample
 	 * @param t Timestep tensor
 	 * @param crossAttnCond Cross-attention conditioning (e.g., text embeddings)
 	 * @param globalCond Global conditioning (e.g., timing, style)
-	 * @return Model prediction (noise or velocity)
+	 * @return Model prediction (noise or velocity), owned by this model
 	 */
 	PackedCollection forward(PackedCollection x, PackedCollection t,
 							 PackedCollection crossAttnCond,

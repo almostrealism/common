@@ -25,7 +25,6 @@ import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ScopeSettings;
-import org.almostrealism.io.Console;
 
 import java.util.List;
 import java.util.Optional;
@@ -70,8 +69,11 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableRemoveMultiples = true;
 
 	/**
-	 * When {@code true}, the upper bound of a mod expression is reported as
-	 * {@code modulus - 1} when the modulus is a known constant.
+	 * When {@code true}, an integer mod by a known positive constant whose dividend
+	 * is non-negative with known bounds reports the tighter range-based upper bound
+	 * ({@code upper % modulus} when the whole range falls inside one multiple of the
+	 * modulus). Otherwise, and whenever this is {@code false}, the upper bound for a
+	 * known constant modulus is {@code |modulus| - 1}.
 	 */
 	public static boolean enableSpanUpperBound = true;
 
@@ -178,7 +180,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * @return {@code Math.floorMod(dividend, divisor)} when the dividend may be negative,
 	 *         otherwise {@code dividend % divisor}
 	 */
-	static long foldIntMod(long dividend, long divisor, boolean dividendPossiblyNegative) {
+	private static long foldIntMod(long dividend, long divisor, boolean dividendPossiblyNegative) {
 		return dividendPossiblyNegative ? Math.floorMod(dividend, divisor) : dividend % divisor;
 	}
 
@@ -204,9 +206,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (fp) {
 			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
 		} else {
-			return adjustType(getType(),
-					intMod(getChildren().get(0).value(indexValues).longValue(),
-							getChildren().get(1).value(indexValues).longValue()));
+			return adjustType(intMod(getChildren().get(0).value(indexValues).longValue(),
+					getChildren().get(1).value(indexValues).longValue()));
 		}
 	}
 
@@ -305,6 +306,28 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return Optional.of(IntStream.range(0, m).boxed().collect(Collectors.toSet()));
 	}
 
+	/**
+	 * Computes a sound upper bound for {@code (dividend % modulus)}.
+	 *
+	 * <p>For a non-negative dividend whose value range is known, the result is
+	 * bounded tightly: when the whole range falls within a single multiple-of-
+	 * {@code modulus} block the maximum residue is the residue of the range's
+	 * upper bound, and when the range crosses a multiple of {@code modulus} the
+	 * residue reaches {@code modulus - 1} just before the wrap. Deriving the
+	 * bound from the residues of the range endpoints alone is unsound, because a
+	 * range that straddles a multiple of {@code modulus} — even one narrower than
+	 * {@code modulus} itself — reaches {@code modulus - 1} at an interior point
+	 * that is neither endpoint.</p>
+	 *
+	 * <p>Outside that tight case the bound falls back to {@code |modulus| - 1},
+	 * which is sound for any dividend range and either sign of modulus, since a
+	 * residue's magnitude is always strictly less than the modulus magnitude.
+	 * The sentinel {@code modulus == Long.MIN_VALUE} is also covered: its
+	 * magnitude is not representable, so {@code Math.abs} returns
+	 * {@code Long.MIN_VALUE} and the decrement wraps to {@code Long.MAX_VALUE},
+	 * which is exactly the largest residue a non-negative dividend can take
+	 * modulo {@code Long.MIN_VALUE} — still a sound bound.</p>
+	 */
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
 		OptionalLong lower = getLeft().lowerBound(context);
@@ -312,31 +335,42 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		OptionalLong m = getRight().longValue();
 
 		if (!isFP() && m.isPresent()) {
-			if (enableSpanUpperBound && lower.isPresent() && upper.isPresent()) {
+			if (enableSpanUpperBound && lower.isPresent() && upper.isPresent()
+					&& !getLeft().isPossiblyNegative()) {
 				long top = upper.getAsLong();
 				long bottom = lower.getAsLong();
 				long ml = m.getAsLong();
 
-				boolean contained = ml > bottom && ml < top;
-				long span = top - bottom;
-				if (!contained && span < ml) {
-					// (1) The modulus is not between the lower and upper bound
-					//     of the dividend,
-					// and
-					// (2) The span of the bounds is no greater than the modulo;
-					//
-					// then the upper bound of the result must obtain at
-					// either the upper or lower bound of the dividend
-					return OptionalLong.of(Math.max(lower.getAsLong() % ml, upper.getAsLong() % ml));
+				if (ml > 0 && bottom >= 0) {
+					// Within one ml-block the residue is monotonic; crossing a
+					// multiple of ml the value just before the wrap reaches ml - 1.
+					if (bottom / ml == top / ml) {
+						return OptionalLong.of(top % ml);
+					}
+
+					return OptionalLong.of(ml - 1);
 				}
 			}
 
-			return OptionalLong.of(m.getAsLong() - 1);
+			// |modulus| - 1 stays sound for a negative modulus, where the raw
+			// value would report a negative (unsound) bound.
+			return OptionalLong.of(Math.abs(m.getAsLong()) - 1);
 		}
 
 		return getChildren().get(1).upperBound(context);
 	}
 
+	/**
+	 * Computes a sound lower bound for {@code (dividend % modulus)}.
+	 *
+	 * <p>For a non-negative dividend whose value range falls within a single
+	 * multiple-of-{@code modulus} block, the minimum residue is the residue of
+	 * the range's lower bound. When the range crosses a multiple of
+	 * {@code modulus} the residue wraps through {@code 0}, so {@code 0} is the
+	 * tightest sound bound. Deriving the bound from the residues of the range
+	 * endpoints alone is unsound, because such a straddling range attains
+	 * {@code 0} at an interior point that is neither endpoint.</p>
+	 */
 	@Override
 	public OptionalLong lowerBound(KernelStructureContext context) {
 		if (isFP() || getLeft().isPossiblyNegative() || getRight().isPossiblyNegative())
@@ -347,11 +381,15 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		OptionalLong m = getRight().longValue();
 
 		if (lower.isPresent() && upper.isPresent() && m.isPresent()) {
-			long span = upper.getAsLong() - lower.getAsLong();
+			long bottom = lower.getAsLong();
+			long top = upper.getAsLong();
 			long ml = m.getAsLong();
 
-			if (span < ml) {
-				return OptionalLong.of(Math.min(lower.getAsLong() % ml, upper.getAsLong() % ml));
+			// Within one ml-block the residue is monotonic, so the minimum is the
+			// residue of the lower bound; crossing a multiple of ml it wraps
+			// through 0, which is the default below.
+			if (ml > 0 && bottom >= 0 && bottom / ml == top / ml) {
+				return OptionalLong.of(bottom % ml);
 			}
 		}
 
@@ -403,7 +441,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * @return the simplified modulo expression
 	 */
 	public static Expression of(Expression input, Expression mod, boolean fp) {
-		return Expression.process(create(input, mod, fp));
+		return create(input, mod, fp).process();
 	}
 
 	/**
@@ -428,7 +466,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 			if (demoteMod || demoteInput) {
 				long l = (demoteMod ? mod : (Expression) input).longValue().getAsLong();
-				Expression<? extends Number> converted = Constant.exactInteger(l);
+				Expression<? extends Number> converted = ExpressionFeatures.getInstance().e(l);
 				return demoteMod ? create(input, converted, false)
 						: create(converted, mod, false);
 			}
@@ -458,22 +496,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			return ExpressionFeatures.getInstance().e(foldIntMod(id.getAsLong(), m, id.getAsLong() < 0));
 		}
 
-		if (input instanceof Mod && !input.isFP()) {
-			Mod<Long> innerMod = (Mod) input;
-			OptionalLong inMod = innerMod.getChildren().get(1).longValue();
-
-			if (inMod.isPresent()) {
-				long n = inMod.getAsLong();
-
-				if (n == m || (enableRedundantModReplacement && m % n == 0)) {
-					return innerMod;
-				} else if (n % m == 0) {
-					return new Mod(innerMod.getChildren().get(0),
-							ExpressionFeatures.getInstance().e(m),
-							false);
-				}
-			}
-		} else if (enableRemoveMultiples) {
+		if (enableRemoveMultiples) {
 			int count = input.countNodes();
 
 			w: while (input instanceof Sum && !input.isFP()) {
@@ -485,23 +508,19 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			}
 		}
 
+		// Applied after removing multiples, which can leave a bare inner modulus
+		if (!input.isFP()) {
+			Optional<Expression<?>> reduced = input.reducedModulo(m);
+			if (reduced.isPresent()) return reduced.get();
+		}
+
 		OptionalLong u = input.upperBound();
 		if (!input.isPossiblyNegative() && u.isPresent() && u.getAsLong() < m) {
 			return input;
 		}
 
 		if (!input.isFP()) {
-			if (input instanceof Mod) {
-				Expression simple = tryModSimplify((Mod) input, m);
-				if (simple != null)
-					return simple;
-			} else if (input instanceof Sum) {
-				Expression simple = trySumSimplify((Sum) input, m);
-				if (simple != null)
-					return simple;
-			}
-
-			if (enableMod2Optimization && isPowerOf2(m) && m < Integer.MAX_VALUE) {
+			if (enableMod2Optimization && m > 0 && Long.bitCount(m) == 1 && m < Integer.MAX_VALUE) {
 				return And.of(input, new IntegerConstant((int) m - 1));
 			}
 		}
@@ -510,88 +529,32 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	/**
-	 * Attempts to simplify {@code (innerMod) % m} when the inner modulus is a
-	 * multiple of or equal to {@code m}.
+	 * {@inheritDoc}
 	 *
-	 * @param innerMod the inner mod expression
-	 * @param m        the outer modulus
-	 * @return the simplified expression, or {@code null} if no simplification applies
+	 * <p>An integer modulus reduces when this modulus and {@code m} are multiples
+	 * of one another. When this modulus equals {@code m}, or (with
+	 * {@link #enableRedundantModReplacement}) {@code m} is a multiple of it, the
+	 * outer modulus cannot change the result and this expression is returned
+	 * unchanged. When this modulus is a multiple of {@code m}, the inner modulus
+	 * is redundant and the dividend is reduced by {@code m} directly.</p>
+	 *
+	 * <p>A zero modulus on either side has no defined result, so no reduction
+	 * is attempted and the divisibility checks never divide by zero.</p>
 	 */
-	private static Expression tryModSimplify(Mod<?> innerMod, long m) {
-		OptionalLong inMod = innerMod.getChildren().get(1).longValue();
+	@Override
+	protected Optional<Expression<?>> reducedModulo(long m) {
+		OptionalLong inner = getRight().longValue();
+		if (fp || inner.isEmpty()) return Optional.empty();
 
-		if (inMod.isPresent()) {
-			long n = inMod.getAsLong();
+		long n = inner.getAsLong();
+		if (n == 0 || m == 0) return Optional.empty();
 
-			if (n == m) {
-				return innerMod;
-			} else if (n % m == 0) {
-				return new Mod(innerMod.getChildren().get(0), Constant.of(m), false);
-			}
+		if (n == m || (enableRedundantModReplacement && m % n == 0)) {
+			return Optional.of(this);
+		} else if (n % m == 0) {
+			return Optional.of(new Mod(getLeft(), ExpressionFeatures.getInstance().e(m), false));
 		}
 
-		return null;
-	}
-
-	/**
-	 * Attempts to simplify {@code (k * x + (x % k)) % m} patterns when {@code k}
-	 * divides {@code m} and structural conditions are met.
-	 *
-	 * @param innerSum the sum expression inside the mod
-	 * @param m        the outer modulus
-	 * @return the simplified expression, or {@code null} if no simplification applies
-	 */
-	private static Expression trySumSimplify(Sum<?> innerSum, long m) {
-		if (!enableInnerSumSimplify || innerSum.getChildren().size() != 2) return null;
-
-		Product<?> product = (Product) innerSum.getChildren().stream()
-				.filter(e -> e instanceof Product)
-				.findFirst().orElse(null);
-		if (product == null) return null;
-		if (product.getChildren().size() != 2) return null;
-
-		Expression<?> arg = product.getChildren()
-				.stream().filter(e -> e.longValue().isEmpty())
-				.findFirst().orElse(null);
-		if (arg == null) return null;
-
-		long constant = product.getChildren().stream()
-				.map(Expression::longValue)
-				.filter(OptionalLong::isPresent).findFirst()
-				.map(OptionalLong::getAsLong).orElse(-1L);
-		if (constant <= 0) return null;
-		if (m % constant != 0) return null;
-		if (constant > m) return null;
-
-		Mod<?> mod = (Mod) innerSum.getChildren().stream()
-				.filter(e -> e instanceof Mod)
-				.findFirst().orElse(null);
-		if (mod == null) return null;
-		if (mod.isFP()) return null;
-		if (!mod.getChildren().get(0).equals(arg)) return null;
-		if (mod.getChildren().get(1).longValue().isEmpty()) return null;
-		if (mod.getChildren().get(1).longValue().getAsLong() != constant) return null;
-
-		if (constant == m) {
-			Expression m0 = ExpressionFeatures.getInstance().e(constant);
-			return new Mod(arg, m0, false);
-		} else if (constant * constant == m) {
-			Expression m0 = ExpressionFeatures.getInstance().e(constant);
-			Expression m1 = ExpressionFeatures.getInstance().e(constant + 1);
-			return Product.of(Mod.of(arg, m0, false), m1);
-		} else {
-			Console.root().warn("Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
-			return null;
-		}
-	}
-
-	/**
-	 * Returns {@code true} if the given number is a positive power of two.
-	 *
-	 * @param number the value to test
-	 * @return {@code true} if {@code number} is a positive power of two
-	 */
-	private static boolean isPowerOf2(long number) {
-		return number > 0 && (number & (number - 1)) == 0;
+		return Optional.empty();
 	}
 }

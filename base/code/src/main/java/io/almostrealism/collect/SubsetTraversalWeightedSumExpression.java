@@ -66,7 +66,7 @@ public class SubsetTraversalWeightedSumExpression extends WeightedSumExpression 
 	public SubsetTraversalWeightedSumExpression(TraversalPolicy inputPositions, TraversalPolicy weightPositions,
 												TraversalPolicy inputShape, TraversalPolicy groupShape,
 												TraversableExpression input, TraversableExpression weights) {
-		this(new TraversalPolicy(inputPositions.extent()),
+		this(inputPositions.extentShape().traverse(0),
 				inputPositions, weightPositions, inputShape, groupShape, input, weights);
 	}
 

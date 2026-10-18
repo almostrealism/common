@@ -464,6 +464,12 @@ final class WorkstreamRegistrationHandler {
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
         List<String> completionListeners = extractCompletionListeners(body);
         boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
+        List<String> trackerCapabilities;
+        try {
+            trackerCapabilities = readTrackerCapabilities(body);
+        } catch (IllegalArgumentException e) {
+            return Registration.failed(errorResponse.apply(e.getMessage()));
+        }
         boolean hasMaxWallClockHours = JsonFieldExtractor.hasField(body, "maxWallClockHours");
         int maxWallClockHours = hasMaxWallClockHours
                 ? JsonFieldExtractor.extractInt(body, "maxWallClockHours") : 0;
@@ -580,6 +586,7 @@ final class WorkstreamRegistrationHandler {
         // the controller-side backstop is enforced on the calling workstream
         // when an ar-manager tool that requires dispatch is invoked.
         workstream.setDispatchCapable(dispatchCapable);
+        workstream.setTrackerCapabilities(trackerCapabilities);
         // Workstream-level default for tmux-backed agent launches. The
         // default is false; opt in explicitly to make every job on this
         // workstream launch inside a tmux session by default. The per-job
@@ -697,6 +704,17 @@ final class WorkstreamRegistrationHandler {
         List<String> completionListeners = hasCompletionListeners
                 ? extractCompletionListeners(body) : null;
 
+        // Validated before any setter below mutates the live workstream, so an
+        // unknown role rejects the whole update rather than leaving another
+        // field's change applied to a workstream whose update was refused.
+        boolean hasTrackerCapabilities = JsonFieldExtractor.hasField(body, "trackerCapabilities");
+        List<String> trackerCapabilities;
+        try {
+            trackerCapabilities = readTrackerCapabilities(body);
+        } catch (IllegalArgumentException e) {
+            return errorResponse.apply(e.getMessage());
+        }
+
         if (channelId != null && !channelId.isEmpty()) {
             workstream.setChannelId(channelId);
         }
@@ -742,6 +760,12 @@ final class WorkstreamRegistrationHandler {
         if (JsonFieldExtractor.hasField(body, "dispatchCapable")) {
             workstream.setDispatchCapable(
                     JsonFieldExtractor.extractBoolean(body, "dispatchCapable"));
+        }
+        // Tracker roles: same presence signal. The list replaces the current
+        // one, so an empty list revokes every role. Validated above before any
+        // setter ran.
+        if (hasTrackerCapabilities) {
+            workstream.setTrackerCapabilities(trackerCapabilities);
         }
         // Workstream-level tmux default: same presence-signal pattern as
         // dispatch_capable so an unrelated update does not silently flip
@@ -803,6 +827,28 @@ final class WorkstreamRegistrationHandler {
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
+    }
+
+    /**
+     * Reads and validates the {@code trackerCapabilities} field of a request
+     * body. The field grants permissions, so it is parsed strictly: a value
+     * that is not an array of strings, or that names an unknown role, is
+     * refused rather than coerced into some other grant.
+     *
+     * @param body the request body JSON
+     * @return the requested roles, or {@code null} when the field is absent
+     *         or explicitly {@code null}
+     * @throws IllegalArgumentException with a client-facing message when the
+     *         field is malformed or names an unknown role
+     */
+    private static List<String> readTrackerCapabilities(String body) {
+        if (!JsonFieldExtractor.hasField(body, "trackerCapabilities")) return null;
+        List<String> capabilities = JsonFieldExtractor.extractStrictStringArray(body, "trackerCapabilities");
+        String unknownCapability = Workstream.unknownTrackerCapability(capabilities);
+        if (unknownCapability != null) {
+            throw new IllegalArgumentException("Unknown tracker capability: " + unknownCapability);
+        }
+        return capabilities;
     }
 
     /**

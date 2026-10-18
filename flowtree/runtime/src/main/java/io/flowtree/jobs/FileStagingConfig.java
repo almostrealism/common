@@ -61,8 +61,17 @@ public final class FileStagingConfig {
     /** Whether test file protection is active. */
     private final boolean protectTestFiles;
 
+    /** Whether CI/workflow file protection is active. */
+    private final boolean protectCiFiles;
+
     /** Base branch used for test file existence checks. */
     private final String baseBranch;
+
+    /**
+     * The base-branch commit the harness merged in and left in progress, or
+     * {@code null}; see {@link #getMergeParent()}.
+     */
+    private final String mergeParent;
 
     /**
      * Private constructor — use {@link #builder()} to create instances.
@@ -74,7 +83,9 @@ public final class FileStagingConfig {
         this.excludedPatterns = Collections.unmodifiableSet(new HashSet<>(builder.excludedPatterns));
         this.protectedPathPatterns = Collections.unmodifiableSet(new HashSet<>(builder.protectedPathPatterns));
         this.protectTestFiles = builder.protectTestFiles;
+        this.protectCiFiles = builder.protectCiFiles;
         this.baseBranch = builder.baseBranch;
+        this.mergeParent = builder.mergeParent;
     }
 
     /**
@@ -126,12 +137,44 @@ public final class FileStagingConfig {
     }
 
     /**
+     * Returns whether CI/workflow file protection is active. When enabled,
+     * a CI/workflow file ({@code .github/workflows/**}, {@code .github/actions/**},
+     * {@code tools/ci/**}) is blocked from staging whether or not it exists
+     * at the merge-base, since the pipeline's CI file lock rejects a
+     * branch-new workflow file as well as an edit to an existing one. This
+     * is the harness side of the repository's CI file lock and is
+     * independent of {@link #isProtectTestFiles()}: a job's test lock says
+     * nothing about whether it may change the pipeline.
+     *
+     * @return true if CI/workflow file protection is active
+     */
+    public boolean isProtectCiFiles() {
+        return protectCiFiles;
+    }
+
+    /**
      * Returns the base branch used for test file existence checks.
      *
      * @return the base branch name
      */
     public String getBaseBranch() {
         return baseBranch;
+    }
+
+    /**
+     * Returns the base-branch commit the harness merged into the target branch
+     * and left in progress for the agent, or {@code null} when it started no
+     * such merge.
+     *
+     * <p>While that merge is still the one in progress, {@link FileStager}
+     * treats content identical to this commit as carried in by the merge
+     * rather than written by the agent, and judges protected test methods
+     * against this commit rather than the older merge-base.</p>
+     *
+     * @return the merge parent's full SHA, or {@code null}
+     */
+    public String getMergeParent() {
+        return mergeParent;
     }
 
     /**
@@ -147,7 +190,9 @@ public final class FileStagingConfig {
             ", excludedPatterns=" + excludedPatterns.size() +
             ", protectedPathPatterns=" + protectedPathPatterns.size() +
             ", protectTestFiles=" + protectTestFiles +
+            ", protectCiFiles=" + protectCiFiles +
             ", baseBranch='" + baseBranch + '\'' +
+            ", mergeParent=" + mergeParent +
             '}';
     }
 
@@ -171,8 +216,14 @@ public final class FileStagingConfig {
         /** @see FileStagingConfig#protectTestFiles */
         private boolean protectTestFiles = false;
 
+        /** @see FileStagingConfig#protectCiFiles */
+        private boolean protectCiFiles = false;
+
         /** @see FileStagingConfig#baseBranch */
         private String baseBranch = "master";
+
+        /** @see FileStagingConfig#mergeParent */
+        private String mergeParent;
 
         /**
          * Private constructor — use {@link FileStagingConfig#builder()} to obtain instances.
@@ -224,6 +275,18 @@ public final class FileStagingConfig {
         }
 
         /**
+         * Sets whether CI/workflow file protection is active.
+         *
+         * @param protectCiFiles true to block staging of CI/workflow files,
+         *                       whether branch-new or pre-existing
+         * @return this builder
+         */
+        public Builder protectCiFiles(boolean protectCiFiles) {
+            this.protectCiFiles = protectCiFiles;
+            return this;
+        }
+
+        /**
          * Sets the base branch for test file existence checks.
          *
          * @param baseBranch the base branch name (default: "master")
@@ -231,6 +294,19 @@ public final class FileStagingConfig {
          */
         public Builder baseBranch(String baseBranch) {
             this.baseBranch = baseBranch;
+            return this;
+        }
+
+        /**
+         * Sets the base-branch commit the harness merged in and left in
+         * progress for the agent.
+         *
+         * @param mergeParent the merge parent's full SHA, or {@code null}
+         *                    when no harness merge is in progress
+         * @return this builder
+         */
+        public Builder mergeParent(String mergeParent) {
+            this.mergeParent = mergeParent;
             return this;
         }
 

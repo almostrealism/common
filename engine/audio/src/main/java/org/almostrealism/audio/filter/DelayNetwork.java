@@ -217,26 +217,8 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 		OperationList op = new OperationList("DelayNetwork");
 
 		if (enableIsolation) {
-//			for (Supplier<Runnable> p : tick) {
-//				op.add(Process.isolated(p));
-//			}
-
 			op.add(Process.isolated(tick));
 		}
-//
-//		op.add(() -> () -> {
-//			String info = "tick: " +
-//					input.getClass() + " " +
-//					delayIn.getCount() + " " +
-//					delayOut.getCount() + " " +
-//					bufferIndices.getCount() + " " +
-//					bufferLengths.getCount() + " " +
-//					delayBuffer.getCount() + " " +
-//					output.getCount();
-//			if (delayIn.doubleStream().filter(d -> d != 0.0).count() > 5) {
-//				System.out.println(info);
-//			}
-//		});
 
 		return enableIsolation ? op : tick;
 	}

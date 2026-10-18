@@ -71,7 +71,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * @param values the numerator followed by the denominator(s)
 	 */
 	protected Quotient(List<Expression<?>> values) {
-		super((Class<T>) type(values), "/", values);
+		super((Class<T>) promotedType(values), "/", values);
 	}
 
 	/** {@inheritDoc} Returns 6, reflecting the cost of a hardware division. */
@@ -215,20 +215,23 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public Number evaluate(Number... children) {
-		if (getType() == Integer.class) {
-			int value = children[0].intValue();
-			for (int i = 1; i < children.length; i++) {
-				value = value / children[i].intValue();
-			}
-
-			return value;
-		} else {
+		if (isFP()) {
 			double value = children[0].doubleValue();
 			for (int i = 1; i < children.length; i++) {
 				value = value / children[i].doubleValue();
 			}
 
 			return value;
+		} else {
+			// Truncating integer division for every non-floating-point type, including
+			// Long, so that evaluate agrees with computeValue and the bounded-numerator
+			// constant fold in create (all truncate toward zero).
+			long value = children[0].longValue();
+			for (int i = 1; i < children.length; i++) {
+				value = value / children[i].longValue();
+			}
+
+			return adjustType(value);
 		}
 	}
 
@@ -243,7 +246,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (isFP()) {
 			return numerator.doubleValue() / denominator.doubleValue();
 		} else {
-			return adjustType(getType(), numerator.longValue() / denominator.longValue());
+			return adjustType(numerator.longValue() / denominator.longValue());
 		}
 	}
 
@@ -295,11 +298,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 */
 	private static List<ArithmeticIndexSequence> withoutBoundedRemainder(List<ArithmeticIndexSequence> terms, long divisor) {
 		List<ArithmeticIndexSequence> coarse = terms.stream()
-				.filter(t -> gcd(t.commonFactor(), divisor) > 1).collect(Collectors.toList());
+				.filter(t -> ExpressionFeatures.gcd(t.commonFactor(), divisor) > 1).collect(Collectors.toList());
 		if (coarse.isEmpty() || coarse.size() == terms.size()) return terms;
 		if (coarse.stream().anyMatch(t -> t.min() < 0)) return terms;
 
-		long c = coarse.stream().mapToLong(t -> gcd(t.commonFactor(), divisor)).reduce(divisor, Quotient::gcd);
+		long c = coarse.stream().mapToLong(t -> ExpressionFeatures.gcd(t.commonFactor(), divisor)).reduce(divisor, ExpressionFeatures::gcd);
 		long remainder = 0;
 
 		try {
@@ -313,26 +316,6 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		return remainder < c ? coarse : terms;
-	}
-
-	/**
-	 * Returns the greatest common divisor of two values, taken as non-negative.
-	 *
-	 * @param a the first value
-	 * @param b the second value
-	 * @return the greatest common divisor, or zero if both are zero
-	 */
-	private static long gcd(long a, long b) {
-		a = Math.abs(a);
-		b = Math.abs(b);
-
-		while (b != 0) {
-			long t = a % b;
-			a = b;
-			b = t;
-		}
-
-		return a;
 	}
 
 	/**
@@ -361,11 +344,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			if (term.isPossiblyNegative()) return null;
 
 			long factor = term.constantIntegerFactor();
-			long shared = gcd(factor, divisor);
+			long shared = ExpressionFeatures.gcd(factor, divisor);
 
 			if (shared > 1) {
 				coarse.add(term);
-				c = gcd(c, shared);
+				c = ExpressionFeatures.gcd(c, shared);
 			} else if (term.upperBound().isEmpty()) {
 				return null;
 			} else {
@@ -448,7 +431,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static Expression<?> of(Expression<?>... values) {
-		return Expression.process(create(values));
+		return create(values).process();
 	}
 
 	/**
@@ -460,6 +443,21 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * division. They are gated on the quotient being integer typed, not merely on
 	 * the operand values being reported by the integer value accessors, since a
 	 * floating-point constant with an integral value also reports through those.</p>
+	 *
+	 * <p>The bounded-numerator collapse uses truncating division, matching the
+	 * runtime semantics of {@link #evaluate} and {@link #computeValue}: it divides
+	 * each numerator bound by the divisor toward zero and folds to that constant
+	 * only when both bounds agree. Truncation toward zero (not {@code Math.floor})
+	 * is required so that a negative numerator folds to the same value it would
+	 * compute; {@code -3 / 2} is {@code -1}, whereas {@code floor(-3 / 2)} is
+	 * {@code -2}. Truncating division by a fixed divisor is monotonic over the
+	 * integers, so matching bounds still guarantee a constant quotient. Any known
+	 * integer zero divisor is left unfolded on every path — the guard runs before
+	 * the {@link ArithmeticGenerator} optimization and the zero-numerator shortcut,
+	 * so even {@code 0 / 0} stays a {@link Quotient} — so the division-by-zero
+	 * surfaces at evaluation rather than while the expression is being simplified.
+	 * (The {@link ArithmeticGenerator#divide} path would itself throw on a zero
+	 * divisor while coarsening its scale, which is why the guard must precede it.)</p>
 	 *
 	 * <p>A product numerator with a constant factor {@code c} folds exactly against an
 	 * integer divisor {@code d} in either direction, for either sign: when {@code d}
@@ -496,17 +494,23 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			return create(operands.get(0), denominator);
 		}
 
+		Expression<?> numerator = operands.get(0);
+		Expression<?> denominator = operands.get(1);
+
+		OptionalLong d = denominator.longValue();
+
+		// Leave any known integer zero divisor unfolded, ahead of every fold path
+		// (ArithmeticGenerator.divide, the zero-numerator shortcut), so even 0 / 0
+		// surfaces at evaluation instead of throwing during simplification
+		if (!fp && d.isPresent() && d.getAsLong() == 0)
+			return new Quotient(operands);
+
 		if (values[0] instanceof ArithmeticGenerator) {
 			return ((ArithmeticGenerator) values[0]).divide(operands.get(1));
 		}
 
-		Expression<?> numerator = operands.get(0);
-		Expression<?> denominator = operands.get(1);
-
 		if (numerator.longValue().orElse(-1) == 0)
 			return fp ? new DoubleConstant(0.0) : new IntegerConstant(0);
-
-		OptionalLong d = denominator.longValue();
 
 		OptionalLong lower = numerator.lowerBound();
 		OptionalLong upper = numerator.upperBound();
@@ -515,16 +519,18 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				upper.orElse(Long.MAX_VALUE) < d.getAsLong()) {
 			return new IntegerConstant(0);
 		} else if (!fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
-			double low = Math.floor(upper.getAsLong() / (double) d.getAsLong());
-			double high = Math.floor(lower.getAsLong() / (double) d.getAsLong());
+			// Truncating division, not floor, to match the runtime quotient for negative bounds
+			long low = upper.getAsLong() / d.getAsLong();
+			long high = lower.getAsLong() / d.getAsLong();
 
 			if (low == high) {
-				return ExpressionFeatures.getInstance().e((long) low);
+				return ExpressionFeatures.getInstance().e(low);
 			}
 		}
 
 		if (!fp && numerator instanceof Sum && d.isPresent()) {
-			Expression simple = trySumSimplify((Sum) numerator, d.getAsLong());
+			Expression simple = ((Sum<?>) numerator).scaledRemainder()
+					.map(r -> r.quotient(d.getAsLong())).orElse(null);
 			if (simple != null)
 				return simple;
 		}
@@ -632,7 +638,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				}
 			}
 
-			Expression simple = trySumSimplify((Sum) numerator, d.getAsLong());
+			Expression simple = ((Sum<?>) numerator).scaledRemainder()
+					.map(r -> r.quotient(d.getAsLong())).orElse(null);
 			if (simple != null)
 				return simple;
 
@@ -672,49 +679,6 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		return e.getChildren().stream()
 				.filter(c -> c.longValue().isPresent() && c.longValue().getAsLong() % divisor == 0 && c.longValue().getAsLong() > 0)
 				.findFirst().orElse(null);
-	}
-
-	/**
-	 * Attempts to simplify a {@code (product + mod) / divisor} pattern into a
-	 * single quotient when the structure matches.
-	 *
-	 * @param sum     the sum expression to analyse
-	 * @param divisor the divisor value
-	 * @return the simplified expression, or {@code null} if the pattern does not match
-	 */
-	private static Expression trySumSimplify(Sum<?> sum, long divisor) {
-		if (sum.getChildren().size() != 2) return null;
-
-		Product<?> product = (Product) sum.getChildren().stream()
-				.filter(e -> e instanceof Product)
-				.findFirst().orElse(null);
-		if (product == null) return null;
-		if (product.getChildren().size() != 2) return null;
-
-		Expression<?> arg = product.getChildren()
-				.stream().filter(e -> e.longValue().isEmpty())
-				.findFirst().orElse(null);
-		if (arg == null) return null;
-
-		long constant = product.getChildren().stream()
-				.map(Expression::longValue)
-				.filter(OptionalLong::isPresent).findFirst()
-				.map(OptionalLong::getAsLong).orElse(-1L);
-		if (constant <= 0) return null;
-		if (divisor % constant != 0) return null;
-		if (constant > divisor) return null;
-
-		Mod<?> mod = (Mod) sum.getChildren().stream()
-				.filter(e -> e instanceof Mod)
-				.findFirst().orElse(null);
-		if (mod == null) return null;
-		if (mod.isFP()) return null;
-		if (!mod.getChildren().get(0).equals(arg)) return null;
-		if (mod.getChildren().get(1).longValue().isEmpty()) return null;
-		if (mod.getChildren().get(1).longValue().getAsLong() != constant) return null;
-
-		Expression d = ExpressionFeatures.getInstance().e(divisor / constant);
-		return Quotient.of(arg, d);
 	}
 
 	/**

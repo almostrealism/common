@@ -9,17 +9,23 @@ This module exists to:
 1. **Load Transformer Models** - Support for loading weights from HuggingFace/protobuf formats
 2. **Implement Attention Mechanisms** - Multi-head, grouped-query, and cross-attention
 3. **Enable Text Generation** - Autoregressive token generation with sampling strategies
-4. **Provide Tokenization** - Byte-level BPE tokenizers for text encoding/decoding
+4. **Provide Tokenization** - Byte-level and SentencePiece BPE tokenizers for text encoding/decoding
 5. **Support Hardware Acceleration** - GPU/CPU execution via ar-hardware backends
 
 ## What It Provides
 
 ### 1. Model Loading with StateDictionary
 
-StateDictionary loads model weights from **protobuf format** (`.pb` files), NOT safetensors or PyTorch checkpoints. Weights must be exported to protobuf format first using the provided Python extraction scripts.
+StateDictionary loads model weights from either **protobuf format** (`.pb` files) or
+**safetensors checkpoints** (`.safetensors` files, including sharded checkpoints). When the
+source holds any `.safetensors` file it is read as a published checkpoint — its safetensors
+files are the weights and its other files (configuration, tokenizer) are ignored for weight
+loading; otherwise every file is read as a protobuf library. PyTorch (`.pt`/`.bin`) and GGUF
+checkpoints are not read directly; export those to one of the supported formats first using the
+provided Python extraction scripts.
 
-**Supported Format:** Protobuf (`CollectionLibraryData`)
-**NOT Supported:** safetensors, PyTorch checkpoints (`.pt`/`.bin`), GGUF
+**Supported Formats:** Protobuf (`CollectionLibraryData`), safetensors (`.safetensors`)
+**NOT Supported:** PyTorch checkpoints (`.pt`/`.bin`), GGUF
 
 ```java
 import org.almostrealism.ml.StateDictionary;
@@ -152,11 +158,13 @@ model.run(
 ```java
 import org.almostrealism.ml.AutoregressiveModel;
 
-// Wrap compiled model for token generation
-AutoregressiveModel generator = AutoregressiveModel.of(
+// Wrap compiled model for token generation. `position` is a single-element
+// collection the compiled model reads to index its KV cache and apply RoPE;
+// AutoregressiveModel maintains it on the device via reset()/advance().
+AutoregressiveModel<Integer> generator = AutoregressiveModel.of(
     compiledModel,
-    step -> log("Step: " + step),
-    tokenId -> tokenEmbeddings.get(tokenId)
+    position,
+    tokenId -> tokenEmbeddings.range(shape(dim), tokenId * dim)
 );
 
 // Set sampling temperature
@@ -245,7 +253,8 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
                              PackedCollection w1, PackedCollection w2, PackedCollection w3,
                              ComputeRequirement... requirements);
 
-    // Complete transformer layer (attention + feed-forward)
+    // Complete transformer layer (residual attention + residual feed-forward),
+    // built from the transformer.pdsl asset
     default Block transformer(int heads, int kvHeads,
                              PackedCollection rmsAttWeight,
                              PackedCollection wk, PackedCollection wv,
@@ -296,27 +305,29 @@ Block block = transformerBlock(
 ### AutoregressiveModel
 
 ```java
-public class AutoregressiveModel {
-    public static AutoregressiveModel of(CompiledModel model,
-                                         IntConsumer stepConsumer,
-                                         IntFunction<PackedCollection<?>> tokenEmbed);
+public class AutoregressiveModel<T> implements Destroyable {
+    public static AutoregressiveModel<Integer> of(CompiledModel model,
+                                                  PackedCollection position,
+                                                  IntFunction<PackedCollection> tokenEmbed);
 
     public void setTemperature(double temperature);
-    public int next();  // Generate next token
+    public T next();  // Generate next token
 }
 ```
 
 ### ByteLevelBPETokenizer
 
 ```java
-public abstract class ByteLevelBPETokenizer implements Tokenizer {
-    public int[] encodeAsInt(String text);
-    public String decodeAsInt(int[] tokens);
+public abstract class ByteLevelBPETokenizer {
+    public ByteLevelBPETokenizer(PreTokenizer preTokenizer);
 
-    public abstract int getBOSToken();
-    public abstract int getEOSToken();
-    public abstract int getPADToken();
-    public abstract int getUNKToken();
+    public int[] encode(String text, boolean addSpecialTokens);
+    public String decode(int[] tokenIds);
+
+    protected abstract int getBOSToken();
+    protected abstract int getEOSToken();
+    protected abstract int getPADToken();
+    protected abstract int getUNKToken();
 }
 ```
 
@@ -440,22 +451,22 @@ int token = generator.next();
 
 ```java
 public class MyTokenizer extends ByteLevelBPETokenizer {
-    @Override
-    public int getBOSToken() { return 1; }
-
-    @Override
-    public int getEOSToken() { return 2; }
-
-    @Override
-    public int getPADToken() { return 0; }
-
-    @Override
-    public int getUNKToken() { return 3; }
-
-    @Override
-    protected void loadVocabulary(String path) {
-        // Load vocabulary from file
+    public MyTokenizer(String tokenizerPath) throws IOException {
+        super(PreTokenizer.WHOLE_TEXT);
+        // load the vocabulary and merges from tokenizerPath
     }
+
+    @Override
+    protected int getBOSToken() { return 1; }
+
+    @Override
+    protected int getEOSToken() { return 2; }
+
+    @Override
+    protected int getPADToken() { return 0; }
+
+    @Override
+    protected int getUNKToken() { return 3; }
 }
 ```
 
@@ -558,7 +569,9 @@ loraModel.mergeAllLoraWeights();
 
 ### ProjectionFactory
 
-Abstracts projection layer creation for LoRA vs dense selection:
+Abstracts projection layer creation for LoRA vs dense selection. The static factories
+return the named `DenseProjectionFactory` and `LoRAProjectionFactory` implementations
+(both in `org.almostrealism.layers`):
 
 ```java
 // Standard dense projections
@@ -576,7 +589,16 @@ for query/key normalization, an optional per-position `paddingMask` (zeroes mask
 vectors), an optional `keyMask` (excludes masked keys from softmax entirely via
 `AttentionFeatures.MASKED_LOGIT_PENALTY`), and a `logitSoftcap` (`0` to disable). Every
 shorter overload, including the one above, delegates to it with `NormalizationType.LAYER`
-and no masking.
+and no masking. Query/key normalization takes both weights or neither. The structure itself is
+the `sequence_attention.pdsl` asset: `sequenceAttention` builds the two projections from the
+factory, binds them with the weights and masks, and builds the asset layer for the requested
+query/key normalization, soft-cap and causal masking. A PDSL program can build the same layers
+directly with the two projection layers bound as arguments. The keys and values are branches of
+the layer that the attention products read as operands, so the backward pass trains the key and
+value projections as well as the query projection. Differential attention
+(`DifferentialAttentionFeatures.differentialSequenceAttention`) takes the same arguments, bound by
+the shared `sequenceAttentionArguments`, plus a per-head lambda, and builds a layer of the
+`differential_attention.pdsl` asset.
 
 ### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
 
@@ -620,8 +642,9 @@ conditioning. The buffer starts zero-filled, which is the value plain generation
 
 `DiffusionTransformerConfig.withNormalization(NormalizationType)` selects LayerNorm (default) or
 RMSNorm for every block norm and query/key norm; `withPaddingMask(true)` adds a per-position latent
-padding mask, exposed for writes via `DiffusionTransformer.getPaddingMask()` and consumed by
-self-attention as value masking.
+padding mask (`DiffusionTransformer.getPaddingMask()`), initially all valid; a caller generating less
+than the full sequence marks the padded tail with `DiffusionTransformer.setValidLength(int)` before
+`forward()`, and self-attention ignores those positions' values.
 
 ### Stable Audio 3 Conditioning and Codec
 
@@ -646,6 +669,40 @@ ConditionerOutput conditioning = conditioner.runConditioners(tokenIds, durationS
 The prompt itself is encoded by `T5GemmaEncoder` (package `org.almostrealism.ml.t5gemma`), a
 T5Gemma text encoder configured by `T5GemmaConfig` and loaded from a `StateDictionary` the same
 way as the other model weights in this module.
+
+`StableAudio3` (package `org.almostrealism.ml.audio`) is the end-to-end text-to-audio generator
+that wires these pieces together: the conditioner, a `DiffusionSampler` driving the
+`DiffusionTransformer` with the ping-pong schedule of the released models, and a `SAMEAutoEncoder`
+decoder. `StableAudio3.small(...)` builds the released small model from the `dit`, `conditioner`
+and `ae` weight sets extracted by `engine/ml/scripts/extract_sa3_weights.py` plus the T5Gemma
+encoder weights:
+
+```java
+StableAudio3 sa3 = StableAudio3.small(transformerWeights, conditionerWeights,
+        promptEncoderWeights, autoencoderWeights, maxSeconds);
+PackedCollection audio = sa3.generate(seed, tokenIds, seconds).evaluate();  // [channels, samples]
+```
+
+The transformer and decoder are compiled once for the longest clip the instance generates; a
+shorter request is generated at that length with the padding mask covering the requested duration
+plus headroom, then truncated. Classifier-free guidance is off by default and is enabled with
+`setGuidance(scale, negativePrompt)`, whose negative prompt is pre-tokenized ids.
+
+`generate` takes pre-tokenized prompt ids. To generate directly from prompt text, supply a
+`Tokenizer` (the released models use a SentencePiece BPE tokenizer from
+`org.almostrealism.ml.tokenization`) and call `generateFromText`, which encodes the text and
+delegates to `generate`:
+
+```java
+sa3.setTokenizer(tokenizer);
+sa3.setTextGuidance(scale, "negative prompt");   // text counterpart of setGuidance
+PackedCollection audio = sa3.generateFromText(seed, "a prompt", seconds).evaluate();
+```
+
+`generateFromText` and `setTextGuidance` require a tokenizer to have been set when given a
+non-empty prompt; without one such a call is rejected, asking for `setTokenizer` or pre-tokenized
+ids. A `null` or empty prompt needs no tokenizer — it yields no tokens and selects the
+unconditional prompt.
 
 Other Stable Audio 3 building blocks:
 - **`ClassifierFreeGuidance`** — combines a conditional and unconditional denoiser prediction
@@ -782,7 +839,7 @@ The 12 attention heads are partitioned into 6 groups of 2. Each group applies Ro
 
 ### GRU Decoder
 
-A 4-layer GRU that autoregressively decodes 7 tokens per note from the transformer's hidden states. Implemented in `GRUDecoder.java` as a single `CompiledModel` using the Producer pattern — no separate GRU cell class, no imperative Java loops in the decode path.
+A stacked GRU (4 layers in the paper configuration, 2 in the 309M checkpoint) that autoregressively decodes 7 tokens per note from the transformer's hidden state. Its structure is the PDSL asset `pdsl/midi/gru_decoder.pdsl`: a start model (the summary projection, written into every layer's row of the hidden state) run once per note, and a step model (per layer: read the layer's hidden-state row, GRU cell, write the row back; then the logits head) run once per token. The GRU hidden state is a `[layers, decoderHiddenSize]` state collection the two models share, like the attention KV cache. `GRUDecoder.java` binds the checkpoint weights (`GRUDecoder.load(stateDict, config)`), compiles the two models, and runs the decode loop — token selection and the embedding lookup of the chosen token happen between forward passes.
 
 ### MoonbeamMidi
 
@@ -796,7 +853,7 @@ Top-level entry point that wires together:
 | Class | Package | Role |
 |-------|---------|------|
 | `MoonbeamMidi` | `org.almostrealism.ml.midi` | Top-level model |
-| `GRUDecoder` | `org.almostrealism.ml.midi` | 4-layer GRU, single CompiledModel |
+| `GRUDecoder` | `org.almostrealism.ml.midi` | GRU decoder built from `gru_decoder.pdsl` |
 | `CompoundMidiEmbedding` | `org.almostrealism.ml.midi` | 6-attribute compound embedding |
 | `FundamentalMusicEmbedding` | `org.almostrealism.ml.midi` | Sinusoidal embedding, single attribute |
 | `MidiTokenizer` | `org.almostrealism.music.midi` | MIDI → compound token conversion |

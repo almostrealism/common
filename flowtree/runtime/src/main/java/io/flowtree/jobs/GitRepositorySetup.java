@@ -50,6 +50,12 @@ class GitRepositorySetup implements ConsoleFeatures {
     /** Paths of files that were in a conflicted state during base-branch synchronization. */
     private final List<String> conflictFiles = new ArrayList<>();
 
+    /**
+     * The base-branch commit merged in by {@link #synchronize()} when that
+     * merge was left in progress for the agent, or {@code null}.
+     */
+    private String mergeParent;
+
     /** Resolved filesystem paths for dependent repos after cloning. */
     private final List<String> dependentRepoPaths = new ArrayList<>();
 
@@ -203,6 +209,23 @@ class GitRepositorySetup implements ConsoleFeatures {
         return conflictFiles;
     }
 
+    /**
+     * Returns the base-branch commit that the most recent {@link #prepare()}
+     * merged into the target branch and left in progress for the agent to
+     * resolve, or {@code null} when no merge was left in progress.
+     *
+     * <p>This is the harness's own record of the merge it started, taken
+     * before the agent ran. Staging compares merge content against it rather
+     * than against {@code .git/MERGE_HEAD}, which the agent can rewrite: content
+     * identical to this commit came from the base branch, not from the agent.
+     * See {@link FileStager#trustedMergeParent}.</p>
+     *
+     * @return the merge parent's full SHA, or {@code null}
+     */
+    String getMergeParent() {
+        return mergeParent;
+    }
+
     // ==================== Private Helpers ====================
 
     /**
@@ -252,6 +275,7 @@ class GitRepositorySetup implements ConsoleFeatures {
         } else {
             log("Merge conflict detected while synchronizing with " + remoteBase);
             mergeConflictsDetected = true;
+            mergeParent = baseHead;
 
             String statusOutput = job.executeGitWithOutput("status", "--porcelain");
             for (String line : statusOutput.split("\n")) {
@@ -310,21 +334,7 @@ class GitRepositorySetup implements ConsoleFeatures {
      */
     private List<String> getAllDirtyFiles() throws IOException, InterruptedException {
         String statusOutput = job.executeGitWithOutput("status", "--porcelain");
-        List<String> dirtyFiles = new ArrayList<>();
-
-        for (String line : statusOutput.split("\n")) {
-            if (line.length() > 3) {
-                String file = line.substring(3).trim();
-                if (file.contains(" -> ")) {
-                    file = file.split(" -> ")[1];
-                }
-                if (!file.isEmpty()) {
-                    dirtyFiles.add(file);
-                }
-            }
-        }
-
-        return dirtyFiles;
+        return GitOperations.parseChangedFiles(statusOutput);
     }
 
     /**

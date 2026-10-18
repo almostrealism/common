@@ -5,6 +5,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 /**
@@ -127,6 +128,119 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 		}
 
 		log("=== PASSED ===\n");
+	}
+
+	/**
+	 * A column vector of shape (n, 1) is one vector of n elements, not a batch of
+	 * n one-element vectors, and the wide-output path must read it the same way
+	 * the narrow path does. The shape arises naturally when the output of one
+	 * matrix-vector product feeds another: the narrow path returns (m, 1).
+	 */
+	@Test(timeout = 60000)
+	public void columnVectorLargeOutput() {
+		int inputSize = 64;
+		int outputSize = 1500;
+
+		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
+		PackedCollection input = new PackedCollection(shape(inputSize));
+		initializeWeights(weights, outputSize, inputSize);
+		initializeInput(input, inputSize);
+
+		PackedCollection expected = matmul(p(weights), traverseEach(p(input))).evaluate();
+		PackedCollection column = input.reshape(shape(inputSize, 1));
+		PackedCollection output = matmul(p(weights), p(column)).evaluate();
+
+		assertEquals("Output size", outputSize, output.getShape().getTotalSize());
+		for (int i = 0; i < outputSize; i++) {
+			assertEquals("Output[" + i + "]", expected.toDouble(i), output.toDouble(i));
+		}
+	}
+
+	/**
+	 * A batch of row vectors is multiplied by every row of the matrix, including when the
+	 * batch holds exactly as many vectors as the matrix has rows: with the identity rows
+	 * as input, the product is the transpose of the matrix, row by row. A broadcast that
+	 * paired the matrix rows with the vectors instead returned {@code [1, 1, 5, 5]} here.
+	 */
+	@Test(timeout = 60000)
+	public void batchAsLongAsMatrixRows() {
+		PackedCollection weights = pack(1, 2, 3, 4, 5, 6).reshape(shape(2, 3));
+
+		PackedCollection two = matmul(cp(weights), cp(pack(1, 0, 0, 0, 1, 0).reshape(shape(2, 3))).traverse(1)).evaluate();
+		assertEquals(4, two.getShape().getTotalSize());
+		double[] expectedTwo = {1, 4, 2, 5};
+		for (int i = 0; i < expectedTwo.length; i++) {
+			assertEquals("Output[" + i + "]", expectedTwo[i], two.toDouble(i));
+		}
+
+		PackedCollection three = matmul(cp(weights), cp(pack(1, 0, 0, 0, 1, 0, 0, 0, 1).reshape(shape(3, 3))).traverse(1)).evaluate();
+		assertEquals(6, three.getShape().getTotalSize());
+		double[] expectedThree = {1, 4, 2, 5, 3, 6};
+		for (int i = 0; i < expectedThree.length; i++) {
+			assertEquals("Output[" + i + "]", expectedThree[i], three.toDouble(i));
+		}
+	}
+
+	/**
+	 * The matrix is repeated whole for every vector in the batch whatever axis it is
+	 * traversed along: a matrix traversed along its columns, if repeated at that axis,
+	 * would interleave its rows with the batch and pair the wrong matrix rows with the
+	 * vectors once the batch is longer than the matrix.
+	 */
+	@Test(timeout = 60000)
+	public void batchWithColumnTraversedMatrix() {
+		PackedCollection weights = pack(1, 2, 3, 4, 5, 6).reshape(shape(2, 3));
+
+		PackedCollection three = matmul(traverse(1, cp(weights)),
+				cp(pack(1, 0, 0, 0, 1, 0, 0, 0, 1).reshape(shape(3, 3))).traverse(1)).evaluate();
+		assertEquals(6, three.getShape().getTotalSize());
+		double[] expectedThree = {1, 4, 2, 5, 3, 6};
+		for (int i = 0; i < expectedThree.length; i++) {
+			assertEquals("Output[" + i + "]", expectedThree[i], three.toDouble(i));
+		}
+	}
+
+	/**
+	 * {@link MatrixFeatures#multiplyTransposed} computes {@code a · bᵀ}: entry {@code (i, j)}
+	 * is the dot product of row {@code i} of {@code a} with row {@code j} of {@code b}, for
+	 * operands with different row counts so that a swapped axis would change the shape.
+	 */
+	@Test(timeout = 60000)
+	public void multiplyTransposed() {
+		CollectionProducer a = cp(pack(1, 2, 3, 4, 5, 6).reshape(shape(2, 3)));
+		CollectionProducer b = cp(pack(1, 0, -1, 2, 1, 0, 0, 0, 3, 1, 1, 1).reshape(shape(4, 3)));
+
+		PackedCollection result = multiplyTransposed(a, b).evaluate();
+		assertEquals(shape(2, 4).getTotalSize(), result.getShape().getTotalSize());
+
+		double[] expected = {-2, 4, 9, 6, -2, 13, 18, 15};
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals("Output[" + i + "]", expected[i], result.toDouble(i));
+		}
+	}
+
+	/**
+	 * {@link MatrixFeatures#multiplyTransposed} rejects operands that are not matrices or
+	 * whose rows differ in length.
+	 */
+	@Test(timeout = 60000)
+	public void multiplyTransposedRejectsMismatchedOperands() {
+		CollectionProducer matrix = cp(new PackedCollection(shape(2, 3)));
+		CollectionProducer[][] rejected = {
+				{ matrix, cp(new PackedCollection(shape(2, 4))) },
+				{ cp(new PackedCollection(shape(3))), matrix },
+				{ matrix, cp(new PackedCollection(shape(2, 3, 1))) }
+		};
+
+		for (CollectionProducer[] operands : rejected) {
+			try {
+				multiplyTransposed(operands[0], operands[1]);
+				Assert.fail("Expected " + operands[0].getShape() + " by the transpose of " +
+						operands[1].getShape() + " to be rejected");
+			} catch (IllegalArgumentException expected) {
+				// The operands are not compatible matrices
+			}
+		}
 	}
 
 	/**

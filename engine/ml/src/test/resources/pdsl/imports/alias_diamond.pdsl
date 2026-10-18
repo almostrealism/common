@@ -1,0 +1,9 @@
+// Diamond whose branches spell the same leaf resource differently: single.pdsl imports the
+// canonical path while this file imports it through a "../imports" alias. Both must resolve to
+// one resource, so leaf.pdsl merges once and leaf_identity is not a duplicate.
+import "/pdsl/imports/single.pdsl"
+import "/pdsl/imports/../imports/leaf.pdsl"
+
+layer alias_diamond_wrap() -> [1, 4] {
+    leaf_identity()
+}

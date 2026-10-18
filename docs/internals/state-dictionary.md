@@ -50,6 +50,18 @@ directory. The path each tensor takes depends on `StateDictionary.enableMaterial
 The two paths both consume the same protobuf layout; the difference is only when the
 values are read off disk.
 
+### Safetensors checkpoints
+
+A directory that holds any `.safetensors` file is read as a published checkpoint: its
+safetensors files are the weights, and its other files (configuration, tokenizer) are
+ignored. Each file's JSON header is read to locate its tensors (`SafetensorsReference.locate`),
+and the values stay in the file and are read through the same mapping as the protobuf path.
+BF16, F16, F32 and F64 tensors are supported. A file is mapped whole, so one file can be at
+most 2 GB.
+
+Safetensors is only read, never written: `stateDict.save(...)` writes protobuf, so a
+checkpoint read from safetensors can be kept in the project's own format.
+
 ## HuggingFace Compatibility
 
 Weights exported from HuggingFace/PyTorch models retain their original key names.

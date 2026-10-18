@@ -31,6 +31,7 @@ GUARD_FILES=(
     ".claude/hooks/lib/exfil_bash_vcs.py"
     ".claude/hooks/lib/exfil_bash_dispatch.py"
     ".claude/hooks/lib/test_exfiltration_guard_check.py"
+    ".claude/hooks/lib/test_exfiltration_guard_transport.py"
     ".claude/hooks/exfil-allowlist.txt"
     "tools/ci/agent-protection/verify-exfiltration-guard.sh"
     "tools/ci/agent-protection/test-verify-exfiltration-guard.sh"
@@ -120,7 +121,7 @@ run_case "unrelated production change passes" 0 "$r" master
 # ── The ci/... carve-out ────────────────────────────────────────────
 #
 # A branch named for the pipeline may change the files that enforce the
-# pipeline — the same declaration validate-agent-commit.sh RULE 3 and the
+# pipeline — the same declaration the CI file lock (check-ci-file-lock.sh) and the
 # enforcement-tampering check already honour. Comparing its edits against
 # the base polices nothing, since the same branch could delete the step
 # that runs this script, and only blocks the work.

@@ -67,6 +67,13 @@ public void train() {
 }
 ```
 
+## Worked Example: A Language Model Trained from Scratch
+
+[training-a-language-model.md](training-a-language-model.md) walks through a complete run that
+follows this pattern: `NextTokenDataset` prepares the windows, `CausalLanguageModel` builds the
+graph, and a single `ModelOptimizer.optimize(epochs)` call trains it with Adam and a held-out
+validation set evaluated at every epoch boundary.
+
 ## Historical Context
 
 This rule exists because `AudioDiffusionFineTuner` was originally implemented with a duplicate training loop, violating this principle. See `/workspace/project/common/DESIGN_PROCESS_FAILURE.md` for the full analysis.

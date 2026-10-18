@@ -40,15 +40,19 @@ import java.util.stream.Stream;
  * <h2>Memory Model</h2>
  *
  * <ul>
- *   <li><strong>Lazy Loading:</strong> Data read from file only when accessed (if {@code enableLazyReading})</li>
- *   <li><strong>Write-Through:</strong> Modifications written to file immediately</li>
+ *   <li><strong>Lazy Mapping:</strong> The file is mapped when first accessed, and values are read
+ *       through the mapping rather than copied onto the Java heap</li>
+ *   <li><strong>Write-Through:</strong> A write goes into the mapping, which is the file</li>
  *   <li><strong>Delegation:</strong> Can replace in-memory data with file-backed storage via {@code reassign()}</li>
- *   <li><strong>Cleanup:</strong> Files deleted after read (unless lazy reading enabled)</li>
+ *   <li><strong>Cleanup:</strong> A file is deleted when its memory is deallocated. Reading no
+ *       longer consumes it, since the values are served from it rather than copied out of it</li>
  * </ul>
  *
  * <h2>Binary File Format</h2>
  *
- * <p>All data stored as double precision (FP64) in native byte order:</p>
+ * <p>All data stored as double precision (FP64), big-endian — the order
+ * {@link io.almostrealism.code.Memory#getBytes} and {@link MemoryData#read(java.io.InputStream)}
+ * write, which is what lets this provider map a file either of them produced:</p>
  * <pre>
  * [double_0][double_1]...[double_N]
  * </pre>
@@ -103,13 +107,16 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 	@Override
 	public String getName() { return "DISK"; }
 
+	/** Size of each stored number in bytes. */
+	public static final int NUMBER_SIZE = 8;
+
 	/**
 	 * Returns the size of each number in bytes.
 	 *
 	 * @return 8 (FP64 double precision)
 	 */
 	@Override
-	public int getNumberSize() { return 8; }
+	public int getNumberSize() { return NUMBER_SIZE; }
 
 	/**
 	 * Allocates file-backed memory at the configured location.
@@ -148,53 +155,30 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 	public void setMem(Memory mem, int offset, Memory source, int srcOffset, int length) {
 		LocalExternalMemory src = (LocalExternalMemory) source;
 		LocalExternalMemory dest = (LocalExternalMemory) mem;
-		load(src, dest);
 		for (int i = 0; i < length; i++) {
-			dest.data[offset + i] = src.data[srcOffset + i];
+			dest.setValueAt(offset + i, src.valueAt(srcOffset + i));
 		}
-		unload(dest);
 	}
 
 	@Override
 	public void setMem(Memory mem, int offset, double[] source, int srcOffset, int length) {
 		LocalExternalMemory dest = (LocalExternalMemory) mem;
-		load(dest);
 		for (int i = 0; i < length; i++) {
-			dest.data[offset + i] = source[srcOffset + i];
+			dest.setValueAt(offset + i, source[srcOffset + i]);
 		}
-		unload(dest);
 	}
 
 	@Override
 	public void getMem(Memory mem, int sOffset, double[] out, int oOffset, int length) {
 		LocalExternalMemory src = (LocalExternalMemory) mem;
-		load(src);
 		for (int i = 0; i < length; i++) {
-			out[oOffset + i] = src.data[sOffset + i];
+			out[oOffset + i] = src.valueAt(sOffset + i);
 		}
 	}
 
 	@Override
 	public void destroy() {
 		// TODO  Destroy all LocalExternalMemory
-	}
-
-	/**
-	 * Loads data from the backing file into memory for each given instance.
-	 *
-	 * @param mem Memory instances to load from disk
-	 */
-	protected static void load(LocalExternalMemory... mem) {
-		Stream.of(mem).forEach(LocalExternalMemory::read);
-	}
-
-	/**
-	 * Writes data from memory back to the backing file for each given instance.
-	 *
-	 * @param mem Memory instances to write to disk
-	 */
-	protected static void unload(LocalExternalMemory... mem) {
-		Stream.of(mem).forEach(LocalExternalMemory::write);
 	}
 
 	/**

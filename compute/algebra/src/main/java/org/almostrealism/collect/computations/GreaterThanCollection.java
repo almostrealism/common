@@ -16,10 +16,10 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -153,35 +153,19 @@ public class GreaterThanCollection extends InequalityComparisonComputation {
 	}
 
 	/**
-	 * Generates the expression that applies element-wise greater-than comparison
-	 * with conditional value selection.
+	 * Returns the element-wise greater-than relation selected by this operator:
+	 * {@code left > right}, or {@code left >= right} when {@link #includeEqual} is set.
+	 * The shared conditional-selection scaffold that wraps this relation lives in
+	 * {@link InequalityComparisonComputation#getExpression(TraversableExpression...)}.
 	 *
-	 * <p>This method creates a {@link CollectionExpression} that evaluates the comparison
-	 * at each index position and selects between true and false values using a ternary-like
-	 * conditional expression. The comparison operator used depends on the {@link #includeEqual} flag.</p>
-	 *
-	 * @param args Array of {@link TraversableExpression}s where:
-	 *             <ul>
-	 *               <li>args[1] - left operand (compared value)</li>
-	 *               <li>args[2] - right operand (comparison threshold)</li>
-	 *               <li>args[3] - value to use when comparison is true</li>
-	 *               <li>args[4] - value to use when comparison is false</li>
-	 *             </ul>
-	 * @return A {@link CollectionExpression} that computes element-wise
-	 *         (left > right ? trueValue : falseValue) or
-	 *         (left >= right ? trueValue : falseValue) if includeEqual is true
+	 * @param left The left-hand operand value at the current index
+	 * @param right The right-hand operand value at the current index
+	 * @return A boolean {@link Expression} that is true when {@code left} is greater than
+	 *         (or, when {@link #includeEqual} is set, greater than or equal to) {@code right}
 	 */
 	@Override
-	protected CollectionExpression getExpression(TraversableExpression... args) {
-		if (includeEqual) {
-			return CollectionExpression.create(getShape(), index ->
-					conditional(args[1].getValueAt(index).greaterThanOrEqual(args[2].getValueAt(index)),
-							args[3].getValueAt(index), args[4].getValueAt(index)));
-		} else {
-			return CollectionExpression.create(getShape(), index ->
-					conditional(args[1].getValueAt(index).greaterThan(args[2].getValueAt(index)),
-							args[3].getValueAt(index), args[4].getValueAt(index)));
-		}
+	protected Expression<Boolean> compare(Expression<?> left, Expression<?> right) {
+		return includeEqual ? left.greaterThanOrEqual(right) : left.greaterThan(right);
 	}
 
 	/**

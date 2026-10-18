@@ -16,9 +16,11 @@
 
 package io.flowtree.api;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.Response;
-import io.flowtree.jobs.CodingAgentJob;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.agent.AgentCapabilities;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.Phase;
@@ -28,8 +30,11 @@ import io.flowtree.jobs.agent.Phase;
  *
  * <p>Returns a JSON document enumerating the registered agent runners
  * ({@link AgentRunnerRegistry}) and their {@link AgentCapabilities},
- * the eight {@link Phase} entries, the accepted model identifiers from
- * {@link CodingAgentJob#VALID_MODELS}, and the built-in default runner.
+ * every {@link Phase} entry, the model identifiers the built-in default
+ * runner advertises through its {@link AgentCapabilities#supportedModels()},
+ * and the name of that default runner. Each runner's capabilities and each
+ * phase describe themselves ({@link AgentCapabilities#toJson()},
+ * {@link Phase#toJson()}); this handler only assembles the document.
  * This metadata is read-only and is what MCP clients use to populate
  * runner / phase / model pickers before submitting a job or configuring
  * a workstream.</p>
@@ -47,42 +52,22 @@ class AgentsQueryHandler {
      *         {@code phases}, {@code models}, and {@code defaultRunner}
      */
     Response handle() {
-        StringBuilder j = new StringBuilder("{\"ok\":true,\"runners\":[");
-        String sc = "";
-        for (String n : AgentRunnerRegistry.available()) {
-            AgentCapabilities c = AgentRunnerRegistry.get(n).capabilities();
-            j.append(sc).append("{\"name\":").append(FlowTreeApiEndpoint.escapeJsonValue(n))
-             .append(",\"capabilities\":{\"reportsCost\":").append(c.reportsCost())
-             .append(",\"reportsTurns\":").append(c.reportsTurns())
-             .append(",\"supportsEffortLevel\":").append(c.supportsEffortLevel())
-             .append(",\"supportsMaxBudget\":").append(c.supportsMaxBudget())
-             .append(",\"supportsMcpHttpTransport\":").append(c.supportsMcpHttpTransport())
-             .append(",\"supportsMcpStdioTransport\":").append(c.supportsMcpStdioTransport())
-             .append(",\"supportsPermissionDenialReporting\":").append(c.supportsPermissionDenialReporting())
-             .append(",\"supportedModels\":[");
-            String sm = "";
-            for (String m : c.supportedModels()) {
-                j.append(sm).append(FlowTreeApiEndpoint.escapeJsonValue(m));
-                sm = ",";
-            }
-            j.append("]}}");
-            sc = ",";
+        ObjectNode json = JsonFieldExtractor.MAPPER.createObjectNode();
+        json.put("ok", true);
+        ArrayNode runners = json.putArray("runners");
+        for (String name : AgentRunnerRegistry.available()) {
+            ObjectNode runner = runners.addObject();
+            runner.put("name", name);
+            runner.set("capabilities", AgentRunnerRegistry.get(name).capabilities().toJson());
         }
-        j.append("],\"phases\":[");
-        String sp = "";
-        for (Phase p : Phase.values()) {
-            j.append(sp).append("{\"name\":").append(FlowTreeApiEndpoint.escapeJsonValue(p.wireName()))
-             .append(",\"description\":").append(FlowTreeApiEndpoint.escapeJsonValue(p.description())).append("}");
-            sp = ",";
+        ArrayNode phases = json.putArray("phases");
+        for (Phase phase : Phase.values()) {
+            phases.add(phase.toJson());
         }
-        j.append("],\"models\":[");
-        String se = "";
-        for (String m : CodingAgentJob.VALID_MODELS) {
-            j.append(se).append(FlowTreeApiEndpoint.escapeJsonValue(m));
-            se = ",";
-        }
-        j.append("],\"defaultRunner\":")
-         .append(FlowTreeApiEndpoint.escapeJsonValue(AgentRunnerRegistry.CLAUDE)).append("}");
-        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json", j.toString());
+        ArrayNode models = json.putArray("models");
+        AgentRunnerRegistry.get(AgentRunnerRegistry.CLAUDE).capabilities()
+                .supportedModels().forEach(models::add);
+        json.put("defaultRunner", AgentRunnerRegistry.CLAUDE);
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json", json.toString());
     }
 }

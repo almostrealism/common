@@ -19,8 +19,9 @@ may do:
   human to approve: its own configuration and hooks, environment files,
   credentials.
 
-Both are decided by the controller from workstream policy, in one place
-(`Workstream.applyCapabilities`), and both travel to the agent node through
+Both are decided by the controller in one place (`Workstream.applyCapabilities`)
+— from workstream policy, and for the permission bypass also from an operator's
+per-job request on `/api/submit` — and both travel to the agent node through
 `CodingAgentJobFactory`'s property map.
 
 ## The weakness
@@ -57,7 +58,7 @@ it", which is the property the flag is supposed to have.
 Open questions before doing it:
 
 - Where to verify. Verifying in `ClaudeCodeRunner` catches the most paths but
-  puts crypto in the runner; verifying in `CodingAgentJobConfigurer` keeps it on
+  puts crypto in the runner; verifying in `CodingAgentJobFactory#configure` keeps it on
   the controller side of the job but leaves a directly-constructed job
   unchecked.
 - Whether to cover `dispatchCapable` in the same change. Leaving it unsigned

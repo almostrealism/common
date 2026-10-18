@@ -1,0 +1,6 @@
+// Second importer of leaf.pdsl, used to form a diamond with single.pdsl.
+import "/pdsl/imports/leaf.pdsl"
+
+layer diamond_other_wrap() -> [1, 4] {
+    leaf_identity()
+}

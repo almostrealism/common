@@ -160,6 +160,22 @@ public interface CollectionExpression<T> extends TraversableExpression<Double>, 
 	}
 
 	/**
+	 * Determines whether the given expression may depend on the values of this collection.
+	 * This is used when differentiating with respect to this collection, to decide whether
+	 * an operand can be treated as constant.
+	 *
+	 * <p>The default implementation is conservative and always reports a possible
+	 * dependence; collections whose values can be identified by reference override it
+	 * to detect those references precisely.</p>
+	 *
+	 * @param e the expression to examine
+	 * @return {@code false} only if {@code e} is known not to depend on this collection
+	 */
+	default boolean isReferencedBy(Expression<?> e) {
+		return true;
+	}
+
+	/**
 	 * Sets the total shape context for this collection expression.
 	 *
 	 * <p>If this {@link CollectionExpression} represents a subset of a larger set of values,

@@ -3,6 +3,7 @@ package org.almostrealism.ml.qwen3;
 import org.almostrealism.ml.TransformerConfig;
 
 import java.nio.ByteBuffer;
+import java.util.Map;
 
 /**
  * Configuration class for Qwen3 language models.
@@ -146,6 +147,19 @@ public class Qwen3Config extends TransformerConfig {
 			true,      // sharedWeights
 			10000.0    // ropeTheta (standard value)
 		);
+	}
+
+	/**
+	 * Returns the {@link TransformerConfig#toPdslSettings() common entries} together with
+	 * {@code rope_theta}, the base frequency the rotary embedding table is built from.
+	 *
+	 * @return a mutable map from PDSL entry name to value
+	 */
+	@Override
+	public Map<String, Object> toPdslSettings() {
+		Map<String, Object> config = super.toPdslSettings();
+		config.put("rope_theta", ropeTheta);
+		return config;
 	}
 
 	@Override

@@ -178,8 +178,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		this.netTokenPosition = new PackedCollection(1);
 
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program blockProgram = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
-		PdslNode.Program lmHeadProgram = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
+		PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
 
 		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
 				config.ropeTheta, config.netHeadSize, config.maxEventSeqLen);
@@ -191,14 +190,14 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		log("Building net model (" + config.netLayers + " layers, hiddenSize=" +
 				config.hiddenSize + ", heads=" + config.netHeads + ")");
 		this.netCompiledModel = buildTransformerModel(
-				"net", stateDict, blockProgram, lmHeadProgram,
+				"net", stateDict, program,
 				config.netLayers, config.netHeads, netFreqCis, netPosition, false,
 				config.rmsNormEps, null);
 
 		log("Building net_token model (" + config.netTokenLayers + " layers, hiddenSize=" +
 				config.hiddenSize + ", heads=" + config.netTokenHeads + ")");
 		this.netTokenCompiledModel = buildTransformerModel(
-				"net_token", stateDict, blockProgram, lmHeadProgram,
+				"net_token", stateDict, program,
 				config.netTokenLayers, config.netTokenHeads, netTokenFreqCis, netTokenPosition,
 				true, config.rmsNormEps, lmHeadWeight);
 
@@ -368,6 +367,14 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 
 				int sampledToken = sampleWithTopK(maskedLogits, temperature, topP, topK);
 
+				if (!containsToken(validIds, sampledToken)) {
+					// A masked-out sample can no longer be trusted; stop as if EOS was reached.
+					warn("Sampled token " + sampledToken + " at step " + step +
+							" is outside the validity mask; stopping generation");
+					eosReached = true;
+					break;
+				}
+
 				if (step == 0) {
 					if (sampledToken == config.eosId) {
 						eosReached = true;
@@ -527,12 +534,22 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * weights from the {@link StateDictionary}.  All neural-network computation
 	 * (attention, RMSNorm, SwiGLU FFN, residual connections) is defined in the
 	 * {@code skytnt_block.pdsl} and {@code skytnt_lm_head.pdsl} PDSL files; this
-	 * method only assembles the block sequence and manages weight loading.</p>
+	 * method only assembles the block sequence and manages weight loading. The single
+	 * {@code program} holds every layer of both files, because {@code skytnt_lm_head.pdsl}
+	 * imports {@code skytnt_block.pdsl}, which in turn imports {@code /pdsl/attention.pdsl}
+	 * for its decomposed {@code attention} stage.</p>
+	 *
+	 * <p>That decomposed stage takes its key and value caches as the {@code key_cache} and
+	 * {@code value_cache} parameters of {@code skytnt_block}, so this method allocates one
+	 * cleared {@code [seqLen, hiddenSize]} pair per layer and binds them under those names.
+	 * They are caller-owned state that persists across forward passes — row {@code position}
+	 * is rewritten on every pass and every row up to {@code position} is read — replacing the
+	 * caches the {@code attention} built-in used to allocate internally.</p>
 	 *
 	 * @param prefix        weight key prefix ({@code "net"} or {@code "net_token"})
 	 * @param stateDict     weight source
-	 * @param blockProgram  parsed {@code skytnt_block.pdsl}
-	 * @param lmHeadProgram parsed {@code skytnt_lm_head.pdsl}
+	 * @param program       parsed {@code skytnt_lm_head.pdsl}, which imports {@code skytnt_block.pdsl},
+	 *                      so it defines {@code skytnt_block}, {@code skytnt_norm} and {@code skytnt_lm_head}
 	 * @param numLayers     number of LLaMA blocks
 	 * @param numHeads      number of attention heads
 	 * @param freqCis       precomputed RoPE frequency table
@@ -543,8 +560,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * @return compiled model ready for inference
 	 */
 	public static CompiledModel buildTransformerModel(String prefix, StateDictionary stateDict,
-											   PdslNode.Program blockProgram,
-											   PdslNode.Program lmHeadProgram,
+											   PdslNode.Program program,
 											   int numLayers, int numHeads,
 											   CollectionProducer freqCis,
 											   PackedCollection position,
@@ -553,6 +569,8 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 											   PackedCollection lmHeadWeight) {
 		PdslLoader loader = new PdslLoader();
 		int hiddenSize = freqCis.getShape().length(1) * 2 * numHeads;
+		int headSize = hiddenSize / numHeads;
+		int seqLen = freqCis.getShape().length(0);
 		TraversalPolicy inputShape = new TraversalPolicy(1, hiddenSize);
 		// NOTE: Model is intentionally not closed via try-with-resources here.
 		// CompiledModel.forward() depends on the blocks added to this Model;
@@ -563,8 +581,15 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		for (int i = 0; i < numLayers; i++) {
 			String layerKey = prefix + ".layers." + i;
 
+			// One cleared [seqLen, hiddenSize] key/value cache pair per layer (see method javadoc).
+			PackedCollection keyCache = new PackedCollection(new TraversalPolicy(seqLen, hiddenSize));
+			PackedCollection valueCache = new PackedCollection(new TraversalPolicy(seqLen, hiddenSize));
+			keyCache.clear();
+			valueCache.clear();
+
 			Map<String, Object> args = new HashMap<>();
 			args.put("heads", numHeads);
+			args.put("head_size", headSize);
 			args.put("rms_att_weight", stateDict.get(layerKey + ".input_layernorm.weight"));
 			args.put("wq", stateDict.get(layerKey + ".self_attn.q_proj.weight"));
 			args.put("wk", stateDict.get(layerKey + ".self_attn.k_proj.weight"));
@@ -572,13 +597,15 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			args.put("wo", stateDict.get(layerKey + ".self_attn.o_proj.weight"));
 			args.put("freq_cis", freqCis);
 			args.put("position", position);
+			args.put("key_cache", keyCache);
+			args.put("value_cache", valueCache);
 			args.put("rms_ffn_weight", stateDict.get(layerKey + ".post_attention_layernorm.weight"));
 			args.put("gate_proj", stateDict.get(layerKey + ".mlp.gate_proj.weight"));
 			args.put("up_proj", stateDict.get(layerKey + ".mlp.up_proj.weight"));
 			args.put("down_proj", stateDict.get(layerKey + ".mlp.down_proj.weight"));
 			args.put("epsilon", epsilon);
 
-			Block block = loader.buildLayer(blockProgram, "skytnt_block", inputShape, args);
+			Block block = loader.buildLayer(program, "skytnt_block", inputShape, args);
 			model.add(block);
 		}
 
@@ -590,7 +617,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			headArgs.put("lm_head_weight", lmHeadWeight);
 			headArgs.put("epsilon", epsilon);
 
-			Block lmHeadBlock = loader.buildLayer(lmHeadProgram, "skytnt_lm_head",
+			Block lmHeadBlock = loader.buildLayer(program, "skytnt_lm_head",
 					inputShape, headArgs);
 			model.add(lmHeadBlock);
 		} else {
@@ -598,7 +625,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			normArgs.put("norm_weights", normWeight);
 			normArgs.put("epsilon", epsilon);
 
-			Block normBlock = loader.buildLayer(lmHeadProgram, "skytnt_norm",
+			Block normBlock = loader.buildLayer(program, "skytnt_norm",
 					inputShape, normArgs);
 			model.add(normBlock);
 		}
@@ -735,6 +762,30 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			}
 		}
 		return Arrays.copyOf(tmp, n);
+	}
+
+	/**
+	 * Reports whether {@code token} is one of {@code validIds}.
+	 *
+	 * <p>Used to double-check every sampled token against the mask that produced
+	 * it. {@code applyMask} sets every disallowed position to a large negative
+	 * logit before sampling, so a properly masked sample should always be found
+	 * here; this is the safety net for the case where it is not, since an
+	 * event-type token outside {@code validIds} would otherwise be fed into
+	 * {@link SkyTntTokenizerV2#getValidTokenIds(int, int)} for the next step
+	 * and fail its own range check.</p>
+	 *
+	 * @param validIds the token IDs the mask allowed at this step
+	 * @param token    the token that was actually sampled
+	 * @return true if {@code token} appears in {@code validIds}
+	 */
+	static boolean containsToken(int[] validIds, int token) {
+		for (int id : validIds) {
+			if (id == token) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// -----------------------------------------------------------------------

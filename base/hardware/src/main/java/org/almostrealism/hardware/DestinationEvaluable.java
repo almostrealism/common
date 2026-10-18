@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.concurrent.CompletionConsumer;
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
@@ -168,6 +169,17 @@ import java.util.stream.Stream;
  * new DestinationEvaluable<>(op, output).evaluate(batchA, batchB);
  * }</pre>
  *
+ * <h2>Membership in an Operation List</h2>
+ *
+ * <p>{@link org.almostrealism.hardware.computations.Assignment#get()} returns a
+ * {@link DestinationEvaluable} for an assignment whose source is a compiled kernel and whose
+ * destination is a {@link Provider}, so instances regularly appear as members of an
+ * {@link OperationList} that runs its members separately rather than as one kernel. As a
+ * {@link Submittable}, such a member is chained by {@link OperationListRunner} like any other
+ * kernel: it is issued after the previous member's completion without waiting for it on the
+ * host, and its own completion is waited only where the list ends or a member that cannot be
+ * chained needs everything ahead of it to be complete (see {@link #submit(Semaphore)}).</p>
+ *
  * <h2>Thread Safety</h2>
  *
  * <p>Not thread-safe. Each {@link DestinationEvaluable} instance should be used by a single
@@ -179,10 +191,11 @@ import java.util.stream.Stream;
  * @see MemoryBank
  * @see Evaluable
  * @see StreamingEvaluable
+ * @see Submittable
  * @see Provider
  */
 public class DestinationEvaluable<T extends MemoryBank> implements
-		Evaluable<T>, StreamingEvaluable<T>, Runnable, Destroyable, ConsoleFeatures {
+		Evaluable<T>, StreamingEvaluable<T>, Runnable, Submittable, Destroyable, ConsoleFeatures {
 	/** The wrapped evaluable operation that produces results. */
 	private Evaluable<T> operation;
 
@@ -193,6 +206,15 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	private Consumer<T> downstream;
 
 	/**
+	 * Optional executor used to dispatch {@link #request(Object[], Semaphore, Consumer)}.
+	 * When set, request work runs on this executor instead of the calling thread, so the
+	 * readiness wait in {@link AcceleratedProcessDetails#awaitReady() awaitReady} lands on
+	 * the executor's thread rather than the caller's; when absent, the request is issued
+	 * on the calling thread.
+	 */
+	private Executor executor;
+
+	/**
 	 * Creates a destination evaluable that writes results to the specified {@link MemoryBank}.
 	 *
 	 * <p>The evaluable will execute synchronously when {@link #evaluate(Object...)} is called.</p>
@@ -201,7 +223,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * @param destination The memory bank to write results into
 	 */
 	public DestinationEvaluable(Evaluable<T> operation, MemoryBank destination) {
-		this(operation, destination, (Consumer<T>) null);
+		this(operation, destination, (Consumer<T>) null, null);
 	}
 
 	/**
@@ -222,7 +244,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 */
 	public DestinationEvaluable(Evaluable<T> operation, MemoryBank destination,
 								Executor executor) {
-		this(operation, destination, (Consumer<T>) null);
+		this(operation, destination, (Consumer<T>) null, executor);
 
 		if (operation instanceof HardwareEvaluable) {
 			// DestinationEvaluable is intended to be used only as an alternative
@@ -240,12 +262,15 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * @param operation   the operation to evaluate
 	 * @param destination the memory bank for results
 	 * @param downstream  optional consumer for results
+	 * @param executor    optional executor for dispatching requests, or {@code null}
+	 *                    to run requests on the calling thread
 	 */
 	private DestinationEvaluable(Evaluable<T> operation, MemoryBank destination,
-								Consumer<T> downstream) {
+								Consumer<T> downstream, Executor executor) {
 		this.operation = operation;
 		this.destination = destination;
 		this.downstream = downstream;
+		this.executor = executor;
 	}
 
 	/**
@@ -281,16 +306,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		if (operation instanceof Provider<T>) {
 			operation.into(destination).evaluate(args);
 		} else if (operation instanceof AcceleratedOperation) {
-			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
-					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
-			// Wait for the dispatch to be issued before reading the completion: until the whenReady
-			// callback runs, getSemaphore() returns the host-readiness latch (which fires once the
-			// kernel is encoded, not once its command buffer commits), so waiting it would let the
-			// host read a deferred/uncommitted result as stale zeros. awaitReady() ensures the
-			// operator's real device-completion semaphore is published first, so the wait below
-			// commits and completes the work. (AcceleratedComputationEvaluable.evaluate does the same.)
-			details.awaitReady();
-			details.getSemaphore().waitFor();
+			dispatch(args, null).getSemaphore().waitFor();
 		} else {
 			String name = operation instanceof Named ? ((Named) operation).getName() : OperationAdapter.operationName(null, getClass(), "function");
 			if (HardwareOperator.enableVerboseLog) log("Evaluating " + name + " kernel...");
@@ -329,8 +345,9 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * wait; delivery is unchanged.
 	 *
 	 * <p>Dispatches the kernel without blocking, registering a callback that pushes the
-	 * destination bank to {@link #downstream} upon completion. Only supported for
-	 * {@link AcceleratedOperation} kernels.</p>
+	 * destination bank to {@link #downstream} upon completion. When the wrapped operation
+	 * is not an {@link AcceleratedOperation}, it is evaluated on the host instead; see
+	 * {@link #request(Object[], Semaphore, Consumer)} for that fallback.</p>
 	 *
 	 * <p>The dispatch must be awaited via
 	 * {@link AcceleratedProcessDetails#awaitReady() awaitReady} before its completion is
@@ -360,17 +377,72 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * @param args      The input arguments ({@link MemoryData} instances)
 	 * @param dependsOn completion that must fire before the dispatch (and its
 	 *                  argument preparation) reads memory, or {@code null}
-	 * @throws UnsupportedOperationException if operation is not an accelerated kernel
 	 */
 	@Override
 	public void request(Object[] args, Semaphore dependsOn) {
+		request(args, dependsOn, downstream);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: {@link #request(Object[], Semaphore, Consumer)} orders its work
+	 * after a non-null {@code dependsOn} either way &mdash; chaining it into the accelerated
+	 * operation's own dispatch, or, for the host-evaluated {@link Provider} and element-wise
+	 * strategies, waiting for it directly before evaluating.</p>
+	 */
+	@Override
+	public boolean isDispatchBacked() {
+		return true;
+	}
+
+	/**
+	 * Requests asynchronous evaluation exactly as {@link #request(Object[], Semaphore)} does,
+	 * delivering the result to the given consumer rather than to {@link #downstream}. Nothing
+	 * is stored on this evaluable, so a destination evaluable that is reached through several
+	 * independent wrappers (a {@link HardwareEvaluable} whose {@link
+	 * HardwareEvaluable#setResultProcessor result processor} re-views this destination's output,
+	 * requested repeatedly across a streaming pipeline's lifetime) can serve every one of their
+	 * requests without any of them contending for {@link #setDownstream}.
+	 *
+	 * <p>When the wrapped operation is not an {@link AcceleratedOperation}, it is evaluated on
+	 * the host via {@link #evaluate(Object...)} &mdash; the {@link Provider} and element-wise
+	 * strategies that method documents have no device dispatch to chain {@code dependsOn} into,
+	 * so the evaluation is ordered after it with {@link Semaphore#onComplete(Semaphore, Runnable)}
+	 * (running on the completion's callback thread once it fires, without this method waiting),
+	 * and the result is delivered without a dispatch completion ({@code null}, for a
+	 * {@link CompletionConsumer} downstream).</p>
+	 *
+	 * @param args       The input arguments ({@link MemoryData} instances)
+	 * @param dependsOn  completion that must fire before the dispatch (and its
+	 *                   argument preparation) reads memory, or {@code null}
+	 * @param downstream the consumer to receive the result of this request; a
+	 *                   {@link CompletionConsumer} receives it together with the
+	 *                   dispatch's completion, without any host wait
+	 */
+	@Override
+	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
+		if (executor != null) {
+			executor.execute(() -> requestNow(args, dependsOn, downstream));
+			return;
+		}
+
+		requestNow(args, dependsOn, downstream);
+	}
+
+	/**
+	 * Performs the work described by {@link #request(Object[], Semaphore, Consumer)} on
+	 * whichever thread calls it &mdash; either the caller, when no {@link #executor} is
+	 * set, or the executor's own thread otherwise.
+	 *
+	 * @param args       The input arguments ({@link MemoryData} instances)
+	 * @param dependsOn  completion that must fire before the dispatch (and its
+	 *                   argument preparation) reads memory, or {@code null}
+	 * @param downstream the consumer to receive the result of this request
+	 */
+	private void requestNow(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		if (operation instanceof AcceleratedOperation) {
-			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
-					.apply(destination,
-							Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new),
-							dependsOn);
-			// Required before getSemaphore(); see the method javadoc
-			details.awaitReady();
+			AcceleratedProcessDetails details = dispatch(args, dependsOn);
 
 			if (downstream instanceof CompletionConsumer) {
 				((CompletionConsumer<T>) downstream).accept((T) destination, details.getSemaphore());
@@ -378,8 +450,83 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 				details.getSemaphore().onComplete(() -> downstream.accept((T) destination));
 			}
 		} else {
-			throw new UnsupportedOperationException();
+			// The Provider and element-wise strategies evaluate() supports (see its javadoc)
+			// are host evaluations with no device dispatch to chain dependsOn into, exactly
+			// like a HardwareEvaluable short-circuit, so they run once it has completed.
+			Semaphore.onComplete(dependsOn, () -> {
+				T result = evaluate(args);
+
+				if (downstream instanceof CompletionConsumer) {
+					((CompletionConsumer<T>) downstream).accept(result, null);
+				} else {
+					downstream.accept(result);
+				}
+			});
 		}
+	}
+
+	/**
+	 * Issues the evaluation into the destination, ordered after {@code dependsOn}, and returns
+	 * its completion without waiting for it.
+	 *
+	 * <p>This is what lets a composite chain this evaluation instead of completing it on the host.
+	 * {@link OperationListRunner} issues a {@link Submittable} member after the previous member's
+	 * completion and defers the wait to the end of the list; a member that is merely
+	 * {@link Runnable} instead costs a wait for everything issued ahead of it and then a wait for
+	 * its own result, and under a batching backend (Metal) each of those waits commits the open
+	 * command buffer and blocks until the GPU has run it.</p>
+	 *
+	 * <p>An {@link AcceleratedOperation} is dispatched exactly as
+	 * {@link #request(Object[], Semaphore, Consumer)} dispatches it: {@code dependsOn} is chained
+	 * into the dispatch (and its argument preparation) through the provider, and the returned
+	 * completion is the dispatch's own, read only once the dispatch has been issued. The
+	 * {@link Provider} and element-wise strategies of {@link #evaluate(Object...)} are host
+	 * evaluations with no device dispatch to chain into, so they wait for {@code dependsOn},
+	 * evaluate, and return {@code null}: the work has already completed. That wait is not ended
+	 * by an interrupt (whose status is restored afterwards), since evaluating early would read
+	 * memory {@code dependsOn} has not yet produced.</p>
+	 *
+	 * @param dependsOn completion that must fire before the evaluation reads memory, or
+	 *                  {@code null} to begin a chain
+	 * @return the completion of the dispatch, or {@code null} when the evaluation was performed
+	 *         on the host and has already completed
+	 */
+	@Override
+	public Semaphore submit(Semaphore dependsOn) {
+		if (operation instanceof AcceleratedOperation) {
+			return dispatch(new Object[0], dependsOn).getSemaphore();
+		}
+
+		// Uninterruptible: evaluating before dependsOn has fired would read what it has not produced
+		if (dependsOn != null) dependsOn.waitForUninterruptibly();
+		evaluate();
+		return null;
+	}
+
+	/**
+	 * Dispatches the wrapped {@link AcceleratedOperation} into the destination, ordered after
+	 * {@code dependsOn}, and returns once the dispatch has been issued.
+	 *
+	 * <p>The wait for the dispatch to be issued is what makes the returned details' completion
+	 * meaningful: until the operation's ready listener has run,
+	 * {@link AcceleratedProcessDetails#getSemaphore() getSemaphore()} returns the host-readiness
+	 * latch, which fires once the kernel is <em>encoded</em> rather than once its command buffer
+	 * completes. Waiting on, chaining on, or delivering against that latch would let a reader on
+	 * the host or on another {@code ComputeContext} observe a deferred, uncommitted result as stale
+	 * zeros. {@link AcceleratedProcessDetails#awaitReady() awaitReady} publishes the operator's
+	 * device completion first. ({@code AcceleratedComputationEvaluable} does the same.)</p>
+	 *
+	 * @param args      the input arguments ({@link MemoryData} instances)
+	 * @param dependsOn completion that must fire before the dispatch (and its argument
+	 *                  preparation) reads memory, or {@code null}
+	 * @return the issued dispatch, whose {@link AcceleratedProcessDetails#getSemaphore()
+	 *         semaphore} is its completion
+	 */
+	private AcceleratedProcessDetails dispatch(Object[] args, Semaphore dependsOn) {
+		AcceleratedProcessDetails details = ((AcceleratedOperation) operation).apply(destination,
+				Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new), dependsOn);
+		details.awaitReady();
+		return details;
 	}
 
 	/**
@@ -403,10 +550,12 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	/**
 	 * Returns a new {@link DestinationEvaluable} configured for asynchronous execution.
 	 *
-	 * <p>Creates a new instance with the specified executor for async operations.
-	 * The executor is not currently used but enables future async execution support.</p>
+	 * <p>Creates a new instance with the specified executor. {@link #request(Object[],
+	 * Semaphore, Consumer)} on the returned instance submits its work to this executor
+	 * instead of running on the calling thread, so the blocking wait in {@code awaitReady()}
+	 * lands on the executor's thread rather than the caller's.</p>
 	 *
-	 * @param executor The executor for asynchronous operations
+	 * @param executor The executor used to dispatch asynchronous requests
 	 * @return A new async-enabled destination evaluable
 	 */
 	@Override

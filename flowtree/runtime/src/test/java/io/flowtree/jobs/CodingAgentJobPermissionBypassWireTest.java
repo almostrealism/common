@@ -141,4 +141,41 @@ public class CodingAgentJobPermissionBypassWireTest extends TestSuiteBase {
         ws.applyCapabilities(ordinary, "feature/thing");
         assertFalse(ordinary.isBypassAgentPermissionPrompts());
     }
+
+    /**
+     * A submission can grant the bypass to its own job on a workstream with no
+     * branch policy at all, and the grant stays with that job: the workstream
+     * is unchanged, so the next job on the same branch is not granted it.
+     */
+    @Test(timeout = 15000)
+    public void submissionGrantsTheBypassToItsOwnJobOnly() {
+        Workstream ws = new Workstream();
+
+        CodingAgentJobFactory granted = new CodingAgentJobFactory();
+        ws.applyCapabilities(granted, "ci/tooling", true);
+        assertTrue(granted.isBypassAgentPermissionPrompts());
+        assertTrue(ws.getAgentPermissionBypassBranches().isEmpty());
+
+        CodingAgentJobFactory next = new CodingAgentJobFactory();
+        ws.applyCapabilities(next, "ci/tooling");
+        assertFalse(next.isBypassAgentPermissionPrompts());
+
+        CodingAgentJobFactory declined = new CodingAgentJobFactory();
+        ws.applyCapabilities(declined, "ci/tooling", false);
+        assertFalse(declined.isBypassAgentPermissionPrompts());
+    }
+
+    /**
+     * A submission that does not ask for the bypass cannot take away what the
+     * workstream's branch policy grants.
+     */
+    @Test(timeout = 15000)
+    public void submissionWithoutGrantKeepsTheBranchPolicyGrant() {
+        Workstream ws = new Workstream();
+        ws.setAgentPermissionBypassBranches(Collections.singletonList("ci/"));
+
+        CodingAgentJobFactory factory = new CodingAgentJobFactory();
+        ws.applyCapabilities(factory, "ci/tooling", false);
+        assertTrue(factory.isBypassAgentPermissionPrompts());
+    }
 }

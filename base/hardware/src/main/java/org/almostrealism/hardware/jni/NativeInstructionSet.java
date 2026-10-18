@@ -185,8 +185,18 @@ import java.util.stream.Stream;
  *
  * <h2>Thread Safety</h2>
  *
- * <p>Multiple threads can invoke {@link #apply(long, long, MemoryData...)} concurrently on the
- * same instruction set. The underlying native code must be thread-safe if this is required.</p>
+ * <p>A generated kernel instance is safe to invoke concurrently. {@link #apply(long, long,
+ * MemoryData...)} builds fresh per-call {@code pointers}/{@code offsets}/{@code sizes} arrays and
+ * mutates no instance state; the compiled C body receives all of its state through arguments and
+ * holds no mutable per-call or scratch state shared between calls. The only file-scope declaration
+ * {@code NativeCompiler} prepends is {@code M_PI_F} (a &pi; value the generated code only reads, not
+ * a {@code const}), so there is no captured buffer carried across invocations. The framework relies
+ * on this: when {@link #getParallelism()} exceeds 1,
+ * {@link NativeExecution} dispatches the same instance from several threads over disjoint index
+ * ranges. Concurrency is therefore safe as long as the argument memory the invocations touch does
+ * not alias in a conflicting way (two writers to the same element) &mdash; a property of the
+ * arguments, not of the kernel instance. The native runtime lifecycle internals doc covers the
+ * reentrancy guarantee and the memory races bracketing addresses.</p>
  *
  * @see InstructionSet
  * @see NativeCompiler

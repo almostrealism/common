@@ -26,22 +26,17 @@ import io.almostrealism.compute.Isolated;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 import org.almostrealism.io.SystemUtils;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -64,14 +59,14 @@ import java.util.stream.Stream;
  *   <li><b>Hardware Acceleration:</b> Automatic compilation to optimized kernels via {@link #get()}</li>
  *   <li><b>Shape Management:</b> Flexible shape handling with {@link #postProcessOutput} and {@link #shapeForLength}</li>
  *   <li><b>Process Isolation:</b> {@link IsolatedProcess} for independent execution contexts</li>
- *   <li><b>Delta Computation:</b> Automatic differentiation support via {@link #applyDeltaStrategy}</li>
+ *   <li><b>Delta Computation:</b> Automatic differentiation support via {@link #delta}</li>
  *   <li><b>Result Postprocessing:</b> Shape adjustment and wrapping via {@link #postProcessOutput}</li>
  * </ul>
  *
  * <h2>Lifecycle</h2>
  * <pre>{@code
  * // 1. Create computation
- * CollectionProducerComputation<PackedCollection> comp = ...;
+ * CollectionProducerComputation comp = ...;
  *
  * // 2. Get evaluable (compiles to hardware)
  * Evaluable<PackedCollection> ev = comp.get();
@@ -106,21 +101,26 @@ public interface CollectionProducerComputation extends
 	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
 
+	/**
+	 * Returns the inputs of this computation, its destination first. These are the
+	 * producers the computation was built from, including any that are not a
+	 * {@link Process}, which {@link #getChildren()} would wrap.
+	 *
+	 * @return the inputs of this computation
+	 */
+	List<Producer<PackedCollection>> getInputs();
+
+	/**
+	 * Presents the {@link #getInputs() inputs} of this computation for matching, so that
+	 * an input that is not a {@link Process} (which {@link #getChildren()} presents only
+	 * wrapped) is still recognized as something this computation depends on.
+	 *
+	 * @return the inputs of this computation, empty when they are not set
+	 */
 	@Override
-	default <V extends PackedCollection> CollectionProducer applyDeltaStrategy(CollectionProducer producer,
-																			   Producer<?> target) {
-		Collection<Producer<?>> terms;
-
-		if (producer instanceof Parent) {
-			terms = ((Parent<?>) producer).getChildren().stream()
-					.map(t -> (Producer<?>) t)
-					.collect(Collectors.toList());
-		} else {
-			return CollectionProducerParallelProcess.super.applyDeltaStrategy(producer, target);
-		}
-
-		return deltaStrategyProcessor(producer.getDeltaStrategy(),
-				producerFactory(this), shape(producer), target).apply(terms);
+	default Stream<? extends Producer<?>> matchableInputs() {
+		List<Producer<PackedCollection>> inputs = getInputs();
+		return inputs == null ? Stream.empty() : inputs.stream();
 	}
 
 	@Override
@@ -238,60 +238,6 @@ public interface CollectionProducerComputation extends
 	}
 
 	/**
-	 * Evaluates this computation and converts the result to a typed data adapter
-	 * using the provided factory function.
-	 *
-	 * @param <T>     the type of the resulting data adapter
-	 * @param factory a function that creates a data adapter from the output shape
-	 * @return the evaluated and converted result
-	 */
-	default <T extends MemoryDataAdapter> T collect(Function<TraversalPolicy, T> factory) {
-		PackedCollection c = get().evaluate();
-		T data = factory.apply(c.getShape());
-		data.setDelegate(c, 0);
-		return data;
-	}
-
-	/**
-	 * Creates a factory function that generates a new {@link CollectionProducer} from a list of
-	 * input producers, using the structure of an existing computation as the template.
-	 * If only one non-null input is present, that input is returned directly.
-	 *
-	 * @param <T>      the collection type of the computation
-	 * @param original the computation to use as a template for generating the new producer
-	 * @return a function that takes a list of producers and returns a new CollectionProducer
-	 */
-	static <T extends PackedCollection> Function<List<Producer<?>>, CollectionProducer>
-				producerFactory(CollectionProducerComputation original) {
-		return args -> {
-			List<Producer<?>> terms = new ArrayList<>();
-			args.stream().skip(1).forEach(terms::add);
-
-			if (terms.isEmpty()) {
-				throw new IllegalArgumentException();
-			} else if (terms.size() == 1) {
-				return (CollectionProducer) terms.get(0);
-			} else {
-				return original.generate((List) args.stream()
-						.map(t -> (Process) t).collect(Collectors.toList()));
-			}
-		};
-	}
-
-	/**
-	 * Returns true if the given producer may be isolated into an independent process.
-	 * Isolation is permitted only when the process supports it and the total collection
-	 * size does not exceed the maximum memory reservation limit.
-	 *
-	 * @param op the collection producer to test
-	 * @return true if isolation is permitted
-	 */
-	static <T extends PackedCollection> boolean isIsolationPermitted(CollectionProducer op) {
-		return Process.isolationPermitted(op) &&
-				op.getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
-	}
-
-	/**
 	 * Determines the appropriate {@link TraversalPolicy} for a given kernel length.
 	 * This will be the shape of the computation result.
 	 * This method handles the complex logic of adjusting shapes based on whether
@@ -301,38 +247,17 @@ public interface CollectionProducerComputation extends
 	 * <p>The shape calculation follows these rules:</p>
 	 * <ul>
 	 *   <li>For fixed-count computations, returns the original shape</li>
-	 *   <li>When kernel length equals target count, returns the original shape</li>
+	 *   <li>When kernel length is less than, or equal to, the count, returns the original shape</li>
 	 *   <li>Otherwise, prepends a dimension to accommodate the length difference</li>
 	 * </ul>
 	 *
 	 * @param len The length of the kernel execution context
 	 * @return The appropriate traversal policy for the given length
 	 * @see #isFixedCount()
-	 * @see TraversalPolicy#prependDimension(int)
+	 * @see TraversalPolicy#forKernelLength(int, boolean, int)
 	 */
-	static TraversalPolicy shapeForLength(TraversalPolicy computationShape,
-										  int computationCount,
-										  boolean fixedCount, int len) {
-		TraversalPolicy shape;
-
-		if (fixedCount) {
-			shape = computationShape;
-		} else {
-			int count = len / computationCount;
-
-			// When kernel length is less than, or identical to the output count, an
-			// assumption is made that the intended shape is the original shape.
-			// This is a bit of a hack, but it's by far the simplest solution
-			// available
-			if (count == 0 || len == computationCount) {
-				// It is not necessary to prepend a (usually) unnecessary dimension
-				shape = computationShape;
-			} else {
-				shape = computationShape.prependDimension(count);
-			}
-		}
-
-		return shape;
+	default TraversalPolicy shapeForLength(int len) {
+		return getShape().forKernelLength(getCount(), isFixedCount(), len);
 	}
 
 	/**

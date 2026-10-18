@@ -121,6 +121,76 @@ carries the original for comparison plus a `notice` about the feature's state.
 See [the Consultant README](../consultant/README.md#memory-text-original-vs-reformulated)
 for the full contract.
 
+## Optional Enforcement Phases
+
+Some post-primary enforcement phases are off by default and are enabled per job
+through a `workstream_submit_task` flag. Each flag is forwarded to the controller
+only when it is `True`, so an omitted (or `False`) flag leaves the phase off. The
+submit response echoes the effective setting so the caller can confirm it.
+
+| Flag | Controller field | Response echo | Phase it enables |
+|------|------------------|---------------|------------------|
+| `organizational_placement_enabled=True` | `enforceOrganizationalPlacement` | `organizationalPlacementEnabled` | Organizational placement review of new files |
+| `object_oriented_review_enabled=True` | `objectOrientedReviewEnabled` | `objectOrientedReviewEnabled` | `ObjectOrientedDesignRule`: one design-review session per changed production class. Takes effect only while `review_enabled` is also `True` |
+
+Both are job-level settings; there is no workstream or workspace default for them.
+CI auto-resolve and auto-review submissions (`tools/ci/submit-agent-job.sh`) do not
+send either field, so those jobs run with both phases off.
+
+## Test Execution Limits
+
+`workstream_submit_task` mechanically rejects submissions that would have an agent or
+job submitter run a full/whole test suite, a module's whole suite, or a CI shard —
+there is no bypass flag, unlike `allow_commit_language`. Three independent checks run
+before the submission ever reaches the controller:
+
+- **`post_completion_command` / `command`** — rejected when it runs a Maven
+  test-executing phase (`test`/`integration-test`/`verify`/`install`/`package`/`deploy`)
+  without a bounded `-Dtest` selection — at most 5 test classes and at most 40
+  named `Class#method` tests; a bare class or a few classes is fine, but no
+  selector at all, more than those caps, a Surefire wildcard (`*`, `?`), the `+`
+  method-list separator, `!` negation, a `%regex[...]` pattern, or an unresolvable
+  `$VAR` is rejected — references `AR_TEST_GROUP`/`AR_TEST_GROUPS`, or runs pytest
+  against a directory, a whole file, or more than one node id instead of exactly
+  one explicit node id. A `post_completion_command` runs unattended, so it is held
+  to one stricter rule on top of that: every `-Dtest` entry must name a
+  `Class#method`, not a bare class.
+- **`post_completion_timeout_seconds`** — rejected above 2400 (40 minutes).
+- **`prompt`** — rejected when it instructs the agent, in English, to run a
+  full/whole/entire suite, a module's tests, a shard, `mvn test` without a
+  bounded `-Dtest` selection, or `AR_TEST_GROUP`.
+
+The command validator is implemented in [`execution_limits.py`](execution_limits.py)
+(see its module docstring for the incident that made this a hard requirement) and
+the prompt linter in [`prompt_test_lint.py`](prompt_test_lint.py). The controller
+(`FlowTreeApiEndpoint#handleSubmit`) applies the same command validation independently
+via `io.flowtree.jobs.PostCompletionCommandValidator`, so a direct API call cannot
+bypass what this server rejects, and clamps `postCompletionTimeoutSeconds` to the same
+2400s ceiling. The `mcp__ar-test-runner__start_test_run` tool enforces the mirror image
+of this rule for interactive agent use: it rejects `test_group`/`test_groups` (CI-shard
+reproduction) outright and caps `timeout_minutes` at 40.
+
+## Letting a Job Edit Agent Tooling (`.claude/hooks/`)
+
+Two operator-only `workstream_submit_task` flags govern two separate gates, and a
+job that must edit `.claude/hooks/` or `.claude/settings.json` needs both of them
+lifted:
+
+| Flag | Gate it lifts | Where it acts |
+|------|---------------|---------------|
+| `sensitive_file_protection_enabled=False` | The harness's test-file and CI-file staging locks, and the controller-signed `Sensitive-File-Bypass` commit trailer | Harness side only (`GitCommitHandler`, `FileStager`); never reaches the agent subprocess |
+| `skip_agent_permission_prompts=True` | The agent runtime's own per-call refusal of writes under `.claude/`, environment and credential files ("... which is a sensitive file") | The agent subprocess: Claude Code is launched with `--permission-mode bypassPermissions` (`ClaudeCodeRunner.buildCommandLine`) |
+
+`sensitive_file_protection_enabled=False` on its own does **not** let the agent
+write under `.claude/hooks/`: every Edit, Write and Bash write there is still
+refused. `skip_agent_permission_prompts=True` is also required, unless the
+workstream's agent-permission-bypass branch prefixes already match the job's
+target branch (`Workstream.applyCapabilities`). The pipeline's CI-file lock
+(`check-ci-file-lock.sh`) covers only `.github/workflows/`, `.github/actions/` and
+`tools/ci/`, never `.claude/hooks/`, so it is not what stands in the way of such an
+edit: the permission-prompt bypass is the flag that decides whether the edit can be
+made at all. Neither flag can be set by an in-flight coding agent.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -132,8 +202,9 @@ for the full contract.
 | `AR_MANAGER_TOKEN_FILE` | `~/.config/ar/manager-tokens.json` | Bearer token config file |
 | `AR_MANAGER_TOKENS` | (none) | JSON string of token config (overrides file) |
 | `AR_MANAGER_REPO_CONFIG_FILE` | `/config/repo-config.json` | Per-repository settings (see below) |
-| `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis |
-| `AR_CONSULTANT_LLAMA_URL` | (auto-discovered) | llama.cpp server URL |
+| `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis: `llamacpp`, `ollama`, `mlx`, `openrouter`, `passthrough`, or `auto` |
+| `AR_CONSULTANT_LLAMACPP_URL` | (auto-discovered) | llama.cpp server URL |
+| `AR_CONSULTANT_OPENROUTER_API_KEY_FILE` | `/secrets/consultant__openrouter-api-key.json` (compose) | The consultant's OpenRouter secret file; other `AR_CONSULTANT_OPENROUTER_*` settings are in [the consultant README](../consultant/README.md#openrouter-hosted) |
 | `MCP_TRANSPORT` | `http` | Transport: `http` or `sse`. `stdio` is rejected (auth-only HTTP server) |
 | `MCP_PORT` | `8010` | Port for http/sse transport |
 

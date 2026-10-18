@@ -398,7 +398,7 @@ layer mixdown_master(channels: int, signal_size: int, fir_taps: int,
 // Each arm slices its half then reshapes back to [channels, signal_size]. The
 // arm bodies are inlined (rather than calling mixdown_main_bus / mixdown_efx_bus)
 // for the same reason mixdown_master inlines them: a user-layer call infers its
-// input shape from its return annotation (PdslInterpreter.inferInputShape), so a
+// input shape from its `-> [shape]` annotation (PdslInterpreter.declaredInputShape), so a
 // multi-channel sub-layer cannot be composed inside an arm — its input would be
 // mis-inferred as [1, signal_size].
 //

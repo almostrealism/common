@@ -30,7 +30,7 @@ import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -135,7 +135,7 @@ import java.util.function.Supplier;
  *
  * @see CollectionProducerComputationAdapter
  * @see CollectionExpression#delta(CollectionVariable)
- * @see org.almostrealism.calculus.DeltaFeatures
+ * @see org.almostrealism.collect.CollectionProducer#delta(Producer)
  *
  * @author Michael Murray
  */
@@ -323,7 +323,7 @@ public class TraversableDeltaComputation
 			return true;
 		}
 
-		return !AlgebraFeatures.matchingInputs(this, target).contains(process);
+		return !matchingInputs(target).contains(process);
 	}
 
 	/**
@@ -470,7 +470,7 @@ public class TraversableDeltaComputation
 	 * @throws UnsupportedOperationException Always thrown - second-order derivatives not supported
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		throw new UnsupportedOperationException();
 	}
 

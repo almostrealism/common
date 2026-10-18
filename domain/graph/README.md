@@ -337,9 +337,14 @@ CellularLayer layer = norm(shape(c, v), c, groups, trainable);  // ❌
 ### RMS Normalization
 
 RMS normalization (used in LLaMA, Qwen, etc.) normalizes by root-mean-square without centering.
-`weights` determines the row size: each contiguous run of `weights.getShape().getTotalSize()`
+The **last axis** of `weights` is the normalized vector length: each contiguous run of that many
 features in the input is treated as one row and normalized by its own root-mean-square, so a
-batch of multiple rows (e.g. a sequence of token positions) normalizes each row independently:
+batch of multiple rows (e.g. a sequence of token positions) normalizes each row independently.
+The full extent of `weights` (`getShape().getTotalSize()`) is the span over which the scale and
+optional bias are then applied. With 1-D weights of `n` elements this is the usual RMSNorm of
+each `n`-feature vector; with `[heads, headSize]` weights each head's `headSize` slice is
+normalized separately while every head keeps its own scale — the per-head query/key normalization
+of Qwen3-style attention. Any `biases` must have as many elements as the weights:
 
 ```java
 // RMSNorm with weights
@@ -387,6 +392,8 @@ The graph module provides built-in support for LoRA, enabling parameter-efficien
 | `AdapterConfig` | Configuration for which layers to adapt and hyperparameters |
 | `LowRankAdapterSupport` | Interface for models that support LoRA fine-tuning |
 | `ProjectionFactory` | Factory abstraction for creating dense vs LoRA layers |
+| `DenseProjectionFactory` | `ProjectionFactory` that creates standard dense layers |
+| `LoRAProjectionFactory` | `ProjectionFactory` that wraps targeted projections with LoRA and delegates the rest to a fallback |
 
 ### Basic Usage
 
@@ -431,7 +438,9 @@ AdapterConfig config = new AdapterConfig()
 
 ### Using ProjectionFactory
 
-`ProjectionFactory` allows attention methods to create either dense or LoRA layers:
+`ProjectionFactory` allows attention methods to create either dense or LoRA layers. The
+static factories return the named implementations `DenseProjectionFactory` and
+`LoRAProjectionFactory`:
 
 ```java
 // Standard dense layers (default)

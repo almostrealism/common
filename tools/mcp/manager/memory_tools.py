@@ -294,6 +294,37 @@ def memory_store(
     if err:
         return err
 
+    # Archived workstreams are read-only: their memories stay readable but the
+    # record is frozen. A memory keyed to an archived round's branch becomes
+    # part of what workstream_context and memory_recall return for it, so
+    # appending one mutates the frozen record — the same category of write the
+    # send_message guard refuses on the conversation history. Resolving an
+    # archived workstream's ownership now succeeds, so this explicit refusal is
+    # what keeps new memories off an archived round.
+    #
+    # The memory lands on (effective_repo, effective_branch) as resolved by
+    # _resolve_branch_context above — never on the raw arguments. Its precedence
+    # is explicit repo_url + branch first, then workstream_id (whose repoUrl
+    # supplies the repo while an explicit branch argument is kept as an
+    # override), then the in-flight request's HMAC temp token. So this guard
+    # resolves the archived target from those effective values, which is the
+    # round that is actually written in every addressing form: resolving from
+    # the raw workstream_id instead would miss a caller passing a live
+    # workstream_id alongside an archived branch override (no repo_url) — the
+    # branch override wins in _resolve_branch_context and gets the memory while
+    # the live id would pass a guard keyed on the id. memory_store requires a
+    # branch (require_branch defaults to True), so both effective values are
+    # non-empty once the error check above has passed.
+    #
+    # A temp token can briefly outlive the job that minted it, so the
+    # token-fallback round (reached through effective_* here) is guarded too
+    # rather than trusted to never name an archived round. Unarchive it first
+    # to record against it.
+    archived_err = server._archived_branch_error(
+        "store a memory", effective_repo, effective_branch)
+    if archived_err:
+        return archived_err
+
     client = server._get_memory_client()
     if client is None:
         return {

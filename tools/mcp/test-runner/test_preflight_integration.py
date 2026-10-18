@@ -191,7 +191,7 @@ class StartRunPreflightIntegrationTests(unittest.TestCase):
         """At least one AR jar missing: preflight runs, then test launches."""
         seed_calls = []
 
-        def fake_runner(cmd, cwd, writer):
+        def fake_runner(cmd, cwd, writer, timeout_seconds=None):
             seed_calls.append((list(cmd), Path(cwd)))
             if writer is not None:
                 writer("[fake mvn] BUILD SUCCESS\n")
@@ -228,7 +228,7 @@ class StartRunPreflightIntegrationTests(unittest.TestCase):
         """Failed preflight: run is marked failed, no test process spawned."""
         seed_calls = []
 
-        def fake_runner(cmd, cwd, writer):
+        def fake_runner(cmd, cwd, writer, timeout_seconds=None):
             seed_calls.append((list(cmd), Path(cwd)))
             if writer is not None:
                 writer("[fake mvn] BUILD FAILURE: cannot resolve dependency\n")
@@ -256,7 +256,7 @@ class StartRunPreflightIntegrationTests(unittest.TestCase):
         """Multi-invocation runs preflight before scheduling the loop."""
         seed_calls = []
 
-        def fake_runner(cmd, cwd, writer):
+        def fake_runner(cmd, cwd, writer, timeout_seconds=None):
             seed_calls.append(list(cmd))
             _install_jar(self._m2, "ar-space", "0.74")
             return 0

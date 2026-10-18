@@ -21,6 +21,7 @@ import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A {@link LatchSemaphore} that additionally carries the {@link OperationMetadata} of the
@@ -57,14 +58,30 @@ public class DefaultLatchSemaphore extends LatchSemaphore implements OperationSe
 	}
 
 	/**
-	 * Constructs a semaphore sharing an existing latch with a new requester, used by
-	 * {@link #withRequester(OperationMetadata)}.
+	 * Constructs a semaphore sharing an existing latch and failure reference with a new
+	 * requester, used by {@link #withRequester(OperationMetadata)}. Sharing the failure
+	 * reference keeps the rethrow-on-failure contract intact for the re-attributed view.
 	 *
 	 * @param requester the new requester metadata
 	 * @param latch     the existing {@link CountDownLatch} to reuse
+	 * @param failure   the existing failure reference to reuse
 	 */
-	protected DefaultLatchSemaphore(OperationMetadata requester, CountDownLatch latch) {
-		super(latch);
+	protected DefaultLatchSemaphore(OperationMetadata requester, CountDownLatch latch,
+									AtomicReference<Throwable> failure) {
+		super(latch, failure);
+		this.requester = requester;
+	}
+
+	/**
+	 * Constructs a view sharing all of another semaphore's settlement state (including the
+	 * members of a composite) under a new requester, used by
+	 * {@link #withRequester(OperationMetadata)}.
+	 *
+	 * @param requester the new requester metadata
+	 * @param shared    the semaphore whose settlement state is reused
+	 */
+	protected DefaultLatchSemaphore(OperationMetadata requester, LatchSemaphore shared) {
+		super(shared);
 		this.requester = requester;
 	}
 
@@ -73,6 +90,6 @@ public class DefaultLatchSemaphore extends LatchSemaphore implements OperationSe
 
 	@Override
 	public Semaphore withRequester(OperationMetadata requester) {
-		return new DefaultLatchSemaphore(requester, getLatch());
+		return new DefaultLatchSemaphore(requester, this);
 	}
 }

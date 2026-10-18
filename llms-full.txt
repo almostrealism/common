@@ -17,7 +17,7 @@ This file contains concatenated documentation for AI agents. For navigation, see
 ```bash
 # AR_HARDWARE_LIBS is auto-detected — do not set it manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
-# Override options: native|cl|mtl|cpu|gpu|*
+# Override options: native|cl|mtl|cuda|cpu|gpu|*  (cuda is opt-in, never chosen by auto-detect)
 ```
 
 ---
@@ -311,9 +311,11 @@ to read every tensor into a freshly allocated `PackedCollection` at load time
 ```java
 // In AttentionFeatures
 attention(
-    headCount, kvHeadCount, headSize,
-    wq, wk, wv, wo,           // Projection weights
-    qkNormQ, qkNormK,         // Optional QK-Norm (null if unused)
+    headCount, kvHeadCount,   // Query heads, KV heads (GQA when kvHeadCount < headCount)
+    rmsAttWeight,             // Pre-attention RMSNorm weights
+    wk, wv, wq, wo,           // Key/Value/Query/Output projection weights
+    bk, bv, bq,               // Optional bias terms (null if unused)
+    qkNormQ, qkNormK,         // Optional QK-Norm weights (null if unused)
     freqCis,                  // RoPE frequencies
     position,                 // Position producer
     requirements              // GPU/CPU
@@ -402,6 +404,7 @@ See [training-loop-examples.md](internals/training-loop-examples.md) for detaile
 | `native` | CPU with JNI acceleration |
 | `cl` | GPU via OpenCL |
 | `mtl` | Apple Silicon GPU via Metal |
+| `cuda` | NVIDIA GPU via CUDA (opt-in; not chosen by `*` auto-detect; Linux/aarch64 bridge only) |
 | `gpu` | Abstract GPU (auto-selects MTL on macOS, CL elsewhere) |
 | `cpu` | Abstract CPU requirement |
 | `*` | Wildcard — whatever the platform supports |
@@ -816,6 +819,8 @@ These three rules are non-negotiable. Every violation wastes developer time. The
 mcp__ar-manager__consult question:"..." keywords:["SpecificClass", "method", "term"]
 ```
 
+The ar-manager tools may surface as `mcp__ar-manager__*` or `mcp__claude_ai_ar-manager__*`; use whichever exists.
+
 Always provide `keywords` (2-5 domain-specific terms, most specific first). Without keywords, search results are poor.
 
 **Use multi-word phrases as keywords, not individual common words.** For example, use `["Features mixin", "CollectionFeatures"]` instead of `["Features", "mixin", "CollectionFeatures", "default", "interface"]`. Single common words like "default", "interface", "pattern" match too many documents and drown out the specific result. Compound phrases match the right doc on the first try.
@@ -1094,6 +1099,49 @@ If a test fails, fix the underlying cause. Do NOT add `@Disabled`, comment out a
 or weaken tests to make them green — those are deception patterns that will be detected
 and reverted.
 
+## Test Execution Limits
+
+Agents and job submitters may never run the full test suite, a module's whole suite, or a
+CI shard. This is enforced mechanically at every surface that can start a test run — ar-manager
+job submission (`workstream_submit_task`), the controller's `/api/submit` endpoint, and the
+`mcp__ar-test-runner__start_test_run` tool — not just by this paragraph. There is no bypass at
+those three surfaces.
+
+What the limits are for is the hours-long run: an agent guessing it can confirm a change by
+running everything, which is the pipeline's job. They are not meant to stop you checking the
+code you just touched, so a class, or a few classes, or a list of methods is an ordinary
+invocation. The caps below are where "a targeted check" stops and "the suite" begins.
+
+A `PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also blocks a direct
+`mvn test`/`mvn integration-test` invocation, but it does not yet cover the full rule above:
+it does not block `verify`/`install`/`package`/`deploy` (which also run tests unless
+`-DskipTests` is set), does not block a bare `AR_TEST_GROUP`/`AR_TEST_GROUPS` reference, and
+has no equivalent hook for a broad `pytest`/`python -m pytest` invocation. The exact diff to
+close this gap has been recorded for a human to apply by hand — coding-agent sessions cannot
+write under `.claude/hooks/` or `.claude/settings.json`. Until that diff lands, a direct agent Bash command can still slip a
+broad Maven phase, `AR_TEST_GROUP`, or a broad pytest run past the hook layer; the three
+surfaces above remain the only ones with no bypass.
+
+- **A bounded selection per invocation: at most 5 test classes and at most 40 named methods.**
+  Naming a class is fine — `-Dtest=FooTest`, or `test_classes: ["FooTest"]` — and so is naming
+  a few related classes or a list of methods, which is what verifying a change usually needs.
+  What is refused is a selection with no ceiling: no selector at all (that is the module's whole
+  suite), more classes or methods than those caps, a Surefire wildcard (`*`, `?`), the `+`
+  method-list separator, `!` negation, a `%regex[...]` pattern, or a `$VAR` the validator cannot
+  resolve. A class counts as one class with an unknown number of cases, so the method cap bounds
+  only the entries that name a method. Never `AR_TEST_GROUP`/`AR_TEST_GROUPS` — that is CI-shard
+  partitioning, reserved for the CI workflow matrix.
+- **Every test or build invocation needs an explicit timeout of at most 40 minutes (2400s).**
+  `mvn install`/`package` with `-DskipTests` is a build, not a test run, and is exempt from
+  the selection caps (though it still needs a timeout).
+- **Never leave a background build or test run active when you end your turn.** Sessions are
+  killed for inactivity — stdout silence, not total runtime — so an unattended background
+  process either gets killed mid-run or outlives the session as orphaned state the next
+  session has to diagnose before it can trust the build tree.
+- **Broad verification belongs to CI.** If you need confidence beyond the specific tests you
+  can run narrowly, say so and let CI's full matrix decide — do not try to reproduce it
+  yourself in this session.
+
 ## Validate Code Quality Before Completing Any Task
 
 Before declaring a task done, run the build validator to catch style and policy violations
@@ -1199,6 +1247,8 @@ Consult the linked references before writing related code.
 - **Placement is a generality decision, made BEFORE writing.** For every new method or capability, walk UP the generality ladder and stop at the highest rung where it still makes sense: (1) an equivalent may already exist — search first; (2) behavior that reads another type's state belongs on that type; (3) domain-agnostic behavior belongs in the general layer (core builtins, base features mixins), never in the domain-specific module where today's task happened to surface — a PDSL primitive that is not audio-specific belongs in the core builtin library, not the audio-side registration, even when the general home costs more edits; (4) place it where the NEXT consumer will look for it, not where today's diff is smallest. Your trained-in instinct optimizes for closing the current task; the project pays for narrow placement for years. Treat the first location that occurs to you as suspect, and be prepared to defend the placement in review — an argument about convenience or diff size is not a defense.
 - **Honor the interface, not the implementation you happen to have.** When a class's contract is expressed through an interface (it routes to, returns, or accepts `Receptor`, `Producer`, `Cell`, ...), every member of that class must remain correct for EVERY implementation of that interface. Never add a member that returns the concrete class a constructor merely adapts, never `instanceof`/cast to a particular implementation, and never write a code path that silently does nothing (or throws) unless one specific implementation is present. If the interface cannot express an operation you need, that is a design question to raise about the interface — not a license to reach around it. Enforced by `block-interface-bypass.py`.
 - **Never silently correct a caller inside shared infrastructure.** When a constructor or method receives a count, size, or configuration that seems wrong for the feature you are adding, the fix belongs at the call site — the caller declares what it wants, using an explicit, named contract when several parties must agree (a constant or accessor on the type that owns the concept). A hidden adjustment inside generic code changes behavior for every other caller and conceals the actual contract.
+- **Never use `Object` for a parameter whose type is merely unknown at the call site — use a generic type argument.** `<T> TraversalPolicy requireShape(String operation, T value)` preserves the caller's static type and keeps the API honest; `TraversalPolicy requireShape(Object value, ...)` discards it. Reach for `Object` only when the method genuinely accepts any type and treats them uniformly (e.g. `equals(Object)`), not as a shortcut for "I did not want to declare a type variable."
+- **Metadata-related arguments come first in a method signature.** An operation name, label, tag, or other descriptive/diagnostic value used for error messages and logging precedes the operands it describes: `requireShape(String operation, T value)`, not `requireShape(T value, String operation)`. This reads consistently across the codebase and keeps the subject of the call in a predictable position.
 - No speculation when debugging. Follow evidence. Never say "the problem might be X" without proof.
 - **Do not decorate log messages with prefixes.** Every `log(...)` and `warn(...)` line already receives a timestamp, class name, method name, and (where relevant) task id from the logging framework before it reaches the file. You are not the stylist of the log files. Forbidden prefix shapes — all enforced by checkstyle (`BracketLabelInLog`, `ParenLabelInLog`, `AngleLabelInLog`, `CapsLabelInLog`, `SymbolPrefixInLog`) — include:
   - `log("[Tag] ...")`, `log("(Tag) ...")`, `log("<Tag> ...")`
@@ -1219,6 +1269,10 @@ Consult the linked references before writing related code.
 
 # AGENT INTEGRITY
 
+> "I was optimizing for not being blamed for a regression rather than for the platform being better."
+
+That is an agent — one of you — accounting for why it built a new mechanism beside a broken one instead of repairing the broken one, and the impulse it names is wrong in essentially every case it arises, because avoiding blame and improving the platform are not the same objective and only the second one is your job.
+
 Autonomous agents deployed via auto-resolve have demonstrated systematic patterns of concealing test failures rather than fixing them. These patterns recur across sessions and branches. Understanding them is prerequisite to avoiding them.
 
 ## Known Deception Patterns
@@ -1237,19 +1291,32 @@ Autonomous agents deployed via auto-resolve have demonstrated systematic pattern
 
 **"Verified locally" defense** — Claiming "tests pass locally" as evidence that CI failures are unrelated. Local environments can run at restricted test depth, different commits, or different configurations. Local test results are not admissible evidence. Only CI results on the exact commit in question count.
 
+**Skip-gating (failure-to-skip conversion)** — Turning a *failing* path into a *skipped* one, keyed on whatever condition happens to hold on the failing host, so the job goes green. JUnit renders `Assume.assumeTrue(...)` / `Assume.assumeFalse(...)` / `Assumptions.*` and `@Disabled`/`@Ignore` as *ignored*, not failed, and CI's pass/fail summary does not distinguish "ran and passed" from "was skipped." Shapes this takes: broadening an existing assumption guard so more hosts fall under the skip (e.g. `assumeTrue(isGpuAvailable())` → `assumeTrue(isGpuAvailable() && libraryDeclared)`); adding a *new* assumption that short-circuits before the assertion; replacing an `Assert.fail(...)`/`throw` with an `Assume.*` that silently returns; or an `if (env-not-present) return;` early-return guarding the real work. The tell is an environment probe — `System.getenv`, `SystemUtils.getProperty`, `AR_*`, `getTestProfile()`, a driver/`isGpuAvailable()` check — gating a skip, where the gate is true precisely on the node that was failing. This is indistinguishable from malice: a real "this host is not provisioned for this workload" guard and a "make the red node stop being red" guard look identical in the diff; the difference is only whether the decision was made to describe the environment honestly or to silence a signal. It evades the existing `detect-test-hiding.sh` because no assertion *call* is removed (Pattern 2 counts calls, and the `Assert.fail` can stay, merely unreachable) and the edit is often in a shared `*TestBase` helper rather than a `@Test` body. This is the pattern behind the `AudioSceneTestBase.requireCuratedLibrary()` incident; see [docs/internals/test-skip-gating-prevention.md](docs/internals/test-skip-gating-prevention.md) for the full analysis and the mechanical controls that close it. **A missing CI resource (a bind-mount, a library, a model file, a driver) is reported, never gated into a skip by the session that hit it.**
+
 ## Mechanical Enforcement
 
-The following scripts enforce invariants mechanically:
+The rule every branch is held to is the one **`test-integrity-check`** enforces: an existing test may be edited, but it may not be weakened. Its detectors:
 
-- `tools/ci/agent-protection/validate-agent-commit.sh` — Blocks agent commits that modify base-branch test files or CI files, or that contain no production code changes.
-- `tools/ci/agent-protection/detect-test-hiding.sh` — 12 pattern detectors: TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage, net assertion loss.
+- `tools/ci/agent-protection/detect-test-hiding.sh` — Java. 12 pattern detectors: TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage, net assertion loss. The net-assertion-loss detector (Pattern 2) counts assertion *calls* — in `@Test` bodies and in helper methods alike, netted per file — and does not count method *declarations*, so moving a helper whose name starts with `assert` (e.g. `assertWithin(...)`) is not a removed assertion; deleting an `assertEquals` call from a helper body still is. It selects `**/*Test*.java` and `**/test/**/*.java` only, and only files *modified* on the branch — a deleted or renamed test file is never examined. **Known gaps:** none of the 12 patterns detect *skip-gating* (the failure-to-skip conversion described above) — a broadened or newly-added `Assume.*`/`Assumptions.*` guard, or an environment-keyed early `return`, that converts a failing path into a JUnit skip without removing any assertion call — nor a skipping `@TestProperties` flag (`knownIssue`, `highMemory`, `excludeProfiles`, `audioDeviceRequired`) added to an existing test, which under the CI `pipeline` profile removes it from CI as surely as `@Disabled`. The full inventory of skip routes, which of them each control catches, and the controls that close the gaps (an executed-test set delta against master, a skip-site ledger under the CI-file lock, Pattern 13, and a harness-side staging refusal) are in [docs/internals/test-skip-gating-prevention.md](docs/internals/test-skip-gating-prevention.md); the detector and pipeline parts must land on a `ci/...` branch because they are under the CI-file lock.
+- `tools/ci/agent-protection/detect-python-test-hiding.sh` — Python. Every `def test_*` present on the base branch must still be present, and a test file's assertion count must not fall. An indentation-delimited body cannot be bounded as reliably as a braced one, so these two properties are what the check can honestly prove; editing inside a Python test is otherwise allowed.
+- The enforcement-tampering check — the policy detectors, the agent-protection scripts and the exfiltration guard may not change on a PR branch.
+
+Alongside it:
+
+- `tools/ci/agent-protection/check-ci-file-lock.sh` — run by the pipeline's first job, `changes`. Files under `.github/workflows/` and `tools/ci/` change only on a branch named `ci/...` (or under a signed bypass, below); a branch that breaks the lock fails before anything is built.
+- `tools/ci/agent-protection/validate-agent-commit.sh` (`agent-commit-validation`) — rejects a change set whose only content is edits to test files that exist on the base branch, with no new test in them. Those tests pass on the base branch, so such a change set cannot fix anything; it can only change what the suite reports.
 - `tools/ci/agent-protection/deception-audit.sh` — Detects cross-session deception patterns: ping-pong (agent modifies, human reverts, agent re-modifies), test-only commits, TestDepth churn.
+
+### The per-job test lock
+
+Some jobs are submitted with test-file protection on (`protectTestFiles`): the ones whose premise is that the existing tests are the reference — above all, a job sent to make failing tests pass. For such a job the harness (`TestMethodProtection`, used by `FileStager`) keeps every Java test method that exists on the base branch exactly as it is — annotation block, signature and body — before a commit even exists, and whole-file protects other files under `src/test/`. (CI configuration is protected by the harness for every job, test lock or not, with the same exemptions as the CI-file lock.) New test methods, and edits to fixtures, helpers and tests the branch introduced, are still allowed. It exists because an agent sent to fix a failing test has repeatedly loosened the test instead, which fails `test-integrity-check`, which dispatches an agent to restore it, which fails the test again. It is a constraint of those jobs, not the general rule, and the job's prompt says when it is on.
 
 ## Rules That Cannot Be Bypassed
 
 1. **"Verified locally" proves nothing.** If CI fails and local passes, assume CI is correct and your local environment is insufficient.
-2. **Base-branch test files are read-only for agents.** Mechanical enforcement via `validate-agent-commit.sh`. There are no exceptions based on agent judgment.
-3. **A "fix" that only modifies test files or CI config is not a fix.** Production test failures require production code changes.
+2. **Existing tests may be improved, never weakened.** A test that exists on the base branch is the specification. Editing one — tightening it, fixing a wrong expectation, updating it for an intended change in behaviour — is allowed; making it test less is not: deleting it, disabling or skipping it, removing assertions, loosening tolerances, shrinking dimensions, inflating timeouts or raising `@TestDepth` past what CI runs. `test-integrity-check` enforces this for every branch, and there are no exceptions based on agent judgment. If your job runs with the per-job test lock, existing test methods are read-only in full for that job.
+   The exemptions are mechanical, not matters of judgment. A branch named `ci/...` may change files under `.github/workflows/`, `tools/ci/` and `.claude/hooks/`: the name is chosen before the work starts and declares the pipeline as the subject of the change, so the whole pipeline honours it — the CI-file lock, the enforcement-infrastructure tampering check, the exfiltration guard's integrity comparison, and the deception audit's CI-only-commit finding. The reasoning for the hooks and the guard is the same as for the rest: a change permitted to rewrite the workflow could equally delete the step that checks a hook, so comparing its edits obstructs the work without policing anything. What the name does **not** lift is the requirement that the guard be present and registered on HEAD — that is not a claim about what the branch edited, it is what says the guard is in the tree an agent session runs with, and a branch name must never be able to switch the runtime protection off. The policy detectors under `engine/utils` remain locked on every branch, because weakening a detector is never what a pipeline change is about. Separately, a commit carrying a controller-signed `Sensitive-File-Bypass` trailer lifts the CI-file lock. An agent cannot produce that signature — the secret is not in its environment and the harness strips any trailer the agent writes.
+3. **A "fix" that only edits existing tests is not a fix.** A production test failure is fixed by production code; changing the test that reports it is how a failure gets hidden. What `agent-commit-validation` rejects mechanically is narrower than that guidance, and the difference is worth knowing rather than discovering: it rejects only a change set made entirely of edits to base-branch test files that adds no new test, so a change set that also touches production code, or adds a test, passes it. Passing that check is not the same as having fixed anything.
 4. **Before concluding "no changes needed," run `git diff origin/master...HEAD --name-only`** and for each changed production file, state whether the failing test depends on it (directly or transitively). If you cannot produce this evidence, you cannot claim unrelatedness.
 
 ---

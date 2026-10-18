@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Abstract base class for byte-level BPE (Byte Pair Encoding) tokenizers.
@@ -67,6 +68,22 @@ public abstract class ByteLevelBPETokenizer {
     protected Map<String, String> bpeMerges;
 
     /**
+     * Added tokens matched against the raw input, content to id. Each occurrence of an added
+     * token's content becomes that one id before pre-tokenization and BPE run, exactly as the
+     * HuggingFace added vocabulary matches a token that is not normalized. Empty unless a
+     * subclass populates it.
+     */
+    protected Map<String, Integer> addedTokens;
+
+    /**
+     * Added tokens matched only in the text that remains once {@link #addedTokens} have been
+     * split out, content to id: the HuggingFace added vocabulary matches a normalized token in a
+     * second pass. A subclass may populate this only with contents its normalization leaves
+     * unchanged, since the match is made against the text before normalization.
+     */
+    protected Map<String, Integer> normalizedAddedTokens;
+
+    /**
      * Creates a byte-level BPE tokenizer with the given pre-tokenization strategy.
      *
      * <p>The tokenizer is initialized with empty vocabulary and merge maps.
@@ -79,6 +96,8 @@ public abstract class ByteLevelBPETokenizer {
         this.vocabMap = new HashMap<>();
         this.vocab = new String[0];
         this.bpeMerges = new HashMap<>();
+        this.addedTokens = new HashMap<>();
+        this.normalizedAddedTokens = new HashMap<>();
     }
 
     /**
@@ -98,33 +117,10 @@ public abstract class ByteLevelBPETokenizer {
             }
         }
 
-        // Step 1: Pre-tokenize
-        List<String> segments = preTokenizer.preTokenize(text);
-
-        // Step 2 & 3: For each segment, byte-level encode and apply BPE
-        for (String segment : segments) {
-            // Byte-level encode the segment
-            String encoded = ByteLevelEncoder.encode(segment);
-
-            // Convert to list of character tokens
-            List<String> tokens = new ArrayList<>();
-            for (int i = 0; i < encoded.length(); i++) {
-                tokens.add(String.valueOf(encoded.charAt(i)));
-            }
-
-            // Apply BPE merges
-            tokens = applyBPEMerges(tokens);
-
-            // Convert to token IDs
-            for (String token : tokens) {
-                Integer tokenId = vocabMap.get(token);
-                if (tokenId == null) {
-                    // Unknown token - use UNK or first token as fallback
-                    tokenId = getUNKToken();
-                }
-                tokenIds.add(tokenId);
-            }
-        }
+        // Step 0: Split out added tokens, raw ones first and then normalized ones
+        splitAddedTokens(text, addedTokens, tokenIds,
+                piece -> splitAddedTokens(piece, normalizedAddedTokens, tokenIds,
+                        rest -> encodeText(rest, tokenIds)));
 
         if (addSpecialTokens) {
             int eosToken = getEOSToken();
@@ -140,6 +136,142 @@ public abstract class ByteLevelBPETokenizer {
         }
 
         return result;
+    }
+
+    /**
+     * Pre-tokenizes and BPE-encodes text that contains no added token, appending its ids.
+     *
+     * @param text     the text
+     * @param tokenIds the destination
+     */
+    protected void encodeText(String text, List<Integer> tokenIds) {
+        // Step 1: Pre-tokenize
+        List<String> segments = preTokenizer.preTokenize(text);
+
+        // Step 2 & 3: For each segment, byte-level encode and apply BPE
+        for (String segment : segments) {
+            List<String> tokens = applyBPEMerges(toSymbols(segment));
+
+            // Convert to token IDs
+            for (String token : tokens) {
+                Integer tokenId = vocabMap.get(token);
+                if (tokenId == null) {
+                    // Unknown token - use UNK or first token as fallback
+                    tokenId = getUNKToken();
+                }
+                tokenIds.add(tokenId);
+            }
+        }
+    }
+
+    /**
+     * Splits text around occurrences of added tokens. Scanning left to right, the longest added
+     * token starting at the earliest position is taken -- the leftmost-longest rule the
+     * HuggingFace added vocabulary uses -- and its id is appended; each non-empty stretch between
+     * matches is handed to {@code remainder}. With no added tokens the whole text is handed on
+     * unchanged.
+     *
+     * <p>Candidates are indexed by their first character and, within a character, ordered longest
+     * first, so each input position is compared only against the tokens that can begin there and
+     * the leftmost-longest match is the first one found. The comparison uses
+     * {@link String#regionMatches(int, String, int, int)} rather than a per-length substring, so
+     * matching costs the input length plus the actual candidate lengths examined, not every prefix
+     * substring of the window -- a long accepted token no longer makes a non-matching input scan
+     * quadratically or allocate throwaway substrings.</p>
+     *
+     * @param text      the text to split
+     * @param tokens    added-token content to id; contents must be non-empty
+     * @param tokenIds  the destination for matched ids, shared with {@code remainder}
+     * @param remainder encodes a stretch that contains none of {@code tokens}
+     */
+    protected static void splitAddedTokens(String text, Map<String, Integer> tokens,
+                                           List<Integer> tokenIds, Consumer<String> remainder) {
+        if (tokens.isEmpty()) {
+            remainder.accept(text);
+            return;
+        }
+
+        Map<Character, List<String>> byFirstChar = new HashMap<>();
+        for (String content : tokens.keySet()) {
+            byFirstChar.computeIfAbsent(content.charAt(0), c -> new ArrayList<>()).add(content);
+        }
+        for (List<String> candidates : byFirstChar.values()) {
+            candidates.sort((a, b) -> Integer.compare(b.length(), a.length()));
+        }
+
+        int start = 0;
+        int i = 0;
+        while (i < text.length()) {
+            String match = null;
+            List<String> candidates = byFirstChar.get(text.charAt(i));
+            if (candidates != null) {
+                for (String content : candidates) {
+                    if (i + content.length() <= text.length()
+                            && text.regionMatches(i, content, 0, content.length())) {
+                        match = content;
+                        break;
+                    }
+                }
+            }
+
+            if (match == null) {
+                i++;
+                continue;
+            }
+
+            if (i > start) remainder.accept(text.substring(start, i));
+            tokenIds.add(tokens.get(match));
+            i += match.length();
+            start = i;
+        }
+
+        if (start < text.length()) remainder.accept(text.substring(start));
+    }
+
+    /**
+     * Converts one pre-tokenized segment into the symbols that BPE merging starts from.
+     *
+     * <p>This is the step where tokenizer families differ. A byte-level tokenizer maps the
+     * segment through {@link ByteLevelEncoder} so that every byte becomes a printable
+     * character, and merges over those characters; a SentencePiece-style tokenizer instead
+     * marks word boundaries and falls back to byte tokens only for characters its vocabulary
+     * does not contain. The merge algorithm itself is identical either way, so a subclass
+     * that overrides this and {@link #fromSymbols(List)} inherits everything else.</p>
+     *
+     * @param segment one segment produced by the pre-tokenizer
+     * @return the initial symbols, in order
+     */
+    protected List<String> toSymbols(String segment) {
+        String encoded = ByteLevelEncoder.encode(segment);
+
+        List<String> symbols = new ArrayList<>();
+        for (int i = 0; i < encoded.length(); i++) {
+            symbols.add(String.valueOf(encoded.charAt(i)));
+        }
+
+        return symbols;
+    }
+
+    /**
+     * Converts the vocabulary strings of a token sequence back into text, reversing
+     * {@link #toSymbols(String)}.
+     *
+     * <p>The tokens are passed individually rather than pre-concatenated so a subclass whose
+     * decoding depends on where one token ends and the next begins -- a SentencePiece-style
+     * tokenizer folds a run of {@code <0xNN>} tokens only when each is a whole byte token -- can
+     * honor those boundaries. The byte-level default has no such dependency and concatenates
+     * them.</p>
+     *
+     * @param tokens the vocabulary strings of the token sequence, in order
+     * @return the decoded text
+     */
+    protected String fromSymbols(List<String> tokens) {
+        StringBuilder encoded = new StringBuilder();
+        for (String token : tokens) {
+            encoded.append(token);
+        }
+
+        return ByteLevelEncoder.decode(encoded.toString());
     }
 
     /**
@@ -208,7 +340,7 @@ public abstract class ByteLevelBPETokenizer {
      * @return Decoded text
      */
     public String decode(int[] tokenIds) {
-        StringBuilder encoded = new StringBuilder();
+        List<String> tokens = new ArrayList<>();
 
         for (int tokenId : tokenIds) {
             // Skip special tokens
@@ -217,12 +349,11 @@ public abstract class ByteLevelBPETokenizer {
             }
 
             if (tokenId >= 0 && tokenId < vocab.length) {
-                encoded.append(vocab[tokenId]);
+                tokens.add(vocab[tokenId]);
             }
         }
 
-        // Byte-level decode
-        return ByteLevelEncoder.decode(encoded.toString());
+        return fromSymbols(tokens);
     }
 
     /**

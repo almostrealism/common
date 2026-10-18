@@ -94,6 +94,12 @@ class InFlightTests(unittest.TestCase):
                   pid=2 ** 22)
         self.assertEqual([], self.find())
 
+    def test_non_positive_pid_past_the_budget_is_ignored(self):
+        """kill(-1, 0) succeeds, so a corrupt pid must not keep a record live forever."""
+        started = datetime.now() - timedelta(minutes=600)
+        write_run(self.tester, "aaa1", started_at=started.isoformat(), pid=-1)
+        self.assertEqual([], self.find())
+
     def test_unreadable_record_is_ignored(self):
         run_dir = self.tester / "aaa1"
         run_dir.mkdir(parents=True)

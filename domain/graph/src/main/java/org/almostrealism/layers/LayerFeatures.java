@@ -615,6 +615,22 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * Creates a layer that reorders the axes of its input: output axis {@code i} is input axis
+	 * {@code order[i]}, so {@code permute(shape(b, s, h, d), 0, 2, 1, 3)} produces
+	 * {@code [b, h, s, d]}, exchanging the sequence and head axes the way a multi-head attention
+	 * lays out one row per head.
+	 *
+	 * @param inputShape the input shape
+	 * @param order      the input axis that becomes each output axis; a permutation of
+	 *                   {@code 0 .. inputShape.getDimensions() - 1}
+	 * @return the permuting {@link CellularLayer}
+	 */
+	default CellularLayer permute(TraversalPolicy inputShape, int... order) {
+		TraversalPolicy outputShape = inputShape.permute(order).extentShape();
+		return layer("permute", inputShape, outputShape, in -> permute(in, order));
+	}
+
+	/**
 	 * Creates a layer that duplicates every row of a {@code [rows, size]} input {@code n}
 	 * consecutive times, producing {@code [rows * n, size]} with
 	 * {@code output[r * n + k] = input[r]} for {@code 0 <= k < n}.
@@ -727,6 +743,36 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 					return ops;
 				}),
 				Cell.of((in, next) -> next.push(in)));
+	}
+
+	/**
+	 * Creates a layer whose output is one row of a caller-owned 2-D cache; the layer does not
+	 * read its input.
+	 *
+	 * <p>This is the read that pairs with {@link #cacheWrite}: a row recorded by one forward
+	 * pass is read back by a later pass, which is how a recurrent layer carries its hidden
+	 * state from one step to the next. The row selected by {@code position} is gathered into
+	 * the layer's output at this layer's place in the compiled operation order, so a write to
+	 * the same row by a later stage of the same pass does not change what this layer read.</p>
+	 *
+	 * @param inputShape the shape of the input, which is not read
+	 * @param cache      the {@code [rows, rowSize]} cache to read
+	 * @param position   producer of the row index, shape {@code [1]}
+	 * @return a layer producing the {@code [rowSize]} row
+	 * @throws IllegalArgumentException if the cache is not 2-D
+	 */
+	default CellularLayer cacheRead(TraversalPolicy inputShape, CollectionProducer cache,
+									Producer<PackedCollection> position) {
+		TraversalPolicy cacheShape = shape(cache);
+		if (cacheShape.getDimensions() != 2) {
+			throw new IllegalArgumentException("cacheRead expects a [rows, rowSize] cache, got " + cacheShape);
+		}
+
+		int rows = cacheShape.length(0);
+		int rowSize = cacheShape.length(1);
+		CollectionProducer index = integers(0, rowSize).add(c(position).multiply(c((double) rowSize)));
+		return layer("cacheRead-" + rows + "x" + rowSize, inputShape, shape(rowSize),
+				input -> c(shape(rowSize), cache.reshape(shape(rows * rowSize)), index));
 	}
 
 	/**
@@ -955,6 +1001,49 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 								PackedCollection biases,
 								boolean init,
 								ComputeRequirement... requirements) {
+		Factor<PackedCollection> operator = denseOperator(inputShape, weights, biases);
+		TraversalPolicy weightShape = weights.getShape();
+		int size = weightShape.length(1);
+		TraversalPolicy outputShape = inputShape
+				.replaceDimension(inputShape.getDimensions() - 1, weightShape.length(0));
+
+		OperationList setup = new OperationList("dense " + size + " init");
+		if (init) {
+			Random randn = randn(weightShape, getInitializationRandom());
+			setup.add(() -> randn::refresh);
+			setup.add(a(p(weights.each()), divide(randn.traverseEach(), c(size).traverseAll())));
+			if (biases != null) {
+				setup.add(a(p(biases.each()), c(0.0)));
+			}
+		}
+
+		return layer("dense " + size, inputShape.traverseEach(), outputShape.traverseEach(),
+				operator, biases != null ? List.of(weights, biases) : List.of(weights),
+				setup,
+				requirements);
+	}
+
+	/**
+	 * Builds the forward operator of a dense layer, {@code weights @ input + bias}, applied
+	 * to every row of the last axis of the input and reshaped to the input shape with its
+	 * last dimension replaced by the number of nodes. The bias is repeated for every row
+	 * explicitly, so it is added per node even when there are as many rows as nodes (an
+	 * implicit broadcast would then pair bias entries with rows). When the matrix multiply
+	 * takes its vector path (at most 1000 nodes), every computation the operator is built
+	 * from has an {@link org.almostrealism.calculus.ReduceAxis#OUT output-reduced} delta, so
+	 * the backward pass forms the weight and input gradients without materializing the
+	 * operator's Jacobian. A wider layer is lowered to a weighted sum, which has no reduced
+	 * delta yet, so its gradients still contract the full Jacobian.
+	 *
+	 * @param inputShape the expected input shape, whose last dimension is the input size
+	 * @param weights    the weight matrix of shape {@code [nodes, size]}
+	 * @param biases     the bias vector of shape {@code [nodes]}, or {@code null} for no bias
+	 * @return the dense operator
+	 * @throws IllegalArgumentException if the weight matrix is not 2-D or the size does not match the input
+	 */
+	default Factor<PackedCollection> denseOperator(TraversalPolicy inputShape,
+												   PackedCollection weights,
+												   PackedCollection biases) {
 		TraversalPolicy weightShape = weights.getShape();
 		if (weightShape.getDimensions() != 2) {
 			throw new IllegalArgumentException();
@@ -973,28 +1062,42 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 
 		TraversalPolicy outputShape = inputShape
 				.replaceDimension(inputShape.getDimensions() - 1, nodes);
-		Factor<PackedCollection> operator = input -> {
+		int rows = flat.length(0);
+		return input -> {
 			input = reshape(flat, input);
-			CollectionProducer result = biases != null ?
-					matmul(p(weights), input).add(traverse(1, p(biases))) :
-					matmul(p(weights), input);
+			CollectionProducer result = matmul(p(weights), input);
+			if (biases != null) {
+				result = result.add(repeat(rows, p(biases)).reshape(result.getShape()));
+			}
+
 			return result.reshape(outputShape);
 		};
+	}
 
-		OperationList setup = new OperationList("dense " + size + " init");
-		if (init) {
-			Random randn = randn(weightShape);
-			setup.add(() -> randn::refresh);
-			setup.add(a(p(weights.each()), divide(randn.traverseEach(), c(size).traverseAll())));
-			if (biases != null) {
-				setup.add(a(p(biases.each()), c(0.0)));
-			}
+	/**
+	 * Creates a trainable token embedding: each input value is a row index into {@code table}
+	 * and is replaced by that row, so an input of {@code n} token ids becomes an output of
+	 * {@code (n, dim)} embedding vectors. The rows are gathered with
+	 * {@link #rows(TraversalPolicy, io.almostrealism.relation.Producer, io.almostrealism.relation.Producer)},
+	 * and the table is a learnable weight of the layer, so the backward pass accumulates the
+	 * output gradient of every position into the row that position selected.
+	 *
+	 * @param inputShape   the shape of the token ids
+	 * @param table        the embedding table, shape {@code (vocabSize, dim)}
+	 * @param requirements optional compute requirements
+	 * @return the embedding {@link CellularLayer}, whose output shape is {@code inputShape}
+	 *         with a trailing {@code dim} axis
+	 * @throws IllegalArgumentException if the table is not two-dimensional
+	 */
+	default CellularLayer embedding(TraversalPolicy inputShape, PackedCollection table,
+									ComputeRequirement... requirements) {
+		if (table.getShape().getDimensions() != 2) {
+			throw new IllegalArgumentException("Embedding table must be (vocabSize, dim), not " + table.getShape());
 		}
 
-		return layer("dense " + size, inputShape.traverseEach(), outputShape.traverseEach(),
-				operator, biases != null ? List.of(weights, biases) : List.of(weights),
-				setup,
-				requirements);
+		TraversalPolicy outputShape = inputShape.appendDimension(table.getShape().length(1));
+		return layer("embedding", inputShape, outputShape,
+				ids -> rows(outputShape, p(table), ids), List.of(table), requirements);
 	}
 
 	/**
@@ -1063,6 +1166,22 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * Returns the source of the random values that layers created through this instance
+	 * draw their initial weights from, or {@code null} to draw them from an unseeded
+	 * source, which is the default.
+	 *
+	 * <p>Returning a seeded {@link java.util.Random} makes weight initialization
+	 * reproducible: layers built in the same order draw the same weights on every run.
+	 * Values are drawn when a layer's setup runs, so the source is consumed in the order
+	 * the layers are initialized.</p>
+	 *
+	 * @return the random source for weight initialization, or {@code null}
+	 */
+	default java.util.Random getInitializationRandom() {
+		return null;
+	}
+
+	/**
 	 * Returns a setup operation that initializes the given weight collection with random
 	 * normal values scaled by the given factor.
 	 *
@@ -1073,7 +1192,7 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	@Override
 	default Supplier<Runnable> randnInit(PackedCollection weights, double scale) {
 		OperationList setup = new OperationList();
-		Random randn = randn(shape(weights));
+		Random randn = randn(shape(weights), getInitializationRandom());
 		setup.add(() -> randn::refresh);
 		setup.add(a(p(weights.each()), multiply(randn.traverseEach(), c(scale).traverse(0))));
 		return setup;

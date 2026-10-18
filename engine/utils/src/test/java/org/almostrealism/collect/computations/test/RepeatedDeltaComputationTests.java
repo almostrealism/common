@@ -22,6 +22,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
@@ -372,7 +373,7 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 
 		if (byGradient) {
 			PackedCollection grad = new PackedCollection(r).randFill();
-			d = Process.optimized(combineGradient(result, cp(input), cp(grad)));
+			d = Process.optimized(result.delta(cp(input), ReduceAxis.OUT, cp(grad)));
 		} else {
 			d = Process.optimized(result.delta(cp(input)));
 		}

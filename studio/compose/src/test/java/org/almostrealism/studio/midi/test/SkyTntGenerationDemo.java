@@ -213,8 +213,7 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
         StateDictionary stateDict = SkyTntMidiTest.createSyntheticWeights(config, rng);
 
         PdslLoader loader = new PdslLoader();
-        PdslNode.Program blockProgram = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
-        PdslNode.Program lmHeadProgram = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
+        PdslNode.Program program = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
 
         int netHeadSize = DIM / HEADS;
         int tokenHeadSize = DIM / HEADS_TOKEN;
@@ -228,11 +227,11 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
         PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
 
         CompiledModel netModel = SkyTntMidi.buildTransformerModel(
-                "net", stateDict, blockProgram, lmHeadProgram,
+                "net", stateDict, program,
                 config.netLayers, config.netHeads, netFreqCis, netPos, false, EPSILON, null);
 
         CompiledModel netTokenModel = SkyTntMidi.buildTransformerModel(
-                "net_token", stateDict, blockProgram, lmHeadProgram,
+                "net_token", stateDict, program,
                 config.netTokenLayers, config.netTokenHeads,
                 tokenFreqCis, tokenPos, true, EPSILON, lmHeadWeight);
 

@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -31,7 +32,10 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
@@ -102,7 +106,7 @@ import java.util.stream.Stream;
  * // tracked.remove(memory.getContainerPointer())
  * }</pre>
  *
- * <p>On {@link #destroy()}, any remaining allocations are reported with stack traces to identify
+ * <p>On {@link #destroy()}, any remaining allocations are retained and reported with stack traces to identify
  * memory leaks.</p>
  *
  * <h2>Deallocation Modes</h2>
@@ -147,7 +151,7 @@ import java.util.stream.Stream;
  * <pre>
  * provider.destroy();
  * // Output (if leaks exist):
- * // WARN: DirectBuffer[1000] was not deallocated
+ * // WARN: DirectBuffer[1000] was not deallocated and is retained until released
  * //   at DirectBuffer.&lt;init&gt;(DirectBuffer.java:NN)
  * //   at MyClass.allocateBuffers(MyClass.java:NN)
  * //   at MyClass.processData(MyClass.java:NN)
@@ -185,7 +189,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	/** Tracks all currently allocated memory blocks by their native pointer. */
-	private ConcurrentHashMap<Long, NativeRef<T>> allocated;
+	private volatile ConcurrentHashMap<Long, NativeRef<T>> allocated;
 	/**
 	 * How long a release may be held back waiting for the kernels using that
 	 * memory to finish. Past this the memory is released anyway: a reference
@@ -197,6 +201,24 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/** How often deferred releases are reconsidered. */
 	private static final long DEFERRED_SWEEP_INTERVAL_MS = 100;
 
+	/**
+	 * How many garbage collections {@link #reclaim(BooleanSupplier)} requests before an
+	 * allocation that would exceed the memory ceiling is rejected.
+	 */
+	public static int reclaimAttempts = 10;
+
+	/** How long {@link #reclaim(BooleanSupplier)} waits after each collection for releases to complete. */
+	public static long reclaimWaitMs = 100;
+
+	/** Guards {@link #collecting} and {@link #collectionPasses}, and is waited on by joining threads. */
+	private final Object collectionLock = new Object();
+
+	/** Whether a thread is currently running a {@link #collectionPass()}. */
+	private boolean collecting;
+
+	/** How many collection passes have completed; lets a joining thread see its pass finish. */
+	private long collectionPasses;
+
 	/** Priority queue of memory blocks pending deallocation, ordered by size (largest first). */
 	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
 
@@ -206,6 +228,24 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private ReferenceQueue<T> referenceQueue;
 	/** True while this provider is being destroyed; suppresses further allocations and error logging. */
 	private volatile boolean destroying;
+
+	/** True once {@link #destroy()} has run; see {@link #isDestroyed()}. */
+	private volatile boolean destroyed;
+
+	/**
+	 * Registered by {@link #onFullyReleased(Runnable)}; run once every block retained
+	 * through {@link #destroy()} has actually been released.
+	 */
+	private Runnable onFullyReleased;
+
+	/**
+	 * Count of allocations that have reserved a lease via {@link #beginAllocation()} but
+	 * have not yet reached {@link #endAllocation()}. While positive, {@link #destroy()} may
+	 * still run to completion, but the {@link #onFullyReleased(Runnable)} callback is held
+	 * back so a backend resource that an in-flight allocation is about to use (or register)
+	 * is not released out from under it.
+	 */
+	private int pendingAllocations;
 
 	/**
 	 * Initializes allocation tracking and starts the background deallocation threads.
@@ -259,6 +299,154 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		deallocationProcess.start();
 	}
 
+	/**
+	 * Tries to make room for an allocation that would otherwise exceed this provider's memory
+	 * ceiling. Native memory is released only after the garbage collector has found its
+	 * {@link RAM} unreachable and the reference has been dequeued, but the Java objects that hold
+	 * large native blocks are themselves small, so heap pressure alone may not trigger a
+	 * collection before the native ceiling is reached; a workload that discards gigabytes of
+	 * temporary device memory per iteration would then fail although almost all of that memory is
+	 * garbage. This method requests a collection and waits briefly for the resulting releases,
+	 * repeating up to {@link #reclaimAttempts} times, until {@code fits} reports that the
+	 * allocation fits.
+	 *
+	 * <p>{@code fits} is evaluated exactly once after each collection, and never again once it
+	 * has returned {@code true}, so it may claim the room it finds (as
+	 * {@link #reserve(AtomicLong, long, long)} does) rather than only test for it. The caller is
+	 * expected to have tried {@code fits} itself before calling this method.</p>
+	 *
+	 * <p>Each attempt waits for one {@link #collectionPass() collection pass}, and passes are
+	 * shared: when several allocations reach the ceiling together, one of them requests the
+	 * collection and the others wait for that same pass to finish, instead of each running its
+	 * own sequence of full collections.</p>
+	 *
+	 * <p>It must be called without holding this provider's monitor, which the deallocation path
+	 * may need.</p>
+	 *
+	 * @param fits reports whether the pending allocation now fits under the ceiling
+	 * @return whether the allocation fits after reclaiming
+	 */
+	protected boolean reclaim(BooleanSupplier fits) {
+		for (int i = 0; i < reclaimAttempts; i++) {
+			if (!collectionPass()) return false;
+			if (fits.getAsBoolean()) return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Waits for one collection pass: a {@link #collectGarbage() garbage collection} followed by
+	 * {@link #reclaimWaitMs} for the releases it causes. When another thread is already running a
+	 * pass, this joins it and returns when it completes rather than starting another, so
+	 * concurrent reclaimers do not multiply the number of full collections requested.
+	 *
+	 * @return {@code false} if the thread was interrupted while waiting
+	 */
+	private boolean collectionPass() {
+		synchronized (collectionLock) {
+			if (collecting) {
+				long pass = collectionPasses;
+
+				try {
+					while (collectionPasses == pass) {
+						collectionLock.wait();
+					}
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					return false;
+				}
+
+				return true;
+			}
+
+			collecting = true;
+		}
+
+		try {
+			collectGarbage();
+			Thread.sleep(reclaimWaitMs);
+			return true;
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return false;
+		} finally {
+			synchronized (collectionLock) {
+				collecting = false;
+				collectionPasses++;
+				collectionLock.notifyAll();
+			}
+		}
+	}
+
+	/**
+	 * Requests a garbage collection, so that unreachable {@link RAM} is found and its native
+	 * memory released. Called once per {@link #collectionPass() collection pass}.
+	 */
+	protected void collectGarbage() {
+		System.gc();
+	}
+
+	/**
+	 * Atomically reserves {@code size} bytes against a usage counter, so that concurrent
+	 * allocations can neither exceed {@code max} together nor lose each other's updates. When the
+	 * reservation does not fit, unreachable allocations are first {@link #reclaim(BooleanSupplier)
+	 * reclaimed} and the reservation is retried after each collection. A successful reservation
+	 * must be returned to {@code used} (by subtracting {@code size}) when the memory is released or
+	 * when the native allocation it was made for fails. A {@code size} larger than {@code max}
+	 * can never fit, so it is rejected at once without reclaiming anything.
+	 *
+	 * @param used the bytes currently allocated by the provider
+	 * @param max  the provider's memory ceiling in bytes
+	 * @param size the bytes to reserve
+	 * @return whether the bytes were reserved
+	 */
+	protected boolean reserve(AtomicLong used, long max, long size) {
+		if (size > max) return false;
+
+		BooleanSupplier tryReserve = () -> {
+			long current = used.get();
+
+			while (current + size <= max) {
+				if (used.compareAndSet(current, current + size)) return true;
+				current = used.get();
+			}
+
+			return false;
+		};
+
+		return tryReserve.getAsBoolean() || reclaim(tryReserve);
+	}
+
+	/**
+	 * {@link #reserve(AtomicLong, long, long) Reserves} {@code size} bytes against {@code used}
+	 * and then runs the backend allocation the reservation was made for. When the backend call
+	 * fails, with either a {@link RuntimeException} or an {@link Error} such as
+	 * {@link OutOfMemoryError}, the reservation is returned to {@code used} before the failure is
+	 * rethrown, so bytes that were never allocated do not stay charged against the ceiling and
+	 * cause later allocations to be rejected.
+	 *
+	 * @param used       the bytes currently allocated by the provider
+	 * @param max        the provider's memory ceiling in bytes
+	 * @param size       the bytes the backend call allocates
+	 * @param allocation the backend allocation call
+	 * @param <B>        the type of the backend buffer
+	 * @return the buffer produced by {@code allocation}
+	 * @throws HardwareException if the reservation does not fit under {@code max}
+	 */
+	protected <B> B allocateReserved(AtomicLong used, long max, long size, Supplier<B> allocation) {
+		if (!reserve(used, max, size)) {
+			throw new HardwareException("Memory Max Reached");
+		}
+
+		try {
+			return allocation.get();
+		} catch (RuntimeException | Error e) {
+			used.addAndGet(-size);
+			throw e;
+		}
+	}
+
 	/** Returns the reference queue used to receive GC notifications for collected {@link RAM} objects. */
 	protected ReferenceQueue<T> getReferenceQueue() { return referenceQueue; }
 
@@ -290,11 +478,6 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @param mem The memory block to deallocate
 	 */
 	private void deallocateNow(T mem) {
-		if (allocated == null) {
-			warn("Cannot deallocate " + mem + " as the provider has been destroyed");
-			return;
-		}
-
 		NativeRef<T> ref = getNativeRef(mem);
 		if (ref == null) {
 			if (mem.isActive()) {
@@ -341,6 +524,14 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * Releases the block behind the given reference, once it has been decided
 	 * that releasing it is safe.
 	 *
+	 * <p>The block is freed before its entry is removed, so that nothing observes this
+	 * provider as fully released while a native free is still in progress. In the
+	 * interval between the two, the allocator may already have handed the same address
+	 * to a new allocation, which {@link #allocated(RAM)} registers under the same key.
+	 * The removal therefore takes out this reference's own entry only, compared by
+	 * identity, since {@link NativeRef} equality is by address and size and would
+	 * match the new allocation's entry as well.</p>
+	 *
 	 * @param ref Native reference to the memory block to free
 	 */
 	private void releaseNow(NativeRef<T> ref) {
@@ -355,13 +546,83 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			released = true;
 		} finally {
 			if (released) {
-				if (!destroying) {
-					allocated.remove(ref.getAddress());
-				}
+				allocated.computeIfPresent(ref.getAddress(), (address, current) -> current == ref ? null : current);
+				notifyIfFullyReleased();
 			} else {
 				ref.unclaimFreed();
 			}
 		}
+	}
+
+	/**
+	 * Registers a callback to run once every block that {@link #destroy()} retained
+	 * has actually been released (including one retained after destruction and freed
+	 * as a leaked block, but never one still blocked awaiting a kernel via
+	 * {@link #deferIfInUse}, since that resolves through this same release path). If
+	 * nothing is currently tracked, the callback runs immediately.
+	 *
+	 * <p>This lets a backend whose device/context resource the retained blocks point
+	 * into keep that resource alive until the blocks are truly gone, instead of
+	 * releasing it out from under blocks this provider promised would remain valid.
+	 * Only one callback may be registered at a time.</p>
+	 *
+	 * @param action the action to run once every retained block is released
+	 */
+	public synchronized void onFullyReleased(Runnable action) {
+		if (allocated.isEmpty() && pendingAllocations == 0) {
+			action.run();
+		} else {
+			this.onFullyReleased = action;
+		}
+	}
+
+	/**
+	 * Runs and clears the {@link #onFullyReleased} callback once the tracked
+	 * allocation map has been drained and no allocation is still in flight
+	 * (see {@link #beginAllocation()}), so the callback fires exactly once.
+	 */
+	private void notifyIfFullyReleased() {
+		Runnable action;
+
+		synchronized (this) {
+			if (pendingAllocations > 0 || !allocated.isEmpty() || onFullyReleased == null) return;
+			action = onFullyReleased;
+			onFullyReleased = null;
+		}
+
+		action.run();
+	}
+
+	/**
+	 * Reserves a lease for an allocation that is about to create its backend resource
+	 * (e.g. an OpenCL buffer or Metal buffer) outside of any lock this provider holds.
+	 * While the lease is held, {@link #onFullyReleased(Runnable)}'s callback cannot fire,
+	 * so a backend resource (an OpenCL context, a Metal device) that this allocation's
+	 * backend call or subsequent {@link #allocated(RAM)} registration depends on
+	 * cannot be released underneath it — even if {@link #destroy()} runs concurrently.
+	 *
+	 * <p>Must be paired with {@link #endAllocation()} once the backend call and any
+	 * registration attempt have both finished, whether they succeeded or failed.</p>
+	 *
+	 * @throws IllegalStateException if this provider is being destroyed or has been destroyed
+	 */
+	protected synchronized void beginAllocation() {
+		if (destroying || destroyed) {
+			throw new IllegalStateException("Cannot allocate as the provider " +
+					(destroying ? "is being destroyed" : "has been destroyed"));
+		}
+
+		pendingAllocations++;
+	}
+
+	/**
+	 * Releases the lease reserved by {@link #beginAllocation()}. If this was the last
+	 * outstanding lease, re-evaluates whether the {@link #onFullyReleased(Runnable)}
+	 * callback should now fire.
+	 */
+	protected synchronized void endAllocation() {
+		pendingAllocations--;
+		notifyIfFullyReleased();
 	}
 
 	/**
@@ -381,7 +642,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @return {@code true} if the release was held back
 	 */
 	private boolean deferIfInUse(NativeRef<T> ref) {
-		if (destroying || !isActivelyReferenced(ref.getAddress())) return false;
+		if (destroying || reservations(ref.getAddress()).isReleasable()) return false;
 
 		deferred.computeIfAbsent(ref.getAddress(),
 				k -> new DeferredRelease<>(ref, System.currentTimeMillis()));
@@ -397,24 +658,43 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * the block forever. Freeing it is the old behavior, and is announced,
 	 * because from here on a kernel still holding that address would read
 	 * memory that is gone.</p>
+	 *
+	 * <p>A {@linkplain ReservationState#isLeased() scheduling lease} is exempt from
+	 * the timeout: it covers the scheduling-to-execution window of a deferred dispatch or copy
+	 * waiting on a foreign dependency, which may legitimately outlast the backstop that a
+	 * millisecond-scale kernel execution never reaches. Such a block keeps being held back
+	 * until the lease is given back when the deferred work settles, and its timeout is restarted
+	 * on every sweep while the lease is held, so that once the lease hands off to the execution
+	 * guard that runs the scheduled work, the guard receives its own full timeout window rather
+	 * than one already consumed by the scheduling wait.</p>
+	 *
+	 * @see SweepAction#forRelease(ReservationState, long, long, long)
 	 */
 	private void sweepDeferred() {
 		if (deferred.isEmpty()) return;
 
 		for (DeferredRelease<T> release : List.copyOf(deferred.values())) {
 			NativeRef<T> ref = release.ref();
-			boolean expired = System.currentTimeMillis() - release.deferredAt()
-					>= deferredReleaseTimeoutMs;
+			long address = ref.getAddress();
+			long now = System.currentTimeMillis();
+			boolean expired = now - release.deferredAt() >= deferredReleaseTimeoutMs;
 
-			if (!expired && isActivelyReferenced(ref.getAddress())) continue;
+			SweepAction action = SweepAction.forRelease(reservations(address),
+					release.deferredAt(), now, deferredReleaseTimeoutMs);
 
-			deferred.remove(ref.getAddress());
+			if (action == SweepAction.HOLD) continue;
+			if (action == SweepAction.RESET) {
+				deferred.replace(address, new DeferredRelease<>(ref, now));
+				continue;
+			}
 
-			if (expired) {
-				KernelMemoryGuard.warnIfActivelyReferenced(
-						ref.getAddress(), ref.getAllocationStackTrace(),
-						getClass().getSimpleName() + " (held for " +
-								deferredReleaseTimeoutMs + "ms)");
+			deferred.remove(address);
+
+			KernelMemoryGuard guard = kernelMemoryGuard();
+			if (expired && guard != null) {
+				guard.warnIfReserved(getClass().getSimpleName() + " (held for " +
+								deferredReleaseTimeoutMs + "ms)",
+						address, ref.getAllocationStackTrace());
 			}
 
 			releaseNow(ref);
@@ -422,17 +702,25 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	/**
-	 * Returns whether a kernel currently reports the given address as in use.
+	 * Returns the guard of the local {@link Hardware}, if there is one yet.
+	 *
+	 * @return the kernel memory guard, or {@code null} before hardware is available
+	 */
+	private KernelMemoryGuard kernelMemoryGuard() {
+		Hardware hw = Hardware.getLocalHardware();
+		return hw == null ? null : hw.getKernelMemoryGuard();
+	}
+
+	/**
+	 * Returns the reservations kernels and scheduling leases currently hold on the given
+	 * address, both read at the same moment.
 	 *
 	 * @param address the native address to test
-	 * @return {@code true} if a kernel is still using the memory
+	 * @return the reservations, or {@link ReservationState#NONE} when there is no guard
 	 */
-	private boolean isActivelyReferenced(long address) {
-		Hardware hw = Hardware.getLocalHardware();
-		if (hw == null) return false;
-
-		KernelMemoryGuard guard = hw.getKernelMemoryGuard();
-		return guard != null && !guard.canDeallocate(address);
+	private ReservationState reservations(long address) {
+		KernelMemoryGuard guard = kernelMemoryGuard();
+		return guard == null ? ReservationState.NONE : guard.stateOf(address);
 	}
 
 	/**
@@ -445,15 +733,76 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private record DeferredRelease<R extends RAM>(NativeRef<R> ref, long deferredAt) { }
 
 	/**
+	 * Total prevented double-free attempts across all providers, used to cap how many are
+	 * reported in full. A prevented double free is functionally harmless — the second
+	 * release is skipped, not carried out — but under heavy allocation churn (for example a
+	 * long real-time render that caches and evicts many note buffers) it can recur in the
+	 * millions, and each full report captures and prints the current thread's whole stack
+	 * trace. Left unbounded, that reporting alone dominates run time; capping it keeps the
+	 * diagnostic without letting it starve the workload.
+	 */
+	private static final AtomicLong doubleFreeAttempts = new AtomicLong();
+
+	/** Number of prevented double frees reported in full before falling back to a periodic count. */
+	private static final long DOUBLE_FREE_DETAIL_LIMIT = 64;
+
+	/** Interval, in prevented double frees past the detail limit, between compact running-total lines. */
+	private static final long DOUBLE_FREE_SUMMARY_INTERVAL = 100_000;
+
+	/**
+	 * How much of a prevented double free is reported, decided by its process-wide ordinal.
+	 */
+	enum DoubleFreeReport {
+		/** The full report, including allocation, first-free and current stack traces. */
+		DETAIL,
+
+		/** A single compact line carrying the running total of prevented double frees. */
+		SUMMARY,
+
+		/** Nothing is reported. */
+		NONE;
+
+		/**
+		 * Returns how the prevented double free with the given 1-based process-wide
+		 * ordinal is reported: in full for the first {@link HardwareMemoryProvider#DOUBLE_FREE_DETAIL_LIMIT}
+		 * attempts, then as a running total on every multiple of
+		 * {@link HardwareMemoryProvider#DOUBLE_FREE_SUMMARY_INTERVAL}, and otherwise not at all.
+		 *
+		 * @param attempt the 1-based ordinal of the prevented double free
+		 * @return the extent of the report
+		 */
+		static DoubleFreeReport forAttempt(long attempt) {
+			if (attempt <= DOUBLE_FREE_DETAIL_LIMIT) return DETAIL;
+			return attempt % DOUBLE_FREE_SUMMARY_INTERVAL == 0 ? SUMMARY : NONE;
+		}
+	}
+
+	/**
 	 * Logs a warning that a double-free of the given reference was prevented, including
 	 * the allocation stack trace and (when available) the stack trace of the first
 	 * successful release. Skips the warning during provider destruction, where extra
 	 * deallocation attempts are routine and not bug indicators.
 	 *
+	 * <p>The full report — which captures and prints the current stack trace — is emitted
+	 * only for the first {@link #DOUBLE_FREE_DETAIL_LIMIT} prevented double frees. Beyond
+	 * that a compact running total is emitted every {@link #DOUBLE_FREE_SUMMARY_INTERVAL}
+	 * attempts, so a workload that legitimately churns many buffers is not throttled by the
+	 * cost of the diagnostic itself while the signal that double frees are occurring is
+	 * retained.</p>
+	 *
 	 * @param ref The native reference whose second free was suppressed
 	 */
 	private void warnDoubleFree(NativeRef<T> ref) {
 		if (destroying || !RAM.enableWarnings) return;
+
+		long attempt = doubleFreeAttempts.incrementAndGet();
+		DoubleFreeReport report = DoubleFreeReport.forAttempt(attempt);
+		if (report == DoubleFreeReport.SUMMARY) {
+			warn("Skipping double deallocate (" + attempt + " prevented so far; per-attempt"
+					+ " detail suppressed after the first " + DOUBLE_FREE_DETAIL_LIMIT + ")");
+		}
+
+		if (report != DoubleFreeReport.DETAIL) return;
 
 		warn("Skipping double deallocate of " + ref + " (address " + ref.getAddress() + ")");
 		StackTraceElement[] alloc = ref.getAllocationStackTrace();
@@ -489,19 +838,21 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * native types do not clear their pointer when the block behind it is
 	 * freed, so a released {@link RAM} goes on reporting the same address. A
 	 * block is released once its reference is gone from the registry, or once
-	 * that reference has been claimed for freeing.</p>
+	 * that reference has been claimed for freeing. An entry at the same address
+	 * that tracks a different {@link RAM} (a later allocation the backend placed
+	 * at the address after this block was freed) does not make this block live
+	 * again.</p>
 	 *
 	 * @param mem the memory to test
 	 * @return {@code true} if the memory has been released, or belongs to
-	 *         another provider, or this provider has been destroyed
+	 *         another provider
 	 */
 	@Override
 	public boolean isReleased(Memory mem) {
-		if (allocated == null) return true;
-		if (!(mem instanceof RAM ram)) return false;
-		if (ram.getProvider() != this) return true;
+		if (!(mem instanceof RAM)) return false;
+		if (((RAM) mem).getProvider() != this) return true;
 
-		NativeRef<T> ref = allocated.get(ram.getContainerPointer());
+		NativeRef<T> ref = getNativeRef((T) mem);
 		return ref == null || ref.isFreed();
 	}
 
@@ -539,34 +890,48 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/**
 	 * Returns the native reference for the given memory block, validating that it belongs to this provider.
 	 *
+	 * <p>The allocation map is keyed by address, and the backend may hand a freed block's address
+	 * to a later allocation. The entry found is therefore returned only when it tracks this very
+	 * {@link RAM} instance, so that a stale handle to the freed block neither appears live nor
+	 * resolves to (and can free) the allocation that replaced it.</p>
+	 *
 	 * @param ram Memory block to look up
-	 * @return Native reference for the memory block
+	 * @return Native reference for the memory block, or {@code null} if it is not tracked
 	 * @throws IllegalArgumentException if the RAM does not belong to this provider
 	 */
 	protected NativeRef<T> getNativeRef(T ram) {
 		if (ram.getProvider() != this)
 			throw new IllegalArgumentException("RAM does not belong to this provider");
 
-		return allocated.get(ram.getContainerPointer());
+		NativeRef<T> ref = allocated.get(ram.getContainerPointer());
+		return ref != null && ref.refersTo(ram) ? ref : null;
 	}
 
 	/**
 	 * Registers the given memory block as allocated and returns it.
 	 *
 	 * <p>Creates a {@link NativeRef} and stores it in the allocation map. Warns if the block
-	 * is already tracked (duplicate allocation).</p>
+	 * is already tracked (duplicate allocation). An entry whose reference has already been
+	 * claimed for release is not a duplicate: the backend frees a block before its entry is
+	 * removed, so it may reuse the address for this allocation in between, and that stale
+	 * entry is simply replaced.</p>
 	 *
 	 * @param ram The newly allocated memory block to register
 	 * @return The same {@code ram} instance
-	 * @throws IllegalStateException if this provider is being destroyed
+	 * @throws IllegalStateException if this provider is being destroyed or has been destroyed
 	 */
-	protected T allocated(T ram) {
-		if (destroying) {
-			throw new IllegalStateException("Cannot allocate " + ram + " as the provider is being destroyed");
+	protected synchronized T allocated(T ram) {
+		NativeRef<T> ref = nativeRef(ram);
+
+		if (destroying || destroyed) {
+			// The backend has already produced the block; release it, since nothing will track it
+			release(ref);
+			throw new IllegalStateException("Cannot allocate " + ram + " as the provider " +
+					(destroying ? "is being destroyed" : "has been destroyed"));
 		}
 
-		NativeRef<T> ref = nativeRef(ram);
-		if (allocated.containsKey(ref.getAddress())) {
+		NativeRef<T> existing = allocated.get(ref.getAddress());
+		if (existing != null && !existing.isFreed()) {
 			warn(new IllegalStateException("Already allocated " + ref + " (" + ref.getAddress() + ")"));
 		}
 
@@ -577,6 +942,19 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		}
 
 		return ram;
+	}
+
+	/**
+	 * Frees a block that was never registered, because it was produced after this
+	 * provider stopped accepting allocations. Best effort: the refusal that follows
+	 * is the failure the caller sees.
+	 */
+	private void release(NativeRef<T> ref) {
+		try {
+			if (ref.tryClaimFreed()) deallocate(ref);
+		} catch (RuntimeException e) {
+			warn("Unable to release " + ref + " allocated after destroy", e);
+		}
 	}
 
 	/**
@@ -595,7 +973,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			throw new IllegalArgumentException();
 
 		if (queueDeallocation) {
-			getDeallocationQueue().put(getNativeRef(mem));
+			NativeRef<T> ref = getNativeRef(mem);
+			if (ref != null) getDeallocationQueue().put(ref);
 		} else {
 			deallocateNow(mem);
 		}
@@ -639,46 +1018,60 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		}
 	}
 
+	/**
+	 * Retires this provider: no further blocks may be allocated, but every block still
+	 * tracked stays valid and is released the way it always would have been, when its
+	 * holder is collected or destroys it.
+	 *
+	 * <p>Freeing the remaining blocks here would be wrong, because they are still
+	 * referenced: a block that is unreferenced has already been released through the
+	 * reference queue. Whatever still holds one (a cache, a value shared between a
+	 * scoped context and its enclosing one) would go on reading and writing freed
+	 * memory, which is how the heap gets corrupted and the process aborted long
+	 * after the fact. The remaining blocks are reported so that a leak can be found,
+	 * but ownership of them is kept.</p>
+	 */
 	@Override
 	public synchronized void destroy() {
 		try {
 			destroying = true;
 
-			if (allocated != null) {
-				List<NativeRef<T>> stillAllocated = new ArrayList<>();
+			List<NativeRef<T>> stillAllocated = new ArrayList<>();
 
-				w: while (true) {
-					try {
-						stillAllocated.clear();
-						allocated.values().forEach(stillAllocated::add);
-						break w;
-					} catch (Exception e) {
-						// start over and try again if the allocated map was
-						// modified while attempting to capture its contents
-						warn(e.getClass().getSimpleName() + " - " + e.getMessage());
-					}
+			w: while (true) {
+				try {
+					stillAllocated.clear();
+					allocated.values().forEach(stillAllocated::add);
+					break w;
+				} catch (Exception e) {
+					// start over and try again if the allocated map was
+					// modified while attempting to capture its contents
+					warn(e.getClass().getSimpleName() + " - " + e.getMessage());
 				}
-
-				stillAllocated.stream()
-						.sorted(Comparator.nullsLast(Comparator.comparing(NativeRef<T>::getSize).reversed()))
-						.limit(10)
-						.forEach(ref -> {
-							warn(ref + " was not deallocated");
-							if (ref.getAllocationStackTrace() != null) {
-								Stream.of(ref.getAllocationStackTrace())
-										.forEach(stack -> warn("\tat " + stack));
-							}
-						});
-
-				// TODO  Deallocating all of these at once appears to produce SIGSEGV
-				// List<MetalMemory> available = new ArrayList<>(allocated);
-				// available.forEach(mem -> deallocate(0, mem));
-				allocated = null;
 			}
+
+			stillAllocated.stream()
+					.sorted(Comparator.nullsLast(Comparator.comparing(NativeRef<T>::getSize).reversed()))
+					.limit(10)
+					.forEach(ref -> {
+						warn(ref + " was not deallocated and is retained until released");
+						if (ref.getAllocationStackTrace() != null) {
+							Stream.of(ref.getAllocationStackTrace())
+									.forEach(stack -> warn("\tat " + stack));
+						}
+					});
+
+			destroyed = true;
 		} finally {
 			destroying = false;
 		}
 	}
+
+	/**
+	 * Returns whether {@link #destroy()} has run. A destroyed provider allocates
+	 * nothing further, but still releases the blocks it retained.
+	 */
+	public boolean isDestroyed() { return destroyed; }
 
 
 	@Override

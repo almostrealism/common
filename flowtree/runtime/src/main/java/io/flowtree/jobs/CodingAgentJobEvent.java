@@ -572,17 +572,30 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     /**
      * Creates the appropriate completion event for the given job outcome.
      *
-     * <p>Encapsulates the terminal-state logic previously in
-     * {@code CodingAgentJob.createEvent}, now expressed in terms of the public
-     * job API and the {@link JobSessionAccumulator} so that
-     * {@link CodingAgentJob} does not need to hold a copy of this decision tree.</p>
+     * <p>Decides the terminal status from the job and the
+     * {@link JobSessionAccumulator} it owns, then populates the event with the
+     * job's final execution state via {@link #populateFrom(CodingAgentJob)}.</p>
      *
      * @param job   the job being completed
-     * @param acc   accumulated session state across all runs of the job
      * @param error the exception that terminated the job, or {@code null} for normal exit
-     * @return the appropriate {@link JobCompletionEvent} subtype
+     * @return the populated event
      */
-    static JobCompletionEvent forJob(CodingAgentJob job, JobSessionAccumulator acc, Exception error) {
+    static CodingAgentJobEvent forJob(CodingAgentJob job, Exception error) {
+        CodingAgentJobEvent event = statusFor(job, error);
+        event.populateFrom(job);
+        return event;
+    }
+
+    /**
+     * Creates the event carrying the terminal status of {@code job}, before
+     * its execution state is populated.
+     *
+     * @param job   the job being completed
+     * @param error the exception that terminated the job, or {@code null} for normal exit
+     * @return the unpopulated event
+     */
+    private static CodingAgentJobEvent statusFor(CodingAgentJob job, Exception error) {
+        JobSessionAccumulator acc = job.sessionAccumulator();
         if (error != null) {
             return failed(job.getTaskId(), job.getTaskString(), error.getMessage(), error);
         }
@@ -622,14 +635,14 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     /**
      * Populates this event with the final execution state of the given job.
      *
-     * <p>Called from {@link CodingAgentJob#populateEventDetails(JobCompletionEvent)}.
-     * The cost maps are snapshotted at call time so the event is an immutable
-     * record of the job's final state.</p>
+     * <p>Called from {@link #forJob(CodingAgentJob, Exception)}. The cost maps
+     * are snapshotted at call time so the event is an immutable record of the
+     * job's final state.</p>
      *
      * @param job job that produced this event
-     * @param acc accumulated session state across all runs of the job
      */
-    void populateFrom(CodingAgentJob job, JobSessionAccumulator acc) {
+    private void populateFrom(CodingAgentJob job) {
+        JobSessionAccumulator acc = job.sessionAccumulator();
         withClaudeCodeInfo(job.getPrompt(), acc.getSessionId(), acc.getExitCode());
         withTimingInfo(acc.getDurationMs(), acc.getDurationApiMs(), acc.getCostUsd(), acc.getNumTurns());
         withSessionDetails(acc.getSubtype(), acc.isError(), acc.getPermissionDenials(), acc.getDeniedToolNames());

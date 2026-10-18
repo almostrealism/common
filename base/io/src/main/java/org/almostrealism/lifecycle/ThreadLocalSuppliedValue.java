@@ -106,13 +106,12 @@ public class ThreadLocalSuppliedValue<T> extends SuppliedValue<T> {
 	 */
 	@Override
 	public void applyAll(Consumer<T> consumer) {
-		if (consumer == null || !isAvailable()) return;
+		if (consumer == null || values == null) return;
 
-		if (values != null) {
-			values.values().stream()
-					.filter(Objects::nonNull)
-					.forEach(consumer);
-		}
+		values.values().stream()
+				.filter(Objects::nonNull)
+				.filter(v -> valid == null || valid.test(v))
+				.forEach(consumer);
 	}
 
 	/**

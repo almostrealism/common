@@ -24,9 +24,11 @@ Run from the repo root::
 
 import os
 import sys
+import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
@@ -419,6 +421,89 @@ class SeedingTests(unittest.TestCase):
                 repository=repository, runner=fake_runner,
                 output_writer=writer_that_explodes)
             self.assertEqual("seeded", result.action)
+
+
+class DefaultRunnerTimeoutTests(unittest.TestCase):
+    """Cover :func:`preflight._default_runner`'s enforced subprocess
+    timeout directly (real subprocesses, no ``runner`` stub), since the
+    ``SeedingTests`` above all exercise a stub that bypasses it entirely."""
+
+    def test_kills_process_that_exceeds_timeout(self):
+        with TemporaryDirectory() as tmp:
+            start = time.monotonic()
+            exit_code = preflight._default_runner(
+                [sys.executable, "-c", "import time; time.sleep(5)"],
+                Path(tmp), None, timeout_seconds=0.3)
+            elapsed = time.monotonic() - start
+            self.assertLess(
+                elapsed, 4.0,
+                "a subprocess past its timeout must be killed near the deadline, not run to completion")
+            self.assertNotEqual(0, exit_code)
+
+    def test_reports_timeout_banner_to_output_writer(self):
+        chunks = []
+        with TemporaryDirectory() as tmp:
+            preflight._default_runner(
+                [sys.executable, "-c", "import time; time.sleep(5)"],
+                Path(tmp), chunks.append, timeout_seconds=0.3)
+        self.assertTrue(any("exceeded" in c and "killed" in c for c in chunks),
+                        "a killed preflight subprocess must report why in its output")
+
+    def test_process_finishing_within_timeout_is_not_killed(self):
+        with TemporaryDirectory() as tmp:
+            exit_code = preflight._default_runner(
+                [sys.executable, "-c", "print('done')"],
+                Path(tmp), None, timeout_seconds=10)
+            self.assertEqual(0, exit_code)
+
+    def test_kills_child_holding_pipe_after_leader_exits(self):
+        # The seed's leader can exit while a child it spawned keeps the stdout
+        # pipe open, blocking the reader. The timeout kill targets the process
+        # group id captured at launch (not one resolved from the possibly-gone
+        # leader), so the whole group -- child included -- is still killed near
+        # the deadline instead of the reader hanging until the child exits.
+        seed = (
+            "import subprocess, sys; "
+            "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+            "sys.exit(0)")
+        with TemporaryDirectory() as tmp:
+            start = time.monotonic()
+            preflight._default_runner(
+                [sys.executable, "-c", seed], Path(tmp), None, timeout_seconds=0.5)
+            elapsed = time.monotonic() - start
+            self.assertLess(
+                elapsed, 5.0,
+                "a lingering child holding the stdout pipe must be killed with its group "
+                "at the deadline, not waited on until it exits on its own")
+
+    def test_uses_start_new_session_not_preexec_fn(self):
+        """``preexec_fn`` runs arbitrary Python in the forked child between
+        fork() and exec(), which can deadlock in a multi-threaded process
+        (the interpreter lock a background thread holds is never released
+        into the child). ``start_new_session=True`` gets the identical
+        setsid() process-group isolation from the C library instead, with
+        no Python callback running post-fork. Regression test for the
+        preexec_fn=os.setsid bug this function used to have."""
+        captured_kwargs = {}
+
+        class _FakeCompletedProcess:
+            pid = 99999
+            returncode = 0
+            stdout = None
+
+            def wait(self):
+                return 0
+
+        def _fake_popen(*args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return _FakeCompletedProcess()
+
+        with TemporaryDirectory() as tmp:
+            with mock.patch("preflight.subprocess.Popen", side_effect=_fake_popen):
+                preflight._default_runner(["true"], Path(tmp), None, timeout_seconds=5)
+
+        self.assertNotIn("preexec_fn", captured_kwargs)
+        self.assertTrue(captured_kwargs.get("start_new_session"))
 
 
 class ArtifactPathTests(unittest.TestCase):

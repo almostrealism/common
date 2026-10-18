@@ -2,8 +2,8 @@
 # ─── Build the quality-gate auto-resolve prompt for the FlowTree agent ──
 #
 # Reads a quality gate failure list and assembles a natural-language
-# prompt for the coding agent. This is used as a fallback when no test
-# failures exist but quality gates have failed.
+# prompt for the coding agent. Used by the `auto-review` job, which submits
+# as soon as the quality gates report, without waiting for test results.
 #
 # Usage:
 #   build-quality-gate-prompt.sh <failures-file> <output-file>
@@ -41,11 +41,15 @@ source "${SCRIPT_DIR}/prompt-render.sh"
 FAILURE_LIST=$(cat "$FAILURES_FILE")
 
 cat > "$OUTPUT_FILE" <<EOF
-All tests are passing on branch "${BRANCH}" (commit ${COMMIT_SHA}), but ${FAILURE_COUNT} CI quality gate(s) failed:
+${FAILURE_COUNT} CI quality gate(s) failed on branch "${BRANCH}" (commit ${COMMIT_SHA}):
 
 ${FAILURE_LIST}
 
 These are code quality and style issues, not functional test failures. Fix them using the MCP build validator.
+
+This was reported as soon as the quality gates finished. The long-running test
+suites were either still running or skipped because of these gates, so nothing
+here says whether the tests pass — the next pipeline will tell you.
 
 ## First: confirm the gate is right
 

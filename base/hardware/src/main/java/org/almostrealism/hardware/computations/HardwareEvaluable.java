@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
@@ -140,6 +141,17 @@ import java.util.function.UnaryOperator;
  *   <li><strong>Fallback:</strong> When hardware acceleration unavailable</li>
  * </ul>
  *
+ * <p>A short-circuit is a host evaluation, so on the streaming path it must complete the
+ * kernel on the host before delivering. A wrapper that only needs to re-view the kernel's
+ * result (reshape, traverse, repeat) should use a {@link #setResultProcessor(UnaryOperator)
+ * result processor} instead, which keeps the kernel dispatch chained on the device:</p>
+ *
+ * <pre>{@code
+ * HardwareEvaluable<PackedCollection> reshaped =
+ *     new HardwareEvaluable<>(producer::get, null, null, false);
+ * reshaped.setResultProcessor(out -> out.reshape(shape));
+ * }</pre>
+ *
  * <h2>Resource Management</h2>
  *
  * <p>Destroying releases the context-specific kernel cache:</p>
@@ -181,8 +193,24 @@ public class HardwareEvaluable<T> implements
 	/** Optional post-processor applied to the output destination before kernel dispatch. */
 	private UnaryOperator<MemoryBank<?>> destinationProcessor;
 
+	/**
+	 * Optional transformation of the handle the kernel produces, applied before the result is
+	 * returned by {@link #evaluate(Object...)} or delivered by {@link #request(Object[], Semaphore)}.
+	 * On the streaming path it runs as soon as the dispatch is issued, while the completion is
+	 * still outstanding, so it must only re-view the handle (reshape, traverse, repeat) and never
+	 * read its contents.
+	 */
+	private UnaryOperator<T> resultProcessor;
+
 	/** Optional consumer called with the result of each evaluation. */
 	private Consumer<T> downstream;
+
+	/**
+	 * Optional executor used to dispatch {@link #request(Object[], Semaphore, Consumer)}.
+	 * When set, request work runs on this executor instead of the calling thread; when
+	 * absent, the request is issued on the calling thread.
+	 */
+	private Executor executor;
 
 	/**
 	 * Creates a hardware evaluable without an executor.
@@ -214,6 +242,7 @@ public class HardwareEvaluable<T> implements
 		this.destination = destination;
 		this.shortCircuit = shortCircuit;
 		this.isKernel = kernel;
+		this.executor = executor;
 		this.kernel = new DefaultContextSpecific<>(() -> ev.get(), Destroyable::destroy);
 	}
 
@@ -286,6 +315,31 @@ public class HardwareEvaluable<T> implements
 		this.destinationProcessor = destinationProcessor;
 	}
 
+	/**
+	 * Returns the transformation applied to the kernel's result before it is returned or delivered.
+	 *
+	 * @return Result processor, or null if the kernel's result is used as produced
+	 */
+	public UnaryOperator<T> getResultProcessor() { return resultProcessor; }
+
+	/**
+	 * Sets a transformation of the handle the kernel produces, applied before the result is
+	 * returned by {@link #evaluate(Object...)} or delivered by {@link #request(Object[], Semaphore)}.
+	 *
+	 * <p>Unlike a {@link #setShortCircuit(Evaluable) short-circuit}, which replaces the kernel
+	 * with a host evaluation and therefore must complete the kernel on the host before a
+	 * dependent dispatch can be issued, a result processor keeps the kernel on the streaming
+	 * path: the dispatch chains on its dependency inside the provider and the processed handle
+	 * is delivered together with the dispatch's completion. The processor must only re-view
+	 * the handle (reshape, traverse, repeat) and never read its contents, which are not valid
+	 * until that completion fires.</p>
+	 *
+	 * @param resultProcessor Function applied to the kernel's result handle
+	 */
+	public void setResultProcessor(UnaryOperator<T> resultProcessor) {
+		this.resultProcessor = resultProcessor;
+	}
+
 	@Override
 	public Evaluable into(Object destination) {
 		return withDestination((MemoryBank) destination);
@@ -294,8 +348,19 @@ public class HardwareEvaluable<T> implements
 	/**
 	 * Returns an evaluable that writes its results into the given destination memory bank.
 	 *
+	 * <p>When a {@link #getResultProcessor() result processor} is set, an {@link #async(Executor)
+	 * executor} is set, or both, the destination-based evaluable is wrapped in a new
+	 * {@link HardwareEvaluable} carrying whichever of the two apply, exactly as
+	 * {@link #evaluate(Object...)} and {@link #request(Object[], Semaphore, Consumer)} already
+	 * do: the underlying operation writes its unprocessed result into {@code destination}, the
+	 * processor (when set) re-views that result before it is returned or delivered, and the
+	 * executor (when set) is what {@link #request(Object[], Semaphore, Consumer)} dispatches
+	 * through instead of the calling thread. With neither set, the destination-based evaluable
+	 * is returned as is.</p>
+	 *
 	 * @param destination Memory bank to write results into
-	 * @return Evaluable targeting the specified destination
+	 * @return Evaluable targeting the specified destination, dispatched through the same
+	 *         {@link #async(Executor) executor} as this evaluable when one is set
 	 */
 	public Evaluable<T> withDestination(MemoryBank destination) {
 		if (destinationProcessor != null) {
@@ -303,11 +368,19 @@ public class HardwareEvaluable<T> implements
 		}
 
 		Evaluable ev = getKernel().getValue();
-		if (ev instanceof HardwareEvaluable<?>) {
-			return ((HardwareEvaluable) ev).withDestination(destination);
+		Evaluable<T> destinationEvaluable = ev instanceof HardwareEvaluable<?> ?
+				((HardwareEvaluable) ev).withDestination(destination) :
+				new DestinationEvaluable<>(ev, destination);
+
+		if (resultProcessor == null && executor == null) {
+			return destinationEvaluable;
 		}
 
-		return new DestinationEvaluable<>(ev, destination);
+		HardwareEvaluable<T> result = new HardwareEvaluable<>(() -> destinationEvaluable, null, null, isKernel, executor);
+		if (resultProcessor != null) {
+			result.setResultProcessor(resultProcessor);
+		}
+		return result;
 	}
 
 	public ContextSpecific<Evaluable<T>> getKernel() { return kernel; }
@@ -326,17 +399,13 @@ public class HardwareEvaluable<T> implements
 			throw new IllegalArgumentException("Embedded array provided to evaluate");
 		}
 
-		return shortCircuit == null ? getKernel().getValue().evaluate(args) : shortCircuit.evaluate(args);
+		T result = shortCircuit != null ? shortCircuit.evaluate(args) : getKernel().getValue().evaluate(args);
+		return resultProcessor == null ? result : resultProcessor.apply(result);
 	}
 
 	/**
-	 * Initiates evaluation ordered after the given completion. The dependency is
-	 * delegated to the underlying kernel evaluable, which chains it through the
-	 * provider without blocking. The short-circuit path is a genuine host
-	 * evaluation (for example a reshape wrapper that evaluates the underlying
-	 * kernel synchronously) — it cannot chain the dependency into a dispatch, so
-	 * it waits for the completion on the thread performing the evaluation before
-	 * reading. A kernel evaluable that cannot chain waits the same way.
+	 * Initiates evaluation ordered after the given completion, delivering to the
+	 * configured downstream; see {@link #request(Object[], Semaphore, Consumer)}.
 	 *
 	 * @param args      the arguments for the evaluation
 	 * @param dependsOn completion this evaluation must be ordered after, or
@@ -344,24 +413,137 @@ public class HardwareEvaluable<T> implements
 	 */
 	@Override
 	public void request(Object[] args, Semaphore dependsOn) {
+		request(args, dependsOn, downstream);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Mirrors the path {@link #requestNow(Object[], Semaphore, Consumer)} actually takes:
+	 * the {@link #shortCircuit} path and the non-streaming kernel fallback both order their
+	 * host evaluation after {@code dependsOn} with {@link Semaphore#onComplete(Semaphore, Runnable)}
+	 * and are therefore always {@code true}, but when the kernel is a {@link StreamingEvaluable}
+	 * this method forwards {@code dependsOn} to it directly without waiting itself &mdash; so the
+	 * result must be that kernel's own {@link StreamingEvaluable#isDispatchBacked()}, not an
+	 * unconditional {@code true}. Reporting {@code true} for a wrapped kernel that actually
+	 * disregards {@code dependsOn} would let a caller such as {@code ProcessDetailsFactory} skip
+	 * the dependency handling it would otherwise apply, risking a stale argument read.</p>
+	 */
+	@Override
+	public boolean isDispatchBacked() {
+		if (shortCircuit != null) {
+			return true;
+		}
+
+		Evaluable<T> cev = getKernel().getValue();
+		if (cev instanceof StreamingEvaluable<?>) {
+			return ((StreamingEvaluable<T>) cev).isDispatchBacked();
+		}
+
+		return true;
+	}
+
+	/**
+	 * Initiates evaluation ordered after the given completion. The dependency is
+	 * delegated to the underlying kernel evaluable, which chains it through the
+	 * provider without blocking, and the result is delivered to {@code downstream}
+	 * (through the {@link #getResultProcessor() result processor}, when one is set,
+	 * with the dispatch's completion passed along untouched). The kernel is reached
+	 * through {@link StreamingEvaluable#request(Object[], Semaphore, Consumer)}, so a
+	 * kernel shared by several wrappers serves each request without any wrapper
+	 * installing itself as the kernel's downstream. The short-circuit path is a
+	 * genuine host evaluation — it cannot chain the dependency into a dispatch, so it
+	 * is ordered after the completion with {@link Semaphore#onComplete(Semaphore, Runnable)}
+	 * instead: the evaluation runs once the dependency has completed, on the completion's
+	 * callback thread, and this method does not wait for it. A kernel evaluable that is
+	 * not a {@link StreamingEvaluable} (a plain host function, for example) cannot chain
+	 * either, and is evaluated the same way.
+	 *
+	 * <p>When this instance carries an {@link #async(Executor) executor}, all of the above
+	 * is issued on that executor instead of the calling thread. Either way this method
+	 * never waits for a computation to finish; the only wait a request may perform is the
+	 * readiness wait of the kernel's own dispatch.</p>
+	 *
+	 * @param args       the arguments for the evaluation
+	 * @param dependsOn  completion this evaluation must be ordered after, or
+	 *                   {@code null} when there is no dependency
+	 * @param downstream the consumer to receive the result of this request
+	 */
+	@Override
+	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		if (Arrays.stream(args).anyMatch(i -> i instanceof Object[])) {
 			throw new IllegalArgumentException("Embedded array provided to request");
 		}
 
+		if (executor != null) {
+			executor.execute(() -> requestNow(args, dependsOn, downstream));
+			return;
+		}
+
+		requestNow(args, dependsOn, downstream);
+	}
+
+	/**
+	 * Performs the work described by {@link #request(Object[], Semaphore, Consumer)} on
+	 * whichever thread calls it &mdash; either the caller, when no {@link #executor} is
+	 * set, or the executor's own thread otherwise. A host evaluation with an outstanding
+	 * {@code dependsOn} is the exception: it is deferred to that completion's callback
+	 * thread via {@link Semaphore#onComplete(Semaphore, Runnable)} rather than waited for.
+	 *
+	 * @param args       the arguments for the evaluation
+	 * @param dependsOn  completion this evaluation must be ordered after, or
+	 *                   {@code null} when there is no dependency
+	 * @param downstream the consumer to receive the result of this request
+	 */
+	private void requestNow(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		if (shortCircuit != null) {
-			if (dependsOn != null) dependsOn.waitFor();
-			downstream.accept(shortCircuit.evaluate(args));
+			Semaphore.onComplete(dependsOn, () -> {
+				T result = shortCircuit.evaluate(args);
+				downstream.accept(resultProcessor == null ? result : resultProcessor.apply(result));
+			});
 			return;
 		}
 
 		Evaluable<T> cev = getKernel().getValue();
 		if (cev instanceof StreamingEvaluable<?>) {
-			((StreamingEvaluable<T>) cev).setDownstream(downstream);
-			((StreamingEvaluable<T>) cev).request(args, dependsOn);
+			((StreamingEvaluable<T>) cev).request(args, dependsOn, processed(downstream));
 			return;
 		}
 
-		throw new UnsupportedOperationException();
+		// A kernel that cannot chain is completed on the host, exactly as a short-circuit is
+		Semaphore.onComplete(dependsOn, () -> downstream.accept(evaluate(args)));
+	}
+
+	/**
+	 * Returns the consumer to hand to the kernel evaluable so that {@code downstream}
+	 * receives the kernel's result through the {@link #getResultProcessor() result
+	 * processor}; a {@link CompletionConsumer} keeps receiving the dispatch's completion
+	 * alongside the processed handle, so the transformation introduces no host wait.
+	 *
+	 * <p>When {@code downstream} is a plain {@link Consumer} (not a {@link CompletionConsumer}),
+	 * it is handed a value it must be able to read immediately, exactly as {@link #evaluate(Object...)}
+	 * guarantees. The kernel evaluable is still handed a {@link CompletionConsumer} here so that its
+	 * dispatch is not forced to complete on the host before the request returns, but the completion is
+	 * awaited before {@code downstream} is invoked, on whatever thread the kernel evaluable delivers
+	 * on &mdash; matching the synchronous, same-call delivery a plain {@code Consumer} received prior
+	 * to {@code resultProcessor} replacing the short-circuit for reshape/repeat wrappers, rather than
+	 * silently handing it a value that may not be complete yet.</p>
+	 *
+	 * @param downstream the consumer to deliver to
+	 * @return {@code downstream} itself when there is no result processor
+	 */
+	private Consumer<T> processed(Consumer<T> downstream) {
+		if (resultProcessor == null) {
+			return downstream;
+		} else if (downstream instanceof CompletionConsumer) {
+			return ((CompletionConsumer<T>) downstream).compose(resultProcessor);
+		}
+
+		CompletionConsumer<T> completionConsumer = (value, completion) -> {
+			if (completion != null) completion.waitFor();
+			downstream.accept(resultProcessor.apply(value));
+		};
+		return completionConsumer;
 	}
 
 	@Override
@@ -375,7 +557,9 @@ public class HardwareEvaluable<T> implements
 
 	@Override
 	public StreamingEvaluable<T> async(Executor executor) {
-		return new HardwareEvaluable<>(ev, destination, shortCircuit, isKernel, executor);
+		HardwareEvaluable<T> result = new HardwareEvaluable<>(ev, destination, shortCircuit, isKernel, executor);
+		result.setResultProcessor(resultProcessor);
+		return result;
 	}
 
 	@Override

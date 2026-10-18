@@ -165,6 +165,12 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 	 * amortized per-buffer playback cost against the {@code BUFFER / sampleRate} budget and
 	 * asserts non-silence and clean batched dispatch.
 	 *
+	 * <p>The arrangement is drawn at random, and the genome-seed search only predicts that the
+	 * lead channel emits notes, so a mix can be audible through the other channels while the
+	 * arrangement renders no batchable melodic note. Such an attempt rebuilds the arrangement, as a
+	 * silent one does; the final attempt is still held to the batched-dispatch assertion, so a
+	 * batched path that never fires still fails.</p>
+	 *
 	 * @param channels channel indices to render and mix down
 	 * @param tag      short label used in log lines and the output filename
 	 */
@@ -255,6 +261,12 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 				out.reset();
 				cells.reset();
 				pop.disableGenome();
+
+				if (batched == 0 && attempt < MAX_RENDER_ATTEMPTS) {
+					log("warm " + tag + " attempt " + attempt + " of " + MAX_RENDER_ATTEMPTS
+							+ " rendered no batched dispatch (fallbackCount=" + fallback + "); rebuilding arrangement");
+					continue;
+				}
 
 				Assert.assertTrue("warm " + tag + " output is silent (peak=" + peak + ")", peak > 1e-3);
 				Assert.assertTrue("warm " + tag + " batched dispatch never fired", batched > 0);

@@ -87,6 +87,238 @@ public class TraversalPolicyTests extends TestSuiteBase {
 	}
 
 	/**
+	 * A policy that carries traversal rates — as produced by {@link TraversalPolicy#repeat(int, long)},
+	 * {@link TraversalPolicy#withRate(int, int, long)}, and {@link TraversalPolicy#withInput(int...)} —
+	 * must still support the dimension-mutating operations. Each of
+	 * {@link TraversalPolicy#appendDimension(int)}, {@link TraversalPolicy#prependDimension(int)},
+	 * {@link TraversalPolicy#insertDimension(int, long)}, {@link TraversalPolicy#subset(int)}, and
+	 * {@link TraversalPolicy#append(TraversalPolicy)} changes the number of dimensions, so it must
+	 * resize the rate arrays to match. Before the fix these methods forwarded the original
+	 * (now wrong-length) rate arrays to the constructor, which rejects them, so every call threw
+	 * {@link IllegalArgumentException} on a rated policy. A newly introduced axis takes a neutral
+	 * rate (its input length equals its output length); axes that survive keep their own rate.
+	 */
+	@Test(timeout = 10000)
+	public void ratedPolicySurvivesDimensionMutation() {
+		// (2, 3) repeated 4x along axis 0 -> output (8, 3) reading input (2, 3): axis 0 has rate 1/4.
+		TraversalPolicy rated = new TraversalPolicy(2, 3).traverse(0).repeat(0, 4);
+		assertEquals(8, rated.length(0));
+		assertEquals(3, rated.length(1));
+		assertEquals(2, rated.inputLengthLong(0));
+		assertEquals(3, rated.inputLengthLong(1));
+
+		TraversalPolicy appended = rated.appendDimension(5);
+		assertEquals(3, appended.getDimensions());
+		assertEquals(120, appended.getTotalSizeLong());
+		// The appended axis is neutral (input length == output length); rated axis 0 is preserved.
+		assertEquals(2, appended.inputLengthLong(0));
+		assertEquals(3, appended.inputLengthLong(1));
+		assertEquals(5, appended.inputLengthLong(2));
+
+		TraversalPolicy prepended = rated.prependDimension(5);
+		assertEquals(5, prepended.length(0));
+		assertEquals(8, prepended.length(1));
+		assertEquals(5, prepended.inputLengthLong(0));
+		assertEquals(2, prepended.inputLengthLong(1));
+		assertEquals(3, prepended.inputLengthLong(2));
+
+		TraversalPolicy inserted = rated.insertDimension(1, 7);
+		assertEquals(8, inserted.length(0));
+		assertEquals(7, inserted.length(1));
+		assertEquals(3, inserted.length(2));
+		assertEquals(2, inserted.inputLengthLong(0));
+		assertEquals(7, inserted.inputLengthLong(1));
+		assertEquals(3, inserted.inputLengthLong(2));
+
+		// Dropping the leading (rated) axis leaves the surviving axis with its own rate.
+		TraversalPolicy subset = rated.subset(1);
+		assertEquals(1, subset.getDimensions());
+		assertEquals(3, subset.length(0));
+		assertEquals(3, subset.inputLengthLong(0));
+
+		// Dropping axis 0 keeps a rated inner axis, which must still report input length 3, not 12.
+		TraversalPolicy ratedInner = new TraversalPolicy(2, 3, 5).traverse(1).repeat(1, 4);
+		assertEquals(12, ratedInner.length(1));
+		assertEquals(3, ratedInner.inputLengthLong(1));
+		TraversalPolicy innerSubset = ratedInner.subset(1);
+		assertEquals(2, innerSubset.getDimensions());
+		assertEquals(12, innerSubset.length(0));
+		assertEquals(3, innerSubset.inputLengthLong(0));
+		assertEquals(5, innerSubset.inputLengthLong(1));
+
+		TraversalPolicy joined = rated.append(new TraversalPolicy(5));
+		assertEquals(3, joined.getDimensions());
+		assertEquals(2, joined.inputLengthLong(0));
+		assertEquals(3, joined.inputLengthLong(1));
+		assertEquals(5, joined.inputLengthLong(2));
+	}
+
+	/**
+	 * {@link TraversalPolicy#append(TraversalPolicy)} must carry the operand's own traversal rates
+	 * onto the appended axes rather than neutralizing them, whether or not the receiver is rated.
+	 * A (3) policy repeated 4x has output length 12 but reads an input of length 3; after being
+	 * appended it must still report input length 3 on that axis, not 12.
+	 */
+	@Test(timeout = 10000)
+	public void appendPreservesOperandRates() {
+		TraversalPolicy ratedOperand = new TraversalPolicy(3).traverse(0).repeat(0, 4);
+		assertEquals(12, ratedOperand.length(0));
+		assertEquals(3, ratedOperand.inputLengthLong(0));
+
+		TraversalPolicy plainJoined = new TraversalPolicy(2).append(ratedOperand);
+		assertEquals(2, plainJoined.getDimensions());
+		assertEquals(2, plainJoined.length(0));
+		assertEquals(12, plainJoined.length(1));
+		assertEquals(24, plainJoined.getTotalSizeLong());
+		assertEquals(2, plainJoined.inputLengthLong(0));
+		assertEquals(3, plainJoined.inputLengthLong(1));
+		assertEquals(6, plainJoined.getTotalInputSizeLong());
+
+		TraversalPolicy ratedReceiver = new TraversalPolicy(2, 3).traverse(0).repeat(0, 4);
+		TraversalPolicy bothJoined = ratedReceiver.append(ratedOperand);
+		assertEquals(3, bothJoined.getDimensions());
+		assertEquals(8, bothJoined.length(0));
+		assertEquals(3, bothJoined.length(1));
+		assertEquals(12, bothJoined.length(2));
+		assertEquals(2, bothJoined.inputLengthLong(0));
+		assertEquals(3, bothJoined.inputLengthLong(1));
+		assertEquals(3, bothJoined.inputLengthLong(2));
+		assertEquals(18, bothJoined.getTotalInputSizeLong());
+
+		// Neither side rated: no rate arrays are introduced, so input size equals output size.
+		TraversalPolicy plain = new TraversalPolicy(2).append(new TraversalPolicy(5));
+		assertEquals(10, plain.getTotalSizeLong());
+		assertEquals(10, plain.getTotalInputSizeLong());
+		assertTrue(new TraversalPolicy(2, 5).equalsIgnoreAxis(plain));
+	}
+
+	/**
+	 * The rate resizing must not disturb the common, rate-free case: adding or dropping a
+	 * dimension on a policy with no traversal rates must leave the rate arrays absent (all-ones)
+	 * so that the index/position round trip is unchanged.
+	 */
+	@Test(timeout = 10000)
+	public void rateFreePolicyDimensionMutationRoundTrips() {
+		TraversalPolicy plain = new TraversalPolicy(2, 3);
+
+		TraversalPolicy appended = plain.appendDimension(4);
+		assertEquals(24, appended.getTotalSizeLong());
+		assertEquals(24, appended.getTotalInputSizeLong());
+
+		int idx = appended.index(1, 2, 3);
+		int[] pos = appended.position(idx);
+		assertEquals(1, pos[0]);
+		assertEquals(2, pos[1]);
+		assertEquals(3, pos[2]);
+	}
+
+	/**
+	 * {@link TraversalPolicy#prependDimension(int)} is {@link TraversalPolicy#insertDimension(int, long)}
+	 * at axis 0: it must produce the same shape, ordering, rates, and traversal axis as inserting a new
+	 * leading dimension, so the two are interchangeable and share a single implementation. The shared
+	 * build also fixes the traversal-axis adjustment (see
+	 * {@link #insertDimensionShiftsTraversalAxisAtOrBeforeIt()}).
+	 */
+	@Test(timeout = 10000)
+	public void prependDimensionEqualsInsertAtZero() {
+		TraversalPolicy shape = new TraversalPolicy(2, 3, 4).traverse(2);
+
+		TraversalPolicy prepended = shape.prependDimension(5);
+		TraversalPolicy insertedAtZero = shape.insertDimension(0, 5);
+
+		assertEquals(insertedAtZero, prepended);
+		assertEquals(insertedAtZero.getTraversalAxis(), prepended.getTraversalAxis());
+
+		assertEquals(4, prepended.getDimensions());
+		assertEquals(5, prepended.length(0));
+		assertEquals(2, prepended.length(1));
+		assertEquals(3, prepended.length(2));
+		assertEquals(4, prepended.length(3));
+		assertEquals(3, prepended.getTraversalAxis());
+	}
+
+	/**
+	 * Inserting a dimension at or before the traversal axis must shift the traversal axis one position
+	 * to the right so it keeps tracking the same logical dimension, mirroring the adjustment
+	 * {@link TraversalPolicy#subset(int)} makes when leading dimensions are dropped. Before the shared
+	 * build this was handled only by {@link TraversalPolicy#prependDimension(int)} (insert at axis 0);
+	 * {@link TraversalPolicy#insertDimension(int, long)} left the traversal axis unchanged for every
+	 * axis, which was wrong for an insertion at or before it. The single-argument
+	 * {@link TraversalPolicy#insertDimension(long)} inserts at the traversal axis and so shifts it too.
+	 */
+	@Test(timeout = 10000)
+	public void insertDimensionShiftsTraversalAxisAtOrBeforeIt() {
+		TraversalPolicy shape = new TraversalPolicy(2, 3, 4).traverse(2);
+		assertEquals(2, shape.getTraversalAxis());
+
+		assertEquals(3, shape.insertDimension(1, 7).getTraversalAxis());
+		assertEquals(3, shape.insertDimension(2, 7).getTraversalAxis());
+		assertEquals(2, shape.insertDimension(3, 7).getTraversalAxis());
+		assertEquals(3, shape.insertDimension(7L).getTraversalAxis());
+	}
+
+	/**
+	 * {@link TraversalPolicy#appendDimension(int)} inserts past every existing axis, so the traversal
+	 * axis is never shifted by it. This pins the append side of the shared insertion build, including
+	 * the fully traversed case ({@code traversalAxis == getDimensions()}), where
+	 * {@link TraversalPolicy#insertDimension(int, long)}'s at-or-before-axis shift would otherwise move
+	 * the axis and turn the appended dimension from an item dimension into part of the traversal count.
+	 */
+	@Test(timeout = 10000)
+	public void appendDimensionLeavesTraversalAxisUnchanged() {
+		TraversalPolicy shape = new TraversalPolicy(2, 3, 4).traverse(1);
+		assertEquals(1, shape.getTraversalAxis());
+
+		TraversalPolicy appended = shape.appendDimension(5);
+		assertEquals(4, appended.getDimensions());
+		assertEquals(5, appended.length(3));
+		assertEquals(1, appended.getTraversalAxis());
+
+		// A fully traversed policy must stay anchored to the same axis, so the appended
+		// dimension becomes the item shape rather than being folded into the count.
+		TraversalPolicy fullyTraversed = new TraversalPolicy(2, 3, 4).traverseEach();
+		assertEquals(3, fullyTraversed.getTraversalAxis());
+
+		TraversalPolicy appendedFull = fullyTraversed.appendDimension(5);
+		assertEquals(4, appendedFull.getDimensions());
+		assertEquals(5, appendedFull.length(3));
+		assertEquals(3, appendedFull.getTraversalAxis());
+		assertEquals(5, appendedFull.item().getTotalSizeLong());
+	}
+
+	/**
+	 * For a fully traversed policy the insertion point {@code getDimensions()} equals the traversal
+	 * axis, so {@link TraversalPolicy#insertDimension(int, long)} (and the single-argument
+	 * {@link TraversalPolicy#insertDimension(long)}, which inserts at the traversal axis) shift the
+	 * axis and keep the policy fully traversed, while {@link TraversalPolicy#appendDimension(int)}
+	 * keeps the axis so the new dimension becomes the item. Both must produce the same dimensions.
+	 */
+	@Test(timeout = 10000)
+	public void trailingInsertDiffersFromAppendWhenFullyTraversed() {
+		TraversalPolicy fullyTraversed = new TraversalPolicy(2, 3).traverseEach();
+		assertEquals(2, fullyTraversed.getTraversalAxis());
+
+		TraversalPolicy inserted = fullyTraversed.insertDimension(2, 4);
+		TraversalPolicy insertedAtAxis = fullyTraversed.insertDimension(4L);
+		TraversalPolicy appended = fullyTraversed.appendDimension(4);
+
+		assertEquals(3, inserted.getTraversalAxis());
+		assertEquals(3, insertedAtAxis.getTraversalAxis());
+		assertEquals(2, appended.getTraversalAxis());
+
+		long totalSize = fullyTraversed.getTotalSizeLong() * 4;
+		assertEquals(totalSize, inserted.getCountLong());
+		assertEquals(0, inserted.item().getDimensions());
+		assertEquals(fullyTraversed.getTotalSizeLong(), appended.getCountLong());
+		assertEquals(4, appended.item().getTotalSizeLong());
+
+		for (int i = 0; i < 3; i++) {
+			assertEquals(inserted.length(i), appended.length(i));
+			assertEquals(inserted.length(i), insertedAtAxis.length(i));
+		}
+	}
+
+	/**
 	 * Tests permute with 4 dimensions.
 	 */
 	@Test(timeout = 10000)
@@ -127,5 +359,84 @@ public class TraversalPolicyTests extends TestSuiteBase {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Verifies that {@link TraversalPolicy#repetitionsToFill} counts how many copies of a
+	 * shape make up a larger one, yields zero for a size that does not divide evenly while
+	 * {@link TraversalPolicy#enableDivisibleSizes} is set, and rejects an empty shape.
+	 */
+	@Test(timeout = 10000)
+	public void repetitionsToFill() {
+		TraversalPolicy target = new TraversalPolicy(4, 6);
+
+		assertEquals(4, new TraversalPolicy(6).repetitionsToFill(target));
+		assertEquals(1, new TraversalPolicy(24).repetitionsToFill(target));
+		assertEquals(0, new TraversalPolicy(5).repetitionsToFill(target));
+
+		try {
+			new TraversalPolicy(0).repetitionsToFill(target);
+			Assert.fail("An empty shape should not be repeatable");
+		} catch (IllegalArgumentException expected) {
+			// An empty shape cannot fill any target
+		}
+	}
+
+	/**
+	 * Verifies that {@link TraversalPolicy#broadcast} leaves an axis that already has the
+	 * target length unchanged, repeats an axis of length one up to it, and rejects any
+	 * other length.
+	 */
+	@Test(timeout = 10000)
+	public void broadcast() {
+		TraversalPolicy full = new TraversalPolicy(4, 6);
+		Assert.assertSame(full, full.broadcast(0, 4));
+
+		TraversalPolicy repeated = new TraversalPolicy(1, 6).broadcast(0, 4);
+		assertEquals(4, repeated.length(0));
+		assertEquals(6, repeated.length(1));
+		assertEquals(24, repeated.getTotalSizeLong());
+
+		try {
+			new TraversalPolicy(3, 6).broadcast(0, 4);
+			Assert.fail("An axis of length 3 should not broadcast to length 4");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertEquals("Axis 0 of length 3 cannot be broadcast to length 4", expected.getMessage());
+		}
+	}
+
+	/**
+	 * Trimming an all-ones shape must not throw. {@link TraversalPolicy#trim()}
+	 * removes trailing unit dimensions, but a single-element collection such as
+	 * {@code (1)} or {@code (1, 1)} is a legal shape whose trailing unit cannot
+	 * be stripped without leaving zero dimensions. The documented contract is to
+	 * return "the trimmed policy, or this policy if no trailing unit dimensions
+	 * exist", so trim must stop at the final dimension rather than recursing into
+	 * an empty shape — which the {@code tolerateZero=false} constructor rejects
+	 * with {@link IllegalArgumentException}. A normal trailing-unit trim
+	 * ({@code (3, 1)} to {@code (3)}) must still work.
+	 */
+	@Test(timeout = 10000)
+	public void trimAllOnesShapeKeepsFinalDimension() {
+		Assert.assertTrue(new TraversalPolicy(1).trim().equalsIgnoreAxis(new TraversalPolicy(1)));
+		Assert.assertTrue(new TraversalPolicy(1, 1).trim().equalsIgnoreAxis(new TraversalPolicy(1)));
+		Assert.assertTrue(new TraversalPolicy(1, 1, 1).trim().equalsIgnoreAxis(new TraversalPolicy(1)));
+
+		Assert.assertTrue(new TraversalPolicy(3, 1).trim().equalsIgnoreAxis(new TraversalPolicy(3)));
+		Assert.assertTrue(new TraversalPolicy(2, 1, 1).trim().equalsIgnoreAxis(new TraversalPolicy(2)));
+	}
+
+	/**
+	 * Trimming a zero-dimension policy must return safely rather than evaluating
+	 * {@code length(getDimensions() - 1)} with an index of {@code -1}. The
+	 * {@code getDimensions() > 1} guard in {@link TraversalPolicy#trim()}
+	 * short-circuits before the length lookup, so a zero-dimension policy
+	 * (created with the {@code tolerateZero=true} constructor) is returned
+	 * unchanged instead of throwing an {@link ArrayIndexOutOfBoundsException}.
+	 */
+	@Test(timeout = 10000)
+	public void trimZeroDimensionPolicyReturnsSafely() {
+		TraversalPolicy trimmed = new TraversalPolicy(true).trim();
+		Assert.assertEquals(0, trimmed.getDimensions());
 	}
 }

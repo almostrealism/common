@@ -16,7 +16,7 @@ starts running.
 | `github_poller.py` | Computes `pre_start_latency_seconds` (the raw `started_at - created_at` interval) and, given the job's dependency graph, a real `queue_wait_seconds` distinct from it — a job gated on a workflow `needs:` does not have its queue wait measured by the raw interval alone, since that also includes time blocked on upstream jobs. `poll_and_store` is the poll-cycle entry point: it fetches runs/jobs, computes metrics, and upserts `job_event`/`job_step` into a `FleetStore`, retrying rate-limited (403/429) responses with backoff; each job also carries `lane` (its `ar-*` label — what kind of work the runner is for) and `platform`, from `classify_labels`. `run_poll_loop`/`main` is the scheduled entry point — `python -m tools.fleet.github_poller --repo owner/name --token-file … --store-url-file … [--runners-org owner]` — with the collector's reconnect behaviour; it resolves dependencies through `workflow_graph.py` and, every cycle, records each registered self-hosted runner (busy / idle / offline, labels, lane) into `runner_state` from the runners API. |
 | `workflow_graph.py` | `WorkflowGraph`: a workflow file's jobs, their `needs:` and the mapping from the display name the jobs API reports back to the YAML key that produced it (key, literal `name:`, matrix suffix, reusable-workflow caller, `${{ }}` names as patterns — unknown or ambiguous is `None`, never a guess). `WorkflowGraphResolver` fetches each run's workflow file at the run's commit (once per file and commit) and supplies `poll_and_store`'s two callbacks: the job's `needs`, and when its last dependency finished, so `queue_wait_seconds` is measured for dependent jobs too. Needs `PyYAML`; without it the poller says so and leaves the dependency columns `NULL`. |
 | `cli.py` | The two read verbs, `list` and `status`, against any store (`--db fleet.db`, or `--db-url-file` for the central Postgres store — `--db` itself rejects a `postgresql://…` URL, since the credential it carries would otherwise appear on this process's command line). |
-| `launchd/` | LaunchDaemon templates for the collector and the poller; `render.sh`, which fills them in for a host and creates the private interpreter (a venv with `psycopg` and `PyYAML`) they run with; and `install.sh`, the one-command install for a macOS host (render, credential, a proven first sample, registration). |
+| `launchd/` | LaunchDaemon templates for the collector and the poller; `render.sh`, which fills them in for a host and creates the private interpreter (a venv with `psycopg` and `PyYAML`) they run with; and `install.sh`, the one-command install for a macOS host (render, credential, a proven first sample, registration). `tools/bin/fleet macos install` runs it after installing the runner. |
 
 ## Deploying it
 
@@ -40,9 +40,11 @@ executes neither CI jobs nor coding-agent jobs, with the credential in a
 mode-600 file only that account can read (`read_secret_file` refuses
 anything more permissive).
 
-On a macOS host, as the account the collector will run as (never the account
-the runners run as — the installer refuses that), one command does the whole
-install:
+On a new macOS runner host, `tools/bin/fleet macos install --store-from
+michael@mac-studio` installs the runner and then this collector in one go
+(see `tools/ci/macos/README.md`). To install the collector alone — as the
+account the collector will run as, never the account the runners run as (the
+installer refuses that):
 
 ```bash
 tools/fleet/launchd/install.sh --store-from michael@mac-studio
@@ -136,9 +138,11 @@ service; the JSONL fallback is under `/var/lib/fleet/logs`.
   visible to a native host `ps` (e.g. containers running inside a
   virtualized container runtime on macOS): needs a real host of that kind to
   validate against.
-- **Control verbs** (`start`/`stop`/`restart`/`register`/`label`) and their
-  platform adapters: these need an operator-supplied fleet inventory and
-  should follow read-only visibility, not precede it.
+- **Fleet-wide control verbs** driven from an inventory (start/stop every
+  host from one place). Per-host control exists — `tools/bin/fleet macos
+  install|start|stop|status|logs` (launchd) and `tools/bin/fleet rocm
+  start|stop|status|logs` (systemd) — run on the host itself; driving them
+  across hosts needs an operator-supplied fleet inventory.
 
 ## What the dashboard reads, and its limits
 
@@ -160,6 +164,20 @@ total, per-runner utilization over the range, and hours per workflow step.
   `name:` expression, a file the API will not serve at that commit — is
   left `NULL` rather than guessed, and the dashboard's "Wait measured" tile
   says what share of jobs the wait figures cover.
+- **A re-run records only the jobs it actually runs.** Re-running a workflow
+  run gives the new attempt a fresh job id for every job it does not
+  re-execute, created at the re-run but carrying the earlier attempt's start
+  and finish times. The poller skips those copies (`is_carried_over`: a job
+  that started before it was created), since storing them counted the same
+  runner time twice and gave them negative waits of many hours. Copies a
+  poller without this check stored are removed with:
+
+  ```sql
+  BEGIN;
+  DELETE FROM job_step WHERE job_id IN (SELECT job_id FROM job_event WHERE started_at < created_at);
+  DELETE FROM job_event WHERE started_at < created_at;
+  COMMIT;
+  ```
 - **`job_event.labels`, and so `lane`/`platform`, are the executing
   runner's actual label set, not the job's requested `runs-on:` set.** A
   runner can carry extra/custom labels beyond what a job asked for, so a

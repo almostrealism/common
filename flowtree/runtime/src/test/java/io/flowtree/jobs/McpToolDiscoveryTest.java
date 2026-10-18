@@ -358,6 +358,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"tracker_delete_task",
 			"tracker_search_tasks",
 			"tracker_project_summary",
+			"tracker_file_follow_up_task",
 			"workspace_secret_list_names",
 			"workspace_secret_render_file"
 		));
@@ -460,6 +461,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare organizational_placement_enabled in"
 			+ " signature so callers can opt in to placement review for pre-merge jobs",
 			submitParams.contains("organizational_placement_enabled"));
+		assertTrue("workstream_submit_task must declare object_oriented_review_enabled in"
+			+ " signature so callers can opt in to the per-class design review",
+			submitParams.contains("object_oriented_review_enabled"));
 		assertTrue("workstream_submit_task must declare retrospective_enabled in signature"
 			+ " so callers can opt in to the retrospective phase",
 			submitParams.contains("retrospective_enabled"));
@@ -701,11 +705,15 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_create_task");
 		assertTrue("tracker_create_task must declare priority in signature",
 			trackerCreateParams.contains("priority"));
+		assertTrue("tracker_create_task must declare stage in signature",
+			trackerCreateParams.contains("stage"));
 
 		List<String> trackerUpdateParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_update_task");
 		assertTrue("tracker_update_task must declare priority in signature",
 			trackerUpdateParams.contains("priority"));
+		assertTrue("tracker_update_task must declare stage in signature",
+			trackerUpdateParams.contains("stage"));
 
 		List<String> trackerListParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_list_tasks");
@@ -999,6 +1007,50 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		assertTrue("workstream_update_config must declare dispatch_capable parameter",
 			updateParams.contains("dispatch_capable"));
+	}
+
+	/**
+	 * Verifies that {@code workstream_register} and {@code workstream_update_config}
+	 * declare {@code tracker_capabilities}, the parameter operators use to grant a
+	 * workstream the {@code planner} or {@code steward} tracker role. Without it in the
+	 * signature the roles cannot be granted through MCP at all, and the narrow tracker
+	 * tools would refuse every caller.
+	 */
+	@Test(timeout = 30000)
+	public void managerRegisterAndUpdateConfigHaveTrackerCapabilities() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable", managerSources.isEmpty());
+
+		for (String tool : Arrays.asList("workstream_register", "workstream_update_config")) {
+			assertTrue(tool + " must declare tracker_capabilities",
+				McpToolDiscovery.discoverToolParameters(managerSources, tool)
+					.contains("tracker_capabilities"));
+		}
+	}
+
+	/**
+	 * Verifies that the narrow tracker tools used by planning and goal-decomposition
+	 * agents are registered and declare the parameters their callers rely on: the
+	 * project and release names every one of them resolves, and the goal-task fields
+	 * of {@code tracker_upsert_goal_task}.
+	 */
+	@Test(timeout = 30000)
+	public void managerGoalAutomationTrackerToolsDeclareTheirParameters() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable", managerSources.isEmpty());
+
+		for (String tool : Arrays.asList("tracker_claim_next_task",
+				"tracker_list_release_tasks", "tracker_upsert_goal_task")) {
+			List<String> params = McpToolDiscovery.discoverToolParameters(managerSources, tool);
+			assertTrue(tool + " must declare project", params.contains("project"));
+			assertTrue(tool + " must declare release", params.contains("release"));
+		}
+		List<String> upsert =
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_upsert_goal_task");
+		for (String param : Arrays.asList("title", "source", "description",
+				"priority", "blocked_by", "task_id")) {
+			assertTrue("tracker_upsert_goal_task must declare " + param, upsert.contains(param));
+		}
 	}
 
 	/**

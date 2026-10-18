@@ -311,18 +311,19 @@ public class OperationProfileFX extends Application implements ConsoleFeatures {
 
 		if (key == null) {
 			currentItem.setExpanded(true);
-		} else {
-			OperationProfileNodeInfo nodeInfo = currentItem.getValue();
+			return;
+		}
 
-			if (nodeInfo != null && key.equals(nodeInfo.getNode().getKey())) {
-				tree.getSelectionModel().select(currentItem);
-				tree.scrollTo(tree.getRow(currentItem));
-				return;
-			}
+		OperationProfileNodeInfo nodeInfo = currentItem.getValue();
+
+		if (nodeInfo != null && key.equals(nodeInfo.getNode().getKey())) {
+			tree.getSelectionModel().select(currentItem);
+			tree.scrollTo(tree.getRow(currentItem));
+			return;
 		}
 
 		currentItem.getChildren().forEach(c ->
-				traverseAndSelect(c, null, tree));
+				traverseAndSelect(c, key, tree));
 	}
 
 	@Override

@@ -19,7 +19,7 @@ above this layer depends on it; nothing here depends on higher layers.
 - PackedCollection: hardware-accelerated tensor storage and memory layout
 - CollectionProducer: lazy computation API for building expression graphs
 - GPU/CPU acceleration backends, kernel compilation, memory management
-- Hardware abstraction layer (Metal, OpenCL, JNI bridges)
+- Hardware abstraction layer (Metal, OpenCL, JNI bridges, plus an opt-in CUDA backend)
 
 ## What Does NOT Belong Here
 
@@ -43,9 +43,14 @@ above this layer depends on it; nothing here depends on higher layers.
 
 A native object (an `id<MTLBuffer>`, an `MTLSharedEvent`, a `cl_event`, a device pointer, …) is
 represented by a **Java object** of a type that means that thing — e.g. `MTLBuffer`, `MTLEvent`,
-`MTLCommandBuffer`, `CLSemaphore`. The raw `long`/`int` native pointer lives **only** inside the
-thin JNI binding class (`MTL`, `CL`) as the argument/return type of the `native` methods; it does
-**not** leak into any higher-level code. Never carry native objects around as bare `long`s, never
+`MTLCommandBuffer`, `CLSemaphore`, or a CUDA wrapper — a context-bound `CUObject` subtype
+(`CUStream`, `CUModule`, `CUDeviceBuffer`, …) or the context-free `CUDevice`. The raw
+`long`/`int` native pointer is confined to two places: the thin JNI binding class (`MTL`, `CL`,
+`CU`), where it is the argument/return type of the `native` methods, and the typed wrapper that
+represents the object, which stores its own handle and hands it to the binding class — an
+`MTLObject` or `CUObject` holds a `long`, a `CUDevice` the device `int`; the CUDA wrappers expose
+their handle to `CU` from within the `cuda` package alone. It does **not** leak into any
+higher-level code. Never carry native objects around as bare `long`s, never
 key collections on them (`Set<Long>`, `Map<Long, …>`), and never compare or store native addresses
 outside the wrapper. If you need identity or bookkeeping for a native object, hold the wrapper
 object and use it. The fact that a value crosses JNI does not make it acceptable to stop caring

@@ -17,6 +17,7 @@
 package org.almostrealism.ml.llama2;
 
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
@@ -24,6 +25,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.BPE;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
 import java.io.IOException;
@@ -33,6 +35,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -48,7 +51,7 @@ import java.util.function.Consumer;
  * @see Llama2Weights
  * @see AutoregressiveModel
  */
-public class Llama2 implements AttentionFeatures, ConsoleFeatures {
+public class Llama2 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 	static {
 		System.setProperty("AR_HARDWARE_OFF_HEAP_SIZE", "0");
 		System.setProperty("AR_EXPRESSION_WARNINGS", "disabled");
@@ -66,6 +69,12 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures {
 
 	/** BPE merge scores indexed by token ID; higher scores indicate preferred merges. */
 	private float[] vocabScores;
+
+	/** The sequence position the transformer reads, created by {@link #model}. */
+	private PackedCollection position;
+
+	/** The compiled transformer the generator decodes with, created by {@link #model}. */
+	private CompiledModel compiled;
 
 	/** The compiled autoregressive model used for inference. */
 	private AutoregressiveModel<Integer> model;
@@ -155,6 +164,13 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures {
 	public OperationProfile getProfile() { return profile; }
 
 	/**
+	 * Returns the generator {@link #run} decodes with, which {@link #destroy()} releases.
+	 *
+	 * @return the autoregressive model built from the checkpoint
+	 */
+	public AutoregressiveModel<Integer> getAutoregressiveModel() { return model; }
+
+	/**
 	 * Sets the sampling temperature.
 	 *
 	 * @param temperature 0.0 for greedy decoding, higher values for more randomness
@@ -166,6 +182,9 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures {
 	/**
 	 * Constructs the autoregressive model from the loaded weights.
 	 *
+	 * <p>The position and compiled transformer created here belong to this instance, which
+	 * releases them in {@link #destroy()}.</p>
+	 *
 	 * @param profile      the operation profile to record timing data
 	 * @param requirements optional compute requirements (e.g., GPU)
 	 * @return the compiled autoregressive model
@@ -173,7 +192,7 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures {
 	protected AutoregressiveModel<Integer> model(OperationProfile profile, ComputeRequirement... requirements) {
 		Model transformer = new Model(shape(1, config.dim));
 
-		PackedCollection position = new PackedCollection(1);
+		position = new PackedCollection(1);
 
 		int dim = config.dim;
 
@@ -195,9 +214,22 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures {
 		transformer.add(rmsnorm(shape(1, dim), weights.rmsFinalWeight));
 		transformer.add(dense(weights.wcls));
 
-		return AutoregressiveModel.of(transformer.compile(false, profile),
-				position,
+		compiled = transformer.compile(false, profile);
+		return AutoregressiveModel.of(compiled, position,
 				t -> weights.tokenEmbeddings.range(shape(config.dim), t * config.dim));
+	}
+
+	/**
+	 * Releases the generator, together with the compiled transformer and position it was built
+	 * with; every release is attempted even when an earlier one fails. The checkpoint weights
+	 * are not released. This instance cannot generate afterwards; a repeated call is harmless.
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.releaseAll(List.<Runnable>of(
+				() -> Destroyable.destroy(model),
+				() -> Destroyable.destroy(compiled),
+				() -> Destroyable.destroy(position)));
 	}
 
 	/**

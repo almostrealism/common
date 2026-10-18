@@ -74,6 +74,8 @@ import java.util.function.Supplier;
  * <h2>Implementation Notes</h2>
  * <ul>
  *   <li>Each parameter set maintains its own momentum and velocity accumulators</li>
+ *   <li>The gradient is evaluated once per step into its own buffer, which both accumulators
+ *       read, so an expensive gradient computation is neither repeated nor held twice</li>
  *   <li>Timestep counter is incremented automatically on each update</li>
  *   <li>Bias correction ensures stable updates in early training</li>
  * </ul>
@@ -149,16 +151,26 @@ public class AdamOptimizer implements ParameterUpdate<PackedCollection>, CodeFea
 		TraversalPolicy shape = shape(weights);
 
 		PackedCollection c = new PackedCollection(1);
+		PackedCollection g = new PackedCollection(shape.traverseEach());
 		PackedCollection m = new PackedCollection(shape.traverseEach());
 		PackedCollection v = new PackedCollection(shape.traverseEach());
+
+		// The timestep and moments are read before they are first written, and not every
+		// backend zero-initializes a new allocation; g is fully assigned before it is read
+		c.clear();
+		m.clear();
+		v.clear();
 		double eps = 1e-7; // Hardware.getLocalHardware().epsilon();
 
 		OperationList ops = new OperationList();
 		ops.add(a("increment", cp(c), cp(c).add(1)));
+
+		// The gradient is evaluated once per step; momentum and velocity both read the stored value
+		ops.add(a(name + " (gradient)", cp(g), c(gradient)));
 		ops.add(a(name + " (\u0394 momentum)", cp(m),
-				c(beta1).multiply(cp(m)).add(c(1.0).subtract(c(beta1)).multiply(c(gradient)))));
+				c(beta1).multiply(cp(m)).add(c(1.0).subtract(c(beta1)).multiply(cp(g)))));
 		ops.add(a(name + " (\u0394 velocity)", cp(v),
-				c(beta2).multiply(cp(v)).add(c(1.0).subtract(c(beta2)).multiply(c(gradient).sq()))));
+				c(beta2).multiply(cp(v)).add(c(1.0).subtract(c(beta2)).multiply(cp(g).sq()))));
 
 		CollectionProducer mt = cp(m).divide(c(1.0).subtract(c(beta1).pow(cp(c))));
 		CollectionProducer vt = cp(v).divide(c(1.0).subtract(c(beta2).pow(cp(c))));

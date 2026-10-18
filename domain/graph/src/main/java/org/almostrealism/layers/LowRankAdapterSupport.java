@@ -104,15 +104,30 @@ public interface LowRankAdapterSupport extends LayerFeatures {
 	 * @return A ProjectionFactory that creates LoRA-wrapped layers for targeted projections
 	 */
 	default ProjectionFactory getProjectionFactory() {
-		AdapterConfig config = getAdapterConfig();
-		return (shape, weights, bias, target) -> {
-			if (config != null && config.isTargeted(target)) {
-				LoRALinear loraLayer = new LoRALinear(shape, weights, bias, config.getRank(), config.getAlpha());
-				addLoraLayer(loraLayer);
-				return loraLayer;
-			}
-			return dense(shape, weights, bias, false);
-		};
+		return loraProjectionFactory();
+	}
+
+	/**
+	 * Builds the {@link LoRAProjectionFactory} shared by {@link #getProjectionFactory()}
+	 * and {@link #loraOrDense(TraversalPolicy, PackedCollection, PackedCollection, AdapterConfig.TargetLayer)}.
+	 *
+	 * <p>The factory registers each adapter through {@link #addLoraLayer(LoRALinear)} and
+	 * falls back, for untargeted projections, to this implementor's own
+	 * {@link LayerFeatures#dense(TraversalPolicy, PackedCollection, PackedCollection, boolean, io.almostrealism.compute.ComputeRequirement...)}.
+	 * The fallback is a lambda with no {@code this} of its own, so the unqualified
+	 * {@code dense(...)} resolves to this implementor and an overriding {@code dense(...)}
+	 * is honored.</p>
+	 *
+	 * <p>This method is private so an implementor cannot override the shared construction.
+	 * {@link #loraOrDense(TraversalPolicy, PackedCollection, PackedCollection, AdapterConfig.TargetLayer)}
+	 * stays independent of an overridden {@link #getProjectionFactory()} by building its own
+	 * factory through this helper rather than calling {@link #getProjectionFactory()}.</p>
+	 *
+	 * @return A freshly built LoRA projection factory
+	 */
+	private LoRAProjectionFactory loraProjectionFactory() {
+		return new LoRAProjectionFactory(getAdapterConfig(), this::addLoraLayer,
+				(shape, weights, bias, target) -> dense(shape, weights, bias, false));
 	}
 
 	/**
@@ -132,21 +147,7 @@ public interface LowRankAdapterSupport extends LayerFeatures {
 									  PackedCollection weights,
 									  PackedCollection bias,
 									  AdapterConfig.TargetLayer targetLayer) {
-		AdapterConfig config = getAdapterConfig();
-
-		if (config != null && config.isTargeted(targetLayer)) {
-			LoRALinear loraLayer = new LoRALinear(
-					inputShape,
-					weights,
-					bias,
-					config.getRank(),
-					config.getAlpha()
-			);
-			addLoraLayer(loraLayer);
-			return loraLayer;
-		} else {
-			return dense(inputShape, weights, bias, false);
-		}
+		return loraProjectionFactory().create(inputShape, weights, bias, targetLayer);
 	}
 
 	/**

@@ -42,21 +42,17 @@ import java.util.Random;
  * and real (Moonbeam checkpoint) weights.</p>
  *
  * <h2>Architecture enforcement</h2>
- * <p>All GRU gate computations are compiled into exactly ONE
- * {@link org.almostrealism.model.CompiledModel} inside {@link GRUDecoder}.
- * The test creates one {@link GRUDecoder} and calls {@code decode()};
- * it does not create any {@link org.almostrealism.model.Model} instances
- * itself, verifying that the entire pipeline is expressed as a single
- * compiled computation graph.</p>
+ * <p>All GRU gate computations are compiled into the step model
+ * {@link GRUDecoder} builds from its PDSL asset. The test creates one
+ * {@link GRUDecoder} and calls {@code decode()}; it does not create any
+ * {@link org.almostrealism.model.Model} instances itself.</p>
  *
- * <h2>PDSL coverage</h2>
+ * <h2>PDSL coverage ({@code midi/gru_decoder.pdsl})</h2>
  * <ul>
- *   <li>{@code summary_proj} — projects transformer hidden → decoder hidden (init)</li>
- *   <li>{@code gru_r_gate} — reset gate</li>
- *   <li>{@code gru_z_gate} — update gate</li>
- *   <li>{@code gru_n_gate} — candidate gate</li>
- *   <li>{@code gru_h_new}  — hidden update (lerp)</li>
- *   <li>{@code lm_head}    — projects decoder hidden → vocab logits</li>
+ *   <li>{@code gru_decoder_start} — projects transformer hidden → decoder hidden, every layer's initial state</li>
+ *   <li>{@code gru_decoder_layer} — reads a layer's hidden state, runs the GRU cell, writes it back</li>
+ *   <li>{@code gru_cell} — reset gate, update gate, candidate state and hidden update (lerp)</li>
+ *   <li>{@code gru_decoder_logits} — projects decoder hidden → vocab logits</li>
  * </ul>
  */
 public class GruDecoderPdslInferenceTest extends TestSuiteBase implements ConsoleFeatures {
@@ -140,8 +136,8 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Load Moonbeam protobuf weights, build a {@link GRUDecoder}, and run a
-	 * full 7-step decode.
+	 * Load a {@link GRUDecoder} from Moonbeam protobuf weights with
+	 * {@link GRUDecoder#load}, and run a full 7-step decode.
 	 *
 	 * <p>Skipped when {@value WEIGHTS_DIR} is not present.</p>
 	 */
@@ -154,30 +150,7 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 		MoonbeamConfig config = MoonbeamConfig.checkpoint309M();
 		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
 
-		int numLayers = config.decoderLayers;
-		int dh = config.decoderHiddenSize;
-
-		int[] inputSizes = new int[numLayers];
-		PackedCollection[] weightIh = new PackedCollection[numLayers];
-		PackedCollection[] weightHh = new PackedCollection[numLayers];
-		PackedCollection[] biasIh = new PackedCollection[numLayers];
-		PackedCollection[] biasHh = new PackedCollection[numLayers];
-		for (int l = 0; l < numLayers; l++) {
-			inputSizes[l] = dh;
-			weightIh[l] = stateDict.get(String.format("decoder.weight_ih_l%d", l));
-			weightHh[l] = stateDict.get(String.format("decoder.weight_hh_l%d", l));
-			biasIh[l] = stateDict.get(String.format("decoder.bias_ih_l%d", l));
-			biasHh[l] = stateDict.get(String.format("decoder.bias_hh_l%d", l));
-		}
-
-		PackedCollection summaryW = stateDict.get("summary_projection.weight");
-		PackedCollection summaryB = stateDict.get("summary_projection.bias");
-		PackedCollection lmW = stateDict.get("lm_head.weight");
-		PackedCollection lmB = stateDict.get("lm_head.bias");
-		PackedCollection embedTable = stateDict.get("decoder_embedding.weight");
-
-		GRUDecoder decoder = new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
-				summaryW, summaryB, lmW, lmB, embedTable);
+		GRUDecoder decoder = GRUDecoder.load(stateDict, config);
 
 		// Synthetic transformer hidden state (all 0.1)
 		PackedCollection transformerHidden = new PackedCollection(

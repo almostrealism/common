@@ -38,7 +38,9 @@ avoiding redundant concurrent installs.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -51,6 +53,16 @@ AR_GROUP_ID = "org.almostrealism"
 
 # Default location of the user's local Maven repository.
 DEFAULT_M2_REPOSITORY = Path.home() / ".m2" / "repository"
+
+# Hard ceiling on the seed `mvn install` subprocess, mirroring server.py's
+# MAX_TIMEOUT_MINUTES (2400s / 40 minutes): "every test or build invocation
+# needs an explicit timeout of at most 40 minutes" applies to this preflight
+# build exactly as it does to the test invocation that follows it. Without an
+# enforced deadline here, the seed command was the one build/test invocation
+# in this server that could run indefinitely -- it executes before
+# server.py's own `threading.Timer(config.timeout_minutes * 60, ...)` is
+# armed, so that timer's ceiling never covered it.
+PREFLIGHT_TIMEOUT_SECONDS = 2400
 
 
 @dataclass
@@ -304,6 +316,7 @@ def _run_seed_command(
         project_root: Path,
         output_writer: Optional[Callable[[str], None]] = None,
         runner: Optional[Callable[[list, Path, Optional[Callable[[str], None]]], int]] = None,
+        timeout_seconds: float = PREFLIGHT_TIMEOUT_SECONDS,
 ) -> tuple[int, float]:
     """Execute the seed command, capturing output through ``output_writer``.
 
@@ -312,7 +325,11 @@ def _run_seed_command(
         project_root: Working directory for the subprocess.
         output_writer: Optional callable invoked once per output chunk.
         runner: Optional override for the subprocess driver. Used by
-            tests to avoid spawning a real Maven process.
+            tests to avoid spawning a real Maven process. Overriding the
+            driver also bypasses ``timeout_seconds``, which only the
+            production driver (:func:`_default_runner`) enforces.
+        timeout_seconds: Hard ceiling on the subprocess's wall-clock time,
+            enforced only by :func:`_default_runner`.
 
     Returns:
         ``(exit_code, duration_seconds)``.
@@ -321,7 +338,7 @@ def _run_seed_command(
     if runner is not None:
         exit_code = runner(command, project_root, output_writer)
     else:
-        exit_code = _default_runner(command, project_root, output_writer)
+        exit_code = _default_runner(command, project_root, output_writer, timeout_seconds)
     duration = time.monotonic() - start
     return exit_code, duration
 
@@ -330,12 +347,14 @@ def _default_runner(
         command: list,
         project_root: Path,
         output_writer: Optional[Callable[[str], None]],
+        timeout_seconds: float = PREFLIGHT_TIMEOUT_SECONDS,
 ) -> int:
     """Real subprocess driver used in production.
 
     Streams stdout (with stderr merged) to ``output_writer`` line by
     line so a watcher reading the run's ``output.txt`` can follow the
-    seed in real time.
+    seed in real time. Killed via its process group when it runs past
+    ``timeout_seconds`` -- see :data:`PREFLIGHT_TIMEOUT_SECONDS`.
     """
     env = os.environ.copy()
     # AR_HARDWARE_LIBS is auto-detected by the system; never inject it.
@@ -347,7 +366,26 @@ def _default_runner(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=env,
+        start_new_session=True,
     )
+    # start_new_session=True makes the child the leader of a new process group
+    # whose id equals its pid. Capture it now: once the leader exits and is
+    # reaped, os.getpgid(process.pid) raises ProcessLookupError even while a
+    # child still holds the stdout pipe open and blocks the reader below, which
+    # would let the timeout kill silently skip the group and orphan that child.
+    process_group_id = process.pid
+    timed_out = threading.Event()
+
+    def _kill_on_timeout() -> None:
+        timed_out.set()
+        try:
+            os.killpg(process_group_id, signal.SIGKILL)
+        except ProcessLookupError:
+            # The whole process group already exited before the kill fired.
+            pass
+
+    timer = threading.Timer(timeout_seconds, _kill_on_timeout)
+    timer.start()
     try:
         if process.stdout is not None:
             for raw in process.stdout:
@@ -359,6 +397,14 @@ def _default_runner(
                         pass
     finally:
         process.wait()
+        timer.cancel()
+    if timed_out.is_set() and output_writer is not None:
+        try:
+            output_writer(
+                "\n[ar-test-runner] preflight seed command exceeded "
+                f"{timeout_seconds:.0f}s and was killed.\n")
+        except Exception:
+            pass
     return process.returncode
 
 
@@ -368,6 +414,7 @@ def seed_upstream_artifacts(
         output_writer: Optional[Callable[[str], None]] = None,
         repository: Optional[Path] = None,
         runner: Optional[Callable[[list, Path, Optional[Callable[[str], None]]], int]] = None,
+        timeout_seconds: float = PREFLIGHT_TIMEOUT_SECONDS,
 ) -> PreflightResult:
     """Install upstream ``ar-*`` artifacts for ``module`` when any are missing.
 
@@ -393,6 +440,8 @@ def seed_upstream_artifacts(
             tests can monkey-patch it).
         runner: Optional subprocess driver override; tests use this
             to avoid actually running Maven.
+        timeout_seconds: Hard ceiling on the seed command's wall-clock
+            time; see :data:`PREFLIGHT_TIMEOUT_SECONDS`.
 
     Returns:
         A :class:`PreflightResult` describing what happened.
@@ -409,7 +458,8 @@ def seed_upstream_artifacts(
 
     command = build_seed_command(module)
     exit_code, duration = _run_seed_command(
-        command, project_root, output_writer=output_writer, runner=runner)
+        command, project_root, output_writer=output_writer, runner=runner,
+        timeout_seconds=timeout_seconds)
 
     action = "seeded" if exit_code == 0 else "failed"
     if exit_code == 0:

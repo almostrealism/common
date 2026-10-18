@@ -40,7 +40,7 @@ import java.util.function.IntFunction;
  * <p>This collaborator closes that gap by becoming the one chokepoint through
  * which all sessions pass. Before each launch {@link #beginSession()} is
  * consulted; once any stop condition holds it refuses every further launch,
- * so no restart path — present or future — can run away. Three independent,
+ * so no restart path — present or future — can run away. Four independent,
  * overlapping ceilings are enforced (the first to trip wins):</p>
  *
  * <ol>
@@ -55,11 +55,18 @@ import java.util.function.IntFunction;
  *   <li><b>Turn budget</b> — cumulative agentic turns may not reach
  *       {@link #getMaxTotalTurns()} (default
  *       {@link #DEFAULT_MAX_TOTAL_TURNS}); {@code 0} disables the check.</li>
+ *   <li><b>Wall-clock ceiling</b> — elapsed time since the first session may
+ *       not reach {@link #getMaxWallClock()} (default
+ *       {@link #DEFAULT_MAX_WALL_CLOCK}); a non-positive duration disables
+ *       the check.</li>
  * </ol>
  *
  * <p>The very first session of a job is always permitted regardless of the
- * ceilings, so a job always performs its primary work; the stop conditions
- * gate only the restarts that follow.</p>
+ * ceilings, so a job always performs its primary work; the ceilings gate only
+ * the restarts that follow. Separately, {@link #stopLaunching(String)} records
+ * a terminal condition that no relaunch can clear (such as a required MCP
+ * server that did not connect); once set, it refuses every further launch,
+ * including a first session that has not yet started.</p>
  *
  * <p>The governor also owns the inactivity-restart relaunch loop
  * ({@link #runWithInactivityRetries(String, IntFunction)}) so that all
@@ -346,6 +353,52 @@ public class RestartGovernor {
             throw new IllegalArgumentException("maxInactivityRestarts must be non-negative, got: " + maxInactivityRestarts);
         }
         this.maxInactivityRestarts = maxInactivityRestarts;
+    }
+
+    /**
+     * Appends the job-wide ceilings to {@code sb} in the {@code ::key:=value}
+     * wire format of {@link CodingAgentJob#encode()}. Each ceiling is emitted
+     * only when it differs from its default, so the wire stays minimal.
+     *
+     * @param sb buffer the job's encoded form is being built in
+     */
+    void appendEncoded(StringBuilder sb) {
+        if (maxTotalSessions != DEFAULT_MAX_TOTAL_SESSIONS) {
+            sb.append("::maxTotalSessions:=").append(maxTotalSessions);
+        }
+        if (maxTotalTurns != DEFAULT_MAX_TOTAL_TURNS) {
+            sb.append("::maxTotalTurns:=").append(maxTotalTurns);
+        }
+        if (!DEFAULT_MAX_WALL_CLOCK.equals(maxWallClock)) {
+            sb.append("::maxWallClockMs:=").append(maxWallClock.toMillis());
+        }
+    }
+
+    /**
+     * Applies one wire-format key/value pair written by
+     * {@link #appendEncoded(StringBuilder)}.
+     *
+     * @param key   the wire-format key (without the leading {@code ::})
+     * @param value the raw wire value
+     * @return {@code true} if {@code key} names one of this governor's
+     *         ceilings and was consumed
+     */
+    boolean applySetting(String key, String value) {
+        switch (key) {
+            case "maxTotalSessions":
+                setMaxTotalSessions(Integer.parseInt(value));
+                return true;
+            case "maxTotalTurns":
+                setMaxTotalTurns(Integer.parseInt(value));
+                return true;
+            case "maxWallClockMs":
+                // Non-positive is meaningful here: it disables the ceiling, so
+                // it travels rather than being treated as an absent override.
+                setMaxWallClock(Duration.ofMillis(Long.parseLong(value)));
+                return true;
+            default:
+                return false;
+        }
     }
 
     /** Returns the current inactivity-restart attempt index ({@code 0} outside the relaunch loop). */

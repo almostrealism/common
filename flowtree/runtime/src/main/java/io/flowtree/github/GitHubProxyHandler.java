@@ -34,7 +34,9 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -427,6 +429,41 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     // TODO(review): single page, per_page=100, no pagination — a repo with >100 PRs
     // (state=all) can silently miss an old branch's merged/closed PR. See review-followup memory.
     public JsonNode listPullRequestsByRepo(String ownerRepo) {
+        return queryPullRequests(ownerRepo, "state=all&per_page=100&sort=updated&direction=desc");
+    }
+
+    /**
+     * Returns every pull request, open or closed, whose head is {@code branch}
+     * in {@code ownerRepo} itself (not a fork), newest first. Unlike
+     * {@link #listPullRequestsByRepo}, the branch is filtered by GitHub, so an
+     * old branch's pull request is found however many others the repository
+     * has. Missing token or transport failure returns {@code null}.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param branch    the head branch name
+     * @return the branch's pull requests (empty when it has none), or
+     *         {@code null} when GitHub could not be asked
+     */
+    public List<PullRequest> listPullRequestsForBranch(String ownerRepo, String branch) {
+        if (ownerRepo == null || branch == null || branch.isEmpty()) return null;
+        String owner = ownerRepo.substring(0, Math.max(0, ownerRepo.indexOf('/')));
+        JsonNode listing = queryPullRequests(ownerRepo, "state=all&per_page=100&head="
+                + URLEncoder.encode(owner + ":" + branch, StandardCharsets.UTF_8));
+        if (listing == null || !listing.isArray()) return null;
+        List<PullRequest> prs = new ArrayList<>();
+        listing.forEach(pr -> prs.add(new PullRequest(pr)));
+        return prs;
+    }
+
+    /**
+     * Lists pull requests on {@code ownerRepo} matching the {@code query} string
+     * of GitHub's list-pulls endpoint.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param query     the URL query, already encoded
+     * @return the parsed array, or {@code null} without a token or on failure
+     */
+    private JsonNode queryPullRequests(String ownerRepo, String query) {
         if (ownerRepo == null || ownerRepo.isEmpty()) return null;
         String org = extractOrgFromRepoUrl("https://github.com/" + ownerRepo);
         String token = resolveGithubToken(org);
@@ -435,8 +472,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
                 + "'; PR lookup for " + ownerRepo + " will be skipped");
             return null;
         }
-        String url = "https://api.github.com/repos/" + ownerRepo
-                + "/pulls?state=all&per_page=100&sort=updated&direction=desc";
+        String url = "https://api.github.com/repos/" + ownerRepo + "/pulls?" + query;
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setRequestMethod("GET");

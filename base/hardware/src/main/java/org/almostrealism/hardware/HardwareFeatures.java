@@ -206,8 +206,9 @@ public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
 	 *
 	 * <p>If the computation is a compilable {@link Computation}, a
 	 * {@link Periodic} is created that generates counter-based conditional
-	 * execution in compiled code. Otherwise, a Java-based fallback is used
-	 * with a {@link PackedCollection} counter.</p>
+	 * execution in compiled code. Otherwise, a Java-based fallback is used.
+	 * Either way the tick count is held in a newly allocated {@link Bytes}
+	 * counter; see {@link #periodic(Computation, int, Bytes)} to supply one.</p>
 	 *
 	 * @param c      the computation to execute periodically
 	 * @param period the number of invocations between executions
@@ -216,8 +217,33 @@ public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
 	 * @see Periodic
 	 */
 	default Supplier<Runnable> periodic(Computation<Void> c, int period) {
+		return periodic(c, period, new Bytes(1));
+	}
+
+	/**
+	 * Creates a periodic operation that executes the given computation once
+	 * every {@code period} invocations, using the supplied {@code counter}
+	 * as its persistent tick count rather than allocating a fresh one.
+	 *
+	 * <p>Callers that need to reset the periodic cycle (e.g. on a
+	 * {@code setup()}/{@code reset()} lifecycle boundary) should own the
+	 * {@code counter} themselves and zero it directly, rather than
+	 * discarding the returned {@link Supplier} and building a new one.
+	 * Any {@link Runnable} already obtained by calling {@code get()} on the
+	 * returned supplier shares this same {@code counter}, so zeroing it in
+	 * place also corrects the behavior of previously materialized
+	 * runnables, whereas replacing the whole periodic operation would not.</p>
+	 *
+	 * @param c       the computation to execute periodically
+	 * @param period  the number of invocations between executions
+	 * @param counter the persistent counter memory (size 1) tracking ticks
+	 *                since the last execution
+	 * @return a supplier that produces the periodic runnable
+	 *
+	 * @see Periodic
+	 */
+	default Supplier<Runnable> periodic(Computation<Void> c, int period, Bytes counter) {
 		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
-			Bytes counter = new Bytes(1);
 			return () -> {
 				Runnable r = ((OperationList) c).get();
 				return () -> {
@@ -230,7 +256,7 @@ public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
 				};
 			};
 		} else {
-			return new Periodic(c, period);
+			return new Periodic(c, period, counter);
 		}
 	}
 

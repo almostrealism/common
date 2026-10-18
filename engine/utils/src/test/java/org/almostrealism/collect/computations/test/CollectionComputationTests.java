@@ -17,6 +17,8 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
@@ -25,12 +27,16 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.stream.IntStream;
 
 /**
@@ -123,6 +129,32 @@ public class CollectionComputationTests extends TestSuiteBase {
 		log(String.valueOf(result.toArrayString()));
 		assertEquals(8.0, result.toDouble(0));
 		assertEquals(18.0, result.toDouble(1));
+	}
+
+	/**
+	 * Rows gathered from a table with more elements than single precision can count are exact
+	 * copies of the table's rows: the flat element index of the last rows exceeds {@code 2^24},
+	 * where a floating-point index would already be rounded.
+	 */
+	@Test(timeout = 120000)
+	public void rowsBeyondSinglePrecision() {
+		int rowCount = 22000;
+		int rowLength = 768;
+		PackedCollection table = new PackedCollection(shape(rowCount, rowLength)).randnFill();
+		PackedCollection index = pack(21999, 5, 21000);
+
+		PackedCollection result = rows(shape(3, rowLength), p(table), p(index)).get().evaluate();
+		assertEquals(3 * rowLength, result.getShape().getTotalSize());
+
+		for (int r = 0; r < 3; r++) {
+			int row = (int) index.toDouble(r);
+			for (int f = 0; f < rowLength; f++) {
+				assertEquals(table.valueAt(row, f), result.valueAt(r, f));
+			}
+		}
+
+		table.destroy();
+		result.destroy();
 	}
 
 	/**
@@ -498,6 +530,77 @@ public class CollectionComputationTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests the index of max value when it is embedded in a kernel of a different size,
+	 * a one-hot mask over each row, where each row is short enough to be embedded rather
+	 * than isolated.
+	 */
+	@Test(timeout = 30000)
+	public void indexOfMaxEmbedded() throws IOException {
+		assertIndexOfMaxMask(4);
+	}
+
+	/**
+	 * Tests the index of max value when it is used by a kernel of a different size,
+	 * a one-hot mask over each row, where each row is long enough to be isolated.
+	 */
+	@Test(timeout = 30000)
+	public void indexOfMaxIsolated() throws IOException {
+		assertIndexOfMaxMask(20);
+	}
+
+	/**
+	 * Builds a one-hot mask of the maximum of each of three rows of the given size,
+	 * each row peaking at a different column,
+	 * optimizes it so that isolation is considered, and verifies that each row selects
+	 * its own maximum.
+	 *
+	 * @param size the length of each row
+	 */
+	protected void assertIndexOfMaxMask(int size) throws IOException {
+		int rows = 3;
+		int step = (size - 1) / (rows - 1);
+		int[] expected = IntStream.range(0, rows).map(r -> r * step).toArray();
+
+		// Row r is a parabola peaking at column r * step
+		CollectionProducer offset = integers(0, rows * size).mod(size)
+				.subtract(floor(integers(0, rows * size).divide(size)).multiply(step));
+		PackedCollection value = offset.multiply(offset).multiply(-1.0)
+				.evaluate().reshape(rows, size);
+
+		PackedCollection index = indexOfMax(cp(value.traverse(1))).evaluate();
+		for (int r = 0; r < rows; r++) {
+			assertEquals(expected[r], index.toDouble(r));
+		}
+
+		CollectionProducer mask = equals(
+				integers(0, rows * size).mod(size).reshape(shape(rows, size)),
+				c(indexOfMax(cp(value.traverse(1)))).reshape(shape(rows, 1))
+						.repeat(1, size).reshape(shape(rows, size)),
+				c(1.0), c(0.0));
+
+		OperationProfileNode profile = new OperationProfileNode("indexOfMaxMask" + size);
+		Hardware.getLocalHardware().assignProfile(profile);
+
+		PackedCollection m;
+
+		try {
+			m = Process.optimized(mask).get().evaluate();
+		} finally {
+			Hardware.getLocalHardware().assignProfile(null);
+			Files.createDirectories(Path.of("target/test-profiles"));
+			profile.save("target/test-profiles/indexOfMaxMask" + size + ".xml");
+		}
+
+		m.reshape(rows, size).print();
+
+		for (int r = 0; r < rows; r++) {
+			for (int i = 0; i < size; i++) {
+				assertEquals(i == expected[r] ? 1.0 : 0.0, m.toDouble(r * size + i));
+			}
+		}
+	}
+
+	/**
 	 * Tests 3D max operation.
 	 */
 	@Test(timeout = 30000)
@@ -813,5 +916,35 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		a(1, p(result), chained).get().run();
 		assertEquals(-1.0, result.toDouble(0));
+	}
+
+	/**
+	 * A reshape wrapped around a kernel-backed (non-{@code Provider}) producer must evaluate
+	 * to the same values as evaluating the underlying computation directly and re-viewing the
+	 * result with the target shape. This exercises the
+	 * {@link org.almostrealism.hardware.computations.HardwareEvaluable#setResultProcessor
+	 * result processor} path that {@link org.almostrealism.collect.computations.ReshapeProducer#get()}
+	 * installs for such an input, rather than the {@code Provider} fast path.
+	 */
+	@Test(timeout = 30000)
+	public void reshapeOfComputedProducer() {
+		int w = 2;
+		int h = 3;
+
+		PackedCollection a = new PackedCollection(shape(w * h)).randFill();
+		PackedCollection b = new PackedCollection(shape(w * h)).randFill();
+
+		CollectionProducer product = multiply(cp(a), cp(b));
+		PackedCollection direct = product.get().evaluate();
+
+		CollectionProducer reshaped = product.reshape(shape(w, h));
+		PackedCollection out = reshaped.get().evaluate();
+
+		Assert.assertEquals(shape(w, h), out.getShape());
+		for (int x = 0; x < w; x++) {
+			for (int y = 0; y < h; y++) {
+				assertEquals(direct.toDouble(x * h + y), out.valueAt(x, y));
+			}
+		}
 	}
 }

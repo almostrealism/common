@@ -120,21 +120,7 @@ public class SAMEAutoEncoder implements TransformerResamplingFeatures, LayerFeat
 		ResamplingConfig decoder = new ResamplingConfig(768, 512, 12, 64, 16, 32, 6,
 				false, true, true, 3.0, 3, ResamplingConfig.AttentionWindow.CHUNKED);
 		return new SAMEAutoEncoder(weights, new PatchedPretransform(2, 256),
-				encoder, decoder, latentDim, softNormBottleneck(weights, latentDim));
-	}
-
-	/**
-	 * Reads a {@link SoftNormBottleneck} from the {@code bottleneck.*} weights.
-	 *
-	 * @param weights   loaded weights
-	 * @param latentDim latent channel count
-	 * @return the bottleneck
-	 */
-	public static SoftNormBottleneck softNormBottleneck(StateDictionary weights, int latentDim) {
-		PackedCollection runningStd = weights.containsKey("bottleneck.running_std") ?
-				weights.get("bottleneck.running_std") : null;
-		return new SoftNormBottleneck(latentDim,
-				weights.get("bottleneck.scaling_factor"), weights.get("bottleneck.bias"), runningStd);
+				encoder, decoder, latentDim, new SoftNormBottleneck(weights, latentDim));
 	}
 
 	/**

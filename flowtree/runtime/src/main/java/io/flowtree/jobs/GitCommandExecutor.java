@@ -18,10 +18,8 @@ package io.flowtree.jobs;
 
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -110,18 +108,11 @@ class GitCommandExecutor implements ConsoleFeatures {
         applyGitIdentity(pb);
 
         Process process = pb.start();
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
+        String output = GitOperations.readProcessOutput(process);
 
         int exitCode = process.waitFor();
         if (exitCode != 0) {
-            warn("git " + String.join(" ", args) + " failed (exit " + exitCode + "): " + output.toString().trim());
+            warn("git " + String.join(" ", args) + " failed (exit " + exitCode + "): " + output.trim());
         }
 
         return exitCode;
@@ -158,17 +149,10 @@ class GitCommandExecutor implements ConsoleFeatures {
         applyGitIdentity(pb);
 
         Process process = pb.start();
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
+        String output = GitOperations.readProcessOutput(process);
 
         process.waitFor();
-        return output.toString();
+        return output;
     }
 
     /**
@@ -190,17 +174,10 @@ class GitCommandExecutor implements ConsoleFeatures {
         GitOperations.augmentPath(pb);
 
         Process process = pb.start();
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
+        String output = GitOperations.readProcessOutput(process);
 
         process.waitFor();
-        return output.toString();
+        return output;
     }
 
     /**

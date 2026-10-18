@@ -60,7 +60,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * ar-manager tool names (without the {@code mcp__ar-manager__} prefix)
      * that are always included for agent jobs.
      *
-     * <p>Tracker tools are read-only for agents. Task endpoints
+     * <p>The general tracker tools are read-only for agents. Task endpoints
      * ({@code tracker_get_task}, {@code tracker_list_tasks}, and
      * {@code tracker_search_tasks}) are workspace-scoped on the server
      * and only expose tasks attached to a workstream in the agent's
@@ -69,6 +69,27 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * and {@code tracker_list_releases}) remain available for shared
      * project and release visibility and are not documented here as
      * strictly workspace-filtered.</p>
+     *
+     * <p>Three narrow tracker tools that do write are listed here too:
+     * {@code tracker_claim_next_task}, {@code tracker_list_release_tasks}
+     * and {@code tracker_upsert_goal_task}. They are not gated by this
+     * allowlist but by ar-manager itself, which refuses them unless the
+     * calling workstream holds the matching entry of
+     * {@link io.flowtree.workstream.Workstream#getTrackerCapabilities()},
+     * and each enforces its own limits (claiming only ready tasks, editing
+     * only goal-derived ones, never deleting).</p>
+     *
+     * <p>{@code tracker_file_follow_up_task} is a fourth narrow write, open to
+     * every coding job rather than gated on a tracker capability, because the
+     * server-side limits are what make it safe: the task it files is always in
+     * the backlog, never linked to a workstream, filed under a provenance
+     * source derived from the job's own token, capped per job, and only ever
+     * at the default priority. An agent uses it to record a valid review point
+     * that is out of scope for the branch instead of extending the branch
+     * through more review rounds. The same provenance source lets a scoped
+     * caller read back (through {@code tracker_list_tasks} /
+     * {@code tracker_search_tasks}) the unlinked follow-up tasks its own
+     * workspace filed, without widening any other scoping rule.</p>
      *
      * <p>{@code workstream_submit_task} is included so agents can
      * delegate work to other workstreams in the same workspace. The
@@ -127,7 +148,11 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "tracker_search_tasks",
             "tracker_project_summary",
             "tracker_list_projects",
-            "tracker_list_releases"
+            "tracker_list_releases",
+            "tracker_claim_next_task",
+            "tracker_list_release_tasks",
+            "tracker_upsert_goal_task",
+            "tracker_file_follow_up_task"
         ))
     );
 
@@ -447,20 +472,30 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * tool servers (test runner, build validator, ...) are not required:
      * their absence degrades a session, it does not void its instructions.</p>
      *
-     * <p>Enforcement is on by default. {@code AR_REQUIRE_MCP_SERVERS=disabled}
-     * is an explicit operator escape hatch for taking the enforcement off
-     * (e.g. while diagnosing a systemic ar-manager connectivity issue)
-     * without a code change; any other value, including unset, leaves
-     * enforcement on.</p>
+     * <p>Enforcement is off by default, because the availability detection
+     * it rests on does not yet report reliably: sessions whose ar-manager
+     * tools were in fact present have been failed by it, which costs more
+     * work than the failure mode it guards against. {@code
+     * AR_REQUIRE_MCP_SERVERS=enabled} turns it on for an operator who wants
+     * it (or a test that exercises it) without a code change; unset, or any
+     * value other than {@code enabled}, leaves it off. Turn the default back
+     * over once the detection is trustworthy — the machinery downstream of
+     * this method is complete and stays under test either way.</p>
+     *
+     * <p>A configuration error is reported whether or not enforcement is on:
+     * a URL without a token raises here exactly as it does in
+     * {@link #buildMcpConfig()}, since that is a fact about the
+     * configuration, not about this flag.</p>
      *
      * @return the required server names; empty when ar-manager is not
-     *         configured or enforcement has been explicitly disabled
+     *         configured or enforcement is off
      */
     public Set<String> requiredServerNames() {
-        if (!SystemUtils.isEnabled("AR_REQUIRE_MCP_SERVERS").orElse(true)) {
+        boolean configured = arManagerEnabled();
+        if (!SystemUtils.isEnabled("AR_REQUIRE_MCP_SERVERS").orElse(false)) {
             return Collections.emptySet();
         }
-        return arManagerEnabled() ? Set.of("ar-manager") : Collections.emptySet();
+        return configured ? Set.of("ar-manager") : Collections.emptySet();
     }
 
     /**

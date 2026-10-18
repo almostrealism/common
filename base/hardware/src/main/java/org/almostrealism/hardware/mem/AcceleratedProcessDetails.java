@@ -19,7 +19,9 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -219,6 +221,14 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 */
 	private Semaphore semaphore;
 
+	/**
+	 * The failure raised by a {@link #whenReady(Runnable)} listener, if any. When listeners run
+	 * on an {@link Executor} thread, the failure would otherwise be lost there while the
+	 * {@link #readyLatch} still fires; {@link #awaitReady()} rethrows it on the waiting thread
+	 * so the caller never proceeds to read an output whose dispatch failed.
+	 */
+	private volatile Throwable listenerFailure;
+
 	/** Listeners to notify when all arguments are ready. */
 	private List<Runnable> listeners;
 
@@ -297,9 +307,22 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * operation's completion; {@code apply} waits on it before returning so the completion from
 	 * {@link #getSemaphore()} is available, and so a chained dependent operation is issued after
 	 * the one it depends on.
+	 *
+	 * <p>An interrupt does not end the wait early: until the latch fires,
+	 * {@link #getSemaphore()} would return the unfired latch rather than the dispatch's
+	 * completion, letting a caller chain or wait on work that has not been issued. The
+	 * interrupt status is restored once the dispatch has been issued.</p>
+	 *
+	 * @throws HardwareException if a {@link #whenReady(Runnable)} listener failed, with that
+	 *                           failure as its cause
 	 */
 	public void awaitReady() {
-		if (readyLatch != null) readyLatch.waitFor();
+		if (readyLatch != null) readyLatch.waitForUninterruptibly();
+
+		Throwable failure = listenerFailure;
+		if (failure != null) {
+			throw new HardwareException("Dispatch failed before completion", failure);
+		}
 	}
 
 	/**
@@ -348,6 +371,68 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns true when this invocation holds anything that must be released once its
+	 * completion chain has fired: leased destination buffers, or temporary replacement
+	 * buffers created for its arguments.
+	 *
+	 * @return true when {@link #releaseResources()} has something to release
+	 */
+	public boolean hasResources() {
+		return hasDestinationLeases() || !isEmpty();
+	}
+
+	/**
+	 * Releases everything this invocation holds for the duration of its completion chain:
+	 * the leased destination buffers ({@link #releaseDestinationLeases()}) and the temporary
+	 * buffers its arguments were replaced with
+	 * ({@link MemoryReplacementManager#releaseTemporaries()}). The same condition applies as
+	 * for {@link #releaseDestinationLeases()}: call only once the completion from
+	 * {@link #getSemaphore()} has fired.
+	 *
+	 * <p>Both phases are always attempted: destination-lease callbacks are arbitrary
+	 * {@link Runnable}s and may throw, but a failure returning a lease must not leave the
+	 * temporary replacement buffers unreleased (nor vice versa). The first failure from either
+	 * phase is rethrown once both have run, with any later ones attached to it as suppressed.</p>
+	 */
+	public void releaseResources() {
+		Destroyable.releaseAll(List.<Runnable>of(this::releaseDestinationLeases,
+				replacementManager::releaseTemporaries));
+	}
+
+	/**
+	 * Releases everything this invocation holds after its dispatch failed before publishing a
+	 * completion.
+	 *
+	 * <p>Work submitted before the failure may still be running against the leased and
+	 * temporary buffers, and no completion reaches a caller who could wait for it. It is
+	 * therefore waited for here, actively, before anything is released: a passive callback is
+	 * not enough, because a backend that batches dispatches (Metal) only settles a pending
+	 * dispatch once something commits its command buffer, and on this path nothing else will.
+	 * This host wait happens only when a dispatch has failed.</p>
+	 *
+	 * @param failure  the dispatch failure; a failure of the in-flight work or of the release
+	 *                 is attached to it as suppressed rather than replacing it
+	 * @param inflight the latest work submitted before the failure, or {@code null} if none
+	 */
+	public void releaseResourcesAfterFailure(Throwable failure, Semaphore inflight) {
+		if (!hasResources()) return;
+
+		if (inflight != null) {
+			try {
+				inflight.waitFor();
+			} catch (RuntimeException | Error settled) {
+				if (settled != failure) failure.addSuppressed(settled);
+			}
+		}
+
+		try {
+			releaseResources();
+		} catch (RuntimeException | Error releaseFailure) {
+			if (releaseFailure != failure) failure.addSuppressed(releaseFailure);
+		}
+	}
+
+	/**
 	 * Releases every leased destination buffer back to its reuse slot, exactly once.
 	 *
 	 * <p>Safe to call only when nothing can still read or write the leased buffers —
@@ -379,9 +464,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 			destinationLeases = null;
 		}
 
-		if (leases != null) {
-			leases.forEach(Runnable::run);
-		}
+		Destroyable.releaseAll(leases);
 	}
 
 	/**
@@ -443,12 +526,37 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 		pending.forEach(r -> {
 			try {
 				r.run();
+			} catch (RuntimeException | Error e) {
+				listenerFailure = e;
+				throw e;
 			} finally {
 				if (readyLatch != null) {
 					readyLatch.countDown();
 				}
 			}
 		});
+	}
+
+	/**
+	 * Settles the pending listeners with {@code failure} instead of running them: the failure is
+	 * recorded for {@link #awaitReady()} to rethrow, and the {@link #readyLatch readiness latch}
+	 * is counted down once for each listener discarded, exactly as {@link #notifyListeners()}
+	 * counts it down for a listener that throws.
+	 *
+	 * @param failure the failure that prevents the listeners from running
+	 */
+	private void failListeners(Throwable failure) {
+		List<Runnable> pending;
+
+		synchronized (this) {
+			pending = new ArrayList<>(listeners);
+			listeners.clear();
+		}
+
+		listenerFailure = failure;
+		if (readyLatch == null) return;
+
+		pending.forEach(r -> readyLatch.countDown());
 	}
 
 	/**
@@ -466,13 +574,23 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * path, where it would otherwise still be held by this method for the whole duration of
 	 * listener execution, reintroducing the same deadlock hazard {@link #notifyListeners()}
 	 * itself already avoids.</p>
+	 *
+	 * <p>If argument processing fails, the listeners can never run, so the failure is settled
+	 * in their place (see {@link #failListeners(Throwable)}) before it is rethrown: otherwise
+	 * a thread in {@link #awaitReady()} would wait for a dispatch that will never be issued,
+	 * and the failure would be lost on whichever thread delivered the last argument.</p>
 	 */
 	protected void checkReady() {
 		synchronized (this) {
 			if (!isReady()) return;
 
 			if (arguments == null) {
-				arguments = replacementManager.processArguments(originalArguments);
+				try {
+					arguments = replacementManager.processArguments(originalArguments);
+				} catch (RuntimeException | Error e) {
+					failListeners(e);
+					throw e;
+				}
 			}
 		}
 

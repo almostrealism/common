@@ -36,6 +36,7 @@ import org.jocl.cl_event;
 import org.jocl.cl_mem;
 
 import java.lang.ref.Reference;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * {@link MemoryProvider} implementation for OpenCL memory management.
@@ -160,7 +161,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	private final long memoryMax;
 
 	/** The total amount of memory currently allocated in bytes. */
-	private long memoryUsed;
+	private final AtomicLong memoryUsed = new AtomicLong();
 
 	/**
 	 * Creates a new OpenCL memory provider.
@@ -196,7 +197,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	 *
 	 * @return the allocated memory in bytes
 	 */
-	public long getAllocatedMemory() { return memoryUsed; }
+	public long getAllocatedMemory() { return memoryUsed.get(); }
 
 	/**
 	 * Returns the OpenCL data context associated with this provider.
@@ -205,12 +206,21 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	 */
 	public CLDataContext getContext() { return context; }
 
-	/** {@inheritDoc} */
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Reserves a {@link #beginAllocation()} lease before {@link #buffer(int)} creates the
+	 * backend OpenCL buffer, so a concurrent {@link #destroy()} cannot release the OpenCL
+	 * context this call depends on until the buffer has been created and either registered
+	 * via {@link #allocated(RAM)} or released again.</p>
+	 */
 	@Override
 	public CLMemory allocate(int size) {
 		if (enableLargeAllocationLogging && size > (10 * 1024 * 1024)) {
 			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
+
+		beginAllocation();
 
 		try {
 			long s = numberSize * (long) size;
@@ -219,6 +229,8 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			return mem;
 		} catch (CLException e) {
 			throw new HardwareException(e, (long) size * getNumberSize());
+		} finally {
+			endAllocation();
 		}
 	}
 
@@ -247,7 +259,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	protected void deallocate(NativeRef<CLMemory> ref) {
 		try {
 			CL.clReleaseMemObject(((CLMemoryRef) ref).getMem());
-			memoryUsed = memoryUsed - ref.getSize();
+			memoryUsed.addAndGet(-ref.getSize());
 		} finally {
 			deallocationSizes.addEntry(ref.getSize());
 		}
@@ -270,15 +282,9 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			throw new UnsupportedOperationException("It is not possible to allocate " + sizeOf + " bytes of memory at once");
 		}
 
-		if (memoryUsed + sizeOf > memoryMax) {
-			throw new HardwareException("Memory Max Reached");
-		}
-
-		cl_mem mem = CL.clCreateBuffer(getContext().getClContext(),
-				CL.CL_MEM_READ_WRITE, sizeOf, null, null);
-
-		memoryUsed = memoryUsed + sizeOf;
-		return mem;
+		return allocateReserved(memoryUsed, memoryMax, sizeOf, () ->
+				CL.clCreateBuffer(getContext().getClContext(),
+						CL.CL_MEM_READ_WRITE, sizeOf, null, null));
 	}
 
 	/** {@inheritDoc} */

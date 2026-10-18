@@ -10,8 +10,16 @@ import json
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
+
+# Process questions shared with the other MCP servers (tools/mcp/common).
+# pid_alive is re-exported for server.py and timeline.py.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+from processes import pid_alive  # noqa: E402
 
 
 class ProcessNotFoundError(Exception):
@@ -24,58 +32,9 @@ class JVMDiagnosticsError(Exception):
     pass
 
 
-def is_process_alive(pid: int) -> bool:
-    """Check whether a process is alive. Uses /proc on Linux, kill(0) on macOS."""
-    # Try /proc first (Linux)
-    try:
-        stat_path = Path(f"/proc/{pid}/stat")
-        if stat_path.exists():
-            return True
-    except (OSError, PermissionError):
-        pass
-
-    # Fallback: os.kill with signal 0 (works on macOS and all Unix)
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True  # Process exists but we lack permission
-
-
-def get_ppid(pid: int) -> Optional[int]:
-    """Get parent PID. Uses /proc on Linux, ps on macOS."""
-    # Try /proc first (Linux)
-    try:
-        stat_path = Path(f"/proc/{pid}/stat")
-        text = stat_path.read_text()
-        close_paren = text.rfind(")")
-        if close_paren == -1:
-            return None
-        fields_after_comm = text[close_paren + 2:].split()
-        if len(fields_after_comm) >= 2:
-            return int(fields_after_comm[1])
-    except (OSError, PermissionError, ValueError):
-        pass
-
-    # Fallback: ps (macOS / general Unix)
-    try:
-        result = subprocess.run(
-            ["ps", "-o", "ppid=", "-p", str(pid)],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return int(result.stdout.strip())
-    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
-        pass
-
-    return None
-
-
 def _require_alive(pid: int) -> None:
     """Raise ProcessNotFoundError if the process is not alive."""
-    if not is_process_alive(pid):
+    if not pid_alive(pid):
         raise ProcessNotFoundError(f"Process {pid} is not running")
 
 

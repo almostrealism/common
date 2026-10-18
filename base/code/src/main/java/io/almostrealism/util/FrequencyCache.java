@@ -18,7 +18,7 @@ package io.almostrealism.util;
 
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -49,6 +49,10 @@ import java.util.stream.Stream;
  * <p>where {@code age = (clock - lastAccessTime) / clock}. Higher scores
  * indicate more valuable entries; the entry with the lowest score is evicted
  * first.</p>
+ *
+ * <p>Entries are kept in insertion order, so iteration is reproducible from one run to
+ * the next even when many keys share a hash, and entries with equal scores are evicted
+ * oldest first.</p>
  *
  * <h2>Primary Usage: Instruction Set Caching</h2>
  *
@@ -83,12 +87,24 @@ import java.util.stream.Stream;
  *
  * <h2>Eviction Listener</h2>
  *
- * <p>An optional {@link BiConsumer} eviction listener is invoked for every
- * key removed during capacity enforcement and for every key whose value is
- * displaced by an update in {@link #put(Object, Object)} that leaves the
- * previous value with no remaining keys. This enables resource cleanup
- * (e.g., destroying compiled native code when an instruction manager is
- * evicted or when a different key takes ownership of its value).</p>
+ * <p>An optional {@link BiConsumer} eviction listener is invoked once for each
+ * value removed: when capacity enforcement or an explicit {@link #evict(Object)}
+ * drops a value (and with it every key that aliased the value), and when an update
+ * in {@link #put(Object, Object)} leaves a displaced value with no remaining keys.
+ * Because values are deduplicated, the listener fires once per value rather than once
+ * per aliasing key, so resource cleanup (e.g., destroying compiled native code when an
+ * instruction manager is evicted or when a different key takes ownership of its value)
+ * runs exactly once for the value it releases.</p>
+ *
+ * <h2>Iteration Order</h2>
+ *
+ * <p>Entries are iterated in insertion order &mdash; by {@link #entriesByFrequency},
+ * {@link #forEach}, and the eviction scan that breaks score ties &mdash; never in hash
+ * order. Keys whose hashes collide (structurally similar expressions, for example)
+ * would otherwise share a hash bucket that orders them by identity, which differs
+ * from one run to the next, and any caller that ranks entries and keeps ties in
+ * iteration order (such as {@link io.almostrealism.scope.ExpressionCache#getFrequentExpressions()})
+ * would produce different results for the same sequence of accesses.</p>
  *
  * <h2>Thread Safety</h2>
  *
@@ -188,8 +204,8 @@ public class FrequencyCache<K, V> {
 	private final int capacity;
 
 	/**
-	 * Optional listener invoked for each key-value pair removed during eviction.
-	 * The listener receives the evicted key and its associated value.
+	 * Optional listener invoked once for each value removed during eviction. The
+	 * listener receives one of the keys that referenced the value and the value itself.
 	 */
 	private BiConsumer<K, V> evictionListener;
 
@@ -213,20 +229,22 @@ public class FrequencyCache<K, V> {
 
 		this.capacity = capacity;
 		this.frequencyBias = frequencyBias;
-		this.cache = new HashMap<>(capacity);
-		this.reverseCache = new HashMap<>(capacity);
+		this.cache = new LinkedHashMap<>(capacity);
+		this.reverseCache = new LinkedHashMap<>(capacity);
 	}
 
 	/**
 	 * Registers a listener to be notified when entries are evicted.
 	 *
-	 * <p>The listener is invoked for each key removed during capacity
+	 * <p>The listener is invoked once per removed value: during capacity
 	 * enforcement in {@link #prepareCapacity()}, during explicit
 	 * {@link #evict(Object)} calls, and — when the new value differs from the
 	 * one previously mapped to {@code key} — during {@link #put(Object,
 	 * Object)} for the value displaced by the update once no remaining keys
-	 * reference it. Implementations that hold native resources in their
-	 * values must release those resources from this listener for every
+	 * reference it. Because values are deduplicated across aliasing keys, a value
+	 * shared by several keys is reported a single time when it is released, so
+	 * implementations that hold native resources in their values release them
+	 * exactly once. Those implementations must release from this listener for every
 	 * callback path, not only the capacity-enforcement one.</p>
 	 *
 	 * @param listener the eviction listener, or null to disable notifications
@@ -395,19 +413,51 @@ public class FrequencyCache<K, V> {
 	/**
 	 * Explicitly removes the entry for the given key from the cache.
 	 *
-	 * <p>If the key is present, its value is also removed from the reverse
-	 * cache and the eviction listener is invoked.</p>
+	 * <p>If the key is present, its value is removed from the reverse cache and
+	 * every key that shares that value (via the reverse map) is removed as well,
+	 * with the eviction listener invoked once for the removed value &mdash; the same
+	 * contract the capacity-enforcement path in {@link #prepareCapacity()} honours.
+	 * Removing only the named key would leave an alias key resolving to a value that
+	 * has already been dropped from the reverse cache and released through the
+	 * listener (whose native resources may have been destroyed).</p>
 	 *
 	 * @param key the key to remove
 	 */
 	public void evict(K key) {
-		CacheEntry e = cache.remove(key);
+		CacheEntry e = cache.get(key);
 		if (e == null) return;
 
-		reverseCache.remove(e.value);
+		removeEntry(e);
+	}
 
-		if (evictionListener != null) {
-			evictionListener.accept(key, e.value);
+	/**
+	 * Removes {@code entry}'s value from the reverse cache and every key in the
+	 * primary cache that references {@code entry}, then invokes the eviction listener
+	 * a single time for the removed value. Shared by the explicit {@link #evict(Object)}
+	 * path and the capacity-enforcement path so both uphold the value-deduplication
+	 * contract that evicting a value removes all keys sharing it.
+	 *
+	 * <p>The listener fires once per removed value, not once per alias key: the value
+	 * is a single deduplicated object and the listener is the cache's hook for releasing
+	 * the native resources it holds, so firing it per alias would release (and typically
+	 * destroy) the same resources repeatedly. This matches the once-per-value release the
+	 * key-update path performs in {@link #releaseIfOrphaned}. The key passed to the
+	 * listener is one of the keys that referenced the value.</p>
+	 *
+	 * @param entry the entry to remove from both maps
+	 */
+	private void removeEntry(CacheEntry entry) {
+		reverseCache.remove(entry.value);
+
+		List<K> matchingKeys = cache.entrySet()
+				.stream().filter(e -> e.getValue() == entry)
+				.map(Map.Entry::getKey).collect(Collectors.toList());
+		for (K key : matchingKeys) {
+			cache.remove(key);
+		}
+
+		if (evictionListener != null && !matchingKeys.isEmpty()) {
+			evictionListener.accept(matchingKeys.get(0), entry.value);
 		}
 	}
 
@@ -467,25 +517,15 @@ public class FrequencyCache<K, V> {
 	 * For each eviction, the entry with the lowest {@link #score(CacheEntry)}
 	 * is removed from the reverse cache. All keys in the primary cache that
 	 * reference the same entry are also removed, with the eviction listener
-	 * invoked for each.</p>
+	 * invoked once for the removed value (not once per aliasing key) &mdash; the
+	 * same once-per-value contract {@link #removeEntry(CacheEntry)} applies to the
+	 * explicit {@link #evict(Object)} path.</p>
 	 */
 	protected synchronized void prepareCapacity() {
 		while (reverseCache.size() >= capacity) {
 			Map.Entry<V, CacheEntry> ent = Collections.min(reverseCache.entrySet(),
 					Comparator.comparing(e -> score(e.getValue())));
-			reverseCache.remove(ent.getKey());
-
-			List<K> matchingKeys = cache.entrySet()
-					.stream().filter(e -> e.getValue() == ent.getValue())
-					.map(e -> {
-						if (evictionListener != null) {
-							evictionListener.accept(e.getKey(), e.getValue().value);
-						}
-
-						return e;
-					})
-					.map(Map.Entry::getKey).collect(Collectors.toList());
-			matchingKeys.forEach(cache::remove);
+			removeEntry(ent.getValue());
 		}
 	}
 

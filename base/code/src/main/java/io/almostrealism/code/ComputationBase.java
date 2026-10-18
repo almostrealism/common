@@ -114,7 +114,9 @@ public abstract class ComputationBase<I, O, T>
 
 	/**
 	 * Prepares the operation metadata by incorporating process information and signature.
-	 * This method extends the parent implementation to add signature information.
+	 * This method extends the parent implementation to add signature information. The signature
+	 * hashes the signatures of every input, so it is deferred until it is first requested (see
+	 * {@link OperationMetadata#deferSignature}) rather than computed for every operation built.
 	 *
 	 * @param metadata the initial metadata to prepare
 	 * @return the prepared metadata with process information and signature
@@ -122,7 +124,7 @@ public abstract class ComputationBase<I, O, T>
 	@Override
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
 		metadata = OperationInfo.metadataForProcess(this, metadata);
-		metadata.setSignature(signature());
+		metadata.deferSignature(this::signature);
 		return metadata;
 	}
 

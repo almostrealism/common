@@ -18,8 +18,8 @@
 #
 # Lines that belong to anything else in the file — fields, constructors,
 # nested classes, and the private helpers that accumulate in test classes
-# — are NOT reported in either mode. This is what lets an agent-commit
-# check distinguish "the agent edited a test" from "the agent edited a
+# — are NOT reported in either mode. This is what lets the per-job test
+# lock distinguish "the agent edited a test" from "the agent edited a
 # method that happens to live in a test class".
 #
 # Brace counting ignores braces inside string and character literals and

@@ -189,6 +189,7 @@ def tracker_create_task(
     workstream_id: str = "",
     status: str = "open",
     priority: int = 0,
+    stage: str = "",
 ) -> dict:
     """Create a new tracker task.
 
@@ -203,6 +204,8 @@ def tracker_create_task(
         status: Task status. Either "open" (default) or "closed".
         priority: Signed integer in the range [-2, 2]. Defaults to 0.
             -2 = Lowest, -1 = Low, 0 = Medium, 1 = High, 2 = Highest.
+        stage: Readiness stage: "backlog", "ready" or "declined". Omit to
+            let the tracker apply its default, "backlog".
 
     Returns:
         dict with ok=True and the created task record.
@@ -220,6 +223,8 @@ def tracker_create_task(
         payload["release_id"] = release_id
     if workstream_id:
         payload["workstream_id"] = workstream_id
+    if stage:
+        payload["stage"] = stage
     return server._tracker_post("/v1/tasks", payload)
 
 
@@ -242,15 +247,19 @@ def tracker_get_task(task_id: str) -> dict:
     result = server._tracker_get(f"/v1/tasks/{task_id}")
     if not result.get("ok"):
         return result
-    ws = (result.get("task") or {}).get("workstream_id", "")
+    task = result.get("task") or {}
+    ws = task.get("workstream_id", "")
     if ws:
         server._require_workstream_in_scope(ws)
-    elif server._get_workspace_scopes():
+    elif server._get_workspace_scopes() and not server._follow_up_task_workspace_allowed(task):
         # Scoped callers (agents) may only retrieve tasks attached to a
         # workstream in their workspace. A task with no workstream_id
         # is project-level and not workspace-bound, so we cannot prove
         # it belongs to the caller's workspace — deny it rather than
-        # leak a task that may be from any project.
+        # leak a task that may be from any project. The one exception is a
+        # follow-up task the caller's own workspace filed, identified by the
+        # workstream embedded in its provenance source, so an agent can read
+        # back and report the follow-up tasks it filed.
         raise PermissionError(
             "Task is not attached to any workstream and cannot be "
             "retrieved by a scoped caller. Tasks must be linked to a "
@@ -352,6 +361,7 @@ def tracker_update_task(
     project_id: str = "",
     release_id: str = "",
     workstream_id: str = "",
+    stage: str = "",
 ) -> dict:
     """Update an existing tracker task.
 
@@ -376,6 +386,10 @@ def tracker_update_task(
             "null" to clear.
         workstream_id: New workstream ID. Omit to leave unchanged. Pass
             "null" to clear.
+        stage: New readiness stage: "backlog", "ready" (a planning agent
+            may claim it) or "declined". Omit to leave unchanged. A task
+            is claimed only when it is also open, unlinked to a
+            workstream, unblocked, and in the release being planned.
 
     Returns:
         dict with ok=True and the updated task record.
@@ -387,6 +401,17 @@ def tracker_update_task(
     current_ws = (current.get("task") or {}).get("workstream_id", "")
     if current_ws:
         server._require_workstream_in_scope(current_ws)
+    elif server._get_workspace_scopes():
+        # A scoped caller (agent) may not modify a task with no workstream
+        # link, mirroring tracker_get_task's deny. This covers a follow-up
+        # task the caller's own workspace filed: the read-back path lets an
+        # agent report such a task's id, but it must never be able to edit one
+        # (e.g. promote it to stage "ready"), which would defeat the guarantee
+        # that an agent never creates claimable work.
+        raise PermissionError(
+            "Task is not attached to any workstream and cannot be "
+            "modified by a scoped caller. Tasks must be linked to a "
+            "workstream in your workspace to be editable by an agent.")
     if workstream_id and workstream_id != "null":
         server._require_workstream_in_scope(workstream_id)
     server._audit("tracker_update_task", task_id=task_id)
@@ -399,6 +424,8 @@ def tracker_update_task(
         payload["status"] = status
     if priority != -999:
         payload["priority"] = priority
+    if stage:
+        payload["stage"] = stage
     for field, val in [("project_id", project_id),
                        ("release_id", release_id),
                        ("workstream_id", workstream_id)]:
@@ -426,6 +453,15 @@ def tracker_delete_task(task_id: str) -> dict:
     ws = (current.get("task") or {}).get("workstream_id", "")
     if ws:
         server._require_workstream_in_scope(ws)
+    elif server._get_workspace_scopes():
+        # A scoped caller (agent) may not delete a task with no workstream
+        # link, mirroring tracker_get_task's deny — including a follow-up task
+        # its own workspace filed, so an agent can never discard the review
+        # points it recorded for a person to triage.
+        raise PermissionError(
+            "Task is not attached to any workstream and cannot be "
+            "deleted by a scoped caller. Tasks must be linked to a "
+            "workstream in your workspace to be deletable by an agent.")
     server._audit("tracker_delete_task", task_id=task_id)
     return server._tracker_delete(f"/v1/tasks/{task_id}")
 
@@ -544,4 +580,335 @@ def tracker_project_summary(project_id: str) -> dict:
         except PermissionError:
             pass
     summary["by_workstream"] = filtered_ws
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Narrow tools for planning and goal-decomposition agents
+# ---------------------------------------------------------------------------
+# Agents cannot use the general tracker write tools above. These three give
+# the two agent roles in goal-driven release automation exactly what each
+# needs, with the limits enforced here rather than left to the prompt:
+#
+#   planner - tracker_claim_next_task
+#   steward - tracker_list_release_tasks, tracker_upsert_goal_task
+#
+# A workstream holds a role through its trackerCapabilities controller
+# setting; see server._require_tracker_capability.
+
+# The source prefix of a task an agent derived from goal documents. Agents may
+# only change tasks that carry it; every other task belongs to a person.
+GOAL_SOURCE_PREFIX = "goals:"
+
+# The source prefix of a follow-up task a coding agent files while working a
+# branch. Distinct from GOAL_SOURCE_PREFIX so the two can never be confused.
+# The full source is derived from the calling job's token, never caller input:
+# "follow-up:<workstream_id>/<job_id>". Duplicated from the tracker store
+# (tools/tracker/store.py) across the service boundary, as GOAL_SOURCE_PREFIX
+# is. The per-job cap, forced backlog stage and unlinked workstream are
+# enforced by the tracker, not here.
+FOLLOW_UP_SOURCE_PREFIX = "follow-up:"
+
+# Length ceilings for the caller-supplied follow-up fields, checked with
+# server._check_length before the task is filed.
+_FOLLOW_UP_TITLE_MAX = 500
+_FOLLOW_UP_DESCRIPTION_MAX = 10_000
+_FOLLOW_UP_URL_MAX = 2_000
+
+
+def _follow_up_description(description: str, pr_number: int, review_comment: str) -> str:
+    """Compose a follow-up task's description, appending the review provenance.
+
+    The agent's own description leads; the pull request and review comment that
+    prompted the task are recorded beneath it so a person triaging the backlog
+    can trace it back. An absent description or provenance field is omitted.
+    """
+    parts = []
+    if description.strip():
+        parts.append(description.strip())
+    provenance = []
+    if pr_number > 0:
+        provenance.append(f"PR: #{pr_number}")
+    if review_comment.strip():
+        provenance.append(f"Review comment: {review_comment.strip()}")
+    if provenance:
+        parts.append("\n".join(["Raised by a review comment during a coding job."]
+                               + provenance))
+    return "\n\n".join(parts)
+
+
+# The tracker's error message for a release that simply does not exist yet. Any
+# other failure (outage, auth, 5xx) is an error to surface, not a signal that
+# the release is empty or absent — mistaking one for the other lets a steward
+# decompose from a false empty view or create a duplicate after a transient
+# failure.
+_RELEASE_NOT_FOUND = "Release not found"
+
+
+def _named_release(project: str, release: str) -> dict:
+    """Look up a release by project and release name.
+
+    Returns:
+        The tracker response: ``{"ok": True, "release": {...}}``, or an error
+        dict (a missing release is ``ok: False`` with a 404 message).
+    """
+    qs = urlencode({"project": project, "release": release})
+    return server._tracker_get(f"/v1/releases/lookup?{qs}")
+
+
+def _release_missing(resp: dict) -> bool:
+    """Return True only for the tracker's explicit release-not-found response.
+
+    Every other unsuccessful response is a real error to propagate rather than a
+    release that does not exist.
+    """
+    return not resp.get("ok") and resp.get("error") == _RELEASE_NOT_FOUND
+
+
+@mcp.tool()
+def tracker_claim_next_task(project: str, release: str) -> dict:
+    """Claim the next ready task of a release for this job's workstream.
+
+    Takes the highest-priority task in the release that is marked ready, not
+    yet linked to any workstream, and not blocked by an open task, and links
+    it to the calling workstream. The claim is atomic: two callers never
+    receive the same task.
+
+    Requires the calling workstream to hold the ``planner`` tracker
+    capability.
+
+    Args:
+        project: Tracker project name (e.g. the repository's project).
+        release: Full release name, ``<Project> <version>``.
+
+    Returns:
+        dict with ok=True and ``task`` — the claimed task, or None when the
+        release has nothing claimable (then there is no work to plan).
+    """
+    server._require_scope("write")
+    workstream_id = server._require_tracker_capability(server.TRACKER_PLANNER)
+    server._audit("tracker_claim_next_task", project=project, release=release,
+                  workstream_id=workstream_id)
+    return server._tracker_post("/v1/claim", {
+        "project": project, "release": release, "workstream_id": workstream_id,
+    })
+
+
+@mcp.tool()
+def tracker_list_release_tasks(
+    project: str,
+    release: str,
+    fields: str = "full",
+    limit: int = 200,
+    offset: int = 0,
+) -> dict:
+    """List every task in one release, whoever it belongs to.
+
+    Unlike tracker_list_tasks, this view is not limited to tasks linked to the
+    caller's workspace, so a goal-decomposition agent can see what a release
+    already holds before creating anything.
+
+    Requires the calling workstream to hold the ``steward`` tracker
+    capability.
+
+    Args:
+        project: Tracker project name.
+        release: Full release name, ``<Project> <version>``.
+        fields: "full" (default) or "headlines" (omits descriptions).
+        limit: Maximum tasks to return (max 200).
+        offset: Pagination offset.
+
+    Returns:
+        dict with ok=True, ``release`` and the tasks with pagination info.
+        A release that does not exist yet has no tasks: ``tasks`` is empty.
+    """
+    server._require_scope("read")
+    server._require_tracker_capability(server.TRACKER_STEWARD)
+    server._audit("tracker_list_release_tasks", project=project, release=release)
+    found = _named_release(project, release)
+    if not found.get("ok"):
+        if _release_missing(found):
+            return {"ok": True, "release": None, "tasks": [], "total": 0,
+                    "limit": limit, "offset": offset}
+        # A tracker outage or error is not an empty release; surface it so the
+        # steward does not decompose from a false empty view.
+        return found
+    release_id = found["release"]["id"]
+    qs = urlencode({"release_id": release_id, "fields": fields,
+                    "limit": limit, "offset": offset})
+    result = server._tracker_get(f"/v1/tasks?{qs}")
+    if result.get("ok"):
+        result["release"] = found["release"]
+    return result
+
+
+@mcp.tool()
+def tracker_upsert_goal_task(
+    project: str,
+    release: str,
+    title: str,
+    source: str,
+    description: str = "",
+    priority: int = 0,
+    blocked_by: str = "",
+    task_id: str = "",
+) -> dict:
+    """Create or update a task derived from goal documents.
+
+    A new task is created ready to be planned, in the named release, which is
+    created too if it does not exist yet (the project must exist). An update
+    changes the task's title, description, priority, release and blockers;
+    its stage and status are left alone, so a task a person declined or
+    closed stays that way.
+
+    Only goal-derived tasks can be changed: ``source`` must be
+    ``goals:<document>``, and updating a task that does not carry such a
+    source — any task a person wrote — is refused by the tracker in the same
+    step as the write. Nothing is ever deleted.
+
+    Requires the calling workstream to hold the ``steward`` tracker
+    capability.
+
+    Args:
+        project: Tracker project name.
+        release: Full release name, ``<Project> <version>``.
+        title: Short task title.
+        source: ``goals:<document path>`` naming the document the task was
+            derived from.
+        description: Markdown description: what the work is, why the release
+            needs it, and how to tell it is done.
+        priority: Integer in [-2, 2]; 0 is medium.
+        blocked_by: Comma-separated ids of tasks that must close before this
+            one is planned, for example the framework task an application
+            task depends on. Empty clears the blockers.
+        task_id: Id of an existing goal-derived task to update. Omit to
+            create a new task.
+
+    Returns:
+        dict with ok=True and the created or updated task.
+    """
+    server._require_scope("write")
+    server._require_tracker_capability(server.TRACKER_STEWARD)
+    server._audit("tracker_upsert_goal_task", project=project, release=release,
+                  task_id=task_id)
+    source = source.strip()
+    if not source.startswith(GOAL_SOURCE_PREFIX) or len(source) == len(GOAL_SOURCE_PREFIX):
+        return {"ok": False,
+                "error": f"source must be '{GOAL_SOURCE_PREFIX}<document>' (e.g. goals:docs/GOALS.md)"}
+    # Checked here as well as by the tracker so an obviously bad request fails
+    # fast without a round trip; the tracker validates the same fields and,
+    # because the whole upsert is one transaction there, a request it refuses
+    # never leaves a new, empty release behind.
+    if not title.strip():
+        return {"ok": False, "error": "title is required"}
+    if isinstance(priority, bool) or not isinstance(priority, int) or not -2 <= priority <= 2:
+        return {"ok": False, "error": "priority must be an integer in [-2, 2]"}
+
+    # The tracker ensures the release and creates or conditionally updates the
+    # task in one transaction. A failed write rolls the release creation back,
+    # so no orphan release is left behind, and a task a person takes over
+    # between any earlier read and this write is never overwritten.
+    payload = {
+        "project": project,
+        "release": release,
+        "title": title,
+        "source": source,
+        "description": description or None,
+        "priority": priority,
+        "blocked_by": [b.strip() for b in blocked_by.split(",") if b.strip()],
+    }
+    if task_id:
+        payload["task_id"] = task_id
+    result = server._tracker_post("/v1/goal-tasks", payload)
+    if not result.get("ok") and result.get("error") == "Project not found":
+        return {"ok": False, "error": f"Tracker project '{project}' does not exist"}
+    return result
+
+
+@mcp.tool()
+def tracker_file_follow_up_task(
+    project_id: str,
+    title: str,
+    description: str = "",
+    release_id: str = "",
+    pr_number: int = 0,
+    review_comment: str = "",
+) -> dict:
+    """File a follow-up task for work that is out of scope for this branch.
+
+    Use this when a pull-request review raises a valid point that does not
+    belong on the current branch — an edge case the branch does not need to
+    cover, a related improvement, a larger refactor — so it is recorded for
+    later instead of extending the branch through more review rounds. An
+    in-scope defect is still fixed on the branch, not filed here.
+
+    The task is filed into the project's backlog for a person to triage. The
+    server enforces every limit, so the task is always created unclaimed and
+    modest regardless of what is asked:
+
+    * stage is always ``backlog`` and priority is always medium, so an agent
+      never creates claimable or high-priority work;
+    * the task is never linked to a workstream, so it survives the merge of the
+      branch that raised it rather than being closed with it;
+    * its provenance ``source`` is taken from this job's token
+      (``follow-up:<workstream>/<job>``), not from input, and one job may file
+      only a small number of follow-up tasks.
+
+    Read back the follow-up tasks your own workspace filed with
+    ``tracker_list_tasks`` or ``tracker_search_tasks`` (they carry no
+    workstream link but are visible to you) to avoid filing a duplicate and to
+    report the task id, then reply to the review thread with that id.
+
+    Args:
+        project_id: UUID of the project to file the task into. The project must
+            exist. Use ``tracker_list_projects`` to find it.
+        title: Short, descriptive task title.
+        description: Longer description of the work and why it is out of scope
+            for this branch. Markdown supported. The pull request and review
+            comment below are appended to it automatically.
+        release_id: Optional UUID of a target release. Omit to leave the task
+            unassigned to a release.
+        pr_number: Optional number of the pull request whose review prompted
+            the task, recorded in the description. Omit (0) when not applicable.
+        review_comment: Optional URL or id of the review comment that prompted
+            the task, recorded in the description.
+
+    Returns:
+        dict with ok=True and the created ``task`` (its id is in ``task.id``),
+        or ok=False with an error — including when this job has already filed
+        its maximum number of follow-up tasks.
+    """
+    server._require_scope("write")
+    workstream_id = server._get_token_workstream_id()
+    job_id = server._get_token_job_id()
+    if not workstream_id or not job_id:
+        return {"ok": False,
+                "error": "tracker_file_follow_up_task records the filing job as the "
+                         "task's provenance and the request carries no workstream/job "
+                         "binding. Call it from an agent job."}
+    server._audit("tracker_file_follow_up_task", project_id=project_id,
+                  workstream_id=workstream_id, job_id=job_id)
+    length_error = (server._check_length(title, "title", _FOLLOW_UP_TITLE_MAX)
+                    or server._check_length(description, "description",
+                                            _FOLLOW_UP_DESCRIPTION_MAX)
+                    or server._check_length(review_comment, "review_comment",
+                                            _FOLLOW_UP_URL_MAX))
+    if length_error:
+        return length_error
+    if not title.strip():
+        return {"ok": False, "error": "title is required"}
+    if not project_id.strip():
+        return {"ok": False, "error": "project_id is required"}
+    payload = {
+        "project_id": project_id,
+        "title": title.strip(),
+        "source": f"{FOLLOW_UP_SOURCE_PREFIX}{workstream_id}/{job_id}",
+        "description": _follow_up_description(description, pr_number, review_comment) or None,
+    }
+    if release_id:
+        payload["release_id"] = release_id
+    result = server._tracker_post("/v1/follow-up-tasks", payload)
+    if not result.get("ok") and result.get("error") == "Project not found":
+        return {"ok": False,
+                "error": f"Tracker project '{project_id}' does not exist"}
     return result

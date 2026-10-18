@@ -20,11 +20,16 @@ here, so detection can never be complete.
 """
 
 import json
-import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+
+try:
+    from .processes import pid_alive
+except ImportError:
+    # Loaded as a top-level module from this directory rather than as a package.
+    from processes import pid_alive
 
 # tools/mcp/common/build_tree.py -> the repository root
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -69,23 +74,6 @@ class MavenRun:
         """Return a one-line description naming the run and what it is doing."""
         detail = f" ({self.summary})" if self.summary else ""
         return f"{self.tool} run {self.run_id}{detail}, started {self.started_at}"
-
-
-def _process_alive(pid: Optional[int]) -> bool:
-    """Return whether a process id belongs to a live process."""
-    if not pid:
-        return False
-
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # The process exists, it just is not ours to signal.
-        return True
-    except OSError:
-        return False
-    return True
 
 
 def _deadline(metadata: dict, started: datetime) -> datetime:
@@ -172,7 +160,7 @@ def read_run(tool: str, run_dir: Path, now: Optional[datetime] = None) -> Option
     # A live Maven process is proof on its own. Between one check and the next
     # a server holds no process, so a record still inside its time budget also
     # counts — the next check is about to start.
-    if not _process_alive(metadata.get("pid")) and now > _deadline(metadata, started):
+    if not pid_alive(metadata.get("pid")) and now > _deadline(metadata, started):
         return None
 
     return MavenRun(

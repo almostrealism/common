@@ -349,8 +349,9 @@ CollectionProducer y = x.pow(2).sum();
 CollectionProducer gradient = y.delta(x);
 // Result: 2x (derivative of x^2)
 
-// Combine gradients for backpropagation
-CollectionProducer combined = y.grad(x, upstreamGradient);
+// Vector-Jacobian product for backpropagation: the gradient with respect to x
+// of the upstream gradient times dy/dx, without forming the Jacobian
+CollectionProducer combined = y.delta(x, ReduceAxis.OUT, upstreamGradient);
 ```
 
 ---
@@ -562,6 +563,25 @@ public boolean isIsolationTarget(ProcessContext context) {
     return iterationCount > 1000;  // Proper approach
 }
 ```
+
+#### Large Reductions Compile as Loops
+
+Isolation decides whether a computation gets a kernel of its own; it does not decide what that
+kernel looks like. By default a `CollectionProducerComputationAdapter` kernel assigns each output
+element `getValueAt(index)` in one statement, so a reduction over N terms becomes one expression of
+N terms, and the cost of building, simplifying and compiling it grows with N.
+
+A reduction can instead opt into an accumulation loop by overriding `getAccumulationCount()` (the
+number of iterations) and `getAccumulationTerm(index, iteration)` (what one iteration adds). The
+kernel then clears each output element and adds one term per iteration of a `Repeated` loop, which
+promotes the element to a register accumulator and hoists loop-invariant index arithmetic.
+`getValueAt` is still used whenever the computation is embedded in another expression, so the two
+must agree.
+
+`WeightedSumComputation` uses this for any group of at least `WeightedSumComputation.loopThreshold`
+(256) members, summing the trailing group dimensions (at most `maxUnrolledMembers`, 16) in each
+iteration. A convolution over 1024 channels with a kernel of 7 compiles to a loop of 1024
+iterations of 7 products instead of a single sum of 7168 products.
 
 See [relation/README.md](../../base/relation/README.md) for comprehensive Process optimization documentation.
 

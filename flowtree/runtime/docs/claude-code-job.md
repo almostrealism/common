@@ -72,6 +72,7 @@ ClaudeCodeJob (io.flowtree.jobs)
 | `getWorkstreamEnv()` / `setWorkstreamEnv(Map)` | `Map<String,String>` | `null` | Per-workstream environment variables that override global pushed-tool env vars. |
 | `getPlanningDocument()` / `setPlanningDocument(String)` | `String` | `null` | Path (relative to working directory) to a planning document the agent must read. |
 | `getDeduplicationMode()` / `setDeduplicationMode(String)` | `String` | `null` | Post-work duplicate-method scan mode. `null` disables. `DEDUP_LOCAL` runs an inline session before the commit. `DEDUP_SPAWN` posts a follow-up job to the workstream. |
+| `isBypassAgentPermissionPrompts()` / `setBypassAgentPermissionPrompts(boolean)` | `boolean` | `false` | Whether the agent session may bypass interactive tool permission prompts. Granted per job, either by the submission itself (`bypassAgentPermissionPrompts` on `/api/submit`, `skip_agent_permission_prompts` on the ar-manager `workstream_submit_task` tool, which refuses it from an in-flight agent) or by the branch's permission policy (`agentPermissionBypassBranches`); the value travels over the wire only when true. |
 
 All `GitManagedJob` setters are also available: `setTargetBranch`, `setBaseBranch`, `setWorkingDirectory`, `setRepoUrl`, `setDefaultWorkspacePath`, `setPushToOrigin`, `setGitUserName`, `setGitUserEmail`, `setWorkstreamUrl`, `setProtectTestFiles`, and `setMaxFileSizeBytes`. These inherited setters control the git harness behavior and status event delivery. When `targetBranch` is null, git operations (staging, committing, pushing) are skipped entirely, and the job simply runs Claude Code and reports its output. When `pushToOrigin` is false, the commit is created locally but not pushed to the remote.
 
@@ -125,7 +126,7 @@ NDJSON-derived execution metrics are extracted by `extractOutputMetrics()`, and 
 `ClaudeCodeJob` instantiates two collaborating objects as final fields:
 
 - `mcpConfigBuilder` (`McpConfigBuilder`): Constructs the `--mcp-config` JSON and `--allowedTools` string. Configured via `configureMcpBuilder()` before each execution.
-- `toolsDownloader` (`ManagedToolsDownloader`): Downloads pushed tool server files from the controller. Initialized with a reference to `mcpConfigBuilder` for config parsing.
+- `launchConfig` (`AgentLaunchConfig`): Assembles what each agent session launches with. It owns the `ManagedToolsDownloader` that downloads pushed tool server files from the controller, pushes the job's state into `mcpConfigBuilder`, composes the allowed-tools list, and builds the `AgentRunRequest`. The job's `configureMcpBuilder()` and `buildComposedAllowedTools()` delegate to it.
 - `outputMapper` (`ObjectMapper`): A static Jackson mapper shared by all instances for NDJSON parsing and JSON serialization.
 
 Two stateless helpers are invoked per Claude attempt:
@@ -161,7 +162,7 @@ The `Factory` inner class extends `AbstractJobFactory` and is the primary entry 
 
 #### Factory Configuration
 
-All job-level configuration setters are mirrored on the Factory: `setAllowedTools`, `setMaxTurns`, `setMaxBudgetUsd`, `setTargetBranch`, `setBaseBranch`, `setWorkingDirectory`, `setRepoUrl`, `setDefaultWorkspacePath`, `setPushToOrigin`, `setGitUserName`, `setGitUserEmail`, `setWorkstreamUrl`, `setCentralizedMcpConfig`, `setPushedToolsConfig`, `setWorkstreamEnv`, `setPlanningDocument`, `setProtectTestFiles`.
+All job-level configuration setters are mirrored on the Factory: `setAllowedTools`, `setMaxTurns`, `setMaxBudgetUsd`, `setTargetBranch`, `setBaseBranch`, `setWorkingDirectory`, `setRepoUrl`, `setDefaultWorkspacePath`, `setPushToOrigin`, `setGitUserName`, `setGitUserEmail`, `setWorkstreamUrl`, `setCentralizedMcpConfig`, `setPushedToolsConfig`, `setWorkstreamEnv`, `setPlanningDocument`, `setProtectTestFiles`, `setBypassAgentPermissionPrompts`.
 
 Each setter also calls `set(key, value)` to persist the value in the Factory's property map, ensuring survival across wire serialization.
 
@@ -290,7 +291,7 @@ After `doWork()` returns, `GitManagedJob.run()` handles:
 
 2. **File discovery and staging** -- `git status --porcelain` lists all changed files. The output is parsed line by line: lines starting with `?? ` indicate untracked files, and lines starting with ` M `, `M `, `A `, `D `, etc. indicate modified, added, or deleted tracked files. Each file passes through a multi-layer guardrail pipeline: excluded pattern check (glob matching against a comprehensive exclusion list), protected test file check (files on the base branch cannot be modified when `protectTestFiles` is true), file size check (default 1MB max, configurable via `maxFileSizeBytes`), and binary detection (scanning the first 8000 bytes for null content, with a 10% threshold). Files that pass all guardrails are staged with `git add <file>`. Files that fail any guardrail are added to the `skippedFiles` list with a parenthetical reason suffix for inclusion in the completion event.
 
-3. **Commit** -- The commit message is determined by `getCommitMessage()` (see below). The commit command uses explicit git identity flags (`-c user.name=...` and `-c user.email=...`) to override any global git config on the agent machine. This ensures consistent attribution across all agents. If `git commit` returns a non-zero exit code (e.g., "nothing to commit"), the error is logged but does not throw an exception -- the job continues to event firing with no commit hash.
+3. **Commit** -- The commit message is determined by `getCommitMessage()` (see below). The commit command uses explicit git identity flags (`-c user.name=...` and `-c user.email=...`) to override any global git config on the agent machine. This ensures consistent attribution across all agents. If `git commit` returns a non-zero exit code (e.g., "nothing to commit"), the error is logged but does not throw an exception -- the job continues to event firing with no commit hash. If the session nevertheless left work behind (uncommitted changes to non-excluded files, or an authored `commit.txt`), `JobWorkOutcome.describeUnpublishedWork()` reports it and the completion event is `FAILED` rather than `SUCCESS`.
 
 4. **Push** -- `git push -u origin <branch>:<branch>` with an explicit refspec. The `-u` flag sets up tracking so subsequent pushes can use `git push` without arguments. The explicit `<branch>:<branch>` refspec ensures the remote branch name matches the local one. Push is only attempted when `pushToOrigin` is true (the default) and there were files staged and committed. Push failures are logged but do not prevent event firing.
 
@@ -384,7 +385,7 @@ The file staging process applies multiple layers of filtering to prevent uninten
 
 **Excluded Patterns** -- A comprehensive set of glob patterns covering secrets (`.env`, `*.pem`, `*.key`), build outputs (`target/**`, `build/**`), IDE files (`.idea/**`, `.vscode/**`), binary files (`*.exe`, `*.jar`, `*.png`), databases (`*.db`, `*.sqlite`), logs (`*.log`), AR-specific outputs (`Extensions/**`, `*.cl`, `*.metal`), and agent outputs (`claude-output/**`, `commit.txt`, `.claude/**`).
 
-**Protected Test Files** -- When `protectTestFiles` is true, files matching `**/src/test/**`, `**/src/it/**`, `.github/workflows/**`, or `.github/actions/**` are checked against the merge-base of `origin/<baseBranch>` and `HEAD` (not the base branch's live tip). A file absent at the merge-base is a branch-new file and is allowed through in full. For `.github/workflows/**`, `.github/actions/**`, and any non-`.java` file, protection is whole-file: existing at the merge-base blocks it outright. For a `.java` file it is test-method-level (`TestMethodProtection`, which shells out to the shared `tools/ci/agent-protection/test-method-lines.awk`): the file is blocked only if an existing `@Test` method's content changed (even by addition, e.g. an inserted early return) or was removed; new test methods, and edits to fixtures, helpers, fields, or methods the branch itself introduced, are all allowed. See [file-staging.md](file-staging.md#guardrail-2-test-file-protection) for the full algorithm. Every existence/content check fails safe (blocks on error).
+**Protected Test Files** -- When `protectTestFiles` is true, files matching `**/src/test/**` or `**/src/it/**` are checked against the merge-base of `origin/<baseBranch>` and `HEAD` (not the base branch's live tip). A file absent at the merge-base is a branch-new file and is allowed through in full. For any non-`.java` file, protection is whole-file: existing at the merge-base blocks it outright. CI configuration (`.github/workflows/**`, `.github/actions/**`, `tools/ci/**`) is not covered by this lock but by the separate CI file lock (`protectCiFiles`), which blocks a CI file whole-file whether or not it exists at the merge-base. For a `.java` file it is test-method-level (`TestMethodProtection`, which shells out to the shared `tools/ci/agent-protection/test-method-lines.awk`): the file is blocked only if an existing `@Test` method's content changed (even by addition, e.g. an inserted early return) or was removed; new test methods, and edits to fixtures, helpers, fields, or methods the branch itself introduced, are all allowed. See [file-staging.md](file-staging.md#guardrail-2-test-file-protection) for the full algorithm. Every existence/content check fails safe (blocks on error).
 
 **File Size Limit** -- Files larger than `maxFileSizeBytes` (default: 1MB) are skipped. This prevents accidentally committing large generated files or data dumps.
 
@@ -454,6 +455,23 @@ All setters support chaining. The `build()` method assembles sections in this fi
 
 16. **User Request Markers** -- Always the last section. Wraps the raw user prompt between `--- BEGIN USER REQUEST ---` and `--- END USER REQUEST ---` markers.
 
+In addition to the numbered, conditionally-included sections above, `build()` always
+appends a block of unconditional operational guidance (working-efficiently heuristics,
+the targeted-test-verification reminder, and enforcement-configuration rules) ahead of
+the budget/turn-limit section. **Test Execution Limits** is one of these: it tells the
+agent to run only a bounded selection per invocation -- for Java via `-Dtest` or the
+test runner, at most 5 test classes and 40 named `Class#method` tests (a bare class or a
+few classes is fine); for Python, a single pytest node id -- but never a module's whole
+suite, a wildcard or other unbounded selector, or `AR_TEST_GROUP`/`AR_TEST_GROUPS`, to
+give every test or build invocation an explicit
+timeout of at most 40 minutes (2400s), and to never leave a background build or test run
+active when the turn ends, since the session is killed for stdout inactivity rather than
+total runtime. This mirrors the same rule enforced at job submission by
+`tools/mcp/manager/execution_limits.py` and at the controller by
+`io.flowtree.jobs.PostCompletionCommandValidator` -- the preamble is the agent-facing
+half; the submission-time validators are the mechanical backstop for a prompt or
+post-completion command that tries to violate it anyway.
+
 ### Builder Setters
 
 | Setter | Type | Condition for Inclusion |
@@ -513,6 +531,8 @@ MCP servers come from three distinct sources, processed in priority order:
 #### 1. The ar-manager HTTP entry
 
 `ar-manager` is the single centralized HTTP MCP server. When `arManagerUrl` and `arManagerToken` are both set on the builder (the default for any job dispatched by the controller), `buildMcpConfig()` emits a `type: http` entry with the bearer token in the `Authorization` header. Its allowlist (`McpConfigBuilder.AR_MANAGER_TOOL_NAMES`) carries every tool currently exposed to agents: `send_message`, the `github_pr_*` family, the read-only `tracker_*` queries, `memory_recall`/`memory_store`, `workstream_*`, `controller_health`, and `project_read_plan`.
+
+The general tracker **mutations** (`tracker_create_task`, `tracker_update_task`, `tracker_delete_task` and the project/release writes) stay excluded — an agent must not alter the shared tracker. The narrow tracker writes it *is* granted enforce their own server-side limits instead of relying on the allowlist: `tracker_claim_next_task`, `tracker_list_release_tasks` and `tracker_upsert_goal_task` are gated on a `trackerCapability`, and `tracker_file_follow_up_task` is open to every job because its limits make it safe — the task it files is always backlog, never linked to a workstream, filed under a provenance source derived from the job's token (`follow-up:<workstream>/<job>`), capped per job, and only at the default priority. That same source lets a scoped caller read back (through `tracker_list_tasks` / `tracker_search_tasks` / `tracker_get_task`) the unlinked follow-up tasks its own workspace filed, so an agent can avoid a duplicate and report the task id without any other scoping rule being widened. Agents use it to record a valid review point that is out of scope for the branch rather than extend the branch through more review rounds.
 
 **Output in --mcp-config:**
 ```json
@@ -630,7 +650,7 @@ The `0.0.0.0` placeholder is used throughout the system as a stand-in for the co
 
 ## ManagedToolsDownloader and Pushed Tool Lifecycle
 
-`ManagedToolsDownloader` handles the download and verification of pushed MCP tool server files. It is instantiated within `ClaudeCodeJob` with a reference to the `McpConfigBuilder` for configuration parsing.
+`ManagedToolsDownloader` handles the download and verification of pushed MCP tool server files. It is instantiated by the job's `AgentLaunchConfig` with a reference to the `McpConfigBuilder` for configuration parsing.
 
 ### ensurePushedTools(String pushedToolsConfig)
 
@@ -866,18 +886,19 @@ The first token is the fully qualified class name (used by the deserialization f
 | `protectTests` | `protectTestFiles` | Plain boolean | Always |
 | `enforceChanges` | `enforceChanges` | Plain boolean | Always |
 | `dedupMode` | `deduplicationMode` | Plain string | Non-null |
+| `bypassAgentPermissionPrompts` | `bypassAgentPermissionPrompts` | Plain boolean (`true`) | Only when true |
 
 The wall-clock ceiling travels between two wire keys:
 
 - `maxWallClockHours` (plain int, Factory-only): the hours the user supplied at submission
   on the `Factory`. Empty value means the job inherits the workstream default or
   `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`.
-- `maxWallClockMs` (plain long, milliseconds, Codec-only): the resolved ceiling the
-  `CodingAgentJobCodec` carries over the worker hop. A non-positive value is meaningful
+- `maxWallClockMs` (plain long, milliseconds, Job-only): the resolved ceiling the
+  job's `RestartGovernor` encodes for the worker hop. A non-positive value is meaningful
   and disables the ceiling rather than being dropped.
 
 These are the same setting at different granularities: the Factory speaks hours because
-that is what the submission API takes; the Codec speaks milliseconds because
+that is what the submission API takes; the job speaks milliseconds because
 `RestartGovernor.maxWallClock` is a `Duration`.
 
 Additionally, all `GitManagedJob` fields are encoded by `super.encode()`:
@@ -914,12 +935,13 @@ The `set(String key, String value)` method handles incoming key-value pairs duri
 - `protectTests`: Parsed as boolean
 - `enforceChanges`: Parsed as boolean
 - `dedupMode`: Stored directly as `this.deduplicationMode` (plain string; `"local"` or `"spawn"`)
+- `bypassAgentPermissionPrompts`: Parsed as boolean into `this.bypassAgentPermissionPrompts` (present only when the grant was made)
 - `maxWallClockHours`: Parsed as `Integer`; an empty value leaves the field `null` so the job inherits the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`
 - Default: delegated to `super.set(key, value)` for `GitManagedJob` fields
 
 ### Factory Serialization
 
-The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`). The factory also stores `factoryTaskId` for task ID persistence.
+The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`, `bypassAgentPermissionPrompts`). Unlike the job encoding, the factory stores `bypassAgentPermissionPrompts` as `"true"` or `"false"` whenever its setter is called; `isBypassAgentPermissionPrompts()` treats anything other than `"true"` (including an absent key) as false. The factory also stores `factoryTaskId` for task ID persistence.
 
 Prompts are stored via `setPrompts(String... prompts)`, which joins them with `PROMPT_SEPARATOR` (`;;PROMPT;;`), Base64-encodes the result, and stores it under the key `prompts`. Retrieval via `getPrompts()` reverses this process.
 

@@ -18,13 +18,11 @@ and asserts each one is covered by both failure detection and the surefire
 allowlist. A new test lane added to ``analysis.needs`` without also being
 wired into ``auto-resolve`` fails this test until it is.
 
-The CL lanes (``test-cl``, ``test-media-cl``) are the one documented
-exclusion: they upload no coverage and no surefire by design (an OpenCL host
-with known flakiness that is deliberately not part of the merge gate — see
-"Three lanes" in ``.github/CLAUDE.md``), so they are absent from
-``analysis.needs`` and from this test's required set. This test pins that
-absence too, so the exclusion stays a fact about the workflow rather than a
-comment that can silently drift from it.
+The CL lanes (``test-cl``, ``test-media-cl``) were once the documented
+exclusion from this set: informational jobs outside the merge gate that
+uploaded no surefire. They are now required like every other lane, so the
+pipeline covers every accelerator backend it tests, and this test pins their
+presence so they cannot quietly drop back out of the gate.
 """
 
 import os
@@ -37,8 +35,8 @@ import yaml
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
 
-# Documented exclusion: CL lanes are intentionally not part of the merge gate.
-_EXCLUDED_LANES = {"test-cl", "test-media-cl"}
+# The OpenCL lanes, required like every other test lane.
+_CL_LANES = {"test-cl", "test-media-cl"}
 
 # Matches a `${{ ... }}` GitHub Actions expression anywhere in a string.
 _EXPRESSION = re.compile(r"\$\{\{[^}]*\}\}")
@@ -112,12 +110,13 @@ def _matches_allowlist(name, patterns):
 
 
 class AutoResolveTestJobCoverageTest(unittest.TestCase):
-    def test_cl_lanes_are_not_required(self):
+    def test_cl_lanes_are_required(self):
+        """The CL lanes are required test jobs."""
         workflow = _workflow()
         required = _required_test_jobs(workflow)
-        self.assertEqual(set(), required & _EXCLUDED_LANES,
-                          "CL lanes must stay out of analysis.needs (they are the "
-                          "documented exclusion, not a required test job)")
+        self.assertEqual(_CL_LANES, required & _CL_LANES,
+                          "CL lanes must be in analysis.needs, and through it in the "
+                          "merge gate and auto-resolve's failure routing")
 
     def test_required_jobs_are_in_auto_resolve_needs(self):
         workflow = _workflow()
@@ -178,6 +177,42 @@ class AutoResolveTestJobCoverageTest(unittest.TestCase):
         self.assertEqual([], uncovered,
                           "These required test jobs upload no surefire artifact the "
                           "allowlist keeps: %s (allowlist: %s)" % (uncovered, patterns))
+
+    def test_informational_jobs_are_dropped_by_the_surefire_allowlist(self):
+        """A job outside the required set must not have its surefire kept.
+
+        An informational lane (the CUDA lane today) is deliberately absent
+        from `analysis.needs`, so its failures must never reach an agent. A
+        broad allowlist glob can still match its artifact name — the
+        test-media arm was once `surefire-media-*`, which also kept
+        `surefire-media-cuda-group-*` — and hand its XML to the parser.
+        """
+        workflow = _workflow()
+        required = _required_test_jobs(workflow)
+        patterns = _allowlist_case_patterns()
+
+        kept = []
+        checked = 0
+        for job_name in sorted(set(workflow["jobs"]) - required):
+            for name in _surefire_artifact_names(workflow["jobs"][job_name]):
+                example = _concrete_example(name)
+                checked += 1
+                if _matches_allowlist(example, patterns):
+                    kept.append((job_name, example))
+
+        self.assertGreater(checked, 0, "expected at least one informational surefire upload")
+        self.assertEqual([], kept,
+                          "These jobs are not required test jobs, but the allowlist "
+                          "keeps their surefire artifacts: %s (allowlist: %s)" % (kept, patterns))
+
+    def test_media_arm_does_not_match_other_lanes(self):
+        """test-media's arm keeps only its own numbered groups."""
+        patterns = _allowlist_case_patterns()
+        self.assertTrue(_matches_allowlist("surefire-media-0", patterns))
+        self.assertTrue(_matches_allowlist("surefire-media-7", patterns))
+        self.assertFalse(_matches_allowlist("surefire-media-cuda-group-0", patterns))
+        self.assertFalse(_matches_allowlist("surefire-cuda-group-0", patterns))
+        self.assertFalse(_matches_allowlist("surefire-media-", patterns))
 
 
 if __name__ == "__main__":

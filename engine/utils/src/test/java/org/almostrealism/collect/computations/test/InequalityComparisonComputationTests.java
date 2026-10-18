@@ -134,4 +134,61 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 			// expected: shared CollectionProducerComputationBase shape validation
 		}
 	}
+
+	/**
+	 * Pins the shared conditional-selection scaffold for greater-than: when the strict
+	 * relation holds the true value is selected, and otherwise the false value is. This
+	 * exercises the {@code conditional(compare(...), trueValue, falseValue)} expression
+	 * now hoisted onto {@link org.almostrealism.collect.computations.InequalityComparisonComputation},
+	 * with the operator direction supplied by {@link GreaterThanCollection}.
+	 */
+	@Test(timeout = 30000)
+	public void greaterThanSelectsTrueAndFalseValues() {
+		try (PackedCollection whenTrue = greaterThan(c(7.0), c(5.0), c(10.0), c(20.0), false).get().evaluate();
+			 PackedCollection whenFalse = greaterThan(c(2.0), c(5.0), c(10.0), c(20.0), false).get().evaluate()) {
+			Assert.assertEquals("7 > 5 selects the true value", 10.0, whenTrue.toDouble(), 0.001);
+			Assert.assertEquals("2 > 5 selects the false value", 20.0, whenFalse.toDouble(), 0.001);
+		}
+	}
+
+	/**
+	 * Pins the shared conditional-selection scaffold for less-than: when the strict
+	 * relation holds the true value is selected, and otherwise the false value is. The
+	 * operator direction is supplied by {@link LessThanCollection}; the surrounding
+	 * selection is the shared scaffold on the superclass.
+	 */
+	@Test(timeout = 30000)
+	public void lessThanSelectsTrueAndFalseValues() {
+		try (PackedCollection whenTrue = lessThan(c(2.0), c(5.0), c(10.0), c(20.0), false).get().evaluate();
+			 PackedCollection whenFalse = lessThan(c(7.0), c(5.0), c(10.0), c(20.0), false).get().evaluate()) {
+			Assert.assertEquals("2 < 5 selects the true value", 10.0, whenTrue.toDouble(), 0.001);
+			Assert.assertEquals("7 < 5 selects the false value", 20.0, whenFalse.toDouble(), 0.001);
+		}
+	}
+
+	/**
+	 * Pins the inclusive operators element-wise over a multi-element shape, with operands
+	 * above, equal to, and below the threshold, and distinct true and false values per
+	 * element. This covers the inclusive branch of each subclass's
+	 * {@code compare} for unequal operands (the strict-versus-inclusive tests only use
+	 * equal operands) and verifies that the shared scaffold reads every argument at the
+	 * same index rather than at a fixed position.
+	 */
+	@Test(timeout = 30000)
+	public void inclusiveOperatorsSelectElementWise() {
+		try (PackedCollection a = pack(7.0, 5.0, 2.0);
+			 PackedCollection b = pack(5.0, 5.0, 5.0);
+			 PackedCollection t = pack(10.0, 11.0, 12.0);
+			 PackedCollection f = pack(20.0, 21.0, 22.0);
+			 PackedCollection gte = greaterThan(cp(a), cp(b), cp(t), cp(f), true).get().evaluate();
+			 PackedCollection lte = lessThan(cp(a), cp(b), cp(t), cp(f), true).get().evaluate()) {
+			Assert.assertEquals("7 >= 5 selects true", 10.0, gte.toDouble(0), 0.001);
+			Assert.assertEquals("5 >= 5 selects true", 11.0, gte.toDouble(1), 0.001);
+			Assert.assertEquals("2 >= 5 selects false", 22.0, gte.toDouble(2), 0.001);
+
+			Assert.assertEquals("7 <= 5 selects false", 20.0, lte.toDouble(0), 0.001);
+			Assert.assertEquals("5 <= 5 selects true", 11.0, lte.toDouble(1), 0.001);
+			Assert.assertEquals("2 <= 5 selects true", 12.0, lte.toDouble(2), 0.001);
+		}
+	}
 }

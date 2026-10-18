@@ -201,7 +201,7 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 			PackedCollection noisySample = scheduler.addNoise(cleanSample, noise, t).evaluate();
 
 			// Create timestep tensor (normalized to [0, 1])
-			PackedCollection timestep = createTimestepTensor(t);
+			PackedCollection timestep = createTimestepTensor(t, cleanSample.getShape().length(0));
 
 			// Advance indices
 			repeatIndex++;
@@ -230,16 +230,23 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 		}
 
 		/**
-		 * Creates a single-element tensor holding the normalized timestep value {@code t / numSteps},
+		 * Creates the timestep tensor holding the normalized timestep value {@code t / numSteps},
 		 * copied out of {@link #normalizedTimesteps}.
 		 *
-		 * @param t The integer diffusion timestep
-		 * @return A one-element {@link PackedCollection} containing the normalized timestep
+		 * <p>The first axis of each sample is its batch axis, and the timestep is a per-batch
+		 * scalar, so the tensor has shape {@code (batchSize, 1)} with the same value in every
+		 * row. This is the shape a diffusion model declares for its timestep input (and the
+		 * shape {@link org.almostrealism.ml.audio.DiffusionSampler} supplies at inference), so
+		 * the tensor can be fed to a compiled model without reshaping.</p>
+		 *
+		 * @param t         The integer diffusion timestep
+		 * @param batchSize Size of the sample's batch axis
+		 * @return A {@code (batchSize, 1)} {@link PackedCollection} containing the normalized timestep
 		 */
-		private PackedCollection createTimestepTensor(int t) {
-			PackedCollection timestep = new PackedCollection(1);
-			timestep.setFrom(0, normalizedTimesteps, t, 1);
-			return timestep;
+		private PackedCollection createTimestepTensor(int t, int batchSize) {
+			CollectionFeatures features = CollectionFeatures.getInstance();
+			return features.cp(normalizedTimesteps.range(features.shape(1), t))
+					.repeat(batchSize).evaluate();
 		}
 	}
 }

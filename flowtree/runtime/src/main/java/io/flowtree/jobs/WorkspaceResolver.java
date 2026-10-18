@@ -145,15 +145,15 @@ public class WorkspaceResolver {
      * contain {@code 0.0.0.0}, the original URL is returned unchanged.</p>
      *
      * @param workstreamUrl the workstream URL, possibly containing
-     *                      a {@code 0.0.0.0} placeholder
+     *                      a {@code 0.0.0.0} placeholder, or {@code null}
      * @return the resolved URL with the placeholder replaced, or the
-     *         original URL if no replacement is needed
+     *         original URL (possibly {@code null}) if no replacement is needed
      */
     public static String resolveWorkstreamUrl(String workstreamUrl) {
         String url = workstreamUrl;
 
         String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-        if (rootHost != null && !rootHost.isEmpty() && url.contains("0.0.0.0")) {
+        if (url != null && rootHost != null && !rootHost.isEmpty() && url.contains("0.0.0.0")) {
             url = url.replace("0.0.0.0", rootHost);
         }
 

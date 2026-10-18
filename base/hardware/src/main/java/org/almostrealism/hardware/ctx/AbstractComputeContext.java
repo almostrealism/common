@@ -22,9 +22,14 @@ import io.almostrealism.streams.Semaphore;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.CompilationTimingListener;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.ScopeSettings;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
-import java.util.concurrent.Executor;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 
@@ -121,12 +126,22 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 */
 	public static int threadId = 0;
 
+	/**
+	 * Every {@link ThreadGroup} created by any {@link AbstractComputeContext} instance,
+	 * so that {@link #isAnyExecutorThread()} can recognize a thread belonging to a
+	 * <em>different</em> context's bounded pool, not only the one it is called through.
+	 */
+	private static final Set<ThreadGroup> executorGroups = ConcurrentHashMap.newKeySet();
+
 	/** The data context for memory operations. */
 	private final T dc;
 	/** Thread pool for asynchronous kernel operations. */
-	private final Executor executor;
+	private final ExecutorService executor;
 	/** Thread group containing all executor threads for identification. */
 	private final ThreadGroup executorGroup;
+
+	/** Set as soon as {@link #destroy()} begins; see {@link #isDestroyed()}. */
+	private volatile boolean destroyed;
 
 	/**
 	 * Constructs a compute context wrapping the given data context.
@@ -141,6 +156,7 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 		this.executorGroup = new ThreadGroup("ComputeContext");
 		this.executor = Executors.newFixedThreadPool(KernelPreferences.getEvaluationParallelism(),
 				r -> new Thread(executorGroup, r, "ComputeContext-" + (threadId++)));
+		executorGroups.add(executorGroup);
 	}
 
 	/**
@@ -157,31 +173,94 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	}
 
 	/**
-	 * Copies all of {@code source} into {@code destination} with a direct host-mediated
-	 * {@link MemoryData#setMem} after waiting for {@code dependsOn}.
+	 * Marks this context destroyed, stops accepting new asynchronous work, and shuts down
+	 * this context's executor thread pool, removing its {@link ThreadGroup} from the
+	 * {@link #isAnyExecutorThread()} registry.
 	 *
-	 * <p>This is the fallback that has no asynchronous mechanism of its own: it blocks on
-	 * {@code dependsOn} (so the copy is ordered after the work it depends on), performs the copy
-	 * synchronously, and reports completion by returning {@code null}. A backend that owns a command
-	 * buffer or queue overrides this to move the memory asynchronously and honor {@code dependsOn}
-	 * without a host stall.</p>
+	 * <p>Subclasses that hold backend resources override this to call {@code super.destroy()}
+	 * first &mdash; so that nothing observes the context as alive, and no further work is
+	 * accepted, while those resources are going away &mdash; and then release their own
+	 * resources.</p>
+	 *
+	 * <p>Shutting down the executor and deregistering its group is an unconditional part of
+	 * destruction, not an independently invokable operation: a context created for the lifetime
+	 * of a single {@code computeContext(...)} scope (see {@code
+	 * HardwareDataContext#computeContext(Callable, ComputeRequirement...)}) is destroyed when
+	 * that scope ends, and without this its executor and {@link #executorGroup} would remain
+	 * permanently reachable from {@link #executorGroups} even though nothing can use them again
+	 * &mdash; a leak that accumulates with every scoped context created over the process
+	 * lifetime.</p>
+	 */
+	@Override
+	public void destroy() {
+		destroyed = true;
+		executorGroups.remove(executorGroup);
+		executor.shutdown();
+	}
+
+	@Override
+	public boolean isDestroyed() { return destroyed; }
+
+	/**
+	 * Copies all of {@code source} into {@code destination} with a direct host-mediated
+	 * {@link MemoryData#setMem}, ordered after {@code dependsOn}.
+	 *
+	 * <p>This is the fallback for a backend with no asynchronous copy of its own. With no
+	 * dependency the copy happens now and {@code null} is returned. Otherwise the copy is
+	 * scheduled to run once the dependency completes, through {@link Semaphore#then}, and the
+	 * completion of that scheduled copy is returned: the calling thread is not held up, since
+	 * blocking belongs only where a caller demands a result, never inside internal machinery
+	 * like this. A backend that owns a command buffer or queue overrides this to move the
+	 * memory on the device instead.</p>
+	 *
+	 * <p>A scheduled copy reads and writes memory after this method has returned, exactly
+	 * as a dispatched kernel does, so it holds a {@link KernelMemoryGuard} scheduling lease over
+	 * both regions from the moment it is scheduled until it has settled. Without it a block
+	 * released in the meantime could be freed while the copy is still using it. A lease (rather
+	 * than a plain execution reservation) is used because the dependency may remain pending
+	 * longer than the deferred-release backstop, which a lease is exempt from. The lease keeps
+	 * the memory alive, but destroying {@code source} or {@code destination} still clears that
+	 * object's reference to it, so the scheduled copy reaches each region through the lease's
+	 * {@link KernelMemoryGuard.Reservation#detachedReference(MemoryData) detached reference}: a
+	 * view bound to memory the lease holds, which no destroy can take away between the copy
+	 * resolving it and using it.</p>
+	 *
+	 * <p>The copy is performed by this context even when the destination is a device's shared
+	 * memory that another context would rather operate on
+	 * ({@link DataContext#getComputeContext(io.almostrealism.code.Memory)}). A context's copies are
+	 * also the argument preparation of its own kernels, which chain on their completion: handing a
+	 * host context's copy to the device would make every host kernel wait for a device round trip,
+	 * and would put host work behind the device queue, which can itself be waiting for that host
+	 * work (a device dispatch bridged to a host completion), so neither could proceed. A caller that
+	 * chooses a context by the memory it writes, rather than by the work the copy belongs to, asks
+	 * {@link Hardware#getComputeContext(io.almostrealism.code.Memory)}, which consults the
+	 * {@link DataContext} that manages it.</p>
 	 *
 	 * @param source      the memory region to copy from
 	 * @param destination the memory region to copy into
 	 * @param dependsOn   the completion this copy must be ordered after, or {@code null}
-	 * @return {@code null}; the copy is complete on return
+	 * @return the completion of the copy, or {@code null} if it is complete on return
 	 */
 	@Override
 	public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
-		// TODO  Rather than blocking here, this should schedule an operation that happens
-		// TODO  after dependsOn (plain Java threading is always available for chaining even
-		// TODO  when there is no native queueing mechanism) and return that operation's own
-		// TODO  Semaphore. Blocking should only ever occur because the end user demanded a
-		// TODO  result, never inside internal machinery like this fallback.
-		if (dependsOn != null) dependsOn.waitFor();
+		if (dependsOn == null) {
+			destination.setFrom(0, source, 0, source.getMemLength());
+			return null;
+		}
 
-		destination.setFrom(0, source, 0, source.getMemLength());
-		return null;
+		KernelMemoryGuard.Reservation lease =
+				Hardware.getLocalHardware().getKernelMemoryGuard().acquireScheduled(source, destination);
+		Supplier<MemoryData> from = lease.detachedReference(source);
+		Supplier<MemoryData> to = lease.detachedReference(destination);
+
+		Semaphore copied = dependsOn.then(() -> {
+			MemoryData src = from.get();
+			to.get().setFrom(0, src, 0, src.getMemLength());
+			return null;
+		});
+
+		copied.whenSettled(lease::release);
+		return copied;
 	}
 
 	/**
@@ -189,6 +268,11 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 *
 	 * <p>Useful for conditional logic that should only execute on executor threads,
 	 * or for debugging to identify which threads are performing work.</p>
+	 *
+	 * <p>This only recognizes <em>this</em> context's own pool. A caller that needs to
+	 * avoid blocking any bounded {@link AbstractComputeContext} executor &mdash; including
+	 * one belonging to a different context reached through cross-context chaining &mdash;
+	 * must use {@link #isAnyExecutorThread()} instead.</p>
 	 *
 	 * @return true if current thread is from this context's thread pool, false otherwise
 	 */
@@ -198,12 +282,48 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	}
 
 	/**
+	 * Returns whether the current thread belongs to the bounded executor pool of
+	 * <em>any</em> {@link AbstractComputeContext}, not only one specific instance.
+	 *
+	 * <p>A computation graph can chain arguments across compute contexts (for example,
+	 * a Metal-backed argument feeding an OpenCL kernel), so a thread that is not this
+	 * context's own executor thread may still be another context's bounded executor
+	 * thread. Issuing a blocking request directly on such a thread risks starving that
+	 * other context's pool exactly as issuing it on this context's own pool would.</p>
+	 *
+	 * @return true if the current thread is a bounded executor thread of any compute
+	 *         context, false otherwise
+	 */
+	public static boolean isAnyExecutorThread() {
+		return executorGroups.contains(Thread.currentThread().getThreadGroup());
+	}
+
+	/**
 	 * Returns the data context wrapped by this compute context.
 	 *
 	 * @return The data context for memory operations
 	 */
 	@Override
 	public T getDataContext() { return dc; }
+
+	/**
+	 * Returns the key under which a context caches the instruction set compiled for a scope.
+	 *
+	 * <p>When {@link ScopeSettings#enableInstructionSetReuse} is true and a signature is
+	 * available, the signature is the key, so that structurally identical scopes share one
+	 * compiled program. Otherwise the scope name is the key.</p>
+	 *
+	 * @param name      the scope name, used when there is no usable signature
+	 * @param signature the scope's structural signature, or null
+	 * @return the cache key
+	 */
+	protected static String instructionSetKey(String name, String signature) {
+		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
+			return signature;
+		}
+
+		return name;
+	}
 
 	/**
 	 * Records a compilation event if a timing listener is registered.

@@ -27,18 +27,31 @@ import static org.junit.Assert.fail;
 
 /**
  * {@link McpConfigBuilder#requiredServerNames()} names ar-manager exactly
- * when ar-manager is part of the configuration it builds.
+ * when ar-manager is part of the configuration it builds <em>and</em>
+ * enforcement is on — which, by default, it is not (see that method).
  */
 public class McpConfigBuilderRequiredServersTest extends TestSuiteBase {
 
-    /** With a URL and a token, ar-manager is the one required server. */
+    /**
+     * With enforcement on, a URL and a token, ar-manager is the one required
+     * server. The flag is set explicitly because enforcement is off by
+     * default; what this test pins is <em>which</em> server is named, not
+     * what the flag's states mean ({@link #explicitlyEnabledEnforcementRequiresArManager}
+     * and {@link #explicitlyDisablingEnforcementRequiresNothing} pin those).
+     */
     @Test(timeout = 30000)
     public void arManagerIsRequiredWhenConfigured() {
-        McpConfigBuilder builder = new McpConfigBuilder();
-        builder.setArManagerUrl("http://ar-manager:8010");
-        builder.setArManagerToken("armt_tmp_testtoken");
+        String previous = System.getProperty("AR_REQUIRE_MCP_SERVERS");
+        System.setProperty("AR_REQUIRE_MCP_SERVERS", "enabled");
+        try {
+            McpConfigBuilder builder = new McpConfigBuilder();
+            builder.setArManagerUrl("http://ar-manager:8010");
+            builder.setArManagerToken("armt_tmp_testtoken");
 
-        assertEquals(Set.of("ar-manager"), builder.requiredServerNames());
+            assertEquals(Set.of("ar-manager"), builder.requiredServerNames());
+        } finally {
+            restoreProperty("AR_REQUIRE_MCP_SERVERS", previous);
+        }
     }
 
     /** With no ar-manager configured, nothing is required. */
@@ -65,15 +78,38 @@ public class McpConfigBuilderRequiredServersTest extends TestSuiteBase {
     }
 
     /**
-     * With {@code AR_REQUIRE_MCP_SERVERS} left unset, enforcement defaults
-     * to on: ar-manager is required exactly as it is when nothing overrides
-     * the flag at all. This is the default {@link #arManagerIsRequiredWhenConfigured}
-     * already exercises implicitly; this test makes the "unset" case explicit
-     * and resilient to whatever value a prior test (or the environment) may
-     * have left on the system property, by clearing it first.
+     * The same misconfiguration is reported with enforcement explicitly off.
+     * Whether a token is missing is a fact about the configuration, not about
+     * the flag, so the check must precede the flag's early return — otherwise
+     * turning enforcement off would also silence an unrelated configuration
+     * error, and the first symptom would be a session with no ar-manager at
+     * all.
      */
     @Test(timeout = 30000)
-    public void unsetEnforcementDefaultsToRequiringArManager() {
+    public void aUrlWithoutATokenIsAMisconfigurationEvenWithEnforcementOff() {
+        String previous = System.getProperty("AR_REQUIRE_MCP_SERVERS");
+        System.setProperty("AR_REQUIRE_MCP_SERVERS", "disabled");
+        try {
+            McpConfigBuilder builder = new McpConfigBuilder();
+            builder.setArManagerUrl("http://ar-manager:8010");
+            builder.requiredServerNames();
+            fail("expected IllegalStateException");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("token"));
+        } finally {
+            restoreProperty("AR_REQUIRE_MCP_SERVERS", previous);
+        }
+    }
+
+    /**
+     * With {@code AR_REQUIRE_MCP_SERVERS} left unset, enforcement is off:
+     * nothing is required even though ar-manager is fully configured. The
+     * property is cleared first so the case is exercised as the deployment
+     * actually runs it, whatever value a prior test (or the environment) may
+     * have left behind.
+     */
+    @Test(timeout = 30000)
+    public void unsetEnforcementDefaultsToRequiringNothing() {
         String previous = System.getProperty("AR_REQUIRE_MCP_SERVERS");
         System.clearProperty("AR_REQUIRE_MCP_SERVERS");
         try {
@@ -81,15 +117,15 @@ public class McpConfigBuilderRequiredServersTest extends TestSuiteBase {
             builder.setArManagerUrl("http://ar-manager:8010");
             builder.setArManagerToken("armt_tmp_testtoken");
 
-            assertEquals(Set.of("ar-manager"), builder.requiredServerNames());
+            assertTrue(builder.requiredServerNames().isEmpty());
         } finally {
             restoreProperty("AR_REQUIRE_MCP_SERVERS", previous);
         }
     }
 
     /**
-     * {@code AR_REQUIRE_MCP_SERVERS=enabled} is a no-op restating the
-     * default explicitly, not a distinct on/off state.
+     * {@code AR_REQUIRE_MCP_SERVERS=enabled} is what turns enforcement on:
+     * the machinery is intact and reachable, it is simply not the default.
      */
     @Test(timeout = 30000)
     public void explicitlyEnabledEnforcementRequiresArManager() {
@@ -107,8 +143,8 @@ public class McpConfigBuilderRequiredServersTest extends TestSuiteBase {
     }
 
     /**
-     * {@code AR_REQUIRE_MCP_SERVERS=disabled} is the explicit operator
-     * escape hatch: nothing is required even though ar-manager is fully
+     * {@code AR_REQUIRE_MCP_SERVERS=disabled} states the default
+     * explicitly: nothing is required even though ar-manager is fully
      * configured.
      */
     @Test(timeout = 30000)

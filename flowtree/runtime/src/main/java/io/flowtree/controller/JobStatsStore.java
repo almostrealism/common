@@ -16,9 +16,11 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.Truncation;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -103,7 +105,7 @@ public class JobStatsStore implements ConsoleFeatures {
     /**
      * Table storing per-model cost breakdowns per job. Mirrors the structure
      * of {@code job_runner_cost} but keyed by provider/model identifier
-     * (e.g. {@code "openrouter/claude-opus-4-7"}) instead of runner name.
+     * (e.g. {@code "openrouter/claude-opus-5-5"}) instead of runner name.
      */
     private static final String CREATE_MODEL_COST_TABLE = ""
         + "CREATE TABLE IF NOT EXISTS job_model_cost ("
@@ -1244,7 +1246,9 @@ public class JobStatsStore implements ConsoleFeatures {
     }
 
     /**
-     * Truncates a string to at most {@code maxLength} characters.
+     * Truncates a string to at most {@code maxLength} characters with
+     * {@link Truncation#CUT}, keeping {@code null} as {@code null} so an absent
+     * value is stored as SQL {@code NULL} rather than an empty string.
      *
      * @param s         the string to truncate, or {@code null}
      * @param maxLength maximum number of characters to retain
@@ -1253,8 +1257,7 @@ public class JobStatsStore implements ConsoleFeatures {
      *         {@code null} if {@code s} is {@code null}
      */
     private static String truncate(String s, int maxLength) {
-        if (s == null) return null;
-        return s.length() <= maxLength ? s : s.substring(0, maxLength);
+        return s == null ? null : Truncation.CUT.apply(s, maxLength);
     }
 
     /**
@@ -1328,8 +1331,8 @@ public class JobStatsStore implements ConsoleFeatures {
          */
         public String toJson(Instant now) {
             StringBuilder json = new StringBuilder("{");
-            json.append("\"jobId\":\"").append(escapeForJson(jobId)).append("\"");
-            json.append(",\"workstreamId\":\"").append(escapeForJson(workstreamId)).append("\"");
+            json.append("\"jobId\":\"").append(JsonFieldExtractor.escapeJson(jobId)).append("\"");
+            json.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstreamId)).append("\"");
             if (startedAt != null) {
                 json.append(",\"startedAt\":\"").append(startedAt).append("\"");
             }
@@ -1339,21 +1342,9 @@ public class JobStatsStore implements ConsoleFeatures {
             json.append(",\"ageSeconds\":").append(age(now).getSeconds());
             json.append(",\"sinceHeartbeatSeconds\":").append(sinceHeartbeat(now).getSeconds());
             if (description != null) {
-                json.append(",\"description\":\"").append(escapeForJson(description)).append("\"");
+                json.append(",\"description\":\"").append(JsonFieldExtractor.escapeJson(description)).append("\"");
             }
             return json.append("}").toString();
-        }
-
-        /**
-         * Escapes a value for embedding in the JSON rendered above.
-         *
-         * @param value the raw value; may be {@code null}
-         * @return the escaped value, or an empty string when {@code null}
-         */
-        private static String escapeForJson(String value) {
-            if (value == null) return "";
-            return value.replace("\\", "\\\\").replace("\"", "\\\"")
-                    .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
         }
     }
 

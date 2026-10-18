@@ -113,6 +113,30 @@ public class KernelSeriesMatcherTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * Integer values beyond the range of an {@code int} are emitted as {@code long}
+	 * constants holding the exact value, whether they form a constant sequence, the
+	 * value of a mask, or the scale and offset of a progression.
+	 */
+	@Test(timeout = 30000)
+	public void valuesBeyondIntRangeAreEmittedExactly() {
+		long big = 1L << 40;
+
+		Expression<?> r = match(new double[] { big, big, big }, true);
+		Assert.assertEquals(Long.class, r.getType());
+		Assert.assertEquals(big, r.longValue().getAsLong());
+
+		double[] mask = { 0, big, 0, 0 };
+		r = match(mask, true);
+		Assert.assertTrue(r.isMasked());
+		assertReproduces(mask, r);
+
+		double[] progression = { big, 2 * big, 3 * big, 4 * big };
+		r = match(progression, true);
+		Assert.assertNotNull(r);
+		assertReproduces(progression, r);
+	}
+
+	/**
 	 * Every expression the matcher emits must reproduce the sequence it was derived
 	 * from, for randomly generated progressions with random scale, offset, granularity
 	 * and period, and for randomly placed masks.

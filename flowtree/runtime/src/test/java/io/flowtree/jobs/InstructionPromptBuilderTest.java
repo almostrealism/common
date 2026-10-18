@@ -53,6 +53,39 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("send_message"));
 	}
 
+	/**
+	 * InstructionPromptBuilder tells the agent how to handle an out-of-scope
+	 * review point when the workstream URL (and therefore the PR-review tools)
+	 * is set: file a follow-up task and reply with its id rather than extend
+	 * the branch.
+	 */
+	@Test(timeout = 30000)
+	public void includesOutOfScopeReviewGuidanceWhenUrlSet() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.build();
+		assertTrue("Expected Out-of-Scope Review Points section when workstream URL is set",
+			result.contains("## Out-of-Scope Review Points"));
+		assertTrue("Expected tracker_file_follow_up_task reference",
+			result.contains("tracker_file_follow_up_task"));
+		assertTrue("Expected the guidance to say to reply with the task id",
+			result.contains("reply in the review thread with the task id"));
+	}
+
+	/**
+	 * InstructionPromptBuilder omits the out-of-scope review guidance when no
+	 * workstream URL is set, since the PR-review tools are unavailable then.
+	 */
+	@Test(timeout = 30000)
+	public void excludesOutOfScopeReviewGuidanceWhenNoUrl() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.build();
+		assertFalse("Expected no follow-up task guidance without workstream URL",
+			result.contains("tracker_file_follow_up_task"));
+	}
+
 	/** InstructionPromptBuilder excludes Communication section when no workstream URL. */
 	@Test(timeout = 30000)
 	public void excludesMessageSectionWhenNoUrl() {
@@ -74,6 +107,24 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.build();
 		assertTrue("Expected Test Integrity Policy section",
 			result.contains("Test Integrity Policy"));
+	}
+
+	/** InstructionPromptBuilder always includes the Test Execution Limits section. */
+	@Test(timeout = 30000)
+	public void includesTestExecutionLimitsAlways() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.build();
+		assertTrue("Expected Test Execution Limits section",
+			result.contains("## Test Execution Limits"));
+		assertTrue("Expected bounded-selection guidance",
+			result.contains("Run only a bounded selection per invocation"));
+		assertTrue("Expected AR_TEST_GROUP shard warning",
+			result.contains("AR_TEST_GROUP"));
+		assertTrue("Expected 40-minute timeout ceiling",
+			result.contains("40"));
+		assertTrue("Expected inactivity-kill warning",
+			result.contains("killed for inactivity"));
 	}
 
 	/** InstructionPromptBuilder includes Merge Conflicts section when hasMergeConflicts is true. */

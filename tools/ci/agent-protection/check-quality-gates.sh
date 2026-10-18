@@ -15,8 +15,9 @@
 #   TEST_INTEGRITY_PASSED   - "true" or "false" (optional; defaults to "true")
 #   TEST_INTEGRITY_REASON   - what test-integrity-check concluded, when it
 #                             concluded anything: "enforcement-tampering",
-#                             "exfil-guard", "test-hiding", "infrastructure",
-#                             or empty (optional; defaults to empty)
+#                             "exfil-guard", "test-hiding",
+#                             "python-test-hiding", "infrastructure", or
+#                             empty (optional; defaults to empty)
 #   CHECKSTYLE_PASSED       - "true" or "false" (optional; defaults to "true")
 #   DECEPTION_AUDIT_ERROR   - "true" when deception-audit.sh could not resolve
 #                             the merge-base (or its file listing) and never
@@ -68,7 +69,7 @@ fi
 UNATTRIBUTED=false
 
 if [ "${TEST_INTEGRITY_PASSED:-true}" != "true" ]; then
-    # test-integrity-check runs three sequential detectors and stops at the
+    # test-integrity-check runs four sequential detectors and stops at the
     # first failure, so TEST_INTEGRITY_PASSED says only that the job did not
     # end clean. TEST_INTEGRITY_REASON is what the failing step itself
     # recorded, and it is the only thing that distinguishes a detector's
@@ -76,17 +77,21 @@ if [ "${TEST_INTEGRITY_PASSED:-true}" != "true" ]; then
     # skipped, cancelled, or never reported at all, which also leaves
     # TEST_INTEGRITY_PASSED empty.
     #
-    # Only the three named findings are accusations, and only they are
+    # Only the four named findings are accusations, and only they are
     # listed. Anything else means nobody established that this branch did
     # anything, and saying otherwise to an agent has twice produced a
     # "fix" to a branch that was never at fault.
     case "${TEST_INTEGRITY_REASON:-}" in
         enforcement-tampering)
-            echo "- test-integrity-check: CRITICAL — Enforcement infrastructure (policy detectors, agent-protection scripts, or the exfiltration guard) was modified on this branch. These files are protected and cannot be edited on PR branches; fix the production code that violates the policy instead. Run \`./tools/ci/agent-protection/validate-agent-commit.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
+            echo "- test-integrity-check: CRITICAL — Enforcement infrastructure (policy detectors, agent-protection scripts, or the exfiltration guard) was modified on this branch. These files are protected and cannot be edited on PR branches; fix the production code that violates the policy instead. The test-integrity-check job log lists the protected files that changed." >> "$OUTPUT_FILE"
             FAILURE_COUNT=$((FAILURE_COUNT + 1))
             ;;
         exfil-guard)
             echo "- test-integrity-check: CRITICAL — The exfiltration guard hook is missing, unregistered, or was modified on this branch. The guard is the only barrier between an agent's tools and the outside world; changes to it are made and committed by a human, never by an agent. Run \`./tools/ci/agent-protection/verify-exfiltration-guard.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
+            FAILURE_COUNT=$((FAILURE_COUNT + 1))
+            ;;
+        python-test-hiding)
+            echo "- test-integrity-check: CRITICAL — Python tests that exist on the base branch were removed, renamed away, or lost assertions. Restore them and fix the code under test instead. Run \`./tools/ci/agent-protection/detect-python-test-hiding.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
             FAILURE_COUNT=$((FAILURE_COUNT + 1))
             ;;
         test-hiding)
@@ -106,8 +111,24 @@ if [ "${CHECKSTYLE_PASSED:-true}" != "true" ]; then
 fi
 
 if [ "${AGENT_COMMIT_BLOCKED:-false}" = "true" ]; then
-    echo "- agent-commit-validation: CRITICAL — Agent commit was BLOCKED. Reason: ${AGENT_BLOCK_REASON:-unknown}. Agents are NEVER allowed to change or remove a test method that exists on the base branch, nor to modify CI files outside a ci/... branch, and a commit dispatched to fix a failure must add something that did not exist before. Adding new test methods to an existing test class is permitted. Run \`./tools/ci/agent-protection/validate-agent-commit.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
-    FAILURE_COUNT=$((FAILURE_COUNT + 1))
+    # Only one block is a finding about the branch. The validator also sets
+    # `blocked` when it could not run at all, and a head from before its
+    # rules were split carries a validator that reports rules no longer its
+    # own (test_file_modification, ci_file_modification) — neither says the
+    # branch did anything this gate objects to.
+    case "${AGENT_BLOCK_REASON:-}" in
+        only_base_test_edits)
+            echo "- agent-commit-validation: The change set only edits tests that exist on the base branch, with no new test in them. Those tests pass on the base branch; editing them cannot fix anything, only change what the suite reports. Fix the code under test (or add the missing test) instead. Run \`./tools/ci/agent-protection/validate-agent-commit.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
+            FAILURE_COUNT=$((FAILURE_COUNT + 1))
+            ;;
+        test_file_modification|ci_file_modification)
+            echo "::notice::agent-commit-validation reported ${AGENT_BLOCK_REASON} from a validator older than this pipeline; that rule is no longer this job's to enforce"
+            ;;
+        *)
+            UNATTRIBUTED=true
+            echo "::warning::agent-commit-validation blocked without a finding (reason='${AGENT_BLOCK_REASON:-<none>}'). Treating it as a pipeline problem: it is not being reported to an agent. A human should read the job log."
+            ;;
+    esac
 fi
 
 if [ "${DECEPTION_AUDIT_ERROR:-false}" = "true" ]; then

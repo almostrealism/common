@@ -22,15 +22,6 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
-import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.code.Precision;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.mem.ByteBufferTransfer;
-import org.almostrealism.hardware.mem.Bytes;
-import org.almostrealism.hardware.mem.DirectMemory;
-import org.almostrealism.hardware.mem.RAM;
-import io.almostrealism.collect.TraversalPolicy;
-import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -98,8 +89,8 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 600000)
 	public void encoderParity() throws IOException {
-		File weightDir = firstExisting(WEIGHT_DIRS, "encoder.layers.0.mapping.weight.bin");
-		File refDir = firstExisting(REFERENCE_DIRS, "enc_resamp_input.bin");
+		File weightDir = firstExisting(WEIGHT_DIRS, "encoder.layers.0.mapping.weight");
+		File refDir = firstExisting(REFERENCE_DIRS, "enc_resamp_input");
 		if (weightDir == null || refDir == null) {
 			log("skipping encoder parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
 			return;
@@ -113,10 +104,10 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 		PackedCollection afterMapping = loadShaped(refDir, "enc_after_mapping", 1, 768, 96);
 		PackedCollection layerInput = loadShaped(refDir, "enc_layer0_input", 3, 34, 768);
 
-		float[] refMapping = loadFlat(new File(refDir, "enc_after_mapping.bin").toPath());
-		float[] refSegment = loadFlat(new File(refDir, "enc_seg_input.bin").toPath());
-		float[] refLayer = loadFlat(new File(refDir, "enc_layer0_output.bin").toPath());
-		float[] refOutput = loadFlat(new File(refDir, "enc_resamp_output.bin").toPath());
+		float[] refMapping = loadFlat(refDir, "enc_after_mapping");
+		float[] refSegment = loadFlat(refDir, "enc_seg_input");
+		float[] refLayer = loadFlat(refDir, "enc_layer0_output");
+		float[] refOutput = loadFlat(refDir, "enc_resamp_output");
 
 		// Stage 1: channel mapping (1x1 conv).
 		PackedCollection mapping = eval(resamplingMapping(cp(blockInput), config, weights, prefix));
@@ -173,12 +164,12 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 */
 	@Test(timeout = 600000)
 	public void decoderParity() throws IOException {
-		File weightDir = firstExisting(WEIGHT_DIRS, "decoder.layers.3.mapping.weight.bin");
+		File weightDir = firstExisting(WEIGHT_DIRS, "decoder.layers.3.mapping.weight");
 		// Gate on dec_poststack.bin: it is one of the per-stage references the updated dump script added
 		// (alongside dec_seg_input.bin and dec_premap.bin) that the original ref set lacked. Marking on it
 		// means a stale ref directory from an older dump skips cleanly here rather than failing partway
 		// through with a FileNotFoundException when one of the new references is loaded below.
-		File refDir = firstExisting(REFERENCE_DIRS, "dec_poststack.bin");
+		File refDir = firstExisting(REFERENCE_DIRS, "dec_poststack");
 		if (weightDir == null || refDir == null) {
 			log("skipping decoder parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
 			return;
@@ -194,18 +185,18 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 		PackedCollection premapInput = loadShaped(refDir, "dec_premap", 1, 768, 96);
 		PackedCollection layerInput = loadShaped(refDir, "dec_layer0_input", 3, 34, 768);
 
-		float[] refSegment = loadFlat(new File(refDir, "dec_seg_input.bin").toPath());
-		float[] refPoststack = loadFlat(new File(refDir, "dec_poststack.bin").toPath());
-		float[] refPremap = loadFlat(new File(refDir, "dec_premap.bin").toPath());
+		float[] refSegment = loadFlat(refDir, "dec_seg_input");
+		float[] refPoststack = loadFlat(refDir, "dec_poststack");
+		float[] refPremap = loadFlat(refDir, "dec_premap");
 		// refMapping and refOutput intentionally load the same file (dec_resamp_output.bin): the channel
 		// mapping is the LAST decoder stage, so the isolated mapping output (Stage 4, fed the real
 		// dec_premap) is numerically the full block output (Stage 6, fed the real block input). Keeping
 		// two names is deliberate — Stage 4 asserts the mapping kernel alone at the tight TOL_MAPPING,
 		// while Stage 6 asserts the whole composed pipeline at the looser TOL_BLOCK; they are not a
 		// copy-paste error and must not be "fixed" by pointing one at a different file.
-		float[] refMapping = loadFlat(new File(refDir, "dec_resamp_output.bin").toPath());
-		float[] refLayer = loadFlat(new File(refDir, "dec_layer0_output.bin").toPath());
-		float[] refOutput = loadFlat(new File(refDir, "dec_resamp_output.bin").toPath());
+		float[] refMapping = loadFlat(refDir, "dec_resamp_output");
+		float[] refLayer = loadFlat(refDir, "dec_layer0_output");
+		float[] refOutput = loadFlat(refDir, "dec_resamp_output");
 
 		// Stage 1: segmentation + learned tokens (fed the real block input). Faithful => asserted.
 		PackedCollection segment = eval(resamplingSegment(cp(blockInput), 1, config, weights, prefix));
@@ -236,7 +227,7 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 		int[] shiftedIdx = {3, 4, 5};
 		for (int li : shiftedIdx) {
 			PackedCollection in = loadShaped(refDir, "dec_layer" + li + "_input", 4, 34, 768);
-			float[] out = loadFlat(new File(refDir, "dec_layer" + li + "_output.bin").toPath());
+			float[] out = loadFlat(refDir, "dec_layer" + li + "_output");
 			PackedCollection res = evalBlock(resamplingLayerBlock(
 					in.getShape().length(0), config, weights, layerKey(prefix, li)), in);
 			report("decoder layer" + li, res, out);
@@ -267,14 +258,14 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	}
 
 	/**
-	 * Loads every weight a resampling block reads from a directory of flat {@code .bin} tensors,
+	 * Loads every weight a resampling block reads from a directory of protobuf collection shards,
 	 * shaping each according to the shared {@link #blockWeightShapes} map.
 	 *
 	 * @param dir    the weight directory
 	 * @param config the block configuration
 	 * @param prefix the weight key prefix
 	 * @return a {@link StateDictionary} of the loaded weights
-	 * @throws IOException if a weight file cannot be read
+	 * @throws IOException if the weight shards cannot be read
 	 */
 	protected StateDictionary loadBlockWeights(File dir, ResamplingConfig config, String prefix) throws IOException {
 		Map<String, PackedCollection> w = new HashMap<>();
@@ -284,98 +275,4 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 		return new StateDictionary(w);
 	}
 
-	/**
-	 * Loads a flat {@code .bin} tensor into a {@link PackedCollection} of the given shape.
-	 *
-	 * @param dir   the directory containing {@code name.bin}
-	 * @param name  the tensor name (without the {@code .bin} suffix)
-	 * @param shape the target shape
-	 * @return the loaded collection
-	 * @throws IOException if the file cannot be read
-	 */
-	protected PackedCollection loadShaped(File dir, String name, int... shape) throws IOException {
-		ByteBuffer data = loadBuffer(new File(dir, name + ".bin").toPath());
-		TraversalPolicy resultShape = shape(shape);
-		int count = data.remaining() / 4;
-		if (count != resultShape.getTotalSize()) {
-			throw new IllegalStateException(name + ": file has " + count
-					+ " values but shape expects " + resultShape.getTotalSize());
-		}
-
-		MemoryProvider<? extends RAM> provider =
-				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
-		RAM mem = provider.allocate(count);
-
-		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
-		new ByteBufferTransfer(data, Precision.FP32, staging,
-				Precision.ofBytes(provider.getNumberSize())).copyAll();
-
-		return new PackedCollection(resultShape, resultShape.getTraversalAxis(),
-				Bytes.of(mem, count), 0);
-	}
-
-	/**
-	 * Reads a {@code [uint32 count][float32 ...]} little-endian reference file into a flat array.
-	 *
-	 * @param path the file path
-	 * @return the flat float values
-	 * @throws IOException if the file cannot be read
-	 */
-	protected float[] loadFlat(Path path) throws IOException {
-		return ReferenceActivations.load(path);
-	}
-
-	/**
-	 * Reads a {@code [uint32 count][float32 ...]} little-endian reference file
-	 * into a buffer positioned over the payload values.
-	 *
-	 * @param path the file path
-	 * @return a little-endian buffer holding the payload values
-	 * @throws IOException if the file cannot be read
-	 */
-	protected ByteBuffer loadBuffer(Path path) throws IOException {
-		return ReferenceActivations.loadBuffer(path);
-	}
-
-	/**
-	 * Returns the first directory among {@code candidates} that exists and contains {@code marker}, or
-	 * {@code null} if none do.
-	 *
-	 * @param candidates candidate directory paths (entries may be {@code null})
-	 * @param marker     a file that must exist within the directory
-	 * @return the resolved directory, or {@code null}
-	 */
-	protected File firstExisting(String[] candidates, String marker) {
-		return ReferenceActivations.firstExisting(candidates, marker);
-	}
-
-	/**
-	 * Logs the difference statistics for one stage.
-	 *
-	 * @param stage     the stage label
-	 * @param actual    the computed collection
-	 * @param reference the flat reference values
-	 */
-	protected void report(String stage, PackedCollection actual, float[] reference) {
-		double[] stats = diffStats(actual, reference);
-		log(String.format("%-18s maxAbs=%.3e meanAbs=%.3e rmse=%.3e (refMaxAbs=%.3e, n=%d)",
-				stage, stats[0], stats[1], stats[2], stats[3], reference.length));
-	}
-
-	/**
-	 * Asserts that the maximum absolute difference for one stage is within tolerance.
-	 *
-	 * @param stage     the stage label
-	 * @param actual    the computed collection
-	 * @param reference the flat reference values
-	 * @param tolerance the maximum permitted absolute difference
-	 */
-	protected void assertWithin(String stage, PackedCollection actual, float[] reference, double tolerance) {
-		double maxAbs = maxAbsDiff(actual, reference);
-		// maxAbs > tolerance is false when maxAbs is NaN, so a NaN result (a real computation
-		// failure) would otherwise silently pass; negating a <= comparison catches it.
-		if (!(maxAbs <= tolerance)) {
-			throw new AssertionError(stage + " parity failed: maxAbs=" + maxAbs + " > tolerance=" + tolerance);
-		}
-	}
 }

@@ -1,0 +1,57 @@
+/**
+ * Test fixture for PdslNestedLayerShapeTest: a layer that declares no `-> [shape]` annotation,
+ * called from another layer's body, is built for the signal at the point where the call is
+ * placed. Every layer here works on [batch, channels, length] signals, which cannot be read off
+ * the called layer's weights; each `_nested` layer has a `_flat` twin that writes the same stages
+ * out inline, so a test can compare the two.
+ */
+
+/** [batch, channels, length] -> same: a length-preserving kernel-3 convolution. */
+layer smooth(w: weight, bias: weight) {
+    conv1d(w, bias, 1, 1)
+}
+
+/** Two calls in a row: each is built for the signal it receives. */
+layer smooth_twice_nested(w: weight, bias: weight) {
+    smooth(w, bias)
+    smooth(w, bias)
+}
+
+/** smooth_twice_nested written out inline. */
+layer smooth_twice_flat(w: weight, bias: weight) {
+    conv1d(w, bias, 1, 1)
+    conv1d(w, bias, 1, 1)
+}
+
+/** A call after a stage that halves the length: built for the halved signal. */
+layer halve_then_smooth_nested(down: weight, w: weight, bias: weight) {
+    conv1d(down, 2, 0)
+    smooth(w, bias)
+}
+
+/** halve_then_smooth_nested written out inline. */
+layer halve_then_smooth_flat(down: weight, w: weight, bias: weight) {
+    conv1d(down, 2, 0)
+    conv1d(w, bias, 1, 1)
+}
+
+/** A call inside a residual accum: built for the accum's input, and added back to it. */
+layer smooth_residual_nested(w: weight, bias: weight) {
+    accum {
+        smooth(w, bias)
+    }
+}
+
+/** smooth_residual_nested written out inline. */
+layer smooth_residual_flat(w: weight, bias: weight) {
+    accum {
+        conv1d(w, bias, 1, 1)
+    }
+}
+
+/** A call bound with `let` before a stage that halves the length: built where it is placed. */
+layer smooth_bound_before_halving(down: weight, w: weight, bias: weight) {
+    let smoothed = smooth(w, bias)
+    conv1d(down, 2, 0)
+    smoothed
+}
