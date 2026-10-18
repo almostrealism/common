@@ -28,10 +28,13 @@ import org.jboss.aesh.console.command.invocation.CommandInvocation;
 import org.jboss.aesh.console.command.registry.CommandRegistry;
 import org.jboss.aesh.console.operator.ControlOperator;
 import org.jboss.aesh.terminal.Shell;
+import org.junit.After;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -47,6 +50,25 @@ import static org.junit.Assert.assertTrue;
  * registry is asserted.
  */
 public class CliCommandExecutionTest extends TestSuiteBase {
+
+	/**
+	 * JDBC URLs a test registered in the application-wide {@link DatabasePools}
+	 * registry, closed and removed after the test so the static registry and the
+	 * c3p0 pool resources do not leak into subsequent tests in the same JVM.
+	 */
+	private final Set<String> registeredUrls = new LinkedHashSet<>();
+
+	/**
+	 * Closes and removes every pool a test registered, restoring the shared
+	 * {@link DatabasePools} registry to the state it had before the test ran.
+	 */
+	@After
+	public void closeRegisteredPools() {
+		for (String url : registeredUrls) {
+			DatabasePools.close(url);
+		}
+		registeredUrls.clear();
+	}
 
 	/**
 	 * {@link OpenConnection} prints a usage message and reports failure when fewer
@@ -72,6 +94,7 @@ public class CliCommandExecutionTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void openConnectionRegistersPool() throws Exception {
 		String url = "jdbc:mysql://localhost/cli_open_test";
+		registeredUrls.add(url);
 		OpenConnection command = new OpenConnection();
 		command.params = new ArrayList<>(List.of(url, "user", "secret"));
 
@@ -92,6 +115,7 @@ public class CliCommandExecutionTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void sourcesListPrintsRegisteredPool() throws Exception {
 		String url = "jdbc:mysql://localhost/cli_sources_test";
+		registeredUrls.add(url);
 		DatabasePools.open(url, "user", "secret");
 		ComboPooledDataSource pool = DatabasePools.get(url);
 		assertNotNull(pool);

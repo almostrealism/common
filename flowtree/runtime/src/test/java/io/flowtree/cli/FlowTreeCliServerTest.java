@@ -17,14 +17,19 @@
 package io.flowtree.cli;
 
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
@@ -43,6 +48,39 @@ import static org.junit.Assert.assertTrue;
  * {@code System.exit} are intentionally not driven here.</p>
  */
 public class FlowTreeCliServerTest extends TestSuiteBase {
+
+	/**
+	 * Servers constructed during a test, closed after it so the bound socket and
+	 * the process-wide {@link FlowTreeCliServer#getCurrentInstance()} do not leak
+	 * into subsequent tests in the same JVM.
+	 */
+	private final List<FlowTreeCliServer> servers = new ArrayList<>();
+
+	/**
+	 * Constructs a {@link FlowTreeCliServer} on an ephemeral port and records it
+	 * for teardown. Port {@code 0} lets the OS assign a free port so the test
+	 * never collides with a fixed port or a concurrent run.
+	 *
+	 * @return the newly constructed server, already published as the current instance
+	 * @throws IOException if the server socket cannot be bound
+	 */
+	private FlowTreeCliServer newServer() throws IOException {
+		FlowTreeCliServer server = new FlowTreeCliServer("http://localhost/", 4, 0);
+		servers.add(server);
+		return server;
+	}
+
+	/**
+	 * Closes every server constructed by the finished test, releasing its socket
+	 * and clearing the global current-instance pointer.
+	 */
+	@After
+	public void closeServers() {
+		for (FlowTreeCliServer server : servers) {
+			server.close();
+		}
+		servers.clear();
+	}
 
 	/**
 	 * {@link FlowTreeCliServer#parseCommand(String)} drops the leading verb and
@@ -145,7 +183,7 @@ public class FlowTreeCliServerTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void currentInstanceDrivesDispatch() throws Exception {
-		FlowTreeCliServer server = new FlowTreeCliServer("http://localhost/", 4, 0);
+		FlowTreeCliServer server = newServer();
 		assertSame(server, FlowTreeCliServer.getCurrentInstance());
 
 		String out = FlowTreeCliServer.runCommand("::render scene.xml", null);
@@ -155,6 +193,41 @@ public class FlowTreeCliServerTest extends TestSuiteBase {
 
 		assertFalse("received messages are left for other listeners",
 				server.recievedMessage(null, 0));
+	}
+
+	/**
+	 * A command registered through the public {@link FlowTreeCliServer#register}
+	 * API is dispatched by the instance {@link FlowTreeCliServer#runCommand(String)},
+	 * which must forward its own command registry rather than a {@code null} map.
+	 * This exercises the instance-to-registry wiring end to end, so a regression
+	 * that drops the registry on the instance dispatch path would fail here.
+	 */
+	@Test(timeout = 30000)
+	public void registeredCommandDispatchedThroughInstance() throws Exception {
+		FlowTreeCliServer server = newServer();
+
+		String[] captured = new String[1];
+		server.register("mycmd", (command, out) -> {
+			captured[0] = command;
+			return "instance-custom-result";
+		});
+
+		assertEquals("instance-custom-result", server.runCommand("mycmd some args"));
+		assertEquals("mycmd some args", captured[0]);
+	}
+
+	/**
+	 * {@link FlowTreeCliServer#close()} clears the process-wide current instance
+	 * when it is the server being closed, so a shared JVM does not retain a stale
+	 * pointer to a server whose socket has been released.
+	 */
+	@Test(timeout = 30000)
+	public void closeClearsCurrentInstance() throws Exception {
+		FlowTreeCliServer server = newServer();
+		assertSame(server, FlowTreeCliServer.getCurrentInstance());
+
+		server.close();
+		assertNull(FlowTreeCliServer.getCurrentInstance());
 	}
 
 	/**

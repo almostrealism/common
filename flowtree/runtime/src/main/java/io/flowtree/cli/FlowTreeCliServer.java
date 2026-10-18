@@ -74,7 +74,8 @@ import java.util.Properties;
  *
  * @author  Michael Murray
  */
-public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Node.ActivityListener, ConsoleFeatures {
+public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Node.ActivityListener,
+			ConsoleFeatures, AutoCloseable {
 
 	/**
 	 * Extension point that allows external code to contribute custom commands
@@ -116,6 +117,12 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 
 	/** Server socket accepting raw TCP terminal connections. */
 	private final ServerSocket socket;
+
+	/**
+	 * Set by {@link #close()} to make the {@link #run()} accept loop exit after
+	 * the current {@code accept} call unblocks, rather than looping forever.
+	 */
+	private volatile boolean closed;
 
 	/** Input stream of the currently active terminal connection. */
 	private InputStream in;
@@ -509,7 +516,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 */
 	@Override
 	public void run() {
-		while (true) {
+		while (!closed) {
 			try (Socket connection = this.socket.accept()) {
 				log("Accepted connection...");
 
@@ -551,7 +558,29 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			}
 		}
 	}
-	
+
+	/**
+	 * Closes the terminal server socket and, when this instance is the current
+	 * singleton, clears {@link #getCurrentInstance()}. The {@link #run()} accept
+	 * loop observes the closed flag and exits cleanly after its pending
+	 * {@code accept} unblocks. Closing an already-closed server has no further
+	 * effect.
+	 */
+	@Override
+	public void close() {
+		this.closed = true;
+
+		try {
+			this.socket.close();
+		} catch (IOException ioe) {
+			warn("IO error closing terminal socket (" + ioe.getMessage() + ")");
+		}
+
+		if (FlowTreeCliServer.current == this) {
+			FlowTreeCliServer.current = null;
+		}
+	}
+
 	/**
 	 * Writes a US-ASCII string to the current terminal connection's output
 	 * stream. IO errors are logged to standard output and swallowed so that the
@@ -624,14 +653,14 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	public void register(String name, Command c) { this.commands.put(name, c); }
 
 	/**
-	 * Dispatches a command string using the registered custom commands and the
-	 * built-in command vocabulary, writing output to the current connection's
-	 * print stream.
+	 * Dispatches a command string using the custom commands registered on this
+	 * instance via {@link #register(String, Command)} and the built-in command
+	 * vocabulary, writing output to the current connection's print stream.
 	 *
 	 * @param c the command string
 	 * @return the command result text
 	 */
-	public String runCommand(String c) { return FlowTreeCliServer.runCommand(c, this.ps); }
+	public String runCommand(String c) { return FlowTreeCliServer.runCommand(c, this.ps, this.commands); }
 
 	/**
 	 * Reads and executes every line from the supplied {@link BufferedReader},
