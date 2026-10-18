@@ -1,7 +1,11 @@
 # consult: Evidence Grounding, Corpus Coverage, Conversations and Evaluation
 
-Status: **PLAN — nothing implemented.** Written to be iterated on; every
-section separates a first step from later refinements.
+Status: **PARTIALLY IMPLEMENTED.** Step 1 (the evaluation harness and seed
+cases E1–E4) and Step 2 (the first corpus-coverage fix — indexing the CI
+documents and raising the per-file read cap) have landed; see Section 6 for
+which steps those are and the many later steps that remain only planned. The
+rest of this document is still a plan, written to be iterated on; every section
+separates a first step from later refinements.
 Author: planning session, 2026-10-17.
 
 > **Locate code by symbol, not by line.** References below name functions and

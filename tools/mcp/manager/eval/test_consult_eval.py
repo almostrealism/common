@@ -11,8 +11,11 @@ pairs a failing response with a passing one.
 
 import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 _EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
 if _EVAL_DIR not in sys.path:
@@ -20,10 +23,12 @@ if _EVAL_DIR not in sys.path:
 
 from graders import (  # noqa: E402
     grade, resolve_expect, response_outcome, named_absent_symbols,
-    validate_case, KNOWN_OUTCOMES,
+    validate_case, _file_matches, KNOWN_OUTCOMES,
 )
+import run_consult_eval  # noqa: E402
 from run_consult_eval import (  # noqa: E402
     load_cases, observed_response, build_report, render_report,
+    _docs_stage_copies, _stage_corpus,
 )
 
 
@@ -190,6 +195,150 @@ class TestMustNotCiteWithToken(unittest.TestCase):
                        "claude-code-job.md:330."),
         }
         self.assertFalse(grade(response, {"must_not_cite": self._spec()}).passed)
+
+
+class TestFileMatches(unittest.TestCase):
+    """Citation matching: bare-basename leniency, but no false positives
+    between two qualified paths that merely share a basename."""
+
+    def test_identical_paths_match(self):
+        self.assertTrue(_file_matches(".github/CLAUDE.md", ".github/CLAUDE.md"))
+
+    def test_bare_basename_matches_qualified(self):
+        self.assertTrue(_file_matches(".github/CLAUDE.md", "CLAUDE.md"))
+        self.assertTrue(_file_matches("CLAUDE.md", ".github/CLAUDE.md"))
+
+    def test_suffix_match(self):
+        self.assertTrue(_file_matches(
+            "flowtree/runtime/docs/claude-code-job.md",
+            "docs/claude-code-job.md"))
+
+    def test_two_qualified_paths_with_same_basename_do_not_match(self):
+        # The defect Copilot flagged: a citation to the wrong directory's
+        # CLAUDE.md must not satisfy an expectation for .github/CLAUDE.md.
+        self.assertFalse(_file_matches(".github/CLAUDE.md", "other/CLAUDE.md"))
+        self.assertFalse(_file_matches("docs/a.md", "tools/a.md"))
+
+    def test_grade_rejects_wrong_directory_citation(self):
+        expect = {"must_cite_any": [".github/CLAUDE.md"]}
+        wrong = {"ok": True, "answer": "x", "sources": ["other/CLAUDE.md"]}
+        self.assertFalse(grade(wrong, expect).passed)
+
+
+class TestBuildReportAggregation(unittest.TestCase):
+    """Local mode grades every one of the k repetitions; a case passes only
+    when all of them pass, and the pass fraction is reported."""
+
+    def _case(self):
+        return next(c for c in load_cases() if c["id"] == "E4")
+
+    def _passing(self):
+        return {"ok": True, "abstained": True,
+                "note": "No such script is documented."}
+
+    def _failing(self):
+        return {"ok": True, "abstained": True,
+                "note": "entropy is computed from the commit graph."}
+
+    def test_single_response_still_accepted(self):
+        summary = build_report([self._case()],
+                               {"E4": self._passing()}, "baseline")
+        c = summary["cases"][0]
+        self.assertEqual(c["runs"], 1)
+        self.assertEqual(c["pass_fraction"], 1.0)
+        self.assertTrue(c["passed"])
+
+    def test_one_failing_run_fails_the_case(self):
+        runs = [self._passing(), self._failing(), self._passing()]
+        summary = build_report([self._case()], {"E4": runs}, "baseline")
+        c = summary["cases"][0]
+        self.assertEqual(c["runs"], 3)
+        self.assertEqual(c["passed_runs"], 2)
+        self.assertFalse(c["passed"])  # not all passed
+        self.assertEqual(summary["passed"], 0)
+
+    def test_all_runs_passing_passes_the_case(self):
+        runs = [self._passing(), self._passing()]
+        summary = build_report([self._case()], {"E4": runs}, "baseline")
+        c = summary["cases"][0]
+        self.assertEqual(c["passed_runs"], 2)
+        self.assertTrue(c["passed"])
+        self.assertEqual(summary["passed"], 1)
+
+    def test_empty_run_list_is_no_response(self):
+        summary = build_report([self._case()], {"E4": []}, "baseline")
+        self.assertEqual(summary["cases"][0]["status"], "no-response")
+
+
+class TestCorpusStaging(unittest.TestCase):
+    """Local mode stages the corpus from the Dockerfile's own COPY directives
+    and prunes to markdown/HTML, so a coverage regression in the Dockerfile
+    reaches local results."""
+
+    def test_docs_stage_copies_reads_the_real_dockerfile(self):
+        sources = _docs_stage_copies()
+        # The CI documents this branch added must be reachable through one of
+        # the staged roots.
+        self.assertIn(".github", sources)
+        self.assertIn("docs", sources)
+        self.assertIn("CLAUDE.md", sources)
+        # --from copies (the runtime stage) must not leak in.
+        self.assertNotIn("/src", sources)
+
+    def _fake_repo(self):
+        root = tempfile.mkdtemp(prefix="eval-fake-repo-")
+        os.makedirs(os.path.join(root, "docs"))
+        os.makedirs(os.path.join(root, ".github"))
+        os.makedirs(os.path.join(root, "base"))
+        with open(os.path.join(root, "CLAUDE.md"), "w") as h:
+            h.write("# root")
+        with open(os.path.join(root, "docs", "a.md"), "w") as h:
+            h.write("# a")
+        with open(os.path.join(root, "docs", "b.html"), "w") as h:
+            h.write("<p>b</p>")
+        with open(os.path.join(root, ".github", "CLAUDE.md"), "w") as h:
+            h.write("# gh")
+        # Non-doc files that the prune must drop.
+        with open(os.path.join(root, "base", "Foo.java"), "w") as h:
+            h.write("class Foo {}")
+        with open(os.path.join(root, "docs", "notes.txt"), "w") as h:
+            h.write("skip me")
+        dockerfile = os.path.join(root, "Dockerfile")
+        with open(dockerfile, "w") as h:
+            h.write(
+                "FROM python:3.11-slim AS docs\n"
+                "WORKDIR /src\n"
+                "COPY docs/ ./docs/\n"
+                "COPY CLAUDE.md ./\n"
+                "COPY .github/ ./.github/\n"
+                "COPY base/ ./base/\n"
+                "RUN find . -delete\n"
+                "FROM python:3.11-slim\n"
+                "COPY --from=docs /src /app/docs-root\n")
+        return root, dockerfile
+
+    def test_stage_corpus_prunes_to_markdown_and_html(self):
+        root, dockerfile = self._fake_repo()
+        staging = None
+        try:
+            with mock.patch.object(run_consult_eval, "_REPO_ROOT", root), \
+                 mock.patch.object(run_consult_eval, "_DOCKERFILE", dockerfile):
+                staging = _stage_corpus()
+            staged = set()
+            for base, _dirs, files in os.walk(staging):
+                for name in files:
+                    staged.add(os.path.relpath(
+                        os.path.join(base, name), staging))
+            self.assertIn("docs/a.md", staged)
+            self.assertIn("docs/b.html", staged)
+            self.assertIn("CLAUDE.md", staged)
+            self.assertIn(os.path.join(".github", "CLAUDE.md"), staged)
+            self.assertNotIn(os.path.join("base", "Foo.java"), staged)
+            self.assertNotIn("docs/notes.txt", staged)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+            if staging:
+                shutil.rmtree(staging, ignore_errors=True)
 
 
 class TestBaselineReport(unittest.TestCase):

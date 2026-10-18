@@ -100,13 +100,19 @@ def _file_matches(wanted: str, cited: str) -> bool:
 
     Lenient about relative-path depth: a bare basename citation
     (``claude-code-job.md``) matches a repo-relative ``wanted`` and vice
-    versa, while still requiring the basenames to agree.
+    versa. The leniency is deliberately confined to that case — when *both*
+    sides are qualified paths they must agree on their relative path, so a
+    citation to ``other/CLAUDE.md`` does not satisfy an expectation for
+    ``.github/CLAUDE.md`` merely because the basenames coincide.
     """
     if wanted == cited:
         return True
     if cited.endswith("/" + wanted) or wanted.endswith("/" + cited):
         return True
-    return os.path.basename(wanted) == os.path.basename(cited)
+    # Only fall back to basename equality when at least one side is a bare
+    # basename (no directory component); two qualified paths must match above.
+    one_is_bare = not os.path.dirname(wanted) or not os.path.dirname(cited)
+    return one_is_bare and os.path.basename(wanted) == os.path.basename(cited)
 
 
 def citation_paths(response: dict) -> list[str]:
