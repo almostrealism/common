@@ -52,8 +52,11 @@ Already present:
   `wallClockCeiling × 2`) through `endpoint::completeJob`, wired by
   `CompletionListenerFanoutWiring.wire()`.
 - `FlowTreeApiEndpoint.handleStatusEvent` records a heartbeat on *every* status
-  event; the heartbeat/phase HTTP surface already exists and is
-  dispatched via `StatsQueryHandler.recordHeartbeat` / `recordPhase`.
+  event, via `StatsQueryHandler.recordHeartbeat` → `JobStatsStore.recordHeartbeat`.
+  A phase can also reach the store out of band over HTTP: a message POST carrying
+  a `phase` field is routed to `StatsQueryHandler.recordPhase` by
+  `MessageEndpointHandler`. There is **no dedicated heartbeat HTTP route**,
+  however — a bare heartbeat is recorded only as a side effect of a status event.
 
 Missing — the gaps this task closes:
 
@@ -188,19 +191,23 @@ added to `JobCompletionEvent.Status`.
 
 Add a small heartbeat sender on the worker/harness side (in the job lifecycle
 owned by `GitManagedJob`/`CodingAgentJob`, alongside the existing
-`postStatusEvent` plumbing) that, on a scheduled timer every N minutes, POSTs to
-the controller's existing heartbeat endpoint for the whole life of the job —
-from queue pickup through every phase to post-completion — and stops when the
-job terminates. The payload carries node, current phase, and pid. It must run
+`postStatusEvent` plumbing) that, on a scheduled timer every N minutes, POSTs a
+heartbeat to the controller's heartbeat route (new or extended — see below) for
+the whole life of the job — from queue pickup through every phase to
+post-completion — and stops when the job terminates. The payload carries node, current phase, and pid. It must run
 independently of the agent session (so it keeps beating while an agent is
 legitimately silent inside a long tool call) and must not itself be mistaken for
 agent activity by `AgentInactivityMonitor`.
 
-The controller side already accepts and records the heartbeat
-(`StatsQueryHandler.recordHeartbeat` → `JobStatsStore.recordHeartbeat`); the
-heartbeat endpoint may need to accept and persist the node/phase/pid fields the
-harness now sends (phase already has a path via `recordPhase`). N and the
-endpoint contract are an open question below.
+The controller can already record a heartbeat at the store/handler level
+(`StatsQueryHandler.recordHeartbeat` → `JobStatsStore.recordHeartbeat`), but
+there is no HTTP route a harness can POST a bare heartbeat to today: a heartbeat
+is recorded only as a side effect of a status event landing, and the one
+out-of-band HTTP path that reaches the store is the `phase` field on a message
+POST (`MessageEndpointHandler` → `recordPhase`). So this work must add a
+dedicated heartbeat route (or extend the status/message endpoint) that accepts
+and persists the node/phase/pid fields the harness sends. N and the endpoint
+contract are an open question below.
 
 ### 3. Derived states
 
