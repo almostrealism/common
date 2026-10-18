@@ -184,10 +184,13 @@ class RegistrationDeclaresNoModelConfigTests(unittest.TestCase):
     #: (the task-planning round registers its workstream as a "planner"); it
     #: is a permission, not a model setting. ``requiredLabels`` chooses which
     #: nodes may run the workstream's jobs (Verify Completion applies the ones a
-    #: plan declares); it selects a machine, not a model.
+    #: plan declares); it selects a machine, not a model. ``dependentRepos``
+    #: lists repositories checked out beside this one (the release steward
+    #: reads the framework's code next to an application's); it selects
+    #: source, not a model.
     _ALLOWED_PAYLOAD_KEYS = frozenset({
         "defaultBranch", "baseBranch", "channelName", "planningDocument", "repoUrl",
-        "trackerCapabilities", "requiredLabels",
+        "trackerCapabilities", "requiredLabels", "dependentRepos",
     })
 
     @staticmethod

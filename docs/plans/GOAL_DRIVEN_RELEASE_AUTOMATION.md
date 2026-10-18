@@ -309,6 +309,106 @@ task round can open up to a configured number of branches at once. Start at
 one, and raise it once the pipeline has proven itself. The open-PR ceiling still
 applies across everything.
 
+### 7. Adoption by other repositories
+
+A consuming repository should get the whole pipeline by opting in, not by
+copying it. Everything that submits agent jobs already lives here: the prompt
+templates and builders, `register-workstream.sh`, `submit-agent-job.sh`, the
+intake and claimable-task gates. A second copy in each consumer would drift from
+the first, and every fix would have to be made twice.
+
+GitHub's mechanism for this is the **reusable workflow**: a workflow in this
+repository declares `on: workflow_call` with typed `inputs` and `secrets`, and a
+consumer calls it from a job:
+
+```yaml
+jobs:
+  steward:
+    uses: almostrealism/common/.github/workflows/release-steward.yaml@master
+    with:
+      project: <tracker project>
+      version-file: version.txt
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+```
+
+This repository is public, so a private consumer can call its workflows.
+
+**What lives where:**
+
+| Here (reusable, generic) | In the consumer (a thin caller) |
+|---|---|
+| The job's steps, scripts, prompts and gates | The trigger: which pushes and dispatches start the job |
+| Defaults that fit the framework's own layout | Product specifics, passed as inputs: tracker project, version file, goal and plan locations |
+| The trusted scripts the job runs with the controller token | The secrets, passed explicitly |
+
+The rules that make this work:
+
+- **The caller owns the trigger.** A called workflow cannot decide when it runs,
+  so the caller's `on:` holds the path filters and the default-branch guard's
+  first line of defence. The called workflow checks the guard again itself.
+- **Scripts come from this repository, never from the consumer's checkout.** A
+  plain `actions/checkout` inside a called workflow fetches the *caller's*
+  repository, so the reusable workflow checks this repository out explicitly
+  (input `framework-ref`, default `master`) and runs every script from that
+  checkout. That is the same trust rule Verify Completion follows.
+- **No product names here.** This repository is public. Every product-specific
+  value reaches a reusable workflow as an input; its defaults describe the
+  framework's own layout.
+- **This repository calls its own reusable workflows.** Once a round is
+  extracted into a reusable workflow, `master-agent-dispatch.yaml` calls it like
+  any consumer does. There is one implementation, exercised constantly by this
+  repository's own pipeline.
+- **Callers pin `@master` to begin with.** A fix here then reaches every
+  consumer immediately; so does a breakage. A release tag can replace it once
+  the workflows settle.
+
+**The reusable workflows:**
+
+1. `release-steward.yaml`: the decomposition round (section 4). Built first,
+   because it is the stage no consumer can run today.
+2. The task planning round (section 3), extracted from
+   `master-agent-dispatch.yaml` and parameterised by tracker project and version
+   source.
+3. The docs-only plan review and the Verify Completion approval workflow, so a
+   consumer's plan branches get the same review and the same manual
+   implementation trigger.
+
+**The decomposition round as a reusable workflow:**
+
+- **Inputs:** the caller's tracker project; its version file (`pom.xml` is
+  read as a Maven project version, anything else as a plain version string);
+  the goals document; the directory holding one release-plan directory per
+  version; the framework's tracker project and the Maven property in the
+  caller's root `pom.xml` that pins the framework version; a cap on new tasks
+  per run.
+- **Scope:** the release plan directory is `<plans directory>/<version>/`, with
+  `PLAN.md` as its entry point. When it does not exist the job stops before it
+  asks the controller anything: no workstream, no agent.
+- **Workstream:** one standing workstream per repository, on the branch
+  `orchestration/release-steward` (the `orchestration/` prefix makes it
+  `standing`, so it is never archived). Each run moves that branch to the
+  default-branch commit being reconciled, so the agent reads exactly the
+  approved documents that triggered it. The agent changes no files and commits
+  nothing; its output is tracker writes and a summary message.
+- **Framework checkout:** the workstream lists this repository as a dependent
+  repository, so the agent can read the framework's code beside the
+  application's when it decides where a task belongs.
+- **Ownership:** every task the round creates has the source
+  `goals:<owner>/<repository>/<document path>`. A steward updates only tasks
+  carrying its own repository's prefix, so two applications' stewards never
+  edit each other's tasks; the tracker itself refuses any edit to a person's
+  task.
+
+**Consumer checklist** (per consuming repository, planned in that repository):
+
+- the caller workflows, one per reusable workflow;
+- `FLOWTREE_CF_ACCESS_CLIENT_SECRET` as a secret and `FLOWTREE_CONTROLLER_URL` /
+  `FLOWTREE_CF_ACCESS_CLIENT_ID` as variables (or at organisation level);
+- the tracker project, and its goals and release-plan documents;
+- a docs-only skip in its own build workflow, so plan branches do not occupy
+  expensive runners.
+
 ## Safety rails
 
 - **No implementation without approval.** Unchanged: docs-only branches are only
@@ -330,7 +430,9 @@ applies across everything.
 
 ## Phases
 
-Each phase is useful on its own and can be approved separately.
+Each phase is useful on its own and can be approved separately. Phases 1, 2 and 4
+are built. Phase 3 is being built as the reusable `release-steward.yaml`
+(section 7).
 
 1. **Tracker fields and tools.**
    - `stage`, `source`, `blocked_by` and the declined outcome in `tools/tracker`
@@ -349,8 +451,9 @@ Each phase is useful on its own and can be approved separately.
 4. **Close-out reconciler** in the controller.
 5. **Parallel task planning.**
 6. **Task planning in a consuming repository.** It uses the same tools and
-   prompt, but that repository needs its own equivalents of the planning round,
-   the docs-only review and the approval workflow.
+   prompt. Rather than equivalents written in that repository, the planning
+   round, the docs-only review and the approval workflow become reusable
+   workflows here, and the consumer calls them (section 7).
 7. **Later, optional:** have the free-form planning round record its work in the
    tracker too, once this pipeline is known to work.
 

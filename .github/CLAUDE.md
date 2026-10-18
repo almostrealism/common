@@ -989,11 +989,49 @@ alone.
 file or the input breaks that tool — update it in the same change.
 
 The policy this reflects: **one workflow per lifecycle event**, with two
-deliberate exemptions. `workflow_dispatch`-only workflows stay separate because
+deliberate exemptions. (A reusable workflow, such as `release-steward.yaml`, has
+no lifecycle event of its own — it runs when another workflow calls it — so the
+policy does not apply to it.) `workflow_dispatch`-only workflows stay separate because
 dispatch inputs are per-workflow and merging them produces one form of mostly
 inert fields (`Deploy Controller Stack` is triggered by hand often enough to
 earn its own entry on those grounds alone). Privileged triggers stay separate
 too — see `Cancel Merged PR Runs` below.
+
+### What the `Release Steward` reusable workflow does
+
+Lives in `.github/workflows/release-steward.yaml` and is triggered only by
+`workflow_call`: other repositories call it from their own workflows, so a
+repository that builds on this one gets the decomposition round of goal-driven
+release automation without a copy of the job-submission scripts. The caller
+owns the trigger (a push to its default branch that changes its goals, release
+plans or version file, plus a manual dispatch); the job itself refuses to run on
+any branch but the default one, because the tasks it creates are ready to plan
+at once.
+
+It resolves the caller's next release, the framework release it pins, and its
+release plan (`<plans dir>/<version>/PLAN.md`) with
+`tools/ci/resolve-release-scope.sh`; with no release plan it stops before asking
+the controller anything. Otherwise it follows the dispatch jobs' order — intake
+first, then nothing is created until intake is open — moves the standing branch
+`orchestration/release-steward` to the commit being reconciled, registers that
+workstream with the tracker `steward` role and this repository as a dependent
+repository, and submits the agent job. The agent changes no files; it creates
+and updates tracker tasks and reports them on the workstream.
+
+**Trust.** A plain `actions/checkout` inside a called workflow fetches the
+*caller's* repository. Every script therefore runs from an explicit checkout of
+this repository at the `framework-ref` input (`persist-credentials: false`),
+never from the caller's tree, and no input is interpolated into a `run:` script;
+inputs reach scripts through `env`. The controller client ID and URL are inputs
+(the caller passes its own `vars`); the client secret is a declared
+`workflow_call` secret. Like every other submission it sends no model, runner or
+effort settings.
+
+**Keep this file generic.** This repository is public. Product-specific values
+reach the workflow as inputs; its defaults describe this repository's own layout.
+`tools/tests/test_release_steward.py` pins the trigger, the default-branch
+guard, the script trust rule, the intake ordering, the steward role and the
+prompt's variables.
 
 ### What the `Cancel Merged PR Runs` workflow does
 
