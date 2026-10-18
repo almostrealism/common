@@ -75,6 +75,17 @@ def prose(response: dict) -> str:
     return note if isinstance(note, str) else ""
 
 
+def is_tool_failure(response: dict) -> bool:
+    """Whether a response is a failed tool call (``ok`` explicitly ``False``).
+
+    ``consult`` returns ``{"ok": False, "error": ...}`` when the backend or
+    documentation corpus is unavailable; such a response carries no answer. It
+    must never be graded as a pass, nor counted as a (false) abstention, since
+    it reflects an environment failure rather than any behaviour of the tool.
+    """
+    return isinstance(response, dict) and response.get("ok") is False
+
+
 def response_outcome(response: dict) -> str:
     """Classify a response as ``answer``, ``abstain`` or ``nonexistent``.
 
@@ -197,8 +208,22 @@ def _violates_must_not_cite(response: dict, spec: dict) -> Optional[str]:
 
 
 def grade(response: dict, expect: dict) -> GradeResult:
-    """Grade one response against one resolved expectation."""
+    """Grade one response against one resolved expectation.
+
+    A failed tool response (``ok: False``) fails outright with a single ``ok``
+    check, before any expectation is evaluated: it has no answer to grade, so
+    letting the remaining negative checks pass vacuously would report a backend
+    or corpus failure as a successful evaluation.
+    """
     result = GradeResult()
+
+    if is_tool_failure(response):
+        result.record(
+            "ok", False,
+            str(response.get("error", "tool reported ok=False")),
+        )
+        return result
+
     text = prose(response)
 
     if "outcome" in expect:

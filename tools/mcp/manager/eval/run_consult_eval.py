@@ -43,7 +43,7 @@ if _EVAL_DIR not in sys.path:
     sys.path.insert(0, _EVAL_DIR)
 
 from graders import (  # noqa: E402
-    grade, resolve_expect, response_outcome, validate_case,
+    grade, resolve_expect, response_outcome, validate_case, is_tool_failure,
 )
 
 CASES_FILE = os.path.join(_EVAL_DIR, "consult_cases.json")
@@ -86,7 +86,14 @@ def build_report(cases: list[dict], responses_by_id: dict,
     mode. Every repetition is graded, and the case counts as passed only when
     *all* of them pass, so a single lucky run cannot mask a failing one; the
     per-case ``pass_fraction`` records how many passed. The first repetition is
-    the representative used to classify the outcome and report failing checks.
+    the representative used to classify the outcome, and the reported failing
+    checks are the union across *every* repetition, so a run that fails while
+    the representative passes still names its failures.
+
+    A repetition that is a failed tool call (``ok: False`` — the backend or
+    corpus was unavailable) fails grading outright and is reported with outcome
+    ``error``; it is never counted as a (false) abstention or answer, so an
+    environment failure cannot be mistaken for a tool behaviour.
 
     ``false_abstention`` and ``false_answer`` are counted separately, as the
     plan requires: a change that trades one for the other must be visible as a
@@ -107,10 +114,22 @@ def build_report(cases: list[dict], responses_by_id: dict,
         passed_runs = sum(1 for g in graded if g.passed)
         case_passed = passed_runs == len(runs)
         representative, first = runs[0], graded[0]
-        outcome = response_outcome(representative)
+        rep_failed = is_tool_failure(representative)
+        outcome = "error" if rep_failed else response_outcome(representative)
         is_false_abstention = (
-            outcome == "abstain" and case.get("answerable") is True)
-        is_false_answer = outcome == "answer" and not first.passed
+            not rep_failed
+            and outcome == "abstain" and case.get("answerable") is True)
+        is_false_answer = (
+            not rep_failed and outcome == "answer" and not first.passed)
+        # Union of failing checks across every repetition, in first-seen order,
+        # so a failing run is named even when the representative passed.
+        seen: set[str] = set()
+        failures: list[str] = []
+        for g in graded:
+            for detail in g.failures:
+                if detail not in seen:
+                    seen.add(detail)
+                    failures.append(detail)
         if case_passed:
             passed += 1
         if is_false_abstention:
@@ -124,7 +143,7 @@ def build_report(cases: list[dict], responses_by_id: dict,
             "runs": len(runs),
             "passed_runs": passed_runs,
             "pass_fraction": passed_runs / len(runs),
-            "failures": first.failures,
+            "failures": failures,
             "false_abstention": is_false_abstention,
             "false_answer": is_false_answer,
         })

@@ -19,7 +19,7 @@
         "step2": {
           "outcome": "answer",
           "must_cite_any": [".github/CLAUDE.md"],
-          "must_include": ["qa/docs-", "qa/defect-", "qa/coverage-", "qa/consolidate-", "qa/performance-", "qa/pdsl-", "qa/retro-"],
+          "must_include": ["qa/docs-", "qa/defect-", "qa/coverage-", "qa/consolidate-", "qa/performance-", "qa/pdsl-", "qa/retro-", "MAX_OPEN_PRS"],
           "must_include_any": [["\\b7\\b", "seven"]]
         }
       }

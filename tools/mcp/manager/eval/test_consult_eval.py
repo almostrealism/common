@@ -23,7 +23,7 @@ if _EVAL_DIR not in sys.path:
 
 from graders import (  # noqa: E402
     grade, resolve_expect, response_outcome, named_absent_symbols,
-    validate_case, _file_matches, KNOWN_OUTCOMES,
+    validate_case, _file_matches, is_tool_failure, KNOWN_OUTCOMES,
 )
 import run_consult_eval  # noqa: E402
 from run_consult_eval import (  # noqa: E402
@@ -165,10 +165,27 @@ class TestGraderTeeth(unittest.TestCase):
         incomplete = {
             "ok": True,
             "answer": ("Master Agent Dispatch runs doc-qa with prefix "
-                       "qa/docs-. The open-PR limit is 7."),
+                       "qa/docs-. The open-PR limit MAX_OPEN_PRS is 7."),
             "sources": [".github/CLAUDE.md"],
         }
         self.assertFalse(grade(incomplete, resolve_expect(case, "step2")).passed)
+
+    def test_e1_step2_rejects_an_answer_that_omits_the_named_limit(self):
+        # All seven prefixes and a bare "7" are not enough: the question asks
+        # for the open-PR limit, so the named MAX_OPEN_PRS constant must appear
+        # — otherwise an unrelated 7 would satisfy the check.
+        case = self._case("E1")
+        no_limit_name = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch runs rounds with prefixes "
+                       "qa/docs-, qa/defect-, qa/coverage-, qa/consolidate-, "
+                       "qa/performance-, qa/pdsl- and qa/retro-. It uses 7 "
+                       "workers."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(no_limit_name, resolve_expect(case, "step2"))
+        self.assertFalse(result.passed)
+        self.assertIn("MAX_OPEN_PRS", " ".join(result.failures))
 
 
 class TestMustFlagStale(unittest.TestCase):
@@ -291,6 +308,63 @@ class TestBuildReportAggregation(unittest.TestCase):
     def test_empty_run_list_is_no_response(self):
         summary = build_report([self._case()], {"E4": []}, "baseline")
         self.assertEqual(summary["cases"][0]["status"], "no-response")
+
+    def test_failures_aggregate_across_repetitions(self):
+        # The first run passes, a later run fails: the case must fail and the
+        # reported failing checks must name the later run's failure rather than
+        # being empty (taken only from the representative).
+        runs = [self._passing(), self._failing()]
+        summary = build_report([self._case()], {"E4": runs}, "baseline")
+        c = summary["cases"][0]
+        self.assertFalse(c["passed"])
+        self.assertEqual(c["passed_runs"], 1)
+        self.assertTrue(c["failures"], "failing run's checks must be reported")
+        self.assertIn("must_not_include", " ".join(c["failures"]))
+
+
+class TestToolFailureHandling(unittest.TestCase):
+    """A failed tool call (``ok: False``) is a non-passing result, never a
+    silently-passing (false) abstention."""
+
+    def _case(self, cid, answerable):
+        return {"id": cid, "question": "q", "answerable": answerable,
+                "expect": {"outcome": "abstain",
+                           "must_not_include": ["drift"]}}
+
+    def _failure(self):
+        return {"ok": False, "error": "ar-memory server unavailable"}
+
+    def test_is_tool_failure_detects_ok_false(self):
+        self.assertTrue(is_tool_failure({"ok": False, "error": "x"}))
+        self.assertFalse(is_tool_failure({"ok": True, "answer": "x"}))
+        self.assertFalse(is_tool_failure({"abstained": True}))
+
+    def test_grade_fails_a_tool_failure_even_with_only_negative_checks(self):
+        # E3-style expectation: only must_not_include. A backend failure has no
+        # answer, so the negative check would pass vacuously without this guard.
+        expect = {"must_not_include": ["runCorrectionSession"]}
+        result = grade(self._failure(), expect)
+        self.assertFalse(result.passed)
+        self.assertIn("ar-memory server unavailable", " ".join(result.failures))
+
+    def test_build_report_marks_failure_as_error_not_false_abstention(self):
+        case = self._case("E1like", answerable=True)
+        summary = build_report([case], {"E1like": self._failure()}, "baseline")
+        c = summary["cases"][0]
+        self.assertEqual(c["outcome"], "error")
+        self.assertFalse(c["passed"])
+        self.assertFalse(c["false_abstention"])
+        self.assertEqual(summary["false_abstention"], 0)
+        self.assertEqual(summary["passed"], 0)
+
+    def test_build_report_failure_does_not_count_as_correct_abstention(self):
+        # An unanswerable case whose backend failed must not be scored as the
+        # correct abstention it superficially resembles.
+        case = self._case("E4like", answerable=False)
+        summary = build_report([case], {"E4like": self._failure()}, "baseline")
+        c = summary["cases"][0]
+        self.assertFalse(c["passed"])
+        self.assertEqual(c["outcome"], "error")
 
 
 class TestCorpusStaging(unittest.TestCase):
