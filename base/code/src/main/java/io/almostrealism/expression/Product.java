@@ -19,7 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexRange;
@@ -342,11 +341,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			result = sum(target.getShape(), sum);
 		}
 
-		return ExpressionMatchingCollectionExpression.create(
-				new ConstantCollectionExpression(target.getShape(), this),
-				target,
-				new ConstantCollectionExpression(target.getShape(), new IntegerConstant(1)),
-				result);
+		return deltaUnlessTarget(target, result);
 	}
 
 	@Override

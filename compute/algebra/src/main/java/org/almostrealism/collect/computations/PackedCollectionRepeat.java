@@ -27,6 +27,8 @@ import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.calculus.ReduceAxis;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 
@@ -416,6 +418,44 @@ public class PackedCollectionRepeat
 	@Override
 	public PackedCollectionRepeat generate(List<Process<?, ?>> children) {
 		return new PackedCollectionRepeat(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(1));
+	}
+
+	/**
+	 * When the input is a sequence of groups, each copied {@code r} times in a row, every
+	 * input element appears in exactly {@code r} outputs with a derivative of one. The
+	 * {@link ReduceAxis#OUT output-reduced} delta therefore sums the weights of the copies
+	 * of each element and passes them on to the input, and, the repetition being linear,
+	 * the {@link ReduceAxis#IN input-reduced} delta is the repetition of the input's own
+	 * input-reduced delta. A repetition of only part of each group uses the general
+	 * implementation.
+	 */
+	@Override
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		Producer<PackedCollection> child = getInputs().get(1);
+		if (axis == ReduceAxis.NONE || !(child instanceof Shape)) {
+			return super.deltaDependent(target, axis, weight);
+		}
+
+		CollectionProducer input = c(child);
+		TraversalPolicy inputShape = input.getShape();
+		int copies = sliceShape.length(0);
+		long size = subsetShape.getTotalSizeLong();
+
+		if (getShape().getTotalSizeLong() != copies * inputShape.getTotalSizeLong() ||
+				inputShape.getTotalSizeLong() % size != 0) {
+			return super.deltaDependent(target, axis, weight);
+		}
+
+		if (axis == ReduceAxis.IN) {
+			return replaceInput(child, reshape(inputShape, input.delta(target, axis, weight)));
+		} else if (weight == null) {
+			return input.delta(target, axis, constant(inputShape, copies));
+		}
+
+		int groups = Math.toIntExact(inputShape.getTotalSizeLong() / size);
+		return input.delta(target, axis,
+				c(weight).reshape(shape(groups, copies, Math.toIntExact(size)))
+						.permute(0, 2, 1).traverse(2).sum().reshape(inputShape));
 	}
 
 	/**

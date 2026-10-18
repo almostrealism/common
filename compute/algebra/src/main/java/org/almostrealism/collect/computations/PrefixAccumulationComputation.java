@@ -80,7 +80,7 @@ public abstract class PrefixAccumulationComputation extends TraversableRepeatedP
 	 */
 	public PrefixAccumulationComputation(String name, TraversalPolicy shape, boolean pad,
 										 Producer<PackedCollection> input) {
-		super(name, shape, shape.getTotalSize(), null, null, input);
+		super(name, shape, shape.getTotalSize(), null, input);
 		this.pad = pad;
 		setInitial((args, index) -> identity());
 
@@ -183,19 +183,21 @@ public abstract class PrefixAccumulationComputation extends TraversableRepeatedP
 	protected boolean isPad() { return pad; }
 
 	/**
-	 * Returns a signature that includes the concrete scan type and the {@code pad} flag,
-	 * ensuring accumulations that differ only inside the generated loop body — which the
-	 * shape- and type-based parent signature does not capture — produce different compiled
-	 * kernels rather than sharing a cached kernel from the instruction cache.
+	 * Extends the signature with the {@code pad} flag, so that the inclusive and exclusive
+	 * forms of the same scan — which differ only inside the generated loop body and share a
+	 * concrete class — produce different compiled kernels rather than sharing a cached kernel
+	 * from the instruction cache. The concrete scan type is already captured by the parent
+	 * signature.
 	 *
-	 * @return A signature string including the scan type and pad flag, or null if the parent
-	 *         signature is null
+	 * @return A signature string including the pad flag, or null if the parent signature is null
+	 *
+	 * @see TraversableRepeatedProducerComputation#signature()
 	 */
 	@Override
 	public String signature() {
 		String signature = super.signature();
 		if (signature == null) return null;
-		return signature + "{" + getClass().getSimpleName() + ",pad=" + pad + "}";
+		return signature + "{pad=" + pad + "}";
 	}
 
 	/**

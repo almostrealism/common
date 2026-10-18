@@ -18,13 +18,17 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -192,6 +196,47 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	}
 
 	/**
+	 * Every output of a sum depends on the matching element of each operand with a
+	 * derivative of one, so the {@link ReduceAxis#OUT output-reduced} delta is the sum of
+	 * the operands' own output-reduced deltas under the same weight. Operands that cannot
+	 * depend on the target contribute nothing. A single value broadcast into every output
+	 * receives the total weight. Any other operand that is broadcast into the sum (its size
+	 * differs from the sum's) shares its elements among outputs in a layout this sum does
+	 * not know, so in that case, as for the {@link ReduceAxis#IN input-reduced} delta, the
+	 * general implementation is used.
+	 */
+	@Override
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.OUT) {
+			return super.deltaDependent(target, axis, weight);
+		}
+
+		long size = getShape().getTotalSizeLong();
+		List<Producer<?>> terms = new ArrayList<>();
+
+		for (Process<?, ?> child : getChildren().stream().skip(1).collect(Collectors.toList())) {
+			if (!(child instanceof Shape)) return super.deltaDependent(target, axis, weight);
+
+			CollectionProducer operand = c((Producer) child);
+			if (operand.cannotMatch(target)) continue;
+
+			long operandSize = operand.getShape().getTotalSizeLong();
+			if (operandSize == 1 && size > 1) {
+				terms.add(operand.delta(target, axis, weight == null ?
+						constant(operand.getShape(), size) : c(weight).sum().reshape(operand.getShape())));
+			} else if (operandSize == size) {
+				terms.add(operand.delta(target, axis,
+						weight == null ? null : reshape(operand.getShape(), weight)));
+			} else {
+				return super.deltaDependent(target, axis, weight);
+			}
+		}
+
+		if (terms.isEmpty()) return zeros(shape(target));
+		return terms.size() == 1 ? (CollectionProducer) terms.get(0) : add(terms);
+	}
+
+	/**
 	 * Determines if this element-wise sum preserves a row-monomial structure from one of
 	 * its operands.
 	 *
@@ -218,8 +263,8 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	 * is attempted, never what value it reads.</p>
 	 *
 	 * @return true if exactly one operand is non-zero and that operand is row-monomial
-	 * @see Algebraic#isRowMonomial(Object)
-	 * @see Algebraic#isZero(Object)
+	 * @see Algebraic#isRowMonomial()
+	 * @see Algebraic#isZero()
 	 */
 	@Override
 	public boolean isRowMonomial() {

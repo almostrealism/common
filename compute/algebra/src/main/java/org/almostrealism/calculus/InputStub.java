@@ -16,7 +16,6 @@
 
 package org.almostrealism.calculus;
 
-import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
@@ -24,6 +23,7 @@ import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -37,7 +37,9 @@ import java.util.List;
  * A wrapper that isolates a producer for delta (gradient) computation in automatic differentiation.
  *
  * <p>
- * {@link InputStub} is used internally by {@link DeltaFeatures} to create isolated computational
+ * {@link InputStub} is used internally by
+ * {@link org.almostrealism.collect.computations.CollectionProducerComputationBase#deltaPartial}
+ * to create isolated computational
  * graphs during gradient computation. When computing partial derivatives using the chain rule,
  * it's necessary to treat certain inputs as independent variables while preserving their shape
  * and metadata.
@@ -78,13 +80,12 @@ import java.util.List;
  *
  * @param <T>  the packed collection type
  * @author  Michael Murray
- * @see DeltaFeatures#generateIsolatedDelta
- * @see DeltaFeatures#replaceInput
+ * @see org.almostrealism.collect.computations.CollectionProducerComputationBase#deltaPartial
  */
 // TODO  This should probably extend DelegatedProducer
 public class InputStub<T extends PackedCollection> implements CollectionProducer,
 														ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>>,
-														Algebraic, OperationInfo {
+														OperationInfo {
 	/** The operation metadata used to identify this stub when matching inputs during differentiation. */
 	private final OperationMetadata metadata;
 
@@ -228,6 +229,15 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 	}
 
 	/**
+	 * Returns {@code true}, since a stub stands in for an input of the computation
+	 * being differentiated and is matched only by its own identity.
+	 *
+	 * @return {@code true}
+	 */
+	@Override
+	public boolean isMatchRoot() { return true; }
+
+	/**
 	 * Checks if this stub matches another algebraic object.
 	 *
 	 * <p>
@@ -240,19 +250,16 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 	 * during chain rule application.
 	 * </p>
 	 *
-	 * @param other  the other algebraic object to compare
-	 * @param <A>  the algebraic type
+	 * @param other  the other computation to compare
 	 * @return true if this stub matches the other object
 	 */
 	@Override
-	public <A extends Algebraic> boolean matches(A other) {
+	public boolean matches(Computable other) {
 		if (other instanceof InputStub<?> && getMetadata().getId() == ((InputStub<?>) other).getMetadata().getId()) {
 			return true;
-		} else if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).matches(other);
 		}
 
-		return false;
+		return producer.matches(other);
 	}
 
 	@Override

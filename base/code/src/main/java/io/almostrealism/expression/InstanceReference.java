@@ -19,8 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
@@ -87,6 +85,9 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	public Variable<T, ?> getReferent() { return var; }
 	public Expression<?> getIndex() { return index; }
 
+	@Override
+	public boolean isVariableReference() { return true; }
+
 	/** {@inheritDoc} The referent renders the reference, at this reference's position. */
 	@Override
 	public String getExpression(LanguageOperations lang) {
@@ -133,9 +134,7 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		return ExpressionMatchingCollectionExpression.create(
-				new ConstantCollectionExpression(target.getShape(), this),
-				target, e(1), e(0));
+		return deltaUnlessTarget(target, constantZero(target.getShape()));
 	}
 
 	/** {@inheritDoc} Recreates the reference using the same variable but new position children. */

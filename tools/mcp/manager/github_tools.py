@@ -523,15 +523,50 @@ def github_create_pr(
         The created PR details, including copilot_review_requested if applicable.
     """
     server._require_scope("github")
-    if org and repo:
+    direct_addressing = bool(org and repo)
+    if direct_addressing:
         server._require_org_in_scope(org)
     owner, repo, default_branch, err = server._resolve_github_repo(
         workstream_id=workstream_id, owner=org, repo=repo)
     if err:
         return err
 
-    effective_ws = workstream_id or server._get_token_workstream_id() or ""
+    # Direct org/repo addressing bypasses workstream resolution (see the org
+    # parameter docs): the PR targets the named repository, not a workstream's
+    # branch, and is scoped only by the org gate above. So the caller's
+    # workstream_id/token — which may belong to an archived round or an
+    # unrelated repository — must not gate it (nor supply a baseBranch). Only
+    # when addressing is not direct does the workstream context apply, and
+    # only then is the archived read-only guard relevant.
+    effective_ws = "" if direct_addressing else (
+        workstream_id or server._get_token_workstream_id() or "")
     ws = server._find_workstream(effective_ws) if effective_ws else None
+
+    # Archived workstreams are read-only. Resolving an archived workstream's
+    # ownership now succeeds (see _find_workstream), so creating a PR from its
+    # default branch — a new artifact raised against the frozen round — must be
+    # refused here, as project_commit_plan and project_verify_branch already are.
+    # Direct org/repo addressing carries no workstream to guard (effective_ws is
+    # empty and _archived_workstream_error short-circuits); the review-interaction
+    # tools stay unguarded so an archived round's PR can still be reviewed.
+    # Pass the already-resolved ``ws`` so the guard reads its archived flag
+    # directly: without it the guard re-fetches through _find_workstream, and a
+    # transient controller failure on that second lookup returns None, which
+    # the guard would read as "not archived" and let the PR through on the
+    # already-known archived round.
+    archived_err = server._archived_workstream_error(
+        "create a pull request", effective_ws, ws=ws)
+    if archived_err:
+        return archived_err
+    # An explicit head is the branch the PR is raised from, so a live
+    # workstream must not carry a new PR from another round's archived branch
+    # in the same repository.
+    if ws and head and head != ws.get("defaultBranch"):
+        archived_err = server._archived_branch_error(
+            "create a pull request", ws.get("repoUrl", ""), head)
+        if archived_err:
+            return archived_err
+
     effective_base = (base or (ws or {}).get("baseBranch", "")
                       or github_api.default_branch(owner, repo))
     effective_head = head or default_branch

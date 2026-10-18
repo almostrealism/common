@@ -16,7 +16,9 @@
 
 package org.almostrealism.studio.health;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * Aggregates audio receptors for the master mix, individual stems, and per-measure
@@ -135,7 +138,7 @@ public class MultiChannelAudioOutput {
 	public Receptor<PackedCollection> getMeasure(ChannelInfo.Voicing voicing,
 													ChannelInfo.StereoChannel audioChannel) {
 		Receptor<PackedCollection> result =
-				retrieve(measures, match(voicing).and(match(audioChannel)));
+				retrieve(measures, c -> c.matches(voicing) && c.matches(audioChannel));
 		if (result != null) return result;
 
 		return getMeasure(new ChannelInfo(-1, voicing, audioChannel));
@@ -151,7 +154,7 @@ public class MultiChannelAudioOutput {
 	public Receptor<PackedCollection> getStem(int patternChannel,
 												 ChannelInfo.StereoChannel audioChannel) {
 		Receptor<PackedCollection> result =
-				retrieve(stems, match(patternChannel).and(match(audioChannel)));
+				retrieve(stems, c -> c.matches(patternChannel) && c.matches(audioChannel));
 		if (result != null) return result;
 
 		return getStem(new ChannelInfo(patternChannel, audioChannel));
@@ -167,7 +170,7 @@ public class MultiChannelAudioOutput {
 		if (measures == null) return List.of();
 
 		return measures.keySet().stream()
-				.filter(match(audioChannel))
+				.filter(c -> c.matches(audioChannel))
 				.map(measures::get)
 				.toList();
 	}
@@ -180,13 +183,7 @@ public class MultiChannelAudioOutput {
 	 * @return the receptor, or {@code null} if measure monitoring is disabled
 	 */
 	public Receptor<PackedCollection> getMeasure(ChannelInfo channel) {
-		if (measures == null) {
-			return null;
-		} else if (measuresFactory != null) {
-			return measures.computeIfAbsent(channel, measuresFactory);
-		} else {
-			return measures.get(channel);
-		}
+		return resolve(measures, measuresFactory, channel);
 	}
 
 	/**
@@ -197,13 +194,7 @@ public class MultiChannelAudioOutput {
 	 * @return the receptor, or {@code null} if stem output is disabled
 	 */
 	public Receptor<PackedCollection> getStem(ChannelInfo channel) {
-		if (stems == null) {
-			return null;
-		} else if (stemsFactory != null) {
-			return stems.computeIfAbsent(channel, stemsFactory);
-		} else {
-			return stems.get(channel);
-		}
+		return resolve(stems, stemsFactory, channel);
 	}
 
 	/**
@@ -214,13 +205,94 @@ public class MultiChannelAudioOutput {
 	 * @return the receptor, or {@code null} if master output is disabled
 	 */
 	public Receptor<PackedCollection> getMaster(ChannelInfo.StereoChannel channel) {
-		if (master == null) {
+		return resolve(master, masterFactory, channel);
+	}
+
+	/**
+	 * Resolves the receptor for {@code key} within one of this output's receptor
+	 * maps, creating it through {@code factory} on first access. Shared by
+	 * {@link #getMaster}, {@link #getStem(ChannelInfo)}, and
+	 * {@link #getMeasure(ChannelInfo)}, which differ only in the receptor family
+	 * and the key type they look up.
+	 *
+	 * @param map     the receptor map, or {@code null} when the family is disabled
+	 * @param factory the factory for an absent key, or {@code null} to look up only
+	 * @param key     the receptor key
+	 * @param <K>     the key type the family is indexed by
+	 * @return the receptor, or {@code null} if the family is disabled
+	 */
+	private <K> Receptor<PackedCollection> resolve(Map<K, Receptor<PackedCollection>> map,
+			Function<K, Receptor<PackedCollection>> factory, K key) {
+		if (map == null) {
 			return null;
-		} else if (masterFactory != null) {
-			return master.computeIfAbsent(channel, masterFactory);
+		} else if (factory != null) {
+			return map.computeIfAbsent(key, factory);
 		} else {
-			return master.get(channel);
+			return map.get(key);
 		}
+	}
+
+	/**
+	 * Builds operations pushing the given frame to both master-mix stereo receptors,
+	 * once per stereo channel. A stereo channel whose receptor is absent (a mono or
+	 * disabled master) is skipped.
+	 *
+	 * @param frame producer of the frame to push
+	 * @return the push operations, empty when master output is disabled
+	 */
+	public Supplier<Runnable> pushMaster(Producer<PackedCollection> frame) {
+		return pushToStereo("Master Push", frame, this::getMaster);
+	}
+
+	/**
+	 * Builds operations pushing the given frame to the measure receptors of the given
+	 * voicing, once per stereo channel. A stereo channel the output does not monitor
+	 * is skipped.
+	 *
+	 * @param voicing the signal path voicing the frame belongs to
+	 * @param frame   producer of the frame to push
+	 * @return the push operations, empty when measure monitoring is disabled
+	 */
+	public Supplier<Runnable> pushMeasures(ChannelInfo.Voicing voicing,
+										   Producer<PackedCollection> frame) {
+		return pushToStereo("Measure Push", frame,
+				stereo -> getMeasure(voicing, stereo));
+	}
+
+	/**
+	 * Builds operations pushing the given frames to the stem receptors of the given
+	 * audio channel, once per stereo channel. A stereo channel the output does not
+	 * capture is skipped.
+	 *
+	 * @param audioChannel the audio channel whose stem receives the frames
+	 * @param frames       producer of the frames to push
+	 * @return the push operations, empty when stem output is disabled
+	 */
+	public Supplier<Runnable> pushStem(int audioChannel,
+									   Producer<PackedCollection> frames) {
+		return pushToStereo("Stem Push", frames,
+				stereo -> getStem(audioChannel, stereo));
+	}
+
+	/**
+	 * Builds operations pushing the given frame to the receptor each stereo channel
+	 * resolves to, skipping a stereo channel with no receptor. Shared by
+	 * {@link #pushMaster}, {@link #pushMeasures}, and {@link #pushStem}, which differ
+	 * only in which receptor family the lookup draws from.
+	 *
+	 * @param name   the operation list name
+	 * @param frame  producer of the frame to push
+	 * @param lookup the per-stereo-channel receptor lookup
+	 * @return the push operations, empty when none of the receptors are present
+	 */
+	private Supplier<Runnable> pushToStereo(String name, Producer<PackedCollection> frame,
+			Function<ChannelInfo.StereoChannel, Receptor<PackedCollection>> lookup) {
+		OperationList ops = new OperationList(name);
+		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
+			Receptor<PackedCollection> receptor = lookup.apply(stereo);
+			if (receptor != null) ops.add(receptor.push(frame));
+		}
+		return ops;
 	}
 
 	/** Returns {@code true} if measure monitoring is active. */
@@ -230,19 +302,19 @@ public class MultiChannelAudioOutput {
 	public boolean isStemsActive() { return stems != null; }
 
 	/**
-	 * Retrieves a single value from the map whose key matches the predicate.
+	 * Retrieves the single receptor whose channel matches the predicate, from one of
+	 * this output's receptor maps.
 	 *
-	 * @param map       the map to search
-	 * @param predicate the key predicate
-	 * @param <K>       key type
-	 * @param <V>       value type
-	 * @return the matching value, or {@code null} if no entry matches
-	 * @throws IllegalArgumentException if more than one entry matches
+	 * @param receptors the receptor map to search
+	 * @param predicate the channel predicate
+	 * @return the matching receptor, or {@code null} if no channel matches
+	 * @throws IllegalArgumentException if more than one channel matches
 	 */
-	protected <K, V> V retrieve(Map<K, V> map, Predicate<K> predicate) {
-		if (map == null) return null;
+	protected Receptor<PackedCollection> retrieve(Map<ChannelInfo, Receptor<PackedCollection>> receptors,
+												  Predicate<ChannelInfo> predicate) {
+		if (receptors == null) return null;
 
-		List<V> values = map.entrySet().stream()
+		List<Receptor<PackedCollection>> values = receptors.entrySet().stream()
 				.filter(e -> predicate.test(e.getKey()))
 				.map(Map.Entry::getValue)
 				.toList();
@@ -253,32 +325,5 @@ public class MultiChannelAudioOutput {
 		} else {
 			return values.get(0);
 		}
-	}
-
-	/**
-	 * Returns a predicate that matches channel infos with the given stereo channel.
-	 *
-	 * @param audioChannel the stereo channel to match
-	 */
-	protected Predicate<ChannelInfo> match(ChannelInfo.StereoChannel audioChannel) {
-		return c -> c.getAudioChannel() == audioChannel;
-	}
-
-	/**
-	 * Returns a predicate that matches channel infos with the given pattern channel index.
-	 *
-	 * @param patternChannel the pattern channel index to match
-	 */
-	protected Predicate<ChannelInfo> match(int patternChannel) {
-		return c -> c.getPatternChannel() == patternChannel;
-	}
-
-	/**
-	 * Returns a predicate that matches channel infos with the given voicing.
-	 *
-	 * @param voicing the voicing to match
-	 */
-	protected Predicate<ChannelInfo> match(ChannelInfo.Voicing voicing) {
-		return c -> c.getVoicing() == voicing;
 	}
 }

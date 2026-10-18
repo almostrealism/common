@@ -25,6 +25,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A named {@link Index} with an optional numeric limit (exclusive upper bound).
@@ -41,6 +42,9 @@ import java.util.Set;
  * @see io.almostrealism.kernel.KernelIndex
  */
 public class DefaultIndex extends StaticReference<Integer> implements Index {
+	/** Counter shared across all temporary indices to keep their names unique. */
+	private static final AtomicLong temporaryCount = new AtomicLong();
+
 	/** The exclusive upper bound of this index, or empty if unbounded. */
 	private OptionalLong limit;
 
@@ -72,6 +76,26 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	public DefaultIndex(String name, Long limit) {
 		super(Integer.class, name);
 		this.limit = limit == null ? OptionalLong.empty() : OptionalLong.of(limit);
+	}
+
+	/**
+	 * Creates a new unbounded temporary index with a unique name of the form "ci_N",
+	 * for constructing intermediate expressions that require a fresh index variable.
+	 *
+	 * @return a new {@link DefaultIndex} with a unique name
+	 */
+	public static DefaultIndex temporary() {
+		return new DefaultIndex("ci_" + temporaryCount.getAndIncrement());
+	}
+
+	/**
+	 * Creates a new bounded temporary index with a unique name of the form "ci_N".
+	 *
+	 * @param limit the exclusive upper bound for valid index values
+	 * @return a new {@link DefaultIndex} with a unique name and the specified limit
+	 */
+	public static DefaultIndex temporary(int limit) {
+		return new DefaultIndex("ci_" + temporaryCount.getAndIncrement(), limit);
 	}
 
 	/**

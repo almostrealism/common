@@ -43,8 +43,10 @@ lambda-weighted and negated), so all five sections of its fused projection recei
 ## Device memory during training
 
 The generic backward pass forms each weight gradient from the operator's Jacobian, and those
-intermediates are allocated afresh on every step. For the configuration below this is several
-gigabytes of temporary device memory per step. Device buffers are released only after the Java
+intermediates are allocated afresh on every step. Dense layers no longer take that path (see
+"Weight gradients of dense layers" below), but the remaining operators (normalization, attention,
+the gated feed-forward's element-wise product) still do, and for the configuration below this was
+several gigabytes of temporary device memory per step before dense layers changed. Device buffers are released only after the Java
 objects that own them are garbage collected, and those objects are small, so heap pressure alone
 does not trigger collection before the device ceiling is reached. `HardwareMemoryProvider.reclaim`
 handles this: when an allocation would exceed the ceiling, the Metal and OpenCL providers request a
@@ -53,14 +55,77 @@ room against the ceiling atomically (`HardwareMemoryProvider.reserve`), so concu
 can neither overshoot it together nor lose each other's updates. `AdamOptimizer` also
 stores the gradient once per step instead of evaluating it separately for momentum and velocity.
 
-The gated feed-forward input projection dominates this memory (its Jacobian grows with the square
+The gated feed-forward input projection dominated this memory (its Jacobian grows with the square
 of the feed-forward width), which is why the run uses a width of 128 rather than 256. The run
 needs `AR_HARDWARE_MEMORY_SCALE=6`.
+
+## Weight gradients of dense layers
+
+For a matrix multiply `y_r = W · x_r` applied to every row `x_r` of a sequence, the gradients the
+backward pass needs are vector-Jacobian products with known structure:
+
+```
+dW   = Σ_r g_r ⊗ x_r      (summed over every row)
+dx_r = Wᵀ · g_r
+```
+
+Contracting the dense Jacobian instead is an iteration space of output size times weight size
+times the inner dimension: about 17 billion terms for the 256 by 64 output projection of the model
+below, where the products above need about a million. The caller therefore tells `delta` which
+axis of the Jacobian it is about to sum away: `CollectionProducer.delta(target, ReduceAxis.OUT, g)`
+is the vector-Jacobian product `gᵀJ` (and `ReduceAxis.IN` with a tangent is the Jacobian-vector
+product). Each computation produces the reduced delta from its own structure and passes the
+reduction on to its inputs by the chain rule: a reshape passes it through, an addition gives every
+operand the same weight, an element-wise product applies the product rule, a sum broadcasts the
+weight over each group, and a repetition sums the weights of the copies. `matmul`'s
+multiply-and-sum lowering is built from exactly those computations, so a dense layer's operator
+(`LayerFeatures.denseOperator`: the output reshape of the bias addition of the matrix multiply)
+yields `Σ_r g_r ⊗ x_r`, `Wᵀ · g_r` and the row-summed bias gradient without any code that
+recognizes a matrix multiply. A computation without a reduced form of its own contracts its full
+Jacobian, which is what `GradientFeatures.jacobianGradient` always does; the weighted-sum lowering
+that `matmul` uses for outputs wider than 1000 is one of these. `DefaultGradientPropagation` forms
+both the input gradient and every weight gradient as the output-reduced delta weighted by the
+upstream gradient.
+
+`DenseVectorJacobianProductTest` compares the reduced delta of the whole dense operator with the
+forced full-Jacobian gradient and with the gradient computed on the host from its definition, for
+every projection shape of the model below over a 64-row sequence, and checks that no computation in
+the reduced delta's graph is larger than the largest computation of the operator itself.
+
+**The full-Jacobian weight gradient is wrong for the output projection.** For the 256 by 64
+weight over 64 rows, `jacobianGradient` disagrees with the definition in about a tenth of the
+16,384 entries (1,536 or 1,728 in the runs measured, always from weight row 64 onward) on Metal,
+while the product agrees exactly. Its kernel sums 16,384 outputs of 64 masked terms for each
+weight entry over an enumeration of 2^34 positions. The 192 by 64 and 128 by 64 weights are
+correct. The documentation runs before the product existed therefore trained the output projection
+with partly wrong gradients; the cause inside the sparse-Jacobian machinery is not yet diagnosed.
+
+## Pairing axes by size
+
+Two operations in the dense layer relied on an implicit broadcast that pairs operands by their
+traversal count (`TraversalAxisAlignment.align`) and so misread inputs whose sizes happen to
+coincide:
+
+- `matmul`'s multiply-and-sum lowering multiplied the `(m, n)` matrix with the `(rows, m, n)`
+  repeated vectors. When `rows == m`, the counts match and each matrix row was paired with one
+  vector, giving `y[r][i] = W[r] · x_r` for every `i`. The model below has 64 positions and a 64-wide
+  embedding, so its attention output projection (64 by 64) and its feed-forward down projection
+  (64 by 128) computed one value per position, copied across the channels.
+- The dense bias `(nodes)` was added to the `(rows, nodes)` product the same way, adding bias entry
+  `r` to every entry of row `r` when `rows == nodes`.
+
+Both now repeat the smaller operand explicitly. `MatmulPathTest.batchAsLongAsMatrixRows`,
+`DenseVectorJacobianProductTest.denseWithBiasRowsMatchingNodes` and
+`CausalLanguageModelTest.outputsDoNotDependOnContextLength` (a causal model's rows must not depend on
+the context length, compared at 64 and 63 positions) cover them. The finite-difference check
+(`gradientsMatchFiniteDifferences`) could not catch either: it differentiates whatever the forward
+pass computes, and its miniature configuration has no coinciding sizes.
 
 ## The documentation run
 
 `CausalLanguageModelTest.trainOnDocumentation` is a long-running test, excluded from the CI
-pipeline profile. Run it with `AR_LONG_TESTS=enabled` and `AR_HARDWARE_MEMORY_SCALE=6`.
+pipeline profile. Run it with `AR_LONG_TESTS=enabled` and `AR_HARDWARE_MEMORY_SCALE=6`; it takes
+about 21 minutes on the machine below.
 
 **Configuration**
 
@@ -70,10 +135,10 @@ pipeline profile. Run it with `AR_LONG_TESTS=enabled` and `AR_HARDWARE_MEMORY_SC
 | Split | First 90% of the bytes for training (48,119), last 10% held out (5,346), split before windowing |
 | Model | Byte vocabulary 256, context 64, embed 64, 4 heads, depth 2, feed-forward width 128, full rotary embedding (base 10000), no query/key normalization, final RMS norm; 115,008 parameters |
 | Initialization | Normal(0, 0.02) for embedding and projections, ones for norm scales, seed 20260930 |
-| Optimizer | Adam, betas 0.9 / 0.999; learning rate decaying linearly per epoch from 1e-2 to 1e-3 |
-| Training data | 110 windows per epoch, rotating; the stride is `NextTokenDataset.spanningStride` of the 550 windows the run reads (87 bytes for this corpus), so the run covers the whole training region once, ending at the text just before the held-out region |
+| Optimizer | Adam, betas 0.9 / 0.999; learning rate decaying linearly per epoch from 3e-3 to 3e-4 |
+| Training data | 150 windows per epoch, rotating; the stride is `NextTokenDataset.spanningStride` of the 3,000 windows the run reads (16 bytes for this corpus), so the windows of the run cover the whole training region once, overlapping, ending at the text just before the held-out region |
 | Held-out data | 12 fixed non-overlapping windows scored at every epoch boundary (the progress curve); all 83 non-overlapping held-out windows scored once after training (the asserted number) |
-| Length | 5 epochs, 550 steps (one step per 64-byte window, batch 1) |
+| Length | 20 epochs, 3,000 steps (one step per 64-byte window, batch 1) |
 
 **Measured curve** (bits per byte, from the mean NLL divided by ln 2). Baselines: uniform 8.0;
 unigram byte entropy of the 5,312 targets the 83 held-out windows score, 4.912; of the 768
@@ -81,30 +146,45 @@ targets the 12 per-epoch windows score, 4.642.
 
 | Epoch | Train | Held-out (12 windows) |
 |-------|-------|-----------------------|
-| 0 | 5.269 | 4.975 |
-| 1 | 5.005 | 4.977 |
-| 2 | 4.841 | 4.920 |
-| 3 | 4.819 | 4.737 |
-| 4 | 4.996 | 4.716 |
+| 0 | 4.624 | 5.018 |
+| 3 | 4.260 | 4.683 |
+| 6 | 4.289 | 4.431 |
+| 9 | 3.763 | 4.657 |
+| 12 | 3.528 | 4.685 |
+| 15 | 4.220 | 4.257 |
+| 18 | 4.190 | 4.215 |
+| 19 | 3.763 | 4.243 |
 
-Scored over all 83 held-out windows after training: **4.957 bits per byte against a baseline of
+Scored over all 83 held-out windows after training: **4.194 bits per byte against a baseline of
 4.912**.
 
-**The run does not beat the unigram baseline.** It ends 0.045 bits per byte above the unigram
-entropy of exactly the held-out targets it is scored on, so the assertion in
-`CausalLanguageModelTest` fails. The asserted loss and the asserted baseline come from the same
-`NextTokenDataset` of every held-out window. Scoring only 12 windows, as earlier versions of the
-test did, describes an easier part of the region: the in-sample unigram entropy of those 768
-targets is 0.27 bits lower than that of all 5,312.
+**The run beats the unigram baseline** by 0.72 bits per byte, measured on exactly the held-out
+targets the baseline describes (the asserted loss and the asserted baseline come from the same
+`NextTokenDataset` of every held-out window), and the reloaded checkpoint reproduces the per-epoch
+held-out loss exactly. Greedy generation is still 96 spaces (see "Generation"), so the test's
+generation assertion, which runs before the baseline assertion, still fails.
 
-What was measured on the way, all on this corpus and scored on all 83 windows:
+What was measured on the way, all on this corpus and scored on all 83 windows. The rows above the
+line ran before the dense-layer changes described above (full-Jacobian weight gradients, the size
+pairings in `matmul`); the rows below ran after them, on the same corpus, windows and baseline:
 
-| Recipe | Held-out | Gap to 4.912 |
-|--------|----------|--------------|
-| Learning rate 3e-3 to 3e-4, stride 64 (the previous configuration) | 5.115 | +0.203 |
-| Learning rate 1e-2 to 1e-3, stride 64 | 5.047 | +0.135 |
-| Learning rate 1e-2 to 1e-3, spanning stride (the configuration above) | 4.957 | +0.045 |
-| Learning rate 1e-2 to 3e-3, spanning stride | 5.097 | +0.185 |
+| Recipe | Steps | Held-out | Gap to 4.912 |
+|--------|-------|----------|--------------|
+| Learning rate 3e-3 to 3e-4, stride 64 | 550 | 5.115 | +0.203 |
+| Learning rate 1e-2 to 1e-3, stride 64 | 550 | 5.047 | +0.135 |
+| Learning rate 1e-2 to 1e-3, spanning stride | 550 | 4.957 | +0.045 |
+| Learning rate 1e-2 to 3e-3, spanning stride | 550 | 5.097 | +0.185 |
+| *after* — learning rate 1e-2 to 1e-3, spanning stride | 550 | 4.687 | −0.225 |
+| *after* — learning rate 1e-2 to 1e-3, spanning stride | 3,000 | 4.769 | −0.143 |
+| *after* — learning rate 3e-3 to 3e-4, spanning stride (the configuration above) | 3,000 | 4.194 | −0.718 |
+
+With the same 550-step recipe as before, the corrected model clears the baseline (4.687 against
+4.957 before). Spending the freed time on 3,000 steps at the same peak rate of 1e-2 does not help
+(4.769): the training loss stops falling and swings between 4.1 and 4.8, the noise of batch-1
+updates at that rate. At a peak of 3e-3 the longer run keeps improving, with the training loss
+reaching 3.5.
+
+Lessons from the runs before the dense-layer changes (the first four rows):
 
 - **Coverage was the largest lever.** At a stride of 64 the training region has 751 windows, and
   550 steps read only the first 550 of them: the first 35,200 bytes. The run never saw the last
@@ -116,30 +196,37 @@ What was measured on the way, all on this corpus and scored on all 83 windows:
 - **A higher learning rate helped, a high final rate did not.** Raising the peak from 3e-3 to 1e-2
   gained 0.07 bits; holding the last epoch at 3e-3 instead of 1e-3 lost 0.14, presumably because
   with batch 1 the late updates are too noisy to settle.
-- **The step budget is the limit.** 550 steps of batch 1 score about 35,000 target bytes in total.
-  For reference, an interpolated count-based bigram fitted to the whole training region scores
-  3.78 bits per byte on the held-out targets and a trigram 3.07, so a byte-level model of this
-  corpus has a great deal of headroom; the transformer has not seen enough text to use it. More
-  steps do not fit: the run takes about 34 minutes of a 38-minute test timeout.
+- **The step budget was the limit.** 550 steps of batch 1 score about 35,000 target bytes in
+  total, and at about 3.6 s per step more did not fit in the 38-minute test timeout. For
+  reference, an interpolated count-based bigram fitted to the whole training region scores 3.78
+  bits per byte on the held-out targets and a trigram 3.07, so a byte-level model of this corpus
+  has a great deal of headroom; the configuration above, at 4.19, still uses only part of it.
 
-**Timing** (Mac Studio, Apple silicon, Metal, FP32): compile 2 s; cold first step about 25 s
-when the native kernels are already cached and about 130 s when they are not; warm about 3.6 s
-per training step, about 395 s per epoch; scoring all 83 held-out windows takes 4 s.
+**Timing** (Mac Studio, Apple silicon, Metal, FP32), measured by the test on the same machine
+before and after dense layers took the vector-Jacobian product. The "after" figures were measured
+with an earlier form of the product, a matmul-specific object attached to the matrix multiply,
+which the reduced delta described above has replaced; they have not yet been re-measured with it.
 
-**Where a step goes.** A forward pass takes about 0.03 s; the backward pass takes 3.2 to 4.2 s,
-and the test thread spends it waiting for Metal command buffers to complete, so the cost is GPU
-work rather than host overhead or garbage collection. The weight gradients of the generic
-backward pass (`DefaultGradientPropagation`, through `GradientFeatures`) are formed from the
-operator's full Jacobian with respect to each weight, multiplied by the output gradient and summed
-over outputs. For a matrix multiply that is an iteration space of output size times weight size
-times the inner dimension: about 17 billion terms for the 256 by 64 output projection, 9.7 billion
-for each fused 192 by 64 QKV weight, and 4.3 billion for each feed-forward weight, where the
-gradient itself needs about a million multiply-adds per weight. A weight gradient that uses the
-structure of the matrix multiply (the output gradient times the transposed input) would make each
-step orders of magnitude cheaper and is the change that would let this run train for long enough
-to approach its headroom. Note that `OperationProfileNode` records Metal dispatch time rather
-than kernel execution time, so a profile of this run shows only tens of milliseconds per step;
-the shapes of the recorded operations are what identify the expensive kernels.
+| | Before | After |
+|---|--------|-------|
+| Warm time per window (training step or held-out pass) | about 3.6 s | 0.344 s (550 steps), 0.351 s (3,000 steps) |
+| Warm epoch | about 395 s (110 + 12 windows) | 42 s (110 + 12 windows), 57 s (150 + 12 windows) |
+| Whole run | about 34 min (550 steps) | 5.5 min (550 steps), 21 min (3,000 steps) |
+
+That is about ten times cheaper per step. Compile takes 2 s, the cold first epoch includes 20 to
+120 s of kernel compilation depending on the native kernel cache, and scoring all 83 held-out
+windows takes 4 to 5 s.
+
+**Where a step went.** Before the change a forward pass took about 0.03 s and the backward pass
+3.2 to 4.2 s, waiting on Metal command buffers: the weight gradients were formed from each
+operator's full Jacobian, an iteration space of about 17 billion terms for the 256 by 64 output
+projection, 9.7 billion for each fused 192 by 64 QKV weight and 4.3 billion for each feed-forward
+weight. A profile of the output projection's gradient alone shows the shape: the full-Jacobian
+weight gradient is one kernel enumerating 2^34 positions (1.8 s of recorded time on its first
+evaluation), the vector-Jacobian product one kernel over a `(256, 64, 64)` product (0.1 s,
+including its compilation). Note that `OperationProfileNode` records Metal dispatch time rather
+than kernel execution time, so per-step profiles of a training run show only tens of
+milliseconds; the shapes of the recorded operations are what identify the expensive kernels.
 
 **Checkpoint.** The trained weights are saved with `StateDictionary.save` (FP32, the training
 precision on this backend) and reloaded into a new model; the reloaded held-out loss matched the
@@ -192,7 +279,11 @@ query, key and value weights and their own rotary inputs.
 `"The computation graph is compiled to "` for 96 bytes, and logs the result together with whether
 the bytes are valid UTF-8 under a strict decoder (reported rather than asserted, because a
 byte-level model may emit a partial multi-byte sequence). With the configuration above the
-continuation is 96 spaces: a model at roughly unigram quality decoded greedily repeats its most
-frequent byte, and the space is the most frequent byte of the corpus. The test requires the
-continuation to be reproducible and to contain more than one distinct byte, so this, too, fails
-until the model improves; the generation path itself is verified by the fast test above.
+continuation is still 96 spaces, as it was in every run listed above: at 4.2 bits per byte the
+model is better than the unigram rate on average, but after the prompt's trailing space its most
+probable next byte is again a space, and greedy decoding then repeats it. The test requires the
+continuation to be reproducible and to contain more than one distinct byte, so this assertion
+still fails; the generation path itself is verified by the fast test above. Closing the remaining
+gap to the bigram and trigram rates (and with it, presumably, the degenerate greedy continuation)
+is a question of recipe and scale (batch size above 1, more steps or epochs, a larger context or
+depth) rather than of step cost.

@@ -16,9 +16,9 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -38,6 +38,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -333,54 +334,34 @@ public class ReshapeProducer
 	public boolean isProvider() { return producer.isProvider(); }
 
 	/**
-	 * Returns whether this reshape operation represents a zero value.
-	 * For algebraic producers, delegates to the underlying producer's zero check.
+	 * Returns whether this reshape operation represents a zero value,
+	 * which is the case exactly when the underlying producer does.
 	 * 
 	 * @return true if the reshaped collection represents zero values
 	 */
 	@Override
 	public boolean isZero() {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isZero();
-		}
-
-		return TraversableExpression.super.isZero();
+		return Algebraic.isZero(producer);
 	}
 
 	@Override
 	public boolean isIdentity(int width) {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isIdentity(width);
-		}
-
-		return TraversableExpression.super.isIdentity(width);
+		return Algebraic.isIdentity(width, producer);
 	}
 
 	@Override
 	public boolean isDiagonal(int width) {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isDiagonal(width);
-		}
-
-		return TraversableExpression.super.isDiagonal(width);
+		return Algebraic.isDiagonal(width, producer);
 	}
 
 	@Override
 	public boolean isRowMonomial() {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isRowMonomial();
-		}
-
-		return TraversableExpression.super.isRowMonomial();
+		return Algebraic.isRowMonomial(producer);
 	}
 
 	@Override
 	public Optional<Computable> getDiagonalScalar(int width) {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).getDiagonalScalar(width);
-		}
-
-		return TraversableExpression.super.getDiagonalScalar(width);
+		return Algebraic.getDiagonalScalar(width, producer);
 	}
 
 	@Override
@@ -439,6 +420,17 @@ public class ReshapeProducer
 		return producer instanceof Process ? List.of((Process) producer) : Collections.emptyList();
 	}
 
+	/**
+	 * Returns the match root of the reshaped producer, since a reshape presents the
+	 * same values under a different shape.
+	 *
+	 * @return the match root of the wrapped producer
+	 */
+	@Override
+	public Producer<?> getMatchRoot() {
+		return producer.getMatchRoot();
+	}
+
 	@Override
 	public ReshapeProducer generate(List<Process<?, ?>> children) {
 		if (children.size() != 1) return this;
@@ -473,7 +465,7 @@ public class ReshapeProducer
 				}
 			}
 
-			return CollectionProducerComputation.isIsolationPermitted(this) ?
+			return isIsolationPermitted() ?
 					new CollectionProducerComputation.IsolatedProcess(this) :
 					this;
 		} else {
@@ -539,19 +531,43 @@ public class ReshapeProducer
 		return false;
 	}
 
+	/**
+	 * A reshape only reinterprets the layout of its producer's values, so its delta is that
+	 * of the underlying producer: the Jacobian and a delta that keeps the output axis are
+	 * presented in this reshape's shape, and the weight of the output axis is presented in
+	 * the underlying producer's shape. A target that this reshape cannot depend on, or is,
+	 * is left to the general implementation.
+	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		if (producer instanceof CollectionProducer) {
-			CollectionProducer deltaResult = ((CollectionProducer) producer).delta(target);
-			if (shape == null) {
-				return traverse(traversalAxis, deltaResult);
-			} else {
-				TraversalPolicy newShape = shape.append(shape(target));
-				return (CollectionProducer) reshape(newShape, deltaResult);
-			}
+	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (!(producer instanceof CollectionProducer) || cannotMatch(target) || refersTo(target)) {
+			return CollectionProducerParallelProcess.super.delta(target, axis, weight);
 		}
 
-		return CollectionProducerParallelProcess.super.delta(target);
+		CollectionProducer underlying = (CollectionProducer) producer;
+
+		if (axis == ReduceAxis.NONE) {
+			CollectionProducer jacobian = underlying.delta(target);
+			if (shape == null) {
+				return traverse(traversalAxis, jacobian);
+			}
+
+			return (CollectionProducer) reshape(shape.append(shape(target)), jacobian);
+		} else if (axis == ReduceAxis.OUT) {
+			return underlying.delta(target, axis,
+					weight == null ? null : reshape(underlying.getShape(), weight));
+		}
+
+		return underlying.delta(target, axis, weight).reshape(getShape());
+	}
+
+	/**
+	 * A reshape only reinterprets the shape of the underlying producer, so it is a
+	 * reduction exactly when that producer is.
+	 */
+	@Override
+	public boolean isReduction() {
+		return CollectionProducer.isReduction(producer);
 	}
 
 	/**

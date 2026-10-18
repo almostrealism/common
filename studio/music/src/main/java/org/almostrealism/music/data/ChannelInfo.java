@@ -142,6 +142,33 @@ public class ChannelInfo {
 
 	public StereoChannel getAudioChannel() { return audioChannel; }
 
+	/**
+	 * Returns {@code true} if this info is on the given stereo channel.
+	 *
+	 * @param audioChannel the stereo channel to test against
+	 */
+	public boolean matches(StereoChannel audioChannel) {
+		return this.audioChannel == audioChannel;
+	}
+
+	/**
+	 * Returns {@code true} if this info is on the given signal path voicing.
+	 *
+	 * @param voicing the voicing to test against
+	 */
+	public boolean matches(Voicing voicing) {
+		return this.voicing == voicing;
+	}
+
+	/**
+	 * Returns {@code true} if this info is on the given pattern channel.
+	 *
+	 * @param patternChannel the zero-based pattern channel index to test against
+	 */
+	public boolean matches(int patternChannel) {
+		return this.patternChannel == patternChannel;
+	}
+
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) return true;

@@ -21,7 +21,6 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
@@ -211,10 +210,8 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		((BackPropagationCell) layer.getBackward()).setForwardInput(input);
 
 		Supplier<Runnable> op = Process.optimized(layer.getBackward().push(p(gradient)));
-		String projection = String.valueOf(CollectionFeatures.isEnableIndexProjectionDeltaAlt());
-		log("enableIndexProjectionDeltaAlt = " + projection);
 		profile("softmaxBackwardsLarge", op)
-				.save(new File("results/softmaxBackwardsLarge-" + projection + ".xml"));
+				.save(new File("results/softmaxBackwardsLarge.xml"));
 
 //		Runnable r = op.get();
 //

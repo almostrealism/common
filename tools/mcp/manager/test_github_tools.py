@@ -1317,3 +1317,160 @@ class TestGithubToolsDirectAddressing(unittest.TestCase):
             server.github_pr_find(org="Plytrix", repo="plytrix-platform",
                                   branch="feature/x")
         mock_gh.assert_not_called()
+
+
+class TestGithubCreatePrArchived(unittest.TestCase):
+    """``github_create_pr`` refuses an archived workstream.
+
+    Archived workstreams are read-only. Resolving an archived workstream's
+    ownership now succeeds, which reopened this mutating GitHub path: a PR
+    raised from the archived round's default branch is a new artifact against
+    a frozen record, so it must be refused before the POST, as the other
+    pipeline mutation paths already are. Direct org/repo addressing carries no
+    workstream and stays unaffected.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        server._set_token_context("", "")
+
+    def tearDown(self):
+        server._set_token_context("", "")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "qa/retro-x", None))
+    @patch.object(server, "_find_workstream",
+                  return_value={"workstreamId": "ws-arch", "archived": True})
+    @patch.object(server, "_github_request")
+    def test_create_pr_rejected_for_archived_workstream(
+            self, mock_gh, mock_find, mock_repo):
+        result = server.github_create_pr(
+            title="T", body="B", workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_find_workstream",
+                  return_value={"workstreamId": "ws-live", "baseBranch": "master"})
+    @patch.object(server, "_github_request",
+                  return_value={"number": 5, "html_url": "u", "title": "T"})
+    def test_create_pr_allowed_for_live_workstream(
+            self, mock_gh, mock_find, mock_repo):
+        result = server.github_create_pr(
+            title="T", body="B", workstream_id="ws-live")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_gh.assert_called_once()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_find_workstream")
+    @patch.object(server.github_api, "default_branch", return_value="master")
+    @patch.object(server, "_github_request",
+                  return_value={"number": 9, "html_url": "u", "title": "T"})
+    def test_create_pr_direct_org_repo_not_guarded(
+            self, mock_gh, mock_default, mock_find, mock_repo):
+        """Direct org/repo addressing resolves no workstream, so the archived
+        guard short-circuits and the PR is created."""
+        result = server.github_create_pr(
+            title="T", body="B", org="org", repo="repo", head="feature/x")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_find.assert_not_called()
+        mock_gh.assert_called_once()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "qa/retro-x", None))
+    @patch.object(server, "_find_workstream",
+                  return_value={"workstreamId": "ws-arch", "archived": True})
+    @patch.object(server, "_github_request")
+    def test_create_pr_archived_guard_uses_resolved_ws_without_refetch(
+            self, mock_gh, mock_find, mock_repo):
+        """The workstream is resolved once and handed to the archived guard, so
+        the guard reads the archived flag directly instead of re-fetching. A
+        transient failure on that second lookup would return None — read as
+        "not archived" — and create the PR on the frozen round."""
+        result = server.github_create_pr(
+            title="T", body="B", workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        self.assertEqual(1, mock_find.call_count)
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_find_workstream")
+    @patch.object(server.github_api, "default_branch", return_value="master")
+    @patch.object(server, "_github_request",
+                  return_value={"number": 11, "html_url": "u", "title": "T"})
+    def test_create_pr_direct_org_repo_ignores_archived_workstream(
+            self, mock_gh, mock_default, mock_find, mock_repo):
+        """Direct org/repo addressing bypasses workstream resolution, so a PR
+        created that way is NOT gated by an also-supplied archived workstream_id
+        (or an archived token): the PR targets the named repository, not the
+        archived round's branch."""
+        result = server.github_create_pr(
+            title="T", body="B", org="org", repo="repo", head="feature/x",
+            workstream_id="ws-arch")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_find.assert_not_called()
+        mock_gh.assert_called_once()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/live", None))
+    @patch.object(server, "_find_workstream",
+                  return_value={"workstreamId": "ws-live", "baseBranch": "master",
+                                "defaultBranch": "feature/live",
+                                "repoUrl": "git@github.com:org/repo.git"})
+    @patch.object(server, "_find_workstream_by_branch",
+                  return_value={"workstreamId": "ws-arch", "archived": True})
+    @patch.object(server, "_github_request")
+    def test_create_pr_rejected_for_archived_head_with_live_workstream(
+            self, mock_gh, mock_by_branch, mock_find, mock_repo):
+        """An explicit head is the branch the PR is raised from: a live
+        workstream_id combined with an archived round's head branch must not
+        create a PR from that archived round."""
+        result = server.github_create_pr(
+            title="T", body="B", workstream_id="ws-live", head="qa/retro-x")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        self.assertIn("ws-arch", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/repo.git", "qa/retro-x", enforce_scope=False)
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/live", None))
+    @patch.object(server, "_find_workstream",
+                  return_value={"workstreamId": "ws-live", "baseBranch": "master",
+                                "defaultBranch": "feature/live",
+                                "repoUrl": "git@github.com:org/repo.git"})
+    @patch.object(server, "_find_workstream_by_branch", return_value=None)
+    @patch.object(server, "_github_request",
+                  return_value={"number": 12, "html_url": "u", "title": "T"})
+    def test_create_pr_allowed_for_unregistered_head_with_live_workstream(
+            self, mock_gh, mock_by_branch, mock_find, mock_repo):
+        """A head branch that no registered round owns is unaffected."""
+        result = server.github_create_pr(
+            title="T", body="B", workstream_id="ws-live", head="feature/side")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual("feature/side", mock_gh.call_args[0][2]["head"])
+        mock_by_branch.assert_called_once()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/live", None))
+    @patch.object(server, "_find_workstream",
+                  return_value={"workstreamId": "ws-live", "baseBranch": "master",
+                                "defaultBranch": "feature/live",
+                                "repoUrl": "git@github.com:org/repo.git"})
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_github_request",
+                  return_value={"number": 13, "html_url": "u", "title": "T"})
+    def test_create_pr_head_equal_to_default_branch_skips_branch_lookup(
+            self, mock_gh, mock_by_branch, mock_find, mock_repo):
+        """A head equal to the workstream's own default branch is already
+        covered by the id guard, so no extra branch lookup is made."""
+        result = server.github_create_pr(
+            title="T", body="B", workstream_id="ws-live", head="feature/live")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_by_branch.assert_not_called()

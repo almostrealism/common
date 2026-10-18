@@ -23,10 +23,12 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 
 import java.util.List;
 import java.util.function.BiFunction;
+import org.almostrealism.collect.PackedCollection;
 
 /**
  * A specialized {@link IndexProjectionProducerComputation} that supports dynamic, runtime-computed
@@ -209,8 +211,10 @@ public class DynamicIndexProjectionProducerComputation
 	}
 
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		if (enableChainDelta) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis != ReduceAxis.NONE) {
+			return super.deltaDependent(target, axis, weight);
+		} else if (enableChainDelta) {
 			TraversableDeltaComputation delta =
 					TraversableDeltaComputation.create("delta", getShape(), shape(target),
 								args -> CollectionExpression.create(getShape(),

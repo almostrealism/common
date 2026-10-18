@@ -16,17 +16,26 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.time.Temporal;
 
 /**
- * An interface combining {@link Temporal} and {@link Cellular} behaviors.
+ * An interface combining {@link Temporal} and {@link Cellular} behaviors, with the
+ * {@link Destroyable} lifecycle contract.
  *
  * <p>A {@code TemporalCellular} entity has all the capabilities of both interfaces:
  * <ul>
  *   <li>Time-stepped evolution through {@link Temporal#tick()}</li>
  *   <li>Graph connectivity through {@link Cellular}'s Node interface</li>
  *   <li>Setup and lifecycle management through {@link Cellular}'s Setup and Lifecycle interfaces</li>
+ *   <li>Resource release through {@link Destroyable#destroy()}</li>
  * </ul>
+ *
+ * <p>A stateful, time-stepped cell is commonly backed by GPU buffers, compiled kernels, or
+ * producer threads, so the destroy contract is part of the type: a holder releases a
+ * {@code TemporalCellular} through its declared type rather than testing for
+ * {@link Destroyable} and casting. The {@link Destroyable#destroy()} default is a no-op,
+ * so an implementation that owns nothing inherits a correct, empty destruction.</p>
  *
  * <p>This is useful for cells in a computation graph that need to evolve over time
  * while maintaining proper lifecycle management and connectivity to other cells.
@@ -41,7 +50,8 @@ import org.almostrealism.time.Temporal;
  *
  * @see Temporal
  * @see Cellular
+ * @see Destroyable
  * @see CellularTemporalFactor
  */
-public interface TemporalCellular extends Temporal, Cellular {
+public interface TemporalCellular extends Temporal, Cellular, Destroyable {
 }

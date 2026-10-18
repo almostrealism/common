@@ -196,24 +196,6 @@ public interface Algebraic extends Computable {
 	}
 
 	/**
-	 * Determines if this {@link Algebraic} transformation is semantically
-	 * equivalent to another. This method provides a way to compare transformations
-	 * that may have different implementations but produce the same results.
-	 *
-	 * <p>The default implementation uses {@link Object#equals(Object)}, but
-	 * subclasses may override to provide more sophisticated matching logic,
-	 * such as comparing underlying data sources or mathematical properties.
-	 *
-	 * @param <T> the type of the other algebraic transformation
-	 * @param other the {@link Algebraic} transformation to compare against
-	 * @return {@code true} if this transformation matches the other;
-	 *         {@code false} otherwise
-	 */
-	default <T extends Algebraic> boolean matches(T other) {
-		return equals(other);
-	}
-
-	/**
 	 * Returns the constant scalar value of this transformation if it uniformly scales
 	 * all components by the same amount, or empty if no such scalar exists.
 	 *

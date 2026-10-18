@@ -33,7 +33,6 @@ import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -263,7 +262,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 										 BiFunction<Expression, Expression, Expression> expression,
 										 boolean replaceLoop,
 										 Producer<PackedCollection>... arguments) {
-		super(name, shape, count, initial, null, arguments);
+		super(name, shape, count, initial, arguments);
 		this.expression = expression;
 		this.count = count;
 		this.replaceLoop = replaceLoop;
@@ -326,8 +325,14 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	protected boolean isSignatureSupported() { return true; }
 
 	@Override
-	public boolean isChainRuleSupported() {
+	protected boolean isChainRuleSupported() {
 		return enableChainRule || super.isChainRuleSupported();
+	}
+
+	/** An aggregation reduces each group of input elements to a single output. */
+	@Override
+	public boolean isReduction() {
+		return true;
 	}
 
 	@Override
@@ -493,15 +498,14 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	}
 
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDelta(target);
-		if (delta != null) return delta;
+	protected CollectionProducer deltaMatrix(Producer<?> target) {
+		CollectionProducer delta;
 
 		if (enableTransitiveDelta && getInputs().size() == 2 && getInputs().get(1) instanceof CollectionProducer) {
 			int outLength = ((CollectionProducer) getInputs().get(1)).getShape().getTotalSize();
 			int inLength = shape(target).getTotalSize();
 
-			if (AlgebraFeatures.match(getInputs().get(1), target)) {
+			if (getInputs().get(1).refersTo(target)) {
 				delta = identity(shape(inLength, outLength))
 						.reshape(inLength, outLength, 1).traverse(0);
 			} else {
@@ -515,7 +519,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 						count, initial, expression, replaceLoop, delta)
 					.reshape(getShape().append(shape(target)));
 		} else {
-			delta = super.delta(target);
+			delta = super.deltaMatrix(target);
 			if (delta instanceof ConstantRepeatedDeltaComputation) {
 				TraversableDeltaComputation traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
 						args -> CollectionExpression.create(getShape(), this::getValueAt), target,

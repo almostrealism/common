@@ -6,6 +6,7 @@
 package org.almostrealism.audio.data;
 
 import io.almostrealism.compute.Process;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -13,6 +14,8 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.computations.FourierTransform;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -72,7 +75,17 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * transform runs a frame at a time and reads from a buffer that stays in the
 	 * same place. An operation compiled against a particular offset into a larger
 	 * buffer is not the operation the next frame needs, so handing the transform a
-	 * moving view of the spectra would compile one program per frame.</p>
+	 * moving view of the spectra would compile one program per frame. The overlap-add
+	 * follows the same rule: each frame is copied into a fixed segment buffer, windowed
+	 * and accumulated there by a single compiled operation, and copied back to its
+	 * position in an accumulator padded so that every frame contributes a full window.
+	 * Accumulating directly into a view at each frame's start sample would compile and
+	 * load a separate native program for every frame.</p>
+	 *
+	 * <p>The transient buffers used for synthesis are released in a {@code finally} block,
+	 * so a failure part-way through (allocation, kernel compilation, or evaluation) does not
+	 * strand their native allocations. The returned audio buffer stored in {@code details}
+	 * is not among them and survives a successful conversion.</p>
 	 *
 	 * @param details the WaveDetails to convert
 	 * @throws IllegalArgumentException if required frequency data is missing
@@ -106,34 +119,63 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 			details.setFrameCount(outputLength);
 		}
 
-		// Allocate output buffer
-		PackedCollection output = new PackedCollection(outputLength);
+		// Accumulator long enough that every frame contributes a full window
+		int accumulatedLength = Math.max(outputLength, (freqFrames - 1) * hopSize + fftSize);
 
-		// Precompute Hann window
-		PackedCollection window = createHannWindow(fftSize);
+		PackedCollection accumulated = null;
+		PackedCollection window = null;
+		PackedCollection spectra = null;
+		PackedCollection frameSpectrum = null;
+		PackedCollection transformed = null;
+		PackedCollection frameSamples = null;
+		PackedCollection segment = null;
 
-		// Complex spectra for every frame at once, with random phase
-		PackedCollection spectra = createComplexSpectra(freqData, freqFrames, freqBins);
-		PackedCollection frameSpectrum = new PackedCollection(shape(fftSize, 2));
+		try {
+			accumulated = new PackedCollection(accumulatedLength);
+			window = createHannWindow(fftSize);
+			spectra = createComplexSpectra(freqData, freqFrames, freqBins);
+			frameSpectrum = new PackedCollection(shape(fftSize, 2));
 
-		// Process each frame
-		for (int frame = 0; frame < freqFrames; frame++) {
-			frameSpectrum.setFrom(0, spectra.range(shape(fftSize * 2), frame * fftSize * 2));
+			// Fixed-position buffers for the inverse transform, so one compiled operation serves every frame
+			transformed = new PackedCollection(shape(fftSize, 2));
+			frameSamples = new PackedCollection(fftSize);
+			Evaluable inverse = new FourierTransform(1, fftSize, true, cp(frameSpectrum)).get().into(transformed);
+			Evaluable realPart = realPart(transformed, fftSize).into(frameSamples.traverseEach());
 
-			PackedCollection timeDomain = applyIfft(frameSpectrum, fftSize);
+			// Fixed-position buffer for the overlap-add, for the same reason
+			segment = new PackedCollection(fftSize);
+			Evaluable windowedAdd = cp(segment)
+					.add(cp(frameSamples).multiply(cp(window)))
+					.into(segment.traverseEach());
 
-			int startSample = frame * hopSize;
-			overlapAdd(output, timeDomain, window, startSample, outputLength);
+			for (int frame = 0; frame < freqFrames; frame++) {
+				frameSpectrum.setFrom(0, spectra.range(shape(fftSize * 2), frame * fftSize * 2));
+				inverse.evaluate();
+				realPart.evaluate();
+
+				int startSample = frame * hopSize;
+				segment.setFrom(accumulated, startSample, fftSize);
+				windowedAdd.evaluate();
+				accumulated.setFrom(startSample, segment);
+			}
+
+			PackedCollection output = new PackedCollection(outputLength);
+			output.setFrom(accumulated, 0, outputLength);
+
+			normalizeAudio(output);
+
+			details.setData(output);
+			details.setChannelCount(1);
+
+			log("Converted " + freqFrames + " frames to " + outputLength + " samples");
+		} finally {
+			List<Runnable> releases = new ArrayList<>();
+			for (PackedCollection buffer : new PackedCollection[] {
+					accumulated, window, spectra, frameSpectrum, transformed, frameSamples, segment }) {
+				if (buffer != null) releases.add(buffer::destroy);
+			}
+			Destroyable.releaseAll(releases);
 		}
-
-		// Normalize output to prevent clipping
-		normalizeAudio(output);
-
-		// Store in WaveDetails
-		details.setData(output);
-		details.setChannelCount(1);
-
-		log("Converted " + freqFrames + " frames to " + outputLength + " samples");
 	}
 
 	/**
@@ -172,23 +214,21 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 				magnitude.multiply(cos(phase)),
 				magnitude.multiply(sin(phase)));
 
-		return conjugateSymmetric(half).evaluate();
+		PackedCollection spectra = conjugateSymmetric(half).evaluate();
+		angle.destroy();
+		return spectra;
 	}
 
 	/**
-	 * Applies inverse FFT to complex spectrum.
+	 * Describes the real part of the inverse transform's output.
 	 *
-	 * @param complexSpectrum complex spectrum in interleaved format
-	 * @param fftSize         number of frequency bins
-	 * @return time-domain samples (real part only)
+	 * @param transformed the inverse transform's output, as interleaved (real, imaginary) pairs
+	 * @param fftSize     number of samples in the transform
+	 * @return the real part of each sample, column 0 of the interleaved pairs
 	 */
-	private PackedCollection applyIfft(PackedCollection complexSpectrum, int fftSize) {
-		FourierTransform ifft = new FourierTransform(1, fftSize, true, cp(complexSpectrum));
-		PackedCollection result = ifft.get().evaluate();
-
-		// Extract real part -- column 0 of the interleaved (real, imaginary) pairs
-		return subset(shape(fftSize, 1), cp(result.reshape(shape(fftSize, 2))), 0, 0)
-				.evaluate().reshape(shape(fftSize));
+	private CollectionProducer realPart(PackedCollection transformed, int fftSize) {
+		return subset(shape(fftSize, 1), cp(transformed.reshape(shape(fftSize, 2))), 0, 0)
+				.reshape(shape(fftSize));
 	}
 
 	/**
@@ -197,24 +237,6 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	private PackedCollection createHannWindow(int size) {
 		return c(1.0).subtract(cos(integers(0, size).multiply(2 * Math.PI / size)))
 				.multiply(0.5).evaluate();
-	}
-
-	/**
-	 * Applies window and overlap-adds time-domain frame to output.
-	 */
-	private void overlapAdd(PackedCollection output, PackedCollection frame,
-							PackedCollection window, int startSample, int outputLength) {
-		int begin = Math.max(0, -startSample);
-		int end = Math.min(frame.getMemLength(), outputLength - startSample);
-		if (end <= begin) return;
-
-		int count = end - begin;
-		PackedCollection destination = output.range(shape(count), startSample + begin);
-
-		cp(destination)
-				.add(cp(frame.range(shape(count), begin))
-						.multiply(cp(window.range(shape(count), begin))))
-				.into(destination.traverseEach()).evaluate();
 	}
 
 	/**

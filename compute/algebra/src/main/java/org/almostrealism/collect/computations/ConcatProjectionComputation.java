@@ -87,7 +87,7 @@ public class ConcatProjectionComputation extends TraversableExpressionComputatio
 									   int[] segmentBoundaries,
 									   Expression<?>[][] segmentOffsets,
 									   double[] segmentScales) {
-		super("concatProjection", jacobianShape, MultiTermDeltaStrategy.NONE);
+		super("concatProjection", jacobianShape);
 		this.outputShape = outputShape;
 		this.targetShape = targetShape;
 		this.axis = axis;

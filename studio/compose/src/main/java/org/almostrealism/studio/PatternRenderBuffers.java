@@ -69,11 +69,21 @@ class PatternRenderBuffers implements Destroyable {
 	 * preparing for a fresh runner build. The total region count is
 	 * {@code channelCount * 4} (MAIN + WET voicing, LEFT + RIGHT stereo).
 	 *
+	 * <p>A buffer retained from an earlier build is destroyed before the replacement is
+	 * allocated, so repeated runner builds on the same scene do not strand the previous
+	 * consolidated allocation. The caller must have retired the runner that captured the
+	 * prior buffer's regions before rebuilding, so nothing live references it at this point
+	 * ({@code AudioScene.destroy()} otherwise releases only the most recent buffer).</p>
+	 *
 	 * @param channelCount number of audio channels
 	 * @param bufferSize   frames per render region
 	 */
 	void consolidate(int channelCount, int bufferSize) {
 		cells = new ArrayList<>();
+		if (buffer != null) {
+			buffer.destroy();
+			buffer = null;
+		}
 		buffer = new PackedCollection(bufferSize * channelCount * 4);
 		regionIndex = 0;
 	}
