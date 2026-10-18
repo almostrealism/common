@@ -189,8 +189,8 @@ a later cycle); broad convolution-gradient rework beyond the reporting check in 
 1. **Recall and read first.** Load the `bugs` memories cited above (the 2026-10-10 Metal Jacobian
    note and the 2026-06-21 layernorm aggregation note), read `docs/journals/CONCESSION.md` before
    `docs/journals/INVALID_KERNEL_AGGREGATION.md` (the former retracts the latter's diagnosis), and
-   read `GradientFeatures.jacobianGradient`,
-   `DenseVectorJacobianProductTest`, and `MemoryDataArgumentMap`. Confirm the current behavior by
+   read `GradientFeatures.jacobianGradient`, `DenseVectorJacobianProductTest`, and
+   `MemoryDataArgumentMap`. Confirm the current behavior by
    running `DenseVectorJacobianProductTest.outputProjection` on the Metal node and observing the
    logged `jacobianDisagreements` count over several runs (the test evaluates the full-Jacobian
    gradient once per run, so repetition means re-running it).
@@ -204,8 +204,8 @@ a later cycle); broad convolution-gradient rework beyond the reporting check in 
    the forced-ordering check. Decide among aggregation, ordering and index typing from the results
    and the kernel source, not from the arithmetic.
 
-4. **Fix at the root** per item 2 of Scope, in the layer the evidence names. Keep
-   the change general and minimal; honor the memory-model and OO-placement rules (any new behavior
+4. **Fix at the root** per item 2 of Scope, in the layer the evidence names. Keep the change
+   general and minimal; honor the memory-model and OO-placement rules (any new behavior
    goes on the type that owns the concept, not a helper).
 
 5. **Verify narrowly.** Run `DenseVectorJacobianProductTest` (the whole class is a bounded, single

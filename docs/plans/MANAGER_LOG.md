@@ -61,11 +61,10 @@ repeats one byte), the weighted-sum `matmul` reduced form, the `io.almostrealism
 
 A learning system whose *reference gradient* is silently, intermittently wrong is the most
 consequential kind of foundation defect: the platform's first self-hosted training runs trained the
-output projection from this path, every operator without a structural reduced form still falls
-back to it, and it is the
-ground truth the whole reduced-delta suite trusts. Correctness of the differentiation engine sits in
-the second category and ranks above performance and proof of value — and this is a concrete,
-falsifiable instance of it, now unblocked by the documentation it needed.
+output projection from this path, every operator without a structural reduced form still falls back
+to it, and it is the ground truth the whole reduced-delta suite trusts. Correctness of the
+differentiation engine sits in the second category and ranks above performance and proof of value —
+and this is a concrete, falsifiable instance of it, now unblocked by the documentation it needed.
 
 The plan follows evidence, not the first hypothesis. The `TODO(review)` guesses a 32-bit index
 overflow (2³⁴ iteration space, errors beginning at flat index 2³²), but the profiling already done
@@ -89,8 +88,8 @@ proof-of-value track (a trained LM that beats its baseline, PR #628) is one hone
 speaking. But it cannot speak on a gradient that is sometimes wrong — and the degenerate single-byte
 generation may itself be a symptom of an output projection trained on this very defect. Fixing the
 reference gradient is the right move before the next generation push: it is cheaper now (the
-failing kernel is already profiled and the candidate mechanisms named), it protects every later LM step, and it keeps the platform
-honest about its own learning machinery.
+failing kernel is already profiled and the candidate mechanisms named), it protects every later LM
+step, and it keeps the platform honest about its own learning machinery.
 
 #### What comes next
 
