@@ -234,6 +234,24 @@ public class FlowTreeCliServerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Closing a server that is no longer the current instance leaves the current
+	 * pointer on the newer server, and closing an already-closed server is a
+	 * harmless no-op that still does not disturb the current instance.
+	 */
+	@Test(timeout = 30000)
+	public void closeOfSupersededServerKeepsCurrentInstance() throws Exception {
+		FlowTreeCliServer older = newServer();
+		FlowTreeCliServer newer = newServer();
+		assertSame(newer, FlowTreeCliServer.getCurrentInstance());
+
+		older.close();
+		assertSame(newer, FlowTreeCliServer.getCurrentInstance());
+
+		older.close();
+		assertSame(newer, FlowTreeCliServer.getCurrentInstance());
+	}
+
+	/**
 	 * {@link FlowTreeCliServer#close()} ends a terminal session that is in
 	 * progress: with a client connected and the {@link FlowTreeCliServer#run()}
 	 * thread blocked waiting for its next command, closing the server must close

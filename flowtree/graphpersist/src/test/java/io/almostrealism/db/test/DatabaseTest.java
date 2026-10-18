@@ -38,6 +38,7 @@ public class DatabaseTest extends TestSuiteBase {
 		assertNull("pool should be removed after close", DatabasePools.get(url));
 		assertFalse("repeat close reports false", DatabasePools.close(url));
 	}
+
 	/**
 	 * Tests storing and retrieving a tensor of values.
 	 */
