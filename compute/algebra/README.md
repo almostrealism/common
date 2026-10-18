@@ -354,6 +354,11 @@ CollectionProducer gradient = y.delta(x);
 CollectionProducer combined = y.delta(x, ReduceAxis.OUT, upstreamGradient);
 ```
 
+`delta(target, ReduceAxis, weight)` is the only public derivative method. For the full contract —
+the three `ReduceAxis` values and their shapes, the computation extension points a new operator
+overrides, the expression-level Jacobian, and how a gradient becomes a backward pass — see
+[Automatic Differentiation](../../docs/internals/automatic-differentiation.md).
+
 ---
 
 ### CollectionFeatures - Factory Methods
