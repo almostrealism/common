@@ -28,6 +28,70 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-17 — Document automatic differentiation from `delta` to the backward pass
+
+**Category:** Documentation
+**Branch:** `project/plan-20261018-013621`
+**Plan:** [`PLAN-20261018-automatic-differentiation-internals.md`](PLAN-20261018-automatic-differentiation-internals.md)
+
+#### What changed since last cycle
+
+The matrix-multiply plan landed (PR #628) and paid off: a training step is about ten times cheaper
+(3.6 s → 0.35 s), and `trainOnDocumentation` now **beats its unigram baseline, 4.194 against 4.912
+bits per byte** over all 83 held-out windows. Two findings along the way: `matmul` and the dense
+bias paired axes by size when sizes coincided (fixed), and the full-Jacobian weight gradient is
+itself wrong for the 256×64 output projection on Metal (recorded, undiagnosed). Greedy generation
+is still a single repeated byte, so the test's generation assertion still fails. Then the
+maintainer consolidated the derivative API (PRs #661, #666): the matmul-specific
+`VectorJacobianProduct` became a general reduced delta, `CollectionProducer.delta(target, axis,
+weight)` is the only public derivative method, and computations customize it through four protected
+extension points (`deltaDependent`, `deltaElement`, `deltaPartial`, `deltaMatrix`). Small tracked
+tasks (projection factories, `NumberConditioner`) and the QA retrospective round also landed.
+
+#### Category assessment (priority order)
+
+- **Documentation — a real gap, and it decided the cycle.** The forward story is fully documented;
+  the backward story is not. `consult` confirms there is no internals page for automatic
+  differentiation. What exists is a `package-info` paragraph, a three-line README example, and the
+  dense-layer section of the training page. Nothing covers the extension points and their order,
+  the expression-level rules and `ExpressionMatrix`, or how `DefaultGradientPropagation` and the
+  backward cells turn deltas into a training step. The API has just been redesigned, so this is the
+  moment when the knowledge exists and the page is cheapest to write.
+- Code quality, performance and proof of value all have candidates (below). I did not choose any
+  of them, because documentation comes first and this gap is genuine.
+
+#### Why this task
+
+Autodiff is how the platform learns, and it is the mechanism a model trained on this corpus should
+be able to explain about itself. It is also where the costliest silent failures live. A new
+operator without a reduced form falls back to a full Jacobian without any warning (the
+17-billion-term output projection and `convDeltaMedium` were both that fallback). A wrong sparse
+Jacobian trained the LM's output projection with partly wrong gradients for weeks. A documented
+contract ("which extension point, in what order, how to verify it, where the fallback still
+happens") protects every later LM step from both. The plan requires every claim to be read from
+source or pinned by a test. Defects found along the way are recorded, not fixed.
+
+#### Balance across categories
+
+The last four cycles went to performance and proof of value, and they produced real results. This
+cycle goes back to the foundation, and not by rote: the subsystem those cycles rebuilt now needs
+its own page. It is a medium-sized task that runs on any node.
+
+#### What comes next
+
+1. This plan: `docs/internals/automatic-differentiation.md`, cross-links, a Javadoc pass for names
+   the consolidation removed, and a "known limits" section.
+2. **Correctness:** diagnose the `jacobianGradient` disagreement for the 256×64 output projection
+   (a 2^32 index-overflow hypothesis is on record). The new page is the prerequisite.
+3. **Proof of value:** non-degenerate generation from the trained LM. The baseline is beaten, but
+   greedy decoding still repeats one byte. Next come recipe and scale: batch > 1 in
+   `scaledDotProductAttention`, more steps, a larger context or depth. Then temperature/top-p in
+   the sliding-window generator, and a KV-cache decode.
+4. **Performance:** a reduced form for the weighted-sum `matmul` lowering (outputs wider than
+   1000), the last Jacobian-contracting path on a dense layer.
+5. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
+   trained model read the platform's own *source*.
+
 ### 2026-10-09 — Compute matrix-multiply weight gradients without materializing the Jacobian
 
 **Category:** Performance (directly unblocking Proof of Value)

@@ -2,6 +2,10 @@
 
 The Graph Module provides the foundational architecture for building neural network layers and computation graphs in Almost Realism. It implements a cell-based design that enables flexible composition of forward and backward propagation paths, supporting both inference and training with automatic differentiation.
 
+> **Backpropagation internals:** how `DefaultGradientPropagation` turns each layer's `OUT`-reduced
+> `delta` into an input gradient and per-weight gradients, and how those feed `ModelOptimizer`, are
+> documented in [Automatic Differentiation](../../docs/internals/automatic-differentiation.md).
+
 ## Purpose
 
 This module exists to:
