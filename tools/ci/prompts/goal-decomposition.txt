@@ -39,7 +39,10 @@ repository is the framework, and every task goes in that one release.
    beside this one and your instructions list its path as a dependent
    repository. Its checkout can lag behind, so before reading it run, in that
    directory, `git fetch origin ${FRAMEWORK_BRANCH}` and then
-   `git checkout --detach origin/${FRAMEWORK_BRANCH}`. Read its code where you
+   `git checkout --detach FETCH_HEAD`. (`${FRAMEWORK_BRANCH}` may be a branch
+   or a tag; a fetch records either under `FETCH_HEAD`, while
+   `origin/${FRAMEWORK_BRANCH}` names a remote-tracking ref that exists only
+   for a branch.) Read its code where you
    need to know whether a capability already exists, and where it would go.
    When this repository is the framework (the two are the same), there is no
    separate checkout: read the framework's code in place, in step 4.

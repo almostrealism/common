@@ -27,6 +27,7 @@ from test_task_planning_gates import _CI, _ControllerStub, _run  # noqa: E402
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "release-steward.yaml")
 _BUILDER = os.path.join(_CI, "prompts", "build-goal-decomposition-prompt.sh")
+_TEMPLATE = os.path.join(_CI, "prompts", "goal-decomposition.txt")
 
 _POM = """<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0">
@@ -348,6 +349,14 @@ class ReleaseStewardWorkflowTests(unittest.TestCase):
         """A steward may only update its own repository's tasks."""
         self.assertEqual("goals:${{ github.repository }}/",
                          _step(_BUILD)["env"]["SOURCE_PREFIX"])
+
+    def test_the_framework_is_checked_out_by_fetch_head_not_a_tracking_ref(self):
+        """``framework-ref`` may be a tag; ``origin/<tag>`` would not resolve."""
+        with open(_TEMPLATE) as f:
+            template = f.read()
+        self.assertIn("git fetch origin ${FRAMEWORK_BRANCH}", template)
+        self.assertIn("git checkout --detach FETCH_HEAD", template)
+        self.assertNotIn("checkout --detach origin/${FRAMEWORK_BRANCH}", template)
 
     def test_the_secret_is_declared_and_the_client_id_is_an_input(self):
         call = _triggers(_workflow())["workflow_call"]
