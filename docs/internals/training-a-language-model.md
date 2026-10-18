@@ -87,8 +87,11 @@ multiply-and-sum lowering is built from exactly those computations, so a dense l
 (`LayerFeatures.denseOperator`: the output reshape of the bias addition of the matrix multiply)
 yields `Σ_r g_r ⊗ x_r`, `Wᵀ · g_r` and the row-summed bias gradient without any code that
 recognizes a matrix multiply. A computation without a reduced form of its own contracts its full
-Jacobian, which is what `GradientFeatures.jacobianGradient` always does; the weighted-sum lowering
-that `matmul` uses for outputs wider than 1000 is one of these. `DefaultGradientPropagation` forms
+Jacobian, which is what `GradientFeatures.jacobianGradient` always does. The weighted-sum lowering
+(`WeightedSumComputation`) that `matmul` uses for outputs wider than 1000 is not one of these: it
+builds its own reduced delta for both axes from a transposed weighted sum, falling back to the full
+Jacobian only for a traversal that cannot be transposed, such as a convolution's sliding window.
+`DefaultGradientPropagation` forms
 both the input gradient and every weight gradient as the output-reduced delta weighted by the
 upstream gradient.
 

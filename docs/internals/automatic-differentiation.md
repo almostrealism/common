@@ -217,10 +217,14 @@ Below the Producer graph, derivatives are also defined on `Expression` trees. Se
 represents a Jacobian at this level: a two-dimensional matrix of `Expression` values whose rows map
 to output positions and columns to input positions. It detects when each row has a single non-zero
 column (`uniqueNonZeroOffset`) and collapses further when all rows match, which is what makes a
-Jacobian **sparse** in practice. Its size limits (`maxMatrixSize`) stop it expanding when the
-enumeration space grows too large — and that enumeration space is exactly the cost a reduced delta
-avoids: the dense `256 × 64` output projection over 64 rows is a `2^34`-position space, against
-about a million terms for the reduced product form.
+Jacobian **sparse** in practice. Its size limit (`maxMatrixSize`, a cap on `rows × cols`) stops it
+expanding when the matrix grows too large, and that matrix — one entry per (output, input) pair — is
+itself a cost a reduced delta avoids: the dense `256 × 64` output projection over 64 rows has
+`16,384` output positions and `16,384` weight positions, a `2^28`-entry matrix, against about a
+million terms for the reduced product form. (The `2^34` figure in §8 and the
+[training measurement](training-a-language-model.md) is larger still, and a different structure: it
+is `jacobianGradient`'s full contraction — output size × weight size × inner dimension — not this
+matrix's enumeration.)
 
 ---
 

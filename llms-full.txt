@@ -376,9 +376,11 @@ y.delta(x, ReduceAxis.OUT, g);         // vector-Jacobian product gᵀJ — shap
 y.delta(x, ReduceAxis.IN, t);          // Jacobian-vector product J t — shape of y (forward mode)
 ```
 
-A computation produces the reduced delta from its own structure (no full Jacobian). To add a
-differentiable computation, override `deltaElement` (element-wise), set `isChainRuleSupported()`
-(chain rule), or override `deltaDependent` / `deltaMatrix` — see
+A computation with a reduced rule produces the delta from its own structure, without forming the
+full Jacobian; one with no reduced rule falls back to contracting the full Jacobian
+(`GradientFeatures.jacobianContraction`). To add a differentiable computation, override
+`deltaElement` (element-wise), set `isChainRuleSupported()` (chain rule), or override
+`deltaDependent` / `deltaMatrix` — see
 [Automatic Differentiation](internals/automatic-differentiation.md).
 
 ## Optimize Module
