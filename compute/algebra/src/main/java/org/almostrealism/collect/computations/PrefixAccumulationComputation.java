@@ -80,7 +80,7 @@ public abstract class PrefixAccumulationComputation extends TraversableRepeatedP
 	 */
 	public PrefixAccumulationComputation(String name, TraversalPolicy shape, boolean pad,
 										 Producer<PackedCollection> input) {
-		super(name, shape, shape.getTotalSize(), null, null, input);
+		super(name, shape, shape.getTotalSize(), null, input);
 		this.pad = pad;
 		setInitial((args, index) -> identity());
 
