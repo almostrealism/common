@@ -428,14 +428,23 @@ First version (cheap, high value):
 - `java_types`: map from simple type name to path(s), taken from file names
   (~9×10³ `*.java`). File names are enough because the codebase keeps one
   top-level type per file.
-- `scripts`: basename to path, for `*.sh` and `*.py` under `tools/`, and
-  under `.github/` once that is copied. The repository's top-level
-  `scripts/` directory (`generate-llms-full.sh`,
-  `check-python-file-lengths.sh` and others) is **not** copied by the `docs`
-  stage today, so indexing it requires adding `COPY scripts/ ./scripts/` to
-  that stage as well (its contents are pruned like everything else; only the
-  index records them). This plan proposes adding that `COPY` in the same
-  step.
+- `scripts`: basename to path **list**, for `*.sh` and `*.py` under
+  `tools/`, and under `.github/` once that is copied. The list form matters
+  because script basenames are not unique in the tree: `entrypoint.sh`,
+  `fleet.sh` and `install.sh` each occur in several directories (e.g.
+  `tools/ci/docker/entrypoint.sh` and `tools/ci/rocm/entrypoint.sh`;
+  `tools/ci/cuda/fleet.sh`, `tools/ci/macos/fleet.sh` and
+  `tools/ci/rocm/fleet.sh`), as do `server.py`, `store.py` and others. A
+  basename-to-single-path map would silently drop all but one, so a note
+  mentioning `entrypoint.sh` could resolve to the wrong file or be reported
+  absent when it exists. Scripts therefore use the same name-to-`path(s)`
+  shape as `java_types`, and a presence check succeeds if *any* path for the
+  basename exists. The repository's top-level `scripts/` directory
+  (`generate-llms-full.sh`, `check-python-file-lengths.sh` and others) is
+  **not** copied by the `docs` stage today, so indexing it requires adding
+  `COPY scripts/ ./scripts/` to that stage as well (its contents are pruned
+  like everything else; only the index records them). This plan proposes
+  adding that `COPY` in the same step.
 
 Later versions, in rough order of value:
 
@@ -521,11 +530,20 @@ The model's `BASIS:` line is never trusted as written. A weak model can
 declare `BASIS: documentation` while citing only `[Nk]` note IDs, or declare
 `none` while actually citing evidence — either of which would mislabel
 `answer_basis` (2.7) or abstain incorrectly. So the server always
-**recomputes** the basis from the evidence IDs the answer actually cites
-(any `[Dk]` → includes documentation, any `[Nk]` → includes notes, nothing
-cited → `none`) and uses that computed value for `answer_basis` and the
-post-processing. The written `BASIS:` line is kept only as a cross-check: a
-disagreement between the stated and the computed basis sets
+**recomputes** the basis from the evidence IDs the answer actually cites.
+The recompute counts an ID only after **resolving it against the evidence
+map** the server itself built: a marker like `[D3]` or `[N2]` contributes to
+the basis only when `D3`/`N2` is an item that was actually presented. A
+fabricated or out-of-range marker — `[D999]`, `[N0]`, a prefix that was
+never offered — is *not* counted, because otherwise a weak model could type
+`[D999]` and obtain a non-`none` basis without citing any supplied item, so
+bypassing abstention. From the resolved IDs: any valid `[Dk]` → includes
+documentation, any valid `[Nk]` → includes notes, nothing valid cited →
+`none`; that computed value feeds `answer_basis` and the post-processing. An
+unresolved marker is recorded as a citation warning
+(`format_warning: "unknown citation"`) and otherwise ignored, so it can
+neither raise nor lower the basis. The written `BASIS:` line is kept only as
+a cross-check: a disagreement between the stated and the computed basis sets
 `format_warning: "basis mismatch"`. If the trailer is missing entirely, the
 computed basis stands, `CONFLICTS` is treated as empty, and
 `format_warning: "trailer missing"` is set.
@@ -576,9 +594,20 @@ the implementation order.**
 
 Conflict sources, from cheapest to most expensive:
 
-1. **Structural (code, first step).** A C✗ note is in conflict with the
-   snapshot by definition. Two B/B′ notes from different branches that name
-   the same symbol are *potential* conflicts and are listed together.
+1. **Structural (code, first step).** A C✗ note names something absent from
+   the snapshot, which proves that *name* is stale — not, by itself, that
+   the note contradicts current behaviour. A note may deliberately describe
+   a deleted, renamed, historical, generated or external path (2.7 already
+   routes C✗ facts into `history`, not into present-tense answers). So a C✗
+   is a structural conflict only when the note asserts the name is
+   **present or current** and the snapshot disproves it — for example a note
+   that says a class "exists" or describes its "current" behaviour while the
+   snapshot has no such path. A C✗ whose claim is explicitly historical
+   (past tense, "removed", "renamed to …", "formerly") is recorded as stale
+   for lifecycle purposes but is **not** reported as a contradiction, so the
+   absence of a name does not over-report conflicts or feed false stale
+   signals downstream. Two B/B′ notes from different branches that name the
+   same symbol are *potential* conflicts and are listed together.
 2. **Model-reported (first step).** The `CONFLICTS:` trailer. The model is
    told to report a contradiction it notices, not to resolve it.
 3. **Value-level (later).** For a fact with an extractable value (a number,
@@ -593,11 +622,12 @@ When the model favours one side, the answer says so in a sentence, and both
 items stay in the evidence list. **Conflicts are never resolved by dropping
 evidence.**
 
-A later refinement uses the conflicts consult finds as input to the memory
-lifecycle. A repeated structural conflict against the snapshot is the
-natural trigger for setting `verification_status=stale` in
-`SCHEMA_EVOLUTION_PROPOSAL.md`. The write would be done by a background job
-and never by consult on the read path.
+A later refinement uses the signals consult finds as input to the memory
+lifecycle. A repeated C✗ (absent-name) signal against the snapshot — whether
+or not it rises to a reported contradiction — is the natural trigger for
+setting `verification_status=stale` in `SCHEMA_EVOLUTION_PROPOSAL.md`, since
+staleness of a name is exactly what a C✗ proves. The write would be done by
+a background job and never by consult on the read path.
 
 ### 2.9 Citation integrity
 
