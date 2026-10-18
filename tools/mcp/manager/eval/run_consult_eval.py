@@ -281,9 +281,17 @@ def _run_local(cases: list[dict], k: int) -> dict:
     from unittest import mock
 
     staging = _stage_corpus()
+    prior_docs_dir = os.environ.get("AR_DOCS_DIR")
     os.environ["AR_DOCS_DIR"] = os.path.join(staging, "docs")
     try:
         import server  # imported after AR_DOCS_DIR is set so the corpus binds
+
+        # ``_get_docs`` memoises the retriever in a module global. A prior local
+        # run in this process may have bound it to a staging tree that has since
+        # been removed, so clear the cache to force a rebind against this run's
+        # freshly staged corpus rather than reading an emptied one.
+        server._docs_retriever = None
+        server._docs_init_failed = False
 
         responses: dict = {}
         for case in cases:
@@ -307,6 +315,17 @@ def _run_local(cases: list[dict], k: int) -> dict:
         return responses
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+        # Drop the retriever bound to the staging tree we just removed, and
+        # restore AR_DOCS_DIR, so a later run (or any later consult) in this
+        # process does not read a deleted corpus or inherit this run's env.
+        server_mod = sys.modules.get("server")
+        if server_mod is not None:
+            server_mod._docs_retriever = None
+            server_mod._docs_init_failed = False
+        if prior_docs_dir is None:
+            os.environ.pop("AR_DOCS_DIR", None)
+        else:
+            os.environ["AR_DOCS_DIR"] = prior_docs_dir
 
 
 def report_passed(summary: dict) -> bool:

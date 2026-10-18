@@ -14,6 +14,7 @@ import os
 import shutil
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -526,6 +527,76 @@ class TestCorpusStaging(unittest.TestCase):
             shutil.rmtree(root, ignore_errors=True)
             if staging:
                 shutil.rmtree(staging, ignore_errors=True)
+
+
+class TestLocalRunLifecycle(unittest.TestCase):
+    """_run_local clears the memoised docs retriever and restores AR_DOCS_DIR,
+    so a second local run in the same process restages against a fresh corpus
+    rather than a retriever bound to the deleted first staging tree."""
+
+    def _fake_server(self, seen_retriever):
+        """A stand-in for the manager ``server`` module with a stale retriever
+        cache already populated, so the reset is observable."""
+        server = types.ModuleType("server")
+        server._docs_retriever = "stale-retriever"
+        server._docs_init_failed = True
+
+        def consult(**kwargs):
+            # The run must have cleared the stale cache before consulting, so
+            # _get_docs would rebind against this run's staged corpus.
+            seen_retriever.append(server._docs_retriever)
+            return {"ok": True, "answer": "ok"}
+
+        server._set_scopes = lambda scopes, label="": None
+        server._get_memory_client = lambda: None
+        server.consult = consult
+        return server
+
+    def test_run_local_resets_retriever_and_restores_env(self):
+        cases = [{"id": "X", "question": "q", "keywords": ["k"]}]
+        seen_retriever = []
+        fake = self._fake_server(seen_retriever)
+        staging = tempfile.mkdtemp(prefix="eval-fake-staging-")
+        sentinel = os.path.join(staging, "sentinel-docs")
+        prior = os.environ.get("AR_DOCS_DIR")
+        os.environ["AR_DOCS_DIR"] = sentinel
+        try:
+            with mock.patch.dict(sys.modules, {"server": fake}), \
+                 mock.patch.object(run_consult_eval, "_stage_corpus",
+                                   return_value=staging):
+                responses = run_consult_eval._run_local(cases, k=1)
+            # Cleared before the first consult, so a stale tree is never read.
+            self.assertEqual(seen_retriever, [None])
+            # Reset again on the way out, so a later run restages cleanly.
+            self.assertIsNone(fake._docs_retriever)
+            self.assertFalse(fake._docs_init_failed)
+            # AR_DOCS_DIR restored to its prior value, not left at the (now
+            # deleted) staging path.
+            self.assertEqual(os.environ.get("AR_DOCS_DIR"), sentinel)
+            self.assertEqual(responses["X"][0]["answer"], "ok")
+        finally:
+            if prior is None:
+                os.environ.pop("AR_DOCS_DIR", None)
+            else:
+                os.environ["AR_DOCS_DIR"] = prior
+            shutil.rmtree(staging, ignore_errors=True)
+
+    def test_run_local_removes_ar_docs_dir_when_unset_before(self):
+        cases = [{"id": "X", "question": "q", "keywords": ["k"]}]
+        fake = self._fake_server([])
+        staging = tempfile.mkdtemp(prefix="eval-fake-staging-")
+        prior = os.environ.pop("AR_DOCS_DIR", None)
+        try:
+            with mock.patch.dict(sys.modules, {"server": fake}), \
+                 mock.patch.object(run_consult_eval, "_stage_corpus",
+                                   return_value=staging):
+                run_consult_eval._run_local(cases, k=1)
+            # Absent before the run, AR_DOCS_DIR must not be left set after it.
+            self.assertNotIn("AR_DOCS_DIR", os.environ)
+        finally:
+            if prior is not None:
+                os.environ["AR_DOCS_DIR"] = prior
+            shutil.rmtree(staging, ignore_errors=True)
 
 
 class TestBaselineReport(unittest.TestCase):
