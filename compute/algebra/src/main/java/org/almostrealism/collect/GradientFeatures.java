@@ -85,6 +85,42 @@ public interface GradientFeatures extends ComparisonFeatures {
 	}
 
 	/**
+	 * Computes a {@link ReduceAxis reduced} delta of a collection producer by contracting
+	 * its full Jacobian, {@code func.delta(target)}: the
+	 * {@link #jacobianGradient vector-Jacobian product} for {@link ReduceAxis#OUT}, and the
+	 * Jacobian-vector product for {@link ReduceAxis#IN}. This always materializes the
+	 * Jacobian, so it is the fallback for a producer that has no reduced delta of its own,
+	 * and the reference that any such delta must agree with.
+	 *
+	 * @param func   the collection producer to differentiate
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   the axis of the Jacobian to sum away, {@link ReduceAxis#OUT} or
+	 *               {@link ReduceAxis#IN}
+	 * @param weight the weight of each entry along that axis, or null to weight every
+	 *               entry by one
+	 * @return the reduced delta, in the shape of the axis that remains
+	 * @throws IllegalArgumentException if {@code axis} is {@link ReduceAxis#NONE}, for
+	 *                                  which there is nothing to contract
+	 */
+	default CollectionProducer jacobianContraction(CollectionProducer func, Producer<?> target,
+												  ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis == ReduceAxis.NONE) {
+			throw new IllegalArgumentException("The Jacobian of " + func.describe() + " has no axis to contract");
+		} else if (axis == ReduceAxis.OUT) {
+			return jacobianGradient(func, target, weight).reshape(axis.resultShape(func.getShape(), shape(target)));
+		}
+
+		int outSize = func.getShape().getTotalSize();
+		int inSize = shape(target).getTotalSize();
+		CollectionProducer jacobian = func.delta(target).reshape(outSize, inSize).traverse(1);
+		if (weight != null) {
+			jacobian = jacobian.multiply(CollectionFeatures.getInstance().c(weight).reshape(shape(inSize)).repeat(outSize));
+		}
+
+		return jacobian.traverse(1).sum().reshape(axis.resultShape(func.getShape(), shape(target)));
+	}
+
+	/**
 	 * Multiplies a Jacobian-shaped producer by an upstream gradient broadcast over
 	 * the input dimension. The gradient is reshaped to {@code [outSize]}, traversed
 	 * at axis 1, and repeated {@code inSize} times so each input position receives

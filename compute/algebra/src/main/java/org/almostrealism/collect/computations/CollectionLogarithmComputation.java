@@ -178,9 +178,9 @@ public class CollectionLogarithmComputation extends TraversableExpressionComputa
 	 *         to the parent if custom delta is disabled
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		if (!enableCustomDelta || axis != ReduceAxis.NONE) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		TraversalPolicy targetShape = shape(target);

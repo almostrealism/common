@@ -398,9 +398,9 @@ public class IndexProjectionProducerComputation
 
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		if (axis != ReduceAxis.NONE) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		Producer<PackedCollection> in = getInputs().get(1);
@@ -446,6 +446,6 @@ public class IndexProjectionProducerComputation
 					new IndexProjectionProducerComputation("projectDelta", shape.traverseEach(), project, delta));
 		}
 
-		return super.differentiate(target, axis, weight);
+		return super.deltaDependent(target, axis, weight);
 	}
 }

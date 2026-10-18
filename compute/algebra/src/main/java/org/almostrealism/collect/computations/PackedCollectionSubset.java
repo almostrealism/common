@@ -326,7 +326,7 @@ public class PackedCollectionSubset
 	 * @return A CollectionProducer representing the Jacobian matrix
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		if (axis == ReduceAxis.NONE && pos != null && getInputs().get(1).refersTo(target)) {
 			TraversalPolicy outputShape = getShape();
 			TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
@@ -334,7 +334,7 @@ public class PackedCollectionSubset
 			return new SubsetProjectionComputation(jacobianShape, outputShape, inputShape, pos);
 		}
 
-		return super.differentiate(target, axis, weight);
+		return super.deltaDependent(target, axis, weight);
 	}
 
 	/**

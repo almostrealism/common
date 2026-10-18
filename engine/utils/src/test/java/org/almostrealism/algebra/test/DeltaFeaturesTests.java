@@ -21,7 +21,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -55,7 +54,7 @@ public class DeltaFeaturesTests extends TestSuiteBase implements MatrixFeatures 
 		// dy = f'(g(x))
 		//    = w2
 		Producer<PackedCollection> in = c.matchInput(x).get();
-		Evaluable<PackedCollection> dy = ((CollectionProducerComputationBase) c).isolatedDelta(in).get();
+		Evaluable<PackedCollection> dy = c.delta(in).get();
 		PackedCollection dout = dy.evaluate(v);
 		dout.print();
 
@@ -93,7 +92,7 @@ public class DeltaFeaturesTests extends TestSuiteBase implements MatrixFeatures 
 		// dy = f'(x)
 		//    = 2x
 		Producer<PackedCollection> in = c.matchInput(x).get();
-		Evaluable<PackedCollection> dy = ((CollectionProducerComputationBase) c).isolatedDelta(in).get();
+		Evaluable<PackedCollection> dy = c.delta(in).get();
 		PackedCollection dout = dy.evaluate(v);
 		dout.print();
 
@@ -132,7 +131,7 @@ public class DeltaFeaturesTests extends TestSuiteBase implements MatrixFeatures 
 		// dy = f'(g(x))
 		//    = w0, w1
 		Producer<PackedCollection> in = c.matchInput(cp(input)).get();
-		Evaluable<PackedCollection> dy = ((CollectionProducerComputationBase) c).isolatedDelta(in).get();
+		Evaluable<PackedCollection> dy = c.delta(in).get();
 		PackedCollection dout = dy.evaluate();
 		dout.traverse().print();
 
@@ -167,7 +166,7 @@ public class DeltaFeaturesTests extends TestSuiteBase implements MatrixFeatures 
 		// dy = f'(g(x))
 		//    = w0, w1
 		Producer<PackedCollection> in = c.matchInput(cp(input)).get();
-		Evaluable<PackedCollection> dy = ((CollectionProducerComputationBase) c).isolatedDelta(in).get();
+		Evaluable<PackedCollection> dy = c.delta(in).get();
 		PackedCollection dout = dy.evaluate();
 		dout.traverse().print();
 

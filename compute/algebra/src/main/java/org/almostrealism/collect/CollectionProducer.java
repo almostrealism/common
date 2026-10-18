@@ -930,17 +930,28 @@ public interface CollectionProducer extends
 	 *       computation.</li>
 	 * </ul>
 	 *
-	 * <p>The cases determined by this producer's identity alone are answered here: a
-	 * target this producer cannot depend on gives zeros, and a target this producer is
-	 * gives the identity (the weight itself, once reduced). Every other case is
-	 * {@link #differentiate differentiated}, which is where a computation applies what it
-	 * knows of its own structure.</p>
+	 * <p>This is the only method through which a delta is obtained. This implementation
+	 * answers the cases determined by this producer's identity alone: a target this
+	 * producer cannot depend on gives zeros, and a target this producer is gives the
+	 * identity (the weight itself, once reduced). A producer with no derivative of its own
+	 * has no Jacobian with respect to anything else, and its reduced deltas are
+	 * {@link #jacobianContraction contractions} of that Jacobian.</p>
+	 *
+	 * <p>A producer that knows its derivative overrides this method, and leaves the
+	 * identity cases above to this implementation by deferring to it whenever
+	 * {@link #cannotMatch(Producer)} or {@link #refersTo(Producer)} holds for the target.
+	 * Computations do not override it:
+	 * {@link org.almostrealism.collect.computations.CollectionProducerComputationBase} does so
+	 * on their behalf, and offers protected extension points for the derivative of a
+	 * computation instead.</p>
 	 *
 	 * @param target the producer with respect to which to differentiate
 	 * @param axis   the axis of the Jacobian to sum away
 	 * @param weight the weight of each entry along that axis, or null to weight every
 	 *               entry by one
 	 * @return the delta, in the shape of the axes that remain
+	 * @throws UnsupportedOperationException if this producer cannot be differentiated
+	 *                                       with respect to the target
 	 */
 	default CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		TraversalPolicy resultShape = axis.resultShape(getShape(), shape(target));
@@ -948,50 +959,16 @@ public interface CollectionProducer extends
 		if (cannotMatch(target)) {
 			return zeros(resultShape);
 		} else if (!refersTo(target)) {
-			return differentiate(target, axis, weight);
+			if (axis == ReduceAxis.NONE) {
+				throw new UnsupportedOperationException("No Jacobian of " + describe());
+			}
+
+			return jacobianContraction(this, target, axis, weight);
 		} else if (axis == ReduceAxis.NONE) {
 			return identity(shape(getShape().getTotalSize(), shape(target).getTotalSize())).reshape(resultShape);
 		}
 
 		return weight == null ? constant(resultShape, 1.0) : c(weight).reshape(resultShape);
-	}
-
-	/**
-	 * Differentiates this producer with respect to a target that it may depend on and is
-	 * not, as {@link #delta(Producer, ReduceAxis, Producer)} describes. Computations that
-	 * know their derivative override this method. Because the caller says how the Jacobian
-	 * will be reduced, a computation can produce the reduced result directly from its own
-	 * structure, and pass the reduction on to its inputs through the chain rule, without
-	 * ever forming {@code J}.
-	 *
-	 * <p>This implementation has no Jacobian of its own to offer, and for a reduced delta
-	 * contracts the full {@link #delta(Producer) Jacobian}, which is always correct and is
-	 * what any override must agree with.</p>
-	 *
-	 * @param target the producer with respect to which to differentiate
-	 * @param axis   the axis of the Jacobian to sum away
-	 * @param weight the weight of each entry along that axis, or null to weight every
-	 *               entry by one
-	 * @return the delta, in the shape of the axes that remain
-	 * @throws UnsupportedOperationException if the full Jacobian is requested
-	 */
-	default CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
-		TraversalPolicy resultShape = axis.resultShape(getShape(), shape(target));
-
-		if (axis == ReduceAxis.NONE) {
-			throw new UnsupportedOperationException("No Jacobian of " + describe());
-		} else if (axis == ReduceAxis.OUT) {
-			return jacobianGradient(this, target, weight).reshape(resultShape);
-		}
-
-		int outSize = getShape().getTotalSize();
-		int inSize = shape(target).getTotalSize();
-		CollectionProducer jacobian = delta(target).reshape(outSize, inSize).traverse(1);
-		if (weight != null) {
-			jacobian = jacobian.multiply(c(weight).reshape(shape(inSize)).repeat(outSize));
-		}
-
-		return jacobian.traverse(1).sum().reshape(resultShape);
 	}
 
 	/**

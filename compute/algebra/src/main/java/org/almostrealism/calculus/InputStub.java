@@ -38,7 +38,7 @@ import java.util.List;
  *
  * <p>
  * {@link InputStub} is used internally by
- * {@link org.almostrealism.collect.computations.CollectionProducerComputationBase#isolatedDelta}
+ * {@link org.almostrealism.collect.computations.CollectionProducerComputationBase#deltaPartial}
  * to create isolated computational
  * graphs during gradient computation. When computing partial derivatives using the chain rule,
  * it's necessary to treat certain inputs as independent variables while preserving their shape
@@ -80,7 +80,7 @@ import java.util.List;
  *
  * @param <T>  the packed collection type
  * @author  Michael Murray
- * @see org.almostrealism.collect.computations.CollectionProducerComputationBase#isolatedDelta
+ * @see org.almostrealism.collect.computations.CollectionProducerComputationBase#deltaPartial
  */
 // TODO  This should probably extend DelegatedProducer
 public class InputStub<T extends PackedCollection> implements CollectionProducer,

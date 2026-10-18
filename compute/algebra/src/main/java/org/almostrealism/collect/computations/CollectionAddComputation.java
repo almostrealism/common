@@ -206,16 +206,16 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 	 * general implementation is used.
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		if (axis != ReduceAxis.OUT) {
-			return super.differentiate(target, axis, weight);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		long size = getShape().getTotalSizeLong();
 		List<Producer<?>> terms = new ArrayList<>();
 
 		for (Process<?, ?> child : getChildren().stream().skip(1).collect(Collectors.toList())) {
-			if (!(child instanceof Shape)) return super.differentiate(target, axis, weight);
+			if (!(child instanceof Shape)) return super.deltaDependent(target, axis, weight);
 
 			CollectionProducer operand = c((Producer) child);
 			if (operand.cannotMatch(target)) continue;
@@ -228,7 +228,7 @@ public class CollectionAddComputation extends TransitiveDeltaExpressionComputati
 				terms.add(operand.delta(target, axis,
 						weight == null ? null : reshape(operand.getShape(), weight)));
 			} else {
-				return super.differentiate(target, axis, weight);
+				return super.deltaDependent(target, axis, weight);
 			}
 		}
 

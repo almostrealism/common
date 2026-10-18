@@ -303,7 +303,7 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	 * @see org.almostrealism.collect.CollectionProducer#delta(Producer)
 	 */
 	@Override
-	public CollectionProducer differentiate(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
 		return new CollectionZerosComputation(axis.resultShape(getShape(), shape(target)));
 	}
 }

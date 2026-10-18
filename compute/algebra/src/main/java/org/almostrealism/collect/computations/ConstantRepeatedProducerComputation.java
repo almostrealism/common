@@ -269,7 +269,7 @@ public class ConstantRepeatedProducerComputation
 	 * 
 	 * <p>This method implements automatic differentiation for repeated computations with
 	 * constant iteration counts. It is reached when the base class's
-	 * {@link #differentiate} finds no identity, elementwise or chain rule case, and creates a
+	 * {@link #deltaDependent} finds no identity, elementwise or chain rule case, and creates a
 	 * specialized {@link ConstantRepeatedDeltaComputation} optimized for constant iteration
 	 * scenarios.</p>
 	 *
@@ -301,10 +301,10 @@ public class ConstantRepeatedProducerComputation
 	 * @throws IllegalArgumentException if the target is not compatible with this computation
 	 * 
 	 * @see ConstantRepeatedDeltaComputation
-	 * @see #differentiate
+	 * @see #deltaDependent
 	 */
 	@Override
-	protected CollectionProducer jacobian(Producer<?> target) {
+	protected CollectionProducer deltaMatrix(Producer<?> target) {
 		return ConstantRepeatedDeltaComputation.create(
 				getShape(), shape(target),
 				count, (args, localIndex) -> getExpression(args, null, localIndex), target,
