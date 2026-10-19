@@ -128,6 +128,54 @@ public class AggregationSignatureTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that {@link CollectionSumComputation#withReplaceLoop(boolean)} returns its own
+	 * concrete type with the flag toggled — not a raw aggregation — and leaves the computed
+	 * result unchanged. This guards the behaviour the subclass model fixed: previously, toggling
+	 * the flag on a sum returned a raw {@code AggregatedProducerComputation}, silently dropping
+	 * the sum's type and its {@code deltaDependent} override. The matching-setting call must
+	 * return the same instance rather than rebuild.
+	 */
+	@Test(timeout = 60000)
+	public void sumWithReplaceLoopRebuildsSumType() {
+		PackedCollection data = pack(2.0, 3.0, 4.0, 5.0);
+
+		CollectionSumComputation sum = new CollectionSumComputation(cp(data));
+		assertTrue("Sum is constructed with loop replacement enabled", sum.isReplaceLoop());
+		assertTrue("Matching setting returns the same instance", sum == sum.withReplaceLoop(true));
+
+		CollectionSumComputation toggled = sum.withReplaceLoop(false);
+		assertTrue("Toggling rebuilds a CollectionSumComputation",
+				toggled.getClass() == CollectionSumComputation.class);
+		assertFalse("Loop replacement is now disabled", toggled.isReplaceLoop());
+		assertEquals(14.0, toggled.get().evaluate().toDouble(0));
+	}
+
+	/**
+	 * Verifies that {@link CollectionMaxComputation#withReplaceLoop(boolean)} returns the same
+	 * instance when the setting already matches and rejects a change otherwise. A max reduction
+	 * is constructed without loop replacement and has no reason to toggle it, so requesting a
+	 * different setting raises {@link UnsupportedOperationException} (matching the weighted-sum
+	 * precedent) rather than silently rebuilding a differently-behaving kernel.
+	 */
+	@Test(timeout = 60000)
+	public void maxWithReplaceLoopRejectsChange() {
+		PackedCollection data = pack(2.0, 3.0, 4.0, 5.0);
+
+		CollectionMaxComputation max = new CollectionMaxComputation(cp(data));
+		assertFalse("Max is constructed without loop replacement", max.isReplaceLoop());
+		assertTrue("Matching setting returns the same instance", max == max.withReplaceLoop(false));
+
+		boolean rejected = false;
+		try {
+			max.withReplaceLoop(true);
+		} catch (UnsupportedOperationException e) {
+			rejected = true;
+		}
+		assertTrue("Changing the loop replacement setting on a max is unsupported", rejected);
+		assertEquals(5.0, max.get().evaluate().toDouble(0));
+	}
+
+	/**
 	 * Verifies that a repeated traversable computation whose behaviour is fixed by its class —
 	 * {@link IndexOfMaxComputation}, which carries no caller-supplied functions — produces a
 	 * stable, non-null signature that identifies the concrete class, and reproduces the same
