@@ -29,7 +29,6 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -156,7 +155,7 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	public PackedCollection loadPrompt(long[] tokens) {
 		int length = config.getMaxLength();
 		int count = tokens.length < length ? tokens.length : length;
-		ByteBuffer ids = ByteBuffer.allocate(Double.BYTES * length);
+		long[] ids = new long[length];
 		for (int i = 0; i < length; i++) {
 			boolean present = i < tokens.length;
 			if (present && (tokens[i] < 0 || tokens[i] >= config.getVocabularySize())) {
@@ -164,10 +163,10 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 						+ " is outside the vocabulary [0, " + config.getVocabularySize() + ")");
 			}
 
-			ids.putDouble(present ? (double) tokens[i] : (double) PAD_TOKEN);
+			ids[i] = present ? tokens[i] : PAD_TOKEN;
 		}
 
-		tokenIds.read(ids.flip());
+		tokenIds.fill(ids);
 		promptLength.fill(count);
 
 		if (attentionMaskUpdate == null) {
