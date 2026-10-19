@@ -196,6 +196,21 @@ END;
 """
 
 
+# v5: give each project an owning workspace.
+#
+# projects.workspace_id - the workspace whose agents may read and work on the
+#           project's releases and tasks. A task or release belongs to the
+#           workspace of its project; nothing else in the tracker carries a
+#           workspace. NULL (every project that existed before v5) means no
+#           workspace owns the project yet, so it is visible only to callers
+#           that are not limited to a workspace. A person assigns it.
+_SCHEMA_V5 = """
+ALTER TABLE projects ADD COLUMN workspace_id TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
+"""
+
+
 def run_migrations(conn: sqlite3.Connection) -> None:
     """Apply all pending schema migrations to the database connection.
 
@@ -236,6 +251,10 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         finally:
             conn.execute("PRAGMA foreign_keys = ON")
         version = 4
+
+    if version < 5:
+        _apply(conn, _SCHEMA_V5 + "UPDATE schema_version SET version = 5;")
+        version = 5
 
 
 def _apply(conn: sqlite3.Connection, script: str) -> None:

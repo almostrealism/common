@@ -789,10 +789,10 @@ public class InstructionPromptBuilder {
             sb.append("and out of scope for this branch -- an edge case the branch does not need ");
             sb.append("to cover, a related improvement, a larger refactor -- do NOT extend the ");
             sb.append("branch through more review rounds to address it. Instead file a follow-up ");
-            sb.append("task with tracker_file_follow_up_task (pass the project_id, a title and ");
-            sb.append("description, and the pr_number and review_comment that prompted it); the ");
-            sb.append("server files it into the backlog for a person to triage. First read back ");
-            sb.append("the follow-up tasks you already filed with tracker_list_tasks or ");
+            sb.append("task with tracker_create_task (pass the project_id, a title and a ");
+            sb.append("description, and put the PR number and the URL of the review comment that ");
+            sb.append("prompted it in the description); the task lands in the backlog for a person ");
+            sb.append("to triage. First look for a follow-up task already filed with tracker_list_tasks or ");
             sb.append("tracker_search_tasks so you do not file a duplicate. Then reply in the ");
             sb.append("review thread with the task id instead of changing the code, following ");
             sb.append("the reply rules above on who to reply to and when. List the ids of every ");

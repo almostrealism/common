@@ -152,7 +152,7 @@ class FollowUpSourceConstraintTests(_FollowUpTestBase):
 
             store = TrackerStore(tmp.name)
             try:
-                self.assertEqual(4, migrate._get_version(store._conn))
+                self.assertGreaterEqual(migrate._get_version(store._conn), 4)
                 self.assertEqual(["a"], store.get_task("b")["blocked_by"])
                 # The widened CHECK is in force on the rebuilt table.
                 store.create_task(title="f", source=f"{FOLLOW_UP_SOURCE_PREFIX}ws/job")

@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -31,8 +32,10 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Tests for {@link Workstream#getTrackerCapabilities()}: the roles that let
- * agents on a workstream use the narrow tracker tools.
+ * Tests for {@link Workstream#getTrackerCapabilities()}: the tracker role
+ * ({@code planner}, with {@code steward} accepted as a legacy alias) that lets
+ * agents on a workstream create and edit any task in their workspace and
+ * create releases.
  *
  * <p>ar-manager decides whether to allow those tools by reading the roles from
  * the controller's workstream list, so a role that is not emitted in
@@ -49,12 +52,32 @@ public class WorkstreamTrackerCapabilitiesTest extends TestSuiteBase {
 		assertFalse(ws.toSummaryJson().contains("trackerCapabilities"));
 	}
 
-	/** Granted roles are emitted as an array for ar-manager to read. */
+	/**
+	 * Granted roles are emitted as an array for ar-manager to read, in
+	 * canonical form: the legacy {@code steward} alias is emitted as the
+	 * {@code planner} role it stands for, once.
+	 */
 	@Test(timeout = 10000)
 	public void rolesAreEmittedInTheSummary() {
 		Workstream ws = new Workstream("ws-roles", "C", "#c");
 		ws.setTrackerCapabilities(Arrays.asList("planner", "steward"));
-		assertTrue(ws.toSummaryJson().contains("\"trackerCapabilities\":[\"planner\",\"steward\"]"));
+		assertTrue(ws.toSummaryJson().contains("\"trackerCapabilities\":[\"planner\"]"));
+	}
+
+	/**
+	 * {@code steward} is accepted as an alias of {@code planner}, so saved
+	 * configurations keep working, and the aliases collapse into one role.
+	 * {@code planner} is the only canonical role.
+	 */
+	@Test(timeout = 10000)
+	public void stewardIsALegacyAliasOfPlanner() {
+		assertEquals(Set.of("planner"), Workstream.TRACKER_CAPABILITIES);
+		assertNull(Workstream.unknownTrackerCapability(List.of("steward")));
+		Workstream ws = new Workstream("ws-alias", "C", "#c");
+		ws.setTrackerCapabilities(List.of("steward"));
+		assertEquals(List.of("planner"), ws.getTrackerCapabilities());
+		ws.setTrackerCapabilities(List.of("steward", "planner", "steward"));
+		assertEquals(List.of("planner"), ws.getTrackerCapabilities());
 	}
 
 	/**
@@ -105,7 +128,11 @@ public class WorkstreamTrackerCapabilitiesTest extends TestSuiteBase {
 		}
 	}
 
-	/** Roles survive a YAML load, a runtime change and a save-and-reload. */
+	/**
+	 * Roles survive a YAML load, a runtime change and a save-and-reload; a
+	 * legacy {@code steward} entry loads as {@code planner} and is saved back
+	 * in that form.
+	 */
 	@Test(timeout = 10000)
 	public void rolesRoundTripThroughYaml() throws IOException {
 		String yaml = "workstreams:\n"
@@ -117,7 +144,7 @@ public class WorkstreamTrackerCapabilitiesTest extends TestSuiteBase {
 				+ "      - steward\n";
 		WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
 		Workstream live = config.getWorkstreams().get(0).toWorkstream();
-		assertEquals(List.of("steward"), live.getTrackerCapabilities());
+		assertEquals(List.of("planner"), live.getTrackerCapabilities());
 
 		live.setTrackerCapabilities(List.of("steward", "planner"));
 		config.syncFromWorkstreams(Arrays.asList(live));
@@ -125,7 +152,9 @@ public class WorkstreamTrackerCapabilitiesTest extends TestSuiteBase {
 		file.deleteOnExit();
 		config.saveToYaml(file);
 		Workstream reloaded = WorkstreamConfig.loadFromYaml(file).getWorkstreams().get(0).toWorkstream();
-		assertEquals(List.of("steward", "planner"), reloaded.getTrackerCapabilities());
+		assertEquals(List.of("planner"), reloaded.getTrackerCapabilities());
+		assertEquals(List.of("planner"),
+				WorkstreamConfig.loadFromYaml(file).getWorkstreams().get(0).getTrackerCapabilities());
 	}
 
 	/** A workstream with no roles writes no roles key. */

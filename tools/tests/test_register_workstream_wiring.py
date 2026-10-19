@@ -181,13 +181,16 @@ class RegistrationDeclaresNoModelConfigTests(unittest.TestCase):
     #: model. Adding a key here is the deliberate act the test exists to
     #: require.
     #: ``trackerCapabilities`` grants the workstream's agents a tracker role
-    #: (the task-planning round registers its workstream as a "planner"); it
+    #: (the goal-decomposition round registers its workstream as a "planner"); it
     #: is a permission, not a model setting. ``requiredLabels`` chooses which
     #: nodes may run the workstream's jobs (Verify Completion applies the ones a
-    #: plan declares); it selects a machine, not a model.
+    #: plan declares); it selects a machine, not a model. ``dependentRepos``
+    #: lists repositories checked out beside this one (goal decomposition
+    #: reads the framework's code next to an application's); it selects
+    #: source, not a model.
     _ALLOWED_PAYLOAD_KEYS = frozenset({
         "defaultBranch", "baseBranch", "channelName", "planningDocument", "repoUrl",
-        "trackerCapabilities", "requiredLabels",
+        "trackerCapabilities", "requiredLabels", "dependentRepos",
     })
 
     @staticmethod

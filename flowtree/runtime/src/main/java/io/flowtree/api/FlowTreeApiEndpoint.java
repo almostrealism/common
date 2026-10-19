@@ -266,7 +266,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** The tracker service; {@code null} until configured. */
     private TrackerService tracker;
-    /** Answers {@code GET /api/tracker/claimable}; {@code null} until configured. */
+    /** Answers {@code GET /api/tracker/claimable} and {@code POST /api/tracker/claim}; {@code null} until configured. */
     private TrackerQueryHandler trackerQueryHandler;
     /** Closes out claimed tracker tasks whose branch finished; {@code null} until started. */
     private TaskCloseOutReconciler taskCloseOut;
@@ -408,14 +408,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Points {@code GET /api/tracker/claimable} at the tracker service.
+     * Points {@code GET /api/tracker/claimable} and {@code POST /api/tracker/claim}
+     * at the tracker service.
      *
      * @param url       the tracker base URL (e.g., "http://ar-tracker:8030")
      * @param authToken the tracker bearer token, or {@code null} when it has none
      */
     public void setTrackerService(String url, String authToken) {
         this.tracker = new TrackerService(url, authToken);
-        this.trackerQueryHandler = new TrackerQueryHandler(tracker);
+        this.trackerQueryHandler = new TrackerQueryHandler(tracker, notifiers);
     }
 
     /**
@@ -592,6 +593,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return trackerQueryHandler == null
                     ? errorResponse("tracker service not configured")
                     : trackerQueryHandler.handleClaimable(session, this::errorResponse);
+        }
+
+        if (Method.POST.equals(method) && "/api/tracker/claim".equals(uri)) {
+            return trackerQueryHandler == null
+                    ? newFixedLengthResponse(Response.Status.SERVICE_UNAVAILABLE, "application/json",
+                            "{\"ok\":false,\"error\":\"tracker service not configured\"}")
+                    : trackerQueryHandler.handleClaim(readBody(session), this::errorResponse);
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {

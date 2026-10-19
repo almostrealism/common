@@ -60,36 +60,29 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * ar-manager tool names (without the {@code mcp__ar-manager__} prefix)
      * that are always included for agent jobs.
      *
-     * <p>The general tracker tools are read-only for agents. Task endpoints
-     * ({@code tracker_get_task}, {@code tracker_list_tasks}, and
-     * {@code tracker_search_tasks}) are workspace-scoped on the server
-     * and only expose tasks attached to a workstream in the agent's
-     * workspace. Other included tracker read endpoints
-     * ({@code tracker_project_summary}, {@code tracker_list_projects},
-     * and {@code tracker_list_releases}) remain available for shared
-     * project and release visibility and are not documented here as
-     * strictly workspace-filtered.</p>
+     * <p>Every agent gets the same tracker tools, and ar-manager decides on
+     * the server what each call may do; this allowlist does not vary by
+     * role. Reads ({@code tracker_get_task}, {@code tracker_list_tasks},
+     * {@code tracker_search_tasks}, {@code tracker_project_summary},
+     * {@code tracker_list_projects} and {@code tracker_list_releases}) are
+     * isolated to the agent's own workspace. Writes are limited by the
+     * calling workstream's role, which ar-manager reads from
+     * {@link io.flowtree.workstream.Workstream#getTrackerCapabilities()}:</p>
+     * <ul>
+     *   <li>{@code tracker_create_task}: any agent may file a task into the
+     *       backlog; a {@code planner} workstream may also set the full
+     *       fields (release, status, stage, priority, dependencies).</li>
+     *   <li>{@code tracker_update_task}: a {@code planner} workstream may edit
+     *       any task in its workspace; any other workstream may edit only the
+     *       tasks linked to itself.</li>
+     *   <li>{@code tracker_create_release}: {@code planner} only.</li>
+     * </ul>
      *
-     * <p>Three narrow tracker tools that do write are listed here too:
-     * {@code tracker_claim_next_task}, {@code tracker_list_release_tasks}
-     * and {@code tracker_upsert_goal_task}. They are not gated by this
-     * allowlist but by ar-manager itself, which refuses them unless the
-     * calling workstream holds the matching entry of
-     * {@link io.flowtree.workstream.Workstream#getTrackerCapabilities()},
-     * and each enforces its own limits (claiming only ready tasks, editing
-     * only goal-derived ones, never deleting).</p>
-     *
-     * <p>{@code tracker_file_follow_up_task} is a fourth narrow write, open to
-     * every coding job rather than gated on a tracker capability, because the
-     * server-side limits are what make it safe: the task it files is always in
-     * the backlog, never linked to a workstream, filed under a provenance
-     * source derived from the job's own token, capped per job, and only ever
-     * at the default priority. An agent uses it to record a valid review point
-     * that is out of scope for the branch instead of extending the branch
-     * through more review rounds. The same provenance source lets a scoped
-     * caller read back (through {@code tracker_list_tasks} /
-     * {@code tracker_search_tasks}) the unlinked follow-up tasks its own
-     * workspace filed, without widening any other scoping rule.</p>
+     * <p>Deleting anything, and updating projects or releases, stays out of
+     * reach of agents; see {@link #EXCLUDED_AR_MANAGER_TOOLS}. Agents never
+     * claim tasks themselves: CI claims the next task through the
+     * controller's {@code POST /api/tracker/claim} and hands it to the agent
+     * in its prompt.</p>
      *
      * <p>{@code workstream_submit_task} is included so agents can
      * delegate work to other workstreams in the same workspace. The
@@ -149,10 +142,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "tracker_project_summary",
             "tracker_list_projects",
             "tracker_list_releases",
-            "tracker_claim_next_task",
-            "tracker_list_release_tasks",
-            "tracker_upsert_goal_task",
-            "tracker_file_follow_up_task"
+            "tracker_create_task",
+            "tracker_update_task",
+            "tracker_create_release"
         ))
     );
 
@@ -160,8 +152,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * ar-manager tool names that are deliberately NOT exposed to coding
      * agents. Each tool listed here is either an admin/orchestration
      * operation (creating workstreams, dispatching workflows, mutating
-     * controller config) or a shared-state mutation (creating, updating,
-     * or deleting tracker projects, releases, or tasks).
+     * controller config) or a shared-state mutation of the tracker that no
+     * agent role is trusted with (creating, updating or deleting projects,
+     * updating or deleting releases, deleting tasks).
      *
      * <p>Tools in this set still exist on the ar-manager server but
      * cannot be invoked by agent jobs through the
@@ -204,15 +197,12 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "project_create_branch",
             "project_verify_branch",
             "project_commit_plan",
-            // Tracker mutations (agents must not alter the shared tracker)
+            // Tracker mutations no agent role may make
             "tracker_create_project",
             "tracker_update_project",
             "tracker_delete_project",
-            "tracker_create_release",
             "tracker_update_release",
             "tracker_delete_release",
-            "tracker_create_task",
-            "tracker_update_task",
             "tracker_delete_task",
             // Workspace secrets: still callable by admin/Slack flows on the
             // controller, but agents use the in-container ar-secrets MCP
