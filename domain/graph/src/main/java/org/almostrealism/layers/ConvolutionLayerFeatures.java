@@ -576,7 +576,6 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 		return input -> {
 			CollectionProducer conv =
 					c(input).reshape(-1, 1, channels, height, width);
-			// TODO(review): cp(filters.reshape(...)) is a different match root than the layer's cp(filters), so the filter delta is zero
 			CollectionProducer filter =
 					cp(filters.reshape(1, filterCount, channels, size, size));
 

@@ -68,48 +68,33 @@ public class ConvolutionJacobianGradientTest extends TestSuiteBase implements La
 	 */
 	@Test(timeout = 20 * 60000)
 	public void inputGradient() {
-		int out = SIZE - KERNEL + 1;
-		TraversalPolicy inputShape = shape(1, CHANNELS, SIZE, SIZE);
-		TraversalPolicy outputShape = shape(1, FILTERS, out, out);
+		Convolution conv = new Convolution();
+		Producer<PackedCollection> in = cp(conv.input);
+		CollectionProducer operator = conv.operator(in);
+		Assert.assertEquals(conv.outputShape.getTotalSize(), operator.getShape().getTotalSize());
 
-		PackedCollection input = new PackedCollection(inputShape).randnFill();
-		PackedCollection filters = new PackedCollection(shape(FILTERS, CHANNELS, KERNEL, KERNEL)).randnFill();
-		PackedCollection gradient = new PackedCollection(outputShape).randnFill();
-
-		Producer<PackedCollection> in = cp(input);
-		CollectionProducer conv = (CollectionProducer) convolution2dOperator(inputShape, filters, null).getResultant(in);
-		Assert.assertEquals(outputShape.getTotalSize(), conv.getShape().getTotalSize());
-
-		double[] x = input.toArray(0, inputShape.getTotalSize());
-		double[] w = filters.toArray(0, filters.getShape().getTotalSize());
-		double[] g = gradient.toArray(0, outputShape.getTotalSize());
-		double[] forward = new double[outputShape.getTotalSize()];
-		double[] inputGradient = new double[inputShape.getTotalSize()];
-
-		for (int f = 0; f < FILTERS; f++) {
-			for (int i = 0; i < out; i++) {
-				for (int j = 0; j < out; j++) {
-					int o = (f * out + i) * out + j;
-					for (int c = 0; c < CHANNELS; c++) {
-						for (int ki = 0; ki < KERNEL; ki++) {
-							for (int kj = 0; kj < KERNEL; kj++) {
-								int xi = (c * SIZE + i + ki) * SIZE + j + kj;
-								int wi = ((f * CHANNELS + c) * KERNEL + ki) * KERNEL + kj;
-								forward[o] += x[xi] * w[wi];
-								inputGradient[xi] += g[o] * w[wi];
-							}
-						}
-					}
-				}
-			}
-		}
-
-		assertValuesMatch("forward", forward, evaluate(conv).toArray(0, forward.length));
+		assertValuesMatch("forward", conv.forward, evaluate(operator).toArray(0, conv.forward.length));
 
 		Assert.assertTrue("the input gradient of a sliding window should contract the full Jacobian",
-				largestComputation(conv.delta(in, ReduceAxis.OUT, cp(gradient))) > outputShape.getTotalSizeLong());
+				largestComputation(operator.delta(in, ReduceAxis.OUT, cp(conv.gradient)))
+						> conv.outputShape.getTotalSizeLong());
 
-		assertGradientMatches("input", conv, in, cp(gradient), inputGradient);
+		assertGradientMatches("input", operator, in, cp(conv.gradient), conv.inputGradient);
+	}
+
+	/**
+	 * The filter gradient of a convolution whose operator views the filters through
+	 * {@code cp(filters.reshape(...))} agrees with its definition when it is taken with
+	 * respect to {@code cp(filters)}, the producer a convolution layer differentiates its
+	 * weight by, so the two views of the same filters are recognized as one input.
+	 */
+	@Test(timeout = 20 * 60000)
+	public void filterGradient() {
+		Convolution conv = new Convolution();
+		Producer<PackedCollection> weight = cp(conv.filters);
+		CollectionProducer operator = conv.operator(cp(conv.input));
+
+		assertGradientMatches("filter", operator, weight, cp(conv.gradient), conv.filterGradient);
 	}
 
 	/**
@@ -196,6 +181,77 @@ public class ConvolutionJacobianGradientTest extends TestSuiteBase implements La
 	 */
 	private static void assertValuesMatch(String label, double[] expected, double[] actual) {
 		DenseVectorJacobianProductTest.assertValuesMatch(label, expected, actual);
+	}
+
+	/**
+	 * A random convolution input, filters and upstream gradient, with the forward pass and
+	 * the gradients with respect to the input and the filters computed on the host from the
+	 * definition of the convolution.
+	 */
+	private class Convolution {
+		/** Height and width of the output. */
+		private final int out = SIZE - KERNEL + 1;
+
+		/** Shape of the input. */
+		private final TraversalPolicy inputShape = shape(1, CHANNELS, SIZE, SIZE);
+
+		/** Shape of the output. */
+		private final TraversalPolicy outputShape = shape(1, FILTERS, out, out);
+
+		/** The input. */
+		private final PackedCollection input = new PackedCollection(inputShape).randnFill();
+
+		/** The filters. */
+		private final PackedCollection filters =
+				new PackedCollection(shape(FILTERS, CHANNELS, KERNEL, KERNEL)).randnFill();
+
+		/** The upstream gradient. */
+		private final PackedCollection gradient = new PackedCollection(outputShape).randnFill();
+
+		/** The forward pass, computed from the definition. */
+		private final double[] forward = new double[outputShape.getTotalSize()];
+
+		/** The gradient with respect to the input, computed from the definition. */
+		private final double[] inputGradient = new double[inputShape.getTotalSize()];
+
+		/** The gradient with respect to the filters, computed from the definition. */
+		private final double[] filterGradient = new double[filters.getShape().getTotalSize()];
+
+		/** Computes the forward pass and both gradients from the definition. */
+		Convolution() {
+			double[] x = input.toArray(0, inputShape.getTotalSize());
+			double[] w = filters.toArray(0, filters.getShape().getTotalSize());
+			double[] g = gradient.toArray(0, outputShape.getTotalSize());
+
+			for (int f = 0; f < FILTERS; f++) {
+				for (int i = 0; i < out; i++) {
+					for (int j = 0; j < out; j++) {
+						int o = (f * out + i) * out + j;
+						for (int c = 0; c < CHANNELS; c++) {
+							for (int ki = 0; ki < KERNEL; ki++) {
+								for (int kj = 0; kj < KERNEL; kj++) {
+									int xi = (c * SIZE + i + ki) * SIZE + j + kj;
+									int wi = ((f * CHANNELS + c) * KERNEL + ki) * KERNEL + kj;
+									forward[o] += x[xi] * w[wi];
+									inputGradient[xi] += g[o] * w[wi];
+									filterGradient[wi] += g[o] * x[xi];
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		/**
+		 * Applies the convolution operator to the given input.
+		 *
+		 * @param in the input producer
+		 * @return the convolution of the input by {@link #filters}
+		 */
+		CollectionProducer operator(Producer<PackedCollection> in) {
+			return (CollectionProducer) convolution2dOperator(inputShape, filters, null).getResultant(in);
+		}
 	}
 
 	/**

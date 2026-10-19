@@ -94,7 +94,11 @@ gradient takes the full-Jacobian fallback: the largest computation in its reduce
 three evaluations both with and without the fix, so at this size the convolution does not share the
 defect.
 
-The same test exposed an unrelated defect: the operator binds its filters as
-`cp(filters.reshape(...))`, while the layer differentiates with respect to `cp(filters)`. These are
-two different match roots, so the reduced delta with respect to the filters is identically zero. It
-is recorded for a separate fix.
+The same test exposed an unrelated defect. The operator binds its filters as
+`cp(filters.reshape(...))`, while the layer differentiates with respect to `cp(filters)`, and the
+filter gradient (`ConvolutionJacobianGradientTest.filterGradient`) came out identically zero. Both
+producers are provider match roots, and `CollectionProviderProducer` matched another provider only
+when it held the very same `PackedCollection` instance, which a reshape view is not. Providers now
+also match when their values are views that `MemoryData.hasSameElements` recognizes as the same
+elements of the same memory in the same order, so a reshape of a collection and the collection
+itself are one input to the derivative, and the filter gradient agrees with the host definition.

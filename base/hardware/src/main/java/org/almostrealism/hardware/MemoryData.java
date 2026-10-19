@@ -34,6 +34,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.function.DoublePredicate;
 import java.util.function.Supplier;
 import java.util.stream.DoubleStream;
@@ -575,6 +576,26 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		} else {
 			return getDelegateOrdering().compose(getDelegate().getMemOrdering());
 		}
+	}
+
+	/**
+	 * Returns {@code true} if this instance and {@code other} present the same elements of
+	 * the same underlying memory in the same order, so that element {@code i} of one is
+	 * element {@code i} of the other. This holds for distinct views of one collection that
+	 * differ only in shape, such as a reshape of it, and fails for a view of part of it or
+	 * of a different region. Views whose {@link #getMemOrdering() orderings} are not both
+	 * {@code null} are only recognized when those orderings are equal.
+	 *
+	 * @param other the memory data to compare with
+	 * @return {@code true} if both expose the same elements of the same memory in the same order
+	 */
+	default boolean hasSameElements(MemoryData other) {
+		if (other == this) return true;
+		if (other == null || getRootDelegate() != other.getRootDelegate()) return false;
+
+		return getOffset() == other.getOffset()
+				&& getMemLength() == other.getMemLength()
+				&& Objects.equals(getMemOrdering(), other.getMemOrdering());
 	}
 
 	/**
