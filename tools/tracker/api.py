@@ -50,9 +50,6 @@ def _valid_source(value: object) -> bool:
     return any(source.startswith(prefix) and len(source) > len(prefix)
                for prefix in (GOAL_SOURCE_PREFIX, FOLLOW_UP_SOURCE_PREFIX))
 
-# Refusal of a goal-only update of a task a person wrote.
-_NOT_GOAL_DERIVED = "Task was not derived from goal documents; only a person may change it"
-
 # Priority is a signed integer; database CHECK constraint mirrors this range.
 _MIN_PRIORITY = -2
 _MAX_PRIORITY = 2
@@ -119,6 +116,19 @@ def _text_field(body, key: str) -> Optional[str]:
     if not isinstance(value, str):
         return None
     return value.strip()
+
+
+def _workspace_ids(params) -> Optional[list]:
+    """Return the workspaces a list request is limited to, or None for no limit.
+
+    The ``workspace_id`` query parameter holds one or more comma-separated
+    workspace ids. A parameter that is present but names none limits the
+    request to nothing rather than lifting the limit, so a caller that meant
+    to restrict a query can never widen it by sending an empty value.
+    """
+    if "workspace_id" not in params:
+        return None
+    return [w.strip() for w in params.get("workspace_id", "").split(",") if w.strip()]
 
 
 def _bad_request(message: str) -> JSONResponse:
@@ -217,11 +227,12 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
     # ------------------------------------------------------------------
 
     async def list_projects(request: Request) -> JSONResponse:
-        """GET /v1/projects"""
+        """GET /v1/projects[?workspace_id=<id>[,<id>...]]"""
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
-        return JSONResponse({"ok": True, "projects": store.list_projects()})
+        return JSONResponse({"ok": True, "projects": store.list_projects(
+            workspace_ids=_workspace_ids(request.query_params))})
 
     async def create_project(request: Request) -> JSONResponse:
         """POST /v1/projects"""
@@ -236,7 +247,10 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             return JSONResponse(
                 {"ok": False, "error": "name is required"}, status_code=400
             )
-        project = store.create_project(name)
+        workspace_id = _text_field(body, "workspace_id")
+        if workspace_id is None:
+            return _bad_request("workspace_id must be a string or null")
+        project = store.create_project(name, workspace_id or None)
         return JSONResponse({"ok": True, "project": project}, status_code=201)
 
     async def get_project(request: Request) -> JSONResponse:
@@ -252,19 +266,31 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         return JSONResponse({"ok": True, "project": project})
 
     async def update_project(request: Request) -> JSONResponse:
-        """PUT /v1/projects/{id}"""
+        """PUT /v1/projects/{id}
+
+        Body: ``{"name", "workspace_id"}``, each optional; an absent field is
+        left unchanged. ``workspace_id`` null (or empty) leaves the project
+        owned by no workspace.
+        """
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
         body, err = await _json_body(request)
         if err:
             return err
-        name = _text_field(body, "name")
-        if not name:
-            return JSONResponse(
-                {"ok": False, "error": "name is required"}, status_code=400
-            )
-        project = store.update_project(request.path_params["id"], name)
+        name: object = UNSET
+        if "name" in body:
+            name = _text_field(body, "name")
+            if not name:
+                return JSONResponse(
+                    {"ok": False, "error": "name cannot be empty"}, status_code=400
+                )
+        workspace_id: object = UNSET
+        if "workspace_id" in body:
+            workspace_id = _text_field(body, "workspace_id")
+            if workspace_id is None:
+                return _bad_request("workspace_id must be a string or null")
+        project = store.update_project(request.path_params["id"], name, workspace_id)
         if not project:
             return JSONResponse(
                 {"ok": False, "error": "Project not found"}, status_code=404
@@ -288,12 +314,13 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
     # ------------------------------------------------------------------
 
     async def list_releases(request: Request) -> JSONResponse:
-        """GET /v1/releases"""
+        """GET /v1/releases[?project_id=<id>][&workspace_id=<id>[,<id>...]]"""
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
         project_id = request.query_params.get("project_id")
-        return JSONResponse({"ok": True, "releases": store.list_releases(project_id)})
+        return JSONResponse({"ok": True, "releases": store.list_releases(
+            project_id, workspace_ids=_workspace_ids(request.query_params))})
 
     async def create_release(request: Request) -> JSONResponse:
         """POST /v1/releases"""
@@ -386,6 +413,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Accepts an optional ``fields`` query parameter:
         - ``full`` (default) — returns all fields including description.
         - ``headlines`` — omits description; use when scanning large backlogs.
+
+        ``workspace_id`` (comma-separated) limits the result to tasks whose
+        project one of those workspaces owns.
         """
         auth_err = await _check_auth(request)
         if auth_err:
@@ -430,6 +460,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             sort=qp.get("sort", "created_at"),
             order=qp.get("order", "desc"),
             headlines_only=(fields == "headlines"),
+            workspace_ids=_workspace_ids(qp),
         )
         return JSONResponse({"ok": True, **result})
 
@@ -487,13 +518,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         return JSONResponse({"ok": True, "task": task})
 
     async def update_task(request: Request) -> JSONResponse:
-        """PUT /v1/tasks/{id}
-
-        With the query parameter ``only_goal_derived=true`` the update applies
-        only while the stored task is goal-derived; a task a person wrote is
-        left untouched and the response is a 409. The check and the write are
-        one atomic step in the store.
-        """
+        """PUT /v1/tasks/{id}"""
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
@@ -540,8 +565,6 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 return None
             return coerce(val) if coerce else val
 
-        only_goal_derived = (
-            request.query_params.get("only_goal_derived", "").lower() in ("1", "true"))
         task = store.update_task(
             task_id=task_id,
             title=_field("title", coerce=lambda v: v.strip()),
@@ -554,13 +577,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             stage=_field("stage"),
             source=_field("source", coerce=lambda v: v.strip()),
             blocked_by=_field("blocked_by"),
-            only_goal_derived=only_goal_derived,
         )
         if task is None:
-            if only_goal_derived and store.get_task(task_id):
-                return JSONResponse(
-                    {"ok": False, "error": _NOT_GOAL_DERIVED}, status_code=409
-                )
             return JSONResponse(
                 {"ok": False, "error": "Task not found"}, status_code=404
             )
@@ -588,6 +606,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Accepts an optional ``fields`` query parameter:
         - ``full`` (default) — returns all fields including description.
         - ``headlines`` — omits description; use when scanning large backlogs.
+
+        ``workspace_id`` (comma-separated) limits the result to tasks whose
+        project one of those workspaces owns.
         """
         auth_err = await _check_auth(request)
         if auth_err:
@@ -624,6 +645,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             limit=limit,
             offset=offset,
             headlines_only=(fields == "headlines"),
+            workspace_ids=_workspace_ids(qp),
         )
         return JSONResponse({"ok": True, **result})
 
@@ -893,82 +915,6 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         changed = store.close_out(workstream_id, outcome)
         return JSONResponse({"ok": True, "outcome": outcome, "task_ids": changed})
 
-    async def upsert_goal_task(request: Request) -> JSONResponse:
-        """POST /v1/goal-tasks
-
-        Body: ``{"project", "release", "title", "source", "description",
-        "priority", "blocked_by", "task_id"}``.
-
-        Resolves the named release (creating it in the named project when it
-        does not exist yet) and creates or, when ``task_id`` is given, updates
-        a goal-derived task in it — as one transaction. A failure leaves no
-        partial state, so a rejected write never creates an orphan release.
-        The stored task's ``source`` must start with ``goals:``; an update of a
-        task a person owns is refused with a 409 and the task is left untouched.
-        """
-        auth_err = await _check_auth(request)
-        if auth_err:
-            return auth_err
-        body, err = await _json_body(request)
-        if err:
-            return err
-        project = _text_field(body, "project")
-        release = _text_field(body, "release")
-        if not project or not release:
-            return _bad_request("project and release names are required")
-        title = _text_field(body, "title")
-        if not title:
-            return _bad_request("title is required")
-        source = _text_field(body, "source") or ""
-        if not source.startswith(GOAL_SOURCE_PREFIX) or len(source) <= len(GOAL_SOURCE_PREFIX):
-            return _bad_request("source must be 'goals:<document>'")
-        priority = 0
-        if "priority" in body:
-            priority, err_resp = _validate_priority(body["priority"])
-            if err_resp:
-                return err_resp
-        task_id = _text_field(body, "task_id")
-        if task_id is None:
-            return _bad_request("task_id must be a string")
-        task_id = task_id or None
-        blocked_by = body.get("blocked_by")
-        check_body = {"source": source}
-        if blocked_by is not None:
-            check_body["blocked_by"] = blocked_by
-        # Validate description as the create/update/import endpoints do, so a
-        # non-string value (a list, object, number or boolean) is refused with
-        # a 400 rather than silently coerced to null by ``body.get(...) or None``
-        # below.
-        if "description" in body:
-            check_body["description"] = body["description"]
-        field_error = _task_field_error(store, check_body, task_id=task_id)
-        if field_error:
-            return _bad_request(field_error)
-        result = store.upsert_goal_task(
-            project_name=project,
-            release_name=release,
-            title=title,
-            source=source,
-            description=(body.get("description") or None),
-            priority=priority,
-            blocked_by=blocked_by,
-            task_id=task_id,
-        )
-        status = result["status"]
-        if status == "project_not_found":
-            return JSONResponse({"ok": False, "error": "Project not found"}, status_code=404)
-        if status == "task_not_found":
-            return JSONResponse({"ok": False, "error": "Task not found"}, status_code=404)
-        if status == "not_goal_derived":
-            return JSONResponse({"ok": False, "error": _NOT_GOAL_DERIVED}, status_code=409)
-        if status == "db_error":
-            return _bad_request(f"write rejected by the database: {result['error']}")
-        return JSONResponse(
-            {"ok": True, "task": result["task"], "release": result["release"],
-             "created_release": result["created_release"]},
-            status_code=201 if task_id is None else 200,
-        )
-
     async def file_follow_up_task(request: Request) -> JSONResponse:
         """POST /v1/follow-up-tasks
 
@@ -1054,7 +1000,6 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/claim", claim, methods=["POST"]),
         Route("/v1/close-out", close_out_pending, methods=["GET"]),
         Route("/v1/close-out", close_out, methods=["POST"]),
-        Route("/v1/goal-tasks", upsert_goal_task, methods=["POST"]),
         Route("/v1/follow-up-tasks", file_follow_up_task, methods=["POST"]),
         Route("/v1/import", bulk_import, methods=["POST"]),
     ]

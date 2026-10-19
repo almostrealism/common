@@ -358,7 +358,6 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"tracker_delete_task",
 			"tracker_search_tasks",
 			"tracker_project_summary",
-			"tracker_file_follow_up_task",
 			"workspace_secret_list_names",
 			"workspace_secret_render_file"
 		));
@@ -1016,9 +1015,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	/**
 	 * Verifies that {@code workstream_register} and {@code workstream_update_config}
 	 * declare {@code tracker_capabilities}, the parameter operators use to grant a
-	 * workstream the {@code planner} or {@code steward} tracker role. Without it in the
-	 * signature the roles cannot be granted through MCP at all, and the narrow tracker
-	 * tools would refuse every caller.
+	 * workstream the {@code planner} tracker role. Without it in the signature the role
+	 * cannot be granted through MCP at all, and ar-manager would treat every workstream
+	 * as a non-planner when deciding what its tracker writes may touch.
 	 */
 	@Test(timeout = 30000)
 	public void managerRegisterAndUpdateConfigHaveTrackerCapabilities() {
@@ -1033,27 +1032,39 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that the narrow tracker tools used by planning and goal-decomposition
-	 * agents are registered and declare the parameters their callers rely on: the
-	 * project and release names every one of them resolves, and the goal-task fields
-	 * of {@code tracker_upsert_goal_task}.
+	 * Verifies that the tracker write tools every agent is given declare the
+	 * parameters planning and goal-decomposition agents rely on, now that those
+	 * agents use the general tools rather than narrow role-specific ones:
+	 * {@code tracker_create_task} must accept the provenance {@code source}, the
+	 * {@code stage}, the {@code blocked_by} dependencies and the
+	 * {@code project_id}/{@code release_id} placement, and
+	 * {@code tracker_update_task} must accept {@code source}, {@code stage} and
+	 * {@code blocked_by}. It also checks that the narrow tools those general tools
+	 * replaced are no longer registered, so the agent allowlist and the server
+	 * cannot drift back apart.
 	 */
 	@Test(timeout = 30000)
 	public void managerGoalAutomationTrackerToolsDeclareTheirParameters() {
 		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
 		assertFalse("manager tool sources must be locatable", managerSources.isEmpty());
 
-		for (String tool : Arrays.asList("tracker_claim_next_task",
-				"tracker_list_release_tasks", "tracker_upsert_goal_task")) {
-			List<String> params = McpToolDiscovery.discoverToolParameters(managerSources, tool);
-			assertTrue(tool + " must declare project", params.contains("project"));
-			assertTrue(tool + " must declare release", params.contains("release"));
+		List<String> create =
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_create_task");
+		for (String param : Arrays.asList("source", "stage", "blocked_by",
+				"project_id", "release_id")) {
+			assertTrue("tracker_create_task must declare " + param, create.contains(param));
 		}
-		List<String> upsert =
-			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_upsert_goal_task");
-		for (String param : Arrays.asList("title", "source", "description",
-				"priority", "blocked_by", "task_id")) {
-			assertTrue("tracker_upsert_goal_task must declare " + param, upsert.contains(param));
+		List<String> update =
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_update_task");
+		for (String param : Arrays.asList("source", "stage", "blocked_by")) {
+			assertTrue("tracker_update_task must declare " + param, update.contains(param));
+		}
+		List<String> registered = McpToolDiscovery.discoverToolNames(managerSources);
+		for (String removed : Arrays.asList("tracker_claim_next_task",
+				"tracker_list_release_tasks", "tracker_upsert_goal_task",
+				"tracker_file_follow_up_task")) {
+			assertFalse(removed + " was replaced by the general tracker tools and must"
+				+ " not be registered", registered.contains(removed));
 		}
 	}
 

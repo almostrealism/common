@@ -15,6 +15,8 @@ None of that is visible in a passing workflow run, so it is checked here.
 import json
 import os
 import re
+import subprocess
+import tempfile
 import unittest
 
 import yaml
@@ -423,18 +425,101 @@ class MasterAgentDispatchTests(unittest.TestCase):
                     or condition == "always()",
                     "ungated: " + step["name"])
 
-    def test_the_task_planning_workstream_holds_the_planner_role(self):
-        """The agent claims its task with tracker_claim_next_task, which
-        ar-manager refuses unless the workstream holds the planner role."""
+    def test_the_task_planning_workstream_holds_no_tracker_role(self):
+        """Inverted when claiming moved into CI: the round's workstream holds
+        no tracker role any more. CI claims the task for it, which links the
+        task to the workstream, and that link is all the agent needs to
+        edit its own task. The planner role would let a planning agent edit
+        every task in the workspace, which no planning round needs."""
         steps = self.jobs["plan-release-task"]["steps"]
         register = next(s for s in steps if "register-workstream.sh" in s.get("run", ""))
-        self.assertEqual("planner", register["env"]["TRACKER_CAPABILITIES"])
+        self.assertNotIn("TRACKER_CAPABILITIES", register["env"])
         submit = next(s for s in steps if "submit-agent-job.sh" in s.get("run", ""))
         self.assertEqual("true", submit["env"]["AUTO_CREATE_PR"])
         # Workspace defaults decide the model; the round sets none.
         self.assertNotIn("PHASE_CONFIGS", submit["env"])
         prompt = next(s for s in steps if "build-task-planning-prompt.sh" in s.get("run", ""))
         self.assertIn("steps.release.outputs.release", prompt["env"]["TRACKER_RELEASE"])
+
+    def _task_planning_step(self, script):
+        """Returns (index, step) of the task-planning step that runs ``script``."""
+        steps = self.jobs["plan-release-task"]["steps"]
+        return next((i, s) for i, s in enumerate(steps) if script in s.get("run", ""))
+
+    def test_the_task_is_claimed_between_registration_and_the_prompt(self):
+        """The claim needs the workstream's id, and the prompt needs the
+        claimed task: register, then claim, then build, then submit."""
+        register, register_step = self._task_planning_step("register-workstream.sh")
+        claim, claim_step = self._task_planning_step("tracker-claim.sh")
+        prompt, _ = self._task_planning_step("build-task-planning-prompt.sh")
+        submit, _ = self._task_planning_step("submit-agent-job.sh")
+        self.assertLess(register, claim)
+        self.assertLess(claim, prompt)
+        self.assertLess(prompt, submit)
+        self.assertEqual("register", register_step["id"])
+        self.assertEqual("claim", claim_step["id"])
+        env = claim_step["env"]
+        self.assertEqual("${{ steps.register.outputs.workstream_id }}", env["WORKSTREAM_ID"])
+        self.assertIn("steps.release.outputs.release", env["TRACKER_RELEASE"])
+        self.assertIn("TRACKER_PROJECT", self.jobs["plan-release-task"]["env"])
+
+    def test_the_claim_carries_the_secret_only_through_its_environment(self):
+        _, claim_step = self._task_planning_step("tracker-claim.sh")
+        self.assertEqual("${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}",
+                         claim_step["env"]["CF_ACCESS_CLIENT_SECRET"])
+        for step in self.jobs["plan-release-task"]["steps"]:
+            with self.subTest(step=step.get("name")):
+                self.assertNotIn("secrets.", step.get("run", ""))
+
+    def test_nothing_is_submitted_unless_a_task_was_claimed(self):
+        """Another round can take the last task between the claimable gate
+        and the claim; then no prompt is built and no job submitted, and the
+        branch created for the round is deleted so it does not read as a
+        round in progress."""
+        for script in ("build-task-planning-prompt.sh", "submit-agent-job.sh"):
+            _, step = self._task_planning_step(script)
+            with self.subTest(script=script):
+                self.assertIn("steps.claim.outputs.claimed == 'true'", step["if"])
+        _, cleanup = self._task_planning_step("git push origin --delete")
+        self.assertIn("steps.claim.outputs.claimed != 'true'", cleanup["if"])
+        self.assertIn("steps.new_branch.outputs.branch", cleanup["env"]["BRANCH"])
+        self.assertNotIn("${{", cleanup["run"])
+
+    def test_the_task_text_reaches_the_prompt_through_a_file(self):
+        """The claimed task's title and description are free text; they are
+        read from the claim's file inside the step, never passed as step
+        outputs or interpolated into the script."""
+        _, step = self._task_planning_step("build-task-planning-prompt.sh")
+        env = step["env"]
+        self.assertEqual("${{ steps.claim.outputs.task_file }}", env["TASK_FILE"])
+        self.assertEqual("${{ steps.claim.outputs.task_id }}", env["TASK_ID"])
+        self.assertNotIn("TASK_TITLE", env)
+        self.assertNotIn("TASK_DESCRIPTION", env)
+        self.assertNotIn("steps.claim", step["run"])
+        self.assertIn('"$TASK_FILE"', step["run"])
+
+    def test_the_prompt_step_renders_the_claimed_task(self):
+        """Runs the step's own script against a claimed task's file."""
+        _, step = self._task_planning_step("build-task-planning-prompt.sh")
+        tmp = tempfile.mkdtemp(prefix="task-planning-step-")
+        task_file = os.path.join(tmp, "task.json")
+        description = "  First line & | \\ ${BRANCH}\n\nSecond line\n"
+        with open(task_file, "w") as f:
+            json.dump({"id": 7, "title": "  Plan a thing \n", "description": description}, f)
+        script = step["run"].replace("${{ runner.temp }}", tmp)
+        env = dict(os.environ)
+        env.update({"BRANCH": "project/task-1", "BASE_BRANCH": "master",
+                    "TRACKER_PROJECT": "Common", "TRACKER_RELEASE": "Common 1.2",
+                    "TASK_ID": "7", "TASK_FILE": task_file})
+        result = subprocess.run(["bash", "-e", "-c", script], cwd=_REPO_ROOT, env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, result.returncode, result.stderr)
+        with open(os.path.join(tmp, "agent-prompt.txt")) as f:
+            prompt = f.read()
+        self.assertIn("**Title:** Plan a thing\n", prompt)
+        self.assertIn("First line & | \\ ${BRANCH}\n\nSecond line\n</task-description>",
+                      prompt)
+        self.assertIn("**Id:** 7", prompt)
 
     def test_planning_rounds_retire_their_previous_workstreams(self):
         """Each planning round registers a workstream, and a finished round's

@@ -26,14 +26,27 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `open-pr-backlog.sh` | Decide whether the open-PR backlog leaves room for a planning round (`MAX_OPEN_PRS`); shared by both planning jobs |
 | `plan_workstream_config.py` | Resolve the `docs/plans/<prefix>-workstream.yaml` settings a `project/` branch declares (longest matching prefix; strict schema) |
 | `tracker-claimable.sh` | Ask the controller whether a tracker release has a claimable task; fails closed |
+| `tracker-claim.sh` | Claim the next task of a tracker release for a workstream through the controller (`POST /api/tracker/claim`); writes the task to a file and emits `claimed`, `task_id` and `task_file`; fails closed |
 | `automated-intake.sh` | Ask the controller whether it accepts automated jobs, before a dispatch round creates anything; fails closed |
-| `register-workstream.sh` | Register a workstream with the FlowTree controller, optionally granting tracker roles (`TRACKER_CAPABILITIES`) |
+| `register-workstream.sh` | Register a workstream with the FlowTree controller (emits `workstream_id`, also to `$GITHUB_OUTPUT`), optionally granting tracker roles (`TRACKER_CAPABILITIES`) and checking out other repositories beside it (`DEPENDENT_REPOS`) |
+| `resolve-release-scope.sh` | Goal decomposition: read the next version from a repository (`pom.xml` or a plain version file), the framework version it pins, and whether `<plans dir>/<version>/PLAN.md` exists (`in_scope`) |
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
 | `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests failed |
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check` |
 | `submit-staged-request.sh` | Submit a staged request directory from a trusted (default-branch) checkout, exporting only the documented `submit.env` keys |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
+
+## Reusable workflows
+
+Some workflows are called by other repositories rather than triggered here, so
+a repository that builds on this one can adopt a round without copying its
+scripts. A called workflow runs every script from an explicit checkout of this
+repository (input `framework-ref`), never from the caller's tree.
+
+| Workflow | Purpose |
+|---|---|
+| `goal-decomposition.yaml` | Decomposition round of goal-driven release automation: on the caller's default branch, resolve its next release and release plan (`resolve-release-scope.sh`), register a standing `orchestration/goal-decomposition` workstream with the tracker `planner` role and this repository as a dependent repository, and submit an agent job that creates or updates the release's tracker tasks |
 
 ## Coverage (`coverage/`)
 
@@ -127,13 +140,14 @@ it knowingly does not cover are in
 | `build-build-failure-prompt.sh` | Build prompt for agent when compilation fails |
 | `build-consolidation-prompt.sh` | Build prompt for the recurring consolidation (duplication) round |
 | `build-coverage-prompt.sh` | Build prompt for the recurring test-coverage round |
+| `build-goal-decomposition-prompt.sh` | Build prompt for the goal-decomposition round: turn a repository's release plan into tracker tasks, in its own project or the framework's; changes no files |
 | `build-docs-review-prompt.sh` | Build prompt for auto-review of a docs-only branch: review and improve the documents, never implement a plan |
 | `build-defect-hunt-prompt.sh` | Build prompt for the recurring defect hunt |
 | `build-doc-qa-prompt.sh` | Build prompt for the recurring documentation-staleness review |
 | `build-performance-prompt.sh` | Build prompt for the recurring performance round |
 | `build-pdsl-migration-prompt.sh` | Build prompt for the recurring PDSL migration round |
 | `build-planning-prompt.sh` | Build prompt for planning workflow |
-| `build-task-planning-prompt.sh` | Build prompt for the task-planning round: claim the next ready tracker task and plan it |
+| `build-task-planning-prompt.sh` | Build prompt for the task-planning round: plan the tracker task CI claimed for the round (`TASK_ID`, `TASK_TITLE`, `TASK_DESCRIPTION`) |
 | `build-policy-violation-prompt.sh` | Build prompt for agent when code policy enforcement fails |
 | `build-python-failure-prompt.sh` | Build prompt for agent when the python-tests job fails |
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |
@@ -146,6 +160,7 @@ it knowingly does not cover are in
 | `defect-hunt.txt` | Template for the defect hunt |
 | `docs-review.txt` | Template for the docs-only review prompt |
 | `doc-qa.txt` | Template for the documentation-staleness review |
+| `goal-decomposition.txt` | Template for the goal-decomposition round: reconcile a release's tracker tasks with its plan, touching only the goal-derived tasks of the repository being reconciled |
 | `general-review.txt` | Template for general code review prompt |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
 | `retrospective.txt` | Template for the QA retrospective: study recent automated work and propose, with evidence, how the agent harness and the QA jobs should improve — proposes, never implements |

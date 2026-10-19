@@ -378,16 +378,26 @@ def _require_dispatch_capable() -> None:
 # Tracker capabilities
 # ---------------------------------------------------------------------------
 # The controller's workstream list carries ``"trackerCapabilities": [...]``
-# for a workstream granted any. Each capability unlocks a narrow tracker
-# tool: ``planner`` may claim the next ready task of a release, ``steward``
-# may list a release and create or update goal-derived tasks. Cached on the
-# same TTL as the dispatch flag, and failing closed the same way.
+# for a workstream granted any. There is one: ``planner``, whose agents may
+# create tasks with every field set, edit any task in their workspace, and
+# create releases. Cached on the same TTL as the dispatch flag, and failing
+# closed the same way: a workstream whose grant cannot be read is not a
+# planner.
 
 TRACKER_PLANNER = "planner"
-TRACKER_STEWARD = "steward"
+
+# Retired role names, read as the role that replaced them, so a workstream
+# saved before the change keeps what it was granted.
+_TRACKER_CAPABILITY_ALIASES = {"steward": TRACKER_PLANNER}
 
 _tracker_capability_cache: dict = {"map": None, "fetched": 0.0}
 _tracker_capability_lock = threading.Lock()
+
+
+def _canonical_tracker_capability(capability: str) -> str:
+    """Return the current name of a tracker role, mapping a retired name to
+    the role that replaced it."""
+    return _TRACKER_CAPABILITY_ALIASES.get(capability, capability)
 
 
 def _refresh_tracker_capabilities() -> dict:
@@ -399,7 +409,8 @@ def _refresh_tracker_capabilities() -> dict:
         granted = ws.get("trackerCapabilities")
         wid = ws.get("workstreamId")
         if wid and isinstance(granted, list):
-            caps[wid] = {c for c in granted if isinstance(c, str)}
+            caps[wid] = {_canonical_tracker_capability(c)
+                         for c in granted if isinstance(c, str)}
     return caps
 
 
@@ -421,25 +432,50 @@ def _get_tracker_capabilities(workstream_id: str) -> set:
     return caps.get(workstream_id, set())
 
 
-def _require_tracker_capability(capability: str) -> str:
-    """Return the calling job's workstream ID, or raise
-    :class:`PermissionError` unless that workstream holds *capability*.
+def _is_tracker_planner(workstream_id: str) -> bool:
+    """Return True when the agents of *workstream_id* hold the planner role."""
+    return TRACKER_PLANNER in _get_tracker_capabilities(workstream_id)
 
-    Unlike the dispatch gate, an unscoped caller is not waved through: every
-    tool behind this gate acts on behalf of a workstream (a claim links the
-    task to it), so a caller must be a job with a workstream binding.
+
+# ---------------------------------------------------------------------------
+# Tracker workspace scope
+# ---------------------------------------------------------------------------
+# A tracker project is owned by one workspace (its ``workspace_id``), and its
+# releases and tasks belong to that workspace; the tracker reports the
+# workspace on every project, release and task it returns. A caller limited
+# to some workspaces sees and changes only what those workspaces own.
+
+
+def _tracker_workspace_limit() -> Optional[str]:
+    """Return the ``workspace_id`` query value that limits a tracker list to
+    the caller's workspaces, or ``None`` when the caller is not limited.
+
+    The tracker treats a present-but-empty value as "no workspace", so a
+    limited caller can never widen its view by having no scopes listed.
     """
-    caller_ws_id = _get_token_workstream_id()
-    if not caller_ws_id:
+    scopes = _get_workspace_scopes()
+    if not scopes:
+        return None
+    return ",".join(scopes)
+
+
+def _require_tracker_record_in_scope(record: dict, kind: str) -> None:
+    """Raise :class:`PermissionError` unless *record* — a tracker project,
+    release or task — belongs to a workspace the caller may use.
+
+    A record no workspace owns (a task with no project, or a project nobody
+    has assigned) is out of every limited caller's scope. Unlimited callers
+    always pass.
+    """
+    if not _get_workspace_scopes():
+        return
+    workspace_id = record.get("workspace_id") if isinstance(record, dict) else None
+    if not _is_workspace_allowed(workspace_id):
         raise PermissionError(
-            "This tracker tool acts for the calling job's workstream, and the"
-            " request carries no workstream binding. Call it from an agent job.")
-    if capability in _get_tracker_capabilities(caller_ws_id):
-        return caller_ws_id
-    raise PermissionError(
-        "This tracker tool requires the '" + capability + "' tracker capability,"
-        " which workstream '" + caller_ws_id + "' does not have. Operators grant"
-        " it with workstream_update_config(..., tracker_capabilities=\"planner,steward\").")
+            f"This {kind} belongs to a tracker project outside your workspace, or to"
+            " no project a workspace owns, so it is not visible to you. A person"
+            " assigns a project to a workspace with tracker_update_project(...,"
+            " workspace_id=...).")
 
 
 # ---------------------------------------------------------------------------
@@ -461,66 +497,6 @@ def _filter_workstreams_by_scope(entries: list) -> list:
             wsid = ws.get("workspaceId") or ws.get("slackWorkspaceId")
             if wsid in scopes:
                 filtered.append(ws)
-    return filtered
-
-
-# Source prefix of a follow-up task a coding agent filed while working a branch.
-# It carries no workstream link, so its provenance source
-# ("follow-up:<workstream>/<job>") is the only record of which workstream filed
-# it. A scoped caller may read back the follow-up tasks its own workspace filed,
-# identified by the workstream embedded here. Duplicated from the tracker store
-# (tools/tracker/store.py FOLLOW_UP_SOURCE_PREFIX) across the service boundary,
-# as GOAL_SOURCE_PREFIX is duplicated in tracker_tools.py.
-FOLLOW_UP_SOURCE_PREFIX = "follow-up:"
-
-
-def _follow_up_task_workspace_allowed(task: dict) -> bool:
-    """Return True when *task* is a follow-up task whose filing workstream is in
-    the current request's workspace scope.
-
-    A follow-up task has no ``workstream_id`` (filing one would make it a
-    claimed task closed when the branch merges), so the workstream that filed it
-    is read from its provenance ``source``. Any task that is not a follow-up, or
-    whose embedded workstream is out of scope, returns False.
-    """
-    if not isinstance(task, dict):
-        return False
-    source = task.get("source") or ""
-    if not isinstance(source, str) or not source.startswith(FOLLOW_UP_SOURCE_PREFIX):
-        return False
-    rest = source[len(FOLLOW_UP_SOURCE_PREFIX):]
-    ws_id = rest.split("/", 1)[0]
-    if not ws_id:
-        return False
-    return _is_workspace_allowed(_workspace_for_workstream(ws_id))
-
-
-def _filter_tasks_by_scope(tasks: list) -> list:
-    """Return only those task-dict entries whose linked workstream is
-    permitted by the current request's workspace scope.
-
-    Unscoped callers see all tasks.  A task with no ``workstream_id`` is
-    dropped for scoped callers — there is no safe interpretation of
-    "this task belongs to your workspace" when no workstream link exists —
-    unless it is a follow-up task its own workspace filed, recognised by the
-    workstream embedded in its provenance source. Malformed non-list payloads
-    return an empty list for scoped callers.
-    """
-    if not _get_workspace_scopes():
-        return tasks
-    if not isinstance(tasks, list):
-        return []
-    filtered = []
-    for t in tasks:
-        if not isinstance(t, dict):
-            continue
-        ws_id = t.get("workstream_id") or ""
-        if not ws_id:
-            if _follow_up_task_workspace_allowed(t):
-                filtered.append(t)
-            continue
-        if _is_workspace_allowed(_workspace_for_workstream(ws_id)):
-            filtered.append(t)
     return filtered
 
 

@@ -29,6 +29,23 @@ _TASK_FULL_COLUMNS = (
     _TASK_HEADLINE_COLUMNS[:2] + ("description",) + _TASK_HEADLINE_COLUMNS[2:]
 )
 
+# A task's workspace is not stored on the task: it is the workspace that owns
+# the task's project. Every task query returns it, so a caller deciding what a
+# workspace may see reads it off the row rather than resolving the project.
+_TASK_WORKSPACE_COLUMN = (
+    "(SELECT projects.workspace_id FROM projects "
+    "WHERE projects.id = tasks.project_id) AS workspace_id"
+)
+
+# Project and release columns, in the order every query returns them. A
+# release's workspace is its project's, as a task's is.
+_PROJECT_COLUMNS = "id, name, workspace_id, created_at"
+_RELEASE_COLUMNS = (
+    "releases.id, releases.name, releases.project_id, releases.created_at, "
+    "(SELECT projects.workspace_id FROM projects "
+    "WHERE projects.id = releases.project_id) AS workspace_id"
+)
+
 # The one definition of a task an agent may claim: open, marked ready, not yet
 # linked to a workstream, and not waiting on any task that is still open. Both
 # counting and claiming use it, so the question "is there work?" and the act of
@@ -67,9 +84,10 @@ GOAL_SOURCE_PREFIX = "goals:"
 FOLLOW_UP_SOURCE_PREFIX = "follow-up:"
 
 # The most follow-up tasks one job may file, counted by its provenance source.
-# A small ceiling so a looping agent answering review rounds cannot flood the
-# tracker; a person promotes the useful ones out of the backlog.
-MAX_FOLLOW_UP_TASKS_PER_JOB = 5
+# Generous, because filing an idea for later is what an agent should do instead
+# of widening its branch; the ceiling only stops a looping agent from flooding
+# the tracker. A person promotes the useful ones out of the backlog.
+MAX_FOLLOW_UP_TASKS_PER_JOB = 20
 
 
 def _normalized_source(source: object) -> object:
@@ -93,7 +111,25 @@ _CLAIM_ORDER = "tasks.priority DESC, tasks.created_at ASC"
 def _task_columns(headlines_only: bool = False) -> str:
     """Return the task column list for a SELECT on the ``tasks`` table."""
     names = _TASK_HEADLINE_COLUMNS if headlines_only else _TASK_FULL_COLUMNS
-    return ", ".join("tasks." + n for n in names)
+    return ", ".join(["tasks." + n for n in names] + [_TASK_WORKSPACE_COLUMN])
+
+
+def _in_workspaces(column: str, workspace_ids: Optional[list]) -> tuple:
+    """Return a SQL condition, and its parameters, limiting rows to projects
+    owned by one of *workspace_ids*.
+
+    *column* is the project id column of the rows being filtered. None means no
+    limit and returns an empty condition. An empty list matches nothing: a
+    caller limited to no workspace sees nothing, never everything. A row with
+    no project, or whose project no workspace owns, never matches a limit.
+    """
+    if workspace_ids is None:
+        return "", []
+    if not workspace_ids:
+        return "0", []
+    marks = ", ".join("?" for _ in workspace_ids)
+    return (f"{column} IN (SELECT id FROM projects WHERE workspace_id IN ({marks}))",
+            list(workspace_ids))
 
 
 class _Unset:
@@ -153,39 +189,65 @@ class TrackerStore:
     # Projects
     # ------------------------------------------------------------------
 
-    def create_project(self, name: str) -> dict:
-        """Create a new project and return it."""
+    def create_project(self, name: str, workspace_id: Optional[str] = None) -> dict:
+        """Create a new project, owned by *workspace_id* when given, and return it."""
         project_id = str(uuid.uuid4())
         created_at = _now()
         with self._write():
             self._conn.execute(
-                "INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)",
-                (project_id, name, created_at),
+                "INSERT INTO projects (id, name, workspace_id, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (project_id, name, workspace_id or None, created_at),
             )
-        return {"id": project_id, "name": name, "created_at": created_at}
+        return self.get_project(project_id)
 
     def get_project(self, project_id: str) -> Optional[dict]:
         """Return a project by ID, or None if not found."""
         with self._lock:
             row = self._conn.execute(
-                "SELECT id, name, created_at FROM projects WHERE id = ?", (project_id,)
+                f"SELECT {_PROJECT_COLUMNS} FROM projects WHERE id = ?", (project_id,)
             ).fetchone()
         return dict(row) if row else None
 
-    def list_projects(self) -> list:
-        """Return all projects ordered by name."""
+    def list_projects(self, workspace_ids: Optional[list] = None) -> list:
+        """Return all projects ordered by name, optionally only those owned by
+        one of *workspace_ids* (see :func:`_in_workspaces`)."""
+        condition, params = _in_workspaces("id", workspace_ids)
+        where = f"WHERE {condition} " if condition else ""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT id, name, created_at FROM projects ORDER BY name"
+                f"SELECT {_PROJECT_COLUMNS} FROM projects {where}ORDER BY name", params
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def update_project(self, project_id: str, name: str) -> Optional[dict]:
-        """Update a project's name. Returns the updated project or None."""
-        with self._write():
-            self._conn.execute(
-                "UPDATE projects SET name = ? WHERE id = ?", (name, project_id)
-            )
+    def update_project(
+        self,
+        project_id: str,
+        name: object = UNSET,
+        workspace_id: object = UNSET,
+    ) -> Optional[dict]:
+        """Update a project's fields. Only supplied fields are changed.
+
+        Pass UNSET (the default) to leave a field unchanged, and None as
+        ``workspace_id`` to leave the project owned by no workspace.
+
+        Returns:
+            The updated project, or None when it does not exist.
+        """
+        updates = []
+        params: list = []
+        if not isinstance(name, _Unset):
+            updates.append("name = ?")
+            params.append(name)
+        if not isinstance(workspace_id, _Unset):
+            updates.append("workspace_id = ?")
+            params.append(workspace_id or None)
+        if updates:
+            params.append(project_id)
+            with self._write():
+                self._conn.execute(
+                    f"UPDATE projects SET {', '.join(updates)} WHERE id = ?", params
+                )
         return self.get_project(project_id)
 
     def delete_project(self, project_id: str) -> bool:
@@ -213,35 +275,39 @@ class TrackerStore:
                 "INSERT INTO releases (id, name, project_id, created_at) VALUES (?, ?, ?, ?)",
                 (release_id, name, project_id or None, created_at),
             )
-        return {
-            "id": release_id,
-            "name": name,
-            "project_id": project_id or None,
-            "created_at": created_at,
-        }
+        return self.get_release(release_id)
 
     def get_release(self, release_id: str) -> Optional[dict]:
         """Return a release by ID, or None if not found."""
         with self._lock:
             row = self._conn.execute(
-                "SELECT id, name, project_id, created_at FROM releases WHERE id = ?",
+                f"SELECT {_RELEASE_COLUMNS} FROM releases WHERE releases.id = ?",
                 (release_id,),
             ).fetchone()
         return dict(row) if row else None
 
-    def list_releases(self, project_id: Optional[str] = None) -> list:
-        """Return all releases, optionally filtered by project_id."""
+    def list_releases(
+        self,
+        project_id: Optional[str] = None,
+        workspace_ids: Optional[list] = None,
+    ) -> list:
+        """Return all releases, optionally filtered by project_id and limited
+        to projects owned by one of *workspace_ids* (see :func:`_in_workspaces`)."""
+        conditions = []
+        params: list = []
+        if project_id:
+            conditions.append("releases.project_id = ?")
+            params.append(project_id)
+        condition, workspace_params = _in_workspaces("releases.project_id", workspace_ids)
+        if condition:
+            conditions.append(condition)
+            params.extend(workspace_params)
+        where = ("WHERE " + " AND ".join(conditions) + " ") if conditions else ""
         with self._lock:
-            if project_id:
-                rows = self._conn.execute(
-                    "SELECT id, name, project_id, created_at FROM releases "
-                    "WHERE project_id = ? ORDER BY name",
-                    (project_id,),
-                ).fetchall()
-            else:
-                rows = self._conn.execute(
-                    "SELECT id, name, project_id, created_at FROM releases ORDER BY name"
-                ).fetchall()
+            rows = self._conn.execute(
+                f"SELECT {_RELEASE_COLUMNS} FROM releases {where}ORDER BY releases.name",
+                params,
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def update_release(
@@ -375,6 +441,7 @@ class TrackerStore:
         order: str = "desc",
         headlines_only: bool = False,
         stage: Optional[str] = None,
+        workspace_ids: Optional[list] = None,
     ) -> dict:
         """List tasks with optional filtering and pagination.
 
@@ -390,6 +457,8 @@ class TrackerStore:
             headlines_only: When True, omit the description field from
                 each returned task. Use when scanning large backlogs.
             stage: Filter by stage.
+            workspace_ids: Limit to tasks whose project one of these
+                workspaces owns (see :func:`_in_workspaces`).
 
         Returns:
             dict with 'tasks', 'total', 'limit', and 'offset'.
@@ -417,6 +486,10 @@ class TrackerStore:
         if stage is not None:
             conditions.append("stage = ?")
             params.append(stage)
+        condition, workspace_params = _in_workspaces("tasks.project_id", workspace_ids)
+        if condition:
+            conditions.append(condition)
+            params.extend(workspace_params)
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -451,7 +524,6 @@ class TrackerStore:
         stage: object = UNSET,
         source: object = UNSET,
         blocked_by: object = UNSET,
-        only_goal_derived: bool = False,
     ) -> Optional[dict]:
         """Update a task's fields.
 
@@ -460,15 +532,8 @@ class TrackerStore:
         cannot be cleared — it always has an integer value in [-2, 2].
         ``blocked_by`` replaces the whole set of blocking task ids.
 
-        With ``only_goal_derived`` the update applies only while the stored
-        task's source starts with :data:`GOAL_SOURCE_PREFIX`. The check is part
-        of the UPDATE itself, so a person taking a task over between a caller's
-        read and this write can never be overwritten.
-
         Returns:
-            The updated task, or None when no task was changed: the task does
-            not exist, or ``only_goal_derived`` was set and it was not
-            goal-derived.
+            The updated task, or None when the task does not exist.
         """
         updates = ["updated_at = ?"]
         params: list = [_now()]
@@ -493,154 +558,16 @@ class TrackerStore:
                 else:
                     params.append(val)
 
-        where = "id = ?"
         params.append(task_id)
-        if only_goal_derived:
-            where += " AND substr(source, 1, ?) = ?"
-            params.extend([len(GOAL_SOURCE_PREFIX), GOAL_SOURCE_PREFIX])
         with self._write():
             cursor = self._conn.execute(
-                f"UPDATE tasks SET {', '.join(updates)} WHERE {where}", params
+                f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", params
             )
             if cursor.rowcount == 0:
                 return None
             if not isinstance(blocked_by, _Unset):
                 self._set_blockers(task_id, blocked_by or [])
         return self.get_task(task_id)
-
-    # ------------------------------------------------------------------
-    # Goal-derived task upsert
-    # ------------------------------------------------------------------
-
-    def upsert_goal_task(
-        self,
-        project_name: str,
-        release_name: str,
-        title: str,
-        source: str,
-        description: Optional[str] = None,
-        priority: int = 0,
-        blocked_by: Optional[list] = None,
-        task_id: Optional[str] = None,
-    ) -> dict:
-        """Ensure the named release exists and create or update a goal task in it.
-
-        The release resolution (create-if-missing, in the named project) and the
-        task create or conditional update run as one transaction under the store
-        lock. Anything that makes the task write fail — a missing project, an
-        unknown blocker id, or an update naming a task that is not goal-derived —
-        rolls the whole thing back, so a failed upsert never leaves behind a
-        release this call would otherwise have created. The project is never
-        created.
-
-        When ``task_id`` is given the update applies only while the stored task's
-        source starts with :data:`GOAL_SOURCE_PREFIX`, so a person taking the task
-        over between any earlier read and this write is never overwritten.
-
-        Returns a dict whose ``status`` is one of:
-            ``ok`` — with ``task``, ``release`` and ``created_release`` (bool);
-            ``project_not_found`` — no project has ``project_name``;
-            ``task_not_found`` — ``task_id`` names no task;
-            ``not_goal_derived`` — ``task_id`` names a task a person owns;
-            ``db_error`` — the database refused a write (e.g. an unknown
-                blocker), with ``error`` describing it.
-        """
-        with self._lock:
-            try:
-                result = self._upsert_goal_task_locked(
-                    project_name, release_name, title, source,
-                    description, priority, blocked_by, task_id)
-            except sqlite3.Error as e:
-                self._conn.rollback()
-                return {"status": "db_error", "error": str(e)}
-            except BaseException:
-                self._conn.rollback()
-                raise
-            if result["status"] == "ok":
-                self._conn.commit()
-            else:
-                self._conn.rollback()
-        if result["status"] == "ok":
-            result["task"] = self.get_task(result.pop("_task_id"))
-        return result
-
-    def _upsert_goal_task_locked(
-        self,
-        project_name: str,
-        release_name: str,
-        title: str,
-        source: str,
-        description: Optional[str],
-        priority: int,
-        blocked_by: Optional[list],
-        task_id: Optional[str],
-    ) -> dict:
-        """Do the work of :meth:`upsert_goal_task`. The caller holds the store
-        lock and commits on an ``ok`` status, rolling back otherwise, so this
-        never commits or rolls back itself.
-
-        On the ``ok`` path the result carries ``_task_id`` for the caller to
-        resolve into a full task after the commit.
-        """
-        release = self.find_release(project_name, release_name)
-        created_release = False
-        if release is None:
-            project = self._conn.execute(
-                "SELECT id, name FROM projects WHERE name = ? "
-                "ORDER BY created_at ASC, id ASC LIMIT 1",
-                (project_name,),
-            ).fetchone()
-            if not project:
-                return {"status": "project_not_found"}
-            release_id = str(uuid.uuid4())
-            created_at = _now()
-            self._conn.execute(
-                "INSERT INTO releases (id, name, project_id, created_at) "
-                "VALUES (?, ?, ?, ?)",
-                (release_id, release_name, project["id"], created_at),
-            )
-            release = {
-                "id": release_id, "name": release_name,
-                "project_id": project["id"], "created_at": created_at,
-                "project_name": project["name"],
-            }
-            created_release = True
-
-        now = _now()
-        if not task_id:
-            new_id = str(uuid.uuid4())
-            self._conn.execute(
-                "INSERT INTO tasks "
-                "(id, title, description, status, priority, stage, source, "
-                " project_id, release_id, workstream_id, created_at, updated_at) "
-                "VALUES (?, ?, ?, 'open', ?, 'ready', ?, ?, ?, NULL, ?, ?)",
-                (new_id, title, description, int(priority),
-                 _normalized_source(source),
-                 release["project_id"], release["id"], now, now),
-            )
-            if blocked_by:
-                self._set_blockers(new_id, blocked_by)
-            written_id = new_id
-        else:
-            cursor = self._conn.execute(
-                "UPDATE tasks SET title = ?, description = ?, priority = ?, "
-                "source = ?, project_id = ?, release_id = ?, updated_at = ? "
-                "WHERE id = ? AND substr(source, 1, ?) = ?",
-                (title, description, int(priority), _normalized_source(source),
-                 release["project_id"], release["id"], now, task_id,
-                 len(GOAL_SOURCE_PREFIX), GOAL_SOURCE_PREFIX),
-            )
-            if cursor.rowcount == 0:
-                exists = self._conn.execute(
-                    "SELECT 1 FROM tasks WHERE id = ?", (task_id,)
-                ).fetchone()
-                return {"status": "not_goal_derived" if exists else "task_not_found"}
-            if blocked_by is not None:
-                self._set_blockers(task_id, blocked_by or [])
-            written_id = task_id
-
-        return {"status": "ok", "_task_id": written_id,
-                "release": release, "created_release": created_release}
 
     # ------------------------------------------------------------------
     # Agent follow-up tasks
@@ -905,6 +832,7 @@ class TrackerStore:
         limit: int = 20,
         offset: int = 0,
         headlines_only: bool = False,
+        workspace_ids: Optional[list] = None,
     ) -> dict:
         """Full-text search over task titles and descriptions.
 
@@ -916,6 +844,8 @@ class TrackerStore:
             offset: Pagination offset.
             headlines_only: When True, omit the description field from
                 each returned task. Use when scanning large backlogs.
+            workspace_ids: Limit to tasks whose project one of these
+                workspaces owns (see :func:`_in_workspaces`).
 
         Returns:
             dict with 'tasks', 'total', 'query', 'limit', and 'offset'.
@@ -930,6 +860,10 @@ class TrackerStore:
         if status:
             conditions.append("tasks.status = ?")
             params.append(status)
+        condition, workspace_params = _in_workspaces("tasks.project_id", workspace_ids)
+        if condition:
+            conditions.append(condition)
+            params.extend(workspace_params)
 
         where = "WHERE " + " AND ".join(conditions)
 
@@ -1106,16 +1040,20 @@ class TrackerStore:
         for idx, p in enumerate(projects):
             if not p.get("id") or not p.get("name"):
                 return {"error": f"projects[{idx}] must have 'id' and 'name'"}
+            # An absent workspace_id keeps an existing project's owner.
             cur = self._conn.execute(
-                "UPDATE projects SET name = ? WHERE id = ?",
-                (p["name"], p["id"]),
+                "UPDATE projects SET name = ?, "
+                "workspace_id = CASE WHEN ? THEN ? ELSE workspace_id END WHERE id = ?",
+                (p["name"], "workspace_id" in p, p.get("workspace_id") or None, p["id"]),
             )
             if cur.rowcount > 0:
                 updated["projects"] += 1
             else:
                 self._conn.execute(
-                    "INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)",
-                    (p["id"], p["name"], p.get("created_at") or _now()),
+                    "INSERT INTO projects (id, name, workspace_id, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (p["id"], p["name"], p.get("workspace_id") or None,
+                     p.get("created_at") or _now()),
                 )
                 created["projects"] += 1
 

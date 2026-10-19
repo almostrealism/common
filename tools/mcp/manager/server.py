@@ -256,12 +256,12 @@ from workspace_map import (
     _tracker_capability_cache,
     _refresh_tracker_capabilities,
     _get_tracker_capabilities,
-    _require_tracker_capability,
+    _canonical_tracker_capability,
+    _is_tracker_planner,
+    _tracker_workspace_limit,
+    _require_tracker_record_in_scope,
     TRACKER_PLANNER,
-    TRACKER_STEWARD,
     _filter_workstreams_by_scope,
-    _filter_tasks_by_scope,
-    _follow_up_task_workspace_allowed,
     _pipeline_error,
     _find_workstream,
     _find_workstream_by_branch,
@@ -1493,10 +1493,6 @@ from tracker_tools import (  # noqa: E402
     tracker_delete_task,
     tracker_search_tasks,
     tracker_project_summary,
-    tracker_claim_next_task,
-    tracker_list_release_tasks,
-    tracker_upsert_goal_task,
-    tracker_file_follow_up_task,
 )
 
 

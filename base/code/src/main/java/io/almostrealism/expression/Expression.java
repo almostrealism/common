@@ -523,6 +523,15 @@ public abstract class Expression<T> implements
 	public boolean containsLong() { return containsLong; }
 
 	/**
+	 * Checks if this expression or any descendant is the {@link #isKernelIndex() kernel index}.
+	 *
+	 * @return {@code true} if the kernel index appears anywhere in this expression tree
+	 */
+	public boolean containsKernelIndex() {
+		return isKernelIndex() || getChildren().stream().anyMatch(Expression::containsKernelIndex);
+	}
+
+	/**
 	 * Returns the kernel series that describes the repetition pattern of this expression.
 	 *
 	 * <p>The kernel series is used for optimization to identify expressions that
@@ -634,20 +643,28 @@ public abstract class Expression<T> implements
 	}
 
 	/**
-	 * Returns {@link Long Long.class} if this expression is typed as {@link Integer}
-	 * but its bounds analysis indicates values that can exceed the 32-bit signed
-	 * integer range. Otherwise returns this expression's own type.
+	 * Returns the type of a local variable that this expression can be hoisted into
+	 * without changing the arithmetic of the code that refers to the variable.
 	 *
-	 * <p>This is useful when hoisting expressions into local variable declarations —
-	 * an expression tree may type a kernel index product as {@link Integer}, but the
-	 * actual runtime value can overflow {@code jint} for large kernel sizes.</p>
+	 * <p>That is this expression's own type, except for an expression typed as
+	 * {@link Integer} that is promoted to {@link Long Long.class} when either</p>
+	 * <ul>
+	 *   <li>it refers to the {@link #isKernelIndex() kernel index}, which every generated
+	 *       language renders as a 64-bit integer, so the expression is evaluated in 64 bits
+	 *       wherever it appears inline. A variable of 32 bits would hold its value, but every
+	 *       product or sum that the variable then takes part in would be evaluated in 32 bits
+	 *       instead, and overflow where the inline expression did not &mdash; for example the
+	 *       row of a flattened Jacobian position multiplied by a stride of a million; or</li>
+	 *   <li>its bounds analysis indicates values that can exceed the 32-bit signed integer
+	 *       range, or cannot bound it at all.</li>
+	 * </ul>
 	 *
-	 * @return {@link Long Long.class} if promotion is needed, otherwise this
-	 *         expression's own type
+	 * @return the type to declare a variable holding this expression with
 	 */
-	public Class<?> promoteIfOverflows() {
+	public Class<?> getDeclarationType() {
 		Class<?> type = getType();
 		if (type != Integer.class) return type;
+		if (containsKernelIndex()) return Long.class;
 
 		OptionalLong upper = upperBound(null);
 		OptionalLong lower = lowerBound(null);

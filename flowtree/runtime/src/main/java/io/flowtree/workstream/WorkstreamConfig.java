@@ -221,8 +221,9 @@ public class WorkstreamConfig {
         private boolean dispatchCapable;
         /**
          * Tracker roles granted to agents on this workstream. Persisted as a
-         * {@code trackerCapabilities} list, omitted when empty. See
-         * {@link Workstream#getTrackerCapabilities()}.
+         * {@code trackerCapabilities} list, omitted when empty. A legacy
+         * {@code steward} entry loads as {@code planner} and is saved back in
+         * that form. See {@link Workstream#getTrackerCapabilities()}.
          */
         @JsonInclude(JsonInclude.Include.NON_EMPTY)
         private List<String> trackerCapabilities;

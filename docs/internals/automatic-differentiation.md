@@ -221,10 +221,22 @@ Jacobian **sparse** in practice. Its size limit (`maxMatrixSize`, a cap on `rows
 expanding when the matrix grows too large, and that matrix — one entry per (output, input) pair — is
 itself a cost a reduced delta avoids: the dense `256 × 64` output projection over 64 rows has
 `16,384` output positions and `16,384` weight positions, a `2^28`-entry matrix, against about a
-million terms for the reduced product form. (The `2^34` figure in §8 and the
-[training measurement](training-a-language-model.md) is larger still, and a different structure: it
-is `jacobianGradient`'s full contraction — output size × weight size × inner dimension — not this
-matrix's enumeration.)
+million terms for the reduced product form. `jacobianGradient`'s full contraction is larger still,
+and a different structure: output size × weight size × inner dimension, `2^34` positions for that
+projection, not this matrix's enumeration.
+
+A position that large exceeds a 32-bit integer, so the generated kernel must compute it in 64 bits.
+Every generated language renders the kernel index as a 64-bit integer, which makes any index
+expression that contains it 64-bit inline, even though the expression tree types it as `Integer`.
+When code generation hoists a repeated part of such an expression into a local variable (the
+common-subexpression replacement of `Scope.processReplacements`, or the loop-invariant extraction of
+`Repeated`), the variable is declared with `Expression.getDeclarationType()`, which promotes an
+integer expression that refers to the kernel index, or whose bounds exceed the 32-bit range, to
+`Long`. Declaring it with the expression's own `Integer` type made the products the variable took
+part in 32-bit; that is what made the full-Jacobian weight gradient of the `256 × 64` output
+projection wrong from weight row 64 onward, in a varying tenth of its entries, until the
+declaration type was fixed. `DenseVectorJacobianProductTest.outputProjection` now holds that
+gradient to its definition on several evaluations.
 
 ---
 
@@ -277,6 +289,7 @@ backward:  dInput ◄── layer₁ ◄── layer₂ ◄── dOutput ◄─
 |-----------|-------|----------------|
 | Finite differences | `CausalLanguageModelTest.gradientsMatchFiniteDifferences`, `GradientTestFeatures` | the analytic gradient of a scalar loss matches central differences of the forward pass within tolerance |
 | A/B vs forced Jacobian and host definition | `DenseVectorJacobianProductTest` | the reduced delta equals both `jacobianGradient` (the forced full Jacobian) and the gradient computed on the host from `Σ_r g_r ⊗ x_r` and `Wᵀ · g_r` |
+| Fallback vs host definition | `ConvolutionJacobianGradientTest` | the input gradient of `convolution2dOperator`, which contracts a `7200 × 8192` Jacobian of 72-term window sums (more terms in all than a signed 32-bit integer counts), equals the gradient computed on the host from the convolution's definition on every one of several evaluations |
 | Local rule tests | `ReducedDeltaTest`, `ReducedDeltaRulesTest`, `TraversableDeltaComputationTests`, `DeltaFeaturesTests` | each computation's reduced delta and Jacobian match host-computed values for both axes |
 | Graph-size check | `DenseVectorJacobianProductTest.assertNoLargerThanForward` | no computation in the reduced delta's graph is larger than the largest computation of the forward operator — i.e. the Jacobian was never materialized |
 
@@ -292,27 +305,19 @@ operator.
 Each is backed by a source comment, a test, or the training page's measurement. A limit that no
 longer holds should be dropped from this list, not restated.
 
-1. **The full-Jacobian weight gradient is wrong for the `256 × 64` output projection on Metal.**
-   `GradientFeatures.jacobianGradient` carries the marker
-   `// TODO(review): wrong for the 256x64 dense weight over 64 rows (2^34 iteration space); check
-   32-bit index overflow`. For that weight over 64 rows it disagrees with the definition in about a
-   tenth of the 16,384 entries (always from weight row 64 onward) while the reduced product form
-   agrees exactly; the cause inside the sparse-Jacobian machinery is undiagnosed (a 32-bit index
-   overflow over the `2^34`-position enumeration is the standing hypothesis). Measured in
-   [Training a Language Model](training-a-language-model.md).
-2. **The weighted-sum lowering has no reduced form for non-transposable traversals.**
+1. **The weighted-sum lowering has no reduced form for non-transposable traversals.**
    `WeightedSumComputation` (used by `matmul` for outputs wider than 1000, and for reductions of at
    least `loopThreshold` = 256 members) produces its own reduced delta through a transposed weighted
    sum wherever the traversal can be transposed — the matrix multiply, broadcast sums and scaled dot
    products. For a traversal that cannot (a sliding window such as a convolution's) it contracts its
    full Jacobian through `jacobianContraction` instead. Correct, but it is the Jacobian-fallback
    cost a reduced form would remove for those windowed cases.
-3. **Cross-attention keys and values enter as constants.** The `scaledDotProductAttention` of
+2. **Cross-attention keys and values enter as constants.** The `scaledDotProductAttention` of
    `SequenceAttentionFeatures` (used by `sequenceCrossAttention`) binds the keys and values as
    constants, so — as its own Javadoc states — "no gradient flows to whatever produced them."
    Attention that trains its own keys and values (`sequenceAttention`) reads them from branches of
    its asset layer instead.
-4. **Buffered cross-attention drops gradients to the fused projection.** Inside
+3. **Buffered cross-attention drops gradients to the fused projection.** Inside
    `sequenceCrossAttention`, `SequenceAttentionFeatures` carries the marker
    `// TODO(review): K/V buffering drops gradients to toKvWeight; feed K and V to the products as
    branch operands, as sequence_attention.pdsl does`: the context branch's buffered K/V path does

@@ -45,8 +45,10 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests for the controller's tracker-facing surface: the
  * {@code GET /api/tracker/claimable} endpoint CI uses to decide whether to
- * start a task-planning round, and the {@code trackerCapabilities} workstream
- * setting that grants agents the narrow tracker tools.
+ * start a task-planning round, the {@code POST /api/tracker/claim} endpoint CI
+ * uses to claim the task it hands to an agent, and the
+ * {@code trackerCapabilities} workstream setting that grants the
+ * {@code planner} role.
  *
  * <p>The tracker is replaced by a local HTTP stub, so the tests check what the
  * controller forwards and what it returns without a tracker running.</p>
@@ -74,10 +76,30 @@ public class TrackerEndpointTest extends TestSuiteBase {
     /** The Authorization header of the last request the tracker stub received. */
     private final AtomicReference<String> trackerAuth = new AtomicReference<>();
 
-    /** Starts the endpoint and a tracker stub answering {@code /v1/claimable}. */
+    /** The body of the last claim the tracker stub received. */
+    private final AtomicReference<String> claimRequest = new AtomicReference<>();
+
+    /** The status the tracker stub answers a claim with. */
+    private final AtomicReference<Integer> claimStatus = new AtomicReference<>(200);
+
+    /** The body the tracker stub answers a claim with. */
+    private final AtomicReference<String> claimReply = new AtomicReference<>(
+            "{\"ok\":true,\"task\":{\"id\":\"t1\",\"title\":\"Do it\"}}");
+
+    /** Starts the endpoint and a tracker stub answering {@code /v1/claimable} and {@code /v1/claim}. */
     @Before
     public void setUp() throws Exception {
         tracker = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        tracker.createContext("/v1/claim", exchange -> {
+            claimRequest.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            trackerAuth.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] body = claimReply.get().getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(claimStatus.get(), body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+        });
         tracker.createContext("/v1/claimable", exchange -> {
             trackerQuery.set(exchange.getRequestURI().getRawQuery());
             trackerAuth.set(exchange.getRequestHeaders().getFirst("Authorization"));
@@ -177,7 +199,7 @@ public class TrackerEndpointTest extends TestSuiteBase {
         String path = "/api/workstreams/" + ws.getWorkstreamId() + "/update";
 
         assertEquals(200, post(path, "{\"planningDocument\":\"docs/x.md\"}").statusCode());
-        assertEquals(List.of("steward"), ws.getTrackerCapabilities());
+        assertEquals(List.of("planner"), ws.getTrackerCapabilities());
 
         assertEquals(200, post(path, "{\"trackerCapabilities\":[]}").statusCode());
         assertTrue(ws.getTrackerCapabilities().isEmpty());
@@ -231,10 +253,87 @@ public class TrackerEndpointTest extends TestSuiteBase {
                 + "\"trackerCapabilities\":\"planner\"}").statusCode());
         assertEquals(400, post(path, "{\"trackerCapabilities\":[\"planner\",true]}").statusCode());
         assertEquals("docs/original.md", ws.getPlanningDocument());
-        assertEquals(List.of("steward"), ws.getTrackerCapabilities());
+        assertEquals(List.of("planner"), ws.getTrackerCapabilities());
 
         assertEquals(200, post(path, "{\"trackerCapabilities\":null}").statusCode());
         assertTrue(ws.getTrackerCapabilities().isEmpty());
+    }
+
+    /** A claim is forwarded for the registered workstream and the tracker's task is returned. */
+    @Test(timeout = 30000)
+    public void claimReturnsTheClaimedTask() throws Exception {
+        endpoint.setTrackerService("http://127.0.0.1:" + tracker.getAddress().getPort(), "tok");
+        Workstream ws = registeredWorkstream();
+        HttpResponse<String> resp = post("/api/tracker/claim", "{\"project\":\"Framework\","
+                + "\"release\":\"Framework 1.2\",\"workstreamId\":\"" + ws.getWorkstreamId() + "\"}");
+        assertEquals(resp.body(), 200, resp.statusCode());
+        assertTrue(MAPPER.readTree(resp.body()).get("ok").asBoolean());
+        assertEquals("t1", MAPPER.readTree(resp.body()).get("task").get("id").asText());
+        assertEquals("Framework 1.2", MAPPER.readTree(claimRequest.get()).get("release").asText());
+        assertEquals(ws.getWorkstreamId(), MAPPER.readTree(claimRequest.get()).get("workstream_id").asText());
+        assertEquals("Bearer tok", trackerAuth.get());
+    }
+
+    /** A release with nothing to claim answers with a null task, not an error. */
+    @Test(timeout = 30000)
+    public void claimReturnsNullWhenNothingIsClaimable() throws Exception {
+        endpoint.setTrackerService("http://127.0.0.1:" + tracker.getAddress().getPort(), null);
+        claimReply.set("{\"ok\":true,\"task\":null}");
+        HttpResponse<String> resp = post("/api/tracker/claim", "{\"project\":\"P\",\"release\":\"R\","
+                + "\"workstreamId\":\"" + registeredWorkstream().getWorkstreamId() + "\"}");
+        assertEquals(200, resp.statusCode());
+        assertTrue(MAPPER.readTree(resp.body()).get("task").isNull());
+    }
+
+    /** Every field is required, and a blank one counts as missing. */
+    @Test(timeout = 30000)
+    public void claimRequiresEveryField() throws Exception {
+        endpoint.setTrackerService("http://127.0.0.1:" + tracker.getAddress().getPort(), null);
+        String id = registeredWorkstream().getWorkstreamId();
+        assertEquals(400, post("/api/tracker/claim",
+                "{\"project\":\"P\",\"release\":\"R\"}").statusCode());
+        assertEquals(400, post("/api/tracker/claim",
+                "{\"project\":\"P\",\"release\":\" \",\"workstreamId\":\"" + id + "\"}").statusCode());
+        assertNull(claimRequest.get());
+    }
+
+    /** A claim for a workstream the controller does not know is refused before reaching the tracker. */
+    @Test(timeout = 30000)
+    public void claimRejectsAnUnknownWorkstream() throws Exception {
+        endpoint.setTrackerService("http://127.0.0.1:" + tracker.getAddress().getPort(), null);
+        HttpResponse<String> resp = post("/api/tracker/claim",
+                "{\"project\":\"P\",\"release\":\"R\",\"workstreamId\":\"ws-missing\"}");
+        assertEquals(404, resp.statusCode());
+        assertNull(claimRequest.get());
+    }
+
+    /** Without a configured tracker a claim is reported as unavailable. */
+    @Test(timeout = 30000)
+    public void claimWithoutATrackerIsUnavailable() throws Exception {
+        HttpResponse<String> resp = post("/api/tracker/claim", "{\"project\":\"P\",\"release\":\"R\","
+                + "\"workstreamId\":\"" + registeredWorkstream().getWorkstreamId() + "\"}");
+        assertEquals(503, resp.statusCode());
+        assertFalse(MAPPER.readTree(resp.body()).get("ok").asBoolean());
+    }
+
+    /** A tracker that refuses the claim is reported as a bad gateway, not as nothing to claim. */
+    @Test(timeout = 30000)
+    public void claimReportsATrackerFailure() throws Exception {
+        endpoint.setTrackerService("http://127.0.0.1:" + tracker.getAddress().getPort(), null);
+        claimStatus.set(500);
+        claimReply.set("{\"ok\":false,\"error\":\"boom\"}");
+        HttpResponse<String> resp = post("/api/tracker/claim", "{\"project\":\"P\",\"release\":\"R\","
+                + "\"workstreamId\":\"" + registeredWorkstream().getWorkstreamId() + "\"}");
+        assertEquals(502, resp.statusCode());
+        assertFalse(MAPPER.readTree(resp.body()).get("ok").asBoolean());
+    }
+
+    /** Registers a workstream with the notifier and returns it. */
+    private Workstream registeredWorkstream() {
+        Workstream ws = new Workstream(null, "claimer");
+        ws.setDefaultBranch("feature/claimer");
+        notifier.registerWorkstream(ws);
+        return ws;
     }
 
     /** Issues a GET against the endpoint. */

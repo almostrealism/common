@@ -505,9 +505,7 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 		int width = w + 2 * padding;
 
 		int diff = size - 1;
-		int outHeight = height - diff;
-		int outWidth = width - diff;
-		TraversalPolicy outputShape = shape(batch, filterCount, outHeight, outWidth);
+		TraversalPolicy outputShape = shape(batch, filterCount, height - diff, width - diff);
 
 		TraversalPolicy filterShape = shape(filterCount, channels, size, size);
 		PackedCollection filters = new PackedCollection(filterShape);
@@ -515,10 +513,80 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 		TraversalPolicy biasShape = shape(filterCount);
 		PackedCollection biases = bias ? new PackedCollection(biasShape) : null;
 
-		Factor<PackedCollection> operator = input -> {
-			CollectionProducer in = c(input);
+		OperationList setup = new OperationList();
+		setup.add(randnInit(filters, 1.0 / (channels * size * size)));
+		if (biases != null) {
+			setup.add(randnInit(biases, 1.0 / (channels * size * size)));
+		}
+
+		TraversalPolicy convInputShape = shape(batch, channels, height, width);
+		CellularLayer layer = layer("convolution2d",
+								convInputShape.traverse(1), outputShape.traverse(1),
+								convolution2dOperator(convInputShape, filters, biases),
+								biases == null ? List.of(filters) : List.of(filters, biases),
+								setup, requirements);
+
+		if (padding > 0) {
+			SequentialBlock block = new SequentialBlock(inputShape);
+			block.add(pad(inputShape, convInputShape, 0, 0, padding, padding));
+			block.add(layer);
+			return block;
+		} else {
+			return layer;
+		}
+	}
+
+	/**
+	 * Builds the forward operator of a 2-D convolution without padding: a weighted sum of
+	 * every {@code channels × size × size} window of the input with each filter, plus the
+	 * bias of that filter when one is given, in the shape
+	 * {@code (batch, filters, height - size + 1, width - size + 1)}.
+	 *
+	 * <p>The windows slide over the input, so the weighted sum's traversal of the input
+	 * cannot be transposed, and its gradient with respect to the input contracts the full
+	 * Jacobian of the operator.</p>
+	 *
+	 * @param inputShape the input shape {@code (batch, channels, height, width)}
+	 * @param filters    the filters, of shape {@code (filters, channels, size, size)}
+	 * @param biases     the bias of each filter, of shape {@code (filters)}, or {@code null}
+	 *                   for no bias
+	 * @return the convolution operator
+	 * @throws IllegalArgumentException if the input or the filters are not 4-D, their
+	 *                                  channel counts differ, the filters are not square,
+	 *                                  the filters are larger than the input, or the
+	 *                                  number of biases differs from the number of filters
+	 */
+	default Factor<PackedCollection> convolution2dOperator(TraversalPolicy inputShape,
+														   PackedCollection filters,
+														   PackedCollection biases) {
+		TraversalPolicy filterShape = filters.getShape();
+		if (inputShape.getDimensions() != 4 || filterShape.getDimensions() != 4
+				|| filterShape.length(1) != inputShape.length(1)
+				|| filterShape.length(2) != filterShape.length(3)
+				|| filterShape.length(2) > inputShape.length(2)
+				|| filterShape.length(3) > inputShape.length(3)) {
+			throw new IllegalArgumentException("Convolution requires a 4-D input and 4-D square filters "
+					+ "with matching channels that fit within the input, not input " + inputShape
+					+ " and filters " + filterShape);
+		}
+
+		if (biases != null && biases.getShape().getTotalSize() != filterShape.length(0)) {
+			throw new IllegalArgumentException("Convolution requires one bias per filter, not biases "
+					+ biases.getShape() + " for filters " + filterShape);
+		}
+
+		int batch = inputShape.length(0);
+		int channels = inputShape.length(1);
+		int height = inputShape.length(2);
+		int width = inputShape.length(3);
+		int filterCount = filterShape.length(0);
+		int size = filterShape.length(2);
+		int outHeight = height - size + 1;
+		int outWidth = width - size + 1;
+
+		return input -> {
 			CollectionProducer conv =
-					in.reshape(-1, 1, channels, height, width);
+					c(input).reshape(-1, 1, channels, height, width);
 			CollectionProducer filter =
 					cp(filters.reshape(1, filterCount, channels, size, size));
 
@@ -550,28 +618,6 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 					.reshape(-1, filterCount, outHeight, outWidth)
 					.traverseEach();
 		};
-
-		OperationList setup = new OperationList();
-		setup.add(randnInit(filters, 1.0 / (channels * size * size)));
-		if (biases != null) {
-			setup.add(randnInit(biases, 1.0 / (channels * size * size)));
-		}
-
-		TraversalPolicy convInputShape = shape(batch, channels, height, width);
-		CellularLayer layer = layer("convolution2d",
-								convInputShape.traverse(1), outputShape.traverse(1),
-								operator,
-								biases == null ? List.of(filters) : List.of(filters, biases),
-								setup, requirements);
-
-		if (padding > 0) {
-			SequentialBlock block = new SequentialBlock(inputShape);
-			block.add(pad(inputShape, convInputShape, 0, 0, padding, padding));
-			block.add(layer);
-			return block;
-		} else {
-			return layer;
-		}
 	}
 
 	/**

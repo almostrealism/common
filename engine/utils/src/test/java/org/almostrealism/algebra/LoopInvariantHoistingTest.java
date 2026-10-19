@@ -22,10 +22,12 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.sequence.DefaultIndex;
 import org.almostrealism.algebra.computations.LoopedWeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
@@ -35,6 +37,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Tests for Loop-Invariant Code Motion (LICM) in {@link Repeated} scopes.
@@ -534,6 +537,64 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 
 		Assert.assertTrue("Invariant sub-expression should be extracted and hoisted as f_licm_* declaration",
 				licmDeclarations > 0);
+	}
+
+	/**
+	 * Verifies that an extracted invariant sub-expression that refers to the kernel
+	 * index is declared as a 64-bit integer, although it is typed as {@link Integer}
+	 * and its bounds fit in 32 bits, while an extracted sub-expression of a bounded
+	 * loop-independent index keeps its 32-bit type.
+	 *
+	 * <p>The kernel index is rendered as 64-bit in every generated language, so the
+	 * product of the hoisted row with the loop variable is evaluated in 64 bits when
+	 * the row is inline; a 32-bit {@code f_licm_*} variable would evaluate it in 32 bits
+	 * and overflow.</p>
+	 */
+	@Test(timeout = 30000)
+	public void kernelIndexSubExpressionExtractedAsLong() {
+		Expression<?> row = new KernelIndex().withLimit(16384).imod(1000).divide(7);
+		Assert.assertEquals(Integer.class, row.getType());
+		Assert.assertTrue(row.upperBound(null).getAsLong() <= Integer.MAX_VALUE);
+		Assert.assertEquals(Long.class, extractedDeclarationType("kernelRowTest", row));
+
+		Expression<?> independent = new DefaultIndex("_test_j", 4096).imod(1000).divide(7);
+		Assert.assertEquals(Integer.class, independent.getType());
+		Assert.assertEquals(Integer.class, extractedDeclarationType("independentRowTest", independent));
+	}
+
+	/**
+	 * Builds a loop whose body declares the product of an invariant sub-expression with
+	 * the loop variable, simplifies it, and returns the type of the single {@code f_licm_*}
+	 * declaration that the sub-expression was extracted into.
+	 *
+	 * @param name      the name of the loop
+	 * @param invariant the invariant sub-expression to be extracted
+	 * @return the declared type of the variable holding the extracted sub-expression
+	 */
+	private Class<?> extractedDeclarationType(String name, Expression<?> invariant) {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName(name);
+
+		Scope<Void> child = new Scope<>("body");
+		child.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Long.class, "f_result"),
+				invariant.multiply(new StaticReference<>(Integer.class, "_test_i"))));
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		List<Class<?>> types = simplified.getStatements().stream()
+				.filter(s -> s instanceof ExpressionAssignment)
+				.map(s -> (ExpressionAssignment<?>) s)
+				.filter(ExpressionAssignment::isDeclaration)
+				.filter(a -> a.getDestination() instanceof StaticReference
+						&& ((StaticReference<?>) a.getDestination()).getName().startsWith("f_licm_"))
+				.<Class<?>>map(a -> a.getDestination().getType())
+				.collect(Collectors.toList());
+		Assert.assertEquals("one invariant sub-expression should be extracted from " + name, 1, types.size());
+		return types.get(0);
 	}
 
 	/**

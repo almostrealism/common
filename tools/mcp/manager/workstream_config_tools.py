@@ -18,16 +18,21 @@ from server import mcp
 def _parse_tracker_capabilities(value: str) -> tuple:
     """Split a comma-separated tracker-capability list and check each entry.
 
+    The retired ``steward`` role is accepted as ``planner``, which replaced it,
+    and repeated entries are collapsed.
+
     Returns:
         A ``(capabilities, error)`` tuple: the list (possibly empty) and
         None, or None and an error dict naming the unknown entry.
     """
-    known = (server.TRACKER_PLANNER, server.TRACKER_STEWARD)
-    caps = [c.strip() for c in value.split(",") if c.strip()]
-    for cap in caps:
-        if cap not in known:
+    caps = []
+    for cap in (c.strip() for c in value.split(",") if c.strip()):
+        cap = server._canonical_tracker_capability(cap)
+        if cap != server.TRACKER_PLANNER:
             return None, {"ok": False, "error": (
-                f"Unknown tracker capability '{cap}'; expected any of {list(known)}")}
+                f"Unknown tracker capability '{cap}'; expected '{server.TRACKER_PLANNER}'")}
+        if cap not in caps:
+            caps.append(cap)
     return caps, None
 
 
@@ -161,10 +166,12 @@ def workstream_register(
             mechanism. Operators should enable it only on workstreams
             that genuinely orchestrate.
         tracker_capabilities: Comma-separated tracker roles granted to agents
-            on this workstream: ``planner`` (may claim the next ready task of
-            a release with tracker_claim_next_task) and ``steward`` (may list
-            a release and create or update goal-derived tasks). Empty grants
-            none, which is the default.
+            on this workstream. The one role is ``planner``: its agents may
+            create tasks with every field set, edit any task in the
+            workspace, and create releases. Without it an agent may still
+            read the workspace's tasks, file new tasks into the backlog, and
+            edit the tasks linked to its own workstream. Empty grants none,
+            which is the default.
         default_use_tmux: When ``True``, coding-agent jobs on this workstream
             launch the agent subprocess inside a tmux session (a real
             controlling tty) by default. The per-job ``use_tmux`` flag
@@ -467,9 +474,8 @@ def workstream_update_config(
             the parameter entirely leaves the existing controller value
             unchanged (presence-signal semantics, same pattern as
             ``completion_listeners``). Defaults to ``None`` (no change).
-        tracker_capabilities: Comma-separated tracker roles (``planner``,
-            ``steward``) granted to agents on this workstream, replacing the
-            current set. ``""`` revokes them all; omitting the parameter
+        tracker_capabilities: Comma-separated tracker roles (``planner``)
+            granted to agents on this workstream, replacing the current set. ``""`` revokes them all; omitting the parameter
             (``None``) leaves them unchanged.
         default_use_tmux: When ``True``, coding-agent jobs on this workstream
             launch the agent subprocess inside a tmux session (a real

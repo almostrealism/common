@@ -61,19 +61,27 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	/** Width of the rows fed to each projection, matching the documentation language model. */
 	private static final int DIM = 64;
 
+	/** Number of times the full-Jacobian gradient of the output projection is formed and evaluated. */
+	private static final int OUTPUT_PROJECTION_EVALUATIONS = 3;
+
 	/**
 	 * The output projection (256 x 64) gradients agree with the gradients computed from
-	 * their definition, and the input gradient agrees with the full Jacobian.
+	 * their definition and with the full Jacobian, on every one of several evaluations of
+	 * the full-Jacobian gradient.
 	 *
-	 * <p>The full-Jacobian weight gradient is not a usable reference at this size: on Metal
-	 * it has been measured to disagree with the definition in roughly a tenth of the 16,384
-	 * entries (from row 64 onward), by a different count on each run. The comparison is
-	 * still computed and the number of disagreeing entries is logged, but only the agreement
-	 * of the reduced delta with the definition is asserted for the weight.</p>
+	 * <p>The kernel of the full-Jacobian weight gradient at this size sums 64 masked terms
+	 * over a flattened position of up to {@code 2^34}, and once hoisted repeated parts of
+	 * that position into variables declared as 32-bit integers. The kernel index is 64-bit
+	 * in every generated language, so the inline position was computed in 64 bits, but a
+	 * product of a hoisted row with a stride of {@code 1048512} was computed in 32 bits and
+	 * overflowed: about a tenth of the 16,384 entries, from weight row 64 onward, were wrong,
+	 * by a count that depended on which parts were hoisted. Hoisted variables now take the
+	 * type of the arithmetic they replace ({@code Expression.getDeclarationType}), and this
+	 * test holds the full-Jacobian weight gradient to the definition.</p>
 	 */
 	@Test(timeout = 20 * 60000)
 	public void outputProjection() {
-		assertDenseGradientsMatch(shape(1, SEQ_LEN, DIM), 4 * DIM, false);
+		assertDenseGradientsMatch(shape(1, SEQ_LEN, DIM), 4 * DIM, OUTPUT_PROJECTION_EVALUATIONS);
 	}
 
 	/** The fused query/key/value projection (192 x 64) agrees with the full Jacobian. */
@@ -173,8 +181,8 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 */
 	@Test(timeout = 5 * 60000)
 	public void singleOutputNode() {
-		assertDenseGradientsMatch(shape(1, 5, 3), 1, true, false);
-		assertDenseGradientsMatch(shape(3), 1, true, false);
+		assertDenseGradientsMatch(shape(1, 5, 3), 1, 1, false);
+		assertDenseGradientsMatch(shape(3), 1, 1, false);
 	}
 
 	/**
@@ -185,7 +193,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 */
 	@Test(timeout = 10 * 60000)
 	public void wideOutputWeightedSum() {
-		assertDenseGradientsMatch(shape(1, 3, 8), 1200, true, true);
+		assertDenseGradientsMatch(shape(1, 3, 8), 1200, 1, true);
 	}
 
 	/**
@@ -303,7 +311,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 			}
 		}
 
-		assertGradientsMatch(out, p(weights), cp(gradient), false, reference, true);
+		assertGradientsMatch(out, p(weights), cp(gradient), false, reference, 1);
 	}
 
 	/**
@@ -378,9 +386,9 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 			}
 		}
 
-		assertGradientsMatch(out, p(weights), cp(gradient), true, weightGradient, true);
-		assertGradientsMatch(out, x, cp(gradient), true, inputGradient, true);
-		assertGradientsMatch(out, z, cp(gradient), true, inputGradient, true);
+		assertGradientsMatch(out, p(weights), cp(gradient), true, weightGradient, 1);
+		assertGradientsMatch(out, x, cp(gradient), true, inputGradient, 1);
+		assertGradientsMatch(out, z, cp(gradient), true, inputGradient, 1);
 	}
 
 	/**
@@ -526,38 +534,37 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 * @param nodes      the output width
 	 */
 	private void assertDenseGradientsMatch(TraversalPolicy inputShape, int nodes) {
-		assertDenseGradientsMatch(inputShape, nodes, true);
+		assertDenseGradientsMatch(inputShape, nodes, 1);
 	}
 
 	/**
 	 * Builds a dense operator without bias, as {@link #assertDenseGradientsMatch(TraversalPolicy, int)}
-	 * does, optionally without requiring the full-Jacobian weight gradient to agree.
+	 * does, forming and evaluating each full-Jacobian gradient the given number of times.
 	 *
-	 * @param inputShape             the input shape, whose last dimension is the input width
-	 * @param nodes                  the output width
-	 * @param weightJacobianReliable whether the full-Jacobian weight gradient is required to
-	 *                               agree with the definition at this size
+	 * @param inputShape          the input shape, whose last dimension is the input width
+	 * @param nodes               the output width
+	 * @param jacobianEvaluations the number of times each full-Jacobian gradient is formed,
+	 *                            evaluated, and required to agree with the definition
 	 */
-	private void assertDenseGradientsMatch(TraversalPolicy inputShape, int nodes, boolean weightJacobianReliable) {
-		assertDenseGradientsMatch(inputShape, nodes, weightJacobianReliable, true);
+	private void assertDenseGradientsMatch(TraversalPolicy inputShape, int nodes, int jacobianEvaluations) {
+		assertDenseGradientsMatch(inputShape, nodes, jacobianEvaluations, true);
 	}
 
 	/**
 	 * Builds a dense operator without bias for the given input shape and output width,
 	 * and checks the weight and input gradients against their definition, computed on the
-	 * host as {@code dW = Σ_r g_r ⊗ x_r} and {@code dx_r = Wᵀ · g_r}. The input gradient
-	 * is always also checked against the full Jacobian; the weight gradient is only when
-	 * {@code weightJacobianReliable} is set.
+	 * host as {@code dW = Σ_r g_r ⊗ x_r} and {@code dx_r = Wᵀ · g_r}, and against the full
+	 * Jacobian, which is formed and evaluated the given number of times.
 	 *
-	 * @param inputShape             the input shape, whose last dimension is the input width
-	 * @param nodes                  the output width
-	 * @param weightJacobianReliable whether the full-Jacobian weight gradient is required to
-	 *                               agree with the definition at this size
-	 * @param expectReduced          whether the gradients must be formed without anything
-	 *                               as large as the Jacobian
+	 * @param inputShape          the input shape, whose last dimension is the input width
+	 * @param nodes               the output width
+	 * @param jacobianEvaluations the number of times each full-Jacobian gradient is formed,
+	 *                            evaluated, and required to agree with the definition
+	 * @param expectReduced       whether the gradients must be formed without anything
+	 *                            as large as the Jacobian
 	 */
 	private void assertDenseGradientsMatch(TraversalPolicy inputShape, int nodes,
-										   boolean weightJacobianReliable, boolean expectReduced) {
+										   int jacobianEvaluations, boolean expectReduced) {
 		int size = inputShape.length(inputShape.getDimensions() - 1);
 		TraversalPolicy outputShape = inputShape.replaceDimension(inputShape.getDimensions() - 1, nodes);
 
@@ -589,8 +596,8 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 
 		assertValuesMatch("forward", output, evaluate(out).toArray(0, rows * nodes));
 
-		assertGradientsMatch(out, p(weights), cp(gradient), expectReduced, weightGradient, weightJacobianReliable);
-		assertGradientsMatch(out, in, cp(gradient), expectReduced, inputGradient, true);
+		assertGradientsMatch(out, p(weights), cp(gradient), expectReduced, weightGradient, jacobianEvaluations);
+		assertGradientsMatch(out, in, cp(gradient), expectReduced, inputGradient, jacobianEvaluations);
 	}
 
 	/**
@@ -604,25 +611,25 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 */
 	private void assertGradientsMatch(CollectionProducer function, Producer<PackedCollection> target,
 									  Producer<PackedCollection> gradient, boolean expectReduced) {
-		assertGradientsMatch(function, target, gradient, expectReduced, null, true);
+		assertGradientsMatch(function, target, gradient, expectReduced, null, 1);
 	}
 
 	/**
 	 * Asserts that, when expected, the gradient was formed without anything as large as the
 	 * Jacobian, that it agrees with an independently computed reference when one is given,
-	 * and that it agrees with the full-Jacobian gradient. When the full-Jacobian gradient is
-	 * not reliable, its disagreement with the reference is logged instead of asserted.
+	 * and that it agrees with the full-Jacobian gradient, which is formed and evaluated anew
+	 * the given number of times and must agree with the reference every time.
 	 *
-	 * @param function         the forward operator
-	 * @param target           the producer to differentiate with respect to
-	 * @param gradient         the upstream gradient
-	 * @param expectReduced    whether the gradient must be formed without the Jacobian
-	 * @param reference        the gradient computed directly from its definition, or null
-	 * @param jacobianReliable whether the full-Jacobian gradient is required to agree
+	 * @param function            the forward operator
+	 * @param target              the producer to differentiate with respect to
+	 * @param gradient            the upstream gradient
+	 * @param expectReduced       whether the gradient must be formed without the Jacobian
+	 * @param reference           the gradient computed directly from its definition, or null
+	 * @param jacobianEvaluations the number of times the full-Jacobian gradient is evaluated
 	 */
 	private void assertGradientsMatch(CollectionProducer function, Producer<PackedCollection> target,
 									  Producer<PackedCollection> gradient, boolean expectReduced,
-									  double[] reference, boolean jacobianReliable) {
+									  double[] reference, int jacobianEvaluations) {
 		CollectionProducer reduced = function.delta(target, ReduceAxis.OUT, gradient);
 
 		int size = shape(target).getTotalSize();
@@ -631,30 +638,22 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 		}
 
 		PackedCollection actual = evaluate(reduced);
-		PackedCollection expected = evaluate(jacobianGradient(function, target, gradient));
-
 		Assert.assertEquals(size, actual.getShape().getTotalSize());
-		Assert.assertEquals(size, expected.getShape().getTotalSize());
-
 		double[] a = actual.toArray(0, size);
-		double[] e = expected.toArray(0, size);
 		actual.destroy();
-		expected.destroy();
 
 		if (reference != null) {
 			assertValuesMatch("reduced", reference, a);
 		}
 
-		if (jacobianReliable) {
-			if (reference != null) assertValuesMatch("jacobian", reference, e);
-			assertValuesMatch("reduced against jacobian", e, a);
-		} else {
-			int disagreements = 0;
-			for (int i = 0; i < size; i++) {
-				if (Math.abs(e[i] - reference[i]) > tolerance(reference)) disagreements++;
-			}
+		for (int n = 0; n < jacobianEvaluations; n++) {
+			PackedCollection expected = evaluate(jacobianGradient(function, target, gradient));
+			Assert.assertEquals(size, expected.getShape().getTotalSize());
+			double[] e = expected.toArray(0, size);
+			expected.destroy();
 
-			log("jacobianDisagreements=" + disagreements + " of " + size);
+			if (reference != null) assertValuesMatch("jacobian evaluation " + n, reference, e);
+			assertValuesMatch("reduced against jacobian evaluation " + n, e, a);
 		}
 	}
 
@@ -699,7 +698,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 * @param visited the nodes already inspected
 	 * @return the largest total size of any collection producer in the graph
 	 */
-	private static long largestComputation(Object node, Set<Object> visited) {
+	static long largestComputation(Object node, Set<Object> visited) {
 		if (node == null || !visited.add(node)) return 0;
 
 		long largest = node instanceof CollectionProducer ?
@@ -734,7 +733,7 @@ public class DenseVectorJacobianProductTest extends TestSuiteBase implements Lay
 	 * @param expected the expected values
 	 * @param actual   the actual values
 	 */
-	private void assertValuesMatch(String label, double[] expected, double[] actual) {
+	static void assertValuesMatch(String label, double[] expected, double[] actual) {
 		Assert.assertEquals(expected.length, actual.length);
 
 		double tolerance = tolerance(expected);

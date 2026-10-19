@@ -67,8 +67,8 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.build();
 		assertTrue("Expected Out-of-Scope Review Points section when workstream URL is set",
 			result.contains("## Out-of-Scope Review Points"));
-		assertTrue("Expected tracker_file_follow_up_task reference",
-			result.contains("tracker_file_follow_up_task"));
+		assertTrue("Expected tracker_create_task reference",
+			result.contains("tracker_create_task"));
 		assertTrue("Expected the guidance to say to reply with the task id",
 			result.contains("reply in the review thread with the task id"));
 	}
@@ -83,7 +83,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.setPrompt("test")
 			.build();
 		assertFalse("Expected no follow-up task guidance without workstream URL",
-			result.contains("tracker_file_follow_up_task"));
+			result.contains("tracker_create_task"));
 	}
 
 	/** InstructionPromptBuilder excludes Communication section when no workstream URL. */
