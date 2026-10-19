@@ -198,6 +198,39 @@ public class CollectionPermuteTests extends TestSuiteBase {
 	}
 
 	/**
+	 * A cyclic permutation, whose inverse is a different permutation, places every input element
+	 * where the {@link CollectionPermute} contract says it belongs: for {@code permute(2, 0, 1)},
+	 * {@code input[i][j][k]} is {@code result[k][i][j]}.
+	 *
+	 * <p>Every other permutation exercised here ({@code (1, 0)}, {@code (2, 1, 0)},
+	 * {@code (0, 2, 1, 3)}) is its own inverse, so a policy that confused the output-to-input axis
+	 * mapping with its inverse would pass them all. A 3-cycle is the smallest permutation that
+	 * tells the two apart.</p>
+	 */
+	@Test(timeout = 30000)
+	public void cyclicPermutePlacesEachElementAtItsPermutedPosition() {
+		try (PackedCollection input = pack(
+				0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0,
+				12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0)
+				.reshape(2, 3, 4)) {
+			try (PackedCollection out = cp(input).permute(2, 0, 1).evaluate()) {
+				assertEquals(4, out.getShape().length(0));
+				assertEquals(2, out.getShape().length(1));
+				assertEquals(3, out.getShape().length(2));
+
+				for (int i = 0; i < 2; i++) {
+					for (int j = 0; j < 3; j++) {
+						for (int k = 0; k < 4; k++) {
+							assertEquals("result[" + k + "][" + i + "][" + j + "]",
+									input.valueAt(i, j, k), out.valueAt(k, i, j));
+						}
+					}
+				}
+			}
+		}
+	}
+
+	/**
 	 * Tests 4D dimension reordering with partial permutation.
 	 * Demonstrates swapping middle dimensions while keeping first and last in place using permute(0, 2, 1, 3).
 	 *
