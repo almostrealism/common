@@ -1,4 +1,4 @@
-name: "Release Steward"
+name: "Goal Decomposition"
 
 # The decomposition round of goal-driven release automation, as a reusable
 # workflow. A repository that opts in calls it from its own workflow; this
@@ -23,8 +23,8 @@ name: "Release Steward"
 #       paths: ["docs/GOALS.md", "docs/plans/**", "version.txt"]
 #     workflow_dispatch:
 #   jobs:
-#     steward:
-#       uses: almostrealism/common/.github/workflows/release-steward.yaml@master
+#     decompose:
+#       uses: almostrealism/common/.github/workflows/goal-decomposition.yaml@master
 #       permissions:
 #         contents: write
 #       with:
@@ -41,11 +41,11 @@ name: "Release Steward"
 # the same rule Verify Completion follows for the scripts that hold the
 # controller credentials.
 #
-# The agent works on one standing workstream per repository (steward-branch;
-# the orchestration/ prefix keeps it from ever being archived). Each run moves
-# that branch to the commit being reconciled, so the agent reads exactly the
-# documents that triggered it. It changes no files: its output is tracker
-# tasks and a summary message on the workstream.
+# The agent works on one standing workstream per repository
+# (workstream-branch; the orchestration/ prefix keeps it from ever being
+# archived). Each run moves that branch to the commit being reconciled, so the
+# agent reads exactly the documents that triggered it. It changes no files:
+# its output is tracker tasks and a summary message on the workstream.
 
 on:
   workflow_call:
@@ -94,10 +94,10 @@ on:
         required: false
         default: 20
         type: number
-      steward-branch:
+      workstream-branch:
         description: "Branch of the standing workstream the agent works on"
         required: false
-        default: "orchestration/release-steward"
+        default: "orchestration/goal-decomposition"
         type: string
       controller-url:
         description: "FlowTree controller base URL"
@@ -115,7 +115,7 @@ on:
         required: false
 
 jobs:
-  steward:
+  decompose:
     # Only the default branch carries approved documents. ref_name alone is
     # shared by branches and tags, so a tag named after the default branch
     # would satisfy it; ref_type pins this to the branch.
@@ -124,18 +124,18 @@ jobs:
     permissions:
       contents: write
 
-    # One steward at a time per repository, so two merges landing together
-    # reconcile one after the other instead of both creating the same task.
-    # Not cancelled: a run part-way through its submission should finish.
+    # One decomposition run at a time per repository, so two merges landing
+    # together reconcile one after the other instead of both creating the same
+    # task. Not cancelled: a run part-way through its submission should finish.
     concurrency:
-      group: release-steward-${{ github.repository }}
+      group: goal-decomposition-${{ github.repository }}
       cancel-in-progress: false
 
     env:
-      FRAMEWORK: ${{ github.workspace }}/.release-steward/framework
+      FRAMEWORK: ${{ github.workspace }}/.goal-decomposition/framework
       CONTROLLER_URL: ${{ inputs.controller-url }}
       CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
-      STEWARD_BRANCH: ${{ inputs.steward-branch }}
+      WORKSTREAM_BRANCH: ${{ inputs.workstream-branch }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
     steps:
@@ -151,7 +151,7 @@ jobs:
         with:
           repository: ${{ inputs.framework-repository }}
           ref: ${{ inputs.framework-ref }}
-          path: .release-steward/framework
+          path: .goal-decomposition/framework
           persist-credentials: false
 
       - name: Resolve the release and its plan
@@ -166,7 +166,7 @@ jobs:
         run: bash "$FRAMEWORK/tools/ci/resolve-release-scope.sh"
 
       # Ask before creating anything: a run the controller will refuse would
-      # move the steward branch and register a workstream for nothing. See
+      # move the workstream branch and register a workstream for nothing. See
       # tools/ci/automated-intake.sh.
       - name: Check that the controller accepts automated jobs
         id: intake
@@ -175,16 +175,16 @@ jobs:
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
         run: bash "$FRAMEWORK/tools/ci/automated-intake.sh"
 
-      # The steward branch holds exactly the commit being reconciled.
-      - name: Move the steward branch to this commit
+      # The workstream branch holds exactly the commit being reconciled.
+      - name: Move the workstream branch to this commit
         if: steps.intake.outputs.open == 'true'
-        run: git push --force origin "HEAD:refs/heads/${STEWARD_BRANCH}"
+        run: git push --force origin "HEAD:refs/heads/${WORKSTREAM_BRANCH}"
 
-      - name: Register the steward workstream
+      - name: Register the goal-decomposition workstream
         if: steps.intake.outputs.open == 'true'
         env:
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
-          BRANCH: ${{ inputs.steward-branch }}
+          BRANCH: ${{ inputs.workstream-branch }}
           BASE_BRANCH: ${{ github.event.repository.default_branch }}
           REPO_URL: git@github.com:${{ github.repository }}.git
           TRACKER_CAPABILITIES: "steward"
@@ -196,7 +196,7 @@ jobs:
       - name: Build the goal-decomposition prompt
         if: steps.intake.outputs.open == 'true'
         env:
-          BRANCH: ${{ inputs.steward-branch }}
+          BRANCH: ${{ inputs.workstream-branch }}
           BASE_BRANCH: ${{ github.event.repository.default_branch }}
           REPOSITORY: ${{ github.repository }}
           TRACKER_PROJECT: ${{ inputs.project }}
@@ -215,11 +215,11 @@ jobs:
       # No model, runner or effort settings: the job takes the workspace
       # defaults. It changes no files, so it neither enforces changes nor
       # opens a pull request.
-      - name: Submit the release steward job
+      - name: Submit the goal-decomposition job
         if: steps.intake.outputs.open == 'true'
         env:
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
-          BRANCH: ${{ inputs.steward-branch }}
+          BRANCH: ${{ inputs.workstream-branch }}
           BASE_BRANCH: ${{ github.event.repository.default_branch }}
           REPO_URL: git@github.com:${{ github.repository }}.git
           DESCRIPTION: "Reconcile release tasks with the release plan"
@@ -238,7 +238,7 @@ jobs:
           INTAKE: ${{ steps.intake.outputs.open }}
         run: |
           {
-            echo "## Release Steward"
+            echo "## Goal Decomposition"
             echo ""
             echo "**Release:** ${RELEASE:-unknown}"
             echo "**Framework release:** ${FRAMEWORK_RELEASE:-unknown}"
@@ -248,8 +248,8 @@ jobs:
             if [ "$IN_SCOPE" != "true" ]; then
               echo "Nothing to reconcile: the release has no plan yet."
             elif [ "$INTAKE" != "true" ]; then
-              echo "No steward job submitted: the controller is not accepting automated jobs, or could not be asked."
+              echo "No goal-decomposition job submitted: the controller is not accepting automated jobs, or could not be asked."
             else
-              echo "Submitted a steward job on \`${STEWARD_BRANCH}\` to reconcile the release's tasks with its plan."
+              echo "Submitted a goal-decomposition job on \`${WORKSTREAM_BRANCH}\` to reconcile the release's tasks with its plan."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

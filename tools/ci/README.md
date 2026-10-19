@@ -28,7 +28,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `tracker-claimable.sh` | Ask the controller whether a tracker release has a claimable task; fails closed |
 | `automated-intake.sh` | Ask the controller whether it accepts automated jobs, before a dispatch round creates anything; fails closed |
 | `register-workstream.sh` | Register a workstream with the FlowTree controller, optionally granting tracker roles (`TRACKER_CAPABILITIES`) and checking out other repositories beside it (`DEPENDENT_REPOS`) |
-| `resolve-release-scope.sh` | Release steward: read the next version from a repository (`pom.xml` or a plain version file), the framework version it pins, and whether `<plans dir>/<version>/PLAN.md` exists (`in_scope`) |
+| `resolve-release-scope.sh` | Goal decomposition: read the next version from a repository (`pom.xml` or a plain version file), the framework version it pins, and whether `<plans dir>/<version>/PLAN.md` exists (`in_scope`) |
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
 | `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests failed |
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
@@ -45,7 +45,7 @@ repository (input `framework-ref`), never from the caller's tree.
 
 | Workflow | Purpose |
 |---|---|
-| `release-steward.yaml` | Decomposition round of goal-driven release automation: on the caller's default branch, resolve its next release and release plan (`resolve-release-scope.sh`), register a standing `orchestration/release-steward` workstream with the tracker `steward` role and this repository as a dependent repository, and submit an agent job that creates or updates the release's tracker tasks |
+| `goal-decomposition.yaml` | Decomposition round of goal-driven release automation: on the caller's default branch, resolve its next release and release plan (`resolve-release-scope.sh`), register a standing `orchestration/goal-decomposition` workstream with the tracker `steward` role and this repository as a dependent repository, and submit an agent job that creates or updates the release's tracker tasks |
 
 ## Coverage (`coverage/`)
 
@@ -139,7 +139,7 @@ it knowingly does not cover are in
 | `build-build-failure-prompt.sh` | Build prompt for agent when compilation fails |
 | `build-consolidation-prompt.sh` | Build prompt for the recurring consolidation (duplication) round |
 | `build-coverage-prompt.sh` | Build prompt for the recurring test-coverage round |
-| `build-goal-decomposition-prompt.sh` | Build prompt for the release steward: turn a repository's release plan into tracker tasks, in its own project or the framework's; changes no files |
+| `build-goal-decomposition-prompt.sh` | Build prompt for the goal-decomposition round: turn a repository's release plan into tracker tasks, in its own project or the framework's; changes no files |
 | `build-docs-review-prompt.sh` | Build prompt for auto-review of a docs-only branch: review and improve the documents, never implement a plan |
 | `build-defect-hunt-prompt.sh` | Build prompt for the recurring defect hunt |
 | `build-doc-qa-prompt.sh` | Build prompt for the recurring documentation-staleness review |
@@ -159,7 +159,7 @@ it knowingly does not cover are in
 | `defect-hunt.txt` | Template for the defect hunt |
 | `docs-review.txt` | Template for the docs-only review prompt |
 | `doc-qa.txt` | Template for the documentation-staleness review |
-| `goal-decomposition.txt` | Template for the release steward: reconcile a release's tracker tasks with its plan, touching only the steward's own goal-derived tasks |
+| `goal-decomposition.txt` | Template for the goal-decomposition round: reconcile a release's tracker tasks with its plan, touching only the goal-derived tasks of the repository being reconciled |
 | `general-review.txt` | Template for general code review prompt |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
 | `retrospective.txt` | Template for the QA retrospective: study recent automated work and propose, with evidence, how the agent harness and the QA jobs should improve — proposes, never implements |

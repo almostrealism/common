@@ -323,8 +323,8 @@ consumer calls it from a job:
 
 ```yaml
 jobs:
-  steward:
-    uses: almostrealism/common/.github/workflows/release-steward.yaml@master
+  decompose:
+    uses: almostrealism/common/.github/workflows/goal-decomposition.yaml@master
     with:
       project: <tracker project>
       version-file: version.txt
@@ -361,7 +361,7 @@ The rules that make this work:
   reusable workflow, `master-agent-dispatch.yaml` (or a sibling caller) calls it
   the way any consumer does, so this repository's pipeline exercises the same
   code every consumer runs. This is not yet true of the first reusable workflow:
-  `release-steward.yaml` has no caller in this repository today, so the
+  `goal-decomposition.yaml` has no caller in this repository today, so the
   decomposition round is exercised only by its tests and by a consumer's caller
   until this repository's self-caller is wired up.
 - **Callers pin `@master` to begin with.** A fix here then reaches every
@@ -370,7 +370,7 @@ The rules that make this work:
 
 **The reusable workflows:**
 
-1. `release-steward.yaml`: the decomposition round (section 4). Built first,
+1. `goal-decomposition.yaml`: the decomposition round (section 4). Built first,
    because it is the stage no consumer can run today.
 2. The task planning round (section 3), extracted from
    `master-agent-dispatch.yaml` and parameterised by tracker project and version
@@ -391,7 +391,7 @@ The rules that make this work:
   `PLAN.md` as its entry point. When it does not exist the job stops before it
   asks the controller anything: no workstream, no agent.
 - **Workstream:** one standing workstream per repository, on the branch
-  `orchestration/release-steward` (the `orchestration/` prefix makes it
+  `orchestration/goal-decomposition` (the `orchestration/` prefix makes it
   `standing`, so it is never archived). Each run moves that branch to the
   default-branch commit being reconciled, so the agent reads exactly the
   approved documents that triggered it. The agent changes no files and commits
@@ -400,9 +400,9 @@ The rules that make this work:
   repository, so the agent can read the framework's code beside the
   application's when it decides where a task belongs.
 - **Ownership:** every task the round creates has the source
-  `goals:<owner>/<repository>/<document path>`. A steward updates only tasks
-  carrying its own repository's prefix, so two applications' stewards never
-  edit each other's tasks; the tracker itself refuses any edit to a person's
+  `goals:<owner>/<repository>/<document path>`. A run updates only tasks
+  carrying its own repository's prefix, so two applications' decomposition
+  rounds never edit each other's tasks; the tracker itself refuses any edit to a person's
   task.
 
 **Consumer checklist** (per consuming repository, planned in that repository):
@@ -436,7 +436,7 @@ The rules that make this work:
 ## Phases
 
 Each phase is useful on its own and can be approved separately. Phases 1, 2 and 4
-are built. Phase 3 is being built as the reusable `release-steward.yaml`
+are built. Phase 3 is being built as the reusable `goal-decomposition.yaml`
 (section 7).
 
 1. **Tracker fields and tools.**

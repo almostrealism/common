@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# ─── Resolve the releases and documents a release steward works from ──
+# ─── Resolve the releases and documents goal decomposition works from ─
 #
-# The release steward turns a repository's goals and the plan for its next
+# Goal decomposition turns a repository's goals and the plan for its next
 # release into tracker tasks. Everything it needs to know about *which*
 # release is read from the repository at the commit being reconciled, so
 # the agent never has to work it out:
@@ -14,8 +14,8 @@
 #     in its root pom.xml.
 #
 # When the release plan directory does not exist there is no approved scope
-# for the release, and in_scope=false tells the caller to stop: the steward
-# never invents a scope from the goals alone.
+# for the release, and in_scope=false tells the caller to stop: goal
+# decomposition never invents a scope from the goals alone.
 #
 # Run from the root of the repository being reconciled.
 #

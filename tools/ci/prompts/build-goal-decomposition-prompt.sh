@@ -2,7 +2,7 @@
 # ─── Build the goal-decomposition prompt for the FlowTree agent ───────
 #
 # Reads the goal-decomposition template and substitutes environment
-# variables to produce a concrete prompt for the release steward. The agent
+# variables to produce a concrete prompt for the goal-decomposition round. The agent
 # reads a repository's goals and the plan for its next release, and creates
 # or updates the tracker tasks that release needs; it changes no files.
 #
@@ -10,7 +10,7 @@
 #   build-goal-decomposition-prompt.sh <output-file>
 #
 # Required environment variables:
-#   BRANCH               - the steward's branch, at the commit being reconciled
+#   BRANCH               - the workstream branch, at the commit being reconciled
 #   BASE_BRANCH          - the repository's default branch
 #   REPOSITORY           - the repository being reconciled, "<owner>/<name>"
 #   TRACKER_PROJECT      - tracker project of that repository
@@ -22,7 +22,7 @@
 #   FRAMEWORK_RELEASE    - framework release the repository builds against
 #   FRAMEWORK_REPOSITORY - the framework repository, "<owner>/<name>"
 #   FRAMEWORK_BRANCH     - framework branch the agent reads
-#   SOURCE_PREFIX        - source prefix of this steward's tasks,
+#   SOURCE_PREFIX        - source prefix of this repository's tasks,
 #                          "goals:<owner>/<name>/"
 #   MAX_NEW_TASKS        - most new tasks one run may create
 #

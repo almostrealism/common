@@ -185,8 +185,8 @@ if [ "$EXISTING" = "true" ] && [ "$UPDATE_PAYLOAD" != '{}' ] && [ -n "$WORKSTREA
     # without its "planner" role cannot call tracker_claim_next_task, an
     # implementation submitted without the labels the plan declared runs on
     # the wrong machine — one without the Metal the plan needs, for
-    # instance — and a release steward without the framework checked out
-    # beside it cannot tell where a task belongs. Either way a
+    # instance — and a goal-decomposition agent without the framework
+    # checked out beside it cannot tell where a task belongs. Either way a
     # silently-dropped update would produce a round that cannot do its job,
     # so it fails the step rather than warning. A plan-only update stays
     # best-effort — the planning document is not load-bearing for the

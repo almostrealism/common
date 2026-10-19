@@ -185,7 +185,7 @@ class RegistrationDeclaresNoModelConfigTests(unittest.TestCase):
     #: is a permission, not a model setting. ``requiredLabels`` chooses which
     #: nodes may run the workstream's jobs (Verify Completion applies the ones a
     #: plan declares); it selects a machine, not a model. ``dependentRepos``
-    #: lists repositories checked out beside this one (the release steward
+    #: lists repositories checked out beside this one (goal decomposition
     #: reads the framework's code next to an application's); it selects
     #: source, not a model.
     _ALLOWED_PAYLOAD_KEYS = frozenset({

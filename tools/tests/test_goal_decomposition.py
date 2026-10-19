@@ -1,6 +1,6 @@
-"""Tests for the release steward: the reusable decomposition round.
+"""Tests for goal decomposition: the reusable decomposition round.
 
-``release-steward.yaml`` is called from other repositories' workflows. It
+``goal-decomposition.yaml`` is called from other repositories' workflows. It
 resolves which release a repository is building and where its release plan
 is (``resolve-release-scope.sh``), registers a standing workstream that holds
 the tracker "steward" role and has the framework checked out beside it
@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_task_planning_gates import _CI, _ControllerStub, _run  # noqa: E402
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "release-steward.yaml")
+_WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "goal-decomposition.yaml")
 _BUILDER = os.path.join(_CI, "prompts", "build-goal-decomposition-prompt.sh")
 _TEMPLATE = os.path.join(_CI, "prompts", "goal-decomposition.txt")
 
@@ -179,7 +179,7 @@ class ResolveReleaseScopeTests(unittest.TestCase):
 class DependentReposRegistrationTests(unittest.TestCase):
     """register-workstream.sh attaches dependent repositories to the workstream."""
 
-    _ENV = {"BRANCH": "orchestration/release-steward", "BASE_BRANCH": "master",
+    _ENV = {"BRANCH": "orchestration/goal-decomposition", "BASE_BRANCH": "master",
             "DEPENDENT_REPOS": " git@github.com:o/framework.git , ,git@github.com:o/lib.git"}
     _EXPECTED = ["git@github.com:o/framework.git", "git@github.com:o/lib.git"]
 
@@ -203,7 +203,7 @@ class DependentReposRegistrationTests(unittest.TestCase):
         self.assertEqual(self._EXPECTED, body["dependentRepos"])
 
     def test_a_failed_update_fails_the_registration(self):
-        """A steward without the framework beside it cannot place its tasks."""
+        """Without the framework beside it, the agent cannot place its tasks."""
         stub = _ControllerStub(existing=True, update=(500, {"ok": False}))
         code, _, log = self._register(stub)
         self.assertEqual(1, code, log)
@@ -228,7 +228,7 @@ def _triggers(workflow):
 
 
 def _job():
-    return _workflow()["jobs"]["steward"]
+    return _workflow()["jobs"]["decompose"]
 
 
 def _steps():
@@ -248,15 +248,15 @@ def _index(name):
 
 _SCOPE = "Resolve the release and its plan"
 _INTAKE = "Check that the controller accepts automated jobs"
-_MOVE = "Move the steward branch to this commit"
-_REGISTER = "Register the steward workstream"
+_MOVE = "Move the workstream branch to this commit"
+_REGISTER = "Register the goal-decomposition workstream"
 _BUILD = "Build the goal-decomposition prompt"
-_SUBMIT = "Submit the release steward job"
+_SUBMIT = "Submit the goal-decomposition job"
 _SIDE_EFFECTS = (_MOVE, _REGISTER, _SUBMIT)
 
 
-class ReleaseStewardWorkflowTests(unittest.TestCase):
-    """Pins the shape of release-steward.yaml."""
+class GoalDecompositionWorkflowTests(unittest.TestCase):
+    """Pins the shape of goal-decomposition.yaml."""
 
     def test_it_is_only_ever_called_by_another_workflow(self):
         """The caller owns the trigger; this file must not start runs itself."""
@@ -316,15 +316,15 @@ class ReleaseStewardWorkflowTests(unittest.TestCase):
         env = _step(_REGISTER)["env"]
         self.assertEqual("steward", env["TRACKER_CAPABILITIES"])
         self.assertIn("inputs.framework-repository", env["DEPENDENT_REPOS"])
-        self.assertIn("inputs.steward-branch", env["BRANCH"])
+        self.assertIn("inputs.workstream-branch", env["BRANCH"])
 
     def test_the_branch_is_moved_before_the_workstream_is_registered(self):
         self.assertLess(_index(_MOVE), _index(_REGISTER))
         self.assertLess(_index(_REGISTER), _index(_SUBMIT))
 
-    def test_the_steward_branch_is_a_standing_workstream_by_default(self):
+    def test_the_workstream_branch_is_a_standing_workstream_by_default(self):
         """The orchestration/ prefix is what keeps the workstream from being archived."""
-        default = _triggers(_workflow())["workflow_call"]["inputs"]["steward-branch"]["default"]
+        default = _triggers(_workflow())["workflow_call"]["inputs"]["workstream-branch"]["default"]
         self.assertTrue(default.startswith("orchestration/"))
 
     def test_no_step_pins_model_configuration(self):
@@ -346,7 +346,7 @@ class ReleaseStewardWorkflowTests(unittest.TestCase):
         self.assertLessEqual(set(required.group(1).split()), provided)
 
     def test_tasks_carry_this_repository_in_their_source(self):
-        """A steward may only update its own repository's tasks."""
+        """A repository's decomposition run may only update its own tasks."""
         self.assertEqual("goals:${{ github.repository }}/",
                          _step(_BUILD)["env"]["SOURCE_PREFIX"])
 
