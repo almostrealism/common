@@ -251,10 +251,10 @@ public class StuckJobScannerTest extends TestSuiteBase {
 		store.recordJobStarted("job-live", "ws-1", "running", now.minus(Duration.ofHours(1)));
 		store.recordHeartbeat("job-live", now.minus(Duration.ofMinutes(1)));
 
-		List<JobStatsStore.ActiveJob> active = store.getActiveJobs("ws-1");
+		List<ActiveJob> active = store.getActiveJobs("ws-1");
 		assertEquals("the running job should be listed", 1, active.size());
 
-		JobStatsStore.ActiveJob job = active.get(0);
+		ActiveJob job = active.get(0);
 		Assert.assertEquals("job-live", job.jobId());
 		assertEquals("age is measured from the start time",
 				60, job.age(now).toMinutes());
@@ -262,6 +262,54 @@ public class StuckJobScannerTest extends TestSuiteBase {
 				1, job.sinceHeartbeat(now).toMinutes());
 		assertTrue("the rendered entry should carry the derived ages",
 				job.toJson(now).contains("sinceHeartbeatSeconds"));
+		store.close();
+	}
+
+	/**
+	 * An explicit dead threshold (the operator's {@code T_dead}) overrides the
+	 * wall-clock derivation: a job silent longer than it is failed even when the
+	 * wall-clock-derived default would have left it alone, so "silent means
+	 * dead" can be tuned faster without a rebuild.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void deadThresholdOverrideFailsSoonerThanWallClockDefault() throws Exception {
+		JobStatsStore store = newStore();
+		Instant now = Instant.parse("2026-08-22T12:00:00Z");
+		store.recordJobStarted("job-silent", "ws-1", "silent 30m",
+				now.minus(Duration.ofHours(1)));
+		store.recordHeartbeat("job-silent", now.minus(Duration.ofMinutes(30)));
+
+		// Default threshold is 6h ceiling x2 = 12h; 30m of silence is well under it.
+		StuckJobScanner scanner = newScanner(store, Duration.ofHours(6));
+		assertTrue("the wall-clock default must not fail a 30m-silent job",
+				scanner.scanOnce(now).isEmpty());
+
+		// Tightening T_dead to 20m makes the same 30m silence a DEAD condition.
+		scanner.setDeadThreshold(Duration.ofMinutes(20));
+		List<String> failed = scanner.scanOnce(now);
+		assertEquals("the tightened dead threshold fails the silent job", 1, failed.size());
+		Assert.assertEquals("job-silent", failed.get(0));
+		Assert.assertEquals("a dead job is dispatched through the terminal path",
+				JobCompletionEvent.Status.FAILED, dispatched.get(dispatched.size() - 1).getStatus());
+		store.close();
+	}
+
+	/**
+	 * A non-positive dead-threshold override is ignored and the wall-clock
+	 * default is restored, keeping the destructive path conservative.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void nonPositiveDeadThresholdRestoresDefault() throws Exception {
+		JobStatsStore store = newStore();
+		StuckJobScanner scanner = newScanner(store, Duration.ofHours(6));
+		scanner.setDeadThreshold(Duration.ofMinutes(20));
+		scanner.setDeadThreshold(Duration.ZERO);
+		Assert.assertEquals("a zero override restores the 12h wall-clock default",
+				Duration.ofHours(12), scanner.stalenessThreshold());
 		store.close();
 	}
 }
