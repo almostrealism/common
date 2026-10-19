@@ -68,18 +68,21 @@ public class ConvolutionJacobianGradientTest extends TestSuiteBase implements La
 	 */
 	@Test(timeout = 20 * 60000)
 	public void inputGradient() {
-		Convolution conv = new Convolution();
-		Producer<PackedCollection> in = cp(conv.input);
-		CollectionProducer operator = conv.operator(in);
-		Assert.assertEquals(conv.outputShape.getTotalSize(), operator.getShape().getTotalSize());
+		try (Convolution conv = new Convolution()) {
+			Producer<PackedCollection> in = cp(conv.input);
+			CollectionProducer operator = conv.operator(in);
+			Assert.assertEquals(conv.outputShape.getTotalSize(), operator.getShape().getTotalSize());
 
-		assertValuesMatch("forward", conv.forward, evaluate(operator).toArray(0, conv.forward.length));
+			try (PackedCollection forward = evaluate(operator)) {
+				assertValuesMatch("forward", conv.forward, forward.toArray(0, conv.forward.length));
+			}
 
-		Assert.assertTrue("the input gradient of a sliding window should contract the full Jacobian",
-				largestComputation(operator.delta(in, ReduceAxis.OUT, cp(conv.gradient)))
-						> conv.outputShape.getTotalSizeLong());
+			Assert.assertTrue("the input gradient of a sliding window should contract the full Jacobian",
+					largestComputation(operator.delta(in, ReduceAxis.OUT, cp(conv.gradient)))
+							> conv.outputShape.getTotalSizeLong());
 
-		assertGradientMatches("input", operator, in, cp(conv.gradient), conv.inputGradient);
+			assertGradientMatches("input", operator, in, cp(conv.gradient), conv.inputGradient);
+		}
 	}
 
 	/**
@@ -90,11 +93,12 @@ public class ConvolutionJacobianGradientTest extends TestSuiteBase implements La
 	 */
 	@Test(timeout = 20 * 60000)
 	public void filterGradient() {
-		Convolution conv = new Convolution();
-		Producer<PackedCollection> weight = cp(conv.filters);
-		CollectionProducer operator = conv.operator(cp(conv.input));
+		try (Convolution conv = new Convolution()) {
+			Producer<PackedCollection> weight = cp(conv.filters);
+			CollectionProducer operator = conv.operator(cp(conv.input));
 
-		assertGradientMatches("filter", operator, weight, cp(conv.gradient), conv.filterGradient);
+			assertGradientMatches("filter", operator, weight, cp(conv.gradient), conv.filterGradient);
+		}
 	}
 
 	/**
@@ -186,9 +190,9 @@ public class ConvolutionJacobianGradientTest extends TestSuiteBase implements La
 	/**
 	 * A random convolution input, filters and upstream gradient, with the forward pass and
 	 * the gradients with respect to the input and the filters computed on the host from the
-	 * definition of the convolution.
+	 * definition of the convolution. Closing it releases the input, filters and gradient.
 	 */
-	private class Convolution {
+	private class Convolution implements AutoCloseable {
 		/** Height and width of the output. */
 		private final int out = SIZE - KERNEL + 1;
 
@@ -251,6 +255,14 @@ public class ConvolutionJacobianGradientTest extends TestSuiteBase implements La
 		 */
 		CollectionProducer operator(Producer<PackedCollection> in) {
 			return (CollectionProducer) convolution2dOperator(inputShape, filters, null).getResultant(in);
+		}
+
+		/** Releases the input, filters and upstream gradient. */
+		@Override
+		public void close() {
+			input.destroy();
+			filters.destroy();
+			gradient.destroy();
 		}
 	}
 
