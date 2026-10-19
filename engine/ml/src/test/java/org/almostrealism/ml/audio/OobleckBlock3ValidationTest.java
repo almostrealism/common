@@ -47,10 +47,7 @@ public class OobleckBlock3ValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testBlock3Isolation() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		Console.root().addListener(OutputFeatures.fileOutput(
 				"test_data/stable_audio/layer_block3_isolation.log"));
@@ -173,10 +170,7 @@ public class OobleckBlock3ValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testBlock3SnakeOnly() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		log("=== Block 3 Snake Only Test ===");
 
@@ -208,10 +202,7 @@ public class OobleckBlock3ValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testBlock3TransposeOnly() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		log("=== Block 3 WNConvTranspose1d Only Test ===");
 
@@ -250,10 +241,7 @@ public class OobleckBlock3ValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testBlock3SnakeAndTranspose() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		log("=== Block 3 Snake + Transpose Test ===");
 
@@ -299,10 +287,7 @@ public class OobleckBlock3ValidationTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 120000)
 	public void testBlock3OneResidual() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		log("=== Block 3 + One Residual Test ===");
 

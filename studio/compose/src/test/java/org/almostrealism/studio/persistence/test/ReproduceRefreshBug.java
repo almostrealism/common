@@ -67,17 +67,13 @@ public class ReproduceRefreshBug extends TestSuiteBase {
 	 */
 	@Test(timeout = 600000) @TestDepth(10)
 	public void refreshDoesNotRecomputeCompleteEntries() throws Exception {
-		File samplesDir = new File(SAMPLES_ROOT);
-		if (!samplesDir.isDirectory()) {
-			log("Samples directory not found, skipping: " + SAMPLES_ROOT);
-			return;
-		}
-
 		File protobufFile = new File(PROTOBUF_PREFIX + "_0.bin");
-		if (!protobufFile.exists()) {
-			log("Protobuf file not found, skipping: " + protobufFile);
-			return;
-		}
+		requireLocalResource("protobuf store " + protobufFile.getAbsolutePath(), "AR_RINGS_PROTOBUF",
+				protobufFile.exists());
+
+		File samplesDir = new File(SAMPLES_ROOT);
+		requireResource("sample library " + samplesDir.getAbsolutePath(), "AR_RINGS_LIBRARY",
+				samplesDir.isDirectory());
 
 		// Step 1: Create library pointed at real samples directory
 		AudioLibrary library = new AudioLibrary(samplesDir, SAMPLE_RATE);

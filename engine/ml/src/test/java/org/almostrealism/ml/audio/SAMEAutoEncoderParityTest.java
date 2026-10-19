@@ -21,6 +21,7 @@ import org.almostrealism.ml.SAMEResamplingTestBase;
 import org.almostrealism.ml.StateDictionary;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
 
@@ -90,11 +91,8 @@ public class SAMEAutoEncoderParityTest extends SAMEResamplingTestBase {
 		File weightDir = firstExisting(WEIGHT_DIRS, "encoder.layers.0.mapping.weight");
 		File refDir = firstExisting(REFERENCE_DIRS, "ae_latent");
 
-		if (weightDir == null || refDir == null) {
-			log("skipping autoencoder parity; gated inputs absent (weights=" + weightDir
-					+ ", refs=" + refDir + ")");
-			return;
-		}
+		requireLocalResource("SAME weights (tried " + Arrays.toString(WEIGHT_DIRS) + ")", "AR_SAME_WEIGHTS", weightDir != null);
+		requireLocalResource("SAME reference activations (tried " + Arrays.toString(REFERENCE_DIRS) + ")", "AR_SAME_REFERENCES", refDir != null);
 
 		StateDictionary weights = null;
 		PackedCollection input = null;

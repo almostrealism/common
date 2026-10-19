@@ -21,6 +21,7 @@ import org.almostrealism.ml.SAMEResamplingTestBase;
 import org.almostrealism.ml.StateDictionary;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
 
@@ -92,10 +93,10 @@ public class StableAudio3TransformerParityTest extends SAMEResamplingTestBase {
 		}
 
 		File refDir = firstExisting(REFERENCE_DIRS, "dit_output");
-		if (weightDir == null || refDir == null) {
-			log("skipping SA3 transformer parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
-			return;
-		}
+		requireLocalResource("SA3 DiT weights (tried " + Arrays.toString(WEIGHT_DIRS) + ")",
+				"AR_SA3_DIT_WEIGHTS", weightDir != null);
+		requireLocalResource("SA3 DiT reference activations (tried " + Arrays.toString(REFERENCE_DIRS) + ")",
+				"AR_SA3_DIT_REFERENCES", refDir != null);
 
 		DiffusionTransformerConfig config = StableAudio3.smallTransformer(COND_DIM, COND_SEQ_LEN)
 				.withSequenceLengths(LATENT_LEN, COND_SEQ_LEN);

@@ -323,6 +323,28 @@ public class PatternSystemManagerTest extends TestSuiteBase {
 		Assert.assertTrue(psm.getPatternElements(0.0, 2.0).isEmpty());
 	}
 
+	/**
+	 * The merged elements are keyed in pattern order, independent of the identity hash
+	 * of each {@link NoteAudioChoice}, so the order in which choices are rendered is the
+	 * same in every JVM run. With this many choices a hash-ordered map would almost
+	 * never happen to iterate in insertion order.
+	 */
+	@Test(timeout = 30000)
+	public void patternElementsAreOrderedByPattern() {
+		int patternCount = 24;
+		PatternSystemManager psm = new PatternSystemManager(chromosomes(patternCount));
+		List<NoteAudioChoice> choices = new ArrayList<>();
+
+		for (int i = 0; i < patternCount; i++) {
+			NoteAudioChoice choice = new NoteAudioChoice("choice-" + i);
+			choices.add(choice);
+			psm.addPattern(i % 2, 2.0, false).setExplicitElements(choice, List.of(hit(0.25 * (i % 4))));
+		}
+
+		Assert.assertEquals(choices, new ArrayList<>(psm.getPatternElements(0.0, 2.0).keySet()));
+		Assert.assertEquals(choices, new ArrayList<>(psm.getPatternElements(0.0, 1.0).keySet()));
+	}
+
 	/** Settings capture every pattern and recreate them, in order, on another manager. */
 	@Test(timeout = 60000)
 	public void settingsRecreatePatterns() {

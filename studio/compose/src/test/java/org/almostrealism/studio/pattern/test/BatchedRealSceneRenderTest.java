@@ -36,7 +36,6 @@ import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -58,12 +57,13 @@ import java.util.stream.IntStream;
  * <p>Configured by the inherited {@link AudioSceneTestBase#SAMPLES_PATH} and
  * {@link AudioSceneTestBase#PATTERN_FACTORY} locations (the curated library is not part of
  * the repository, so both are absolute and overridable via {@code AR_RINGS_LIBRARY} /
- * {@code AR_RINGS_PATTERNS}); the test skips if they are absent. Run with the Metal
+ * {@code AR_RINGS_PATTERNS}); see {@link #requireCuratedLibrary()} for what happens when they
+ * are absent. Run with the Metal
  * backend forced via {@code -DAR_HARDWARE_DRIVER=mtl} to measure GPU behaviour.</p>
  *
  * <p><strong>Curated-library gated.</strong> These full-scene integration renders require the
- * curated sample library ({@link #SAMPLES_PATH}); they skip via {@link Assume} where it is absent,
- * so they do not run in CI. They were previously disabled for two reasons, both now resolved:
+ * curated sample library ({@link #SAMPLES_PATH}); where it is absent they fail on any GPU host or
+ * host that declares {@code AR_RINGS_LIBRARY}, and skip only on a CPU-only host. They were previously disabled for two reasons, both now resolved:
  * (1) full-scene renders exhausted the fixed {@code GeneratedOperation} pool because
  * per-instance compilation was not reused — fixed by the rebuilt argument-aggregation system,
  * which gives aggregation-target buffers a structural signature so the instruction cache
@@ -96,8 +96,7 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 	 * Skips the calling test when the assets are absent.
 	 */
 	private void requireRealAssets() throws Exception {
-		Assume.assumeTrue("curated library missing: " + SAMPLES_PATH, new File(SAMPLES_PATH).isDirectory());
-		Assume.assumeTrue("pattern factory missing: " + PATTERN_FACTORY, new File(PATTERN_FACTORY).isFile());
+		requireCuratedLibrary();
 
 		AudioSceneOptimizer.LIBRARY = SAMPLES_PATH;
 		AudioSceneOptimizer.setFeatureLevel(7);
@@ -126,7 +125,7 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 		PatternLayerManager.enableBatched = true;
 		try {
 			AudioSceneBenchmark.BenchmarkResult result = renderUntilAudible(
-					AudioSceneOptimizer::createScene, MEASURES, List.of(LEAD_CHANNEL),
+					seed -> AudioSceneOptimizer.createScene(), MEASURES, List.of(LEAD_CHANNEL),
 					(scene, genome) -> {
 						BatchedPatternLayerRenderer.resetCounters();
 						return AudioSceneBenchmark.runSingleChannel(scene, MEASURES, LEAD_CHANNEL, 7, BUFFER,
@@ -322,7 +321,7 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 		try {
 			List<Integer> channels = allChannels();
 			AudioSceneBenchmark.BenchmarkResult result = renderUntilAudible(
-					AudioSceneOptimizer::createScene, MEASURES, List.of(LEAD_CHANNEL),
+					seed -> AudioSceneOptimizer.createScene(), MEASURES, List.of(LEAD_CHANNEL),
 					(scene, genome) -> {
 						BatchedPatternLayerRenderer.resetCounters();
 						return AudioSceneBenchmark.runMultiChannel(scene, MEASURES, channels, 7, BUFFER,
@@ -384,7 +383,7 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 		PatternLayerManager.enableBatched = true;
 		try {
 			AudioSceneBenchmark.BenchmarkResult result = renderUntilAudible(
-					AudioSceneOptimizer::createScene, MEASURES, List.of(LEAD_CHANNEL),
+					seed -> AudioSceneOptimizer.createScene(), MEASURES, List.of(LEAD_CHANNEL),
 					(scene, genome) -> {
 						BatchedPatternLayerRenderer.resetCounters();
 						return AudioSceneBenchmark.runSingleChannel(scene, MEASURES, LEAD_CHANNEL, 7, BUFFER,

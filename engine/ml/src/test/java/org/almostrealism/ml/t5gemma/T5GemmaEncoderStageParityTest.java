@@ -24,6 +24,7 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -69,10 +70,10 @@ public class T5GemmaEncoderStageParityTest extends SAMEResamplingTestBase {
 	public void layerZeroStagesMatchReference() throws IOException {
 		File weightDir = firstExisting(WEIGHT_DIRS, "weights");
 		File refDir = firstExisting(REFERENCE_DIRS, "t5_embeddings");
-		if (weightDir == null || refDir == null) {
-			log("skipping T5Gemma stage parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
-			return;
-		}
+		requireLocalResource("T5Gemma weights (tried " + Arrays.toString(WEIGHT_DIRS) + ")",
+				"AR_T5GEMMA_WEIGHTS", weightDir != null);
+		requireLocalResource("T5Gemma reference activations (tried " + Arrays.toString(REFERENCE_DIRS) + ")",
+				"AR_T5GEMMA_REFERENCES", refDir != null);
 
 		T5GemmaConfig config = T5GemmaConfig.baseUl2();
 		int length = config.getMaxLength();

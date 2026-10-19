@@ -41,6 +41,7 @@ import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -548,10 +549,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 *
 	 * @param start inclusive start position in measures
 	 * @param end   exclusive end position in measures
-	 * @return map from choice to elements within the range
+	 * @return map from choice to elements within the range, iterated in the order each
+	 *         choice is first reached by the layer traversal (stable across JVM runs, unlike
+	 *         the identity-hash order of {@link NoteAudioChoice} keys)
 	 */
 	public Map<NoteAudioChoice, List<PatternElement>> getAllElementsByChoice(double start, double end) {
-		Map<NoteAudioChoice, List<PatternElement>> result = new HashMap<>();
+		Map<NoteAudioChoice, List<PatternElement>> result = new LinkedHashMap<>();
 		roots.forEach(l -> l.putAllElementsByChoice(result, start, end));
 		return result;
 	}

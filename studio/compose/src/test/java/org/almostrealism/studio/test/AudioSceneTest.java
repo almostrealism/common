@@ -24,7 +24,6 @@ import org.almostrealism.studio.optimize.AudioSceneOptimizer;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestSuiteBase;
-import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -41,7 +40,8 @@ public class AudioSceneTest extends TestSuiteBase {
 	@Test(timeout = 600_000)
 	public void runScene() {
 		File samplesDir = new File(AudioSceneOptimizer.LIBRARY);
-		Assume.assumeTrue("Library directory required", samplesDir.exists());
+		requireResource("sample library " + samplesDir.getAbsolutePath(), "AR_RINGS_LIBRARY",
+				samplesDir.isDirectory());
 
 		double bpm = 120.0;
 		int sourceCount = 4;

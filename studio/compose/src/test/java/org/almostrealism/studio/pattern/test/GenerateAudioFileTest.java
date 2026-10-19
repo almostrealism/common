@@ -176,10 +176,7 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 	@TestDepth(1)
 	public void spectrogramExistingRender() {
 		File wav = new File("results/generated-audio.wav");
-		if (!wav.exists()) {
-			log("Skipping spectrogramExistingRender - no results/generated-audio.wav present");
-			return;
-		}
+		requireLocalResource("existing render " + wav.getAbsolutePath(), null, wav.exists());
 		generateSpectrogram(wav.getPath(),
 				new File(wav.getParentFile(), "generated-audio.spectrogram.png").getPath());
 	}
