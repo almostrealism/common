@@ -125,14 +125,18 @@ public class ProbabilityDistribution implements Nameable {
 		/**
 		 * Returns {@code true} if any node in this subtree overlaps the interval {@code [s, e]}.
 		 *
+		 * <p>Overlap is the standard interval test ({@code s <= end && start <= e}): two
+		 * intervals overlap unless one lies entirely to one side of the other. Testing only
+		 * whether {@code s} or {@code e} falls inside {@code [start, end]} would miss the case
+		 * where {@code [s, e]} fully envelops this node's interval, letting an overlapping range
+		 * slip past {@link ProbabilityDistribution#addRange(double, double, double)}'s guard.</p>
+		 *
 		 * @param s the lower bound of the interval to test
 		 * @param e the upper bound of the interval to test
 		 * @return {@code true} if any node in the subtree contains part of the interval
 		 */
 		public boolean contains(double s, double e) {
-			if (s >= this.start && s <= this.end)
-				return true;
-			else if (e >= this.start && e <= this.end)
+			if (s <= this.end && this.start <= e)
 				return true;
 			else if (this.left != null && this.left.contains(s, e))
 				return true;
