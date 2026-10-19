@@ -1221,7 +1221,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 							.anyMatch(exp -> exp.equals(e));
 
 					if (inUse && !alreadyDeclared) {
-						StaticReference ref = new StaticReference<>(e.getType(), getName() + "_" + refIdx++);
+						StaticReference ref = new StaticReference<>(e.getDeclarationType(), getName() + "_" + refIdx++);
 						declarations.add(new ExpressionAssignment(true, ref, e));
 						replacements.put(ref, e);
 						updated = true;

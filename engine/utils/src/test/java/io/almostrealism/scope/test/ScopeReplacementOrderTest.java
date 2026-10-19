@@ -20,7 +20,9 @@ import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.sequence.DefaultIndex;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -39,6 +41,9 @@ import java.util.stream.Collectors;
  * generated code. That order must not come from hash iteration: a hash table holding
  * many references with the same hash orders them by identity, which differs between
  * two compilations of the same kernel and between two runs of the same program.</p>
+ *
+ * <p>It also tests that a declared replacement is given a type that keeps the arithmetic
+ * of the code referring to it unchanged.</p>
  */
 public class ScopeReplacementOrderTest extends TestSuiteBase {
 
@@ -63,6 +68,49 @@ public class ScopeReplacementOrderTest extends TestSuiteBase {
 		for (int i = 1; i < COMPILATIONS; i++) {
 			Assert.assertEquals("compilation " + i + " differs from the first", first, replace());
 		}
+	}
+
+	/**
+	 * A replaced expression that refers to the kernel index is declared as a 64-bit
+	 * integer, even though the expression is typed as {@link Integer} and its value fits
+	 * in 32 bits. Every generated language renders the kernel index as 64-bit, so the
+	 * expression was evaluated in 64 bits wherever it appeared inline; a 32-bit variable
+	 * makes the product it takes part in, here a row multiplied by a stride of
+	 * {@code 1048512}, overflow. This is how the full-Jacobian weight gradient of a
+	 * 256 by 64 dense layer over 64 rows came to be wrong from weight row 64 onward.
+	 */
+	@Test(timeout = 60000)
+	public void kernelIndexReplacementIsDeclaredLong() {
+		Expression<?> kernel = new KernelIndex().withLimit(16384);
+		Expression<?> row = kernel.multiply(64).add(16).imod(1048576).divide(64);
+		Assert.assertEquals(Integer.class, row.getType());
+		Assert.assertTrue(row.upperBound(null).getAsLong() <= Integer.MAX_VALUE);
+
+		Expression<?> independent = new DefaultIndex("j", 4096).add(16).imod(64);
+
+		List<Statement<?>> statements = new ArrayList<>();
+		statements.add(new ExpressionAssignment(true, new StaticReference<>(Long.class, "out"),
+				row.multiply(1048512).add(independent.multiply(64))));
+
+		List<Statement<?>> result = new ReplacementScope().replace(statements, List.of(row, independent));
+		Assert.assertEquals(3, result.size());
+		Assert.assertEquals(Long.class, declaredType(result, row));
+		Assert.assertEquals(Integer.class, declaredType(result, independent));
+	}
+
+	/**
+	 * Returns the type of the variable declared for the given replaced expression.
+	 *
+	 * @param statements the statements produced by replacement
+	 * @param replaced   the expression that was replaced
+	 * @return the declared type of the variable holding it
+	 */
+	private static Class<?> declaredType(List<Statement<?>> statements, Expression<?> replaced) {
+		return statements.stream()
+				.map(s -> (ExpressionAssignment<?>) s)
+				.filter(a -> a.isDeclaration() && a.getExpression().equals(replaced))
+				.map(a -> a.getDestination().getType())
+				.findFirst().orElseThrow(() -> new AssertionError("no declaration of " + replaced));
 	}
 
 	/**
