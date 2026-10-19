@@ -36,14 +36,14 @@ Three base classes in `compute/algebra`
 lambdas:
 
 1. **`RepeatedProducerComputation`** — `initial`, `condition`, `expression`
-   lambdas; `generate()` (≈L371) rebuilds a raw instance.
+   lambdas; `generate()` rebuilds a raw instance.
 2. **`ConstantRepeatedProducerComputation`** — `initial`, `expression`
-   lambdas (condition is fixed to `index < count`); `generate()` (≈L361)
+   lambdas (condition is fixed to `index < count`); `generate()`
    rebuilds a raw instance; its class javadoc constructs it directly.
 3. **`AggregatedProducerComputation`** — `initial`, `expression` lambdas plus a
-   `replaceLoop` flag; constructs itself in `generate()` (≈L537), the
-   transitive-delta branch of `deltaMatrix()` (≈L518) and `withReplaceLoop()`
-   (≈L309); works around the signature problem with `expressionSignature()`.
+   `replaceLoop` flag; constructs itself in `generate()`, the
+   transitive-delta branch of `deltaMatrix()` and `withReplaceLoop()`;
+   works around the signature problem with `expressionSignature()`.
 
 The change makes each base abstract with protected constructors, moves
 per-iteration behavior to protected methods (abstract where a subclass must
@@ -66,6 +66,17 @@ two raw lambda-configured aggregations — it is tightened, never weakened.
   `engine/audio` `BatchedPatternRenderer.sumNoteAxis` (`withReplaceLoop(false)`).
 - Updating `AggregationSignatureTests`, and the class-javadoc examples that
   construct the now-abstract bases directly.
+- Updating `base/hardware/docs/INSTRUCTION_CACHING.md`, which is durable
+  documentation that describes the current aggregation signature: it states
+  that `AggregatedProducerComputation` appends "a structural rendering of its
+  initial and combining functions" and names
+  `AggregatedProducerComputation.expressionSignature()` as a source of null
+  signatures. Removing `expressionSignature()` and the `,functions:` segment
+  makes both passages stale, so they must be revised (the class plus its
+  `{count,replaceLoop}` state becomes what disambiguates). The implementer
+  should also re-check the claim there that the signature "covers the raw
+  aggregations its `delta()` constructs," since the delta path no longer builds
+  a raw aggregation.
 
 ### Explicitly out of scope
 
@@ -95,7 +106,7 @@ one level up the hierarchy.
   constructors (the existing `setInitial`/`setCondition` protected hooks remain
   for subclasses such as `PrefixAccumulationComputation` /
   `RepeatedProducerComputationAdapter` that assign after `super(...)`).
-- Make `generate()` (≈L371) `abstract` — every concrete subclass already needs
+- Make `generate()` `abstract` — every concrete subclass already needs
   its own, and the base can no longer build a raw instance.
 - Move the class-identity signature component here: override `signature()` to
   append `{getClass().getName()}` (returning `null` when `super.signature()` is
@@ -125,7 +136,7 @@ children.
 - `initial`/`expression` remain protected constructor parameters, now reachable
   only by subclasses (`ConstantRepeatedDeltaComputation`,
   `TraversableRepeatedProducerComputation` and everything under it).
-- Make `generate()` (≈L361) `abstract`; both existing subtrees already override
+- Make `generate()` `abstract`; both existing subtrees already override
   it (`ConstantRepeatedDeltaComputation`, and the abstract
   `TraversableRepeatedProducerComputation` already declares it abstract).
 - Convert the class-javadoc "indexOfMax"/"accumulate"/"optimizedProcess"
@@ -140,11 +151,11 @@ children.
   `initial` and `replaceLoop` as protected state assigned by subclass
   constructors (mirroring how `TraversableRepeatedProducerComputation` keeps
   `initial`).
-- Make `generate()` (≈L537) `abstract`; all three concrete subclasses already
+- Make `generate()` `abstract`; all three concrete subclasses already
   override it.
 - Rework the two remaining self-construction sites so they build **named**
   types:
-  - **`withReplaceLoop(boolean)` (≈L309):** make it `abstract` (or a thin
+  - **`withReplaceLoop(boolean)`:** make it `abstract` (or a thin
     dispatcher to a protected `recreate(boolean replaceLoop)`), implemented by
     each concrete subclass to rebuild *its own* type with the new flag.
     `LoopedWeightedSumComputation` already overrides it (throws when the flag
@@ -159,7 +170,7 @@ children.
     `withReplaceLoop(false)` on a `CollectionSumComputation` returns a *raw*
     `AggregatedProducerComputation`, silently dropping the sum's type and its
     `deltaDependent` override.
-  - **Transitive-delta branch of `deltaMatrix()` (≈L518):** this builds an
+  - **Transitive-delta branch of `deltaMatrix()`:** this builds an
     aggregation that *sums* the enumerated Jacobian groups. Every subclass that
     reaches this branch is additive — `CollectionSumComputation` and
     `LoopedWeightedSumComputation` both combine with `add`; `CollectionMaxComputation`
@@ -236,9 +247,9 @@ A reviewer can confirm the task is done when:
 
 ## Dependencies and open questions
 
-- **Dependency:** none open. The blocking work (`TraversableRepeatedProducer
-  Computation` / `IndexOfMaxComputation`) already landed on
-  `feature/delta-consolidation` (PR #667); this builds directly on it.
+- **Dependency:** none open. The blocking work
+  (`TraversableRepeatedProducerComputation` / `IndexOfMaxComputation`) already
+  landed on `feature/delta-consolidation` (PR #667); this builds directly on it.
 - **Open question — delta reduction type:** the plan recommends the
   transitive-delta branch build a `CollectionSumComputation`. This is correct for
   every aggregation that currently reaches it, but it is a construction change on
