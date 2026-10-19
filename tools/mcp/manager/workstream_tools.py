@@ -24,11 +24,28 @@ from memory_text import prefers_reformulated, present
 from server import mcp
 
 
-# Silence after which an active job is worth flagging to the operator. Well
-# below the stuck-job scanner's termination threshold on purpose: the point is
-# to surface a stall while someone can still look at it, not to duplicate the
-# scanner's verdict.
+# Fallback silence threshold, used only when talking to an older controller
+# that does not label active jobs with a derived ``state``. The controller is
+# the source of truth for the derivation (UNRESPONSIVE / LOST); this constant
+# is a compatibility shim, not a second threshold, and is consulted only when
+# the ``state`` field is absent from the controller's response.
 _STALLED_WARNING_SECONDS = 6 * 3600
+
+
+def _is_unresponsive(job: dict) -> bool:
+    """Return whether an active-job entry should be flagged to the operator.
+
+    Prefers the controller's derived ``state`` (``UNRESPONSIVE`` vs
+    ``RUNNING``) so the threshold lives in one place on the controller. Falls
+    back to the client-side ``_STALLED_WARNING_SECONDS`` only when an older
+    controller omits the ``state`` field.
+    """
+    if not isinstance(job, dict):
+        return False
+    state = job.get("state")
+    if state is not None:
+        return state == "UNRESPONSIVE"
+    return job.get("sinceHeartbeatSeconds", 0) >= _STALLED_WARNING_SECONDS
 
 
 @mcp.tool()
@@ -206,12 +223,17 @@ def workstream_get_status(workstream_id: str, period: str = "weekly",
             ``"weekly"`` — any other value is rejected up front. Defaults
             to ``"weekly"``.
         include_active_jobs: When ``True`` (the default), the response also
-            carries ``active_jobs`` — the workstream's currently-running jobs
-            with their age and time since last liveness signal — and, when any
-            of them has been silent too long, an ``active_jobs_warning``
-            naming the job. This is how a stalled job becomes visible before
-            the stuck-job scanner reaches it. Set ``False`` to skip the extra
-            controller read.
+            carries ``active_jobs`` — the workstream's currently-running jobs,
+            each labelled by the controller with its derived ``state``
+            (``RUNNING`` or ``UNRESPONSIVE``) alongside its age and time since
+            last liveness signal — and, when any is ``UNRESPONSIVE``, an
+            ``active_jobs_warning`` naming it. It also carries ``pending_jobs``
+            — jobs the controller accepted but no worker has started, each
+            labelled ``SUBMITTED`` or ``LOST`` — and a ``pending_jobs_warning``
+            when any is ``LOST``. This is how a stalled or dropped job becomes
+            visible before the stuck-job scanner reaches it; the controller is
+            the source of truth for every derived state. Set ``False`` to skip
+            the extra controller reads.
 
     Returns:
         Dictionary with thisWeek and lastWeek aggregate stats (jobCount,
@@ -246,16 +268,27 @@ def workstream_get_status(workstream_id: str, period: str = "weekly",
             f"/api/workstreams/{workstream_id}/jobs/active")
         if isinstance(active, list):
             result["active_jobs"] = active
-            stalled = [j for j in active
-                       if isinstance(j, dict)
-                       and j.get("sinceHeartbeatSeconds", 0) >= _STALLED_WARNING_SECONDS]
-            if stalled:
-                names = ", ".join(str(j.get("jobId")) for j in stalled)
+            unresponsive = [j for j in active if _is_unresponsive(j)]
+            if unresponsive:
+                names = ", ".join(str(j.get("jobId")) for j in unresponsive)
                 result["active_jobs_warning"] = (
-                    f"{len(stalled)} job(s) have not reported progress in over "
-                    f"{_STALLED_WARNING_SECONDS // 3600}h: {names}. A job that "
-                    "stays silent is failed by the controller's stuck-job "
-                    "scanner so anything waiting on it is released."
+                    f"{len(unresponsive)} job(s) are UNRESPONSIVE — no heartbeat "
+                    f"within the controller's silence threshold: {names}. A job "
+                    "that stays silent long enough is failed by the controller's "
+                    "stuck-job scanner so anything waiting on it is released."
+                )
+
+        pending = server._controller_get(
+            f"/api/workstreams/{workstream_id}/jobs/pending")
+        if isinstance(pending, list):
+            result["pending_jobs"] = pending
+            lost = [j for j in pending
+                    if isinstance(j, dict) and j.get("state") == "LOST"]
+            if lost:
+                names = ", ".join(str(j.get("jobId")) for j in lost)
+                result["pending_jobs_warning"] = (
+                    f"{len(lost)} job(s) are LOST — accepted by the controller "
+                    f"but never started on any worker: {names}."
                 )
 
     result.setdefault("next_steps", [

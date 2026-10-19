@@ -18,7 +18,7 @@ package io.flowtree.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.flowtree.controller.JobStatsStore;
+import io.flowtree.controller.ActiveJob;
 import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -33,7 +33,7 @@ import static org.junit.Assert.assertTrue;
 /**
  * Pins the JSON string escaping performed by the hand-built JSON renderers in
  * {@code flowtree/runtime}: {@link Workstream#toSummaryJson()},
- * {@link JobStatsStore.ActiveJob#toJson(Instant)} and
+ * {@link ActiveJob#toJson(Instant)} and
  * {@link FlowTreeApiEndpoint#escapeJsonValue(String)}.
  *
  * <p>Every renderer must produce output a strict JSON parser accepts and that
@@ -105,8 +105,8 @@ public class JsonStringEscapingTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void activeJobEscapesBasicCharacters() throws IOException {
 		Instant now = Instant.now();
-		JobStatsStore.ActiveJob job = new JobStatsStore.ActiveJob(
-				"job-1", null, now, null, BASIC + "\tend");
+		ActiveJob job = new ActiveJob(
+				"job-1", null, now, null, BASIC + "\tend", null);
 		String json = job.toJson(now);
 
 		assertTrue(json, json.contains("\"workstreamId\":\"\""));
@@ -122,8 +122,8 @@ public class JsonStringEscapingTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void activeJobEscapesControlCharacters() throws IOException {
 		Instant now = Instant.now();
-		JobStatsStore.ActiveJob job = new JobStatsStore.ActiveJob(
-				"job-1", "ws-1", now, now, CONTROL);
+		ActiveJob job = new ActiveJob(
+				"job-1", "ws-1", now, now, CONTROL, null);
 		String json = job.toJson(now);
 
 		assertTrue(json, json.contains("col\\tumn \\u001b[31mred\\u001b[0m"));
