@@ -114,6 +114,33 @@ def _dockerfile_text():
         return handle.read()
 
 
+def _docs_stage_text():
+    """The Dockerfile instructions belonging to the ``AS docs`` stage.
+
+    A multi-stage Dockerfile has several ``FROM`` blocks; the corpus is
+    assembled in the ``docs`` stage and only the markdown/HTML it stages
+    reaches the image. Assertions about what the *corpus* contains must look
+    at that stage alone: a regression that moved a ``COPY .claude/`` into the
+    runtime stage would still match a whole-file search while leaving the
+    staged corpus without those documents. Returns the text between
+    ``FROM ... AS docs`` and the next ``FROM``.
+    """
+    lines = _dockerfile_text().splitlines()
+    collected = []
+    in_docs_stage = False
+    for line in lines:
+        from_match = re.match(r"(?i)^\s*FROM\s+.*\bAS\s+(\S+)", line)
+        if from_match:
+            in_docs_stage = from_match.group(1).lower() == "docs"
+            continue
+        if re.match(r"(?i)^\s*FROM\s+", line):
+            in_docs_stage = False
+            continue
+        if in_docs_stage:
+            collected.append(line)
+    return "\n".join(collected)
+
+
 class DocsCorpusPackagingTests(unittest.TestCase):
     """Guard: the documentation corpus must reach the image.
 
@@ -146,7 +173,7 @@ class DocsCorpusPackagingTests(unittest.TestCase):
         """The docs stage must copy every top-level directory that holds
         documentation DocsRetriever indexes. A new top-level module whose
         README is not staged would be silently missing from the corpus."""
-        text = _dockerfile_text()
+        text = _docs_stage_text()
         staged = set(re.findall(r"^COPY (\S+)/ \./\S+/$", text, re.MULTILINE))
         expected = {
             name for name in os.listdir(_REPO_ROOT)
@@ -167,6 +194,39 @@ class DocsCorpusPackagingTests(unittest.TestCase):
         # The prune is what keeps the Java source tree out of the image.
         self.assertIn("! -name '*.md' ! -name '*.html' -delete",
                       _dockerfile_text())
+
+    def test_docs_stage_text_excludes_runtime_stage(self):
+        """The docs-stage extraction must stop at the runtime ``FROM``.
+
+        If it bled into the runtime stage, a corpus assertion could be
+        satisfied by a COPY that never reaches the staged documentation. The
+        docs-stage text must contain the corpus COPYs and the prune, and must
+        not contain runtime-only instructions (the ENV AR_DOCS_DIR, the
+        requirements install, or the COPY --from=docs that imports the
+        already-built corpus)."""
+        docs_text = _docs_stage_text()
+        self.assertIn("COPY docs/ ./docs/", docs_text)
+        self.assertIn("! -name '*.md' ! -name '*.html' -delete", docs_text)
+        self.assertNotIn("ENV AR_DOCS_DIR=", docs_text)
+        self.assertNotIn("COPY --from=docs", docs_text)
+        self.assertNotIn("requirements.txt", docs_text)
+
+    def test_github_and_claude_docs_are_staged(self):
+        """The CI and hook/agent documentation live under dot-directories that
+        the layer-module COPYs do not reach. The corpus-coverage fix copies them
+        explicitly so .github/CLAUDE.md (and the other CI docs) can be indexed;
+        a regression that drops either COPY makes those answers disappear.
+
+        Restricted to the ``docs`` stage: a COPY that moved to the runtime
+        stage would leave the staged corpus without these documents yet still
+        satisfy a whole-file search."""
+        text = _docs_stage_text()
+        for directory in (".github", ".claude"):
+            self.assertIn(
+                f"COPY {directory}/ ./{directory}/", text,
+                f"the docs stage of tools/mcp/manager/Dockerfile must copy "
+                f"{directory}/ so its markdown reaches the corpus",
+            )
 
 
 class DockerfilePackagingTests(unittest.TestCase):
