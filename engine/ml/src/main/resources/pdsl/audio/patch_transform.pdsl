@@ -1,0 +1,49 @@
+/**
+ * Patched pretransform: fold runs of patch_size consecutive samples of each channel into the
+ * channel axis, and the exact inverse. This is the parameter-free pretransform placed in front of
+ * a transformer audio autoencoder (SAMEAutoEncoder), where the patch size contributes a factor of
+ * patch_size to the overall downsampling ratio.
+ *
+ * This file replaces the Java assembly that used to live in PatchedPretransform.encode and
+ * PatchedPretransform.decode, which built each direction as a single layer whose body was a
+ * reshape, a permute of the last two axes, and a reshape. PatchedPretransform.encode and
+ * PatchedPretransform.decode now only bind the batch, channel, length and patch arguments and
+ * build one of the layers below, so there is one definition of the structure and it is here.
+ *
+ * The fold is a pure rearrangement of the elements (no arithmetic, no weights): encode places
+ * input channel c at sample l * patch_size + h into output channel c * patch_size + h at frame l,
+ * laying the channels out channel-major and patch-offset-minor; decode undoes exactly that.
+ */
+
+/**
+ * Encode: fold samples into channels. [batch, channels, length] -> [batch, channels * patch_size,
+ * length / patch_size]. The input length must be a whole number of patches (the caller enforces it).
+ *
+ *   reshape    expose each channel's patches        [batch, channels, length / patch_size, patch_size]
+ *   permute    move the patch offset ahead of the   [batch, channels, patch_size, length / patch_size]
+ *              frame index (swap the last two axes)
+ *   reshape    fold (channel, patch offset) into    [batch, channels * patch_size, length / patch_size]
+ *              one channel axis, channel-major
+ */
+layer patch_encode(batch: int, channels: int, length: int, patch_size: int) {
+    reshape([batch, channels, length / patch_size, patch_size])
+    permute(0, 1, 3, 2)
+    reshape([batch, channels * patch_size, length / patch_size])
+}
+
+/**
+ * Decode: unfold channels back into samples; the exact inverse of patch_encode.
+ * [batch, channels * patch_size, frames] -> [batch, channels, frames * patch_size].
+ *
+ *   reshape    split the folded channel axis back   [batch, channels, patch_size, frames]
+ *              into (channel, patch offset)
+ *   permute    move the frame index ahead of the    [batch, channels, frames, patch_size]
+ *              patch offset (swap the last two axes)
+ *   reshape    interleave each frame's patch of      [batch, channels, frames * patch_size]
+ *              samples back into the sequence
+ */
+layer patch_decode(batch: int, channels: int, frames: int, patch_size: int) {
+    reshape([batch, channels, patch_size, frames])
+    permute(0, 1, 3, 2)
+    reshape([batch, channels, frames * patch_size])
+}
