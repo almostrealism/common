@@ -148,6 +148,30 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
     }
 
     /**
+     * A heartbeat can record the worker node on a still-{@code SUBMITTED} row
+     * before the {@code STARTED} event lands; the subsequent node-less
+     * {@code STARTED} transition must preserve that identity rather than clear it.
+     */
+    @Test(timeout = 30000)
+    public void startedWithoutNodePreservesHeartbeatNode() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-node").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            store.recordHeartbeat("job-1", submittedAt.plusSeconds(30), "worker (10.0.0.9)");
+            store.recordJobStarted("job-1", "ws-1", "job", null, submittedAt.plusSeconds(60));
+
+            ActiveJob job = store.getActiveJobs("ws-1").get(0);
+            Assert.assertEquals("a node-less STARTED must not clear the heartbeat node",
+                    "worker (10.0.0.9)", job.node());
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
      * A STARTED event that arrives with no prior SUBMITTED row still produces an
      * active row (controller restart / missing submission record).
      */

@@ -326,11 +326,13 @@ public class JobStatsStore implements ConsoleFeatures {
      *
      * <p>Moves an existing {@code SUBMITTED} row to {@code STARTED}, overwriting
      * the placeholder {@code started_at} with the real start time and recording
-     * the {@code node} identity of the worker. When no row exists yet (a
-     * controller restart, or a started event that arrives with no prior
-     * submission record) a fresh {@code STARTED} row is inserted. A second
-     * {@code STARTED} for an already-started job is a no-op, so a re-reported
-     * start never moves {@code started_at}.</p>
+     * the {@code node} identity of the worker. A {@code null} {@code node} leaves
+     * any identity a prior heartbeat recorded on the row intact rather than
+     * clearing it, since a {@code STARTED} status event carries no node of its
+     * own. When no row exists yet (a controller restart, or a started event that
+     * arrives with no prior submission record) a fresh {@code STARTED} row is
+     * inserted. A second {@code STARTED} for an already-started job is a no-op, so
+     * a re-reported start never moves {@code started_at}.</p>
      *
      * @param jobId         the job identifier
      * @param workstreamId  the workstream this job belongs to
@@ -347,11 +349,13 @@ public class JobStatsStore implements ConsoleFeatures {
         String triggerReason = (pendingReason != null && !pendingReason.isEmpty())
                 ? pendingReason : "manual";
 
-        // TODO(review): STARTED events carry no node, so a null node here wipes a node a heartbeat already set; consider COALESCE(vals.nd, job_timing.node).
+        // COALESCE preserves a node a prior heartbeat recorded: a STARTED status
+        // event carries no node, so vals.nd is null unless a caller supplies one.
         String sql = "MERGE INTO job_timing USING (VALUES(?, ?, ?, ?, ?, ?, ?)) "
             + "AS vals(jid, wid, sts, sta, dsc, tr, nd) ON job_timing.job_id = vals.jid "
             + "WHEN MATCHED AND job_timing.status = 'SUBMITTED' THEN "
-            + "UPDATE SET status = vals.sts, started_at = vals.sta, node = vals.nd "
+            + "UPDATE SET status = vals.sts, started_at = vals.sta, "
+            + "node = COALESCE(vals.nd, job_timing.node) "
             + "WHEN NOT MATCHED THEN INSERT (job_id, workstream_id, status, started_at, "
             + "description, trigger_reason, node) "
             + "VALUES (vals.jid, vals.wid, vals.sts, vals.sta, vals.dsc, vals.tr, vals.nd)";
