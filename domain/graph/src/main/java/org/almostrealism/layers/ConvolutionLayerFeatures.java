@@ -569,6 +569,7 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 		int height = inputShape.length(2);
 		int width = inputShape.length(3);
 		int filterCount = filterShape.length(0);
+		// TODO(review): non-square filters (length(2) != length(3)) are not rejected but are treated as square
 		int size = filterShape.length(2);
 		int outHeight = height - size + 1;
 		int outWidth = width - size + 1;

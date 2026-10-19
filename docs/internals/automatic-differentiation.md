@@ -289,7 +289,7 @@ backward:  dInput ◄── layer₁ ◄── layer₂ ◄── dOutput ◄─
 |-----------|-------|----------------|
 | Finite differences | `CausalLanguageModelTest.gradientsMatchFiniteDifferences`, `GradientTestFeatures` | the analytic gradient of a scalar loss matches central differences of the forward pass within tolerance |
 | A/B vs forced Jacobian and host definition | `DenseVectorJacobianProductTest` | the reduced delta equals both `jacobianGradient` (the forced full Jacobian) and the gradient computed on the host from `Σ_r g_r ⊗ x_r` and `Wᵀ · g_r` |
-| Fallback vs host definition | `ConvolutionJacobianGradientTest` | the input gradient of `convolution2dOperator`, which contracts a `7200 × 8192` Jacobian of 72-term window sums (more terms than a signed 32-bit integer counts), equals the gradient computed on the host from the convolution's definition on every one of several evaluations |
+| Fallback vs host definition | `ConvolutionJacobianGradientTest` | the input gradient of `convolution2dOperator`, which contracts a `7200 × 8192` Jacobian of 72-term window sums (more terms in all than a signed 32-bit integer counts), equals the gradient computed on the host from the convolution's definition on every one of several evaluations |
 | Local rule tests | `ReducedDeltaTest`, `ReducedDeltaRulesTest`, `TraversableDeltaComputationTests`, `DeltaFeaturesTests` | each computation's reduced delta and Jacobian match host-computed values for both axes |
 | Graph-size check | `DenseVectorJacobianProductTest.assertNoLargerThanForward` | no computation in the reduced delta's graph is larger than the largest computation of the forward operator — i.e. the Jacobian was never materialized |
 
