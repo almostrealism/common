@@ -238,6 +238,9 @@ A reviewer can confirm the task is done when:
      `convDeltaMedium` is a pre-existing environment-sensitive marginal test —
      see memories on `qa/consolidate-20260919-192550` — and is not a regression
      signal for this change)
+   - `ReducedDeltaTest`, `ReducedDeltaRulesTest` (the gate for the
+     transitive-delta `CollectionSumComputation` change — see the open question
+     below)
    - `MinMaxTests`, `ScalarBankSumTest`
    - `WeightedSumTests`, `WeightedSumLoopTests`, `LoopedWeightedSumCorrectnessTest`
    - `CumulativeProductTests`
