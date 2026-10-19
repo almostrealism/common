@@ -105,6 +105,18 @@ MODULE_PATHS = {
 # *.md inside is included); HTML entries are individual files OR
 # directories (in which case *.html inside is included).
 STANDALONE_MD_ROOTS = [
+    # CI pipeline and Master Agent Dispatch documentation. .github/CLAUDE.md is
+    # the authoritative description of the dispatch workflow, the QA rounds and
+    # the open-PR limit; .github/CI_ARCHITECTURE.md covers the pipeline design;
+    # tools/ci/README.md is the only document that describes each CI script
+    # (validate-agent-commit.sh among them); docs/COMPUTATION_MODEL.md is a
+    # top-level doc not reached by the docs/internals glob. None of these lived
+    # under a Maven layer module, so they were invisible to search until listed
+    # here.
+    ".github/CLAUDE.md",
+    ".github/CI_ARCHITECTURE.md",
+    "tools/ci/README.md",
+    "docs/COMPUTATION_MODEL.md",
     "flowtree/runtime/README.md",
     "flowtree/runtime/docs",
     "tools/mcp/README.md",
@@ -237,7 +249,17 @@ def _extract_text_from_html(html: str) -> str:
     return html.strip()
 
 
-def _read_file(path: Path, max_chars: int = 50000) -> str:
+# Per-file read cap. Raised from the original 50 000 because the authoritative
+# CI documents are long: .github/CLAUDE.md is ~70 000 characters, and the facts
+# consult must answer from it (the QA-round branch prefixes, the MAX_OPEN_PRS
+# open-PR limit) sit past the 54 000th character — a 50 000 cap silently cut
+# them off, so copying the file into the corpus was not enough on its own. The
+# cap stays finite as a guard against a pathologically large file dominating a
+# search; 200 000 covers every document in the corpus today with headroom.
+_MAX_DOC_CHARS = 200000
+
+
+def _read_file(path: Path, max_chars: int = _MAX_DOC_CHARS) -> str:
     """Read a file with size limit, returning empty string on failure."""
     try:
         if not path.exists():

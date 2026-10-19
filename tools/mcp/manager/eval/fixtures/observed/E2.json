@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "answer": "validate-agent-commit.sh rejects a change set whose only content is edits to test files that exist on the base branch with no new test, and it exits 2 per flowtree/runtime/docs/claude-code-job.md:330.",
+  "sources": ["flowtree/runtime/docs/claude-code-job.md"],
+  "html_refs": [],
+  "related_memories": [
+    {"content": "detect-test-hiding.sh exits 0 on success and 2 when it finds hidden tests ...", "score": 0.48}
+  ]
+}

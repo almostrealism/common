@@ -1,0 +1,29 @@
+[
+  {
+    "id": "e1-note-1",
+    "content": "Master Agent Dispatch runs seven QA rounds: doc-qa, defect-hunt, coverage-qa, consolidation-qa, performance-qa, pdsl-qa and qa-retrospective. Each opens a branch with a BRANCH_PREFIX of qa/docs-, qa/defect-, qa/coverage-, qa/consolidate-, qa/performance-, qa/pdsl- and qa/retro- respectively.",
+    "score": 0.31,
+    "namespace": "decisions",
+    "created_at": "2026-10-15T00:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "qa/retro-20261015"
+  },
+  {
+    "id": "e1-note-2",
+    "content": "The dispatch workflow caps concurrent work at MAX_OPEN_PRS = 7 open pull requests; a planning round does not start while more than that many are already open.",
+    "score": 0.42,
+    "namespace": "context",
+    "created_at": "2026-10-15T00:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "qa/retro-20261015"
+  },
+  {
+    "id": "e1-note-3",
+    "content": "QA retrospective round consumes the exit-interview feedback from the other rounds.",
+    "score": 0.55,
+    "namespace": "progress",
+    "created_at": "2026-10-16T00:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "qa/retro-20261015"
+  }
+]
