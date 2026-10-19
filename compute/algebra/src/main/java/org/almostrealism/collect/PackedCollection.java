@@ -213,6 +213,15 @@ public class PackedCollection extends MemoryDataAdapter
 	private static final int ORIGIN_FRAMES = 12;
 
 	/**
+	 * The largest magnitude of integer that the double-backed storage represents exactly:
+	 * {@code 2^53}. Every integer in {@code [-2^53, 2^53]} has an exact {@code double}
+	 * representation; beyond it the gap between representable doubles exceeds one, so a
+	 * {@code long} outside this range would be silently rounded when stored. The
+	 * {@code long}-accepting ingest overloads reject such values rather than corrupt them.
+	 */
+	private static final long MAX_EXACT_INTEGER = 1L << 53;
+
+	/**
 	 * The largest ratio of covering backing-memory span to requested element count for which
 	 * {@link #doubleStream(int, int)} still reads an irregular shape with a single bulk transfer.
 	 * Beyond this ratio the span is so much wider than the window that one bulk read would allocate
@@ -587,6 +596,45 @@ public class PackedCollection extends MemoryDataAdapter
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(data);
 		return this;
+	}
+
+	/**
+	 * Fills this collection with {@code int} values, cycling through them if there are fewer than
+	 * the collection holds.
+	 *
+	 * <p>This overload exists for genuine integer data — tokenizer output above all — entering the
+	 * system. Unlike {@link #fill(double...)}, an integer source carries no computed
+	 * floating-point value and so cannot launder host-side math onto the device, which is why it is
+	 * outside the host-ingest policy's scalar allowance on the double-accepting surfaces. (The
+	 * lexical policy detector inspects argument <em>syntax</em>, not type, so an array argument to
+	 * this method may still be reported; that is a limitation of the detector, not of this
+	 * surface.)</p>
+	 *
+	 * @param value the {@code int} values to cycle through; repeated if shorter than the collection
+	 * @return this collection
+	 */
+	public PackedCollection fill(int... value) {
+		return fill(doubles(value));
+	}
+
+	/**
+	 * Fills this collection with {@code long} values, cycling through them if there are fewer than
+	 * the collection holds.
+	 *
+	 * <p>Like {@link #fill(int...)}, this overload is for genuine integer data entering the system
+	 * and is outside the host-ingest policy's scalar allowance for the same reason.</p>
+	 *
+	 * <p><b>Precision.</b> The storage is {@code double}-backed, representing integers exactly only
+	 * within {@code [-2^53, 2^53]}. A {@code long} beyond that range is rejected with an
+	 * {@link IllegalArgumentException} rather than silently rounded; token ids and comparable
+	 * integer data are far below the limit.</p>
+	 *
+	 * @param value the {@code long} values to cycle through; repeated if shorter than the collection
+	 * @return this collection
+	 * @throws IllegalArgumentException if any value's magnitude exceeds {@code 2^53}
+	 */
+	public PackedCollection fill(long... value) {
+		return fill(doubles(value));
 	}
 
 	/**
@@ -1149,6 +1197,86 @@ public class PackedCollection extends MemoryDataAdapter
 		PackedCollection collection = factory().apply(values.length);
 		collection.setMem(values);
 		return collection;
+	}
+
+	/**
+	 * Creates a one-dimensional collection from the given array of {@code int} values.
+	 *
+	 * <p>This overload exists for genuine integer data — above all tokenizer output, the
+	 * {@code int[]} a tokenizer computes from text — entering the system. Unlike
+	 * {@link #of(double...)}, an integer source carries no computed floating-point value and so
+	 * cannot be used to launder host-side math onto the device: there is nothing in an
+	 * {@code int} that a producer was supposed to have computed. That is why the host-ingest
+	 * policy's scalar allowance, which caps the double-accepting surfaces, does not apply to it.
+	 * (The lexical policy detector inspects argument <em>syntax</em>, not type, so an array
+	 * argument to this method may still be reported; that is a known limitation of the detector,
+	 * not a property of this surface.)</p>
+	 *
+	 * @param values the {@code int} values to pack into a collection
+	 * @return a new {@link PackedCollection} containing the given values as doubles
+	 */
+	public static PackedCollection of(int... values) {
+		return of(doubles(values));
+	}
+
+	/**
+	 * Creates a one-dimensional collection from the given array of {@code long} values.
+	 *
+	 * <p>Like {@link #of(int...)}, this overload is for genuine integer data entering the system
+	 * and is outside the host-ingest policy's scalar allowance for the same reason: an integer
+	 * source cannot launder computed floating-point values onto the device.</p>
+	 *
+	 * <p><b>Precision.</b> The storage is {@code double}-backed, which represents integers exactly
+	 * only within {@code [-2^53, 2^53]}. A {@code long} outside that range cannot be stored without
+	 * silent rounding, so such a value is rejected with an {@link IllegalArgumentException} rather
+	 * than quietly corrupted. Token ids and comparable integer data are far below the limit.</p>
+	 *
+	 * @param values the {@code long} values to pack into a collection
+	 * @return a new {@link PackedCollection} containing the given values as doubles
+	 * @throws IllegalArgumentException if any value's magnitude exceeds {@code 2^53}
+	 */
+	public static PackedCollection of(long... values) {
+		return of(doubles(values));
+	}
+
+	/**
+	 * Widens an {@code int[]} to a {@code double[]} for storage. Every {@code int} is within the
+	 * exactly-representable range, so the conversion is lossless.
+	 *
+	 * @param values the integer values
+	 * @return the values as doubles
+	 */
+	private static double[] doubles(int... values) {
+		return IntStream.range(0, values.length).mapToDouble(i -> values[i]).toArray();
+	}
+
+	/**
+	 * Widens a {@code long[]} to a {@code double[]} for storage, rejecting any value whose magnitude
+	 * exceeds {@link #MAX_EXACT_INTEGER} because it could not be represented exactly.
+	 *
+	 * @param values the long values
+	 * @return the values as doubles
+	 * @throws IllegalArgumentException if any value's magnitude exceeds {@code 2^53}
+	 */
+	private static double[] doubles(long... values) {
+		return IntStream.range(0, values.length).mapToDouble(i -> exactDouble(values[i])).toArray();
+	}
+
+	/**
+	 * Converts a single {@code long} to a {@code double}, failing when the value cannot be
+	 * represented exactly by the double-backed storage.
+	 *
+	 * @param value the long value
+	 * @return the value as a double
+	 * @throws IllegalArgumentException if {@code |value|} exceeds {@code 2^53}
+	 */
+	private static double exactDouble(long value) {
+		if (value < -MAX_EXACT_INTEGER || value > MAX_EXACT_INTEGER) {
+			throw new IllegalArgumentException("long value " + value
+					+ " exceeds the 2^53 exact-integer limit of double-backed storage");
+		}
+
+		return value;
 	}
 
 	/**

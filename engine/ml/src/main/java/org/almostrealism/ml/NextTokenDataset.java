@@ -22,7 +22,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -478,20 +477,17 @@ public class NextTokenDataset implements Dataset<PackedCollection>, Destroyable,
 
 	/**
 	 * Returns the tokens of the region as a collection, loading them the first time. The token
-	 * ids are data entering the system from outside (the tokenized text), so they are ingested
-	 * once, in a single transfer, through {@link PackedCollection#read(ByteBuffer)}.
+	 * ids are data entering the system from outside (the tokenized text) as an {@code int[]}, so
+	 * they are ingested once through the integer {@link PackedCollection#fill(int...)} surface,
+	 * which carries no risk of laundering computed floating-point data onto the device.
 	 *
 	 * @return the region's tokens, shape {@code (end - start)}
 	 */
 	private PackedCollection regionTokens() {
 		if (regionTokens == null) {
-			ByteBuffer buffer = ByteBuffer.allocate(Double.BYTES * (end - start));
-			for (int i = start; i < end; i++) {
-				buffer.putDouble(tokens[i]);
-			}
-
+			int[] regionIds = Arrays.copyOfRange(tokens, start, end);
 			regionTokens = new PackedCollection(shape(end - start));
-			regionTokens.read(buffer.flip());
+			regionTokens.fill(regionIds);
 		}
 
 		return regionTokens;

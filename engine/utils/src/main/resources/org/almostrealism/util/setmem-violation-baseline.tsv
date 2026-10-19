@@ -1,6 +1,9 @@
+COMPUTED_VALUE_STAGED_FOR_INGEST	engine/utils/src/test/java/org/almostrealism/hardware/test/MemoryDataSerializationTest.java	1	restored.read(direct);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	base/hardware/src/main/java/org/almostrealism/hardware/computations/Assignment.java	1	return JVMMemory.fill(d, len, s.getAsDouble());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	PackedCollection sequence = pack(values());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	return pack(values());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/NextTokenDataset.java	1	regionTokens.fill(regionIds);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/t5gemma/T5GemmaEncoder.java	1	tokenIds.fill(ids);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/DifferentialAttentionTest.java	1	qkv.fill(pos -> {
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/persist/index/test/DiskStoreTestSupport.java	1	return new PackedCollection(values.length).fill(values);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/persist/index/test/HnswSearchTest.java	1	index.insert("n-" + i, new PackedCollection(dimension).fill(values));

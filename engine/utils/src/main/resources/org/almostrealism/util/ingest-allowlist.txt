@@ -1,0 +1,33 @@
+# Ingest allowlist — the CLOSED SET of files permitted to call the MemoryData /
+# PackedCollection read(ByteBuffer) / read(InputStream) ingest surface.
+#
+# This is the single source of truth shared by two enforcement points, which read
+# this exact file rather than keeping their own copies:
+#   - SetMemLiteralsDetector (engine/utils), rule INGEST_OUTSIDE_SANCTIONED_SURFACE,
+#     loads it as a classpath resource.
+#   - .claude/hooks/block-computed-ingest.py, the PreToolUse block, reads it from
+#     this path in the working tree.
+#
+# read(ByteBuffer)/read(InputStream) is the sanctioned route for data ENTERING the
+# process from OUTSIDE it (deserialization, file and network I/O). A file that is
+# not listed here may not call that surface at all: values Java has computed must
+# reach device memory through a Producer, never by staging them in a buffer and
+# shipping them through the ingest surface. Every entry names the outside source it
+# reads; add one only for a genuine outside-the-process deserializer.
+#
+# The allowlist suppresses ONLY rule INGEST_OUTSIDE_SANCTIONED_SURFACE. The rule
+# COMPUTED_VALUE_STAGED_FOR_INGEST still applies to every file below — allowlisting
+# a deserializer does not license staging host-computed values through it (that is
+# what stops the evasion from simply moving into an allowlisted file).
+#
+# Format: one canonical repo-relative path per line, matched as an ANCHORED suffix
+# of the scanned file path (path == entry, or path ends with "/" + entry) by both
+# the detector (isIngestAllowlisted) and the hook (path_matches) — not an unanchored
+# substring, so a file sharing only a basename with an allowlisted deserializer
+# (another module's GraphPersist.java, for instance) does not inherit the exemption.
+# Text after '#' is a justification comment.
+
+engine/ml/src/main/java/org/almostrealism/persist/assets/CollectionEncoder.java                 # decodes a serialized protobuf Collections.CollectionData message into a collection
+base/hardware/src/main/java/org/almostrealism/hardware/external/LocalExternalMemoryProvider.java # reads a memory image back from an on-disk binary file
+flowtree/graphpersist/src/main/java/io/almostrealism/GraphPersist.java                           # reconstructs a collection from a database blob in the persisted graph store
+engine/utils/src/test/java/org/almostrealism/hardware/test/MemoryDataSerializationTest.java      # exercises the read(ByteBuffer) ingest surface as its explicit subject under test
