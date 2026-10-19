@@ -87,6 +87,41 @@ public class TraversalPolicyTests extends TestSuiteBase {
 	}
 
 	/**
+	 * A cyclic permutation keeps the input space of the original shape, and maps each output
+	 * position to the index of the element it was taken from. {@code permute(2, 0, 1)} is not its
+	 * own inverse, unlike the swap in {@link #permute3()}, so reading input axis lengths through
+	 * the forward mapping instead of its inverse would give input lengths {@code (3, 4, 2)} and the
+	 * wrong strides.
+	 */
+	@Test(timeout = 10000)
+	public void cyclicPermuteKeepsOriginalInputSpace() {
+		TraversalPolicy shape = new TraversalPolicy(2, 3, 4);
+		TraversalPolicy permuted = shape.permute(2, 0, 1);
+
+		assertEquals(4, permuted.length(0));
+		assertEquals(2, permuted.length(1));
+		assertEquals(3, permuted.length(2));
+
+		assertEquals(2, permuted.inputLength(0));
+		assertEquals(3, permuted.inputLength(1));
+		assertEquals(4, permuted.inputLength(2));
+
+		for (int i = 0; i < 2; i++) {
+			for (int j = 0; j < 3; j++) {
+				for (int k = 0; k < 4; k++) {
+					int originalIndex = shape.index(i, j, k);
+					assertEquals(originalIndex, permuted.index(k, i, j));
+
+					int[] permutedPosition = permuted.position(originalIndex);
+					assertEquals(k, permutedPosition[0]);
+					assertEquals(i, permutedPosition[1]);
+					assertEquals(j, permutedPosition[2]);
+				}
+			}
+		}
+	}
+
+	/**
 	 * A policy that carries traversal rates — as produced by {@link TraversalPolicy#repeat(int, long)},
 	 * {@link TraversalPolicy#withRate(int, int, long)}, and {@link TraversalPolicy#withInput(int...)} —
 	 * must still support the dimension-mutating operations. Each of
