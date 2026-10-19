@@ -16,18 +16,21 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.cl.CLMemory;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
+import org.almostrealism.hardware.cuda.CudaMemoryProvider;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
- * Tests for cross-provider memory copies between native (JNI) and OpenCL memory.
+ * Tests for cross-provider memory copies between native (JNI) memory and the memory of an
+ * accelerator backend (OpenCL or CUDA).
  *
  * <p>These copies run on every kernel dispatch whose arguments reside on a different
  * provider than the kernel (via memory replacement), so both directions must be
@@ -35,9 +38,11 @@ import org.junit.Test;
  * array-mediated fallback is taken. The tests exercise offsets on both sides and
  * confirm that regions outside the copied range are left untouched.</p>
  *
- * <p>All tests skip cleanly when the OpenCL or JNI backend is unavailable.</p>
+ * <p>Each test skips cleanly when the JNI backend or the accelerator backend it copies to
+ * is unavailable.</p>
  *
  * @see org.almostrealism.hardware.cl.CLMemoryProvider
+ * @see org.almostrealism.hardware.cuda.CudaMemoryProvider
  * @see org.almostrealism.nio.NativeMemoryProvider
  */
 public class CrossProviderMemoryCopyTest extends TestSuiteBase {
@@ -48,40 +53,7 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void nativeToCl() {
-		NativeMemoryProvider nativeProvider = nativeProvider();
-		CLMemoryProvider clProvider = clProvider();
-
-		if (nativeProvider == null || clProvider == null) {
-			log("skipping, JNI or CL memory provider unavailable");
-			return;
-		}
-
-		int n = 96;
-		RAM source = nativeProvider.allocate(n);
-		CLMemory dest = clProvider.allocate(n);
-
-		try {
-			double[] values = new double[n];
-			for (int i = 0; i < n; i++) values[i] = i + 1.0;
-			nativeProvider.setMem(source, 0, values, 0, n);
-
-			double[] sentinel = new double[n];
-			for (int i = 0; i < n; i++) sentinel[i] = -1.0;
-			clProvider.setMem(dest, 0, sentinel, 0, n);
-
-			// Copy 32 elements from source position 8 to destination position 16
-			clProvider.setMem(dest, 16, source, 8, 32);
-
-			double[] result = clProvider.toArray(dest, 0, n);
-
-			for (int i = 0; i < n; i++) {
-				double expected = (i >= 16 && i < 48) ? (i - 16) + 9.0 : -1.0;
-				assertEquals("index " + i, expected, result[i]);
-			}
-		} finally {
-			clProvider.deallocate(n, dest);
-			nativeProvider.deallocate(n, source);
-		}
+		assertNativeToDevice(provider(ComputeRequirement.CL, CLMemoryProvider.class));
 	}
 
 	/**
@@ -90,40 +62,7 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void clToNative() {
-		NativeMemoryProvider nativeProvider = nativeProvider();
-		CLMemoryProvider clProvider = clProvider();
-
-		if (nativeProvider == null || clProvider == null) {
-			log("skipping, JNI or CL memory provider unavailable");
-			return;
-		}
-
-		int n = 96;
-		CLMemory source = clProvider.allocate(n);
-		RAM dest = nativeProvider.allocate(n);
-
-		try {
-			double[] values = new double[n];
-			for (int i = 0; i < n; i++) values[i] = i + 1.0;
-			clProvider.setMem(source, 0, values, 0, n);
-
-			double[] sentinel = new double[n];
-			for (int i = 0; i < n; i++) sentinel[i] = -1.0;
-			nativeProvider.setMem(dest, 0, sentinel, 0, n);
-
-			// Copy 32 elements from source position 8 to destination position 16
-			nativeProvider.setMem(dest, 16, source, 8, 32);
-
-			double[] result = nativeProvider.toArray(dest, 0, n);
-
-			for (int i = 0; i < n; i++) {
-				double expected = (i >= 16 && i < 48) ? (i - 16) + 9.0 : -1.0;
-				assertEquals("index " + i, expected, result[i]);
-			}
-		} finally {
-			nativeProvider.deallocate(n, dest);
-			clProvider.deallocate(n, source);
-		}
+		assertDeviceToNative(provider(ComputeRequirement.CL, CLMemoryProvider.class));
 	}
 
 	/**
@@ -133,36 +72,35 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void roundTrip() {
-		NativeMemoryProvider nativeProvider = nativeProvider();
-		CLMemoryProvider clProvider = clProvider();
+		assertRoundTrip(provider(ComputeRequirement.CL, CLMemoryProvider.class));
+	}
 
-		if (nativeProvider == null || clProvider == null) {
-			log("skipping, JNI or CL memory provider unavailable");
-			return;
-		}
+	/**
+	 * Copies a range of native memory into the middle of a CUDA allocation and
+	 * verifies the copied values and the sentinel values around them.
+	 */
+	@Test(timeout = 120000)
+	public void nativeToCuda() {
+		assertNativeToDevice(provider(ComputeRequirement.CUDA, CudaMemoryProvider.class));
+	}
 
-		int n = 1024;
-		RAM original = nativeProvider.allocate(n);
-		CLMemory device = clProvider.allocate(n);
-		RAM returned = nativeProvider.allocate(n);
+	/**
+	 * Copies a range of a CUDA allocation into the middle of native memory and
+	 * verifies the copied values and the sentinel values around them.
+	 */
+	@Test(timeout = 120000)
+	public void cudaToNative() {
+		assertDeviceToNative(provider(ComputeRequirement.CUDA, CudaMemoryProvider.class));
+	}
 
-		try {
-			double[] values = new double[n];
-			for (int i = 0; i < n; i++) values[i] = 0.5 * i;
-			nativeProvider.setMem(original, 0, values, 0, n);
-
-			clProvider.setMem(device, 0, original, 0, n);
-			nativeProvider.setMem(returned, 0, device, 0, n);
-
-			double[] result = nativeProvider.toArray(returned, 0, n);
-			for (int i = 0; i < n; i++) {
-				assertEquals("index " + i, 0.5 * i, result[i]);
-			}
-		} finally {
-			nativeProvider.deallocate(n, returned);
-			clProvider.deallocate(n, device);
-			nativeProvider.deallocate(n, original);
-		}
+	/**
+	 * Round-trips data native → CUDA → native and verifies it arrives unchanged,
+	 * mirroring the prepare and postprocess copies that surround a dispatch whose
+	 * arguments were replaced onto the CUDA provider.
+	 */
+	@Test(timeout = 120000)
+	public void cudaRoundTrip() {
+		assertRoundTrip(provider(ComputeRequirement.CUDA, CudaMemoryProvider.class));
 	}
 
 	/**
@@ -206,16 +144,137 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Returns the OpenCL memory provider from the active hardware configuration,
-	 * or null when no OpenCL backend is available.
+	 * Copies 32 elements from position 8 of native memory to position 16 of memory from
+	 * {@code device}, and verifies the copied values and the sentinel values around them.
+	 * Logs and returns when either provider is unavailable.
 	 */
-	private static CLMemoryProvider clProvider() {
+	private <T extends Memory> void assertNativeToDevice(MemoryProvider<T> device) {
+		NativeMemoryProvider nativeProvider = nativeProvider();
+
+		if (nativeProvider == null || device == null) {
+			log("skipping, JNI or accelerator memory provider unavailable");
+			return;
+		}
+
+		int n = 96;
+		RAM source = nativeProvider.allocate(n);
+		T dest = device.allocate(n);
+
+		try {
+			nativeProvider.setMem(source, 0, sequence(n), 0, n);
+			device.setMem(dest, 0, sentinel(n), 0, n);
+
+			device.setMem(dest, 16, source, 8, 32);
+
+			double[] result = device.toArray(dest, 0, n);
+
+			for (int i = 0; i < n; i++) {
+				double expected = (i >= 16 && i < 48) ? (i - 16) + 9.0 : -1.0;
+				assertEquals("index " + i, expected, result[i]);
+			}
+		} finally {
+			device.deallocate(n, dest);
+			nativeProvider.deallocate(n, source);
+		}
+	}
+
+	/**
+	 * Copies 32 elements from position 8 of memory from {@code device} to position 16 of
+	 * native memory, and verifies the copied values and the sentinel values around them.
+	 * Logs and returns when either provider is unavailable.
+	 */
+	private <T extends Memory> void assertDeviceToNative(MemoryProvider<T> device) {
+		NativeMemoryProvider nativeProvider = nativeProvider();
+
+		if (nativeProvider == null || device == null) {
+			log("skipping, JNI or accelerator memory provider unavailable");
+			return;
+		}
+
+		int n = 96;
+		T source = device.allocate(n);
+		RAM dest = nativeProvider.allocate(n);
+
+		try {
+			device.setMem(source, 0, sequence(n), 0, n);
+			nativeProvider.setMem(dest, 0, sentinel(n), 0, n);
+
+			nativeProvider.setMem(dest, 16, source, 8, 32);
+
+			double[] result = nativeProvider.toArray(dest, 0, n);
+
+			for (int i = 0; i < n; i++) {
+				double expected = (i >= 16 && i < 48) ? (i - 16) + 9.0 : -1.0;
+				assertEquals("index " + i, expected, result[i]);
+			}
+		} finally {
+			nativeProvider.deallocate(n, dest);
+			device.deallocate(n, source);
+		}
+	}
+
+	/**
+	 * Copies native memory to memory from {@code device} and back into other native memory,
+	 * and verifies the values arrive unchanged. Logs and returns when either provider is
+	 * unavailable.
+	 */
+	private <T extends Memory> void assertRoundTrip(MemoryProvider<T> device) {
+		NativeMemoryProvider nativeProvider = nativeProvider();
+
+		if (nativeProvider == null || device == null) {
+			log("skipping, JNI or accelerator memory provider unavailable");
+			return;
+		}
+
+		int n = 1024;
+		RAM original = nativeProvider.allocate(n);
+		T onDevice = device.allocate(n);
+		RAM returned = nativeProvider.allocate(n);
+
+		try {
+			double[] values = new double[n];
+			for (int i = 0; i < n; i++) values[i] = 0.5 * i;
+			nativeProvider.setMem(original, 0, values, 0, n);
+
+			device.setMem(onDevice, 0, original, 0, n);
+			nativeProvider.setMem(returned, 0, onDevice, 0, n);
+
+			double[] result = nativeProvider.toArray(returned, 0, n);
+			for (int i = 0; i < n; i++) {
+				assertEquals("index " + i, 0.5 * i, result[i]);
+			}
+		} finally {
+			nativeProvider.deallocate(n, returned);
+			device.deallocate(n, onDevice);
+			nativeProvider.deallocate(n, original);
+		}
+	}
+
+	/** Returns {@code n} values counting up from 1. */
+	private static double[] sequence(int n) {
+		double[] values = new double[n];
+		for (int i = 0; i < n; i++) values[i] = i + 1.0;
+		return values;
+	}
+
+	/** Returns {@code n} copies of the sentinel value -1. */
+	private static double[] sentinel(int n) {
+		double[] values = new double[n];
+		for (int i = 0; i < n; i++) values[i] = -1.0;
+		return values;
+	}
+
+	/**
+	 * Returns the memory provider of type {@code type} from the compute contexts the active
+	 * hardware configuration offers for {@code requirement}, or null when there is none.
+	 */
+	private static <P> P provider(ComputeRequirement requirement, Class<P> type) {
 		try {
 			return Hardware.getLocalHardware()
-					.getComputeContexts(false, true, ComputeRequirement.CL).stream()
+					.getComputeContexts(false, true, requirement).stream()
 					.flatMap(c -> c.getDataContext().getMemoryProviders().stream())
-					.filter(CLMemoryProvider.class::isInstance)
-					.map(CLMemoryProvider.class::cast)
+					.filter(type::isInstance)
+					.map(type::cast)
 					.findFirst().orElse(null);
 		} catch (RuntimeException e) {
 			return null;
@@ -227,15 +286,6 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 	 * or null when no JNI backend is available.
 	 */
 	private static NativeMemoryProvider nativeProvider() {
-		try {
-			return Hardware.getLocalHardware()
-					.getComputeContexts(false, true, ComputeRequirement.JNI).stream()
-					.flatMap(c -> c.getDataContext().getMemoryProviders().stream())
-					.filter(NativeMemoryProvider.class::isInstance)
-					.map(NativeMemoryProvider.class::cast)
-					.findFirst().orElse(null);
-		} catch (RuntimeException e) {
-			return null;
-		}
+		return provider(ComputeRequirement.JNI, NativeMemoryProvider.class);
 	}
 }
