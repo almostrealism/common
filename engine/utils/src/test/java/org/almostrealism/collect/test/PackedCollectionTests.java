@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
@@ -51,6 +52,105 @@ public class PackedCollectionTests extends TestSuiteBase {
 			for (int j = 0; j < 10; j++) {
 				assertEquals(data.valueAt(j, i), transposed.valueAt(i, j));
 			}
+		}
+	}
+
+	/**
+	 * Verifies that {@link PackedCollection#of(int...)} (via {@code pack(int...)}) packs integer
+	 * values into a collection of matching length, each stored exactly as a double.
+	 */
+	@Test(timeout = 10000)
+	public void packIntValues() {
+		try (PackedCollection c = pack(3, 1, 4, 1, 5)) {
+			assertEquals(5, c.getMemLength());
+			assertEquals(3.0, c.toDouble(0));
+			assertEquals(1.0, c.toDouble(1));
+			assertEquals(4.0, c.toDouble(2));
+			assertEquals(1.0, c.toDouble(3));
+			assertEquals(5.0, c.toDouble(4));
+		}
+	}
+
+	/**
+	 * Verifies that {@link PackedCollection#of(long...)} (via {@code pack(long...)}) packs long
+	 * values into a collection of matching length, each stored exactly as a double.
+	 */
+	@Test(timeout = 10000)
+	public void packLongValues() {
+		try (PackedCollection c = pack(10L, 20L, 30L)) {
+			assertEquals(3, c.getMemLength());
+			assertEquals(10.0, c.toDouble(0));
+			assertEquals(20.0, c.toDouble(1));
+			assertEquals(30.0, c.toDouble(2));
+		}
+	}
+
+	/**
+	 * Verifies that {@link PackedCollection#fill(int...)} writes the integer values, cycling through
+	 * them when the collection holds more elements than values supplied.
+	 */
+	@Test(timeout = 10000)
+	public void fillIntValuesCycle() {
+		try (PackedCollection c = new PackedCollection(shape(4))) {
+			c.fill(5, 6);
+			assertEquals(5.0, c.toDouble(0));
+			assertEquals(6.0, c.toDouble(1));
+			assertEquals(5.0, c.toDouble(2));
+			assertEquals(6.0, c.toDouble(3));
+		}
+	}
+
+	/**
+	 * Verifies that {@link PackedCollection#fill(long...)} writes the long values into the
+	 * collection, each stored exactly as a double.
+	 */
+	@Test(timeout = 10000)
+	public void fillLongValues() {
+		try (PackedCollection c = new PackedCollection(shape(3))) {
+			c.fill(7L, 8L, 9L);
+			assertEquals(7.0, c.toDouble(0));
+			assertEquals(8.0, c.toDouble(1));
+			assertEquals(9.0, c.toDouble(2));
+		}
+	}
+
+	/**
+	 * Verifies that a {@code long} at the {@code 2^53} exact-integer limit of the double-backed
+	 * storage is accepted and stored exactly.
+	 */
+	@Test(timeout = 10000)
+	public void longAtExactLimitStored() {
+		long max = 1L << 53;
+		try (PackedCollection c = pack(max)) {
+			assertEquals((double) max, c.toDouble(0));
+		}
+	}
+
+	/**
+	 * Verifies that a {@code long} beyond the {@code 2^53} exact-integer limit is rejected by
+	 * {@code pack(long...)} rather than silently rounded.
+	 */
+	@Test(timeout = 10000)
+	public void packLongBeyondExactLimitRejected() {
+		try {
+			pack((1L << 53) + 1);
+			Assert.fail("Expected IllegalArgumentException for a long beyond 2^53");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage().contains("2^53"));
+		}
+	}
+
+	/**
+	 * Verifies that a {@code long} beyond the {@code 2^53} exact-integer limit is rejected by
+	 * {@code fill(long...)} rather than silently rounded.
+	 */
+	@Test(timeout = 10000)
+	public void fillLongBeyondExactLimitRejected() {
+		try (PackedCollection c = new PackedCollection(shape(1))) {
+			c.fill(-(1L << 53) - 1);
+			Assert.fail("Expected IllegalArgumentException for a long beyond 2^53");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage().contains("2^53"));
 		}
 	}
 
