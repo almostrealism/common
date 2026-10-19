@@ -582,6 +582,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 				+ " quality is the main determinant of whether the answer is"
 				+ " grounded in the right documents",
 			consultParams.contains("keywords"));
+		assertTrue("consult must declare conversation_id in signature; without it"
+				+ " a follow-up question cannot continue an earlier consult, and"
+				+ " the evidence IDs the caller saw on the previous turn are lost",
+			consultParams.contains("conversation_id"));
 
 		List<String> memoryNamespacesParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "memory_namespaces");

@@ -1,11 +1,10 @@
 # consult: Evidence Grounding, Corpus Coverage, Conversations and Evaluation
 
-Status: **PARTIALLY IMPLEMENTED.** Step 1 (the evaluation harness and seed
-cases E1–E4) and Step 2 (the first corpus-coverage fix — indexing the CI
-documents and raising the per-file read cap) have landed; see Section 6 for
-which steps those are and the many later steps that remain only planned. The
-rest of this document is still a plan, written to be iterated on; every section
-separates a first step from later refinements.
+Status: **FIRST STEPS IMPLEMENTED (1–12), ONE HALF-STEP OUTSTANDING.** Steps 1
+and 2 landed earlier. Steps 3–12 landed together on 2026-10-19 (section 6.1),
+except the `.github/workflows/analysis.yaml` half of step 3, which needs a
+`ci/...` branch and is recorded as a follow-up. Section 6.2 holds the current
+evaluation report. The "later refinements" of every section remain plans.
 Author: planning session, 2026-10-17.
 
 > **Locate code by symbol, not by line.** References below name functions and
@@ -1408,6 +1407,104 @@ then verify citations, and only then let notes answer.**
     as tier-A `[Ik]` index-derived evidence items (2.5) so the answers are
     cited and grounded like documentation. E2 should answer `exit 3` from the
     index and E3 should answer `.flowtree/oop-review.md`.
+
+### 6.1 Implementation record (2026-10-19)
+
+All of steps 3–12 landed in one job, citation work first (6, then 7) as
+requested after the 2026-10-19 post-deploy check. The harness commits a job's
+working tree as a single commit, so the "one commit per step" request could not
+be honoured; the per-step record below is the substitute.
+
+| Step | Status | What landed | Where |
+|---|---|---|---|
+| 3 | **half done** | `ARG CORPUS_COMMIT=unknown` in the `docs` stage; `docker-compose.yml` passes `CORPUS_COMMIT: ${CORPUS_COMMIT:-unknown}`; `rebuild.sh` exports `git rev-parse HEAD`; `corpus: {commit, built_at}` in every consult response. **Outstanding:** `analysis.yaml`'s `docker build` must pass `--build-arg CORPUS_COMMIT=$(git rev-parse HEAD)` — CI-file lock, needs a `ci/...` branch. Until then CI images record `unknown`, which is the designed sentinel. | `Dockerfile`, `docker-compose.yml`, `rebuild.sh`, `consult_engine.corpus_identity` |
+| 4 | done | Client-side namespace fan-out (`default` always first, newest-write order, cap 6 → `memory_namespaces_capped`), query = question + keywords, 8 candidates / ≤5 presented, `related_memories` gain `id, created_at, branch, namespace, tier, distance, evidence_id`, `memory_recall` labels scores as distances. Fail-closed scope (`memory_scope`). E5 added. | `consult_engine.search_memories`, `memory_tools.memory_recall` |
+| 5 | done | `BranchStateResolver` (gated on `github` scope **and** `_require_org_in_scope`, cache holds only objective PR state, open 10 min / settled 24 h, failed lookups uncached, `degraded_reasons: ["branch_state"]`); pure `tier()`; evidence list with IDs and tier labels; `SYSTEM_PROMPT` tier rules and the three new worked examples; `evidence` in the response. Previous-incarnation (branch reuse) detection not done — notes tier against the current PR, the documented safe default. E6, E7 added. | `branch_state.py`, `common/consult_tiers.py`, `common/consult_evidence.py`, `common/inference.py` |
+| 6 | done | Model cites `[Dk]/[Nk]/[Ik]`; server expands to `[D1: path:start-end]`. Chunks carry `start`, `end`, `section` (heading trail; fenced code ignored), grow to a whole subsection ≤ 30 lines, otherwise a window clipped to the subsection. `build_consult_prompt` replaced in place; `memory_recall` and the retired consultant use it. Reformulation got its own system prompt so the answer trailer cannot leak into stored notes. **Also fixed:** keyword retrieval filled all 5 chunk slots from the first one or two keywords, so `BRANCH_PREFIX`/`MAX_OPEN_PRS` chunks never reached the model — the root cause of E1's invented prefixes. Results now round-robin across keywords. | `common/docs_retriever.py` |
+| 7 | done | `citation_verifier.verify`: subject, value, tier, branch-local, unknown-ID, free-text-location and contradicted-value checks; whole-name matching (`qa/coverage` ≠ `qa/coverage-`); **uncited** sentences whose specifics appear in no evidence item are flagged too (every 2026-10-19 error was such a claim); `[unsupported]` inline marks, `citation_warnings`, `uncited_claims`. | `common/citation_verifier.py` |
+| 8 | done | `BASIS:`/`CONFLICTS:` trailer parsed, basis recomputed from resolved, non-failing citations (`format_warnings: basis mismatch / trailer missing`), code-generated notes-basis sentence, `history` field for sentences resting only on C/C✗ notes, abstention with `searched`, `abstained_with_evidence`, partial-abstention closing sentence, reported and structural conflicts. E8 added. | `consult_engine.ConsultTurn._post_process` |
+| 9 | done | `snapshot_index.py` built in the `docs` stage before the prune, written to `/snapshot` (outside the pruned tree), `COPY scripts/` added, `AR_SNAPSHOT_INDEX` in the runtime image; packaging tests. Mention extraction, C✗ tier, `nonexistent` abstention (answered without the model). Slash-bearing mentions count as paths only when rooted in a top-level directory of the tree — branch names (`qa/docs-`, `origin/master`) otherwise made correct notes stale. | `common/snapshot_index.py`, `common/consult_tiers.py` |
+| 10 | done | `INDEX_EXCLUSIONS` + corpus walk replace the allowlist (`STANDALONE_*_ROOTS` kept as must-resolve roots); packaging test that every `*.md`/`*.html` is indexed or excluded, and that every exclusion matches something. Plain `search()` takes markdown before HTML and caps hits per file. Precision re-measured: pass/fail unchanged; E1 gained one more README chunk. | `common/docs_retriever.py`, `test_dockerfile_packaging.py` |
+| 11 | done | `conversation_id` (signature + `McpToolDiscoveryTest` assertion); `ConversationStore` component with idle/absolute TTL, 12 turns, LRU cap, store lock plus per-conversation turn lock; job-token identity, static tokens refused; first-turn scope fixed; carry-forward (2 docs + 2 notes) with stable IDs via a shared `IdPool`; 1500-char history. | `consult_conversations.py`, `memory_tools.consult` |
+| 12 | done | Script header comments and literal exit codes, `static final` String **and numeric** literal constants of any visibility, as tier-A `[Ik]` items. Narrow value-level conflict (pulled forward from the refinements): a note's "exits N" against the script's literal exit codes. | `common/snapshot_index.py`, `consult_engine.value_conflicts` |
+
+**Measurement without a model.** No model was reachable from the job's host
+(no local llama.cpp/Ollama; the workspace's OpenRouter secret could not be
+rendered by `ar-secrets` — its placeholder pattern rejects the hyphenated key).
+`run_consult_eval.py` therefore gained `--mode scripted`: the live pipeline
+(staged corpus, snapshot index from the same trees, tiering, verifier) with a
+stub model returning a canned answer per case. It measures what the pipeline
+does with an answer — flag, demote, refuse — and cannot measure whether a model
+still makes a mistake; `--mode local` remains the measure of that and has not
+been run for these steps. Milestones became cumulative (`stepN` applies every
+`stepM ≤ N` override). New grader keys: `must_mark_unsupported`,
+`min_citation_warnings`, `history_must_include`, `min_conflicts`.
+
+**New cases.** E5–E8 as planned (namespace widening, conflict, branch-local,
+history), plus four from the 2026-10-19 check, each a reproduction of an
+observed wrong answer whose expectation is that the pipeline flags it:
+E9 (E1's invented branch prefixes), E10 (the `ci/` lock probe's invented
+`Sensitive-File-Bypass: signed-by-controller` trailer), E11 (E2's `exit 2`
+from a 2026-09-16 note that was true when written — the script moved to
+`exit 3` on 2026-09-24; at 33 days on a merged branch the note tiers as
+current, so only the index's exit-code fact can contradict it) and E12 (E3's
+"one class per job" and guessed verdict path). E9–E11 carry the deployed
+responses captured on 2026-10-19 for replay.
+
+One finding contradicts the request that prompted E10: `.github/actions/` **is**
+in `check-ci-file-lock.sh`'s `LOCKED_PATH_PATTERN` (since 2026-09-24, commit
+`fc71c7e36`, so it agrees with `FileStager`), while the script's header comment
+and `tools/ci/README.md` name only `.github/workflows/` and `tools/ci/`. E10
+therefore does not penalise naming `.github/actions/`; the documentation drift
+is the follow-up.
+
+### 6.2 Evaluation report (current)
+
+Replay (frozen deployed responses; `eval/baselines/baseline-observed.md`):
+2/12 pass, 1 false abstention, 5 false answers. The seed set (E1–E4, observed
+2026-10-17) is unchanged at E1/E4 pass, E2/E3 fail; the 2026-10-19 responses
+E9–E11 all fail their "is it flagged" expectation, as they must: nothing flagged
+them when they were served.
+
+Scripted at milestone `step12` (`eval/baselines/scripted-step12.md`): **11/12
+pass, 0 false abstentions, 1 false answer.**
+
+| Case | Replay (deployed) | Scripted, step 12 | What moved it |
+|---|---|---|---|
+| E1 | false abstention (10-17) | pass, 0 warnings | keyword round-robin puts the prefix and `MAX_OPEN_PRS` chunks in front of the model (step 6 retrieval fix); verifier finds nothing to flag in the correct answer (step 7) |
+| E2 | `exit 2` cited to the wrong chunk | pass: `exit 3` cited to `[I1]` | index exit codes (step 12) |
+| E3 | guessed from a stale note | pass: `.flowtree/oop-review.md` from `[I2]`, `ClaudeCodeJob` flagged absent | constants (12), C✗ (9) |
+| E4 | correct abstention | pass: `nonexistent`, model not called | path index (9) |
+| E5 | — | pass: answered from a `decisions` note, labelled as resting on notes | namespace widening (4), notes may answer (8) |
+| E6 | — | pass: both values reported, reported + potential conflicts | tiers (5), conflicts (8) |
+| E7 | — | pass: unqualified branch-local claim flagged | B′ tier (5), verifier (7) |
+| E8 | — | pass: rationale in `history`, no present-tense answer | history routing (8) |
+| E9 | invented prefixes, unflagged | pass: flagged (`subject`) | verifier (7) |
+| E10 | invented trailer, unflagged | pass: flagged (uncited, in no evidence) | uncited-claim check (7) |
+| E11 | `exit 2` from an old note, unflagged | pass: flagged `contradicted by snapshot`, value conflict reported | index facts (12) + value conflict |
+| E12 | — | **fail**: guessed path flagged, but "one class per job" is not | — |
+
+**E12 is a real gap, kept failing on purpose:** "one class per job" names no
+identifier, path or number, so token matching cannot see that it contradicts
+"one session per changed class". Catching paraphrase needs the judge or a
+claim-level check (later refinements).
+
+Ablations (scripted, step 12, one mechanism disabled at a time) confirm the
+attribution above:
+
+| Disabled | Pass | Newly failing |
+|---|---|---|
+| nothing | 11/12 | — |
+| namespace widening (4) | 7/12 | E3, E5, E6, E8 (their notes live outside `default`) |
+| tiers — every note C (5) | 9/12 | E5, E6 |
+| verifier (7) | 3/12 | E1, E2, E5, E7, E8, E9, E10, E11 (the basis computation also reads the verifier's resolved citations, so E1/E2/E5 lose their basis) |
+| snapshot index (9 + 12) | 6/12 | E2, E3, E4, E8, E11 |
+| index facts only (12) | 8/12 | E2, E3, E11 |
+
+Follow-ups: the `analysis.yaml` `--build-arg` (step 3, `ci/` branch); a
+`--mode local` run against a real model; the `check-ci-file-lock.sh` header and
+`tools/ci/README.md` naming `.github/actions/`; the `ar-secrets` placeholder
+pattern; paraphrase detection (E12).
 
 Later refinements, not yet scheduled:
 
