@@ -4,10 +4,12 @@ The consult pipeline: retrieval, evidence, synthesis and verification.
 ``consult`` (``memory_tools``) validates its arguments and hands the request
 here. One turn runs:
 
-1. **Nonexistence.** A question naming a script or file the snapshot index
-   does not contain is answered directly — "no file named X exists in the
+1. **Nonexistence.** A question whose every named file is missing from the
+   snapshot index, and which asks how those files behave rather than where to
+   create one, is answered directly — "no file named X exists in the
    snapshot" — without asking the model to describe something that is not
-   there.
+   there. A question that also names a file that does exist, or that asks
+   where to place a new one, keeps its answer.
 2. **Retrieval.** Documentation chunks (with ranges and heading trails);
    notes from every semantic namespace, merged by distance; and, for the
    scripts, types and constants the question names, facts from the snapshot
@@ -66,6 +68,12 @@ _CONFLICTS_LINE = re.compile(r"^\s*CONFLICTS\s*:\s*(.*?)\s*$",
                              re.IGNORECASE | re.MULTILINE)
 _NOT_DOCUMENTED = re.compile(r"^\s*\**not documented\**\s*[.!]?\s*", re.IGNORECASE)
 _FILE_MENTION = re.compile(r"\.(?:sh|py|java|ya?ml|md|json|toml)$")
+# A request asking where to put, create, or move a file, rather than how an
+# existing one behaves. Such a request names a file the snapshot is expected
+# not to contain yet, so a missing name is the premise, not a dead end.
+_PLACEMENT_QUESTION = re.compile(
+    r"\b(where|create|creating|put|place|placement|belongs?|rename|renaming|"
+    r"relocate|move|moving|new file|add(?:ing)? a)\b", re.IGNORECASE)
 _PRESENT_TENSE = re.compile(
     r"\b(exists?|is the|owns|handles|writes|runs|implements|currently|now)\b",
     re.IGNORECASE)
@@ -208,17 +216,38 @@ def select_notes(tiered: list[tuple[dict, str]], caller: Caller) -> list:
     return chosen
 
 
-def nonexistent_mentions(question: str, keywords, index) -> list[str]:
-    """Files the question names that the snapshot does not contain."""
+def file_mentions(question: str, keywords, index) -> tuple[list[str], list[str]]:
+    """The file-shaped names the request uses, split into those the snapshot
+    contains (``present``) and those it lacks (``missing``)."""
+    present: list[str] = []
+    missing: list[str] = []
     if index is None:
-        return []
+        return present, missing
     text = " ".join([question] + [k for k in (keywords or []) if isinstance(k, str)])
-    missing = []
-    # TODO(review): one missing file short-circuits the whole answer, even when the question asks where to create it.
     for mention in extract_mentions(text):
-        if _FILE_MENTION.search(mention) and not index.has_path(mention):
-            if mention not in missing:
-                missing.append(mention)
+        if not _FILE_MENTION.search(mention):
+            continue
+        bucket = present if index.has_path(mention) else missing
+        if mention not in bucket:
+            bucket.append(mention)
+    return present, missing
+
+
+def nonexistent_mentions(question: str, keywords, index) -> list[str]:
+    """Files the request names that warrant a direct "no such file" answer.
+
+    Only when *every* file the request names is missing, and the request asks
+    about those files rather than where to create or move one, is answering
+    the model the wrong move. When a named file does exist (an existing file
+    named alongside a planned one) or the request is about placing a file, the
+    missing names are left for the model to address with the retrieved
+    evidence instead of short-circuiting the whole answer.
+    """
+    present, missing = file_mentions(question, keywords, index)
+    if not missing or present:
+        return []
+    if _PLACEMENT_QUESTION.search(question):
+        return []
     return missing
 
 
@@ -639,6 +668,12 @@ def _remove_span(answer: str, sentence) -> str:
     idx = answer.rfind(sentence.text)
     if idx < 0:
         return answer
-    # TODO(review): the global "  " -> " " collapse also flattens indentation in lists/code blocks; only the junction needs it.
-    return (answer[:idx] + answer[idx + len(sentence.text):]).replace("  ", " ")
+    left = answer[:idx]
+    right = answer[idx + len(sentence.text):]
+    # Collapse only the spaces left adjacent at the cut; indentation elsewhere
+    # (nested markdown lists, fenced code blocks) must survive untouched, so a
+    # global "  " -> " " replace is wrong here.
+    if left.endswith(" ") and right.startswith(" "):
+        right = right.lstrip(" ")
+    return left + right
 

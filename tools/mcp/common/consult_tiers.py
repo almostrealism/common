@@ -148,12 +148,19 @@ def classify_mentions(mentions: list[str], index) -> dict:
     if index is None:
         return {"present": present, "absent": absent}
     for mention in mentions:
-        # TODO(review): runtime-written paths (.flowtree/oop-review.md) are never in the snapshot, so a correct note naming one tiers C✗.
+        slashed = "/" in mention
+        # A path rooted in a dot-directory the snapshot lacks — a runtime
+        # output such as .flowtree/oop-review.md, never committed — is absent
+        # from the tree by construction, not because a name was removed. Leave
+        # it unchecked rather than tiering a correct note that names it stale.
+        if slashed and mention.removeprefix("./").startswith(".") \
+                and not index.is_tree_path(mention):
+            continue
         if re.search(r"\.(java|sh|py|md|ya?ml)$", mention) or (
-                "/" in mention and index.is_tree_path(mention)):
+                slashed and index.is_tree_path(mention)):
             (present if index.has_path(mention) else absent).append(mention)
             continue
-        if "/" in mention:
+        if slashed:
             continue
         head = mention.split(".", 1)[0]
         if not re.fullmatch(r"[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+", head):

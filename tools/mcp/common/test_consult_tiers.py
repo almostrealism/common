@@ -117,6 +117,18 @@ class TestMentions(unittest.TestCase):
                                     "ci/test-protection-consistency"], self.index)
         self.assertEqual(result, {"present": [], "absent": []})
 
+    def test_runtime_dot_directory_paths_are_unchecked(self):
+        # A path rooted in a dot-directory the snapshot lacks (a runtime
+        # output never committed) must not be tiered stale: it is absent by
+        # construction. A dot-directory the tree does contain stays checked.
+        result = classify_mentions(
+            [".flowtree/oop-review.md", ".github/CLAUDE.md", ".github/gone.md"],
+            self.index)
+        self.assertNotIn(".flowtree/oop-review.md",
+                         result["present"] + result["absent"])
+        self.assertIn(".github/CLAUDE.md", result["present"])
+        self.assertIn(".github/gone.md", result["absent"])
+
     def test_without_an_index_nothing_is_absent(self):
         self.assertEqual(classify_mentions(["ClaudeCodeJob"], None),
                          {"present": [], "absent": []})

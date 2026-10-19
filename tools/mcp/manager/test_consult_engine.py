@@ -2,6 +2,7 @@
 
 import unittest
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from manager_test_support import Synthesis, _grant_all_scopes, server
@@ -253,6 +254,40 @@ class TestPureHelpers(unittest.TestCase):
         ev.add_note({"id": "b", "content": "b"}, TIER_CURRENT)
         self.assertEqual(len(consult_engine.reported_conflicts(
             ["N1 vs D1 — differ", "N1 vs D9 — invented"], ev)), 1)
+
+    def test_nonexistent_mentions_short_circuits_only_a_pure_how_it_works_ask(self):
+        # Every named file missing, and the question is about that file.
+        self.assertEqual(
+            consult_engine.nonexistent_mentions(
+                "How does check-branch-entropy.sh work?", None, INDEX),
+            ["check-branch-entropy.sh"])
+
+    def test_nonexistent_mentions_yields_to_an_existing_file(self):
+        # A planned file named alongside one that exists is not a dead end.
+        self.assertEqual(
+            consult_engine.nonexistent_mentions(
+                "Does validate-agent-commit.sh supersede old-check.sh?", None,
+                INDEX),
+            [])
+
+    def test_nonexistent_mentions_yields_to_a_placement_question(self):
+        self.assertEqual(
+            consult_engine.nonexistent_mentions(
+                "Where should I put new-helper.py?", None, INDEX),
+            [])
+
+    def test_file_mentions_split_present_from_missing(self):
+        present, missing = consult_engine.file_mentions(
+            "validate-agent-commit.sh and gone.sh", None, INDEX)
+        self.assertEqual(present, ["validate-agent-commit.sh"])
+        self.assertEqual(missing, ["gone.sh"])
+
+    def test_remove_span_keeps_indentation_outside_the_cut(self):
+        sentence = SimpleNamespace(text="Remove me.")
+        out = consult_engine._remove_span(
+            "Intro sentence. Remove me. Rest.\n\n    indented code line", sentence)
+        self.assertEqual(
+            out, "Intro sentence. Rest.\n\n    indented code line")
 
     def test_a_historically_framed_stale_note_is_not_a_conflict(self):
         ev = EvidenceList()
