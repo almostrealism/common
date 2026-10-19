@@ -104,6 +104,42 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Copies native memory of the other precision into a CUDA allocation, which must convert
+	 * each element rather than take the bulk byte copy.
+	 */
+	@Test(timeout = 120000)
+	public void nativeToCudaMixedPrecision() {
+		assertMixedPrecisionNativeToDevice(provider(ComputeRequirement.CUDA, CudaMemoryProvider.class));
+	}
+
+	/**
+	 * Copies a CUDA allocation into native memory of the other precision, which must convert
+	 * each element rather than use the registered bulk writer.
+	 */
+	@Test(timeout = 120000)
+	public void cudaToNativeMixedPrecision() {
+		assertMixedPrecisionDeviceToNative(provider(ComputeRequirement.CUDA, CudaMemoryProvider.class));
+	}
+
+	/**
+	 * Copies native memory of the other precision into an OpenCL buffer, which must convert
+	 * each element rather than take the bulk write.
+	 */
+	@Test(timeout = 120000)
+	public void nativeToClMixedPrecision() {
+		assertMixedPrecisionNativeToDevice(provider(ComputeRequirement.CL, CLMemoryProvider.class));
+	}
+
+	/**
+	 * Copies an OpenCL buffer into native memory of the other precision, which must convert
+	 * each element rather than use the registered bulk writer.
+	 */
+	@Test(timeout = 120000)
+	public void clToNativeMixedPrecision() {
+		assertMixedPrecisionDeviceToNative(provider(ComputeRequirement.CL, CLMemoryProvider.class));
+	}
+
+	/**
 	 * Copies between two {@link NativeMemoryProvider} instances configured at different
 	 * precisions, exercising the {@code double[]}-mediated fallback that {@link
 	 * NativeMemoryProvider#setMem(RAM, int, io.almostrealism.code.Memory, int, int)} takes when
@@ -144,9 +180,9 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Copies 32 elements from position 8 of native memory to position 16 of memory from
-	 * {@code device}, and verifies the copied values and the sentinel values around them.
-	 * Logs and returns when either provider is unavailable.
+	 * Copies native memory to memory from {@code device}, as {@link #copyNativeToDevice} does,
+	 * using the native provider of the active hardware configuration. Logs and returns when
+	 * either provider is unavailable.
 	 */
 	private <T extends Memory> void assertNativeToDevice(MemoryProvider<T> device) {
 		NativeMemoryProvider nativeProvider = nativeProvider();
@@ -156,32 +192,13 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 			return;
 		}
 
-		int n = 96;
-		RAM source = nativeProvider.allocate(n);
-		T dest = device.allocate(n);
-
-		try {
-			nativeProvider.setMem(source, 0, sequence(n), 0, n);
-			device.setMem(dest, 0, sentinel(n), 0, n);
-
-			device.setMem(dest, 16, source, 8, 32);
-
-			double[] result = device.toArray(dest, 0, n);
-
-			for (int i = 0; i < n; i++) {
-				double expected = (i >= 16 && i < 48) ? (i - 16) + 9.0 : -1.0;
-				assertEquals("index " + i, expected, result[i]);
-			}
-		} finally {
-			device.deallocate(n, dest);
-			nativeProvider.deallocate(n, source);
-		}
+		copyNativeToDevice(nativeProvider, device);
 	}
 
 	/**
-	 * Copies 32 elements from position 8 of memory from {@code device} to position 16 of
-	 * native memory, and verifies the copied values and the sentinel values around them.
-	 * Logs and returns when either provider is unavailable.
+	 * Copies memory from {@code device} to native memory, as {@link #copyDeviceToNative} does,
+	 * using the native provider of the active hardware configuration. Logs and returns when
+	 * either provider is unavailable.
 	 */
 	private <T extends Memory> void assertDeviceToNative(MemoryProvider<T> device) {
 		NativeMemoryProvider nativeProvider = nativeProvider();
@@ -191,26 +208,7 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 			return;
 		}
 
-		int n = 96;
-		T source = device.allocate(n);
-		RAM dest = nativeProvider.allocate(n);
-
-		try {
-			device.setMem(source, 0, sequence(n), 0, n);
-			nativeProvider.setMem(dest, 0, sentinel(n), 0, n);
-
-			nativeProvider.setMem(dest, 16, source, 8, 32);
-
-			double[] result = nativeProvider.toArray(dest, 0, n);
-
-			for (int i = 0; i < n; i++) {
-				double expected = (i >= 16 && i < 48) ? (i - 16) + 9.0 : -1.0;
-				assertEquals("index " + i, expected, result[i]);
-			}
-		} finally {
-			nativeProvider.deallocate(n, dest);
-			device.deallocate(n, source);
-		}
+		copyDeviceToNative(nativeProvider, device);
 	}
 
 	/**
@@ -248,6 +246,103 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 			device.deallocate(n, onDevice);
 			nativeProvider.deallocate(n, original);
 		}
+	}
+
+	/**
+	 * Copies native memory stored at the precision {@code device} does not use to memory from
+	 * {@code device}, as {@link #copyNativeToDevice} does. A bulk byte copy would reinterpret
+	 * the elements instead of converting them. Logs and returns when the device provider is
+	 * unavailable.
+	 */
+	private <T extends Memory> void assertMixedPrecisionNativeToDevice(MemoryProvider<T> device) {
+		if (device == null) {
+			log("skipping, accelerator memory provider unavailable");
+			return;
+		}
+
+		copyNativeToDevice(otherPrecision(device), device);
+	}
+
+	/**
+	 * Copies memory from {@code device} to native memory stored at the precision
+	 * {@code device} does not use, as {@link #copyDeviceToNative} does. A bulk byte copy would
+	 * reinterpret the elements instead of converting them. Logs and returns when the device
+	 * provider is unavailable.
+	 */
+	private <T extends Memory> void assertMixedPrecisionDeviceToNative(MemoryProvider<T> device) {
+		if (device == null) {
+			log("skipping, accelerator memory provider unavailable");
+			return;
+		}
+
+		copyDeviceToNative(otherPrecision(device), device);
+	}
+
+	/**
+	 * Copies 32 elements from position 8 of memory from {@code nativeProvider} to position 16
+	 * of memory from {@code device}, and verifies the copied values and the sentinel values
+	 * around them.
+	 */
+	private <T extends Memory> void copyNativeToDevice(NativeMemoryProvider nativeProvider,
+														 MemoryProvider<T> device) {
+		int n = 96;
+		RAM source = nativeProvider.allocate(n);
+		T dest = device.allocate(n);
+
+		try {
+			nativeProvider.setMem(source, 0, sequence(n), 0, n);
+			device.setMem(dest, 0, sentinel(n), 0, n);
+
+			device.setMem(dest, 16, source, 8, 32);
+
+			double[] result = device.toArray(dest, 0, n);
+
+			for (int i = 0; i < n; i++) {
+				double expected = (i >= 16 && i < 48) ? (i - 16) + 9.0 : -1.0;
+				assertEquals("index " + i, expected, result[i]);
+			}
+		} finally {
+			device.deallocate(n, dest);
+			nativeProvider.deallocate(n, source);
+		}
+	}
+
+	/**
+	 * Copies 32 elements from position 8 of memory from {@code device} to position 16 of
+	 * memory from {@code nativeProvider}, and verifies the copied values and the sentinel
+	 * values around them.
+	 */
+	private <T extends Memory> void copyDeviceToNative(NativeMemoryProvider nativeProvider,
+														 MemoryProvider<T> device) {
+		int n = 96;
+		T source = device.allocate(n);
+		RAM dest = nativeProvider.allocate(n);
+
+		try {
+			device.setMem(source, 0, sequence(n), 0, n);
+			nativeProvider.setMem(dest, 0, sentinel(n), 0, n);
+
+			nativeProvider.setMem(dest, 16, source, 8, 32);
+
+			double[] result = nativeProvider.toArray(dest, 0, n);
+
+			for (int i = 0; i < n; i++) {
+				double expected = (i >= 16 && i < 48) ? (i - 16) + 9.0 : -1.0;
+				assertEquals("index " + i, expected, result[i]);
+			}
+		} finally {
+			nativeProvider.deallocate(n, dest);
+			device.deallocate(n, source);
+		}
+	}
+
+	/**
+	 * Returns a {@link NativeMemoryProvider} whose elements are not the width of those of
+	 * {@code device}: FP32 when {@code device} stores doubles, FP64 otherwise.
+	 */
+	private static NativeMemoryProvider otherPrecision(MemoryProvider<?> device) {
+		Precision precision = device.getNumberSize() == Double.BYTES ? Precision.FP32 : Precision.FP64;
+		return new NativeMemoryProvider(precision, 1024 * 1024, false, null, true);
 	}
 
 	/** Returns {@code n} values counting up from 1. */
