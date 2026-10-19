@@ -135,6 +135,9 @@ public final class T5GemmaConfig {
 	/** Returns the soft-cap on the scaled attention logits ({@code 0} for none). */
 	public double getAttentionSoftcap() { return attentionSoftcap; }
 
+	/** Returns whether the scaled attention logits are soft-capped, that is whether the soft-cap is positive. */
+	public boolean hasAttentionSoftcap() { return attentionSoftcap > 0.0; }
+
 	/** Returns the base of the rotary position frequencies. */
 	public double getRopeTheta() { return ropeTheta; }
 

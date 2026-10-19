@@ -858,6 +858,13 @@ the two attention maps from its query, key and value sections with the same `sdp
 subtracts it, before the heads are merged and projected. `differentialSequenceAttention` binds the
 same arguments as `sequenceAttention` (`sequenceAttentionArguments`) plus the lambda.
 
+The T5Gemma text encoder calls these layers from an asset of its own,
+`engine/ml/src/main/resources/pdsl/t5gemma_encoder.pdsl`: each encoder layer is an `accum` around
+the soft-capped `sequence_attention_softcapped` layer, then an `accum` around the `glu_feed_forward`
+layer of `feed_forward.pdsl` with a GELU gate, each sub-layer sandwiched between two RMS norms that
+share the checkpoint's one epsilon. `T5GemmaEncoder` binds each layer's weights, the prompt mask (as
+the key mask) and an all-ones value mask, and builds that layer once per layer.
+
 ---
 
 ## Related Files

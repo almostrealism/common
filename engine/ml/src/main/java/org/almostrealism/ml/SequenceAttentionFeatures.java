@@ -660,13 +660,14 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 	/**
 	 * A validity mask that marks every position valid: ones of shape {@code (batch, length)}. Bound
 	 * in place of a mask the caller did not give, it leaves the values and the logits a mask stage of
-	 * an attention asset applies to unchanged.
+	 * an attention asset applies to unchanged, which is how a model whose attention masks only its
+	 * keys (or nothing) binds the value mask the attention assets declare.
 	 *
 	 * @param batchSize the batch dimension
 	 * @param length    the number of positions
 	 * @return the all-ones mask
 	 */
-	private CollectionProducer everyPositionValid(int batchSize, int length) {
+	default CollectionProducer everyPositionValid(int batchSize, int length) {
 		return zeros(shape(batchSize, length)).add(1.0);
 	}
 
