@@ -129,6 +129,25 @@ class TestMentions(unittest.TestCase):
         self.assertIn(".github/CLAUDE.md", result["present"])
         self.assertIn(".github/gone.md", result["absent"])
 
+    def test_tree_external_slashed_paths_are_unchecked(self):
+        # A slash-bearing path whose first segment is not a top-level
+        # directory of the snapshot — another repository's path, or a
+        # module-relative fragment the tree does not root — must be left
+        # unchecked, never tiered stale. A trailing fragment the snapshot
+        # does contain still resolves as present; a missing file under a
+        # real top-level directory is still absent.
+        result = classify_mentions(
+            ["ringsdesktop/docs/planning/feature.md", "other-repo/config.yaml",
+             "ci/check.sh", "tools/ci/gone.sh"], self.index)
+        self.assertNotIn("ringsdesktop/docs/planning/feature.md",
+                         result["present"] + result["absent"])
+        self.assertNotIn("other-repo/config.yaml",
+                         result["present"] + result["absent"])
+        # A trailing fragment of a real path resolves as present.
+        self.assertIn("ci/check.sh", result["present"])
+        # A missing file under a real top-level directory is genuinely absent.
+        self.assertIn("tools/ci/gone.sh", result["absent"])
+
     def test_without_an_index_nothing_is_absent(self):
         self.assertEqual(classify_mentions(["ClaudeCodeJob"], None),
                          {"present": [], "absent": []})

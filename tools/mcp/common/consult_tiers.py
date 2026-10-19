@@ -141,26 +141,35 @@ def classify_mentions(mentions: list[str], index) -> dict:
     A mention that is neither a checkable path nor a checkable type (a
     proper noun, a branch name such as ``qa/docs-``, a member reference such
     as ``Foo.bar``'s ``bar``) is left out of both lists. A slash-bearing
-    mention is a path only when it is rooted in the snapshot's tree. Without an index every mention is unchecked.
+    mention counts as absent only when it is rooted in a top-level directory
+    the snapshot has yet names no file there; one the snapshot cannot speak to
+    (another repository's path, a runtime output under a dot-directory the
+    tree lacks) is left unchecked so a correct note is never tiered stale.
+    Without an index every mention is unchecked.
     """
     present: list[str] = []
     absent: list[str] = []
     if index is None:
         return {"present": present, "absent": absent}
     for mention in mentions:
-        slashed = "/" in mention
-        # A path rooted in a dot-directory the snapshot lacks — a runtime
-        # output such as .flowtree/oop-review.md, never committed — is absent
-        # from the tree by construction, not because a name was removed. Leave
-        # it unchecked rather than tiering a correct note that names it stale.
-        if slashed and mention.removeprefix("./").startswith(".") \
-                and not index.is_tree_path(mention):
+        if "/" in mention:
+            # A slash-bearing mention is a path only when the tree can speak
+            # to it. It is present when the snapshot contains it (including as
+            # a trailing path fragment, per has_path), and absent only when it
+            # is rooted in a top-level directory the snapshot does have, so a
+            # missing file there is genuinely gone rather than merely external.
+            # Everything else — a branch name (qa/docs-, origin/master), another
+            # repository's path (ringsdesktop/docs/plan.md), a never-committed
+            # runtime output under a dot-directory the tree lacks
+            # (.flowtree/oop-review.md) — is left unchecked, so a correct note
+            # that names it is never tiered stale.
+            if index.has_path(mention):
+                present.append(mention)
+            elif index.is_tree_path(mention):
+                absent.append(mention)
             continue
-        if re.search(r"\.(java|sh|py|md|ya?ml)$", mention) or (
-                slashed and index.is_tree_path(mention)):
+        if re.search(r"\.(java|sh|py|md|ya?ml)$", mention):
             (present if index.has_path(mention) else absent).append(mention)
-            continue
-        if slashed:
             continue
         head = mention.split(".", 1)[0]
         if not re.fullmatch(r"[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+", head):
