@@ -17,13 +17,13 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.collect.computations.CollectionMaxComputation;
+import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.IndexOfMaxComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -100,39 +100,31 @@ public class AggregationSignatureTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that aggregations sharing a name and shape but combining values
-	 * differently produce distinct signatures and correct, distinct results.
-	 * Before aggregation signatures captured the combining function, enabling
-	 * them would have allowed the second aggregation below to reuse the
-	 * compiled kernel of the first.
+	 * Verifies that two concrete aggregation subclasses whose loop bodies genuinely differ —
+	 * {@link CollectionSumComputation} and {@link CollectionMaxComputation} over the same data —
+	 * produce distinct signatures and correct, distinct results. Each class fixes its own
+	 * combining behaviour, and the concrete class is part of the aggregation signature (appended
+	 * by {@link org.almostrealism.collect.computations.RepeatedProducerComputation#signature()}),
+	 * so the two never share a compiled kernel through the signature-keyed instruction cache.
 	 */
 	@Test(timeout = 60000)
 	public void aggregationFunctionsDisambiguate() {
-		int n = 4;
 		PackedCollection data = pack(2.0, 3.0, 4.0, 5.0);
 
-		AggregatedProducerComputation sum = new AggregatedProducerComputation(
-				"agg", shape(n).replace(shape(1)), n,
-				(args, index) -> new DoubleConstant(0.0),
-				(out, arg) -> out.add(arg),
-				cp(data));
-		AggregatedProducerComputation product = new AggregatedProducerComputation(
-				"agg", shape(n).replace(shape(1)), n,
-				(args, index) -> new DoubleConstant(1.0),
-				(out, arg) -> out.multiply(arg),
-				cp(data));
+		CollectionSumComputation sum = new CollectionSumComputation(cp(data));
+		CollectionMaxComputation max = new CollectionMaxComputation(cp(data));
 
 		String sumSignature = Signature.of(sum);
-		String productSignature = Signature.of(product);
+		String maxSignature = Signature.of(max);
 		log("sum signature = " + sumSignature);
-		log("product signature = " + productSignature);
+		log("max signature = " + maxSignature);
 
-		assertNotNull("Raw aggregations should have signatures", sumSignature);
-		assertNotNull("Raw aggregations should have signatures", productSignature);
-		assertNotEquals(sumSignature, productSignature);
+		assertNotNull("Aggregations should have signatures", sumSignature);
+		assertNotNull("Aggregations should have signatures", maxSignature);
+		assertNotEquals(sumSignature, maxSignature);
 
 		assertEquals(14.0, sum.get().evaluate().toDouble(0));
-		assertEquals(120.0, product.get().evaluate().toDouble(0));
+		assertEquals(5.0, max.get().evaluate().toDouble(0));
 	}
 
 	/**
@@ -157,10 +149,10 @@ public class AggregationSignatureTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that the gradient of a sum produces a signature. The delta of
-	 * an aggregation is constructed as a raw {@link AggregatedProducerComputation},
-	 * which previously never supported signatures, so every gradient graph
-	 * containing a reduction recompiled its aggregation kernel.
+	 * Verifies that the gradient of a sum produces a signature. The delta of a
+	 * reduction is constructed as a named {@link CollectionSumComputation} that sums the
+	 * enumerated Jacobian groups, so the signature-keyed instruction cache can reuse its
+	 * compiled kernel across gradient graphs containing a reduction.
 	 */
 	@Test(timeout = 60000)
 	public void aggregationDeltaSignature() {

@@ -48,64 +48,30 @@ import java.util.function.Supplier;
  *   <li>Performance optimization where loop unrolling is beneficial</li>
  * </ul>
  * 
- * <h3>Usage Examples</h3>
- * 
- * <p><strong>Finding the index of maximum value:</strong></p>
+ * <p>This class is {@code abstract}: the fixed iteration count and the initial/expression
+ * behaviour are supplied by a concrete subclass (such as {@link IndexOfMaxComputation} or
+ * {@link CumulativeProductComputation}) through the protected constructors, so that the
+ * behaviour of every instance is fixed by its class.</p>
+ *
+ * <h3>Subclass Implementation Pattern</h3>
  * <pre>{@code
- * // Create a computation to find the index of the maximum element
- * TraversalPolicy inputShape = new TraversalPolicy(10); // 10 elements
- * TraversalPolicy outputShape = new TraversalPolicy(1); // Single index result
- * 
- * ConstantRepeatedProducerComputation<PackedCollection> indexOfMax = 
- *     new ConstantRepeatedProducerComputation<>(
- *         "indexOfMax", 
- *         outputShape, 
- *         inputShape.getSize(), // Iterate over all elements
- *         (args, index) -> e(0), // Initialize with index 0
- *         (args, index) -> {
- *             Expression<?> currentIndex = args[0].getValueAt(e(0));
- *             return conditional(
- *                 args[1].getValueAt(index)
- *                     .greaterThan(args[1].getValueAt(currentIndex)),
- *                 index, 
- *                 currentIndex
- *             );
- *         },
- *         inputCollection
- *     );
+ * // A concrete fixed-iteration accumulation over all elements of a group
+ * public class AccumulateComputation extends ConstantRepeatedProducerComputation {
+ *     public AccumulateComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
+ *         super("accumulate", shape, shape.getSize(),
+ *             (args, index) -> args[0].getValueAt(index),         // Initialize with input
+ *             (args, index) -> args[0].getValueAt(index).add(e(1.0)),  // Add 1 each iteration
+ *             input);
+ *     }
+ *
+ *     @Override
+ *     public AccumulateComputation generate(List<Process<?, ?>> children) {
+ *         return new AccumulateComputation(getShape(),
+ *             (Producer<PackedCollection>) children.get(1));
+ *     }
+ * }
  * }</pre>
- * 
- * <p><strong>Accumulation with fixed iterations:</strong></p>
- * <pre>{@code
- * // Create a computation that accumulates values over 5 iterations
- * TraversalPolicy shape = new TraversalPolicy(100);
- * 
- * ConstantRepeatedProducerComputation<PackedCollection> accumulator = 
- *     new ConstantRepeatedProducerComputation<>(
- *         "accumulate", 
- *         shape, 
- *         5, // Fixed number of iterations
- *         (args, index) -> args[0].getValueAt(index), // Initialize with input
- *         (args, index) -> args[0].getValueAt(index).add(e(1.0)), // Add 1 each iteration
- *         inputProducer
- *     );
- * }</pre>
- * 
- * <p><strong>Memory-optimized processing:</strong></p>
- * <pre>{@code
- * // Process multiple elements per kernel thread for better memory utilization
- * ConstantRepeatedProducerComputation<PackedCollection> optimized = 
- *     new ConstantRepeatedProducerComputation<>(
- *         "optimizedProcess", 
- *         new TraversalPolicy(1000), 
- *         4, // Memory length - process 4 elements per thread
- *         25, // 25 iterations
- *         (args, index) -> args[0].getValueAt(index), // Initialize with input
- *         (args, index) -> args[0].getValueAt(index).multiply(e(2.0)), // Double each iteration
- *         dataProducer
- *     );
- * }</pre>
- * 
+ *
  * <h3>Relationship to Parent Class</h3>
  * <p>This class simplifies the parent {@link RepeatedProducerComputation} by:</p>
  * <ul>
@@ -128,7 +94,7 @@ import java.util.function.Supplier;
  * @see TraversableRepeatedProducerComputation
  * @see ConstantRepeatedDeltaComputation
  */
-public class ConstantRepeatedProducerComputation
+public abstract class ConstantRepeatedProducerComputation
 		extends RepeatedProducerComputation {
 	
 	/** 
@@ -153,20 +119,17 @@ public class ConstantRepeatedProducerComputation
 	 *   <li>Applying the {@code expression} function in each iteration</li>
 	 * </ol>
 	 * 
-	 * <p><strong>Example usage:</strong></p>
+	 * <p><strong>Example usage (from a subclass constructor):</strong></p>
 	 * <pre>{@code
-	 * // Create a computation that doubles a value 3 times
-	 * ConstantRepeatedProducerComputation<PackedCollection> doubler = 
-	 *     new ConstantRepeatedProducerComputation<>(
-	 *         "tripleDouble",
-	 *         new TraversalPolicy(10), // Process 10 elements
-	 *         3, // Perform 3 iterations
-	 *         (args, index) -> args[0].getValueAt(index), // Initialize with input
-	 *         (args, index) -> args[0].getValueAt(index).multiply(e(2.0)), // Double each time
-	 *         inputProducer
-	 *     );
+	 * // A subclass that doubles a value 3 times
+	 * super("tripleDouble",
+	 *     new TraversalPolicy(10), // Process 10 elements
+	 *     3, // Perform 3 iterations
+	 *     (args, index) -> args[0].getValueAt(index), // Initialize with input
+	 *     (args, index) -> args[0].getValueAt(index).multiply(e(2.0)), // Double each time
+	 *     inputProducer);
 	 * }</pre>
-	 * 
+	 *
 	 * @param name The name identifier for this computation, used in generated code and debugging
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param count The fixed number of iterations to perform (must be positive)
@@ -179,7 +142,7 @@ public class ConstantRepeatedProducerComputation
 	 * @throws IllegalArgumentException if count is not positive
 	 */
 	@SafeVarargs
-	public ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
+	protected ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
 											   BiFunction<TraversableExpression[], Expression, Expression> initial,
 											   BiFunction<TraversableExpression[], Expression, Expression> expression,
 											   Producer<PackedCollection>... args) {
@@ -202,24 +165,21 @@ public class ConstantRepeatedProducerComputation
 	 *   <li><strong>Parallelism:</strong> Balance between thread count and work per thread</li>
 	 * </ul>
 	 * 
-	 * <p><strong>Memory optimization example:</strong></p>
+	 * <p><strong>Memory optimization example (from a subclass constructor):</strong></p>
 	 * <pre>{@code
 	 * // Process a 2D array (100x10) where each row has 10 elements
 	 * TraversalPolicy inputShape = new TraversalPolicy(100, 10); // 100 rows, 10 elements each
 	 * int finalDimSize = inputShape.getSize(); // 10 (size of final dimension)
-	 * 
-	 * ConstantRepeatedProducerComputation<PackedCollection> optimized = 
-	 *     new ConstantRepeatedProducerComputation<>(
-	 *         "repeatedProduct",
-	 *         new TraversalPolicy(100), // Output: 100 sums (one per row)
-	 *         finalDimSize, // Process 10 elements per kernel thread
-	 *         5, // 5 iterations
-	 *         (args, index) -> args[0].getValueAt(index), // Initialize with input
-	 *         (args, index) -> args[0].getValueAt(index).multiply(e(2.0))), // Multiply each element by 2
-	 *         dataProducer
-	 *     );
+	 *
+	 * super("repeatedProduct",
+	 *     new TraversalPolicy(100), // Output: 100 sums (one per row)
+	 *     finalDimSize, // Process 10 elements per kernel thread
+	 *     5, // 5 iterations
+	 *     (args, index) -> args[0].getValueAt(index), // Initialize with input
+	 *     (args, index) -> args[0].getValueAt(index).multiply(e(2.0)), // Multiply each element by 2
+	 *     dataProducer);
 	 * }</pre>
-	 * 
+	 *
 	 * @param name The name identifier for this computation, used in generated code and debugging
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param size The memory length - number of elements processed by each kernel thread
@@ -233,7 +193,7 @@ public class ConstantRepeatedProducerComputation
 	 * @throws IllegalArgumentException if count is not positive or size is not positive
 	 */
 	@SafeVarargs
-	public ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int size, int count,
+	protected ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int size, int count,
 											   BiFunction<TraversableExpression[], Expression, Expression> initial,
 											   BiFunction<TraversableExpression[], Expression, Expression> expression,
 											   Producer<PackedCollection>... inputs) {
@@ -350,17 +310,12 @@ public class ConstantRepeatedProducerComputation
 	 * 
 	 * @param children The list of child {@link Process} instances to use as inputs.
 	 *                 The first element is skipped, subsequent elements become input suppliers
-	 * @return A new {@link ConstantRepeatedProducerComputation} instance with the same
-	 *         configuration but updated inputs from the child processes
-	 * 
+	 * @return A new {@link ConstantRepeatedProducerComputation} instance of the same class with
+	 *         the same configuration but updated inputs from the child processes
+	 *
 	 * @see RepeatedProducerComputation#generate(List)
 	 * @see Process
 	 */
 	@Override
-	public ConstantRepeatedProducerComputation generate(List<Process<?, ?>> children) {
-		return new ConstantRepeatedProducerComputation(
-				getName(), getShape(), getMemLength(), count,
-				initial, expression,
-				children.stream().skip(1).toArray(Producer[]::new));
-	}
+	public abstract ConstantRepeatedProducerComputation generate(List<Process<?, ?>> children);
 }

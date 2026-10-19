@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
@@ -25,6 +26,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
@@ -94,6 +96,9 @@ import java.util.function.Supplier;
  */
 public class RepeatedProducerComputationAdapter extends RepeatedProducerComputation {
 
+	/** The traversable expression evaluated at each index, retained so this adapter can regenerate its own type. */
+	private final TraversableExpression expression;
+
 	/**
 	 * Creates a new adapter that converts the specified {@link TraversableExpression}
 	 * into a {@link RepeatedProducerComputation}.
@@ -133,7 +138,24 @@ public class RepeatedProducerComputationAdapter extends RepeatedProducerComputat
 						expression.getValueAt(index),
 				arguments);
 
+		this.expression = expression;
 		setCondition((args, index) -> index.lessThan(((ArrayVariable) getOutputVariable()).length()));
+	}
+
+	/**
+	 * Generates a new adapter over the same {@link TraversableExpression} with the inputs from
+	 * {@code children} (the first child is the output destination). Rebuilding the adapter
+	 * rather than a raw {@link RepeatedProducerComputation} preserves this class's local
+	 * {@link #getDestination(Expression, Expression, Expression) destination} addressing.
+	 *
+	 * @param children the child {@link Process} instances, where index 0 is the output and the
+	 *                 remainder are the inputs
+	 * @return a new {@link RepeatedProducerComputationAdapter} with those inputs
+	 */
+	@Override
+	public RepeatedProducerComputationAdapter generate(List<Process<?, ?>> children) {
+		return new RepeatedProducerComputationAdapter(getShape(), expression,
+				children.stream().skip(1).toArray(Producer[]::new));
 	}
 
 	/**

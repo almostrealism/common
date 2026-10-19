@@ -156,24 +156,4 @@ public abstract class TraversableRepeatedProducerComputation
 	 */
 	@Override
 	public abstract TraversableRepeatedProducerComputation generate(List<Process<?, ?>> children);
-
-	/**
-	 * Extends the standard computation signature with the concrete class of this
-	 * computation. The behaviour of every instance is fixed by its class (see the class
-	 * documentation), but the parent signature captures only the name, inputs, and shape.
-	 * Appending the class ensures that two repeated computations which share a name, shape,
-	 * and inputs but are different classes — and therefore generate different loop bodies —
-	 * produce different signatures rather than sharing a cached kernel through the
-	 * signature-keyed instruction cache. Subclasses whose behaviour is further parameterised
-	 * (for example by a configuration flag) extend this with that state.
-	 *
-	 * @return the signature including the concrete class, or null when the parent signature
-	 *         is unavailable
-	 */
-	@Override
-	public String signature() {
-		String signature = super.signature();
-		if (signature == null) return null;
-		return signature + "{" + getClass().getName() + "}";
-	}
 }
