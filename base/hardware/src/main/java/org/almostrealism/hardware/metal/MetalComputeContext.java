@@ -77,24 +77,13 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 			new OperationMetadata("mtlCopy", "Metal buffer copy");
 
 	/**
-	 * Names of the kernels in {@link #COPY_KERNELS}, indexed by the base-2 logarithm of the
-	 * number of bytes each thread copies.
+	 * Names of the copy kernels {@link #copy(MemoryData, MemoryData, Semaphore)} dispatches, indexed
+	 * by the base-2 logarithm of the number of bytes each thread copies.
 	 */
 	private static final String[] COPY_KERNEL_NAMES = {"copy8", "copy16", "copy32"};
 
-	/**
-	 * Metal source of the kernels {@link #copy(MemoryData, MemoryData, Semaphore)} dispatches. Each
-	 * thread copies one unit of the kernel's width from the source buffer (index 1) to the destination
-	 * buffer (index 0), at the destination and source unit offsets bound at index 2.
-	 */
-	private static final String COPY_KERNELS = "#include <metal_stdlib>\n" +
-			"#define COPY_UNITS(name, type) [[kernel]] void name(device type *destination [[buffer(0)]], " +
-			"device const type *source [[buffer(1)]], constant uint *offsets [[buffer(2)]], " +
-			"uint index [[thread_position_in_grid]]) { " +
-			"destination[offsets[0] + index] = source[offsets[1] + index]; }\n" +
-			"COPY_UNITS(copy8, uchar)\n" +
-			"COPY_UNITS(copy16, ushort)\n" +
-			"COPY_UNITS(copy32, uint)\n";
+	/** Metal types of the units each copy kernel copies, indexed as {@link #COPY_KERNEL_NAMES}. */
+	private static final String[] COPY_KERNEL_TYPES = {"uchar", "ushort", "uint"};
 
 	/**
 	 * Standard Metal Shading Language includes prepended to every compiled kernel.
@@ -352,8 +341,8 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	private MTLComputePipelineState copyKernel(int unitShift) {
 		synchronized (copyKernelLock) {
 			if (copyKernels[unitShift] == null) {
-				// TODO(review): each width recompiles the whole COPY_KERNELS source; one compiled library could serve all three
-				MetalProgram program = new MetalProgram(this, COPY, COPY_KERNEL_NAMES[unitShift], COPY_KERNELS);
+				MetalProgram program = new MetalProgram(this, COPY,
+						COPY_KERNEL_NAMES[unitShift], copyKernelSource(unitShift));
 				program.compile();
 				copyPrograms[unitShift] = program;
 				copyKernels[unitShift] = program.newComputePipelineState();
@@ -361,6 +350,25 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 			return copyKernels[unitShift];
 		}
+	}
+
+	/**
+	 * Returns the Metal source of the copy kernel for the given unit width, containing only that
+	 * kernel so each width compiles nothing else. Each thread copies one unit from the source buffer
+	 * (index 1) to the destination buffer (index 0), at the destination and source unit offsets
+	 * bound at index 2.
+	 *
+	 * @param unitShift base-2 logarithm of the number of bytes each thread copies
+	 * @return the kernel source, whose entry point is {@code COPY_KERNEL_NAMES[unitShift]}
+	 */
+	private static String copyKernelSource(int unitShift) {
+		String type = COPY_KERNEL_TYPES[unitShift];
+		return "#include <metal_stdlib>\n" +
+				"[[kernel]] void " + COPY_KERNEL_NAMES[unitShift] +
+				"(device " + type + " *destination [[buffer(0)]], " +
+				"device const " + type + " *source [[buffer(1)]], constant uint *offsets [[buffer(2)]], " +
+				"uint index [[thread_position_in_grid]]) { " +
+				"destination[offsets[0] + index] = source[offsets[1] + index]; }\n";
 	}
 
 	/**
