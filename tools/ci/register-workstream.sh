@@ -54,7 +54,7 @@
 #   0 - registration succeeded
 #   1 - registration failed
 #
-# Outputs (to stdout):
+# Outputs (to stdout, and to $GITHUB_OUTPUT when set):
 #   workstream_id=<id>   (on success)
 
 set -euo pipefail
@@ -117,7 +117,7 @@ if [ -n "${REPO_URL:-}" ]; then
 fi
 
 # Prints a comma-separated list as a compact JSON array of its trimmed,
-# non-empty entries, e.g. "planner, steward" -> ["planner","steward"].
+# non-empty entries, e.g. "a, b," -> ["a","b"].
 csv_to_json_array() {
     jq -cn --arg csv "$1" \
         '$csv | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))'
@@ -181,12 +181,12 @@ if [ "$EXISTING" = "true" ] && [ "$UPDATE_PAYLOAD" != '{}' ] && [ -n "$WORKSTREA
     UPDATE_ENDPOINT="${ENDPOINT}/${WORKSTREAM_ID}/update"
 
     # An update that carries tracker capabilities, required labels or
-    # dependent repositories must succeed. A task-planning agent submitted
-    # without its "planner" role cannot call tracker_claim_next_task, an
-    # implementation submitted without the labels the plan declared runs on
-    # the wrong machine — one without the Metal the plan needs, for
-    # instance — and a goal-decomposition agent without the framework
-    # checked out beside it cannot tell where a task belongs. Either way a
+    # dependent repositories must succeed. A goal-decomposition agent
+    # submitted without its "planner" role cannot create ready tasks or
+    # releases, an implementation submitted without the labels the plan
+    # declared runs on the wrong machine — one without the Metal the plan
+    # needs, for instance — and a goal-decomposition agent without the
+    # framework checked out beside it cannot tell where a task belongs. Either way a
     # silently-dropped update would produce a round that cannot do its job,
     # so it fails the step rather than warning. A plan-only update stays
     # best-effort — the planning document is not load-bearing for the
@@ -224,4 +224,7 @@ if [ "$EXISTING" = "true" ] && [ "$UPDATE_PAYLOAD" != '{}' ] && [ -n "$WORKSTREA
 fi
 
 echo "workstream_id=$WORKSTREAM_ID"
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    echo "workstream_id=$WORKSTREAM_ID" >> "$GITHUB_OUTPUT"
+fi
 echo "Workstream registered: $WORKSTREAM_ID"

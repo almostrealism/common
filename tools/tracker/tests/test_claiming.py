@@ -472,153 +472,6 @@ class SharedConnectionLockTests(_StoreTestBase):
         self.assertIsNone(self.store.get_task(victim["id"]))
 
 
-class GoalTaskUpsertTests(_StoreTestBase):
-    """Ensuring the release and writing the goal task are one transaction."""
-
-    def _releases_named(self, name):
-        return self.store._conn.execute(
-            "SELECT COUNT(*) FROM releases WHERE name = ?", (name,)).fetchone()[0]
-
-    def test_a_new_task_is_created_ready_in_a_created_release(self):
-        result = self.store.upsert_goal_task(
-            "Framework", "Framework 3.0", "Add a thing", "goals:docs/PLAN.md",
-            description="why", priority=1)
-        self.assertEqual("ok", result["status"])
-        self.assertTrue(result["created_release"])
-        task = result["task"]
-        self.assertEqual(("Add a thing", "ready", "open", "goals:docs/PLAN.md", 1),
-                         (task["title"], task["stage"], task["status"],
-                          task["source"], task["priority"]))
-        self.assertEqual(result["release"]["id"], task["release_id"])
-
-    def test_an_existing_release_is_reused_not_duplicated(self):
-        result = self.store.upsert_goal_task(
-            "Framework", "Framework 1.2", "t", "goals:docs/PLAN.md")
-        self.assertEqual("ok", result["status"])
-        self.assertFalse(result["created_release"])
-        self.assertEqual(self.release["id"], result["release"]["id"])
-        self.assertEqual(1, self._releases_named("Framework 1.2"))
-
-    def test_a_missing_project_creates_no_release(self):
-        result = self.store.upsert_goal_task(
-            "Nowhere", "Nowhere 1.0", "t", "goals:docs/PLAN.md")
-        self.assertEqual("project_not_found", result["status"])
-        self.assertEqual(0, self._releases_named("Nowhere 1.0"))
-
-    def test_an_unknown_blocker_rolls_back_the_created_release(self):
-        result = self.store.upsert_goal_task(
-            "Framework", "Framework 3.1", "t", "goals:docs/PLAN.md",
-            blocked_by=["no-such-task"])
-        self.assertEqual("db_error", result["status"])
-        # The release this call would have created is rolled back with the task.
-        self.store.create_project("later write")
-        self.assertEqual(0, self._releases_named("Framework 3.1"))
-        self.assertIsNone(self.store.find_release("Framework", "Framework 3.1"))
-
-    def test_updating_a_person_task_is_refused_and_creates_no_release(self):
-        person = self.store.create_task(
-            title="hand written", release_id=self.release["id"], source="person")
-        result = self.store.upsert_goal_task(
-            "Framework", "Framework 3.2", "hijack", "goals:docs/PLAN.md",
-            task_id=person["id"])
-        self.assertEqual("not_goal_derived", result["status"])
-        self.store.create_project("later write")
-        self.assertEqual(0, self._releases_named("Framework 3.2"))
-        kept = self.store.get_task(person["id"])
-        self.assertEqual(("hand written", "person"), (kept["title"], kept["source"]))
-
-    def test_updating_a_missing_task_is_task_not_found_and_creates_no_release(self):
-        result = self.store.upsert_goal_task(
-            "Framework", "Framework 3.3", "t", "goals:docs/PLAN.md",
-            task_id="ghost")
-        self.assertEqual("task_not_found", result["status"])
-        self.store.create_project("later write")
-        self.assertEqual(0, self._releases_named("Framework 3.3"))
-
-    def test_updating_a_goal_task_changes_fields_and_keeps_stage_and_status(self):
-        goal = self.store.create_task(
-            title="original", release_id=self.release["id"], stage="ready",
-            source="goals:docs/OLD.md", priority=0)
-        result = self.store.upsert_goal_task(
-            "Framework", "Framework 1.2", "renamed", "goals:docs/PLAN.md",
-            priority=2, task_id=goal["id"])
-        self.assertEqual("ok", result["status"])
-        task = result["task"]
-        self.assertEqual(("renamed", 2, "goals:docs/PLAN.md"),
-                         (task["title"], task["priority"], task["source"]))
-        # Stage and status are never touched by an upsert.
-        self.assertEqual(("ready", "open"), (task["stage"], task["status"]))
-
-    # --- API surface -------------------------------------------------------
-
-    def _post_goal_task(self, **body):
-        payload = {"project": "Framework", "release": "Framework 1.2",
-                   "title": "t", "source": "goals:docs/PLAN.md"}
-        payload.update(body)
-        return self.client.post("/v1/goal-tasks", json=payload)
-
-    def test_the_endpoint_creates_a_task_and_release(self):
-        resp = self._post_goal_task(release="Framework 4.0", title="new")
-        self.assertEqual(201, resp.status_code, resp.text)
-        body = resp.json()
-        self.assertTrue(body["ok"])
-        self.assertTrue(body["created_release"])
-        self.assertEqual("ready", body["task"]["stage"])
-
-    def test_the_endpoint_updates_with_a_task_id(self):
-        goal = self.store.create_task(
-            title="orig", release_id=self.release["id"], stage="ready",
-            source="goals:docs/OLD.md")
-        resp = self._post_goal_task(title="renamed", task_id=goal["id"])
-        self.assertEqual(200, resp.status_code, resp.text)
-        self.assertEqual("renamed", resp.json()["task"]["title"])
-
-    def test_a_person_task_update_is_409_and_leaves_no_orphan_release(self):
-        person = self.store.create_task(
-            title="hand written", release_id=self.release["id"], source="person")
-        resp = self._post_goal_task(release="Framework 4.1", task_id=person["id"])
-        self.assertEqual(409, resp.status_code, resp.text)
-        self.assertEqual(0, self._releases_named("Framework 4.1"))
-
-    def test_an_unknown_blocker_is_a_bad_request_and_leaves_no_orphan_release(self):
-        resp = self._post_goal_task(release="Framework 4.2", blocked_by=["no-such-task"])
-        self.assertEqual(400, resp.status_code, resp.text)
-        self.assertEqual(0, self._releases_named("Framework 4.2"))
-
-    def test_a_missing_project_is_404(self):
-        resp = self._post_goal_task(project="Nowhere", release="Nowhere 9.9")
-        self.assertEqual(404, resp.status_code, resp.text)
-
-    def test_a_non_goal_source_is_refused(self):
-        for source in ("person", "goals:", "automation", "GOALS:x"):
-            resp = self._post_goal_task(release="Framework 4.3", source=source)
-            self.assertEqual(400, resp.status_code, source)
-        self.assertEqual(0, self._releases_named("Framework 4.3"))
-
-    def test_a_blank_title_is_refused(self):
-        resp = self._post_goal_task(release="Framework 4.4", title="   ")
-        self.assertEqual(400, resp.status_code)
-        self.assertEqual(0, self._releases_named("Framework 4.4"))
-
-    def test_a_non_string_description_is_refused_and_leaves_no_orphan_release(self):
-        # The create/update/import endpoints reject a non-string description
-        # with a 400; the goal-task endpoint must too, rather than silently
-        # coercing a falsey value such as [], {}, 0 or false to null.
-        for description in ([], {}, 0, False, 7, ["x"]):
-            resp = self._post_goal_task(release="Framework 4.5", description=description)
-            self.assertEqual(400, resp.status_code, repr(description))
-            self.assertIn("description", resp.json()["error"])
-        self.assertEqual(0, self._releases_named("Framework 4.5"))
-
-    def test_a_string_or_null_description_is_accepted(self):
-        ok = self._post_goal_task(release="Framework 4.6", description="why")
-        self.assertEqual(201, ok.status_code, ok.text)
-        self.assertEqual("why", ok.json()["task"]["description"])
-        cleared = self._post_goal_task(release="Framework 4.7", description=None)
-        self.assertEqual(201, cleared.status_code, cleared.text)
-        self.assertIsNone(cleared.json()["task"]["description"])
-
-
 class BulkImportTests(_StoreTestBase):
     """POST /v1/import carries readiness, provenance and blockers."""
 
@@ -795,61 +648,6 @@ class BulkImportTests(_StoreTestBase):
         second = self.client.post("/v1/import", json=payload).json()
         self.assertEqual({"projects": 0, "releases": 0, "tasks": 0}, second["created"])
         self.assertEqual({"projects": 1, "releases": 1, "tasks": 1}, second["updated"])
-
-
-class GoalOnlyUpdateTests(_StoreTestBase):
-    """An update restricted to goal-derived tasks checks and writes atomically."""
-
-    def test_a_goal_task_is_updated(self):
-        task = self._task("goal", source="goals:docs/GOALS.md")
-        updated = self.store.update_task(task["id"], title="renamed", only_goal_derived=True)
-        self.assertEqual("renamed", updated["title"])
-
-    def test_a_person_task_is_left_untouched(self):
-        blocker = self._task("blocker", stage="backlog")
-        task = self._task("mine", source="person", blocked_by=[blocker["id"]])
-        result = self.store.update_task(
-            task["id"], title="taken", source="goals:docs/GOALS.md", blocked_by=[],
-            only_goal_derived=True)
-        self.assertIsNone(result)
-        kept = self.store.get_task(task["id"])
-        self.assertEqual(("mine", "person", [blocker["id"]]),
-                         (kept["title"], kept["source"], kept["blocked_by"]))
-
-    def test_without_the_restriction_a_person_task_can_be_changed(self):
-        task = self._task("mine", source="person")
-        self.assertEqual("edited", self.store.update_task(task["id"], title="edited")["title"])
-
-    def test_a_missing_task_is_not_updated(self):
-        self.assertIsNone(self.store.update_task("missing", title="x"))
-        self.assertIsNone(self.store.update_task("missing", title="x", only_goal_derived=True))
-
-    def test_the_api_refuses_a_person_task_with_a_conflict(self):
-        task = self._task("mine", source="person")
-        resp = self.client.put(f"/v1/tasks/{task['id']}?only_goal_derived=true",
-                               json={"title": "taken", "source": "goals:docs/GOALS.md"})
-        self.assertEqual(409, resp.status_code)
-        self.assertIn("only a person may change it", resp.json()["error"])
-        self.assertEqual("mine", self.store.get_task(task["id"])["title"])
-
-    def test_the_api_updates_a_goal_task(self):
-        task = self._task("goal", source="goals:docs/GOALS.md")
-        resp = self.client.put(f"/v1/tasks/{task['id']}?only_goal_derived=true",
-                               json={"title": "renamed"})
-        self.assertEqual(200, resp.status_code, resp.text)
-        self.assertEqual("renamed", resp.json()["task"]["title"])
-
-    def test_the_api_ignores_the_restriction_unless_it_is_true(self):
-        task = self._task("mine", source="person")
-        resp = self.client.put(f"/v1/tasks/{task['id']}?only_goal_derived=false",
-                               json={"title": "edited"})
-        self.assertEqual(200, resp.status_code)
-        self.assertEqual("edited", resp.json()["task"]["title"])
-
-    def test_the_api_reports_a_missing_task(self):
-        resp = self.client.put("/v1/tasks/missing?only_goal_derived=true",
-                               json={"title": "x"})
-        self.assertEqual(404, resp.status_code)
 
 
 class ApiTests(_StoreTestBase):
@@ -1049,14 +847,14 @@ class ReadIsolationTests(_StoreTestBase):
         self.assertEqual(0, self._read_during_failing_create(self.store.counts)["tasks"])
 
     def test_reads_inside_a_locked_write_do_not_deadlock(self):
-        # bulk_import and upsert_goal_task resolve rows through the locking
+        # bulk_import and file_follow_up_task resolve rows through the locking
         # read methods while holding the lock, which needs the lock reentrant.
         existing = self._task("existing")
         result = self.store.bulk_import([], [], [{"id": existing["id"], "title": "renamed"}])
         self.assertEqual(1, result["updated"]["tasks"])
-        upsert = self.store.upsert_goal_task(
-            "Framework", "Framework 1.2", "g", "goals:docs/PLAN.md")
-        self.assertEqual(("ok", "g"), (upsert["status"], upsert["task"]["title"]))
+        filed = self.store.file_follow_up_task(
+            "g", "follow-up:ws-1/job-1", self.project["id"])
+        self.assertEqual(("ok", "g"), (filed["status"], filed["task"]["title"]))
         self.assertEqual("renamed", self.store.get_task(existing["id"])["title"])
 
 
@@ -1110,8 +908,7 @@ class NonStringFieldTests(_StoreTestBase):
 
     def test_non_string_release_names_are_refused(self):
         for path, extra in (("/v1/releases/ensure", {}),
-                            ("/v1/claim", {"workstream_id": "ws-1"}),
-                            ("/v1/goal-tasks", {"title": "t", "source": "goals:d.md"})):
+                            ("/v1/claim", {"workstream_id": "ws-1"})):
             for field in ("project", "release"):
                 with self.subTest(path=path, field=field):
                     body = {"project": "Framework", "release": "Framework 9.0", **extra}
@@ -1151,24 +948,6 @@ class NonStringFieldTests(_StoreTestBase):
         self.assertEqual(400, resp.status_code, resp.text)
         self.assertIn("tasks[0]: project_id must be a string or null", resp.json()["error"])
         self.assertIsNone(self.store.get_task("imp-1"))
-
-    def test_goal_task_fields_of_the_wrong_type_are_refused(self):
-        goal = self._task("orig", source="goals:docs/OLD.md")
-        base = {"project": "Framework", "release": "Framework 1.2",
-                "title": "t", "source": "goals:docs/PLAN.md"}
-        for field, value, message in (
-                ("title", ["t"], "title is required"),
-                ("source", {"goals": "x"}, "source must be 'goals:<document>'"),
-                ("task_id", [goal["id"]], "task_id must be a string"),
-                ("task_id", 5, "task_id must be a string")):
-            with self.subTest(field=field, value=value):
-                resp = self.client.post("/v1/goal-tasks", json={**base, field: value})
-                self.assertEqual(400, resp.status_code, resp.text)
-                self.assertEqual(message, resp.json()["error"])
-        # A task_id of the wrong type is refused, not read as "create a new task".
-        self.assertEqual(1, self.store.list_tasks()["total"])
-        self.assertEqual("orig", self.store.get_task(goal["id"])["title"])
-
 
 class CloseOutTests(_StoreTestBase):
     """A claimed task follows its branch's pull request to an end."""

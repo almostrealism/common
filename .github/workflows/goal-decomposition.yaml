@@ -11,6 +11,14 @@ name: "Goal Decomposition"
 # project, or in the framework's when the work is a general capability.
 # Planning rounds in each repository then claim those tasks one at a time.
 #
+# The workstream holds the tracker "planner" role: the agent creates tasks
+# straight into the "ready" stage, sets their project, release, priority,
+# source and blocked_by, and creates the release when it does not exist yet,
+# all with the general tracker tools. The role would also let it edit any
+# task in the workspace; the prompt confines it to the tasks whose source
+# carries this repository's own "goals:<owner>/<repo>/" prefix, and forbids
+# changing the stage or status of an existing task.
+#
 # A consumer's caller looks like this. The caller owns the trigger: it runs on
 # a push to the default branch that changes the goals, the release plans or
 # the version file, and on a manual dispatch. This workflow refuses to run on
@@ -187,7 +195,7 @@ jobs:
           BRANCH: ${{ inputs.workstream-branch }}
           BASE_BRANCH: ${{ github.event.repository.default_branch }}
           REPO_URL: git@github.com:${{ github.repository }}.git
-          TRACKER_CAPABILITIES: "steward"
+          TRACKER_CAPABILITIES: "planner"
           # The framework beside the application, so the agent can tell where
           # a task belongs. Nothing to add when the caller is the framework.
           DEPENDENT_REPOS: ${{ inputs.framework-repository != github.repository && format('git@github.com:{0}.git', inputs.framework-repository) || '' }}

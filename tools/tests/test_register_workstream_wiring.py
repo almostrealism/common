@@ -181,7 +181,7 @@ class RegistrationDeclaresNoModelConfigTests(unittest.TestCase):
     #: model. Adding a key here is the deliberate act the test exists to
     #: require.
     #: ``trackerCapabilities`` grants the workstream's agents a tracker role
-    #: (the task-planning round registers its workstream as a "planner"); it
+    #: (the goal-decomposition round registers its workstream as a "planner"); it
     #: is a permission, not a model setting. ``requiredLabels`` chooses which
     #: nodes may run the workstream's jobs (Verify Completion applies the ones a
     #: plan declares); it selects a machine, not a model. ``dependentRepos``

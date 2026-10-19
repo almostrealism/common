@@ -104,7 +104,7 @@ The `tools/ci/register-workstream.sh` script handles workstream registration fro
 
 **Optional environment variables:**
 - `PLAN_FILE` -- path to the planning document; when the workstream already exists, it is updated with this document
-- `TRACKER_CAPABILITIES` -- comma-separated tracker roles for the workstream's agents (e.g. `planner`)
+- `TRACKER_CAPABILITIES` -- comma-separated tracker roles for the workstream's agents; the one role is `planner` (`steward` is accepted as a legacy alias of it)
 - `REQUIRED_LABELS_JSON` -- JSON object of default node labels (e.g. `{"platform":"macos"}`); applied to a new or existing workstream
 - `CHANNEL_NAME` -- explicit Slack channel name (the controller derives one from the branch when absent)
 - `CONTROLLER_URL` -- controller base URL; takes precedence over `CONTROLLER_HOST`/`CONTROLLER_PORT`, and is how a GitHub-hosted runner reaches the controller through its Cloudflare Access tunnel
@@ -115,6 +115,9 @@ The `tools/ci/register-workstream.sh` script handles workstream registration fro
 
 **Channel name derivation:**
 The channel name is derived from the branch name: `project/plan-20260223-foo` becomes `w-project-plan-20260223-foo`. The `w-` prefix is always added (idempotently) to distinguish workstream channels from other channels.
+
+**Claiming a tracker task:**
+Agents do not claim tracker tasks themselves. A workflow that hands a tracker task to an agent first registers the workstream, then calls the controller's `POST /api/tracker/claim` with `{"project": "<name>", "release": "<name>", "workstreamId": "<id>"}`. The controller forwards the claim to the tracker, which links the next ready task of the release to the workstream, and answers `{"ok": true, "task": {...}}` (or `"task": null` when nothing is claimable); the workflow puts that task in the agent's prompt. The endpoint answers 400 when a field is missing or blank, 404 when the workstream is not registered, 503 when the controller has no tracker configured, and 502 when the tracker call fails. `GET /api/tracker/claimable?project=<name>&release=<name>` answers how many tasks could be claimed without claiming one.
 
 ---
 

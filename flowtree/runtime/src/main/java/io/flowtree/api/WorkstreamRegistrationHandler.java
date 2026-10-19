@@ -833,7 +833,9 @@ final class WorkstreamRegistrationHandler {
      * Reads and validates the {@code trackerCapabilities} field of a request
      * body. The field grants permissions, so it is parsed strictly: a value
      * that is not an array of strings, or that names an unknown role, is
-     * refused rather than coerced into some other grant.
+     * refused rather than coerced into some other grant. A legacy alias
+     * ({@code steward}) is accepted here and stored as the role it stands for
+     * by {@link Workstream#setTrackerCapabilities(List)}.
      *
      * @param body the request body JSON
      * @return the requested roles, or {@code null} when the field is absent

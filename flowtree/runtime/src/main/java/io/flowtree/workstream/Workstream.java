@@ -241,19 +241,18 @@ public class Workstream {
     private boolean dispatchCapable;
 
     /**
-     * Tracker roles granted to agents running on this workstream, each of
-     * which unlocks narrow tracker tools on the ar-manager server:
-     * {@code planner} may claim the next ready task of a release, and
-     * {@code steward} may list a release and create or update tasks derived
-     * from goal documents. Empty by default. The tools are always on the
-     * agent allowlist; ar-manager refuses them unless the calling
-     * workstream holds the role, which it reads from
+     * Tracker roles granted to agents running on this workstream, in the
+     * canonical form {@link TrackerRoles} produces. The one role,
+     * {@code planner}, lets an agent create tasks with every field set, edit
+     * any task in the workspace, and create releases; without it an agent may
+     * still file backlog tasks and edit the tasks linked to this workstream.
+     * Empty by default. ar-manager enforces the role, reading it from
      * {@link #toSummaryJson()}.
      */
     private List<String> trackerCapabilities = List.of();
 
-    /** Every value {@link #setTrackerCapabilities(List)} accepts. */
-    public static final Set<String> TRACKER_CAPABILITIES = Set.of("planner", "steward");
+    /** Every canonical value {@link #setTrackerCapabilities(List)} stores. */
+    public static final Set<String> TRACKER_CAPABILITIES = TrackerRoles.KNOWN;
 
     /**
      * Branch-name prefixes whose jobs may bypass the agent runtime's
@@ -1072,44 +1071,30 @@ public class Workstream {
     }
 
     /**
-     * Replaces the tracker roles granted to agents on this workstream.
-     * Callers taking the list from a request should reject it first with
+     * Replaces the tracker roles granted to agents on this workstream. Legacy
+     * aliases ({@code steward}) are stored as the role they stand for and
+     * duplicates are dropped; see {@link TrackerRoles}. Callers taking the
+     * list from a request should reject it first with
      * {@link #unknownTrackerCapability(List)}.
      *
      * @param trackerCapabilities the roles to grant; {@code null} grants none
-     * @throws IllegalArgumentException if a value is not in
-     *         {@link #TRACKER_CAPABILITIES}
+     * @throws IllegalArgumentException if a value is neither a known role nor
+     *         a legacy alias of one
      */
     public void setTrackerCapabilities(List<String> trackerCapabilities) {
-        String unknown = unknownTrackerCapability(trackerCapabilities);
-        if (unknown != null) {
-            throw new IllegalArgumentException("Unknown tracker capability: " + unknown);
-        }
-        this.trackerCapabilities = trackerCapabilities == null
-                ? List.of() : List.copyOf(trackerCapabilities);
+        this.trackerCapabilities = new TrackerRoles(trackerCapabilities).roles();
     }
 
     /**
-     * Returns the first entry of {@code capabilities} that is not a known
-     * tracker role, or {@code null} when every entry is known.
-     *
-     * <p>A {@code null} entry is itself unknown and is reported as the string
-     * {@code "null"}: returning the entry verbatim would collide with the
-     * method's {@code null} success sentinel, letting a malformed list (e.g.
-     * from malformed YAML) pass validation and then fail in {@code List.copyOf}
-     * with an opaque {@link NullPointerException} instead of a clear rejection.</p>
+     * Returns the first entry of {@code capabilities} that is not an accepted
+     * tracker role; see {@link TrackerRoles#firstUnknown(List)}.
      *
      * @param capabilities the proposed roles; may be {@code null}
      * @return the first unknown value ({@code "null"} for a null entry), or
-     *         {@code null} when every entry is a known role
+     *         {@code null} when every entry is accepted
      */
     public static String unknownTrackerCapability(List<String> capabilities) {
-        if (capabilities == null) return null;
-        for (String capability : capabilities) {
-            if (capability == null) return "null";
-            if (!TRACKER_CAPABILITIES.contains(capability)) return capability;
-        }
-        return null;
+        return TrackerRoles.firstUnknown(capabilities);
     }
 
     /**

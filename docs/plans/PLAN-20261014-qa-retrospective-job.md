@@ -261,8 +261,9 @@ Investigated against the code; no change is needed for the job to work:
   prompt tells the agent to pass a high `job_limit`.
 
 The workstream needs no tracker capability: the job files nothing (Decisions, Q3). Should
-that change, `tracker_file_follow_up_task` is already granted to every job — it creates
-backlog-stage, medium-priority, unlinked tasks with server-enforced limits.
+that change, `tracker_create_task` is already granted to every job — for a workstream
+without the planner role it creates backlog-stage tasks whose stage, priority, source and
+workstream the server sets.
 
 ### 6. Branch convention for pipeline-subject QA work: `ci/qa-<job>-<stamp>`
 
@@ -434,8 +435,8 @@ Each question the design raised was resolved by adopting the plan's own proposal
    report there as a plan to implement.
 3. **Filing proposals as tracker tasks.** The job does not file them. For the first runs
    the report is the only output, and the person reviewing it files what they accept. This
-   is revisited once a few reports have been judged; `tracker_file_follow_up_task` is
-   already granted if that changes.
+   is revisited once a few reports have been judged; `tracker_create_task` is already
+   granted if that changes (a non-planner's task always lands in the backlog).
 4. **Backlog ceiling.** The retrospective is not held off by `open-pr-backlog.sh`
    (`MAX_OPEN_PRS`), for consistency with the other QA rounds — none of which uses it. A
    backlog is itself something the retrospective should report on.

@@ -161,6 +161,26 @@ public class TrackerService {
     }
 
     /**
+     * Claims the next ready task of a release for a workstream, through the
+     * tracker's {@code POST /v1/claim}. Which task is next, and whether any is
+     * claimable at all, is decided by the tracker; the reply is returned as the
+     * tracker sent it, {@code {"ok":true,"task":{...}|null}} on success.
+     *
+     * @param project      the project name
+     * @param release      the release name within the project
+     * @param workstreamId the workstream the claimed task is linked to
+     * @return the tracker's reply
+     * @throws IOException when the tracker cannot be reached
+     */
+    public Reply claim(String project, String release, String workstreamId) throws IOException {
+        ObjectNode body = MAPPER.createObjectNode();
+        body.put("project", project);
+        body.put("release", release);
+        body.put("workstream_id", workstreamId);
+        return post("/v1/claim", body);
+    }
+
+    /**
      * Lists the workstreams linked to a claimed task that is still open and
      * ready, i.e. the branches whose outcome has yet to be applied.
      *

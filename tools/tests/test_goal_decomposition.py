@@ -3,7 +3,7 @@
 ``goal-decomposition.yaml`` is called from other repositories' workflows. It
 resolves which release a repository is building and where its release plan
 is (``resolve-release-scope.sh``), registers a standing workstream that holds
-the tracker "steward" role and has the framework checked out beside it
+the tracker "planner" role and has the framework checked out beside it
 (``register-workstream.sh``), and submits an agent job that turns the release
 plan into tracker tasks. The scripts are run here for real, against
 throwaway repository layouts and a local stand-in for the controller; the
@@ -312,9 +312,12 @@ class GoalDecompositionWorkflowTests(unittest.TestCase):
                 self.assertLess(_index(_INTAKE), _index(name))
                 self.assertEqual("steps.intake.outputs.open == 'true'", _step(name)["if"])
 
-    def test_the_workstream_holds_the_steward_role_and_the_framework(self):
+    def test_the_workstream_holds_the_planner_role_and_the_framework(self):
+        """The steward role is gone (a saved one loads as planner): the
+        planner role is what lets the agent create ready tasks and the
+        release, with the general tracker tools."""
         env = _step(_REGISTER)["env"]
-        self.assertEqual("steward", env["TRACKER_CAPABILITIES"])
+        self.assertEqual("planner", env["TRACKER_CAPABILITIES"])
         self.assertIn("inputs.framework-repository", env["DEPENDENT_REPOS"])
         self.assertIn("inputs.workstream-branch", env["BRANCH"])
 
@@ -357,6 +360,33 @@ class GoalDecompositionWorkflowTests(unittest.TestCase):
         self.assertIn("git fetch origin ${FRAMEWORK_BRANCH}", template)
         self.assertIn("git checkout --detach FETCH_HEAD", template)
         self.assertNotIn("checkout --detach origin/${FRAMEWORK_BRANCH}", template)
+
+    def test_the_prompt_uses_only_the_general_tracker_tools(self):
+        """The narrow goal tools were removed; the prompt must not name them."""
+        with open(_TEMPLATE) as f:
+            template = f.read()
+        for removed in ("tracker_upsert_goal_task", "tracker_list_release_tasks",
+                        "tracker_claim_next_task", "tracker_file_follow_up_task"):
+            with self.subTest(tool=removed):
+                self.assertNotIn(removed, template)
+        for tool in ("tracker_list_projects", "tracker_list_releases",
+                     "tracker_create_release", "tracker_list_tasks",
+                     "tracker_create_task", "tracker_update_task"):
+            with self.subTest(tool=tool):
+                self.assertIn(tool, template)
+        self.assertIn('stage: "ready"', template)
+        self.assertIn("limit: 200", template)
+
+    def test_the_prompt_confines_updates_to_its_own_goal_tasks(self):
+        """The planner role allows editing any task; the prompt is what keeps
+        the agent to the tasks under its own source prefix, and off the stage
+        and status of existing tasks."""
+        with open(_TEMPLATE) as f:
+            template = f.read()
+        self.assertIn("**never update a task whose `source` does not begin with "
+                      "`${SOURCE_PREFIX}`**", template)
+        self.assertIn("never change the stage or status of any existing task", template)
+        self.assertIn("${MAX_NEW_TASKS}", template)
 
     def test_the_secret_is_declared_and_the_client_id_is_an_input(self):
         call = _triggers(_workflow())["workflow_call"]

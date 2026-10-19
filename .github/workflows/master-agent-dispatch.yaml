@@ -351,11 +351,17 @@ jobs:
   # bypasses the first two gates but never the third, since without a task
   # there is nothing to plan.
   #
-  # The workstream is registered with the tracker "planner" role, which is
-  # what lets its agent call tracker_claim_next_task. The agent claims the
-  # task itself, so a claim is atomic even if a later change lets several
-  # rounds run at once. Unlike the Project Manager it never writes
-  # docs/plans/MANAGER_LOG.md.
+  # Once the branch and workstream exist, CI claims the task for the round
+  # (POST /api/tracker/claim, tools/ci/tracker-claim.sh), which links it to
+  # the workstream; the claim is atomic, so two rounds never take the same
+  # task. That link is also all the tracker permission the agent needs: it
+  # may edit the task linked to its own workstream, and file anything else
+  # it finds as a backlog task. The workstream holds no tracker role. The
+  # prompt names the claimed task. If another round took the last task
+  # between the claimable gate and the claim, nothing is submitted and the
+  # branch is deleted again (an unused branch would hold off the next round
+  # for PR_GRACE_HOURS); its workstream is archived by the next round.
+  # Unlike the Project Manager it never writes docs/plans/MANAGER_LOG.md.
   plan-release-task:
     if: >-
       github.event_name != 'workflow_dispatch' ||
@@ -475,6 +481,7 @@ jobs:
           echo "::notice::Created branch $BRANCH_NAME"
 
       - name: Register workstream
+        id: register
         if: steps.claimable.outputs.run == 'true'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
@@ -483,22 +490,56 @@ jobs:
           BRANCH: ${{ steps.new_branch.outputs.branch }}
           BASE_BRANCH: master
           REPO_URL: git@github.com:${{ github.repository }}.git
-          TRACKER_CAPABILITIES: "planner"
         run: |
           chmod +x ./tools/ci/register-workstream.sh
           ./tools/ci/register-workstream.sh
 
-      - name: Build task-planning prompt
+      # Claims the task this round plans and links it to the workstream. The
+      # task's text stays in a file; only its id and the file's path are
+      # step outputs.
+      - name: Claim the task
+        id: claim
         if: steps.claimable.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          TRACKER_RELEASE: ${{ steps.release.outputs.release }}
+          WORKSTREAM_ID: ${{ steps.register.outputs.workstream_id }}
+        run: |
+          chmod +x ./tools/ci/tracker-claim.sh
+          ./tools/ci/tracker-claim.sh
+
+      # Another round took the last task after the claimable gate counted it.
+      # The branch was created for nothing, and left in place it would read as
+      # a round in progress and hold off the next one for PR_GRACE_HOURS.
+      - name: Remove the unused branch
+        if: steps.claimable.outputs.run == 'true' && steps.claim.outputs.claimed != 'true'
+        env:
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+        run: |
+          echo "::notice::No task was claimed — submitting nothing and deleting ${BRANCH}."
+          git push origin --delete "$BRANCH"
+
+      # The title and description are read from the claimed task's file here,
+      # not passed as step outputs, and reach the builder only through the
+      # environment.
+      - name: Build task-planning prompt
+        if: steps.claimable.outputs.run == 'true' && steps.claim.outputs.claimed == 'true'
         env:
           BRANCH: ${{ steps.new_branch.outputs.branch }}
           BASE_BRANCH: master
           TRACKER_RELEASE: ${{ steps.release.outputs.release }}
+          TASK_ID: ${{ steps.claim.outputs.task_id }}
+          TASK_FILE: ${{ steps.claim.outputs.task_file }}
         run: |
+          TASK_TITLE=$(jq -r '(.title // "") | gsub("^\\s+|\\s+$"; "") | if . == "" then "(untitled)" else . end' "$TASK_FILE")
+          TASK_DESCRIPTION=$(jq -r '(.description // "") | gsub("^\\s+|\\s+$"; "") | if . == "" then "(The task has no description.)" else . end' "$TASK_FILE")
+          export TASK_TITLE TASK_DESCRIPTION
           ./tools/ci/prompts/build-task-planning-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit task-planning agent job
-        if: steps.claimable.outputs.run == 'true'
+        if: steps.claimable.outputs.run == 'true' && steps.claim.outputs.claimed == 'true'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
@@ -519,6 +560,8 @@ jobs:
           DECIDE: ${{ steps.decide.outputs.reason }}
           OPEN_PRS: ${{ steps.backlog.outputs.open_prs }}
           CLAIMABLE: ${{ steps.claimable.outputs.claimable }}
+          CLAIMED: ${{ steps.claim.outputs.claimed }}
+          TASK_ID: ${{ steps.claim.outputs.task_id }}
           BRANCH: ${{ steps.new_branch.outputs.branch }}
         run: |
           {
@@ -529,9 +572,12 @@ jobs:
             echo "**Round in progress check:** ${DECIDE:-not run}"
             echo "**Open PRs:** ${OPEN_PRS:-not checked} (limit ${MAX_OPEN_PRS})"
             echo "**Claimable tasks:** ${CLAIMABLE:-not checked}"
+            echo "**Claimed task:** ${TASK_ID:-none}"
             echo ""
-            if [ -n "$BRANCH" ]; then
-              echo "Created \`$BRANCH\` and submitted an agent job to claim and plan the next task."
+            if [ "$CLAIMED" = "true" ]; then
+              echo "Created \`$BRANCH\`, claimed task ${TASK_ID} for it and submitted an agent job to plan it."
+            elif [ -n "$BRANCH" ]; then
+              echo "No task-planning round started: no task could be claimed, so \`$BRANCH\` was deleted again."
             elif [ "$INTAKE" != "true" ]; then
               echo "No task-planning round started: the controller is not accepting automated jobs, or could not be asked."
             else

@@ -26,8 +26,9 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `open-pr-backlog.sh` | Decide whether the open-PR backlog leaves room for a planning round (`MAX_OPEN_PRS`); shared by both planning jobs |
 | `plan_workstream_config.py` | Resolve the `docs/plans/<prefix>-workstream.yaml` settings a `project/` branch declares (longest matching prefix; strict schema) |
 | `tracker-claimable.sh` | Ask the controller whether a tracker release has a claimable task; fails closed |
+| `tracker-claim.sh` | Claim the next task of a tracker release for a workstream through the controller (`POST /api/tracker/claim`); writes the task to a file and emits `claimed`, `task_id` and `task_file`; fails closed |
 | `automated-intake.sh` | Ask the controller whether it accepts automated jobs, before a dispatch round creates anything; fails closed |
-| `register-workstream.sh` | Register a workstream with the FlowTree controller, optionally granting tracker roles (`TRACKER_CAPABILITIES`) and checking out other repositories beside it (`DEPENDENT_REPOS`) |
+| `register-workstream.sh` | Register a workstream with the FlowTree controller (emits `workstream_id`, also to `$GITHUB_OUTPUT`), optionally granting tracker roles (`TRACKER_CAPABILITIES`) and checking out other repositories beside it (`DEPENDENT_REPOS`) |
 | `resolve-release-scope.sh` | Goal decomposition: read the next version from a repository (`pom.xml` or a plain version file), the framework version it pins, and whether `<plans dir>/<version>/PLAN.md` exists (`in_scope`) |
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
 | `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests failed |
@@ -45,7 +46,7 @@ repository (input `framework-ref`), never from the caller's tree.
 
 | Workflow | Purpose |
 |---|---|
-| `goal-decomposition.yaml` | Decomposition round of goal-driven release automation: on the caller's default branch, resolve its next release and release plan (`resolve-release-scope.sh`), register a standing `orchestration/goal-decomposition` workstream with the tracker `steward` role and this repository as a dependent repository, and submit an agent job that creates or updates the release's tracker tasks |
+| `goal-decomposition.yaml` | Decomposition round of goal-driven release automation: on the caller's default branch, resolve its next release and release plan (`resolve-release-scope.sh`), register a standing `orchestration/goal-decomposition` workstream with the tracker `planner` role and this repository as a dependent repository, and submit an agent job that creates or updates the release's tracker tasks |
 
 ## Coverage (`coverage/`)
 
@@ -146,7 +147,7 @@ it knowingly does not cover are in
 | `build-performance-prompt.sh` | Build prompt for the recurring performance round |
 | `build-pdsl-migration-prompt.sh` | Build prompt for the recurring PDSL migration round |
 | `build-planning-prompt.sh` | Build prompt for planning workflow |
-| `build-task-planning-prompt.sh` | Build prompt for the task-planning round: claim the next ready tracker task and plan it |
+| `build-task-planning-prompt.sh` | Build prompt for the task-planning round: plan the tracker task CI claimed for the round (`TASK_ID`, `TASK_TITLE`, `TASK_DESCRIPTION`) |
 | `build-policy-violation-prompt.sh` | Build prompt for agent when code policy enforcement fails |
 | `build-python-failure-prompt.sh` | Build prompt for agent when the python-tests job fails |
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |

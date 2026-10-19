@@ -918,10 +918,18 @@ too, with the same `MAX_OPEN_PRS`), and a claimable task
 (`tools/ci/tracker-claimable.sh`, which asks the controller's
 `GET /api/tracker/claimable` and fails closed). With nothing claimable no
 branch, workstream or agent job is created. `force` skips the first two gates,
-never the third. The round's workstream is registered with the tracker
-`planner` role (`TRACKER_CAPABILITIES`), which is what lets its agent call
-`tracker_claim_next_task`; the agent claims the task itself, plans only that
-task, and never writes `docs/plans/MANAGER_LOG.md`.
+never the third. The round's workstream is registered with no tracker role;
+CI then claims the task for it (`tools/ci/tracker-claim.sh`, the controller's
+`POST /api/tracker/claim`, which links the task to the workstream and fails
+closed). That link is what lets the agent update its own task; anything else
+it finds it files with `tracker_create_task`, which lands in the backlog. The
+claimed task's text is written to a file under `$RUNNER_TEMP` (never to
+`$GITHUB_OUTPUT`) and rendered into the prompt, so the agent is told its task
+rather than claiming one. When another round took the last task between the
+claimable check and the claim, nothing is submitted and the new branch is
+deleted again, since an unused `project/task-*` branch would read as a round in
+progress for `PR_GRACE_HOURS`. The agent plans only its task and never writes
+`docs/plans/MANAGER_LOG.md`.
 
 Every job runs on `ubuntu-latest`. None of them builds the Java reactor or runs
 its tests. The one job that runs any tests is `coverage-qa`: it runs the Python
@@ -1025,9 +1033,13 @@ release plan (`<plans dir>/<version>/PLAN.md`) with
 the controller anything. Otherwise it follows the dispatch jobs' order — intake
 first, then nothing is created until intake is open — moves the standing branch
 `orchestration/goal-decomposition` to the commit being reconciled, registers that
-workstream with the tracker `steward` role and this repository as a dependent
+workstream with the tracker `planner` role and this repository as a dependent
 repository, and submits the agent job. The agent changes no files; it creates
-and updates tracker tasks and reports them on the workstream.
+and updates tracker tasks with the general tracker tools and reports them on
+the workstream. The planner role lets it create `ready` tasks and releases and
+edit any task in the workspace; the prompt is what confines its updates to
+tasks whose `source` carries its own `goals:<owner>/<repo>/` prefix and keeps
+it off the stage and status of existing tasks.
 
 **Trust.** A plain `actions/checkout` inside a called workflow fetches the
 *caller's* repository. Every script therefore runs from an explicit checkout of
@@ -1041,8 +1053,8 @@ effort settings.
 **Keep this file generic.** This repository is public. Product-specific values
 reach the workflow as inputs; its defaults describe this repository's own layout.
 `tools/tests/test_goal_decomposition.py` pins the trigger, the default-branch
-guard, the script trust rule, the intake ordering, the steward role and the
-prompt's variables.
+guard, the script trust rule, the intake ordering, the planner role, the
+prompt's tool use and its variables.
 
 ### What the `Cancel Merged PR Runs` workflow does
 

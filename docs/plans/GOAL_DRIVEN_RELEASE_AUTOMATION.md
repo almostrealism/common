@@ -138,6 +138,24 @@ task with a `workstream_id` has a branch working on it.
 
 ### 2. Narrow tracker tools for agents, not the general ones
 
+> **Superseded.** The narrow tools and the *steward* capability described
+> below were built and then replaced by a simpler model. Every agent now has
+> the general tools (`tracker_list_projects`, `tracker_list_releases`,
+> `tracker_list_tasks`, `tracker_search_tasks`, `tracker_get_task`,
+> `tracker_project_summary`, `tracker_create_task`, `tracker_update_task`,
+> `tracker_create_release`); none can delete. Reads are limited to the
+> caller's workspace. Anyone may create a task, but a non-planner's task always
+> lands in the backlog with its provenance set by the server, and a non-planner
+> may edit only the tasks linked to its own workstream. A workstream holding
+> the one tracker role, *planner*, may set every field, edit any task in the
+> workspace and create releases (a saved *steward* loads as *planner*).
+> Claiming moved out of the agent into CI: the task-planning job claims the
+> task through the controller (`POST /api/tracker/claim`) before submitting
+> the agent, and that claim's link is what lets the agent edit its task. The
+> decomposition round holds *planner*, and its prompt — not the tool — keeps it
+> to the tasks under its own `goals:` source prefix. The text below records the
+> original design.
+
 Rather than restoring `tracker_create_task` and `tracker_update_task` to some
 agents, add a small number of purpose-built tools. The server enforces each
 tool's limits itself, so they hold even if an agent is careless:
@@ -198,7 +216,8 @@ whether the release has a claimable task (see *Claimable-task endpoint* below).
 If there is none, the job ends there: no branch, no workstream, no agent. The
 next merge asks again.
 
-**The round's steps:**
+**The round's steps** (as first designed; CI now performs the claim, see the
+note in section 2):
 1. Call `tracker_claim_next_task` for this repository's project and that
    release. The claim is what actually takes the task; the gate only says one
    was available. If another round took the last task in between, the claim
@@ -216,7 +235,7 @@ a network with the tracker. So the controller gains a read-only endpoint:
 - It takes a project name and a release name (for example
   `GET /api/tracker/claimable?project=<name>&release=<name>`).
 - It returns how many tasks in that release are `ready`, unblocked and
-  unclaimed, which is the same condition `tracker_claim_next_task` uses. The
+  unclaimed, which is the same condition the claim uses. The
   tracker should own that condition, as one query both callers use, so the gate
   and the claim can never disagree about what "claimable" means.
 - It changes nothing: it neither claims nor links a task.
@@ -233,7 +252,8 @@ This is a reusable job, provided by this repository and run from a consuming
 repository's CI. Its pieces:
 - a prompt template and builder in `tools/ci/prompts/`, alongside the others;
 - the existing `register-workstream.sh` / `submit-agent-job.sh` path, with
-  the *steward* capability on its workstream.
+  the *planner* capability on its workstream (originally *steward*; see the
+  note in section 2).
 
 **Inputs**, all passed in by the calling workflow:
 - the goal documents;
@@ -304,7 +324,8 @@ As built (`TaskCloseOutReconciler`, tracker `/v1/close-out`):
 ### 6. Parallel planning
 
 Task rounds never write the manager log, so nothing forces them to one at a time
-beyond the claim itself. Once `tracker_claim_next_task` makes claims atomic, the
+beyond the claim itself. Since the claim (now made by CI through the
+controller) is atomic, the
 task round can open up to a configured number of branches at once. Start at
 one, and raise it once the pipeline has proven itself. The open-PR ceiling still
 applies across everything.
@@ -445,7 +466,8 @@ are built. Phase 3 is being built as the reusable `goal-decomposition.yaml`
      and `person`.
    - The three narrow tools in ar-manager, with their allowlist entries in both
      `tool_capabilities.py` and `McpConfigBuilder`.
-   - The planner and steward capabilities.
+   - The planner and steward capabilities. (Since replaced: the general tools
+     for every agent, one *planner* role, and claiming in CI; see section 2.)
 2. **Task planning round in this repository.** The claimable-task endpoint in
    the controller, and the new job in `master-agent-dispatch.yaml` gated on it.
    With phase 1 in place, promoting a task to `ready` is enough to get it

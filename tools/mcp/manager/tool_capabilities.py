@@ -23,11 +23,13 @@ runtime.
 # Granted to coding agents by default. Mirrors
 # McpConfigBuilder.AR_MANAGER_TOOL_NAMES.
 #
-# tracker_claim_next_task, tracker_list_release_tasks and
-# tracker_upsert_goal_task are granted to every session but gated in
-# ar-manager by the calling workstream's trackerCapabilities (see
-# _require_tracker_capability): the same controller-side model the opencode
-# harness relies on for dispatch. Comments stay out of the tuple itself, which
+# The tracker tools are the same for every session; what a call may do is
+# decided in ar-manager (tracker_tools.py) from the caller's workspace and its
+# workstream's trackerCapabilities: anyone may read the workspace's tasks and
+# file new ones into the backlog, a "planner" may edit any task and create
+# releases, and any other agent may edit only the tasks linked to its own
+# workstream. That is the same controller-side model the opencode harness
+# relies on for dispatch. Comments stay out of the tuple itself, which
 # McpToolClassificationParityTest parses as a plain literal.
 GRANTED_TOOLS = (
     "controller_health",
@@ -64,10 +66,9 @@ GRANTED_TOOLS = (
     "tracker_project_summary",
     "tracker_list_projects",
     "tracker_list_releases",
-    "tracker_claim_next_task",
-    "tracker_list_release_tasks",
-    "tracker_upsert_goal_task",
-    "tracker_file_follow_up_task",
+    "tracker_create_release",
+    "tracker_create_task",
+    "tracker_update_task",
 )
 
 # Withheld from coding agents. Mirrors
@@ -88,11 +89,8 @@ EXCLUDED_TOOLS = (
     "tracker_create_project",
     "tracker_update_project",
     "tracker_delete_project",
-    "tracker_create_release",
     "tracker_update_release",
     "tracker_delete_release",
-    "tracker_create_task",
-    "tracker_update_task",
     "tracker_delete_task",
     "workspace_secret_list_names",
     "workspace_secret_render_file",
