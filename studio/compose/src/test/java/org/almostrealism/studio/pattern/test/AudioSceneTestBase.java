@@ -106,14 +106,7 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * @return the curated sample library directory
 	 */
 	protected File requireSampleLibrary() {
-		File library = new File(SAMPLES_PATH);
-		requireResource("curated sample library " + library.getAbsolutePath(),
-				"AR_RINGS_LIBRARY", library.isDirectory());
-
-		String[] entries = library.list();
-		Assert.assertTrue("Curated sample library " + library.getAbsolutePath() + " exists but is empty;"
-				+ " the mount or sync that should populate it did not run.", entries != null && entries.length > 0);
-		return library;
+		return requireResourceDirectory("curated sample library", "AR_RINGS_LIBRARY", new File(SAMPLES_PATH));
 	}
 
 	/**

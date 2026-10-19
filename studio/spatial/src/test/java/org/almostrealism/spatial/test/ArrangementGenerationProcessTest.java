@@ -47,14 +47,14 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 
 	/**
 	 * Requires the curated sample library and pattern factory the curated scene is
-	 * loaded from, via {@link #requireResource(String, String, boolean)}: a miss fails
-	 * on any GPU host or host that declares the location, and skips only on a
-	 * CPU-only host that did not.
+	 * loaded from, via {@link #requireResourceDirectory(String, String, File)} and
+	 * {@link #requireResource(String, String, boolean)}: a miss fails on any GPU host
+	 * or host that declares the location, and skips only on a CPU-only host that did
+	 * not; an empty library directory fails on every host.
 	 */
-	// TODO(review): duplicates AudioSceneTestBase.requireCuratedLibrary but omits its empty-library-directory failure
 	private void requireCuratedScene() {
-		requireResource("curated sample library " + new File(CuratedArrangementFixture.SAMPLES).getAbsolutePath(),
-				"AR_RINGS_LIBRARY", new File(CuratedArrangementFixture.SAMPLES).isDirectory());
+		requireResourceDirectory("curated sample library", "AR_RINGS_LIBRARY",
+				new File(CuratedArrangementFixture.SAMPLES));
 		requireResource("curated pattern factory " + new File(CuratedArrangementFixture.PATTERN_FACTORY).getAbsolutePath(),
 				"AR_RINGS_PATTERNS", new File(CuratedArrangementFixture.PATTERN_FACTORY).isFile());
 	}

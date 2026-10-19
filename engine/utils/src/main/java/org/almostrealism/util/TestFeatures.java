@@ -44,6 +44,7 @@ import org.almostrealism.io.SystemUtils;
 import org.junit.Assert;
 import org.junit.Assume;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -1122,6 +1123,30 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 			requireResource(resource, available, isGpuAvailable(),
 					"a GPU accelerator is available, so this host is meant to carry it");
 		}
+	}
+
+	/**
+	 * Requires a resource that is a directory, as {@link #requireResource(String, String, boolean)}
+	 * does, and additionally fails, on every host, when the directory exists but is empty. An
+	 * empty directory is a mount point whose content never arrived (a bind-mount of a missing
+	 * host path, or a sync that did not run), not a host that was never meant to have the
+	 * resource, so it is never a reason to skip.
+	 *
+	 * @param resource         description of the resource
+	 * @param locationProperty the property or environment variable that declares the
+	 *                         directory's location on a host, or {@code null} if there is none
+	 * @param directory        the directory the resource is expected in
+	 * @return {@code directory}, which is guaranteed to exist and to have at least one entry
+	 */
+	default File requireResourceDirectory(String resource, String locationProperty, File directory) {
+		String description = resource + " " + directory.getAbsolutePath();
+		requireResource(description, locationProperty, directory.isDirectory());
+
+		String[] entries = directory.list();
+		Assert.assertTrue("Required resource " + description + " exists but is empty;"
+				+ " the mount or sync that should populate it did not run.",
+				entries != null && entries.length > 0);
+		return directory;
 	}
 
 	/**
