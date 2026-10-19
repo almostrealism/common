@@ -553,7 +553,8 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 	 * @return the convolution operator
 	 * @throws IllegalArgumentException if the input or the filters are not 4-D, their
 	 *                                  channel counts differ, the filters are not square,
-	 *                                  or the filters are larger than the input
+	 *                                  the filters are larger than the input, or the
+	 *                                  number of biases differs from the number of filters
 	 */
 	default Factor<PackedCollection> convolution2dOperator(TraversalPolicy inputShape,
 														   PackedCollection filters,
@@ -567,6 +568,11 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 			throw new IllegalArgumentException("Convolution requires a 4-D input and 4-D square filters "
 					+ "with matching channels that fit within the input, not input " + inputShape
 					+ " and filters " + filterShape);
+		}
+
+		if (biases != null && biases.getShape().getTotalSize() != filterShape.length(0)) {
+			throw new IllegalArgumentException("Convolution requires one bias per filter, not biases "
+					+ biases.getShape() + " for filters " + filterShape);
 		}
 
 		int batch = inputShape.length(0);

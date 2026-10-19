@@ -29,6 +29,7 @@ import org.junit.Test;
 
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.List;
 
 /**
  * Verifies the {@link ReduceAxis#OUT output-reduced} delta of the 2-D convolution operator
@@ -139,6 +140,32 @@ public class ConvolutionJacobianGradientTest extends TestSuiteBase implements La
 			assertRejected(shape(1, CHANNELS, KERNEL - 1, SIZE), square);
 
 			Assert.assertNotNull(convolution2dOperator(input, whole, null));
+		}
+	}
+
+	/**
+	 * The convolution operator rejects biases whose count differs from the number of
+	 * filters, which it would otherwise broadcast across the wrong filters, and accepts
+	 * one bias per filter.
+	 */
+	@Test(timeout = 60000)
+	public void operatorRejectsMismatchedBiases() {
+		TraversalPolicy input = shape(1, CHANNELS, SIZE, SIZE);
+
+		try (PackedCollection filters = new PackedCollection(shape(FILTERS, CHANNELS, KERNEL, KERNEL));
+			 PackedCollection fewer = new PackedCollection(shape(FILTERS - 1));
+			 PackedCollection more = new PackedCollection(shape(FILTERS + 1));
+			 PackedCollection biases = new PackedCollection(shape(FILTERS))) {
+			for (PackedCollection wrong : List.of(fewer, more)) {
+				try {
+					convolution2dOperator(input, filters, wrong);
+					Assert.fail("biases " + wrong.getShape() + " should be rejected");
+				} catch (IllegalArgumentException expected) {
+					Assert.assertTrue(expected.getMessage().contains(wrong.getShape().toString()));
+				}
+			}
+
+			Assert.assertNotNull(convolution2dOperator(input, filters, biases));
 		}
 	}
 
