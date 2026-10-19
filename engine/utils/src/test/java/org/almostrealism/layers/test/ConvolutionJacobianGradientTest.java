@@ -119,6 +119,30 @@ public class ConvolutionJacobianGradientTest extends TestSuiteBase implements La
 	}
 
 	/**
+	 * The convolution operator rejects non-square filters, which it would otherwise convolve
+	 * as if their width equalled their height, and filters larger than the input, which
+	 * leave no window to convolve; a filter exactly as large as the input is accepted.
+	 */
+	@Test(timeout = 60000)
+	public void operatorRejectsUnsupportedFilters() {
+		TraversalPolicy input = shape(1, CHANNELS, SIZE, SIZE);
+
+		try (PackedCollection wide = new PackedCollection(shape(FILTERS, CHANNELS, KERNEL, KERNEL + 1));
+			 PackedCollection tall = new PackedCollection(shape(FILTERS, CHANNELS, KERNEL + 1, KERNEL));
+			 PackedCollection oversized = new PackedCollection(shape(FILTERS, CHANNELS, SIZE + 1, SIZE + 1));
+			 PackedCollection whole = new PackedCollection(shape(FILTERS, CHANNELS, SIZE, SIZE));
+			 PackedCollection square = new PackedCollection(shape(FILTERS, CHANNELS, KERNEL, KERNEL))) {
+			assertRejected(input, wide);
+			assertRejected(input, tall);
+			assertRejected(input, oversized);
+			assertRejected(shape(1, CHANNELS, SIZE, KERNEL - 1), square);
+			assertRejected(shape(1, CHANNELS, KERNEL - 1, SIZE), square);
+
+			Assert.assertNotNull(convolution2dOperator(input, whole, null));
+		}
+	}
+
+	/**
 	 * Asserts that building the convolution operator for the given shapes is rejected.
 	 *
 	 * @param inputShape the input shape

@@ -551,17 +551,22 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 	 * @param biases     the bias of each filter, of shape {@code (filters)}, or {@code null}
 	 *                   for no bias
 	 * @return the convolution operator
-	 * @throws IllegalArgumentException if the input or the filters are not 4-D, or their
-	 *                                  channel counts differ
+	 * @throws IllegalArgumentException if the input or the filters are not 4-D, their
+	 *                                  channel counts differ, the filters are not square,
+	 *                                  or the filters are larger than the input
 	 */
 	default Factor<PackedCollection> convolution2dOperator(TraversalPolicy inputShape,
 														   PackedCollection filters,
 														   PackedCollection biases) {
 		TraversalPolicy filterShape = filters.getShape();
 		if (inputShape.getDimensions() != 4 || filterShape.getDimensions() != 4
-				|| filterShape.length(1) != inputShape.length(1)) {
-			throw new IllegalArgumentException("Convolution requires a 4-D input and 4-D filters "
-					+ "with matching channels, not input " + inputShape + " and filters " + filterShape);
+				|| filterShape.length(1) != inputShape.length(1)
+				|| filterShape.length(2) != filterShape.length(3)
+				|| filterShape.length(2) > inputShape.length(2)
+				|| filterShape.length(3) > inputShape.length(3)) {
+			throw new IllegalArgumentException("Convolution requires a 4-D input and 4-D square filters "
+					+ "with matching channels that fit within the input, not input " + inputShape
+					+ " and filters " + filterShape);
 		}
 
 		int batch = inputShape.length(0);
@@ -569,7 +574,6 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 		int height = inputShape.length(2);
 		int width = inputShape.length(3);
 		int filterCount = filterShape.length(0);
-		// TODO(review): non-square filters (length(2) != length(3)) are not rejected but are treated as square
 		int size = filterShape.length(2);
 		int outHeight = height - size + 1;
 		int outWidth = width - size + 1;
