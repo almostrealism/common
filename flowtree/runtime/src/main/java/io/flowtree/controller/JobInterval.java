@@ -27,8 +27,8 @@ import java.time.Instant;
  * <p>A running job's span ends at {@code now} only while the job is alive. Once
  * it has been silent longer than the silence threshold it ends at its last
  * liveness signal instead (the last heartbeat, or the start when it never sent
- * one), the same rule {@link ActiveJob#isStale(Duration, Instant)} applies to
- * label it {@code UNRESPONSIVE}. Without that, a worker that died mid-job would
+ * one), the same rule {@link ActiveJob#isStale(Instant, Instant, Duration, Instant)}
+ * applies to label it {@code UNRESPONSIVE}. Without that, a worker that died mid-job would
  * keep adding agent time until the orphan cleanup removed its row.</p>
  *
  * @param jobId        the job identifier
@@ -66,9 +66,7 @@ public record JobInterval(String jobId, String workstreamId, String status,
         if (completedAt != null) {
             end = completedAt;
         } else {
-            // TODO(review): builds a throwaway ActiveJob just to reuse isStale; share the rule.
-            ActiveJob live = new ActiveJob(jobId, workstreamId, startedAt, heartbeatAt, null, null);
-            end = live.isStale(silentThreshold, now)
+            end = ActiveJob.isStale(startedAt, heartbeatAt, silentThreshold, now)
                     ? (heartbeatAt != null ? heartbeatAt : startedAt)
                     : now;
         }

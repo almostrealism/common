@@ -71,6 +71,23 @@ public record ActiveJob(String jobId, String workstreamId, Instant startedAt,
      * @return elapsed time since the last liveness signal
      */
     public Duration sinceHeartbeat(Instant now) {
+        return sinceHeartbeat(startedAt, heartbeatAt, now);
+    }
+
+    /**
+     * Returns how long it has been since the given job last reported itself
+     * alive, falling back to {@code startedAt} when no heartbeat was recorded.
+     * This is the rule {@link #sinceHeartbeat(Instant)} applies, exposed for
+     * callers that hold the timestamps without an {@code ActiveJob} to wrap
+     * them (see {@link JobInterval}).
+     *
+     * @param startedAt   when the job started, or {@code null} if unknown
+     * @param heartbeatAt the last heartbeat, or {@code null} if none yet
+     * @param now         the reference instant
+     * @return elapsed time since the last liveness signal, or
+     *         {@link Duration#ZERO} when neither timestamp is known
+     */
+    public static Duration sinceHeartbeat(Instant startedAt, Instant heartbeatAt, Instant now) {
         Instant last = heartbeatAt != null ? heartbeatAt : startedAt;
         return last == null ? Duration.ZERO : Duration.between(last, now);
     }
@@ -84,10 +101,29 @@ public record ActiveJob(String jobId, String workstreamId, Instant startedAt,
      * @return {@code true} when the job should be treated as stuck
      */
     public boolean isStale(Duration threshold, Instant now) {
+        return isStale(startedAt, heartbeatAt, threshold, now);
+    }
+
+    /**
+     * Returns whether a job with the given liveness timestamps has been silent
+     * for longer than {@code threshold}. This is the rule
+     * {@link #isStale(Duration, Instant)} applies, exposed for callers that
+     * hold the timestamps without an {@code ActiveJob} to wrap them (see
+     * {@link JobInterval}).
+     *
+     * @param startedAt   when the job started, or {@code null} if unknown
+     * @param heartbeatAt the last heartbeat, or {@code null} if none yet
+     * @param threshold   the silence a job may accumulate before it counts as
+     *                    stuck; non-positive disables the check
+     * @param now         the reference instant
+     * @return {@code true} when the job should be treated as stuck
+     */
+    public static boolean isStale(Instant startedAt, Instant heartbeatAt,
+                                  Duration threshold, Instant now) {
         if (threshold == null || threshold.isNegative() || threshold.isZero()) {
             return false;
         }
-        return sinceHeartbeat(now).compareTo(threshold) > 0;
+        return sinceHeartbeat(startedAt, heartbeatAt, now).compareTo(threshold) > 0;
     }
 
     /**
