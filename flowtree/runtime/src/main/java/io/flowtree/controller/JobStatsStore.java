@@ -788,6 +788,44 @@ public class JobStatsStore implements ConsoleFeatures {
     }
 
     /**
+     * Returns every job, in every workstream, that started before {@code to}
+     * and was still running at or after {@code from}. Jobs that were only
+     * submitted are excluded; they have occupied no agent. The rows feed
+     * {@link DailyAgentTime}, which does the per-day arithmetic.
+     *
+     * @param from the start of the range
+     * @param to   the end of the range, exclusive
+     * @return the jobs overlapping the range, or an empty list when none or
+     *         the store is unavailable
+     */
+    public synchronized List<JobInterval> getJobIntervals(Instant from, Instant to) {
+        if (connection == null) return Collections.emptyList();
+
+        String sql = "SELECT job_id, workstream_id, status, started_at, completed_at, heartbeat_at, cost_usd "
+            + "FROM job_timing WHERE status <> 'SUBMITTED' AND started_at < ? "
+            + "AND (completed_at IS NULL OR completed_at >= ?)";
+
+        List<JobInterval> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(to));
+            ps.setTimestamp(2, Timestamp.from(from));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Timestamp completed = rs.getTimestamp("completed_at");
+                    Timestamp beat = rs.getTimestamp("heartbeat_at");
+                    result.add(new JobInterval(rs.getString("job_id"), rs.getString("workstream_id"),
+                            rs.getString("status"), rs.getTimestamp("started_at").toInstant(),
+                            completed == null ? null : completed.toInstant(),
+                            beat == null ? null : beat.toInstant(), rs.getDouble("cost_usd")));
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query job intervals: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
      * Returns every job the controller accepted but which has not yet started
      * on any worker, newest submission first.
      *

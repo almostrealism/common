@@ -21,6 +21,7 @@ import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
 
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.DayOfWeek;
@@ -30,6 +31,8 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Map;
 import io.flowtree.controller.ActiveJob;
+import io.flowtree.controller.DailyAgentTime;
+import io.flowtree.controller.JobInterval;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.controller.PendingJob;
 import io.flowtree.github.GitHubProxyHandler;
@@ -308,6 +311,56 @@ class StatsQueryHandler {
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
             "application/json", json.toString());
+    }
+
+    /**
+     * Handles a {@code GET /api/stats/daily} request: agent time per day across
+     * every workstream, in the caller's time zone (see {@link DailyAgentTime}).
+     *
+     * <p>Query parameters: {@code from} and {@code to}, ISO dates, inclusive,
+     * at most {@link DailyAgentTime#MAX_DAYS} days apart; and {@code tz}, a
+     * zone ID such as {@code America/Los_Angeles}, defaulting to UTC. As with
+     * {@code /api/stats}, a controller without a stats store answers with a
+     * JSON error object and HTTP 200.</p>
+     *
+     * @param session the NanoHTTPD session supplying query parameters
+     * @param error   callback used to build HTTP 400 error responses
+     * @return an HTTP response containing the per-day JSON
+     */
+    Response handleDaily(IHTTPSession session, GitHubProxyHandler.ErrorResponder error) {
+        if (statsStore == null) {
+            return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+                "application/json", "{\"error\":\"Stats not configured\"}");
+        }
+
+        Map<String, String> params = session.getParms();
+        LocalDate from;
+        LocalDate to;
+        ZoneId zone;
+        try {
+            from = LocalDate.parse(params.getOrDefault("from", ""));
+            to = LocalDate.parse(params.getOrDefault("to", ""));
+        } catch (DateTimeException e) {
+            return error.respond("'from' and 'to' must be ISO dates, e.g. 2026-10-01");
+        }
+        try {
+            String tz = params.get("tz");
+            zone = (tz == null || tz.isEmpty()) ? ZoneId.of("UTC") : ZoneId.of(tz);
+        } catch (DateTimeException e) {
+            return error.respond("Unknown time zone: " + params.get("tz"));
+        }
+        long span = to.toEpochDay() - from.toEpochDay() + 1;
+        if (span < 1 || span > DailyAgentTime.MAX_DAYS) {
+            return error.respond("'to' must be on or after 'from', at most "
+                + DailyAgentTime.MAX_DAYS + " days later");
+        }
+
+        List<JobInterval> jobs = statsStore.getJobIntervals(
+            DailyAgentTime.rangeStart(from, zone), DailyAgentTime.rangeEnd(to, zone));
+        List<DailyAgentTime.Day> days = DailyAgentTime.compute(
+            jobs, from, to, zone, Instant.now(), silentThreshold);
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+            "application/json", DailyAgentTime.toJson(zone, days));
     }
 
     /**
