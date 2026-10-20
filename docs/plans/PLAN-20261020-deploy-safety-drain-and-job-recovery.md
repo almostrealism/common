@@ -127,6 +127,13 @@ above *is* the repair and no separate emitter is needed. Do not remove the
 existing `handleStatusEvent` STARTED branch — it remains the path that carries
 node identity for jobs that do post it.
 
+While here, correct the now-stale javadoc on `JobStatsStore.recordPhase`, which
+currently asserts the job row's status "stays `STARTED` from submission until
+the terminal event." That is wrong today — the row stays `SUBMITTED` until a
+`STARTED` event (or, after this change, until the first heartbeat/phase promotes
+it) — and it documents precisely the misconception this item fixes. The javadoc
+must describe the new promotion behaviour once the fix lands.
+
 **Tests** (`JobStatsStoreLifecycleTest`, extended):
 - a phase update on a `SUBMITTED` row promotes it to `STARTED` and it then
   appears in `getActiveJobs` and not in `getPendingJobs` — "phase updates
