@@ -148,6 +148,42 @@ class TestMentions(unittest.TestCase):
         # A missing file under a real top-level directory is genuinely absent.
         self.assertIn("tools/ci/gone.sh", result["absent"])
 
+    def test_a_placeholder_path_is_not_split_into_bogus_names(self):
+        # Observed 2026-10-20: a correct note naming the prompt-builder family
+        # was tiered C✗ because the template was cut at <x> into
+        # "tools/ci/prompts/build" and "-prompt.sh", neither of which exists.
+        note = ("Each round's prompt comes from tools/ci/prompts/build-<x>-prompt.sh "
+                "(`tools/ci/prompts/build-<x>-prompt.sh`), see tools/ci/check.sh.")
+        mentions = extract_mentions(note)
+        self.assertFalse(any("prompts/build" in m or m.startswith("-")
+                             for m in mentions), mentions)
+        self.assertIn("tools/ci/check.sh", mentions)
+        self.assertEqual(classify_mentions(mentions, self.index)["absent"], [])
+
+    def test_glob_and_brace_templates_are_unchecked(self):
+        mentions = extract_mentions(
+            "Matches tools/ci/*.sh, docs/**/*.md, {module}/pom.xml and "
+            "project/doc-* but **CodingAgentJob** is a name.")
+        self.assertEqual(mentions, ["CodingAgentJob"])
+        # Handed a template directly, classification leaves it unchecked.
+        result = classify_mentions(
+            ["tools/ci/build-<x>-prompt.sh", "tools/*/gone.sh", "{a}/b.md"],
+            self.index)
+        self.assertEqual(result, {"present": [], "absent": []})
+
+    def test_a_lock_pattern_prefix_is_not_an_absent_directory(self):
+        # Observed 2026-10-20: ".github/actions/" is a lock pattern in
+        # check-ci-file-lock.sh, not a directory the tree has. A prefix with
+        # nothing under it is unchecked; one that matches is present.
+        mentions = extract_mentions(
+            "Locked: .github/workflows/, .github/actions/ and tools/ci/.")
+        self.assertIn(".github/actions/", mentions)
+        result = classify_mentions(mentions + ["tools/ci/prompts/build-"],
+                                   self.index)
+        self.assertEqual(result["absent"], [])
+        self.assertIn("tools/ci/", result["present"])
+        self.assertNotIn(".github/actions/", result["present"])
+
     def test_without_an_index_nothing_is_absent(self):
         self.assertEqual(classify_mentions(["ClaudeCodeJob"], None),
                          {"present": [], "absent": []})

@@ -43,12 +43,12 @@ EXPECT_KEYS = frozenset({
     "outcome", "must_include", "must_not_include", "must_include_any",
     "must_cite_any", "must_not_cite", "must_flag_stale", "basis_in",
     "max_citation_warnings", "min_citation_warnings", "must_mark_unsupported",
-    "history_must_include", "min_conflicts",
+    "must_not_mark_unsupported", "history_must_include", "min_conflicts",
 })
 
 # Expectation keys whose value is a list of case-insensitive regexes.
 _REGEX_LIST_KEYS = ("must_include", "must_not_include", "must_mark_unsupported",
-                    "history_must_include")
+                    "must_not_mark_unsupported", "history_must_include")
 
 # Expectation keys whose value is a non-negative integer bound.
 _COUNT_KEYS = ("max_citation_warnings", "min_citation_warnings", "min_conflicts")
@@ -355,6 +355,12 @@ def grade(response: dict, expect: dict) -> GradeResult:
     for pat in expect.get("must_mark_unsupported", []):
         ok = any(re.search(pat, s, re.IGNORECASE) for s in flagged)
         result.record("must_mark_unsupported", ok, f"not flagged: {pat!r}")
+    # The other direction: a correct sentence the verifier must leave alone,
+    # so a check that flags everything cannot pass a case by flagging.
+    for pat in expect.get("must_not_mark_unsupported", []):
+        ok = not any(re.search(pat, s, re.IGNORECASE) for s in flagged)
+        result.record("must_not_mark_unsupported", ok,
+                      f"flagged but correct: {pat!r}")
 
     return result
 

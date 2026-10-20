@@ -84,6 +84,22 @@ class TestNewGraderKeys(unittest.TestCase):
         self.assertFalse(grade({"ok": True, "answer": "for other runners"},
                                expect).passed)
 
+    def test_must_not_mark_unsupported_guards_a_correct_sentence(self):
+        expect = {"must_mark_unsupported": ["does not deploy"],
+                  "must_not_mark_unsupported": ["successful master run"]}
+        right = {"ok": True, "answer": "Triggered by a successful master run "
+                 "[D1]. It does not deploy on merge [D1] [unsupported]."}
+        self.assertTrue(grade(right, expect).passed)
+        # A verifier that flags everything fails the case.
+        everything = {"ok": True, "answer": "Triggered by a successful master "
+                      "run [D1] [unsupported]. It does not deploy on merge [D1] "
+                      "[unsupported]."}
+        result = grade(everything, expect)
+        self.assertFalse(result.passed)
+        self.assertEqual(result.failures,
+                         ["must_not_mark_unsupported: flagged but correct: "
+                          "'successful master run'"])
+
     def test_new_keys_are_type_checked(self):
         bad = {"id": "X", "question": "q",
                "expect": {"min_conflicts": -1, "must_mark_unsupported": "x",
@@ -161,10 +177,21 @@ class TestScriptedRun(unittest.TestCase):
                                    "step12")
 
     def test_every_case_but_the_paraphrase_gap_passes(self):
+        # The paraphrase gap is closed: E12's "one class per job" and E13's
+        # unechoed negation name nothing a token can match, and the
+        # claim-level polarity check flags them, so every case passes.
         failing = {c["id"]: c["failures"] for c in self.summary["cases"]
                    if not c["passed"]}
-        self.assertEqual(failing, {"E12": [
-            "must_mark_unsupported: not flagged: 'one class per job'"]})
+        self.assertEqual(failing, {})
+
+    def test_the_claim_level_cases_are_flagged_for_polarity(self):
+        responses = run_consult_eval._run_scripted(
+            [c for c in self.cases if c["id"] in ("E12", "E13")])
+        for cid in ("E12", "E13"):
+            response = responses[cid]
+            response = response[0] if isinstance(response, list) else response
+            reasons = [w["reason"] for w in response["citation_warnings"]]
+            self.assertIn("polarity", reasons, cid)
 
     def test_no_false_abstentions(self):
         self.assertEqual(self.summary["false_abstention"], 0)

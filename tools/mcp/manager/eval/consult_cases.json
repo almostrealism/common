@@ -451,6 +451,34 @@
           "one class per job"
         ]
       }
+    },
+    {
+      "id": "E13",
+      "question": "Why does the controller stack sometimes deploy automatically?",
+      "keywords": [
+        "Deploy Controller Stack",
+        "deploy.yaml",
+        "workflow_run"
+      ],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-20",
+        "summary": "Correctly cited .github/CLAUDE.md for 'triggered by a successful Build and Test on master', then stated 'it does not deploy automatically after every merge — only when explicitly triggered', which contradicts that sentence and deploy.yaml (every green master run deploys; workflow_dispatch adds manual deploys). The claim names no identifier, path or number, so the token verifier passed it. The scripted answer reproduces both sentences."
+      },
+      "memories": "fixtures/memories/E13.json",
+      "scripted": "fixtures/scripted/E13.txt",
+      "expect": {
+        "outcome": "answer",
+        "must_cite_any": [
+          ".github/CLAUDE.md"
+        ],
+        "must_mark_unsupported": [
+          "does not deploy automatically"
+        ],
+        "must_not_mark_unsupported": [
+          "successful master run"
+        ]
+      }
     }
   ]
 }

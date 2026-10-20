@@ -19,7 +19,9 @@ from typing import Optional
 import consult_engine
 import repo_config
 import server
-from consult_conversations import ConversationError, ConversationStore
+from consult_conversations import (
+    ConversationError, ConversationStore, caller_identity,
+)
 from memory_text import prefers_reformulated, present, projected
 from server import mcp
 
@@ -521,8 +523,12 @@ def consult(
         workstream_id: Optional workstream to resolve repo/branch from.
         conversation_id: Continue an earlier consult as a follow-up. Empty
             starts a new conversation. Follow-ups keep the evidence IDs of
-            earlier turns. Only job tokens can hold conversations; a static
-            token is always stateless and is refused a ``conversation_id``.
+            earlier turns. Every caller can hold conversations: one is bound
+            to the token that started it (a job token's workstream and job,
+            a static token's label), and its long random id is the
+            capability to continue it — keep it to yourself. An id presented
+            by another token, unknown, or idle past its expiry is answered
+            ``conversation expired``.
 
     Returns:
         Dictionary with ``answer`` (or ``note`` when nothing could be
@@ -532,7 +538,7 @@ def consult(
         build time), ``sources``, ``html_refs`` and ``related_memories``;
         ``history`` when a historical note supplied rationale; ``abstained``,
         ``abstained_with_evidence``, ``nonexistent`` and ``searched`` on an
-        abstention; ``conversation_id`` and ``turn`` for job-token callers.
+        abstention; ``conversation_id`` and ``turn`` on every call.
     """
     server._require_scope("memory-read")
     err = server._check_length(question, "question", server.MAX_PROMPT_LEN)
@@ -573,20 +579,14 @@ def consult(
     )
     caller = consult_engine.resolve_caller(repo_url, branch, workstream_id)
 
-    ws_id = server._get_token_workstream_id() or ""
-    job_id = server._get_token_job_id() or ""
-    if not (ws_id and job_id):
-        if conversation_id:
-            return {"ok": False,
-                    "error": "conversations require a job token",
-                    "next_steps": ["call consult without conversation_id"]}
-        return consult_engine.ConsultTurn(
-            question, context, keywords, effective_repo, effective_branch,
-            scope_err is not None, caller,
-        ).run(docs, server._get_memory_client(), server._get_llm())
-
+    # Every caller now takes a slot in the shared conversation LRU, so a busy
+    # static-token client's one-shot calls can evict a job's conversation
+    # within its idle window. A per-owner cap is deferred (tracker bc4600a3).
+    owner = caller_identity(server._get_token_workstream_id() or "",
+                            server._get_token_job_id() or "",
+                            server._get_token_label())
     try:
-        with _conversations.turn(conversation_id, f"{ws_id}/{job_id}",
+        with _conversations.turn(conversation_id, owner,
                                  effective_repo, effective_branch) as conv:
             return consult_engine.ConsultTurn(
                 question, context, keywords, effective_repo, effective_branch,

@@ -6,7 +6,9 @@ import unittest
 
 from manager_test_support import server  # noqa: F401 - sets up sys.path
 
-from consult_conversations import ConversationError, ConversationStore
+from consult_conversations import (
+    ConversationError, ConversationStore, caller_identity,
+)
 from consult_evidence import KIND_DOC, KIND_NOTE, EvidenceItem
 
 
@@ -14,6 +16,20 @@ def _item(kind, n):
     return EvidenceItem(id=f"{'D' if kind == KIND_DOC else 'N'}{n}", kind=kind,
                         text="t", file="a.md" if kind == KIND_DOC else "",
                         start=n, end=n, memory_id=str(n))
+
+
+class TestCallerIdentity(unittest.TestCase):
+
+    def test_a_job_token_is_identified_by_its_workstream_and_job(self):
+        self.assertEqual(caller_identity("ws", "job", "tmp:ws/job"), "job:ws/job")
+
+    def test_a_static_token_is_identified_by_its_label(self):
+        self.assertEqual(caller_identity("", "", "ops-slack"), "token:ops-slack")
+        self.assertEqual(caller_identity("", "", ""), "token:anonymous")
+
+    def test_a_label_spelled_like_a_job_is_another_identity(self):
+        self.assertNotEqual(caller_identity("", "", "ws/job"),
+                            caller_identity("ws", "job", "tmp:ws/job"))
 
 
 class TestConversationStore(unittest.TestCase):
