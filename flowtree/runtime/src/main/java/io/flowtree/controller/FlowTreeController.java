@@ -1264,6 +1264,7 @@ public class FlowTreeController implements ConsoleFeatures {
             int listeningPort = apiEndpoint.getListeningPort();
             listener.setApiPort(listeningPort);
             log("API endpoint started on port " + listeningPort);
+            apiEndpoint.recoverPendingJobs();
         } catch (IOException e) {
             warn("Failed to start API endpoint on port " + apiPort + ": " + e.getMessage());
         }
