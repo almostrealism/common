@@ -150,11 +150,12 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 
 	/**
 	 * Single-precision rounding of the summed loss in the directional check, as an absolute error
-	 * of the loss: divided by the step it bounds the noise of the central difference. Measured
-	 * deviations at the documented configuration were about 1.1 at step {@code 1e-3} and 0.08 at
-	 * step {@code 1e-2}.
+	 * of the loss: divided by the step it bounds the noise of the central difference, and the
+	 * relative term of the check covers the rest. Measured deviations at the documented
+	 * configuration were at most about 1.0 at step {@code 1e-3} for the projections, about 1.95
+	 * for the token embedding (whose directional derivative of about 1340 keeps that within 0.15%,
+	 * well inside the relative term), and at most about 0.04 at step {@code 1e-2}.
 	 */
-	// TODO(review): latest surefire log shows token_embedding deviating by about 1.95 at step 1e-3, above the 1.1 quoted
 	private static final double DIRECTIONAL_NOISE = 1.5e-3;
 
 	/** The documentation pages the model is trained on, relative to the repository root. */
@@ -477,25 +478,24 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 				PackedCollection weight = lm.getWeights().get(key);
 				PackedCollection analytic = recordedGradient(key, weight, recordedWeights, recordedGradients);
 				TraversalPolicy flat = shape(weight.getMemLength());
-				PackedCollection original = new PackedCollection(flat);
-				original.setFrom(0, weight);
-				PackedCollection direction = randn(flat, 0.0, 1.0, directions).evaluate();
-				double expected = cp(analytic.reshape(flat)).multiply(cp(direction)).sum().evaluate().toDouble();
+				try (PackedCollection original = new PackedCollection(flat);
+					 PackedCollection direction = randn(flat, 0.0, 1.0, directions).evaluate()) {
+					original.setFrom(0, weight);
+					double expected = cp(analytic.reshape(flat)).multiply(cp(direction)).sum().evaluate().toDouble();
 
-				a(p(weight.reshape(flat)), cp(original).add(cp(direction).multiply(eps))).get().run();
-				double up = loss.evaluate(compiled.forward(ids), outputGradient).toDouble();
-				a(p(weight.reshape(flat)), cp(original).subtract(cp(direction).multiply(eps))).get().run();
-				double down = loss.evaluate(compiled.forward(ids), outputGradient).toDouble();
-				weight.setFrom(0, original);
-				double numeric = (up - down) / (2 * eps);
+					a(p(weight.reshape(flat)), cp(original).add(cp(direction).multiply(eps))).get().run();
+					double up = loss.evaluate(compiled.forward(ids), outputGradient).toDouble();
+					a(p(weight.reshape(flat)), cp(original).subtract(cp(direction).multiply(eps))).get().run();
+					double down = loss.evaluate(compiled.forward(ids), outputGradient).toDouble();
+					weight.setFrom(0, original);
+					double numeric = (up - down) / (2 * eps);
 
-				log("weight=" + key + " eps=" + eps + " analyticDirectional=" + expected +
-						" numericDirectional=" + numeric);
-				Assert.assertTrue(key + " directional derivative " + expected + " differs from the central " +
-								"difference " + numeric,
-						Math.abs(expected - numeric) <= 0.05 * Math.abs(numeric) + DIRECTIONAL_NOISE / eps);
-				original.destroy();
-				direction.destroy();
+					log("weight=" + key + " eps=" + eps + " analyticDirectional=" + expected +
+							" numericDirectional=" + numeric);
+					Assert.assertTrue(key + " directional derivative " + expected + " differs from the central " +
+									"difference " + numeric,
+							Math.abs(expected - numeric) <= 0.05 * Math.abs(numeric) + DIRECTIONAL_NOISE / eps);
+				}
 			}
 		} finally {
 			compiled.destroy();

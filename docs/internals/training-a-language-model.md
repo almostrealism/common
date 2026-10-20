@@ -369,7 +369,7 @@ a sentence. The choice of the first byte is narrow (`a` at p = 0.124 against `t`
 the text is specific to this backend's arithmetic, although the run itself is deterministic.
 The model now beats the count-based bigram on held-out text but not the trigram (3.07), and
 greedy decoding locks onto whatever short loop the model ranks highest, so readable sentences
-need the model to close more of that gap. The next levers are those this round left untried: more steps at the lower rate
-(the held-out curve was still falling in the last epochs), batch sizes above 1, and a single-
-position decode with a key/value cache, which would make sampling with a temperature or top-p
-cheap enough to compare against greedy decoding.
+need the model to close more of that gap. The next levers are those this round left untried:
+more steps at the lower rate (the held-out curve was still falling in the last epochs), batch
+sizes above 1, and a single-position decode with a key/value cache, which would make sampling
+with a temperature or top-p cheap enough to compare against greedy decoding.
