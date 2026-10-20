@@ -191,7 +191,7 @@ reproduced every logged loss and the continuation exactly.
 
 ### From 96 spaces to words
 
-Until this configuration, every recorded run greedily continued the prompt with 96 spaces. Two
+Until this round, every documented run greedily continued the prompt with 96 spaces. Two
 measurements located the cause, both logged by the test:
 
 - **It was the training, not the decoder or the gradient.** The test logs the most probable bytes
