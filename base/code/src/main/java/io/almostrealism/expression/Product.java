@@ -124,7 +124,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		List<OptionalLong> values = getChildren().stream()
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
@@ -158,7 +158,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	 * rather than as bounded below by zero.</p>
 	 */
 	@Override
-	public OptionalLong lowerBound(KernelStructureContext context) {
+	protected OptionalLong computeLowerBound(KernelStructureContext context) {
 		List<OptionalLong> lower = getChildren().stream()
 				.map(e -> e.lowerBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());

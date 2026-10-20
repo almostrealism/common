@@ -268,8 +268,8 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 		String i = getVariablePrefix() + "_i";
 		scope.setIndex(new Variable<>(i));
 
-		DefaultIndex ref = new DefaultIndex(i);
-		getIndexLimit().ifPresent(ref::setLimit);
+		OptionalInt limit = getIndexLimit();
+		DefaultIndex ref = limit.isPresent() ? new DefaultIndex(i, limit.getAsInt()) : new DefaultIndex(i);
 		scope.setCondition(condition.apply(getTraversableArguments(ref), ref));
 
 		Expression index = new KernelIndex(context).divide(e(getShape().getSize())).multiply(e(getShape().getSize()));

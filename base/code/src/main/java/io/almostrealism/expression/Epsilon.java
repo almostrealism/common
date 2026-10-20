@@ -45,12 +45,12 @@ public class Epsilon extends StaticReference<Double> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return OptionalLong.of(1);
 	}
 
 	@Override
-	public OptionalLong lowerBound(KernelStructureContext context) {
+	protected OptionalLong computeLowerBound(KernelStructureContext context) {
 		return OptionalLong.of(0);
 	}
 

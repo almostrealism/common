@@ -75,18 +75,18 @@ public class Atan2 extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		// atan2 returns values in the range [-PI, PI]
 		return OptionalLong.of(4); // ceil(PI)
 	}
 
 	@Override
-	public OptionalLong lowerBound(KernelStructureContext context) {
+	protected OptionalLong computeLowerBound(KernelStructureContext context) {
 		return OptionalLong.of(-4); // floor(-PI)
 	}
 
 	@Override
-	public boolean isPossiblyNegative() {
+	protected boolean computePossiblyNegative() {
 		return true; // atan2 can return negative values
 	}
 

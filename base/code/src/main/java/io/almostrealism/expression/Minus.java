@@ -75,7 +75,7 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalLong i = getChildren().get(0).upperBound(context);
 		if (i.isPresent()) {
 			long value = i.getAsLong();
@@ -83,11 +83,11 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 			return OptionalLong.of(-value);
 		}
 
-		return super.upperBound(context);
+		return super.computeUpperBound(context);
 	}
 
 	@Override
-	public boolean isPossiblyNegative() {
+	protected boolean computePossiblyNegative() {
 		return true;
 	}
 

@@ -111,7 +111,7 @@ public class KernelIndex extends DefaultIndex {
 
 	/** {@inheritDoc} */
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		if (context == null) context = this.context;
 		if (context == null) return OptionalLong.empty();
 		return context.getKernelMaximum().stream().map(i -> i - 1).findFirst();
@@ -123,7 +123,7 @@ public class KernelIndex extends DefaultIndex {
 	 * @return zero (kernel indices always start at 0)
 	 */
 	@Override
-	public OptionalLong lowerBound(KernelStructureContext context) {
+	protected OptionalLong computeLowerBound(KernelStructureContext context) {
 		return OptionalLong.of(0);
 	}
 

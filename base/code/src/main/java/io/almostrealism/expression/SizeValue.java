@@ -47,13 +47,13 @@ public class SizeValue extends StaticReference<Integer> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		// TODO  This value can probably be known
 		return OptionalLong.empty();
 	}
 
 	@Override
-	public OptionalLong lowerBound(KernelStructureContext context) {
+	protected OptionalLong computeLowerBound(KernelStructureContext context) {
 		return OptionalLong.of(0);
 	}
 

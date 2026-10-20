@@ -79,7 +79,7 @@ public abstract class BinaryExpression<T> extends Expression<T> {
 	 * @return true if either operand could be negative, false otherwise
 	 */
 	@Override
-	public boolean isPossiblyNegative() {
+	protected boolean computePossiblyNegative() {
 		return getLeft().isPossiblyNegative() || getRight().isPossiblyNegative();
 	}
 }

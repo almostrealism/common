@@ -114,7 +114,7 @@ public class KernelIndexChild extends IndexChild {
 
 	/** {@inheritDoc} */
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		if (context == null) context = this.context;
 		if (context == null) return OptionalLong.empty();
 
@@ -129,7 +129,7 @@ public class KernelIndexChild extends IndexChild {
 
 	/** {@inheritDoc} */
 	@Override
-	public boolean isPossiblyNegative() {
+	protected boolean computePossiblyNegative() {
 		return getChildren().get(1).isPossiblyNegative();
 	}
 

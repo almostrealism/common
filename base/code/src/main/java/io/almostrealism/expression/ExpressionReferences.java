@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.sequence.Index;
 
@@ -135,6 +136,25 @@ public interface ExpressionReferences {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Returns the kernel structure context associated with this expression.
+	 *
+	 * <p>The context provides information about the kernel structure, including
+	 * maximum kernel size and series providers for optimization. This base implementation
+	 * searches the children, returning the first context found; the
+	 * {@link io.almostrealism.kernel.KernelIndex} overrides it to report its own.</p>
+	 *
+	 * @return the kernel structure context, or {@code null} if none is associated
+	 */
+	default KernelStructureContext getStructureContext() {
+		for (Expression<?> child : getChildren()) {
+			KernelStructureContext context = child.getStructureContext();
+			if (context != null) return context;
+		}
+
+		return null;
 	}
 
 	/**

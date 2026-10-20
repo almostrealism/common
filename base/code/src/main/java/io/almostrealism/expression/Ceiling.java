@@ -111,7 +111,7 @@ public class Ceiling extends Expression<Double> {
 	 * @return an OptionalLong containing the upper bound if computable, otherwise empty
 	 */
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalDouble v = doubleValue();
 		if (v.isPresent()) return OptionalLong.of((long) Math.ceil(v.getAsDouble()));
 

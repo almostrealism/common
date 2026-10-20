@@ -107,7 +107,7 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return OptionalLong.of((long) Math.ceil(value));
 	}
 
