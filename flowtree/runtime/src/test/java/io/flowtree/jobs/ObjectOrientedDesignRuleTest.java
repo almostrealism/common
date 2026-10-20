@@ -20,12 +20,16 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -34,11 +38,12 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Tests of {@link ObjectOrientedDesignRule}: one review session per changed production class,
- * in order, with deleted files, tests and non-Java files skipped, and a prompt that names the
- * class under review and asks for fixes rather than deferral. Also covers the per-job
- * {@link CodingAgentJob#isObjectOrientedReviewEnabled()} switch that activates the rule, which
- * is off by default and travels over the wire.
+ * Tests of {@link ObjectOrientedDesignRule}: one review session per job over the changed production
+ * classes the {@link ObjectOrientedRiskGate} flags and the {@link ObjectOrientedReviewLedger} has
+ * not already settled, with per-class verdicts read from the repository root or a module directory,
+ * the primary commit message preserved across the session, and verdicts persisted across jobs. Also
+ * covers the per-job {@link CodingAgentJob#isObjectOrientedReviewEnabled()} switch, which is on by
+ * default and travels over the wire.
  */
 public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 
@@ -64,60 +69,128 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Each changed production class gets exactly one session, in the reported order; test
-	 * sources, non-Java files and changed paths whose file no longer exists are skipped, and a
-	 * class added by an earlier review session is reviewed in turn.
+	 * A rule whose git-backed inspection and ledger are replaced by in-memory fakes, so selection,
+	 * prompt-building and verdict-recording can be tested without a git working tree.
+	 */
+	private static final class FakeRule extends ObjectOrientedDesignRule {
+		/** The design signals each path's inspection reports. */
+		private final Map<String, EnumSet<ObjectOrientedRiskGate.Signal>> signals;
+		/** The git blob id each path's inspection reports. */
+		private final Map<String, String> blobs;
+		/** The ledger every inspection and recording uses. */
+		private final ObjectOrientedReviewLedger ledger;
+
+		/**
+		 * @param ledgerFile the backing file for the shared ledger
+		 */
+		FakeRule(Path ledgerFile) {
+			this.signals = new HashMap<>();
+			this.blobs = new HashMap<>();
+			this.ledger = new ObjectOrientedReviewLedger(ledgerFile);
+		}
+
+		/**
+		 * Declares the signals and blob id a path's inspection reports.
+		 *
+		 * @param path   the class path
+		 * @param blob   the blob id to report
+		 * @param fired  the signals to report
+		 * @return this rule, for chaining
+		 */
+		FakeRule with(String path, String blob, ObjectOrientedRiskGate.Signal... fired) {
+			blobs.put(path, blob);
+			EnumSet<ObjectOrientedRiskGate.Signal> set = EnumSet.noneOf(ObjectOrientedRiskGate.Signal.class);
+			for (ObjectOrientedRiskGate.Signal signal : fired) set.add(signal);
+			signals.put(path, set);
+			return this;
+		}
+
+		@Override
+		Candidate inspect(CodingAgentJob job, String path, String base) {
+			String blob = blobs.getOrDefault(path, "blob-" + path);
+			EnumSet<ObjectOrientedRiskGate.Signal> fired =
+					signals.getOrDefault(path, EnumSet.noneOf(ObjectOrientedRiskGate.Signal.class));
+			return new Candidate(path, blob, fired);
+		}
+
+		@Override
+		ObjectOrientedReviewLedger ledger(CodingAgentJob job) { return ledger; }
+	}
+
+	/**
+	 * Every flagged, unsettled class is reviewed together in a single session: one prompt names
+	 * them all, and once every one has a verdict the rule is resolved. A changed class the gate does
+	 * not flag is never selected.
 	 *
 	 * @throws IOException if the temporary tree cannot be written
 	 */
 	@Test(timeout = 30000)
-	public void reviewsEachChangedProductionClassOnce() throws IOException {
+	public void reviewsFlaggedClassesInOneSession() throws IOException {
 		Path root = Files.createTempDirectory("oop-rule");
 		try {
-			String first = "engine/ml/src/main/java/org/example/Window.java";
-			String second = "src/main/java/org/example/Model.java";
-			String added = "engine/ml/src/main/java/org/example/Config.java";
-			for (String path : List.of(first, second, added, "engine/ml/src/test/java/org/example/WindowTest.java",
-					"engine/ml/src/main/java/org/example/package-info.java", "docs/notes.md")) {
+			String flaggedA = "engine/ml/src/main/java/org/example/Window.java";
+			String flaggedB = "src/main/java/org/example/ModelHolder.java";
+			String unflagged = "engine/ml/src/main/java/org/example/Plain.java";
+			for (String path : List.of(flaggedA, flaggedB, unflagged)) {
 				Files.createDirectories(root.resolve(path).getParent());
 				Files.writeString(root.resolve(path), "class X {}");
 			}
-
-			List<String> changed = new ArrayList<>(List.of(first,
-					"engine/ml/src/test/java/org/example/WindowTest.java",
-					"engine/ml/src/main/java/org/example/Deleted.java",
-					"engine/ml/src/main/java/org/example/package-info.java",
-					"docs/notes.md", second));
-			StubJob job = new StubJob(root, changed);
-			ObjectOrientedDesignRule rule = new ObjectOrientedDesignRule();
+			StubJob job = new StubJob(root, new ArrayList<>(List.of(flaggedA, unflagged, flaggedB)));
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(flaggedA, "a1", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(flaggedB, "b1", ObjectOrientedRiskGate.Signal.SUSPICIOUS_NAME)
+					.with(unflagged, "p1");
 
 			assertTrue(rule.isViolated(job));
-			assertTrue(rule.buildCorrectionPrompt(job).startsWith("OBJECT-ORIENTED DESIGN REVIEW: " + first));
-			assertTrue(rule.getReviewed().isEmpty());
-			appendVerdict(root, first + ": CLEAN");
+			String prompt = rule.buildCorrectionPrompt(job);
+			assertTrue(prompt.contains(flaggedA));
+			assertTrue(prompt.contains(flaggedB));
+			assertTrue(prompt.contains(ObjectOrientedRiskGate.Signal.NEW_CLASS.description()));
+			assertTrue(prompt.contains(ObjectOrientedRiskGate.Signal.SUSPICIOUS_NAME.description()));
+			assertFalse("an unflagged class must not be reviewed", prompt.contains(unflagged));
+
+			appendVerdict(root, VERDICT_FILE, flaggedA + ": CLEAN");
+			appendVerdict(root, VERDICT_FILE, flaggedB + ": FIXED - made it a factory");
 			rule.onCorrectionAttempted(job);
-			assertTrue(rule.isViolated(job));
-			assertTrue(rule.buildCorrectionPrompt(job).startsWith("OBJECT-ORIENTED DESIGN REVIEW: " + second));
-			appendVerdict(root, second + ": FIXED - made it extend Model");
-			rule.onCorrectionAttempted(job);
+
+			assertEquals(Set.of(flaggedA, flaggedB), rule.getReviewed());
 			assertFalse(rule.isViolated(job));
-
-			changed.add(added);
-			assertTrue(rule.isViolated(job));
-			assertTrue(rule.buildCorrectionPrompt(job).startsWith("OBJECT-ORIENTED DESIGN REVIEW: " + added));
-			appendVerdict(root, added + ": CLEAN");
-			rule.onCorrectionAttempted(job);
-			assertFalse(rule.isViolated(job));
-			assertEquals(List.of(first, second, added), new ArrayList<>(rule.getReviewed()));
 		} finally {
 			delete(root);
 		}
 	}
 
 	/**
-	 * A session that records no verdict for its class, or a verdict for a different class, or a
-	 * line that is not a verdict, leaves the class unreviewed, so the next session reviews the
-	 * same class again; once its verdict is recorded the class counts as reviewed.
+	 * A verdict a session writes into a module's {@code .flowtree/oop-review.md} — not the
+	 * repository root — is still found, so the class is not re-reviewed.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void verdictFoundInModuleDirectory() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String target = "engine/ml/src/main/java/org/example/Window.java";
+			Files.createDirectories(root.resolve(target).getParent());
+			Files.writeString(root.resolve(target), "class Window {}");
+			StubJob job = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(target, "w1", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+
+			rule.buildCorrectionPrompt(job);
+			appendVerdict(root, "engine/ml/" + VERDICT_FILE, target + ": CLEAN");
+			rule.onCorrectionAttempted(job);
+
+			assertEquals(Set.of(target), rule.getReviewed());
+			assertFalse(rule.isViolated(job));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
+	 * A class whose session records no verdict stays unreviewed, so a later session reviews it
+	 * again; a verdict only for another class does not count.
 	 *
 	 * @throws IOException if the temporary tree cannot be written
 	 */
@@ -130,22 +203,20 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 			Files.createDirectories(root.resolve(target).getParent());
 			Files.writeString(root.resolve(target), "class Window {}");
 			StubJob job = new StubJob(root, new ArrayList<>(List.of(target)));
-			ObjectOrientedDesignRule rule = new ObjectOrientedDesignRule();
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(target, "w1", ObjectOrientedRiskGate.Signal.NEW_CLASS);
 
-			assertTrue(rule.buildCorrectionPrompt(job).startsWith("OBJECT-ORIENTED DESIGN REVIEW: " + target));
+			rule.buildCorrectionPrompt(job);
 			rule.onCorrectionAttempted(job);
-			assertTrue("a session without a verdict file counted as a review", rule.getReviewed().isEmpty());
+			assertTrue("a session without a verdict counted as a review", rule.getReviewed().isEmpty());
 			assertTrue(rule.isViolated(job));
 
-			appendVerdict(root, other + ": CLEAN");
-			appendVerdict(root, target + ": reviewing");
-			assertTrue(rule.buildCorrectionPrompt(job).startsWith("OBJECT-ORIENTED DESIGN REVIEW: " + target));
+			appendVerdict(root, VERDICT_FILE, other + ": CLEAN");
+			rule.buildCorrectionPrompt(job);
 			rule.onCorrectionAttempted(job);
-			assertTrue("a verdict for another class, or a non-verdict line, counted as a review",
-					rule.getReviewed().isEmpty());
-			assertTrue(rule.isViolated(job));
+			assertTrue("a verdict for another class counted as a review", rule.getReviewed().isEmpty());
 
-			appendVerdict(root, "  " + target + ": CLEAN");
+			appendVerdict(root, VERDICT_FILE, target + ": CLEAN");
 			rule.buildCorrectionPrompt(job);
 			rule.onCorrectionAttempted(job);
 			assertEquals(Set.of(target), rule.getReviewed());
@@ -156,17 +227,92 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Appends a line to the verdict file of a working tree, as a review session does.
+	 * The review session must not own the commit message: whatever it writes to {@code commit.txt}
+	 * is replaced with the primary session's message after the session.
 	 *
-	 * @param root the working tree
-	 * @param line the line to append
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void primaryCommitMessageSurvivesReview() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String target = "engine/ml/src/main/java/org/example/Window.java";
+			Files.createDirectories(root.resolve(target).getParent());
+			Files.writeString(root.resolve(target), "class Window {}");
+			Files.writeString(root.resolve("commit.txt"), "Add the sliding window layer");
+			StubJob job = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(target, "w1", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+
+			rule.buildCorrectionPrompt(job);
+			// Simulate the review session rewriting commit.txt to describe its own verdict.
+			Files.writeString(root.resolve("commit.txt"), "Record OOP verdict: Window CLEAN");
+			appendVerdict(root, VERDICT_FILE, target + ": CLEAN");
+			rule.onCorrectionAttempted(job);
+
+			assertEquals("Add the sliding window layer",
+					Files.readString(root.resolve("commit.txt"), StandardCharsets.UTF_8));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
+	 * A verdict recorded in one job's ledger skips the unchanged class in a later job; editing the
+	 * class (a new blob id) brings it back for review.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void verdictPersistsAcrossJobsUntilContentChanges() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String target = "engine/ml/src/main/java/org/example/Window.java";
+			Files.createDirectories(root.resolve(target).getParent());
+			Files.writeString(root.resolve(target), "class Window {}");
+			Path ledger = root.resolve("ledger.tsv");
+
+			StubJob firstJob = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule firstRule = new FakeRule(ledger)
+					.with(target, "blobA", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+			firstRule.buildCorrectionPrompt(firstJob);
+			appendVerdict(root, VERDICT_FILE, target + ": CLEAN");
+			firstRule.onCorrectionAttempted(firstJob);
+			assertTrue(firstRule.getReviewed().contains(target));
+
+			// A later job, same content (blobA): already settled, nothing to review.
+			StubJob sameContent = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule sameRule = new FakeRule(ledger)
+					.with(target, "blobA", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+			assertFalse("an unchanged, already-cleared class must not be reviewed again",
+					sameRule.isViolated(sameContent));
+
+			// A later job after an edit (blobB): reviewed again.
+			StubJob edited = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule editedRule = new FakeRule(ledger)
+					.with(target, "blobB", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+			assertTrue("an edited class must be reviewed again", editedRule.isViolated(edited));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
+	 * Appends a line to a verdict file of a working tree, as a review session does.
+	 *
+	 * @param root     the working tree
+	 * @param relative the verdict file's path relative to the tree
+	 * @param line     the line to append
 	 * @throws IOException if the file cannot be written
 	 */
-	private void appendVerdict(Path root, String line) throws IOException {
-		Path verdicts = root.resolve(ObjectOrientedDesignRule.VERDICT_PATH);
+	private void appendVerdict(Path root, String relative, String line) throws IOException {
+		Path verdicts = root.resolve(relative);
 		Files.createDirectories(verdicts.getParent());
 		Files.writeString(verdicts, line + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 	}
+
+	/** The repository-root verdict file, relative to the working tree. */
+	private static final String VERDICT_FILE = ObjectOrientedDesignRule.VERDICT_PATH;
 
 	/**
 	 * Deletes a temporary tree.
@@ -188,9 +334,8 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 	}
 
 	/**
-	 * The verdict file is the rule's progress path, so a review that finds a class sound is
-	 * not counted as a session that made no progress, and the per-pass cap is the runner's
-	 * ceiling, so remaining classes continue in a later pass.
+	 * The verdict file is the rule's progress path, so a review that finds a class sound is not
+	 * counted as a session that made no progress, and the per-pass cap is the runner's ceiling.
 	 */
 	@Test(timeout = 30000)
 	public void verdictFileIsProgressAndCapIsRunnerCeiling() {
@@ -201,27 +346,32 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 	}
 
 	/**
-	 * The prompt names the class under review, lists the other changed classes for context,
-	 * covers the violations the owner has rejected, demands fixes rather than deferral, and
-	 * asks for the verdict line.
+	 * The prompt names every flagged class with the signals that flagged it, covers the violations
+	 * the owner has rejected, demands fixes rather than deferral, asks for one verdict line per
+	 * class, and forbids editing the commit message.
 	 */
 	@Test(timeout = 30000)
-	public void promptDemandsFixesForOneClass() {
-		String target = "engine/ml/src/main/java/org/example/Window.java";
-		String other = "engine/ml/src/main/java/org/example/Model.java";
-		String prompt = new ObjectOrientedDesignRule().buildReviewPrompt(target, List.of(target, other), "develop");
+	public void promptListsFlaggedClassesWithSignals() {
+		String window = "engine/ml/src/main/java/org/example/Window.java";
+		String config = "engine/ml/src/main/java/org/example/LayerConfig.java";
+		ObjectOrientedDesignRule.Candidate a = new ObjectOrientedDesignRule.Candidate(
+				window, "w1", EnumSet.of(ObjectOrientedRiskGate.Signal.LAMBDA_ARGUMENT));
+		ObjectOrientedDesignRule.Candidate b = new ObjectOrientedDesignRule.Candidate(
+				config, "c1", EnumSet.of(ObjectOrientedRiskGate.Signal.SUSPICIOUS_NAME));
+		String prompt = new ObjectOrientedDesignRule().buildReviewPrompt(List.of(a, b), "develop");
 
-		assertTrue(prompt.contains("This session reviews ONE class: " + target));
-		assertTrue(prompt.contains("  " + other + "\n"));
-		assertTrue(prompt.contains("git diff origin/develop -- " + target));
-		assertFalse(prompt.contains("  " + target + "\n"));
+		assertTrue(prompt.contains(window));
+		assertTrue(prompt.contains(config));
+		assertTrue(prompt.contains(ObjectOrientedRiskGate.Signal.LAMBDA_ARGUMENT.description()));
+		assertTrue(prompt.contains(ObjectOrientedRiskGate.Signal.SUSPICIOUS_NAME.description()));
+		assertTrue(prompt.contains("git diff origin/develop"));
 		assertTrue(prompt.contains("IDENTITY"));
 		assertTrue(prompt.contains("OWN YOUR COLLABORATORS"));
 		assertTrue(prompt.contains("NO REACHING INTO OBJECTS"));
 		assertTrue(prompt.contains("SUBCLASS, DON'T WIRE LAMBDAS"));
 		assertTrue(prompt.contains("Do not defer"));
 		assertTrue(prompt.contains(ObjectOrientedDesignRule.VERDICT_PATH));
-		assertTrue(prompt.contains(target + ": CLEAN"));
+		assertTrue(prompt.contains("Do NOT write or edit commit.txt"));
 	}
 
 	/**
@@ -235,21 +385,20 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 				.anyMatch(rule -> rule instanceof ObjectOrientedDesignRule);
 	}
 
-	/** With review enabled and the flag left at its default, the rule is not assembled. */
+	/** With review enabled and the flag left at its default, the rule is assembled. */
 	@Test(timeout = 30000)
-	public void ruleAbsentByDefaultWithReviewEnabled() {
+	public void rulePresentByDefaultWithReviewEnabled() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
 		assertTrue(job.isReviewEnabled());
-		assertFalse(job.isObjectOrientedReviewEnabled());
-		assertFalse(hasObjectOrientedRule(job));
+		assertTrue(job.isObjectOrientedReviewEnabled());
+		assertTrue(hasObjectOrientedRule(job));
 	}
 
-	/** Opting in while review is enabled assembles the rule after the content rules, before staging checks. */
+	/** Enabled while review is enabled, the rule is assembled after the review rule, before staging checks. */
 	@Test(timeout = 30000)
-	public void rulePresentWhenFlagSetAndReviewEnabled() {
+	public void ruleOrderedAfterReviewAndBeforeStaging() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
 		job.setTargetBranch("feature/test");
-		job.setObjectOrientedReviewEnabled(true);
 
 		List<EnforcementRule> rules = new EnforcementRunner(job).buildActiveRules();
 		int review = -1;
@@ -265,44 +414,50 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 		assertTrue("ObjectOrientedDesignRule must precede StagingSkipRule", oop < staging);
 	}
 
-	/** Opting in has no effect when review is disabled. */
+	/** Switching the flag off removes the rule even while review is enabled. */
 	@Test(timeout = 30000)
-	public void ruleAbsentWhenFlagSetButReviewDisabled() {
+	public void ruleAbsentWhenSwitchedOff() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
-		job.setObjectOrientedReviewEnabled(true);
+		job.setObjectOrientedReviewEnabled(false);
+		assertFalse(hasObjectOrientedRule(job));
+	}
+
+	/** The rule has no effect when review is disabled, even at its default. */
+	@Test(timeout = 30000)
+	public void ruleAbsentWhenReviewDisabled() {
+		CodingAgentJob job = new CodingAgentJob("t1", "p");
 		job.setReviewEnabled(false);
 		assertFalse(hasObjectOrientedRule(job));
 	}
 
-	/** The job codec round-trips the opt-in and omits the key when the flag is at its default. */
+	/** The job codec omits the key at the on-by-default value and carries an explicit off over the wire. */
 	@Test(timeout = 30000)
-	public void jobCodecRoundTripsFlag() {
+	public void jobCodecRoundTripsOffSwitch() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
 		assertFalse(job.encode().contains("objectOrientedReviewEnabled"));
-		assertFalse(GitManagedJobSerializationTest.roundTrip(job).isObjectOrientedReviewEnabled());
-
-		job.setObjectOrientedReviewEnabled(true);
-		assertTrue(job.encode().contains("::objectOrientedReviewEnabled:=true"));
 		assertTrue(GitManagedJobSerializationTest.roundTrip(job).isObjectOrientedReviewEnabled());
+
+		job.setObjectOrientedReviewEnabled(false);
+		assertTrue(job.encode().contains("::objectOrientedReviewEnabled:=false"));
+		assertFalse(GitManagedJobSerializationTest.roundTrip(job).isObjectOrientedReviewEnabled());
 	}
 
-	/** A factory decoded without the field, as from an older submission, leaves the rule off. */
+	/** A factory decoded without the field, as from an older submission, leaves the rule on. */
 	@Test(timeout = 30000)
-	public void missingFieldDecodesAsOff() {
+	public void missingFieldDecodesAsOn() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
-		assertFalse(factory.encode().contains("objectOrientedReviewEnabled"));
-		CodingAgentJobFactory decoded = GitManagedJobSerializationTest.roundTripFactory(factory);
-		assertFalse(decoded.isObjectOrientedReviewEnabled());
-		assertFalse(((CodingAgentJob) decoded.nextJob()).isObjectOrientedReviewEnabled());
-	}
-
-	/** A factory that opts in survives the wire and hands the opt-in to the jobs it creates. */
-	@Test(timeout = 30000)
-	public void factoryOptInRoundTripsAndPropagates() {
-		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
-		factory.setObjectOrientedReviewEnabled(true);
 		CodingAgentJobFactory decoded = GitManagedJobSerializationTest.roundTripFactory(factory);
 		assertTrue(decoded.isObjectOrientedReviewEnabled());
 		assertTrue(((CodingAgentJob) decoded.nextJob()).isObjectOrientedReviewEnabled());
+	}
+
+	/** A factory that switches the review off survives the wire and hands the off switch to its jobs. */
+	@Test(timeout = 30000)
+	public void factoryOptOutRoundTripsAndPropagates() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		factory.setObjectOrientedReviewEnabled(false);
+		CodingAgentJobFactory decoded = GitManagedJobSerializationTest.roundTripFactory(factory);
+		assertFalse(decoded.isObjectOrientedReviewEnabled());
+		assertFalse(((CodingAgentJob) decoded.nextJob()).isObjectOrientedReviewEnabled());
 	}
 }

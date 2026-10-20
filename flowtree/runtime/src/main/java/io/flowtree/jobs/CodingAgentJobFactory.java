@@ -122,13 +122,14 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean enforceOrganizationalPlacement = false;
 
     /**
-     * When {@code true}, jobs created by this factory activate the
-     * {@link ObjectOrientedDesignRule} (only while review is also enabled).
-     * Defaults to {@code false}; opt in via {@code objectOrientedReviewEnabled=true}
-     * on the submit request, or by calling
-     * {@link #setObjectOrientedReviewEnabled(boolean)} directly.
+     * When {@code true} (the default), jobs created by this factory activate the
+     * {@link ObjectOrientedDesignRule} (only while review is also enabled). The
+     * risk gate keeps the review cheap by spending a session only on changed
+     * classes whose design the gate flags. Switch it off per job via
+     * {@code objectOrientedReviewEnabled=false} on the submit request, or by
+     * calling {@link #setObjectOrientedReviewEnabled(boolean)} directly.
      */
-    private boolean objectOrientedReviewEnabled = false;
+    private boolean objectOrientedReviewEnabled = true;
 
     /**
      * When {@code true}, jobs created by this factory launch the agent

@@ -826,6 +826,7 @@ public class GitOperations implements ConsoleFeatures {
     public static boolean isExcludedPath(String path) {
         return path.isEmpty()
                 || path.startsWith(".flowtree/")
+                || path.contains("/.flowtree/")
                 || path.startsWith("claude-output/")
                 || path.startsWith(".claude/")
                 || path.startsWith("target/")

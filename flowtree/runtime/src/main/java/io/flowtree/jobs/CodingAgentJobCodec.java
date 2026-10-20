@@ -100,8 +100,10 @@ final class CodingAgentJobCodec {
         if (job.isEnforceOrganizationalPlacement()) {
             sb.append("::enforceOrgPlacement:=true");
         }
-        if (job.isObjectOrientedReviewEnabled()) {
-            sb.append("::objectOrientedReviewEnabled:=true");
+        // objectOrientedReviewEnabled defaults to TRUE; emit only when false so a
+        // job that switched it off survives the wire instead of decoding to the default.
+        if (!job.isObjectOrientedReviewEnabled()) {
+            sb.append("::objectOrientedReviewEnabled:=false");
         }
         if (job.isUseTmux()) {
             sb.append("::useTmux:=true");
