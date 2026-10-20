@@ -24,6 +24,7 @@ import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.scope.ScopeSettings;
+import io.almostrealism.sequence.DefaultIndex;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -122,6 +123,30 @@ public class ExpressionBoundsMemoizationTests extends TestSuiteBase implements E
 		Assert.assertEquals(20L, index.upperBound(new NoOpKernelStructureContext(20)).getAsLong());
 		Assert.assertTrue(index.upperBound(null).isEmpty());
 		Assert.assertEquals(30L, index.upperBound(new NoOpKernelStructureContext(30)).getAsLong());
+	}
+
+	/**
+	 * The limit of a {@link DefaultIndex} is fixed at construction, so the memoized bounds of
+	 * a composite expression over it are those the limit implies, and an unbounded index
+	 * leaves the composite without an upper bound while its sign is still known.
+	 */
+	@Test(timeout = 30000)
+	public void defaultIndexLimitDeterminesMemoizedBounds() {
+		boolean previous = ScopeSettings.enableBoundsMemoization;
+		ScopeSettings.enableBoundsMemoization = true;
+
+		try {
+			Expression<?> bounded = new DefaultIndex("bounded", 8).multiply(3).add(1);
+			Assert.assertEquals(22L, bounded.upperBound(null).getAsLong());
+			Assert.assertFalse(bounded.isPossiblyNegative());
+			Assert.assertEquals(22L, bounded.upperBound(null).getAsLong());
+
+			Expression<?> unbounded = new DefaultIndex("unbounded").multiply(3).add(1);
+			Assert.assertTrue(unbounded.upperBound(null).isEmpty());
+			Assert.assertFalse(unbounded.isPossiblyNegative());
+		} finally {
+			ScopeSettings.enableBoundsMemoization = previous;
+		}
 	}
 
 	/**

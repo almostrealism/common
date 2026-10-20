@@ -344,11 +344,8 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 			inputArg = getCollectionArgumentVariable(1);
 			if (inputArg == null) return;
 
-			row = new DefaultIndex(getVariablePrefix() + "_g");
-			row.setLimit(getShape().getCountLong());
-
-			ref = new DefaultIndex(getVariablePrefix() + "_i");
-			getIndexLimit().ifPresent(ref::setLimit);
+			row = new DefaultIndex(getVariablePrefix() + "_g", getShape().getCountLong());
+			ref = new DefaultIndex(getVariablePrefix() + "_i", getIndexLimit().getAsInt());
 
 			Expression index = Index.child(row, ref);
 			uniqueOffset = inputArg.uniqueNonZeroOffset(row, ref, index);

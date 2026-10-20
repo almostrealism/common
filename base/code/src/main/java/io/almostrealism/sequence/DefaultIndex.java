@@ -45,8 +45,13 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	/** Counter shared across all temporary indices to keep their names unique. */
 	private static final AtomicLong temporaryCount = new AtomicLong();
 
-	/** The exclusive upper bound of this index, or empty if unbounded. */
-	private OptionalLong limit;
+	/**
+	 * The exclusive upper bound of this index, or empty if unbounded. It is fixed at
+	 * construction because a composite {@link Expression} memoizes its bounds (see
+	 * {@link Expression#upperBound(KernelStructureContext)}): a limit that changed after an
+	 * expression containing this index had been bounded would leave those bounds stale.
+	 */
+	private final OptionalLong limit;
 
 	/**
 	 * Creates an unbounded index with the given name.
@@ -97,27 +102,6 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	public static DefaultIndex temporary(int limit) {
 		return new DefaultIndex("ci_" + temporaryCount.getAndIncrement(), limit);
 	}
-
-	/**
-	 * Sets the limit (exclusive upper bound) for this index.
-	 *
-	 * <p>The limit must be set before this index takes part in an expression whose bounds
-	 * are requested: a composite {@link Expression} memoizes its bounds (see
-	 * {@link Expression#upperBound(KernelStructureContext)}), so a later change of the
-	 * limit would not be reflected in them.</p>
-	 *
-	 * @param limit the new limit as an {@code int}
-	 */
-	// TODO(review): setLimit after a parent's bounds are memoized silently leaves them stale; consider a constructor-only limit or a fail-fast guard
-	public void setLimit(int limit) { this.limit = OptionalLong.of(limit); }
-
-	/**
-	 * Sets the limit (exclusive upper bound) for this index, under the same condition as
-	 * {@link #setLimit(int)}.
-	 *
-	 * @param limit the new limit as a {@code long}
-	 */
-	public void setLimit(long limit) { this.limit = OptionalLong.of(limit); }
 
 	/**
 	 * {@inheritDoc}
