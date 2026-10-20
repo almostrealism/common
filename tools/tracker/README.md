@@ -71,7 +71,7 @@ may do depends on who makes it (see [Who may do what](#who-may-do-what)).
 | Tool | Scope | Description |
 |------|-------|-------------|
 | `tracker_list_projects` | read | List your workspace's projects |
-| `tracker_create_project` | write, people only | Create a project, optionally owned by a workspace |
+| `tracker_create_project` | write, people only | Create a project; its owning workspace is required |
 | `tracker_update_project` | write, people only | Rename a project or assign its workspace |
 | `tracker_delete_project` | write, people only | Delete a project (tasks are kept, FK set to NULL) |
 | `tracker_list_releases` | read | List your workspace's releases (optional `project_id` filter) |
@@ -88,8 +88,11 @@ may do depends on who makes it (see [Who may do what](#who-may-do-what)).
 
 ### Workspaces
 
-A project is owned by at most one workspace (its `workspace_id`), and its
-releases and tasks belong to that workspace. The tracker reports the workspace
+Every project is owned by one workspace (its `workspace_id`), and its
+releases and tasks belong to that workspace. A project cannot be created, or
+imported, without a workspace, and its workspace can be changed but never
+cleared. There is deliberately no default workspace: a project lands where its
+creator says, or nowhere. The tracker reports the workspace
 on every project, release and task it returns, and its list and search
 endpoints accept `workspace_id=<id>[,<id>...]` to return only what those
 workspaces own.
@@ -97,9 +100,10 @@ workspaces own.
 A caller limited to some workspaces — every agent job, and any person whose
 token is scoped — sees only their projects, releases and tasks. A task with no
 project, or whose project no workspace owns, is visible only to callers that
-are not limited. A project that existed before workspaces were introduced is
-owned by none until a person assigns it with
-`tracker_update_project(project_id, workspace_id=...)`.
+are not limited. The only projects owned by no workspace are the ones that existed before
+workspaces were introduced; a person assigns each one with
+`tracker_update_project(project_id, workspace_id=...)`, which a person whose
+token is limited to workspaces may do for one of their own.
 
 ### Readiness, provenance and dependencies
 
@@ -232,10 +236,10 @@ The full API is versioned under `/v1/`. Health check is at `/api/health`.
 GET  /api/health
 
 GET    /v1/projects                     List projects (?workspace_id=<id>[,<id>...])
-POST   /v1/projects                     Create a project ({"name", "workspace_id"})
+POST   /v1/projects                     Create a project ({"name", "workspace_id"}, both required)
 GET    /v1/projects/{id}                Get a project
 PUT    /v1/projects/{id}                Update a project ({"name", "workspace_id"}, each
-                                        optional; workspace_id null owns it by none)
+                                        optional; a workspace is never cleared)
 DELETE /v1/projects/{id}                Delete a project
 GET    /v1/projects/{id}/summary        Aggregate task counts for a project
 
@@ -353,6 +357,10 @@ python tools/tracker/migrate_jira.py \
 
 `--project-name` fills in a default for rows that lack a `Project Name`
 value in the CSV. Per-row CSV values always take precedence.
+
+`--workspace-id` names the workspace that owns any project the migration has
+to create. The tracker refuses a new project without one, so pass it whenever
+the CSV names a project the tracker does not have yet.
 
 **Filtering out Epics, Sub-tasks, and other container issue types**:
 

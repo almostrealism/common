@@ -182,11 +182,16 @@ def _resolve_or_create_project(
     tracker_url: str,
     token: Optional[str],
     dry_run: bool,
+    workspace_id: Optional[str] = None,
 ) -> Optional[str]:
-    """Return the UUID for a project by name, creating it if needed."""
+    """Return the UUID for a project by name, creating it in *workspace_id* if
+    needed. The tracker refuses a new project without a workspace."""
     if name in existing_projects:
         return existing_projects[name]
-    resp = _post_json(f"{tracker_url}/v1/projects", {"name": name}, token, dry_run)
+    payload: dict = {"name": name}
+    if workspace_id:
+        payload["workspace_id"] = workspace_id
+    resp = _post_json(f"{tracker_url}/v1/projects", payload, token, dry_run)
     if dry_run:
         fake_id = str(uuid.uuid5(_JIRA_NS, f"proj:{name}"))
         existing_projects[name] = fake_id
@@ -235,6 +240,7 @@ def migrate(
     workstream_map: Optional[dict],
     default_project_name: Optional[str] = None,
     issue_types: Optional[set] = None,
+    workspace_id: Optional[str] = None,
 ) -> None:
     """Run the Jira → tracker migration.
 
@@ -250,6 +256,8 @@ def migrate(
         issue_types: Optional set of accepted Jira "Issue Type" values
             (case-insensitive). Rows with an Issue Type outside this set
             are skipped. None means accept everything.
+        workspace_id: Workspace that owns any project the migration creates.
+            The tracker refuses a new project without one.
     """
     print(f"Reading {csv_path} …", file=sys.stderr)
     rows = _read_csv(csv_path)
@@ -312,7 +320,8 @@ def migrate(
         project_id = None
         if project_name:
             project_id = _resolve_or_create_project(
-                project_name, existing_projects, tracker_url, token, dry_run
+                project_name, existing_projects, tracker_url, token, dry_run,
+                workspace_id,
             )
 
         # Jira's Fix Version column appears under a few different headings
@@ -474,6 +483,14 @@ def main() -> None:
             "Example: --issue-type Story,Task,Bug. Omit to import every row."
         ),
     )
+    parser.add_argument(
+        "--workspace-id",
+        default="",
+        help=(
+            "Workspace that owns any project the migration has to create. "
+            "Required when the CSV names a project the tracker does not have."
+        ),
+    )
     args = parser.parse_args()
 
     workstream_map = None
@@ -498,6 +515,7 @@ def main() -> None:
         workstream_map=workstream_map,
         default_project_name=args.project_name.strip() or None,
         issue_types=issue_types,
+        workspace_id=args.workspace_id.strip() or None,
     )
 
 

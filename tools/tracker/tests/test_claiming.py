@@ -578,7 +578,7 @@ class BulkImportTests(_StoreTestBase):
 
     def test_projects_and_releases_are_rolled_back_with_a_rejected_task(self):
         resp = self.client.post("/v1/import", json={
-            "projects": [{"id": "p-new", "name": "New"}],
+            "projects": [{"id": "p-new", "name": "New", "workspace_id": "W1"}],
             "releases": [{"id": "r-new", "name": "New 1.0", "project_id": "p-new"}],
             "tasks": [{"title": "no id"}]})
         self.assertEqual(400, resp.status_code)
@@ -590,13 +590,13 @@ class BulkImportTests(_StoreTestBase):
         # A malformed record that raises something other than a database
         # error must still leave nothing for a later write to commit.
         with self.assertRaises(AttributeError):
-            self.store.bulk_import([{"id": "p-new", "name": "New"}, "not-a-project"], [], [])
+            self.store.bulk_import([{"id": "p-new", "name": "New", "workspace_id": "W1"}, "not-a-project"], [], [])
         self.store.create_task(title="later write")
         self.assertIsNone(self.store.get_project("p-new"))
 
     def test_malformed_projects_and_releases_are_refused_with_a_bad_request(self):
         for body, expected in (
-                ({"projects": [{"id": "p-new", "name": "New"}, "x"]}, "projects[1]"),
+                ({"projects": [{"id": "p-new", "name": "New", "workspace_id": "W1"}, "x"]}, "projects[1]"),
                 ({"releases": [7]}, "releases[0]"),
                 ({"projects": {"id": "p-new"}}, "projects must be a list"),
                 ({"tasks": "t"}, "tasks must be a list")):
@@ -630,7 +630,7 @@ class BulkImportTests(_StoreTestBase):
                     self._goal_task("bad", source="GOALS:x"),
                     self._goal_task("bad", title=None)):
             result = self.store.bulk_import(
-                [{"id": "p-new", "name": "New"}], [], [self._goal_task("ok"), bad])
+                [{"id": "p-new", "name": "New", "workspace_id": "W1"}], [], [self._goal_task("ok"), bad])
             self.assertIn("error", result, bad)
             self.assertIn("import rejected by the database", result["error"])
             self.store.create_task(title="later write")
@@ -639,7 +639,7 @@ class BulkImportTests(_StoreTestBase):
             self.assertIsNone(self.store.get_project("p-new"), bad)
 
     def test_new_and_existing_records_are_counted_separately(self):
-        payload = {"projects": [{"id": "p-new", "name": "New"}],
+        payload = {"projects": [{"id": "p-new", "name": "New", "workspace_id": "W1"}],
                    "releases": [{"id": "r-new", "name": "New 1.0", "project_id": "p-new"}],
                    "tasks": [self._goal_task("g1")]}
         first = self.client.post("/v1/import", json=payload).json()
