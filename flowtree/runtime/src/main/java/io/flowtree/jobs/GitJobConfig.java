@@ -92,6 +92,8 @@ public final class GitJobConfig {
 
         // FlowTree internal lock files (placed in <parent>/.flowtree-locks/ outside the workspace)
         ".flowtree.lock", ".flowtree-locks/**"
+        // .flowtree/ scratch is intentionally absent: it is gated at commit time by the
+        // whitelist-aware FlowtreeArtifacts guard, which excluding it here would bypass.
     )));
 
     /**

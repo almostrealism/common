@@ -35,7 +35,7 @@ def workstream_submit_task(
     deduplication_mode: str = "",
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
-    object_oriented_review_enabled: bool = False,
+    object_oriented_review_enabled: bool = True,
     retrospective_enabled: bool = False,
     falsification_enabled: bool = False,
     use_tmux: Optional[bool] = None,
@@ -178,12 +178,18 @@ def workstream_submit_task(
             level of the module hierarchy. Disabled by default to keep routine
             exploratory jobs cheaper. Enable for final pre-merge cleanup jobs
             where placement correctness matters.
-        object_oriented_review_enabled: When ``True``, activates the
-            object-oriented design review after the content rules: one
-            dedicated agent session per changed production class, mandated to
-            fix design violations. Only takes effect while ``review_enabled``
-            is also ``True``. Disabled by default because it runs a session
-            per class and is costly on review-heavy branches.
+        object_oriented_review_enabled: Activates the object-oriented design
+            review after the content rules. A cheap, deterministic risk gate
+            inspects each changed production class's diff and only the classes
+            it flags (new classes, new statics, added instanceof/casts,
+            assertive names like ``*Util``/``*Helper``/``*Model``/``*Block``/
+            ``*Config``, lambdas wired into framework types, public methods
+            taking a collaborator the receiver already holds) are reviewed,
+            together in one session, mandated to fix design violations.
+            Verdicts persist per branch keyed by content hash, so an unchanged
+            class is not reviewed twice. Enabled by default (the gate keeps it
+            cheap); only takes effect while ``review_enabled`` is also ``True``.
+            Pass ``False`` to switch it off for a job.
         retrospective_enabled: When ``True``, activates the retrospective phase
             after all other phases. A separate agent session analyzes the
             primary phase transcript for tool-use and context-efficiency
@@ -743,8 +749,9 @@ def workstream_submit_task(
         payload["maxDeduplicationPasses"] = max_deduplication_passes
     if organizational_placement_enabled:
         payload["enforceOrganizationalPlacement"] = True
-    if object_oriented_review_enabled:
-        payload["objectOrientedReviewEnabled"] = True
+    # Defaults to True on the controller; always send the value so an explicit
+    # False switches the review off per job instead of decoding to the default.
+    payload["objectOrientedReviewEnabled"] = object_oriented_review_enabled
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
     if falsification_enabled:

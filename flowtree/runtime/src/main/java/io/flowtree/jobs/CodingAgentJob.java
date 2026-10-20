@@ -167,8 +167,8 @@ public class CodingAgentJob extends GitManagedJob {
      * {@link #setEnforceOrganizationalPlacement(boolean)}.
      */
     private boolean enforceOrganizationalPlacement = false;
-    /** When {@code true} (and review is enabled), {@link ObjectOrientedDesignRule} runs; default {@code false}. */
-    private boolean objectOrientedReviewEnabled = false;
+    /** When {@code true} (the default, and review is enabled), {@link ObjectOrientedDesignRule} runs. */
+    private boolean objectOrientedReviewEnabled = true;
 
     /** When {@code true} (the default), a second-pass review session runs after primary work. */
     private boolean reviewEnabled = true;

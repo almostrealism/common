@@ -6,9 +6,10 @@ Covers deduplication, organizational placement and object-oriented review:
   unless explicitly requested).
 - Organizational placement is disabled by default (no
   ``enforceOrganizationalPlacement`` in payload unless explicitly requested).
-- Object-oriented design review is disabled by default (no
-  ``objectOrientedReviewEnabled`` in payload unless explicitly requested).
-- Explicit opt-in via ``deduplication_mode``,
+- Object-oriented design review is enabled by default; the value is always
+  sent, so ``objectOrientedReviewEnabled`` is True by default and False when
+  the caller switches it off.
+- Explicit control via ``deduplication_mode``,
   ``organizational_placement_enabled`` and ``object_oriented_review_enabled``
   is forwarded correctly.
 """
@@ -140,8 +141,8 @@ class TestOrganizationalPlacementDefaults(unittest.TestCase):
 
 
 class TestObjectOrientedReviewDefaults(unittest.TestCase):
-    """Object-oriented design review is disabled by default; opt in via
-    object_oriented_review_enabled=True."""
+    """Object-oriented design review is enabled by default; the value is always
+    sent so an explicit object_oriented_review_enabled=False switches it off."""
 
     @patch.object(server, "_controller_post")
     def test_oop_review_omitted_by_default(self, mock_post):
@@ -149,8 +150,8 @@ class TestObjectOrientedReviewDefaults(unittest.TestCase):
         mock_post.return_value = {"ok": True, "jobId": "job-oo1"}
         server.workstream_submit_task(prompt="Task")
         payload = mock_post.call_args[0][1]
-        self.assertNotIn("objectOrientedReviewEnabled", payload,
-                         "objectOrientedReviewEnabled must not be sent by default")
+        self.assertIs(payload.get("objectOrientedReviewEnabled"), True,
+                      "objectOrientedReviewEnabled must be sent True by default")
 
     @patch.object(server, "_controller_post")
     def test_oop_review_false_omitted(self, mock_post):
@@ -159,8 +160,8 @@ class TestObjectOrientedReviewDefaults(unittest.TestCase):
         server.workstream_submit_task(
             prompt="Task", object_oriented_review_enabled=False)
         payload = mock_post.call_args[0][1]
-        self.assertNotIn("objectOrientedReviewEnabled", payload,
-                         "Explicit False must not send the field (factory default handles it)")
+        self.assertIs(payload.get("objectOrientedReviewEnabled"), False,
+                      "Explicit False must be sent so the on-by-default review is switched off")
 
     @patch.object(server, "_controller_post")
     def test_oop_review_true_forwarded(self, mock_post):
@@ -174,13 +175,14 @@ class TestObjectOrientedReviewDefaults(unittest.TestCase):
 
     @patch.object(server, "_controller_post")
     def test_placement_does_not_imply_oop_review(self, mock_post):
-        """Opting in to placement review must not opt in to the per-class review."""
+        """Opting in to placement review must not change the OOP review value,
+        which stays at its on-by-default setting."""
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-oo4"}
         server.workstream_submit_task(
             prompt="Task", organizational_placement_enabled=True)
         payload = mock_post.call_args[0][1]
-        self.assertNotIn("objectOrientedReviewEnabled", payload)
+        self.assertIs(payload.get("objectOrientedReviewEnabled"), True)
 
 
 if __name__ == "__main__":

@@ -123,19 +123,22 @@ for the full contract.
 
 ## Optional Enforcement Phases
 
-Some post-primary enforcement phases are off by default and are enabled per job
-through a `workstream_submit_task` flag. Each flag is forwarded to the controller
-only when it is `True`, so an omitted (or `False`) flag leaves the phase off. The
-submit response echoes the effective setting so the caller can confirm it.
+Some post-primary enforcement phases are controlled per job through a
+`workstream_submit_task` flag. The submit response echoes the effective setting
+so the caller can confirm it.
 
-| Flag | Controller field | Response echo | Phase it enables |
-|------|------------------|---------------|------------------|
-| `organizational_placement_enabled=True` | `enforceOrganizationalPlacement` | `organizationalPlacementEnabled` | Organizational placement review of new files |
-| `object_oriented_review_enabled=True` | `objectOrientedReviewEnabled` | `objectOrientedReviewEnabled` | `ObjectOrientedDesignRule`: one design-review session per changed production class. Takes effect only while `review_enabled` is also `True` |
+| Flag | Default | Controller field | Response echo | Phase it controls |
+|------|---------|------------------|---------------|-------------------|
+| `organizational_placement_enabled` | off | `enforceOrganizationalPlacement` | `organizationalPlacementEnabled` | Organizational placement review of new files. Forwarded only when `True`; an omitted or `False` flag leaves it off |
+| `object_oriented_review_enabled` | **on** | `objectOrientedReviewEnabled` | `objectOrientedReviewEnabled` | `ObjectOrientedDesignRule`: a single design-review session over the changed production classes a deterministic risk gate flags. Always forwarded, so `False` switches it off for a job. Takes effect only while `review_enabled` is also `True` |
 
 Both are job-level settings; there is no workstream or workspace default for them.
-CI auto-resolve and auto-review submissions (`tools/ci/submit-agent-job.sh`) do not
-send either field, so those jobs run with both phases off.
+Organizational placement stays off unless a submission requests it. The
+object-oriented design review is on by default — including for CI auto-resolve and
+auto-review submissions (`tools/ci/submit-agent-job.sh`), which do not send the
+field and so inherit the on-by-default setting; the risk gate keeps its cost low by
+spending a session only on classes whose design it flags, and a submission can send
+`object_oriented_review_enabled=False` to switch it off.
 
 ## Test Execution Limits
 

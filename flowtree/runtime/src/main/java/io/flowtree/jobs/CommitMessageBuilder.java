@@ -180,6 +180,33 @@ final class CommitMessageBuilder {
     }
 
     /**
+     * Restores a captured {@code commit.txt} unconditionally, overwriting whatever a session wrote
+     * in between. Used when a session must never own the commit message — the object-oriented
+     * design review fixes code and records a verdict, but the message describes the job's work, not
+     * the review. When nothing was captured (the session ran with no pending message), any message
+     * the session wrote is deleted so it cannot become the commit message by default.
+     *
+     * @param job          the orchestrator whose working directory holds {@code commit.txt}
+     * @param savedMessage the message captured by {@link #captureCommitTxt(CodingAgentJob)}, or
+     *                     {@code null} to delete whatever the session left
+     */
+    static void restoreCommitTxt(CodingAgentJob job, String savedMessage) {
+        Path commitFile = job.resolveWorkingPath("commit.txt");
+        if (commitFile == null) {
+            return;
+        }
+        try {
+            if (savedMessage != null) {
+                Files.writeString(commitFile, savedMessage, StandardCharsets.UTF_8);
+            } else {
+                Files.deleteIfExists(commitFile);
+            }
+        } catch (IOException e) {
+            job.warn("Could not restore commit.txt: " + e.getMessage());
+        }
+    }
+
+    /**
      * Restores a captured {@code commit.txt} only when the correction session
      * did not write its own. A correction that wrote a fresh {@code commit.txt}
      * describes the actual changes it made and must win; restoring the captured
