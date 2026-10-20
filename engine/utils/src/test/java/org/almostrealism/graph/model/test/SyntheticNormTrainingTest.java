@@ -30,6 +30,7 @@ import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.FileNotFoundException;
+import java.util.Random;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
@@ -55,6 +56,23 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 	 * Fixed coefficients for target functions.
 	 */
 	private final PackedCollection coeff = pack(0.24, -0.1, 0.36);
+
+	/**
+	 * The source of the initial weights of every layer these tests build. It is seeded so
+	 * that each run starts training from the same weights: how many epochs a model needs to
+	 * reach its loss target depends on where it starts, and with unseeded weights that
+	 * number, and so the running time, varied by a factor of two between runs.
+	 */
+	private final Random initializationRandom = new Random(0x5EED);
+
+	/** The source of the training inputs, seeded for the same reason as {@link #initializationRandom}. */
+	private final Random dataRandom = new Random(0xDA7A);
+
+	/** Draws initial weights from {@link #initializationRandom}. */
+	@Override
+	public Random getInitializationRandom() {
+		return initializationRandom;
+	}
 
 	/**
 	 * Simple element-wise linear function: output[i] = coeff[i] * input[i]
@@ -99,8 +117,8 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
 				.map(input -> {
-					rand(input.getShape()).multiply(10.0).add(1.0)
-							.multiply(rand(input.getShape()).add(-0.5))
+					rand(input.getShape(), dataRandom).multiply(10.0).add(1.0)
+							.multiply(rand(input.getShape(), dataRandom).add(-0.5))
 							.into(input.traverseEach()).evaluate();
 					return input;
 				})
@@ -148,8 +166,8 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
 				.map(input -> {
-					rand(input.getShape()).multiply(10.0).add(1.0)
-							.multiply(rand(input.getShape()).add(-0.5))
+					rand(input.getShape(), dataRandom).multiply(10.0).add(1.0)
+							.multiply(rand(input.getShape(), dataRandom).add(-0.5))
 							.into(input.traverseEach()).evaluate();
 					return input;
 				})
@@ -199,7 +217,7 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
 				.map(input -> {
-					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					rand(input.getShape(), dataRandom).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
 					return input;
 				})
 				.map(input -> {
@@ -214,5 +232,85 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		train("groupNorm", model, data, epochs, steps, 1.0, 0.1);
 
 		log("Test 3.3 completed successfully");
+	}
+
+	/**
+	 * Confirms that {@link #getInitializationRandom()} makes dense weight initialization
+	 * reproducible: two instances whose sources carry the same seed draw identical weights.
+	 * This is the property the seeding in these tests relies on to keep the number of epochs
+	 * to the loss target — and so the running time — stable between runs.
+	 */
+	@Test(timeout = 60000)
+	public void seededWeightInitializationIsReproducible() {
+		PackedCollection first = new SyntheticNormTrainingTest().initializeDenseWeights();
+		PackedCollection second = new SyntheticNormTrainingTest().initializeDenseWeights();
+		assertEquals(first, second);
+	}
+
+	/**
+	 * Confirms that dense weight initialization consumes its source as it draws, rather than
+	 * emitting a fixed constant: two layers built in turn from the same shared source draw
+	 * different weights, because each draw advances the source. This rules out a degenerate
+	 * initialization that ignores the source and produces the same values every time — a case
+	 * {@link #seededWeightInitializationIsReproducible()} cannot catch, since identical
+	 * constants are also reproducible. Together the two tests establish that the seeded source
+	 * is both used ({@link #seededWeightInitializationIsReproducible()}) and advanced per draw
+	 * (this test).
+	 */
+	@Test(timeout = 60000)
+	public void seededWeightInitializationConsumesSource() {
+		PackedCollection first = initializeDenseWeights();
+		PackedCollection second = initializeDenseWeights();
+
+		double[] a = first.toArray();
+		double[] b = second.toArray();
+		boolean anyDifferent = false;
+		for (int i = 0; i < a.length; i++) {
+			if (a[i] != b[i]) {
+				anyDifferent = true;
+				break;
+			}
+		}
+
+		assertTrue("Seeded weight initialization must advance its source between layers", anyDifferent);
+	}
+
+	/**
+	 * Confirms that the {@link #randnInit(PackedCollection, double)} path is also seeded. This
+	 * is the initialization site convolution filters and biases draw through (distinct from the
+	 * dense path the other two tests cover), so without this a regression could leave
+	 * convolution initialization unseeded while the dense tests still pass. Two instances whose
+	 * sources carry the same seed draw identical weights.
+	 */
+	@Test(timeout = 60000)
+	public void seededRandnInitIsReproducible() {
+		PackedCollection first = new SyntheticNormTrainingTest().initializeRandnWeights();
+		PackedCollection second = new SyntheticNormTrainingTest().initializeRandnWeights();
+		assertEquals(first, second);
+	}
+
+	/**
+	 * Builds a dense layer on this instance, runs its initialization, and returns the weights
+	 * it produced. The weights are drawn from {@link #getInitializationRandom()}.
+	 *
+	 * @return the initialized weight matrix, shape {@code (6, 6)}
+	 */
+	private PackedCollection initializeDenseWeights() {
+		PackedCollection weights = new PackedCollection(shape(6, 6));
+		dense(shape(6), weights, false, true).setup().get().run();
+		return weights;
+	}
+
+	/**
+	 * Runs {@link #randnInit(PackedCollection, double)} on this instance and returns the weights
+	 * it produced. This exercises the same initialization path convolution filters and biases
+	 * use, drawing from {@link #getInitializationRandom()}.
+	 *
+	 * @return the initialized weight matrix, shape {@code (6, 6)}
+	 */
+	private PackedCollection initializeRandnWeights() {
+		PackedCollection weights = new PackedCollection(shape(6, 6));
+		randnInit(weights, 1.0).get().run();
+		return weights;
 	}
 }

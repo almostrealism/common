@@ -131,6 +131,10 @@ public class KernelIndex extends DefaultIndex {
 	@Override
 	public boolean isValue(IndexValues values) { return values.getKernelIndex() != null; }
 
+	/** {@inheritDoc} */
+	@Override
+	public boolean isKernelIndex() { return true; }
+
 	/**
 	 * {@inheritDoc}
 	 *

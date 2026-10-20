@@ -28,6 +28,9 @@ Usage::
 
     # Standalone SAME-S/SAME-L repo (bare keys):
     python extract_sa3_weights.py same.safetensors out_dir --target ae --ae-mode standalone
+
+    # Conditioner tensors (the learned prompt padding and the duration projection):
+    python extract_sa3_weights.py model.safetensors out_dir --target conditioner
 """
 
 import argparse
@@ -162,13 +165,45 @@ SA3_AE_EXPECTED_KEYS = frozenset([
 ])
 
 
+# ---------------------------------------------------------------------------
+# Conditioner remap
+# ---------------------------------------------------------------------------
+
+CONDITIONER_PREFIX = "conditioner.conditioners."
+
+
+def sa3_conditioner_rules():
+    """Rule list keeping the conditioner tensors of a released SA3 checkpoint.
+
+    The T5Gemma prompt encoder itself is not part of the checkpoint (see
+    ``extract_t5gemma_weights.py``); what the checkpoint holds is the learned
+    embedding substituted at padded prompt positions and the linear projection
+    of the duration's Fourier features. ``StableAudio3`` reads them under their
+    released names, so they ride through ``select_prefix`` untouched.
+    """
+    return [
+        core.select_prefix(CONDITIONER_PREFIX),
+    ]
+
+
+# Every conditioner key the released small checkpoint carries; the real-key
+# validation test asserts each is present.
+SA3_CONDITIONER_EXPECTED_KEYS = frozenset([
+    "conditioner.conditioners.prompt.padding_embedding",
+    "conditioner.conditioners.seconds_total.embedder.embedding.1.weight",
+    "conditioner.conditioners.seconds_total.embedder.embedding.1.bias",
+])
+
+
 def rules_for(target, ae_mode="embedded"):
-    """Return the remap rule list for a CLI target ('dit' or 'ae')."""
+    """Return the remap rule list for a CLI target ('dit', 'ae' or 'conditioner')."""
     if target == "dit":
         return sa3_dit_rules()
     if target == "ae":
         return sa3_ae_rules(mode=ae_mode)
-    raise ValueError("Unknown target: %r (expected 'dit' or 'ae')" % target)
+    if target == "conditioner":
+        return sa3_conditioner_rules()
+    raise ValueError("Unknown target: %r (expected 'dit', 'ae' or 'conditioner')" % target)
 
 
 def main():
@@ -176,7 +211,7 @@ def main():
         description="Extract Stable Audio 3 weights from .safetensors to StateDictionary protobuf")
     parser.add_argument("safetensors_path", help="Path to the .safetensors checkpoint")
     parser.add_argument("output_dir", help="Output directory for StateDictionary shards")
-    parser.add_argument("--target", choices=["dit", "ae"], default="dit",
+    parser.add_argument("--target", choices=["dit", "ae", "conditioner"], default="dit",
                         help="Which sub-model to extract (default: dit)")
     parser.add_argument("--ae-mode", choices=["embedded", "standalone"], default="embedded",
                         help="Autoencoder key layout (default: embedded)")

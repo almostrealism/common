@@ -111,13 +111,38 @@ is_tracked() {
     return 1
 }
 
+# Java processes descended from PARENT_PID, one per line. Found by ancestry,
+# not process group: runner.sh starts the runner agent in a process group of
+# its own (so it can be stopped cleanly), so the job's processes do not share
+# the parent's group.
+descendant_javas() {
+    ps -axo pid=,ppid=,comm= | awk -v root="${PARENT_PID}" '
+        {
+            name = $0
+            sub(/^ *[0-9]+ +[0-9]+ +/, "", name)
+            sub(/.*\//, "", name)
+            parent[$1] = $2
+            comm[$1] = name
+        }
+        END {
+            for (p in parent) {
+                if (comm[p] != "java") continue
+                a = parent[p]
+                for (depth = 0; depth < 64 && a > 1; depth++) {
+                    if (a == root) { print p; break }
+                    a = parent[a]
+                }
+            }
+        }'
+}
+
 while true; do
     # Exit if the parent process is gone
     if ! kill -0 "${PARENT_PID}" 2>/dev/null; then
         break
     fi
 
-    # Find java processes in the same process group as the parent
+    # Find java processes started (at any depth) by the parent
     while IFS= read -r java_pid; do
         [ -z "$java_pid" ] && continue
         is_tracked "$java_pid" && continue
@@ -130,7 +155,7 @@ while true; do
         JAVA_PIDS+=("$java_pid")
         THROTTLE_PIDS+=("$!")
         echo "cpu-watcher: throttling java PID ${java_pid} to ${LIMIT_PCT}%"
-    done < <(pgrep -g "$(ps -o pgid= -p "${PARENT_PID}" | tr -d ' ')" -x java 2>/dev/null || true)
+    done < <(descendant_javas)
 
     sleep 2
 done

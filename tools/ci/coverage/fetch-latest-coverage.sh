@@ -49,18 +49,32 @@
 #                        artifact is reused (default: master)
 #   OUTPUT_DIR         - where to write coverage.xml / python-coverage.xml
 #                        (default: current directory)
+#   ARTIFACT_PAGE_LIMIT - how many 100-artifact pages of the repo-wide
+#                        merged-coverage-report listing to search for a
+#                        BRANCH artifact before giving up (default: 10)
+#   ALLOW_RECOMPUTE    - "false" forbids the Java recompute path entirely
+#                        (default: true). A caller whose host cannot run
+#                        the full Maven suite meaningfully — a GitHub-hosted
+#                        runner, which lacks the native hardware setup the
+#                        real coverage lanes use — sets this so a missing
+#                        artifact (or FORCE=true) fails fast with a clear
+#                        error instead of spending hours producing a report
+#                        that does not match the CI lanes.
 #
 # Exit codes:
 #   0 - both reports were produced (an empty Java report counts as
 #       produced when recompute finds no coverage data)
-#   1 - invalid arguments, or neither the reuse nor the recompute path
-#       could produce a Java report
+#   1 - invalid arguments, neither the reuse nor the recompute path
+#       could produce a Java report, or a recompute was needed while
+#       ALLOW_RECOMPUTE=false
 
 set -euo pipefail
 
 FORCE="${FORCE:-false}"
+ALLOW_RECOMPUTE="${ALLOW_RECOMPUTE:-true}"
 BRANCH="${BRANCH:-master}"
 OUTPUT_DIR="${OUTPUT_DIR:-.}"
+ARTIFACT_PAGE_LIMIT="${ARTIFACT_PAGE_LIMIT:-10}"
 JACOCO_VERSION="0.8.11"
 
 mkdir -p "$OUTPUT_DIR"
@@ -88,25 +102,33 @@ fetch_merged_report() {
     # workflow run by overall status first: an unrelated flaky job elsewhere
     # in the same analysis.yaml run must not hide an artifact that the
     # analysis job itself already produced successfully.
-    # TODO(review): this endpoint has no server-side branch filter, and
-    # analysis.yaml's `analysis` job uploads this same artifact name on
-    # every pull_request run too, not just master pushes. per_page=100 is
-    # the API's maximum, so if more than that many merged-coverage-report
-    # artifacts (across all branches) accumulate between master runs, the
-    # master artifact can still scroll off this page and the jq filter
-    # below will find nothing to reuse. Raising the page size no further
-    # helps; closing this properly means paging until a match is found.
-    # See review-followup memory for workstream c9ad5512.
-    artifacts_json=$(api_get "${API_BASE}/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=merged-coverage-report&per_page=100") \
-        || { echo "::warning::Could not list merged-coverage-report artifacts"; return 1; }
+    # The endpoint has no server-side branch filter, and analysis.yaml's
+    # `analysis` job uploads this same artifact name on every pull_request
+    # run too, not just master pushes, so busy PR traffic can push the
+    # newest BRANCH artifact past the first page. Artifacts are listed
+    # newest first; page through them (per_page=100 is the API maximum)
+    # until one for BRANCH turns up, the listing runs out, or
+    # ARTIFACT_PAGE_LIMIT pages have been read. A miss matters: a caller
+    # with ALLOW_RECOMPUTE=false has no fallback.
+    local page=0 page_count
+    selected=""
+    while [ -z "$selected" ] && [ "$page" -lt "$ARTIFACT_PAGE_LIMIT" ]; do
+        page=$((page + 1))
+        artifacts_json=$(api_get "${API_BASE}/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=merged-coverage-report&per_page=100&page=${page}") \
+            || { echo "::warning::Could not list merged-coverage-report artifacts (page ${page})"; return 1; }
 
-    selected=$(echo "$artifacts_json" | jq -r --arg branch "$BRANCH" '
-        [.artifacts[] | select(.expired == false and .workflow_run.head_branch == $branch)]
-        | sort_by(.created_at) | reverse | .[0]
-        | if . == null then "" else (.id|tostring) + " " + (.workflow_run.id|tostring) end
-    ')
+        selected=$(echo "$artifacts_json" | jq -r --arg branch "$BRANCH" '
+            [.artifacts[] | select(.expired == false and .workflow_run.head_branch == $branch)]
+            | sort_by(.created_at) | reverse | .[0]
+            | if . == null then "" else (.id|tostring) + " " + (.workflow_run.id|tostring) end
+        ')
+        page_count=$(echo "$artifacts_json" | jq -r '.artifacts | length')
+        if [ "$page_count" -lt 100 ]; then
+            break
+        fi
+    done
     if [ -z "$selected" ]; then
-        echo "::warning::No unexpired merged-coverage-report artifact found for branch ${BRANCH}"
+        echo "::warning::No unexpired merged-coverage-report artifact found for branch ${BRANCH} in the ${page} most recent page(s) of artifacts"
         return 1
     fi
     artifact_id=${selected%% *}
@@ -136,6 +158,11 @@ fetch_merged_report() {
 }
 
 recompute_java_report() {
+    if [ "$ALLOW_RECOMPUTE" = "false" ]; then
+        echo "::error::Java coverage would have to be recomputed (FORCE=${FORCE}), but ALLOW_RECOMPUTE=false on this host. Run \"Build and Test\" on ${BRANCH} to publish a fresh merged-coverage-report artifact, then re-run this job." >&2
+        exit 1
+    fi
+
     echo "::notice::Recomputing Java coverage fresh — this runs the full test suite and can take hours"
 
     # Online, matching every other mvn invocation in analysis.yaml: a
@@ -193,7 +220,9 @@ recompute_java_report() {
 if [ "$FORCE" = "true" ]; then
     recompute_java_report
 elif ! fetch_merged_report; then
-    echo "::notice::Falling back to a fresh recompute (no reusable report was found)"
+    if [ "$ALLOW_RECOMPUTE" != "false" ]; then
+        echo "::notice::Falling back to a fresh recompute (no reusable report was found)"
+    fi
     recompute_java_report
 fi
 
@@ -207,48 +236,44 @@ fi
 # tools/mcp/manager/server.py imports mcp.server.fastmcp at module load
 # (discovered when PYTHON_DIRS below runs unittest discover over
 # tools/mcp/manager), and the `mcp` package requires Python >=3.10
-# (tools/mcp/requirements.txt). The bare `python3` on a self-hosted macOS
-# runner resolves to the OS-bundled Python 3.9, which cannot install `mcp`
-# at all, so this step failed every round with "ModuleNotFoundError: No
-# module named 'mcp'". Prefer the newest Homebrew Python available, the
-# same interpreter-selection order as
-# io.flowtree.jobs.EnvironmentManagedJob.PYTHON_CANDIDATES.
-PYTHON_BIN=""
-for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
-    if command -v "$candidate" >/dev/null 2>&1; then
-        PYTHON_BIN="$candidate"
-        break
-    fi
-done
-if [ -z "$PYTHON_BIN" ]; then
-    echo "::error::No python3 interpreter found on PATH" >&2
-    exit 1
+# (tools/mcp/requirements.txt). A bare `python3` on a self-hosted macOS
+# runner can resolve to the OS-bundled Python 3.9, which cannot install
+# `mcp` at all. select-python-env.sh selects the newest interpreter on
+# PATH that actually satisfies the requirement (verified via
+# sys.version_info, not just its name), and provisions a venv for it in a
+# cache directory outside the checkout — a plain `pip3 install` is not an
+# option because a Homebrew-installed Python marks its site-packages
+# externally-managed and refuses a global install outright. The cached
+# venv is invalidated (recreated) whenever the interpreter,
+# tools/mcp/requirements.txt, or the extra package list below changes;
+# without that, a venv created once by an old interpreter would be reused
+# forever, and pip's `Requires-Python` filtering would silently make every
+# release of a dependency look unavailable ("from versions: none").
+# Mirrors analysis.yaml's python-tests "Install dependencies" step so the
+# same package set covers PYTHON_DIRS below (tools/mcp/manager needs
+# `mcp`; tools/tests needs `pyyaml`).
+#
+# The coverage-qa workflow job pins its interpreter with setup-python on a
+# GitHub-hosted runner, but this script still runs on self-hosted macOS
+# hosts (and by hand). There, a Homebrew-
+# installed Python 3.10+ can exist on disk without being on this process's
+# PATH: launchd starts services (the CI runner among them) with almost no
+# PATH, and Homebrew's bin directory is only restored when a service
+# definition adds it back explicitly (tools/ci/macos/README.md documents
+# this same gap for the flowtree agent daemon and the deploy-agent runner).
+# Append the conventional Homebrew bin directories for both CPU
+# architectures so select-python-env.sh's PATH search can still find a
+# versioned `pythonX.Y` (Homebrew's python@3.1x formulas are keg-only but
+# still symlink their versioned binary into these directories) even when
+# the runner's own PATH omits them. A no-op on any host without Homebrew
+# at these locations, and it only widens the search — select-python-env.sh
+# still picks the newest interpreter that actually satisfies the minimum
+# version, wherever it is found.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ "$(uname -s)" = "Darwin" ]; then
+    PATH="${PATH}:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin"
 fi
-
-# A venv (rather than a bare `pip3 install`) is required here because a
-# Homebrew-installed Python marks its site-packages externally-managed and
-# refuses a global pip install outright. The venv is cached outside the
-# checkout so it survives across rounds instead of being recreated (and
-# reinstalled into) on every run.
-# TODO(review): venv cache never invalidates on interpreter upgrade or
-# requirements.txt changes — see stored review-followup memory for a
-# marker-file based invalidation approach.
-VENV_DIR="${HOME}/.cache/ar-coverage-qa/venv"
-if [ ! -x "${VENV_DIR}/bin/python3" ]; then
-    echo "::notice::Creating coverage-qa Python venv with ${PYTHON_BIN}"
-    mkdir -p "$(dirname "$VENV_DIR")"
-    "$PYTHON_BIN" -m venv "$VENV_DIR"
-fi
-PYTHON="${VENV_DIR}/bin/python3"
-
-if ! "$PYTHON" -c "import mcp, yaml, coverage" >/dev/null 2>&1; then
-    echo "::notice::Installing coverage-qa Python dependencies"
-    "$PYTHON" -m pip install --quiet --upgrade pip
-    # Mirrors analysis.yaml's python-tests "Install dependencies" step so the
-    # same package set covers PYTHON_DIRS below (tools/mcp/manager needs
-    # `mcp`; tools/tests needs `pyyaml`).
-    "$PYTHON" -m pip install --quiet -r tools/mcp/requirements.txt pyyaml coverage
-fi
+PYTHON=$(REQUIREMENTS_FILE=tools/mcp/requirements.txt bash "${SCRIPT_DIR}/select-python-env.sh" pyyaml coverage)
 
 PYTHON_DIRS=(tools/mcp/manager tools/mcp/common tools/tests)
 FIRST=true

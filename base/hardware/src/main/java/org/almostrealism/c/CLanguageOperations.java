@@ -159,6 +159,23 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	}
 
 	/**
+	 * Formats a boolean value as the integer literal {@code 1} or {@code 0} when booleans
+	 * are represented as integers ({@link #isNumericBoolean()}), since C has no {@code true}
+	 * or {@code false} without {@code <stdbool.h>}; otherwise as {@code true} or {@code false}.
+	 *
+	 * @param value the boolean value to format
+	 * @return the boolean literal in this language
+	 */
+	@Override
+	public String stringForBoolean(boolean value) {
+		if (isNumericBoolean()) {
+			return getPrecision().stringForInt(value ? 1 : 0);
+		}
+
+		return super.stringForBoolean(value);
+	}
+
+	/**
 	 * Renders the argument list for a C function signature.
 	 * <p>
 	 * For external accessibility with native mode, generates a JNI-compatible signature

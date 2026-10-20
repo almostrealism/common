@@ -117,6 +117,69 @@ class TestSubmitAgentSensitiveFileProtectionGuard(unittest.TestCase):
 
     @patch.object(server, "_controller_get")
     @patch.object(server, "_controller_post")
+    def test_sensitive_bypass_request_rejected_before_scope_resolution(
+            self, mock_post, mock_get):
+        """The guard runs before workspace-scope resolution, so a rejected
+        request neither refreshes the workspace map from the controller nor
+        surfaces a scope error in place of the operator-only one."""
+        mock_get.side_effect = ConnectionError("controller unreachable")
+        result = server.workstream_submit_task(
+            prompt="Delegated task",
+            workstream_id="ws-other",
+            sensitive_file_protection_enabled=False,
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("sensitive_file_protection_enabled=False", result["error"])
+        self.assertIn("operator", result["error"].lower())
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_sensitive_bypass_rejection_is_audited(self, mock_post, mock_get):
+        """A rejected attempt to disable sensitive-file protection is recorded
+        in the local audit log, as it was before the guard moved ahead of
+        scope resolution."""
+        with self.assertLogs("ar-manager.audit", level="INFO") as audit:
+            result = server.workstream_submit_task(
+                prompt="Delegated task",
+                workstream_id="ws-other",
+                sensitive_file_protection_enabled=False,
+            )
+        self.assertFalse(result["ok"])
+        rejected = [line for line in audit.output
+                    if "tool=workstream_submit_task.rejected" in line]
+        self.assertEqual(1, len(rejected), msg=audit.output)
+        self.assertIn("'caller_workstream_id': 'ws-self'", rejected[0])
+        self.assertIn("'workstream_id': 'ws-other'", rejected[0])
+        self.assertIn(
+            "'setting': 'sensitive_file_protection_enabled=False'", rejected[0])
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_sensitive_bypass_rejection_audited_before_request_validation(
+            self, mock_post, mock_get):
+        """The guard runs before the rest of request validation, so an
+        attempt with no workstream_id is still rejected as operator-only and
+        recorded, rather than failing the self-submission check unaudited."""
+        with self.assertLogs("ar-manager.audit", level="INFO") as audit:
+            result = server.workstream_submit_task(
+                prompt="Delegated task",
+                sensitive_file_protection_enabled=False,
+            )
+        self.assertFalse(result["ok"])
+        self.assertIn("sensitive_file_protection_enabled=False", result["error"])
+        rejected = [line for line in audit.output
+                    if "tool=workstream_submit_task.rejected" in line]
+        self.assertEqual(1, len(rejected), msg=audit.output)
+        self.assertIn("'workstream_id': ''", rejected[0])
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
     def test_sensitive_bypass_agent_default_passes_through(
             self, mock_post, mock_get):
         """Leaving the flag at its default (True) is harmless: the

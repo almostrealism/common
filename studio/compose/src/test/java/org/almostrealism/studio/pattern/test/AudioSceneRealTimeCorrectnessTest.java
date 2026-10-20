@@ -46,8 +46,10 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import static org.junit.Assert.*;
@@ -147,6 +149,65 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		helper.generateArtifacts(result, "realtime-correctness");
 
 		log(result.toString());
+	}
+
+	/** Name of the render-ahead producer thread started by the real-time runner. */
+	private static final String RENDER_AHEAD_THREAD_NAME = "pattern-render-ahead";
+
+	/**
+	 * Returns the live render-ahead producer threads currently running in the JVM,
+	 * identified by {@link #RENDER_AHEAD_THREAD_NAME}.
+	 *
+	 * @return the set of live render-ahead threads
+	 */
+	private static Set<Thread> aliveRenderAheadThreads() {
+		Set<Thread> alive = new HashSet<>();
+		for (Thread thread : Thread.getAllStackTraces().keySet()) {
+			if (thread.isAlive() && RENDER_AHEAD_THREAD_NAME.equals(thread.getName())) {
+				alive.add(thread);
+			}
+		}
+		return alive;
+	}
+
+	/**
+	 * Verifies that a completed real-time render leaves no running render-ahead producer
+	 * thread behind.
+	 *
+	 * <h3>Regression Property</h3>
+	 * <p>The real-time runner renders pattern audio on a background producer thread (see
+	 * {@link org.almostrealism.studio.PatternRenderStream}) that mutates the scene's
+	 * note-audio caches. A caller that abandons the runner without releasing it leaves that
+	 * thread running, so a later scene teardown ({@link AudioScene#destroy()} clears those
+	 * caches) races the producer and throws {@link java.util.ConcurrentModificationException}.
+	 * This test confirms that rendering through {@link RealTimeTestHelper#renderRealTime}
+	 * stops the producer before returning, so teardown is safe.</p>
+	 */
+	@Test(timeout = 60_000)
+	public void realTimeRenderStopsRenderAheadThread() {
+		helper.disableEffects();
+		File samplesDir = helper.requireSamplesDir();
+
+		AudioScene<?> scene = helper.createSceneWithWorkingSeed(samplesDir,
+				AudioScene.DEFAULT_SOURCE_COUNT);
+		if (scene == null) {
+			log("No working genome found - skipping test");
+			return;
+		}
+
+		Set<Thread> before = aliveRenderAheadThreads();
+
+		double shortDuration = (double) (BUFFER_SIZE * 2) / SAMPLE_RATE;
+		helper.renderRealTime(scene, BUFFER_SIZE, shortDuration,
+				"results/realtime-thread-lifecycle.wav");
+
+		Set<Thread> survivors = aliveRenderAheadThreads();
+		survivors.removeAll(before);
+
+		assertTrue("render-ahead producer threads started by this render must be stopped: "
+				+ survivors, survivors.isEmpty());
+
+		scene.destroy();
 	}
 
 	/**

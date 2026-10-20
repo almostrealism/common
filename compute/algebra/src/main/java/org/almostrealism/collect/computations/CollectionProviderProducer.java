@@ -22,6 +22,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -280,6 +281,15 @@ public class CollectionProviderProducer<T extends Shape>
 	public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }
 
 	/**
+	 * Returns {@code true}, since a provider introduces its value into the graph
+	 * rather than deriving it from inputs.
+	 *
+	 * @return {@code true}
+	 */
+	@Override
+	public boolean isMatchRoot() { return true; }
+
+	/**
 	 * Generates a process with the specified child processes.
 	 *
 	 * <p>Since provider producers have no children, this method ignores the children
@@ -372,6 +382,27 @@ public class CollectionProviderProducer<T extends Shape>
 		if (super.equals(obj)) return true;
 		if (!(obj instanceof CollectionProviderProducer)) return false;
 		return ((CollectionProviderProducer) obj).value == value;
+	}
+
+	/**
+	 * Returns {@code true} if {@code other} provides the same value as this producer. Besides
+	 * the identical value recognized by {@link #equals(Object)}, this includes a different
+	 * view of the same memory that {@link MemoryData#hasSameElements has the same elements},
+	 * such as a reshape of it, so that a derivative taken with respect to
+	 * {@code cp(collection)} also reaches a computation that reads
+	 * {@code cp(collection.reshape(...))}.
+	 *
+	 * @param other the computable to compare with
+	 * @return {@code true} if both producers provide the same elements
+	 */
+	@Override
+	public boolean matches(Computable other) {
+		if (equals(other)) return true;
+		if (!(other instanceof CollectionProviderProducer)) return false;
+
+		Shape otherValue = ((CollectionProviderProducer<?>) other).value;
+		return value instanceof MemoryData && otherValue instanceof MemoryData
+				&& ((MemoryData) value).hasSameElements((MemoryData) otherValue);
 	}
 
 	/**

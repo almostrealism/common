@@ -65,6 +65,12 @@ from tools.fleet import schema
 #: letting either recover and try again on the next cycle.
 DEFAULT_POSTGRES_CONNECT_TIMEOUT_SECONDS = 10
 
+#: Postgres advisory-lock key guarding :meth:`FleetStore._widen_runner_state_key`.
+#: An arbitrary but fixed 64-bit integer -- it is only ever compared for
+#: equality between concurrent instances of this same migration, never
+#: interpreted, so any distinct value would do.
+_RUNNER_STATE_MIGRATION_LOCK_KEY = 0x726E7273706B  # "rnrspk" as bytes
+
 
 class Dialect:
     """What differs between the two backends: placeholder and ``ts`` type."""
@@ -304,11 +310,232 @@ class FleetStore:
         self._commit_unless_batched()
 
     def init_schema(self) -> None:
-        """Create every table (and index) declared in :mod:`schema`, if not already present."""
+        """Create every table (and index) declared in :mod:`schema`, if not already present.
+
+        Then drop any index named in :data:`schema.DROPPED_INDEXES`:
+        ``CREATE INDEX IF NOT EXISTS`` only ever adds an index a store lacks
+        *by name*, so a store created while an older, narrower definition
+        shipped under that name would otherwise keep serving queries from
+        the stale index forever, never picking up the wider one declared in
+        :data:`schema.INDEXES` under its new name. Then add any column in
+        :data:`schema.ADDED_COLUMNS` that an existing table lacks:
+        ``CREATE TABLE IF NOT EXISTS`` never alters a table that already
+        exists, so a store created before a column shipped would otherwise
+        stay behind the writers, and every ``upsert_*`` naming the new
+        column would fail against it. Finally, widen ``runner_state``'s key
+        if it predates :meth:`_widen_runner_state_key`'s column — see that
+        method.
+        """
         for statement in schema.statements(self._dialect.timestamp_type):
             self._conn.execute(statement)
+        for index_name in schema.DROPPED_INDEXES:
+            self._conn.execute("DROP INDEX IF EXISTS %s" % index_name)
+        for table, column, column_type in schema.ADDED_COLUMNS:
+            self._add_column_if_missing(table, column, column_type)
+        self._widen_runner_state_key()
         if self._dialect.name == Dialect.SQLITE:
             self._conn.commit()
+
+    def _add_column_if_missing(self, table: str, column: str, column_type: str) -> None:
+        """Add *column* to *table* if it does not already have it.
+
+        On Postgres this is a single atomic ``ADD COLUMN IF NOT EXISTS``,
+        which matters because both the collector and the poller call
+        :meth:`init_schema` at startup against the same shared store: with a
+        check-then-``ALTER`` (the sqlite branch below), two processes can
+        both observe the column missing and one then fails with a
+        duplicate-column error. sqlite has no such clause, so the check
+        stays a separate query there — sqlite is the single local file a
+        single host writes to (see this module's docstring), not the shared
+        store two independent processes start against concurrently.
+        """
+        if self._dialect.name == Dialect.POSTGRES:
+            self._conn.execute("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s" % (table, column, column_type))
+        elif column not in self.columns(table):
+            self._conn.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, column_type))
+
+    def _widen_runner_state_key(self) -> None:
+        """Widen ``runner_state``'s natural key to ``(ts, host, runner_name, repo)``.
+
+        A runner's ``name`` is unique only within the GitHub registration
+        scope it was fetched from (a specific repository, or an
+        organization) — not across scopes. ``github_poller.fetch_runners``
+        can fetch both a repository's and (with ``--runners-org``) an
+        organization's runners in the same cycle, and ``store_runner_states``
+        writes every one of them with ``host=''`` (the runners API reports
+        no host), so two runners that happen to share a name in different
+        scopes previously collided on the old key ``(ts, host, runner_name)``
+        and silently overwrote one another, undercounting capacity. ``repo``
+        already carries the registration scope for these rows (see
+        ``store_runner_states``'s ``repo=runner["registration"]``), so
+        including it in the key is enough to disambiguate them — no new
+        column is needed.
+
+        A store whose ``runner_state`` table already has the new key is left
+        alone (the common case, and always true for a table just created by
+        :meth:`init_schema` above, since :data:`schema.RUNNER_STATE` already
+        declares it) -- *unless* a ``runner_state_old`` is also still
+        present, in which case it is merged in first (see below) before that
+        early-return check is applied, since the check alone cannot tell a
+        genuinely-already-widened table apart from one :meth:`init_schema`'s
+        own ``CREATE TABLE IF NOT EXISTS`` just recreated empty after a crash
+        renamed the real data away. sqlite cannot alter a primary key in
+        place, so an old table is migrated by rename-recreate-copy-drop. A
+        process killed between the ``RENAME`` and the final ``DROP`` leaves
+        ``runner_state_old`` holding rows that never made it into
+        ``runner_state`` -- possibly the *only* copy, if the crash landed
+        before the copy ran at all -- so a restart merges any leftover
+        ``runner_state_old`` into ``runner_state`` (``INSERT OR IGNORE``,
+        safe to repeat: rows already copied are matched on ``runner_state``'s
+        primary key and left alone) and drops it, rather than unconditionally
+        dropping it and losing that data. A stale ``runner_state_old`` from
+        an even older schema, sharing no columns with the current
+        ``runner_state``, has nothing to merge and is just dropped. The new
+        table's ``repo`` is ``NOT NULL`` (see :data:`schema.RUNNER_STATE`)
+        while the legacy table's was not, so a legacy ``NULL`` is coalesced
+        to ``''`` during the merge rather than left to fail the insert, and
+        the two ``runner_state`` indexes (attached to the old table by
+        ``CREATE INDEX IF NOT EXISTS`` above, in :meth:`init_schema`, before
+        this migration runs) are recreated against the new table once the
+        old one is dropped, since sqlite drops an index along with the table
+        it is on. Postgres can alter the key directly; the attempt is wrapped in a
+        ``try``/``except`` because, like the column migration above, two
+        processes can race to widen the same live table concurrently, and
+        Postgres has no ``ADD CONSTRAINT IF NOT EXISTS`` to make that atomic
+        — but the exception is only swallowed once the primary key actually
+        matches *target*, i.e. a concurrent winner already finished the same
+        migration; any other failure (a permission error, invalid legacy
+        data) is re-raised rather than silently leaving the table on the old
+        or no key while writers upsert against a key it does not have.
+
+        The three Postgres statements (backfill, drop, add) run inside one
+        explicit transaction rather than the connection's default autocommit
+        mode. Autocommit would let ``DROP CONSTRAINT`` land on its own,
+        leaving ``runner_state`` with no primary key at all -- and so no
+        target for a concurrent writer's ``ON CONFLICT`` -- for however long
+        it takes ``ADD PRIMARY KEY`` to run next; a crash or a concurrent
+        migration in that window could leave the table without a key
+        indefinitely.
+
+        Serializing two concurrent migrations cannot be left to ``ALTER
+        TABLE``'s own ``ACCESS EXCLUSIVE`` lock: by the time either
+        transaction requests it, both have already taken a
+        ``RowExclusiveLock`` on the table via the backfill ``UPDATE``, and
+        ``ACCESS EXCLUSIVE`` conflicts with every other lock mode including
+        ``RowExclusiveLock`` -- so each transaction wants the lock the other
+        already holds, a genuine deadlock rather than a clean wait. Postgres
+        resolves it by aborting one transaction, but that leaves the
+        survivor's commit racing the victim's post-rollback recheck below.
+        An explicit :data:`_RUNNER_STATE_MIGRATION_LOCK_KEY` advisory lock is
+        acquired first, before any statement that touches ``runner_state``
+        itself: a second migration blocks there, holding no table lock at
+        all, so once the first migration commits (releasing the advisory
+        lock along with everything else) the second acquires it, rechecks
+        the primary key, finds the target already reached, and does nothing
+        further instead of repeating or racing the same statements. Like the
+        sqlite branch's legacy ``NULL`` ``repo`` coalesce, the backfill runs
+        before the key is widened: the column predates the ``NOT NULL
+        DEFAULT ''`` :data:`schema.RUNNER_STATE` now declares for a freshly
+        created table, so a store old enough to need this migration can
+        still hold real ``NULL`` rows, and ``ADD PRIMARY KEY`` rejects a key
+        column that contains one.
+        """
+        target = ["ts", "host", "runner_name", "repo"]
+        if self._dialect.name == Dialect.SQLITE:
+            if self.columns("runner_state_old"):
+                self._merge_runner_state_old()
+            if self._primary_key_columns("runner_state") == target:
+                return
+            self._conn.execute("ALTER TABLE runner_state RENAME TO runner_state_old")
+            self._conn.execute(schema.RUNNER_STATE.format(ts=self._dialect.timestamp_type))
+            self._merge_runner_state_old()
+            for statement in schema.INDEXES:
+                if " ON runner_state " in statement:
+                    self._conn.execute(statement)
+        else:
+            if self._primary_key_columns("runner_state") == target:
+                return
+            self._conn.execute("BEGIN")
+            try:
+                self._conn.execute("SELECT pg_advisory_xact_lock(%d)" % _RUNNER_STATE_MIGRATION_LOCK_KEY)
+                if self._primary_key_columns("runner_state") != target:
+                    self._conn.execute("UPDATE runner_state SET repo = '' WHERE repo IS NULL")
+                    self._conn.execute("ALTER TABLE runner_state DROP CONSTRAINT IF EXISTS runner_state_pkey")
+                    self._conn.execute("ALTER TABLE runner_state ADD PRIMARY KEY (ts, host, runner_name, repo)")
+            except Exception:  # noqa: BLE001 — re-raised below unless a concurrent migration already won
+                self._conn.execute("ROLLBACK")
+                if self._primary_key_columns("runner_state") != target:
+                    raise
+            else:
+                self._conn.execute("COMMIT")
+
+    def _merge_runner_state_old(self) -> None:
+        """Copy any rows from a leftover ``runner_state_old`` into ``runner_state``, then drop it.
+
+        Only the columns the two tables have in common are copied: a
+        ``runner_state_old`` left by an interrupted widening migration
+        shares every column with the current ``runner_state`` (at most
+        missing a later-added one, which is fine to leave at its default),
+        but a stale leftover from an unrelated, much older schema may share
+        none at all, in which case there is nothing to merge and the table
+        is simply dropped. ``INSERT OR IGNORE`` makes this safe to call on a
+        partially-copied table: a row already present in ``runner_state``
+        (matching on its primary key) is left alone rather than raising a
+        duplicate-key error, so calling this twice for the same leftover
+        table is harmless.
+        """
+        old_columns = self.columns("runner_state_old")
+        common_columns = [column for column in old_columns if column in self.columns("runner_state")]
+        if common_columns:
+            select_list = ", ".join(
+                "COALESCE(%s, '')" % column if column == "repo" else column for column in common_columns
+            )
+            self._conn.execute(
+                "INSERT OR IGNORE INTO runner_state (%s) SELECT %s FROM runner_state_old"
+                % (", ".join(common_columns), select_list)
+            )
+        self._conn.execute("DROP TABLE runner_state_old")
+
+    def columns(self, table: str) -> List[str]:
+        """The column names *table* currently has, in declaration order.
+
+        sqlite answers through ``PRAGMA table_info``; Postgres through
+        ``information_schema.columns`` — the only place besides
+        :class:`Dialect` where the two backends need different SQL.
+        """
+        if self._dialect.name == Dialect.SQLITE:
+            return [row[1] for row in self._conn.execute("PRAGMA table_info(%s)" % table)]
+        return [
+            row[0] for row in self._execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = ? ORDER BY ordinal_position",
+                (table,),
+            )
+        ]
+
+    def _primary_key_columns(self, table: str) -> List[str]:
+        """The columns of *table*'s primary key, in key order.
+
+        sqlite answers through ``PRAGMA table_info`` (its ``pk`` column is 0
+        for a non-key column, else its 1-based position in the key);
+        Postgres through ``information_schema``, joining the table's
+        primary-key constraint to its key columns.
+        """
+        if self._dialect.name == Dialect.SQLITE:
+            ordered = sorted(
+                (row[5], row[1]) for row in self._conn.execute("PRAGMA table_info(%s)" % table) if row[5]
+            )
+            return [name for _, name in ordered]
+        return [
+            row[0] for row in self._execute(
+                "SELECT kcu.column_name FROM information_schema.table_constraints tc "
+                "JOIN information_schema.key_column_usage kcu "
+                "ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema "
+                "WHERE tc.table_name = ? AND tc.constraint_type = 'PRIMARY KEY' "
+                "ORDER BY kcu.ordinal_position",
+                (table,),
+            )
+        ]
 
     # ---- host_sample / class_sample -----------------------------------
 
@@ -369,12 +596,25 @@ class FleetStore:
         workflow: str = "",
         job_id: str = "",
         agent_version: str = "",
+        lane: str = "",
+        platform: str = "",
     ) -> None:
-        """Insert or replace one ``runner_state`` row, keyed on ``(ts, host, runner_name)``."""
+        """Insert or replace one ``runner_state`` row, keyed on ``(ts, host, runner_name, repo)``.
+
+        *host* may be ``''`` when the writer cannot know it (the GitHub
+        runners API reports no host); *lane*/*platform* are the projections
+        of *labels* described on :meth:`upsert_job_event`. *repo* is part of
+        the key alongside *host*/*runner_name* because a runner's name is
+        only unique within its GitHub registration scope (see
+        :func:`tools.fleet.github_poller.fetch_runners`) — without it, a
+        repo-scoped and an org-scoped runner that happen to share a name
+        would collide and overwrite each other under the same ``host=''``.
+        """
         self._upsert(
-            "runner_state", ("ts", "host", "runner_name"),
-            ("ts", "host", "runner_name", "labels", "state", "repo", "workflow", "job_id", "agent_version"),
-            (ts, host, runner_name, labels, state, repo, workflow, job_id, agent_version),
+            "runner_state", ("ts", "host", "runner_name", "repo"),
+            ("ts", "host", "runner_name", "labels", "lane", "platform", "state",
+             "repo", "workflow", "job_id", "agent_version"),
+            (ts, host, runner_name, labels, lane, platform, state, repo, workflow, job_id, agent_version),
         )
 
     # ---- job_event / job_step ---------------------------------------------
@@ -396,6 +636,9 @@ class FleetStore:
         pre_start_latency_seconds: Optional[float] = None,
         is_entry_point: Optional[bool] = None,
         queue_wait_seconds: Optional[float] = None,
+        lane: str = "",
+        platform: str = "",
+        runner_id: Optional[int] = None,
     ) -> None:
         """Insert or replace one ``job_event`` row, keyed on ``job_id``.
 
@@ -405,15 +648,28 @@ class FleetStore:
         A runner can carry extra/custom labels beyond what a job asked for,
         so a caller grouping on this column is measuring actual-runner-label
         demand, not per-``runs-on`` demand.
+
+        *lane* and *platform* are the two projections of that label set the
+        dashboard groups by (the fleet's ``ar-*`` label, and macos / linux /
+        windows); :func:`tools.fleet.github_poller.classify_labels` derives
+        them, and a writer that has no labels leaves both ``''``.
+
+        *runner_id* is the workflow-jobs API's own ``runner_id`` — a stable
+        identity for the runner that actually executed the job, unique
+        across GitHub registration scopes (unlike *runner_name*, which is
+        only unique within one scope; see :meth:`upsert_runner_state`). A
+        dashboard grouping per-runner utilization by this column, rather
+        than by name alone, does not merge two same-named runners from
+        different scopes into one bar.
         """
         self._upsert(
             "job_event", ("job_id",),
-            ("job_id", "run_id", "repo", "name", "labels", "created_at", "started_at",
-             "completed_at", "status", "conclusion", "runner_name", "runner_group",
-             "pre_start_latency_seconds", "is_entry_point", "queue_wait_seconds"),
+            ("job_id", "run_id", "repo", "name", "labels", "lane", "platform", "created_at",
+             "started_at", "completed_at", "status", "conclusion", "runner_name", "runner_group",
+             "runner_id", "pre_start_latency_seconds", "is_entry_point", "queue_wait_seconds"),
             (
-                job_id, run_id, repo, name, labels, created_at, started_at,
-                completed_at, status, conclusion, runner_name, runner_group,
+                job_id, run_id, repo, name, labels, lane, platform, created_at, started_at,
+                completed_at, status, conclusion, runner_name, runner_group, runner_id,
                 pre_start_latency_seconds,
                 None if is_entry_point is None else int(bool(is_entry_point)),
                 queue_wait_seconds,
@@ -439,23 +695,38 @@ class FleetStore:
     # ---- queries -----------------------------------------------------------
 
     def latest_runner_states(self, host: Optional[str] = None) -> List[Tuple]:
-        """One row per ``runner_name`` (the most recent sample), for ``list``."""
+        """One row per ``(runner_name, repo)`` (the most recent sample), for ``list``.
+
+        ``repo`` is part of the grouping, not just ``host``/``runner_name``,
+        because a runner's name is only unique within its GitHub
+        registration scope (see :meth:`upsert_runner_state`): a repo-scoped
+        and an org-scoped runner sharing a name are distinct current
+        runners, and grouping on ``(host, runner_name)`` alone would let
+        whichever one sampled later suppress the other from this list even
+        though both are still live.
+
+        Excludes the empty-inventory heartbeat row (``runner_name=''``,
+        see :func:`tools.fleet.github_poller.store_runner_states`) — that
+        row exists only to advance ``MAX(ts)`` when a poll cycle reports
+        zero runners, and is not itself a runner to list.
+        """
         query = """
             SELECT rs.ts, rs.host, rs.runner_name, rs.labels, rs.state,
                    rs.repo, rs.workflow, rs.job_id, rs.agent_version
             FROM runner_state rs
             JOIN (
-                SELECT host, runner_name, MAX(ts) AS max_ts
+                SELECT host, runner_name, repo, MAX(ts) AS max_ts
                 FROM runner_state
-                {where}
-                GROUP BY host, runner_name
+                WHERE runner_name <> ''{host_filter}
+                GROUP BY host, runner_name, repo
             ) latest
-            ON rs.host = latest.host AND rs.runner_name = latest.runner_name AND rs.ts = latest.max_ts
-            ORDER BY rs.host, rs.runner_name
+            ON rs.host = latest.host AND rs.runner_name = latest.runner_name
+                AND rs.repo = latest.repo AND rs.ts = latest.max_ts
+            ORDER BY rs.host, rs.runner_name, rs.repo
         """
         if host is not None:
-            return self._rows(query.format(where="WHERE host = ?"), (host,))
-        return self._rows(query.format(where=""))
+            return self._rows(query.format(host_filter=" AND host = ?"), (host,))
+        return self._rows(query.format(host_filter=""))
 
     def utilization_by_class(self, host: Optional[str] = None) -> List[Tuple]:
         """Average CPU% per host/class across every stored sample, for ``status``."""

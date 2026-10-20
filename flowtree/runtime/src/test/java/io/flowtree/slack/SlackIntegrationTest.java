@@ -303,8 +303,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         SlackNotifier notifier = new SlackNotifier(null);
         notifier.setMessageCallback(json -> {
-            receivedChannel.set(FlowTreeApiEndpoint.extractJsonField(json, "channel"));
-            receivedText.set(FlowTreeApiEndpoint.extractJsonField(json, "text"));
+            receivedChannel.set(JsonFieldExtractor.extractString(json, "channel"));
+            receivedText.set(JsonFieldExtractor.extractString(json, "text"));
         });
 
         Workstream workstream = new Workstream("C_TEST_123", "#test");

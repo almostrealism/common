@@ -44,7 +44,7 @@ public class NativeMemory extends DirectMemory {
 	private final long size;
 
 	/** Cached non-owning direct-buffer view, derived from {@link #nativePointer} on first use. */
-	private ByteBuffer byteBuffer;
+	private volatile ByteBuffer byteBuffer;
 
 	/**
 	 * Creates a new NativeMemory over a native pointer.
@@ -77,13 +77,23 @@ public class NativeMemory extends DirectMemory {
 	 * <p>The buffer is derived from {@link #getContentPointer() the native pointer} on first use
 	 * (via the owning {@link NativeMemoryProvider}) and cached, so the pointer remains the only
 	 * source of truth for this memory's location.</p>
+	 *
+	 * <p>The view is created without holding this object's monitor. The provider serializes
+	 * its own operations, and a provider copy into this memory holds the provider's monitor
+	 * while it asks for this view; holding this monitor while calling the provider would take
+	 * the two in the opposite order and deadlock against such a copy. Two views over the same
+	 * pointer are interchangeable, so when threads race only the first one published is kept.</p>
 	 */
 	@Override
-	public synchronized ByteBuffer asByteBuffer() {
-		if (byteBuffer == null) {
-			byteBuffer = provider.viewBuffer(nativePointer, size);
-		}
+	public ByteBuffer asByteBuffer() {
+		ByteBuffer view = byteBuffer;
+		if (view != null) return view;
 
-		return byteBuffer;
+		view = provider.viewBuffer(nativePointer, size);
+
+		synchronized (this) {
+			if (byteBuffer == null) byteBuffer = view;
+			return byteBuffer;
+		}
 	}
 }

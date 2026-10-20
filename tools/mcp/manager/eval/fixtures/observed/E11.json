@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "sources": [
+    "CLAUDE.md",
+    "docs/internals/test-skip-gating-prevention.md",
+    "flowtree/runtime/docs/file-staging.md",
+    "tools/ci/README.md"
+  ],
+  "html_refs": [],
+  "related_memories": [
+    {
+      "content": "Re-confirmed (4th session, commit 466ad1b3b ...) that the agent-commit-validation gate is a genuine, correct block ...",
+      "score": 0.316
+    },
+    {
+      "content": "12th session on ci/test-protection-consistency (PR #502) ... `bash tools/ci/agent-protection/validate-agent-commit.sh origin/master` exits 2 ...",
+      "score": 0.328
+    },
+    {
+      "content": "agent-commit-validation gate on feature/agent-collab-updates (PR #498) is a GENUINE violation ...",
+      "score": 0.354
+    }
+  ],
+  "answer": "`validate-agent-commit.sh` blocks change sets whose only content is edits to test files that exist on the base branch (at the merge-base), with no new test methods introduced. It exits with code `2` when such a violation is detected.\n\nPer `tools/ci/README.md:112`, its purpose is `agent-commit-validation: reject a change set whose only content is edits to test files that exist on the base branch (at the merge-base), with no new test in them`. Per `flowtree/runtime/docs/file-staging.md:378`, it uses `test-method-lines.awk` to distinguish new vs. edited test methods.\n\nExample invocation and exit code:  \n```bash\nbash tools/ci/agent-protection/validate-agent-commit.sh origin/master\n# exits 2 if blocking condition is met\n```  \nas confirmed in Note 2 (`tools/ci/agent-protection/validate-agent-commit.sh origin/master` exits 2)."
+}

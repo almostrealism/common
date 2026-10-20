@@ -19,9 +19,17 @@ the server module stays focused on run orchestration.
 
 import os
 import subprocess
+import sys
 import time
-from pathlib import Path
 from typing import Callable, Optional
+
+# Process questions shared with the other MCP servers (tools/mcp/common).
+# get_ppid and pid_alive stay reachable as attributes of this module, which
+# is how server.py and the tests address them.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+from processes import get_ppid, pid_alive  # noqa: E402,F401
 
 
 # Substrings of a `jps -l` line that identify a surefire test JVM: the fork
@@ -32,42 +40,6 @@ FORK_MARKERS = ("ForkedBooter", "surefirebooter")
 # launcher (mvn execs java, preserving the PID); the headroom covers shells
 # or wrappers between them.
 MAX_ANCESTRY_DEPTH = 10
-
-
-def get_ppid(pid: int) -> Optional[int]:
-    """Get parent PID. Uses /proc on Linux, ps on macOS.
-
-    Args:
-        pid: Process to look up.
-
-    Returns:
-        The parent PID, or None if the process does not exist or the
-        lookup fails.
-    """
-    try:
-        stat_path = Path(f"/proc/{pid}/stat")
-        text = stat_path.read_text()
-        close_paren = text.rfind(")")
-        if close_paren == -1:
-            return None
-        fields = text[close_paren + 2:].split()
-        if len(fields) >= 2:
-            return int(fields[1])
-    except (OSError, PermissionError, ValueError):
-        pass
-
-    # Fallback: ps (macOS / general Unix)
-    try:
-        result = subprocess.run(
-            ["ps", "-o", "ppid=", "-p", str(pid)],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return int(result.stdout.strip())
-    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
-        pass
-
-    return None
 
 
 def is_descendant_of(pid: int, ancestor_pid: int) -> bool:
@@ -90,24 +62,6 @@ def is_descendant_of(pid: int, ancestor_pid: int) -> bool:
             return True
         current = ppid
     return False
-
-
-def pid_alive(pid: int) -> bool:
-    """Check whether a process exists (without signalling it).
-
-    Args:
-        pid: Process to check.
-
-    Returns:
-        True when the process exists (including when owned by another user).
-    """
-    try:
-        os.kill(pid, 0)
-        return True
-    except PermissionError:
-        return True
-    except OSError:
-        return False
 
 
 def find_forked_jvm(maven_pid: int) -> Optional[int]:

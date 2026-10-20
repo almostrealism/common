@@ -75,10 +75,10 @@ Or per-phase:
 
 ```text
 phase_configs={"deduplication": {"runner": "opencode",
-                                 "model": "claude-sonnet-4-6",
+                                 "model": "claude-sonnet-5",
                                  "provider": "anthropic"},
                "primary":       {"runner": "claude",
-                                 "model": "claude-opus-4-7"}}
+                                 "model": "claude-opus-5-5"}}
 ```
 
 When `runner` is `opencode` and `provider` is omitted, the runner uses

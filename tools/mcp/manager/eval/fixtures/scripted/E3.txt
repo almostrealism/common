@@ -1,0 +1,3 @@
+`ObjectOrientedDesignRule` appends each verdict to `.flowtree/oop-review.md`, its `VERDICT_PATH` [I:ObjectOrientedDesignRule.java@65]. It reviews at most 12 changed classes, its `MAX_CLASSES` [I:ObjectOrientedDesignRule.java@68].
+BASIS: documentation
+CONFLICTS: none

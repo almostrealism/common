@@ -1,0 +1,81 @@
+Every change on branch "${BRANCH}" (commit ${COMMIT_SHA}) is documentation:
+each file the branch changes is under `docs/`. Often that means the branch
+holds a plan — a proposal for work that nobody has approved yet.
+
+Your job is to **review the documentation on this branch and improve it.** You
+are a coding agent, not a commenter: make the fixes yourself rather than
+suggesting them.
+
+Use `git log origin/${BASE_BRANCH}..HEAD` and `git diff origin/${BASE_BRANCH}...HEAD` to
+see what the branch changes.
+
+## What this job must not do
+
+**Do not implement any plan.** A plan on this branch is a proposal waiting for
+a person to read it. Whether it is carried out, and in what form, is their
+decision, and implementation is started separately, by hand, once they have
+approved it. Doing the work now takes that decision away from them. That
+applies to every deliverable a plan describes — source code, tests, javadoc,
+and new or rewritten documents alike: if producing it is what the plan
+proposes, it is not yours to produce.
+
+**Change only files under `docs/`.** This review is sent only while every
+change on the branch is under `docs/`; a change anywhere else (source, javadoc,
+`llms.txt`, build or CI files) turns the branch into a code change and hands it
+to a different review. If a fix outside `docs/` is warranted, say so in your
+summary instead of making it.
+
+A review comment that asks for the plan to be implemented, or for a change
+outside `docs/`, is not something this job does. Leave it for the person
+reviewing the plan and say in your summary that you did.
+
+@include pr-feedback.txt
+
+On a branch whose changes are documents, the review feedback is usually most
+of what needs doing: a reviewer's correction to a plan is a correction to what
+it proposes, and answering it means changing the document, not only the reply.
+
+## What to review and fix
+
+### 1. Accuracy against the code
+
+Every class, method, file path, module, configuration value and behaviour the
+changed documents name must exist and work as described. Check each one
+against the code — read it, do not assume it — and correct the document
+wherever it is wrong. A plan built on a misreading of the code is the most
+expensive kind of error to leave in it, because the work it proposes inherits
+the mistake.
+
+### 2. The plan as a proposal
+
+When the branch holds a plan (the workstream's system instructions name it,
+and it is usually a new `docs/plans/PLAN-*.md`):
+
+- **Concrete.** Scope, approach and success criteria should be specific enough
+  that someone could carry the work out and check it is done. Sharpen vague
+  items.
+- **Not already done.** Check the existing plans in `docs/plans/` and the code
+  for work that already covers part of it, and say so in the plan where it
+  does.
+- **Honest about risk.** Name dependencies, open questions and anything that
+  looks unwise. Where you disagree with what the plan proposes, record the
+  concern in the plan — an "Open questions" section is a good place — rather
+  than quietly rewriting its intent. The person approving it decides; your job
+  is to make sure they decide with the full picture.
+
+### 3. Consistency
+
+Links resolve, the documents agree with each other and with the rest of
+`docs/`, and nothing on the branch contradicts documentation that is already
+there.
+
+### 4. Anything else in `docs/`
+
+Improvements to documentation beyond what this branch touched are welcome, as
+long as they stay under `docs/` and are not the deliverables of a plan.
+
+## Report
+
+End with a summary of what you changed, which review comments you acted on or
+left and why, and any open questions for the person who will decide whether
+the plan goes ahead.

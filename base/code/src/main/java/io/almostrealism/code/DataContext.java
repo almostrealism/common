@@ -66,6 +66,25 @@ public interface DataContext<MEM> extends Named {
 	List<ComputeContext<MEM>> getComputeContexts();
 
 	/**
+	 * Returns the compute context through which work on the given {@link Memory}, which this
+	 * context manages, should be performed &mdash; a copy into it, for example.
+	 *
+	 * <p>A data context can manage memory that another context owns: a host context that shares
+	 * memory with a device allocates from the device's
+	 * {@link #getHostAccessibleMemoryProvider() host-accessible provider}. Such memory is better
+	 * operated on by the device context, which can order the work after pending device work
+	 * without the host waiting for it, and only the context that set up the sharing knows that
+	 * the memory is the device's. That context overrides this method to name the device context;
+	 * every other context performs work on its memory itself, which is the default.</p>
+	 *
+	 * @param memory memory managed by this context
+	 * @return the compute context that should perform work on {@code memory}
+	 */
+	default ComputeContext<MEM> getComputeContext(Memory memory) {
+		return getComputeContext();
+	}
+
+	/**
 	 * Returns all memory providers available in this data context.
 	 *
 	 * @return the list of memory providers
@@ -86,6 +105,20 @@ public interface DataContext<MEM> extends Named {
 	 * @return the kernel memory provider
 	 */
 	MemoryProvider<? extends Memory> getKernelMemoryProvider();
+
+	/**
+	 * Returns the memory provider through which this context can share memory with kernels that
+	 * run on the host, or {@code null} if it cannot. Memory from the returned provider must be
+	 * directly addressable by host code at its content pointer, so that a host kernel and this
+	 * context's kernels can operate on the same allocation without copying it between them.
+	 * When shared memory is enabled, the host context allocates from this provider. The default
+	 * shares nothing.
+	 *
+	 * @return the provider of host-addressable memory, or {@code null}
+	 */
+	default MemoryProvider<? extends Memory> getHostAccessibleMemoryProvider() {
+		return null;
+	}
 
 	/**
 	 * Executes the given callable within device memory scope.
@@ -128,4 +161,17 @@ public interface DataContext<MEM> extends Named {
 	 * Releases all resources held by this data context.
 	 */
 	void destroy();
+
+	/**
+	 * Returns whether {@link #destroy()} has released this context's resources.
+	 *
+	 * <p>A value derived under a context, such as a compiled kernel or memory it
+	 * allocated, is only usable while that context is alive; a holder of such a
+	 * value consults this before reusing it.</p>
+	 *
+	 * @return {@code true} once this context has been destroyed
+	 */
+	default boolean isDestroyed() {
+		return false;
+	}
 }

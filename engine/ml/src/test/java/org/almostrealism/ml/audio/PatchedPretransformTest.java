@@ -106,6 +106,63 @@ public class PatchedPretransformTest extends TestSuiteBase implements LayerFeatu
 	}
 
 	/**
+	 * Decoding places folded channel {@code c * patchSize + h} at frame {@code l} back at input
+	 * channel {@code c}, sample {@code l * patchSize + h} — the exact inverse of the encode fold,
+	 * pinned at the element level independently of {@link #decodeInvertsEncode}. Uses more than one
+	 * batch entry and channel so the fold's channel-major, patch-offset-minor layout is exercised.
+	 */
+	@Test(timeout = 120000)
+	public void decodeUnfoldsChannelsIntoSamples() {
+		int batch = 2;
+		int channels = 3;
+		int patchSize = 4;
+		int frames = 5;
+		PatchedPretransform pretransform = new PatchedPretransform(channels, patchSize);
+
+		PackedCollection input = new PackedCollection(shape(batch, channels * patchSize, frames)).randnFill();
+		PackedCollection decoded = run(pretransform.decode(batch, frames), input);
+		assertEquals(shape(batch, channels, frames * patchSize).getTotalSize(),
+				decoded.getShape().getTotalSize());
+
+		for (int b = 0; b < batch; b++) {
+			for (int c = 0; c < channels; c++) {
+				for (int l = 0; l < frames; l++) {
+					for (int h = 0; h < patchSize; h++) {
+						assertEquals(input.valueAt(b, c * patchSize + h, l),
+								decoded.valueAt(b, c, l * patchSize + h), 1e-6);
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * A multi-channel, multi-batch signal survives an encode followed by a decode unchanged,
+	 * complementing the single-batch {@link #decodeInvertsEncode} round trip.
+	 */
+	@Test(timeout = 120000)
+	public void roundTripPreservesMultiChannelBatch() {
+		int batch = 2;
+		int channels = 3;
+		int patchSize = 4;
+		int length = 20;
+		PatchedPretransform pretransform = new PatchedPretransform(channels, patchSize);
+
+		PackedCollection input = new PackedCollection(shape(batch, channels, length)).randnFill();
+		PackedCollection encoded = run(pretransform.encode(batch, length), input);
+		PackedCollection decoded = run(pretransform.decode(batch, length / patchSize), encoded);
+
+		assertEquals(input.getShape().getTotalSize(), decoded.getShape().getTotalSize());
+		for (int b = 0; b < batch; b++) {
+			for (int c = 0; c < channels; c++) {
+				for (int i = 0; i < length; i++) {
+					assertEquals(input.valueAt(b, c, i), decoded.valueAt(b, c, i), 1e-6);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Compiles a single block into a model and runs it on the given input.
 	 *
 	 * @param block the block to evaluate

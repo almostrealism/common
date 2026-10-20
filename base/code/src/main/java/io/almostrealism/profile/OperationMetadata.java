@@ -21,6 +21,8 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.util.DescribableParent;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * Immutable-style descriptor carrying identity and display information for a
@@ -77,8 +79,17 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	/** An optional string identifying the execution context (e.g. thread or device). */
 	private String contextName;
 
-	/** A compact signature string uniquely identifying the operation within its context. */
+	/**
+	 * A compact signature string uniquely identifying the operation within its context, once
+	 * known. Guarded by this metadata's monitor.
+	 */
 	private String signature;
+
+	/**
+	 * Computes {@link #signature} when it is first requested, if it was deferred with
+	 * {@link #deferSignature(Supplier)}; otherwise {@code null}. Guarded by this metadata's monitor.
+	 */
+	private Supplier<String> signatureSource;
 
 	/** Child operations nested within this metadata node. */
 	private List<OperationMetadata> children;
@@ -102,7 +113,7 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 			setLongDescription(from.getLongDescription());
 			setShape(from.getShape());
 			setContextName(from.getContextName());
-			setSignature(from.getSignature());
+			from.copySignatureTo(this);
 			setChildren(from.getChildren());
 		}
 	}
@@ -215,11 +226,63 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	/** Sets the context name. */
 	public void setContextName(String contextName) { this.contextName = contextName; }
 
-	/** Returns the compiled function signature, or {@code null} if not set. */
-	public String getSignature() { return signature; }
+	/**
+	 * Returns the compiled function signature, or {@code null} if not set. A signature deferred
+	 * with {@link #deferSignature(Supplier)} is computed here, on the first request.
+	 */
+	public synchronized String getSignature() {
+		if (signature == null && signatureSource != null) {
+			signature = signatureSource.get();
+			signatureSource = null;
+		}
+
+		return signature;
+	}
 
 	/** Sets the function signature. */
-	public void setSignature(String signature) { this.signature = signature; }
+	public synchronized void setSignature(String signature) {
+		this.signature = signature;
+		this.signatureSource = null;
+	}
+
+	/**
+	 * Defers the function signature: it is computed by {@code source} when it is first requested,
+	 * rather than now. A signature is only needed when the operation is compiled or looked up, so
+	 * computing it eagerly for every operation constructed (each of which hashes the signatures of
+	 * all of its inputs) does work that is usually never used. Copies of this metadata share the
+	 * deferred computation, which runs at most once for all of them.
+	 *
+	 * @param source computes the signature, possibly returning {@code null}
+	 */
+	public synchronized void deferSignature(Supplier<String> source) {
+		AtomicReference<String> computed = new AtomicReference<>();
+		this.signature = null;
+		this.signatureSource = () -> {
+			String s = computed.get();
+			if (s == null) {
+				s = source.get();
+				computed.set(s);
+			}
+
+			return s;
+		};
+	}
+
+	/**
+	 * Copies this metadata's signature, or its still-deferred computation, to {@code target},
+	 * without computing it.
+	 *
+	 * @param target the metadata to receive the signature
+	 */
+	private synchronized void copySignatureTo(OperationMetadata target) {
+		String known = signature;
+		Supplier<String> source = signatureSource;
+
+		synchronized (target) {
+			target.signature = known;
+			target.signatureSource = source;
+		}
+	}
 
 	/** Returns the child metadata list, or {@code null} if this is a leaf. */
 	@Override

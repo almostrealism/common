@@ -1,0 +1,3 @@
+On branch feature/conversation-ttl-a an idle conversation expires after 30 minutes [N:e6-note-1], while on branch feature/conversation-ttl-b it expires after 15 minutes [N:e6-note-2].
+BASIS: notes
+CONFLICTS: [N:e6-note-1] vs [N:e6-note-2] — idle expiry 30 vs 15 minutes

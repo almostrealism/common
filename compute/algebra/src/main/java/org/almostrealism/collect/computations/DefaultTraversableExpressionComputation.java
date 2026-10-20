@@ -96,8 +96,7 @@ public class DefaultTraversableExpressionComputation
 	private boolean generateSignature;
 
 	/**
-	 * Constructs a DefaultTraversableExpressionComputation with default delta strategy.
-	 * This constructor uses {@link MultiTermDeltaStrategy#NONE} for automatic differentiation.
+	 * Constructs a DefaultTraversableExpressionComputation.
 	 * 
 	 * @param name The name of this computation for debugging and identification
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
@@ -109,16 +108,15 @@ public class DefaultTraversableExpressionComputation
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
 												   Function<TraversableExpression[], CollectionExpression> expression,
 												   Producer<PackedCollection>... args) {
-		this(name, shape, MultiTermDeltaStrategy.NONE, false, expression, args);
+		this(name, shape, false, expression, args);
 	}
 
 	/**
-	 * Constructs a DefaultTraversableExpressionComputation with a specified delta strategy.
-	 * This constructor allows configuration of automatic differentiation behavior.
+	 * Constructs a DefaultTraversableExpressionComputation, choosing whether it generates a
+	 * signature.
 	 * 
 	 * @param name The name of this computation for debugging and identification
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
-	 * @param deltaStrategy The {@link MultiTermDeltaStrategy} to use for handling derivatives
 	 * @param generateSignature Whether to generate a signature for identifying the generated
 	 *                         program for reuse
 	 * @param expression A function that transforms input {@link TraversableExpression} arrays
@@ -127,11 +125,10 @@ public class DefaultTraversableExpressionComputation
 	 */
 	@SafeVarargs
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
-												   MultiTermDeltaStrategy deltaStrategy,
 												   boolean generateSignature,
 												   Function<TraversableExpression[], CollectionExpression> expression,
 												   Producer<PackedCollection>... args) {
-		super(name, shape, deltaStrategy, validateArgs(args));
+		super(name, shape, validateArgs(args));
 		this.expression = expression;
 		this.generateSignature = generateSignature;
 		setMetadata(getMetadata().withSignature(signature()));
@@ -148,23 +145,7 @@ public class DefaultTraversableExpressionComputation
 	 */
 	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
 												   CollectionExpression expression) {
-		this(name, shape, MultiTermDeltaStrategy.NONE, expression);
-	}
-
-	/**
-	 * Constructs a DefaultTraversableExpressionComputation with a fixed collection expression and delta strategy.
-	 * This constructor is useful when the computation logic doesn't depend on the input arguments
-	 * and always produces the same expression pattern, but requires a specific differentiation strategy.
-	 * 
-	 * @param name The name of this computation for debugging and identification
-	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
-	 * @param deltaStrategy The {@link MultiTermDeltaStrategy} to use for handling derivatives
-	 * @param expression A fixed {@link CollectionExpression} that will be used regardless of inputs
-	 */
-	public DefaultTraversableExpressionComputation(String name, TraversalPolicy shape,
-												   MultiTermDeltaStrategy deltaStrategy,
-												   CollectionExpression expression) {
-		super(name, shape, deltaStrategy);
+		super(name, shape);
 		this.expression = (arguments) -> expression;
 	}
 
@@ -191,7 +172,7 @@ public class DefaultTraversableExpressionComputation
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
 		return new DefaultTraversableExpressionComputation(getName(), getShape(),
-						getDeltaStrategy(), generateSignature, expression,
+						generateSignature, expression,
 					children.stream().skip(1).toArray(Producer[]::new))
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())

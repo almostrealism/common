@@ -16,6 +16,7 @@
 
 package org.almostrealism.studio.persistence.test.support;
 
+import io.almostrealism.compute.Process;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDataFeatureProvider;
@@ -123,9 +124,10 @@ public class LogSpectrumFeatureProvider implements WaveDataFeatureProvider, Code
 		CollectionProducer real = samples.multiply(repeat(0, frames, cos(angle))).sum(2);
 		CollectionProducer imaginary = samples.multiply(repeat(0, frames, sin(angle))).sum(2);
 
-		return real.pow(2.0).add(imaginary.pow(2.0)).sqrt()
-				.divide(window)
-				.evaluate().reshape(frames, bins, 1);
+		// Optimized so each window-length sum runs as its own looped kernel; without
+		// it both sums are unrolled into the elementwise kernel, one term per sample
+		CollectionProducer magnitude = real.pow(2.0).add(imaginary.pow(2.0)).sqrt().divide(window);
+		return Process.optimized(magnitude).get().evaluate().reshape(frames, bins, 1);
 	}
 
 	/**

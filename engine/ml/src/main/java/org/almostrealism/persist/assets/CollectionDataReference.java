@@ -18,7 +18,10 @@ package org.almostrealism.persist.assets;
 
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.protobuf.Collections;
+
+import java.nio.ByteBuffer;
 
 /**
  * Collection data that is known to be in a file, and has not been read.
@@ -97,6 +100,22 @@ public class CollectionDataReference {
 	public long getValueLength() { return (long) count * precision.bytes(); }
 
 	/**
+	 * Reads one value from a buffer holding the whole file this reference was resolved
+	 * against, decoding it from the form it is stored in.
+	 *
+	 * <p>Protobuf collection data is stored as little-endian FP64 or FP32, which the buffer's
+	 * own accessors decode. A file format that stores values in another form overrides this.</p>
+	 *
+	 * @param buffer the file's bytes, in the order the values were written
+	 * @param index  the position of the value among this reference's values
+	 * @return the value
+	 */
+	protected double valueAt(ByteBuffer buffer, int index) {
+		int at = (int) (valueOffset + (long) index * precision.bytes());
+		return precision == Precision.FP64 ? buffer.getDouble(at) : buffer.getFloat(at);
+	}
+
+	/**
 	 * Locates collection data within a message, descending the given path of
 	 * field numbers to reach it.
 	 *
@@ -117,6 +136,16 @@ public class CollectionDataReference {
 	/**
 	 * Locates the values of the given collection data.
 	 *
+	 * <p>A collection whose shape has zero total size (an axis of length zero)
+	 * holds no values. It resolves to {@code null} rather than to an empty
+	 * reference because a {@link PackedCollection} cannot have zero size —
+	 * reading it back is not a loss of an addressable range, it is a value the
+	 * reader cannot hold at all. This is decided by the shape, not by whether a
+	 * data field is present: a canonical writer omits an empty packed field, but
+	 * one that writes it explicitly with length zero is equally valid protobuf
+	 * and must resolve the same way. The {@code CollectionData} it was written
+	 * from remains readable by an ordinary protobuf parse.</p>
+	 *
 	 * @param data the collection data message
 	 * @return a reference to its values, or {@code null} if it holds none
 	 */
@@ -126,7 +155,7 @@ public class CollectionDataReference {
 
 		TraversalPolicy shape = CollectionEncoder.decode(
 				policy.parse(Collections.TraversalPolicyData.parser()));
-		if (shape == null || shape.getDimensions() == 0) return null;
+		if (shape == null || shape.getTotalSizeLong() == 0) return null;
 
 		Precision precision = data.has(DATA_FIELD) ? Precision.FP64 : Precision.FP32;
 		int field = precision == Precision.FP64 ? DATA_FIELD : DATA_32_FIELD;

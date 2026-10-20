@@ -148,12 +148,11 @@
  *
  * <h3>Producer Matching</h3>
  * <p>
- * {@link org.almostrealism.algebra.AlgebraFeatures} provides utilities for matching producers in
- * computation graphs, used extensively in automatic differentiation:
+ * Every {@link io.almostrealism.relation.Producer} can be asked how it relates to another producer
+ * in a computation graph, which automatic differentiation relies on extensively:
  * </p>
  * <pre>{@code
- * if (AlgebraFeatures.match(producer1, target) &&
- *     AlgebraFeatures.cannotMatch(producer2, target)) {
+ * if (producer1.refersTo(target) && producer2.cannotMatch(target)) {
  *     // Differentiate with respect to producer1
  * }
  * }</pre>

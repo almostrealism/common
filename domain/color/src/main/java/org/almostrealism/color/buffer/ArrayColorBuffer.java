@@ -214,11 +214,11 @@ public class ArrayColorBuffer implements ColorBuffer, ConsoleFeatures {
 		
 		if (direct && this.k != 1.0) {
 			PackedCollection pc = c.get().evaluate();
-			RGB result = pc instanceof RGB ? (RGB) pc : new RGB(pc.toDouble(0), pc.toDouble(1), pc.toDouble(2));
+			RGB result = RGB.of(pc);
 			return result.multiply(this.k);
 		} else {
 			PackedCollection pc = c.get().evaluate();
-			return pc instanceof RGB ? (RGB) pc : new RGB(pc.toDouble(0), pc.toDouble(1), pc.toDouble(2));
+			return RGB.of(pc);
 		}
 	}
 	

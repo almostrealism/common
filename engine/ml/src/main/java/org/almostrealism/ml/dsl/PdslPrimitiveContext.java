@@ -21,6 +21,8 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.List;
+
 /**
  * Per-call interpretation context handed to a {@link PdslPrimitive} dispatcher.
  *
@@ -105,6 +107,23 @@ public interface PdslPrimitiveContext {
 		if (value instanceof Integer) return (Integer) value;
 		if (value instanceof Number) return ((Number) value).intValue();
 		throw new PdslParseException("Expected int but got " + value);
+	}
+
+	/**
+	 * Reads a list of PDSL argument values as integers, each by {@link #toInt(Object)}, for
+	 * primitives that take a variable number of integer arguments (a shape's dimensions, an
+	 * axis order, a position).
+	 *
+	 * @param values the argument values as evaluated by the interpreter
+	 * @return the integer values, in order
+	 * @throws PdslParseException if any value is not a {@link Number}
+	 */
+	static int[] toInts(List<Object> values) {
+		int[] ints = new int[values.size()];
+		for (int i = 0; i < ints.length; i++) {
+			ints[i] = toInt(values.get(i));
+		}
+		return ints;
 	}
 
 	/**

@@ -16,6 +16,7 @@
 
 package io.almostrealism.sequence;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.relation.Series;
 
 import java.util.List;
@@ -205,24 +206,6 @@ public class KernelSeries implements Series {
 	}
 
 	/**
-	 * Computes the greatest common divisor of two integers.
-	 *
-	 * @param a the first integer
-	 * @param b the second integer
-	 * @return the GCD of {@code a} and {@code b}
-	 */
-	private static int gcd(int a, int b) {
-		a = Math.abs(a);
-		b = Math.abs(b);
-		while (b != 0) {
-			int temp = b;
-			b = a % b;
-			a = temp;
-		}
-		return a;
-	}
-
-	/**
 	 * Computes the least common multiple of two integers.
 	 *
 	 * @param a the first integer
@@ -231,7 +214,7 @@ public class KernelSeries implements Series {
 	 */
 	private static int lcm(int a, int b) {
 		if (a == 0 || b == 0) return 0;
-		long result = Math.abs((long) (a / gcd(a, b)) * b);
+		long result = Math.abs((long) (a / (int) ExpressionFeatures.gcd(a, b)) * b);
 		return (int) Math.min(result, Integer.MAX_VALUE);
 	}
 

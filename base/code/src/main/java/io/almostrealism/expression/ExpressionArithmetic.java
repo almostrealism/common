@@ -19,6 +19,8 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
+import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 
 /**
  * Fluent arithmetic, comparison, logical, and conversion operators for {@link Expression}.
@@ -511,6 +513,24 @@ public interface ExpressionArithmetic<T> {
 	 */
 	public default CollectionExpression<?> delta(CollectionExpression<?> target) {
 		throw new UnsupportedOperationException(getClass().getSimpleName());
+	}
+
+	/**
+	 * Completes a derivative with the identity case: wherever the target
+	 * {@link Expression#matches(Expression) matches} this expression the derivative is one,
+	 * and everywhere else it is the given {@code delta}.
+	 * When the match is statically known the conditional is eliminated entirely
+	 * (see {@link ExpressionMatchingCollectionExpression#create}).
+	 *
+	 * @param target the collection expression being differentiated with respect to
+	 * @param delta  the derivative of this expression where the target does not match it
+	 * @return the derivative of this expression with respect to {@code target}
+	 */
+	public default CollectionExpression<?> deltaUnlessTarget(CollectionExpression<?> target,
+															 CollectionExpression<?> delta) {
+		return ExpressionMatchingCollectionExpression.create(
+				new ConstantCollectionExpression(target.getShape(), self()), target,
+				new ConstantCollectionExpression(target.getShape(), new IntegerConstant(1)), delta);
 	}
 
 }

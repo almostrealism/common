@@ -118,7 +118,7 @@ public class SphericalLight extends Sphere implements SurfaceLight {
 
 			// TODO  This should pass along the ColorProucer directly rather than evaluating it
 			PackedCollection colorResult = getColorAt(p).get().evaluate();
-			RGB color = colorResult instanceof RGB ? (RGB) colorResult : new RGB(colorResult.toDouble(0), colorResult.toDouble(1), colorResult.toDouble(2));
+			RGB color = RGB.of(colorResult);
 			l[i] = new PointLight(new Vector(p.get().evaluate(), 0), in, color);
 			l[i].setAttenuationCoefficients(this.atta, this.attb, this.attc);
 		}

@@ -45,6 +45,10 @@ Extensions/**
 **/__pycache__
 
 # Automated coding
+# Scratch verdicts written by ObjectOrientedDesignRule sessions, at the repo
+# root or nested under any module directory — never part of a change set.
+.flowtree/
+**/.flowtree/
 claude-output/**
 .claude/*.local.json
 .claude/scheduled_tasks.lock

@@ -7,7 +7,7 @@
 ```bash
 # AR_HARDWARE_LIBS is auto-detected — do not set it manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
-# Override options: native|cl|mtl|cpu|gpu|*
+# Override options: native|cl|mtl|cuda|cpu|gpu|*  (cuda is opt-in, never chosen by auto-detect)
 ```
 
 ---
@@ -353,6 +353,26 @@ double value = ts.getValue(time);
 
 ---
 
+## Automatic Differentiation
+
+`CollectionProducer.delta(target, ReduceAxis, weight)` is the only public derivative method. The
+`ReduceAxis` names which axis of the Jacobian the caller contracts:
+
+```java
+CollectionProducer y = x.pow(2).sum();
+
+y.delta(x);                            // full Jacobian J (ReduceAxis.NONE), shape (out, in)
+y.delta(x, ReduceAxis.OUT, g);         // vector-Jacobian product gᵀJ — shape of the target (reverse mode)
+y.delta(x, ReduceAxis.IN, t);          // Jacobian-vector product J t — shape of y (forward mode)
+```
+
+A computation with a reduced rule produces the delta from its own structure, without forming the
+full Jacobian; one with no reduced rule falls back to contracting the full Jacobian
+(`GradientFeatures.jacobianContraction`). To add a differentiable computation, override
+`deltaElement` (element-wise), set `isChainRuleSupported()` (chain rule), or override
+`deltaDependent` / `deltaMatrix` — see
+[Automatic Differentiation](internals/automatic-differentiation.md).
+
 ## Optimize Module
 
 ### Loss Functions
@@ -394,6 +414,7 @@ See [training-loop-examples.md](internals/training-loop-examples.md) for detaile
 | `native` | CPU with JNI acceleration |
 | `cl` | GPU via OpenCL |
 | `mtl` | Apple Silicon GPU via Metal |
+| `cuda` | NVIDIA GPU via CUDA (opt-in; not chosen by `*` auto-detect; Linux/aarch64 bridge only) |
 | `gpu` | Abstract GPU (auto-selects MTL on macOS, CL elsewhere) |
 | `cpu` | Abstract CPU requirement |
 | `*` | Wildcard — whatever the platform supports |

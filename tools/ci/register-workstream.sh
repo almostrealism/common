@@ -34,6 +34,17 @@
 #                             sent as CF-Access-Client-Id header when set
 #   CF_ACCESS_CLIENT_SECRET - Cloudflare Access service token client secret;
 #                             sent as CF-Access-Client-Secret header when set
+#   TRACKER_CAPABILITIES - comma-separated tracker roles granted to agents
+#                       on the workstream (e.g. "planner"). Applied on
+#                       registration, and to an existing workstream too.
+#   REQUIRED_LABELS_JSON - JSON object of node labels every job on the
+#                       workstream must match by default, e.g.
+#                       {"platform":"macos"}. Applied on registration, and to
+#                       an existing workstream too.
+#   DEPENDENT_REPOS   - comma-separated clone URLs of repositories every job
+#                       on the workstream checks out beside this one, e.g. the
+#                       framework an application builds on. Applied on
+#                       registration, and to an existing workstream too.
 #   REPO_URL          - repository clone URL. Sent as repoUrl: it identifies
 #                       the workstream alongside the branch, and a workstream
 #                       is cloned from it — hence the SSH form, matching
@@ -43,7 +54,7 @@
 #   0 - registration succeeded
 #   1 - registration failed
 #
-# Outputs (to stdout):
+# Outputs (to stdout, and to $GITHUB_OUTPUT when set):
 #   workstream_id=<id>   (on success)
 
 set -euo pipefail
@@ -105,6 +116,31 @@ if [ -n "${REPO_URL:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --arg url "$REPO_URL" '. + {repoUrl: $url}')
 fi
 
+# Prints a comma-separated list as a compact JSON array of its trimmed,
+# non-empty entries, e.g. "a, b," -> ["a","b"].
+csv_to_json_array() {
+    jq -cn --arg csv "$1" \
+        '$csv | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))'
+}
+
+# Tracker roles granted to the workstream's agents.
+TRACKER_CAPABILITIES_JSON=""
+if [ -n "${TRACKER_CAPABILITIES:-}" ]; then
+    TRACKER_CAPABILITIES_JSON=$(csv_to_json_array "$TRACKER_CAPABILITIES")
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson caps "$TRACKER_CAPABILITIES_JSON" '. + {trackerCapabilities: $caps}')
+fi
+
+if [ -n "${REQUIRED_LABELS_JSON:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson labels "$REQUIRED_LABELS_JSON" '. + {requiredLabels: $labels}')
+fi
+
+# Repositories every job on the workstream checks out beside this one.
+DEPENDENT_REPOS_JSON=""
+if [ -n "${DEPENDENT_REPOS:-}" ]; then
+    DEPENDENT_REPOS_JSON=$(csv_to_json_array "$DEPENDENT_REPOS")
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson repos "$DEPENDENT_REPOS_JSON" '. + {dependentRepos: $repos}')
+fi
+
 RESPONSE=$(curl "${CURL_ARGS[@]}" -d "$PAYLOAD" "$ENDPOINT") || CURL_EXIT=$?
 
 if [ "${CURL_EXIT:-0}" -ne 0 ]; then
@@ -125,28 +161,70 @@ fi
 WORKSTREAM_ID=$(echo "$BODY" | jq -r '.workstreamId // empty')
 EXISTING=$(echo "$BODY" | jq -r '.existing // false')
 
-# If the workstream already existed and we have a plan file, update it
-# so the planning document gets attached to the existing workstream.
-if [ "$EXISTING" = "true" ] && [ -n "${PLAN_FILE:-}" ] && [ -n "$WORKSTREAM_ID" ]; then
-    echo "Workstream already exists ($WORKSTREAM_ID) — updating with planning document"
+# If the workstream already existed, registration returned it unchanged, so
+# the planning document and tracker roles are applied with an update.
+UPDATE_PAYLOAD='{}'
+if [ -n "${PLAN_FILE:-}" ]; then
+    UPDATE_PAYLOAD=$(echo "$UPDATE_PAYLOAD" | jq --arg plan "$PLAN_FILE" '. + {planningDocument: $plan}')
+fi
+if [ -n "$TRACKER_CAPABILITIES_JSON" ]; then
+    UPDATE_PAYLOAD=$(echo "$UPDATE_PAYLOAD" | jq --argjson caps "$TRACKER_CAPABILITIES_JSON" '. + {trackerCapabilities: $caps}')
+fi
+if [ -n "${REQUIRED_LABELS_JSON:-}" ]; then
+    UPDATE_PAYLOAD=$(echo "$UPDATE_PAYLOAD" | jq --argjson labels "$REQUIRED_LABELS_JSON" '. + {requiredLabels: $labels}')
+fi
+if [ -n "$DEPENDENT_REPOS_JSON" ]; then
+    UPDATE_PAYLOAD=$(echo "$UPDATE_PAYLOAD" | jq --argjson repos "$DEPENDENT_REPOS_JSON" '. + {dependentRepos: $repos}')
+fi
+if [ "$EXISTING" = "true" ] && [ "$UPDATE_PAYLOAD" != '{}' ] && [ -n "$WORKSTREAM_ID" ]; then
+    echo "Workstream already exists ($WORKSTREAM_ID) — updating it"
     UPDATE_ENDPOINT="${ENDPOINT}/${WORKSTREAM_ID}/update"
-    UPDATE_PAYLOAD=$(jq -n --arg plan "$PLAN_FILE" '{planningDocument: $plan}')
+
+    # An update that carries tracker capabilities, required labels or
+    # dependent repositories must succeed. A goal-decomposition agent
+    # submitted without its "planner" role cannot create ready tasks or
+    # releases, an implementation submitted without the labels the plan
+    # declared runs on the wrong machine — one without the Metal the plan
+    # needs, for instance — and a goal-decomposition agent without the
+    # framework checked out beside it cannot tell where a task belongs. Either way a
+    # silently-dropped update would produce a round that cannot do its job,
+    # so it fails the step rather than warning. A plan-only update stays
+    # best-effort — the planning document is not load-bearing for the
+    # agent's ability to work.
+    REQUIRE_UPDATE=false
+    if [ -n "$TRACKER_CAPABILITIES_JSON" ] || [ -n "${REQUIRED_LABELS_JSON:-}" ] \
+        || [ -n "$DEPENDENT_REPOS_JSON" ]; then
+        REQUIRE_UPDATE=true
+    fi
 
     UPDATE_RESPONSE=$(curl "${CURL_ARGS[@]}" \
         -d "$UPDATE_PAYLOAD" "$UPDATE_ENDPOINT") || UPDATE_EXIT=$?
 
+    UPDATE_OK=false
     if [ "${UPDATE_EXIT:-0}" -ne 0 ]; then
-        echo "::warning::Failed to update workstream with planning document (curl exit $UPDATE_EXIT)"
+        UPDATE_MESSAGE="Failed to update workstream (curl exit $UPDATE_EXIT)"
     else
         UPDATE_CODE=$(echo "$UPDATE_RESPONSE" | tail -1)
         UPDATE_BODY=$(echo "$UPDATE_RESPONSE" | sed '$d')
         if [ "$UPDATE_CODE" != "200" ]; then
-            echo "::warning::Failed to update workstream with planning document (HTTP $UPDATE_CODE): $UPDATE_BODY"
+            UPDATE_MESSAGE="Failed to update workstream (HTTP $UPDATE_CODE): $UPDATE_BODY"
         else
-            echo "Updated workstream $WORKSTREAM_ID with planning document: $PLAN_FILE"
+            UPDATE_OK=true
         fi
+    fi
+
+    if [ "$UPDATE_OK" = "true" ]; then
+        echo "Updated workstream $WORKSTREAM_ID: $UPDATE_PAYLOAD"
+    elif [ "$REQUIRE_UPDATE" = "true" ]; then
+        echo "::error::${UPDATE_MESSAGE} — required workstream settings could not be applied"
+        exit 1
+    else
+        echo "::warning::${UPDATE_MESSAGE}"
     fi
 fi
 
 echo "workstream_id=$WORKSTREAM_ID"
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    echo "workstream_id=$WORKSTREAM_ID" >> "$GITHUB_OUTPUT"
+fi
 echo "Workstream registered: $WORKSTREAM_ID"

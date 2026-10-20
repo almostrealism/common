@@ -25,6 +25,7 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CollectionCachedStateCell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.TestFeatures;
@@ -385,8 +386,34 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 
 		cells.destroy();
 
-		// After destroy, collections should be released
-		// We can't directly test destruction, but no exception means success
+		Assert.assertTrue(col1.isDestroyed());
+		Assert.assertTrue(col2.isDestroyed());
+	}
+
+	/**
+	 * Destroying a {@link CellList} through its {@link TemporalCellular} type, the type a
+	 * real-time runner is handed out as, releases the collections it tracks without any
+	 * cast to {@link io.almostrealism.lifecycle.Destroyable}, and leaves untracked
+	 * collections alone.
+	 */
+	@Test(timeout = 120000)
+	public void testDestroyThroughTemporalCellularReleasesTrackedData() {
+		PackedCollection tracked = new PackedCollection(10);
+		PackedCollection untracked = new PackedCollection(10);
+
+		try {
+			CellList cells = new CellList();
+			cells.addData(tracked);
+
+			TemporalCellular runner = cells;
+			Assert.assertFalse(tracked.isDestroyed());
+			runner.destroy();
+
+			Assert.assertTrue(tracked.isDestroyed());
+			Assert.assertFalse(untracked.isDestroyed());
+		} finally {
+			untracked.destroy();
+		}
 	}
 
 	// ========== FLUENT API TESTS ==========

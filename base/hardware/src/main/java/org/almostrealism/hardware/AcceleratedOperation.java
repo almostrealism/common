@@ -29,6 +29,7 @@ import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.instructions.ExecutionKey;
@@ -214,6 +215,22 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
 	/**
+	 * Fails when the compute context this operation was created under has been
+	 * destroyed. The operation was placed under that context on purpose, by the
+	 * caller's requirements and the computer's choice for the computation, and
+	 * nothing here may move it elsewhere; work that cannot run where it was put
+	 * is an error for the caller to see.
+	 *
+	 * @throws IllegalStateException if the context, or its data context, is destroyed
+	 */
+	protected void requireLiveContext() {
+		if (context.isDestroyed() || context.getDataContext().isDestroyed()) {
+			throw new IllegalStateException("The compute context for " + getName() +
+					" has been destroyed");
+		}
+	}
+
+	/**
 	 * Returns the {@link InstructionSetManager} responsible for compiling and caching this operation.
 	 *
 	 * <p>The instruction set manager coordinates kernel compilation, caching, and retrieval of
@@ -350,6 +367,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * <p>Applies any compute requirements, dispatches the kernel with no arguments,
 	 * and waits for completion. This is the primary entry point for executing
 	 * compiled operations.</p>
+	 *
+	 * <p>This is an interruptible blocking call: an interrupted calling thread fails
+	 * rather than returning as though the work had finished (see
+	 * {@link #awaitCompletion(AcceleratedProcessDetails)}).</p>
+	 *
+	 * @throws HardwareException if the calling thread is interrupted
 	 */
 	@Override
 	public void run() {
@@ -358,13 +381,45 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
 			}
 
-			AcceleratedProcessDetails process = apply(null, new Object[0]);
-			process.awaitReady();
-			waitFor(process.getSemaphore());
+			awaitCompletion(apply(null, new Object[0]));
 		} finally {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().popRequirements();
 			}
+		}
+	}
+
+	/**
+	 * Waits until the dispatch described by {@code process} has been issued and has
+	 * completed, so that its outputs may be read.
+	 *
+	 * <p>This is an interruptible blocking call. A completion wait that observes an interrupt
+	 * returns early, with the interrupt status set, rather than throwing, so its return alone
+	 * cannot establish that the work finished. Returning normally in that case would let the
+	 * caller read outputs the kernel may still be writing, and a caller driving many
+	 * dispatches (a per-tick loop, for example) would keep issuing work it never waits for.
+	 * An interrupt is therefore reported as a failure. The status is only inspected after the
+	 * wait returns, so a thread whose interrupt status is already set on entry fails the same
+	 * way, as it would for any other interruptible blocking call; the interrupt status is left
+	 * set for the caller.</p>
+	 *
+	 * <p>Whether an interrupt cuts the wait itself short depends on the backend's
+	 * {@link Semaphore}: a wait that cannot observe interrupts (an
+	 * OpenCL event wait, for example) blocks until the dispatch completes. Either way the
+	 * interrupt is reported once the wait returns, so no caller proceeds past an interrupt
+	 * as though nothing had happened, and a dispatch loop stops at the dispatch in progress
+	 * when the interrupt arrives.</p>
+	 *
+	 * @param process the details returned by {@link #apply(MemoryBank, Object[])}
+	 * @throws HardwareException if the calling thread's interrupt status is set once the
+	 *                           completion wait returns
+	 */
+	protected void awaitCompletion(AcceleratedProcessDetails process) {
+		process.awaitReady();
+		waitFor(process.getSemaphore());
+
+		if (Thread.currentThread().isInterrupted()) {
+			throw new HardwareException("Interrupted before " + getName() + " completed");
 		}
 	}
 
@@ -471,7 +526,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				isFixedCount(), getCount(),
 				getArgumentVariables(), getOutputArgumentIndex(),
 				this::createMemoryReplacementManager,
-				getComputeContext()::runLater);
+				getComputeContext()::runLater,
+				AbstractComputeContext::isAnyExecutorThread);
 
 		if (evaluator != null) {
 			detailsFactory.setEvaluator(evaluator);
@@ -627,6 +683,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @throws UnsupportedOperationException if the operation was not compiled
 	 */
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args, Semaphore dependsOn) {
+		requireLiveContext();
+
 		if (getArguments() == null) {
 			if (getInstructionSetManager() == null) {
 				throw new UnsupportedOperationException("Operation was not compiled");
@@ -652,6 +710,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Hardware.getLocalHardware().getComputer().pushRequirements(activeRequirements);
 			}
 
+			// Latest submitted work; the catch settles resource release after it on a synchronous failure.
+			Semaphore inflight = null;
+
 			try {
 				MemoryData input[] = process.getArguments(MemoryData[]::new);
 
@@ -663,26 +724,26 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 				boolean processing = !process.isEmpty();
 
-				// Copy-in groups chain on one another, and the kernel chains on the last of them.
-				// Arguments delivered asynchronously with an outstanding completion (see
-				// AcceleratedProcessDetails.getArgumentCompletions()) are merged in here, so the
-				// kernel is ordered after the work producing them without any host wait.
+				// The kernel chains on each copy-in group's merged completion (Submittable.submit)
+				// and on any asynchronously-delivered arguments merged in here, so it is ordered
+				// after every one of them with no host wait.
 				List<Semaphore> pending = process.getArgumentCompletions();
 				pending.add(dependsOn);
 				Semaphore ready = OperationSemaphore.all(getMetadata(), pending);
 
 				if (aggregating) {
 					Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);
-					if (prepared != null) ready = prepared;
+					if (prepared != null) ready = inflight = prepared;
 				}
 
 				if (processing) {
 					Semaphore prepared = Submittable.submit(process.getPrepareOperations(), ready);
-					if (prepared != null) ready = prepared;
+					if (prepared != null) ready = inflight = prepared;
 				}
 
 				// Run the operator, chaining on the last copy-in (or the caller's prior completion).
 				Semaphore nextSemaphore = operator.accept(input, ready);
+				if (nextSemaphore != null) inflight = nextSemaphore;
 
 				// activeHeapStage avoids Heap.addPendingKernel()'s thread-local lookup; see javadoc above.
 				if (activeHeapStage != null) activeHeapStage.addPendingKernel(nextSemaphore);
@@ -692,7 +753,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// Copy-out unwinds in reverse order; see the method javadoc
 				if (processing) {
 					Semaphore copyBack = Submittable.submit(process.getPostprocessOperations(), completion);
-					if (copyBack != null) completion = copyBack;
+					if (copyBack != null) completion = inflight = copyBack;
 				}
 
 				if (aggregateCopyOut) {
@@ -700,7 +761,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 							argumentMap.getPostprocessOperations(null) :
 							argumentMap.getPostprocessOperations((MemoryData) output), completion);
 					if (copyOut != null) {
-						completion = copyOut;
+						completion = inflight = copyOut;
 					}
 				}
 
@@ -716,15 +777,20 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					activeHeapStage.addPendingKernel(completion);
 				}
 
-				if (process.hasDestinationLeases()) {
-					// Release at the end of the full chain, passively — an actively waiting
-					// callback (onComplete) forces a per-invocation commit on Metal.
+				if (process.hasResources()) {
+					// whenSettled also fires on the failure path, so a failed dispatch still frees
+					// its leases and temporaries; MetalSemaphore overrides it to attach passively.
 					if (completion == null) {
-						process.releaseDestinationLeases();
+						process.releaseResources();
 					} else {
-						completion.whenComplete(process::releaseDestinationLeases);
+						completion.whenSettled(process::releaseResources);
 					}
 				}
+			} catch (RuntimeException | Error e) {
+				// A synchronous failure never installs the completion-driven release above
+				process.releaseResourcesAfterFailure(e, inflight);
+
+				throw e;
 			} finally {
 				if (!activeRequirements.isEmpty()) {
 					Hardware.getLocalHardware().getComputer().popRequirements();

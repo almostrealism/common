@@ -106,7 +106,7 @@ public class MoonbeamInferenceTest extends TestSuiteBase implements ConsoleFeatu
 		MoonbeamConfig config = MoonbeamConfig.checkpoint309M();
 		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
 
-		GRUDecoder decoder = buildDecoder(stateDict, config);
+		GRUDecoder decoder = GRUDecoder.load(stateDict, config);
 
 		// Create a synthetic hidden state (all 0.1) and decode
 		PackedCollection fakeHidden = new PackedCollection(config.hiddenSize);
@@ -199,33 +199,6 @@ public class MoonbeamInferenceTest extends TestSuiteBase implements ConsoleFeatu
 		}
 
 		log("Full model inference test passed.");
-	}
-
-	/** Build a GRU decoder from the state dictionary. */
-	private static GRUDecoder buildDecoder(StateDictionary stateDict, MoonbeamConfig config) {
-		int n = config.decoderLayers;
-		int dh = config.decoderHiddenSize;
-		int[] inputSizes = new int[n];
-		PackedCollection[] weightIh = new PackedCollection[n];
-		PackedCollection[] weightHh = new PackedCollection[n];
-		PackedCollection[] biasIh = new PackedCollection[n];
-		PackedCollection[] biasHh = new PackedCollection[n];
-		for (int l = 0; l < n; l++) {
-			inputSizes[l] = dh;
-			weightIh[l] = stateDict.get(String.format("decoder.weight_ih_l%d", l));
-			weightHh[l] = stateDict.get(String.format("decoder.weight_hh_l%d", l));
-			biasIh[l] = stateDict.get(String.format("decoder.bias_ih_l%d", l));
-			biasHh[l] = stateDict.get(String.format("decoder.bias_hh_l%d", l));
-		}
-
-		return new GRUDecoder(config, inputSizes, weightIh, weightHh, biasIh, biasHh,
-				stateDict.get("summary_projection.weight"),
-				stateDict.get("summary_projection.bias"),
-				stateDict.get("decoder.fc_out.weight"),
-				stateDict.get("decoder.fc_out.bias"),
-				stateDict.get("lm_head.weight"),
-				stateDict.get("lm_head.bias"),
-				stateDict.get("decoder_embedding.weight"));
 	}
 
 	/** Assert a PackedCollection is not all zeros. */

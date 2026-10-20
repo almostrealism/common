@@ -33,7 +33,6 @@ import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -109,10 +108,13 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 	 */
 	@Before
 	public void checkResources() {
-		Assume.assumeTrue("Library directory required",
-				new File(AudioSceneOptimizer.LIBRARY).exists());
-		Assume.assumeTrue("pattern-factory.json required",
-				new File(SystemUtils.getLocalDestination("pattern-factory.json")).exists());
+		File patternFactory = new File(SystemUtils.getLocalDestination("pattern-factory.json"));
+		requireLocalResource("pattern factory " + patternFactory.getAbsolutePath(), null,
+				patternFactory.exists());
+
+		File library = new File(AudioSceneOptimizer.LIBRARY);
+		requireResource("sample library " + library.getAbsolutePath(), "AR_RINGS_LIBRARY",
+				library.isDirectory());
 	}
 
 	/**

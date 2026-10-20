@@ -252,10 +252,21 @@ from workspace_map import (
     _refresh_dispatch_capable_ids,
     _get_dispatch_capable_ids,
     _require_dispatch_capable,
+    _fetch_workstream_entries,
+    _tracker_capability_cache,
+    _refresh_tracker_capabilities,
+    _get_tracker_capabilities,
+    _canonical_tracker_capability,
+    _is_tracker_planner,
+    _tracker_workspace_limit,
+    _require_tracker_record_in_scope,
+    TRACKER_PLANNER,
     _filter_workstreams_by_scope,
-    _filter_tasks_by_scope,
     _pipeline_error,
     _find_workstream,
+    _find_workstream_by_branch,
+    _archived_workstream_error,
+    _archived_branch_error,
 )
 
 # ---------------------------------------------------------------------------
@@ -269,6 +280,13 @@ from prompt_linting import (  # noqa: E402
     _COMMIT_SEQUENCING_PATTERNS,
     _lint_prompt_for_commit_sequencing,
 )
+from execution_limits import (  # noqa: E402
+    POST_COMPLETION_MAX_TIMEOUT_SECONDS,
+    post_completion_gate_violations,
+    validate_post_completion_command,
+    validate_post_completion_timeout,
+)
+from prompt_test_lint import lint_prompt_for_broad_test_instructions  # noqa: E402
 import repo_config  # noqa: E402
 
 # Re-export so existing call sites (pipeline tools, memory tools, tests) work unchanged.

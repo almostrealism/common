@@ -247,6 +247,32 @@ public class NotifierRegistryTest extends TestSuiteBase {
     }
 
     /**
+     * Verifies that {@code workstreamFor} resolves a workstream by its
+     * persistent id even when it has no Slack channel, and returns {@code null}
+     * for an unknown id. This is the lookup the task close-out reconciler
+     * depends on: a channel-keyed map omits a channel-less workstream, so
+     * resolving close-out candidates by channel key would skip them.
+     */
+    @Test(timeout = 10000)
+    public void testWorkstreamForResolvesChannellessWorkstreamById() {
+        Workstream channelless = new Workstream("ws-no-channel", null, null);
+        channelless.setDefaultBranch("feature/ws-no-channel");
+        SlackNotifier a = notifierWith(channelless);
+        SlackNotifier b = notifierWith(newWorkstream("ws-b", "C-b"));
+        Map<String, SlackNotifier> byWs = new LinkedHashMap<>();
+        byWs.put("TAAA", a);
+        byWs.put("TBBB", b);
+        NotifierRegistry registry = new NotifierRegistry(a, byWs);
+
+        assertSame("a channel-less workstream must resolve by its persistent id",
+                channelless, registry.workstreamFor("ws-no-channel"));
+        assertSame("a workstream in another workspace resolves too",
+                b.getWorkstream("ws-b"), registry.workstreamFor("ws-b"));
+        assertNull("an unknown id resolves to null",
+                registry.workstreamFor("ws-missing"));
+    }
+
+    /**
      * Verifies that a registered listener still receives a completion after
      * the workstream's own notifier throws. A chat outage must not decide
      * whether an alert is published — the fan-out isolates the notifier on

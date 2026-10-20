@@ -78,6 +78,10 @@
 - [Computation Graph to Process Tree](docs/internals/computation-graph-to-process-tree.md): How Producers become Process trees
 - [Process Optimization Pipeline](docs/internals/process-optimization-pipeline.md): CascadingOptimizationStrategy, parallelism scoring
 - [Backend Compilation and Dispatch](docs/internals/backend-compilation-and-dispatch.md): ComputationScopeCompiler, ExecutionKey caching, native code generation
+- [Native Runtime Lifecycle](docs/internals/native-runtime-lifecycle.md): Generated kernel library lifetime, off-heap memory budget and enforcement, GC-driven release, kernel reentrancy, and native-crash triage
+
+### Automatic Differentiation
+- [Automatic Differentiation](docs/internals/automatic-differentiation.md): The backward half of the pipeline — the `CollectionProducer.delta`/`ReduceAxis` contract, the computation extension points (`deltaDependent`, `deltaElement`, `deltaMatrix`), the expression-level Jacobian (`ExpressionMatrix`), how `DefaultGradientPropagation` and the backward cells feed `ModelOptimizer`, how to verify a derivative, and the known limits
 
 ### Expression and Kernel System
 - [Expression Evaluation](docs/internals/expression-evaluation.md): Expression tree evaluation and simplification
@@ -100,6 +104,7 @@
 
 ### Testing and Profiling
 - [Test Examples](docs/internals/test-examples.md): TestSuiteBase, @TestDepth usage
+- [Test Skip-Gating Prevention](docs/internals/test-skip-gating-prevention.md): Failure-to-skip concealment (Assume/@Disabled gating) — the shape of the attack, the inventory of every route that stops a test executing in CI, and the threat model
 - [Profiling](docs/internals/profiling.md): Operation profiling infrastructure
 - [Profiling Examples](docs/internals/profiling-examples.md): Timing analysis patterns
 

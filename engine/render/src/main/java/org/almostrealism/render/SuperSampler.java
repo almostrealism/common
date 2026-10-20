@@ -123,7 +123,7 @@ public class SuperSampler implements Producer<PackedCollection>, ConsoleFeatures
 						PackedCollection result = ev[i][j].evaluate(new Pair(r, q));
 						if (result == null) continue j;
 
-						RGB rgb = result instanceof RGB ? (RGB) result : new RGB(result.toDouble(0), result.toDouble(1), result.toDouble(2));
+						RGB rgb = RGB.of(result);
 						rgb.multiplyBy(scale);
 						c.addTo(rgb);
 					}

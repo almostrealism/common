@@ -198,18 +198,16 @@ python3 scripts/validate_responses.py <evaluation.json> [--sample N] [--output <
 
 ### Speculation Phrases to Detect
 
+The phrase list and the check live in one place, `SPECULATION_PHRASES` and
+`has_speculation()` in `tools/mcp/common/inference.py`, beside the
+`SYSTEM_PROMPT` rule that forbids hedging. `evaluate_dataset.py`,
+`validate_responses.py` and `qc/analyze_history.py` all import it, so add a
+phrase there (lower-case; matching is case-insensitive) rather than in a script.
+
 ```python
-SPECULATION_PHRASES = [
-    "does not contain",
-    "does not specifically",
-    "not mentioned",
-    "speculative",
-    "hypothetical",
-    "based on typical",
-    "I can infer",
-    "you may need to refer",
-    "not covered in",
-]
+from inference import has_speculation
+
+has_speculation("It might be cached.")  # True
 ```
 
 ### Documentation Locations

@@ -144,7 +144,7 @@ public class AudioSceneContext {
 	 * @return {@code true} if the channel is present in the channels list
 	 */
 	public boolean includesChannel(int channel) {
-		return getChannels() != null && getChannels().stream().anyMatch(c -> c.getPatternChannel() == channel);
+		return getChannels() != null && getChannels().stream().anyMatch(c -> c.matches(channel));
 	}
 
 	/** Returns the function that converts a measure position to an absolute frame offset. */
@@ -244,7 +244,7 @@ public class AudioSceneContext {
 		if (sections == null || sections.isEmpty()) return null;
 
 		return sections.stream()
-				.filter(s -> s.getPosition() <= measure && measure < (s.getPosition() + s.getLength()))
+				.filter(s -> s.contains(measure))
 				.findFirst()
 				.orElse(null);
 	}

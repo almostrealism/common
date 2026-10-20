@@ -1,0 +1,7 @@
+// Imports leaf.pdsl and then redefines its leaf_identity layer. Two distinct resources define
+// the same layer name, so resolution must reject this as a duplicate definition.
+import "/pdsl/imports/leaf.pdsl"
+
+layer leaf_identity() -> [1, 4] {
+    identity()
+}

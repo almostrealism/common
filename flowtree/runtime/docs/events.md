@@ -22,7 +22,7 @@ This document covers the event system used by FlowTree jobs to report their comp
 
 ### Status Enum
 
-The `Status` enum defines four possible states:
+The `Status` enum defines five possible states:
 
 | Value | Description |
 |---|---|
@@ -30,6 +30,7 @@ The `Status` enum defines four possible states:
 | `SUCCESS` | Job completed successfully. |
 | `FAILED` | Job failed with an error. |
 | `CANCELLED` | Job was cancelled before completion. |
+| `DEGRADED` | Job exited cleanly but its work is incomplete or was not kept — for example, every change was dropped by staging guardrails, the post-completion pass cap was hit, or the agent abandoned a test-runner run it started. |
 
 ### Core Fields
 
@@ -209,23 +210,27 @@ The lifecycle of a job completion event spans four stages: construction, populat
 
 ### Stage 1: Construction
 
-Events are created by `GitManagedJob.fireJobCompleted(Exception error)`, which delegates to `createEvent(Exception error)`. `ClaudeCodeJob` overrides `createEvent()` to return a `ClaudeCodeJobEvent`:
+Events are created by `GitManagedJob.fireJobCompleted(Exception error)`, which delegates to `createEvent(Exception error)`. The base `GitManagedJob.createEvent()` decides the status in this order:
 
 ```java
-@Override
-protected JobCompletionEvent createEvent(Exception error) {
-    if (error != null) {
-        return ClaudeCodeJobEvent.failed(
-            getTaskId(), getTaskString(),
-            error.getMessage(), error
-        );
-    } else {
-        return ClaudeCodeJobEvent.success(getTaskId(), getTaskString());
-    }
+// GitManagedJob.createEvent()
+if (error != null) {
+    return JobCompletionEvent.failed(taskId, getTaskString(), error.getMessage(), error);
+} else if (hasAllChangesDropped()) {
+    return JobCompletionEvent.degraded(taskId, getTaskString(),
+        "All changes were dropped by staging guardrails: " + ...);
 }
+
+String unpublished = workOutcome.describeUnpublishedWork();
+if (unpublished != null) {
+    return JobCompletionEvent.failed(taskId, getTaskString(), unpublished, null);
+}
+return JobCompletionEvent.success(taskId, getTaskString());
 ```
 
-For non-Claude jobs, the base `GitManagedJob.createEvent()` returns `JobCompletionEvent.failed()` or `JobCompletionEvent.success()`.
+`JobWorkOutcome.describeUnpublishedWork()` reports work the job produced but never committed (uncommitted changes to non-excluded files, or an authored commit message with no commit behind it), so a job whose output was dropped on the way out fails instead of reporting success.
+
+`CodingAgentJob` overrides `createEvent()` to delegate to `CodingAgentJobEvent.forJob(job, error)`, which returns a `CodingAgentJobEvent` and applies additional checks: `FAILED` for a thrown error, a hard-failed primary phase, or a non-zero agent exit code; `DEGRADED` when the post-completion command pass cap was hit or every change was dropped by staging guardrails; `FAILED` for unpublished work; and `DEGRADED` when the agent abandoned test-runner runs. Otherwise the event is `SUCCESS`.
 
 ### Stage 2: Population
 
@@ -235,7 +240,7 @@ After construction, `fireJobCompleted()` populates the event in three steps:
 
 2. **Pull request URL**: `event.withPullRequestUrl(pullRequestUrl)` -- set only if a PR was detected.
 
-3. **Subclass details**: `populateEventDetails(event)` is called. `ClaudeCodeJob` overrides this to call:
+3. **Subclass details**: `populateEventDetails(event)` is called; a subclass whose own event needs nothing beyond what `createEvent()` built (such as `ShellCommandJob`'s self-notify flag) adds it here. `CodingAgentJob` does not override it: its `createEvent()` returns a `CodingAgentJobEvent` from `CodingAgentJobEvent.forJob(job, error)`, which already carries:
    - `ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode)` -- the raw prompt, extracted session ID, and process exit code.
    - `ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns)` -- timing and cost metrics from the NDJSON output.
    - `ccEvent.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames)` -- stop reason, error flag, and permission denial details.
@@ -319,7 +324,7 @@ Events are serialized to JSON in `GitManagedJob.buildEventJson()` using Jackson 
 ```json
 {
   "jobId": "string",
-  "status": "STARTED | SUCCESS | FAILED | CANCELLED",
+  "status": "STARTED | SUCCESS | FAILED | CANCELLED | DEGRADED",
   "description": "string",
   "targetBranch": "string | null",
   "commitHash": "string | null",
@@ -349,7 +354,7 @@ Events are serialized to JSON in `GitManagedJob.buildEventJson()` using Jackson 
 | JSON Field | Java Getter | Type | Notes |
 |---|---|---|---|
 | `jobId` | `getJobId()` | string | Always present. |
-| `status` | `getStatus().name()` | string | Enum name: `STARTED`, `SUCCESS`, `FAILED`, or `CANCELLED`. |
+| `status` | `getStatus().name()` | string | Enum name: `STARTED`, `SUCCESS`, `FAILED`, `CANCELLED`, or `DEGRADED`. |
 | `description` | `getDescription()` | string | Truncated prompt or task summary. |
 | `targetBranch` | `getTargetBranch()` | string/null | `null` when no git management is active. |
 | `commitHash` | `getCommitHash()` | string/null | Full SHA hash of the commit, or `null`. |
@@ -529,9 +534,9 @@ If a `ClaudeCodeJobEvent` is created, its builder methods (`withClaudeCodeInfo`,
 
 5. **Backward compatibility**: If a consumer is unaware of Claude Code fields, it silently ignores them (they are just zero/null on the base class). This is particularly important for the deserialization path: if an older version of the controller receives a `ClaudeCodeJobEvent` JSON payload, the extra fields are simply parsed and stored as zero/null, producing a valid `JobCompletionEvent` with no Claude-specific data.
 
-### Where instanceof IS Used
+### No instanceof on the Producer Side
 
-Despite the design goal of avoiding type-checking, there is exactly one place in the system where `instanceof` is used: in `ClaudeCodeJob.populateEventDetails()`, which casts the event to `ClaudeCodeJobEvent` before calling the builder methods. This is necessary because the base class `fireJobCompleted()` method calls `populateEventDetails()` with the generic `JobCompletionEvent` type, and the builder methods (`withClaudeCodeInfo`, `withTimingInfo`, `withSessionDetails`) are defined only on the subclass. This single type-check is confined to the event producer side and does not affect any consumer code.
+The producer never type-checks its event either. `CodingAgentJob.createEvent()` overrides the base method with the covariant return type `CodingAgentJobEvent`, and `CodingAgentJobEvent.forJob(job, error)` both decides the terminal status and populates the Claude Code fields (`withClaudeCodeInfo`, `withTimingInfo`, `withSessionDetails`, and the rest) on the event it creates, so no later hook has to cast the generic `JobCompletionEvent` back to the subclass.
 
 ### Comparison with Alternative Approaches
 

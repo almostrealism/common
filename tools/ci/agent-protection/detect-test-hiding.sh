@@ -83,9 +83,9 @@ fi
 #
 # Every "does this file exist at the merge-base" question below is
 # answered from this one-time listing rather than a per-file
-# `git cat-file -e <rev>:<path>` probe -- see validate-agent-commit.sh
-# for why that probe cannot distinguish "path absent" from "the lookup
-# itself failed" by exit code alone. A listing failure is treated the
+# `git cat-file -e <rev>:<path>` probe: for that object-name form git
+# reports the same exit code and message whether the path is absent from
+# the tree or the lookup itself failed, so the probe cannot tell them apart. A listing failure is treated the
 # same as the diff-unavailable case above: no evidence is a reason to
 # stop, not a reason to report a clean audit.
 if ! MERGE_BASE_FILE_LIST=$(git ls-tree -r --name-only "$MERGE_BASE" 2>&1); then

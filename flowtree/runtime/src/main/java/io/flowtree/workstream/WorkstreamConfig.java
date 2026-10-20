@@ -27,6 +27,7 @@ import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
+import io.flowtree.jobs.agent.PhaseConfigContainer;
 
 import java.io.File;
 import java.io.IOException;
@@ -113,7 +114,7 @@ public class WorkstreamConfig {
      * Configuration entry for a single workstream.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class WorkstreamEntry {
+    public static class WorkstreamEntry implements PhaseConfigContainer {
         /** Persistent identifier; generated if absent and saved back to YAML. */
         private String workstreamId;
         /** The Slack channel ID this workstream is bound to. */
@@ -218,6 +219,14 @@ public class WorkstreamConfig {
          */
         @JsonInclude(JsonInclude.Include.NON_DEFAULT)
         private boolean dispatchCapable;
+        /**
+         * Tracker roles granted to agents on this workstream. Persisted as a
+         * {@code trackerCapabilities} list, omitted when empty. A legacy
+         * {@code steward} entry loads as {@code planner} and is saved back in
+         * that form. See {@link Workstream#getTrackerCapabilities()}.
+         */
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        private List<String> trackerCapabilities;
         /**
          * Workstream-level default for the agent subprocess launch mode.
          * When {@code true}, coding-agent jobs on this workstream that do
@@ -421,42 +430,37 @@ public class WorkstreamConfig {
         public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
 
         /** Returns the default agent runner for jobs in this workstream, or {@code null}. */
+        @Override
         public String getDefaultRunner() { return defaultRunner; }
         /** Sets the default agent runner for jobs in this workstream. */
+        @Override
         public void setDefaultRunner(String defaultRunner) { this.defaultRunner = defaultRunner; }
 
         /** Returns the per-phase runner override map (keyed by phase wire name); never {@code null}. */
+        @Override
         public Map<String, String> getRunners() { return runners; }
         /** Replaces the per-phase runner override map; {@code null} is treated as empty. */
+        @Override
         public void setRunners(Map<String, String> runners) {
             this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
         }
 
         /** Returns the workstream-level default {@link PhaseConfig}, or {@code null}. */
+        @Override
         public PhaseConfig getDefaultPhaseConfig() { return defaultPhaseConfig; }
         /** Sets the workstream-level default {@link PhaseConfig}. */
+        @Override
         public void setDefaultPhaseConfig(PhaseConfig defaultPhaseConfig) {
             this.defaultPhaseConfig = defaultPhaseConfig;
         }
 
         /** Returns the workstream-level per-phase {@link PhaseConfig} overrides; never {@code null}. */
+        @Override
         public Map<String, PhaseConfig> getPhaseConfigs() { return phaseConfigs; }
         /** Replaces the workstream-level per-phase {@link PhaseConfig} overrides. */
+        @Override
         public void setPhaseConfigs(Map<String, PhaseConfig> phaseConfigs) {
             this.phaseConfigs = phaseConfigs != null ? new LinkedHashMap<>(phaseConfigs) : new LinkedHashMap<>();
-        }
-
-        /**
-         * Builds the effective {@link PhaseConfigBundle} for this workstream entry, merging the
-         * new fields with the legacy {@code defaultRunner}/{@code runners} runner fields. The new
-         * fields take precedence field-by-field. Model, effort, and provider come solely from
-         * {@code defaultPhaseConfig}/{@code phaseConfigs}.
-         *
-         * @return the merged bundle; never {@code null}
-         */
-        public PhaseConfigBundle toPhaseConfigBundle() {
-            return PhaseConfigBundle.mergeLegacyWithNew(
-                    defaultRunner, runners, defaultPhaseConfig, phaseConfigs);
         }
 
         /** Returns {@code true} when this workstream is archived. */
@@ -476,6 +480,11 @@ public class WorkstreamConfig {
          * orchestrator's grant at a glance in the workstream config.
          */
         public void setDispatchCapable(boolean dispatchCapable) { this.dispatchCapable = dispatchCapable; }
+
+        /** Returns the tracker roles granted to agents on this workstream, or {@code null}. */
+        public List<String> getTrackerCapabilities() { return trackerCapabilities; }
+        /** Sets the tracker roles granted to agents on this workstream. */
+        public void setTrackerCapabilities(List<String> trackerCapabilities) { this.trackerCapabilities = trackerCapabilities; }
 
         /**
          * Returns the workstream's wall-clock ceiling in hours.
@@ -568,6 +577,7 @@ public class WorkstreamConfig {
             ws.setCompletionListeners(completionListeners);
             ws.setAgentPermissionBypassBranches(agentPermissionBypassBranches);
             ws.setDispatchCapable(dispatchCapable);
+            ws.setTrackerCapabilities(trackerCapabilities);
             ws.setUseTmux(useTmux);
             ws.setMaxWallClockHours(maxWallClockHours);
             ws.setDormantForCompletionListeners(dormantForCompletionListeners);
@@ -1158,11 +1168,12 @@ public class WorkstreamConfig {
         // per-phase runner not carried by the bundle would be lost on save.
         PhaseConfigBundle bundle = ws.getPhaseConfigBundle();
         (bundle == null ? PhaseConfigBundle.EMPTY : bundle)
-                .applyTo(entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
+                .applyTo(entry);
         entry.setArchived(ws.isArchived());
         entry.setCompletionListeners(ws.getCompletionListeners());
         entry.setAgentPermissionBypassBranches(ws.getAgentPermissionBypassBranches());
         entry.setDispatchCapable(ws.isDispatchCapable());
+        entry.setTrackerCapabilities(ws.getTrackerCapabilities());
         entry.setUseTmux(ws.isUseTmux());
         entry.setMaxWallClockHours(ws.getMaxWallClockHours());
         entry.setDormantForCompletionListeners(ws.isDormantForCompletionListeners());
@@ -1343,12 +1354,11 @@ public class WorkstreamConfig {
      *
      * <p>Called by {@link #saveToYaml(File)} so that persisted YAML only ever
      * contains the new shape: a save-then-load cycle migrates legacy YAML in
-     * place without losing data. The fold reads {@link
-     * WorkstreamEntry#toPhaseConfigBundle()} /
-     * {@link WorkspaceEntry#toPhaseConfigBundle()}, which already merge the
-     * legacy and new fields field-by-field (new wins), so any value present
-     * in either form survives. Idempotent: a container already in the new
-     * shape is left unchanged.</p>
+     * place without losing data. Each entry folds itself through
+     * {@link PhaseConfigContainer#migrateLegacyConfigToPhaseConfig()}, which
+     * merges the legacy and new fields field-by-field (new wins), so any
+     * value present in either form survives. Idempotent: a container already
+     * in the new shape is left unchanged.</p>
      *
      * <p>This is the only migration trigger. Loading legacy YAML leaves the
      * legacy fields readable (so the controller keeps functioning across a
@@ -1357,17 +1367,11 @@ public class WorkstreamConfig {
      */
     void migrateLegacyConfigToPhaseConfig() {
         for (WorkstreamEntry entry : workstreams) {
-            entry.toPhaseConfigBundle().applyTo(
-                    entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
-            entry.setDefaultRunner(null);
-            entry.setRunners(null);
+            entry.migrateLegacyConfigToPhaseConfig();
         }
         if (workspaces != null) {
             for (WorkspaceEntry entry : workspaces) {
-                entry.toPhaseConfigBundle().applyTo(
-                        entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
-                entry.setDefaultRunner(null);
-                entry.setRunners(null);
+                entry.migrateLegacyConfigToPhaseConfig();
             }
         }
     }

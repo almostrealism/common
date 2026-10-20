@@ -18,6 +18,7 @@ package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.audio.WavFile;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
@@ -111,12 +112,18 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		PackedCollection drySignal = new PackedCollection(totalSamples);
 		PackedCollection lpSignal = new PackedCollection(totalSamples);
 
+		// The pass offset is an argument of the signal kernel, so one program serves every
+		// pass; a literal start would make each pass a different program to compile
+		PackedCollection offsetValue = new PackedCollection(1);
+		CollectionProducer frames = integers(0, SIGNAL_SIZE).add(cp(offsetValue));
+
 		for (int pass = 0; pass < numPasses; pass++) {
 			final int sampleOffset = pass * SIGNAL_SIZE;
+			offsetValue.fill(sampleOffset);
 			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
-			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)).multiply(0.33)
-					.add(sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 2000.0 / SAMPLE_RATE)).multiply(0.33))
-					.add(sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33))
+			sin(frames.multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)).multiply(0.33)
+					.add(sin(frames.multiply(2.0 * Math.PI * 2000.0 / SAMPLE_RATE)).multiply(0.33))
+					.add(sin(frames.multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33))
 					.into(input.traverseEach()).evaluate();
 			PackedCollection output = lpCompiled.forward(input.reshape(lpCompiled.getInputShape()));
 			drySignal.setFrom(sampleOffset, input);
@@ -157,10 +164,11 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		// The delay carries a ring between passes, so the passes run in order and each
 		// output lands in the span it occupies.
 		PackedCollection delaySignal = render(numPasses, SIGNAL_SIZE, sampleOffset -> {
+			offsetValue.fill(sampleOffset);
 			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
 			// 440 Hz tone for the first half second (t < 0.5), silence after
-			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
-					.multiply(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).lessThan(c(0.5 * SAMPLE_RATE)))
+			sin(frames.multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
+					.multiply(frames.lessThan(c(0.5 * SAMPLE_RATE)))
 					.into(input.traverseEach()).evaluate();
 			return delayCompiled.forward(input.reshape(delayCompiled.getInputShape()));
 		});
@@ -212,9 +220,13 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		mixModel.add(mixBlock);
 		CompiledModel mixCompiled = mixModel.compile();
 
+		PackedCollection offsetValue = new PackedCollection(1);
+		CollectionProducer frames = integers(0, SIGNAL_SIZE).add(cp(offsetValue));
+
 		IntFunction<PackedCollection> tone = sampleOffset -> {
+			offsetValue.fill(sampleOffset);
 			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
-			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
+			sin(frames.multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
 					.into(input.traverseEach()).evaluate();
 			return input;
 		};

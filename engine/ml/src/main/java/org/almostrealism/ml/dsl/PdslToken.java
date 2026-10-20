@@ -28,6 +28,12 @@ public class PdslToken {
 		LAYER,
 		/** {@code model} keyword introducing a model definition. */
 		MODEL,
+		/**
+		 * {@code import} keyword introducing an import statement. Followed by a string literal
+		 * naming the classpath resource of another {@code .pdsl} asset whose definitions this
+		 * file depends on.
+		 */
+		IMPORT,
 		/** {@code config} keyword introducing a configuration block. */
 		CONFIG,
 		/** {@code data} keyword introducing a data block definition. */
@@ -46,6 +52,13 @@ public class PdslToken {
 		FOR,
 		/** {@code in} keyword in {@code for ... in ...} iteration syntax. */
 		IN,
+		/**
+		 * {@code stack} keyword: {@code stack group as name { body }} repeats the body once for
+		 * each member of a weight group, in order, with no index the body can compute with.
+		 */
+		STACK,
+		/** {@code as} keyword naming the member of a {@code stack} each repetition reads. */
+		AS,
 		/** {@code branch} keyword for multi-way conditional dispatch. */
 		BRANCH,
 		/** {@code accum} keyword for accumulation expressions. */

@@ -63,17 +63,33 @@ public enum NoteDurationStrategy implements ConsoleFeatures {
 	/** Extend the note until the next note position to prevent gaps without overlap. */
 	NO_OVERLAP;
 
-	/** Returns the effective note duration in seconds based on this strategy. */
+	/**
+	 * Returns the effective note duration in seconds based on this strategy.
+	 *
+	 * <p>{@link #NO_OVERLAP} requires a next position after {@code position}. The
+	 * span is used only when one is genuinely available. {@code 0.0} is the
+	 * sentinel reported when no next-position function is configured (see
+	 * {@code NoteAudioContext#nextNotePosition}); it signals "no next position"
+	 * regardless of the sign of {@code position}, so it is treated as missing
+	 * even for an element at a negative position, where {@code 0.0 > position}.
+	 * A {@code nextPosition} that is otherwise not after {@code position}
+	 * ({@code nextPosition <= position}) spans an empty or negative range. In
+	 * either case the original duration is used instead.</p>
+	 */
 	public double getLength(DoubleUnaryOperator timeForDuration,
 							double position, double nextPosition,
 							double originalDurationSeconds, double durationSelection) {
-		if (this == NO_OVERLAP & nextPosition <= 0.0) {
-			warn("No next position provided for NO_OVERLAP duration strategy");
-		}
-
 		return switch (this) {
 			case FIXED -> Math.min(originalDurationSeconds, timeForDuration.applyAsDouble(durationSelection));
-			case NO_OVERLAP -> timeForDuration.applyAsDouble(nextPosition - position);
+			case NO_OVERLAP -> {
+				if (nextPosition == 0.0 || nextPosition <= position) {
+					warn("No next position after " + position
+							+ " for NO_OVERLAP duration strategy; using the original duration");
+					yield originalDurationSeconds;
+				}
+
+				yield timeForDuration.applyAsDouble(nextPosition - position);
+			}
 			default -> originalDurationSeconds;
 		};
 	}

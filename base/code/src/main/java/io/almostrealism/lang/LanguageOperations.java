@@ -63,6 +63,19 @@ public interface LanguageOperations {
 	}
 
 	/**
+	 * Formats a boolean value as a literal appropriate for this language backend.
+	 *
+	 * <p>The default is {@code true} or {@code false}. A backend that represents booleans
+	 * as integers overrides this to render the integer literal instead.</p>
+	 *
+	 * @param value the boolean value to format
+	 * @return the language-specific literal string
+	 */
+	default String stringForBoolean(boolean value) {
+		return String.valueOf(value);
+	}
+
+	/**
 	 * Returns the language-specific literal or constant for the mathematical constant pi.
 	 *
 	 * @return a string expression for pi
@@ -110,6 +123,32 @@ public interface LanguageOperations {
 	 * @return the rendered maximum expression
 	 */
 	String max(String a, String b);
+
+	/**
+	 * Returns a language-specific greater-than comparison. The default renders the
+	 * C-family infix operator {@code a > b}, or {@code a >= b} when {@code orEqual}.
+	 *
+	 * @param a       the left operand expression string
+	 * @param b       the right operand expression string
+	 * @param orEqual {@code true} for greater-than-or-equal, {@code false} for strict
+	 * @return the rendered comparison expression
+	 */
+	default String greaterThan(String a, String b, boolean orEqual) {
+		return a + (orEqual ? " >= " : " > ") + b;
+	}
+
+	/**
+	 * Returns a language-specific less-than comparison. The default renders the
+	 * C-family infix operator {@code a < b}, or {@code a <= b} when {@code orEqual}.
+	 *
+	 * @param a       the left operand expression string
+	 * @param b       the right operand expression string
+	 * @param orEqual {@code true} for less-than-or-equal, {@code false} for strict
+	 * @return the rendered comparison expression
+	 */
+	default String lessThan(String a, String b, boolean orEqual) {
+		return a + (orEqual ? " <= " : " < ") + b;
+	}
 
 	/**
 	 * Returns a language-specific absolute-value expression.
@@ -192,6 +231,17 @@ public interface LanguageOperations {
 	 */
 	default String getVariableSizeName(ArrayVariable v) {
 		return v.getName() + "Size";
+	}
+
+	/**
+	 * Renders a reference to the element at a position of the named array.
+	 *
+	 * @param name     the name of the array
+	 * @param position the rendered position expression
+	 * @return the dereferencing expression (default: {@code name[position]})
+	 */
+	default String dereference(String name, String position) {
+		return name + "[" + position + "]";
 	}
 
 	/**

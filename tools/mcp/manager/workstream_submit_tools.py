@@ -29,16 +29,19 @@ def workstream_submit_task(
     max_budget_usd: float = 0.0,
     protect_test_files: bool = False,
     enforce_changes: bool = False,
+    auto_create_pr: bool = False,
     started_after: str = "",
     required_labels: str = "",
     deduplication_mode: str = "",
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
+    object_oriented_review_enabled: bool = False,
     retrospective_enabled: bool = False,
     falsification_enabled: bool = False,
     use_tmux: Optional[bool] = None,
     max_wall_clock_hours: Optional[int] = None,
     sensitive_file_protection_enabled: bool = True,
+    skip_agent_permission_prompts: bool = False,
     review_enabled: bool = True,
     max_review_passes: int = 0,
     post_completion_command: str = "",
@@ -79,17 +82,34 @@ def workstream_submit_task(
     - Providing workstream_id explicitly
     - Providing target_branch (matched against registered workstreams)
 
+    RULE, NO BYPASS -- test execution limits: neither ``prompt`` nor
+    ``command`` nor ``post_completion_command`` may instruct or run a
+    full/whole/entire test suite, a module's whole suite, or a CI shard
+    (``AR_TEST_GROUP``/``AR_TEST_GROUPS``). A Maven command must select a
+    bounded set of tests via ``-Dtest`` (at most 5 classes and 40
+    ``Class#method`` tests, no wildcard or other unbounded selector); a
+    pytest command must select one explicit node id. This is checked
+    mechanically on every submission --
+    see ``tools/mcp/manager/execution_limits.py`` for the full rule
+    and the incident that made it a hard requirement. There is no operator
+    escape hatch, unlike ``allow_commit_language`` below.
+
     Args:
         prompt: The task description for the coding agent. Required for the
             default coding-agent job; ignored for a shell-command job. Be
             specific about what files to change, what behavior to implement,
-            and any constraints.
+            and any constraints. May not instruct the agent to run a broad
+            test set (see RULE above) -- ask for a bounded selection (a class,
+            a few classes, or named methods up to the caps) instead, or leave
+            verification to CI.
         job_type: The job type to submit. Empty (default) or "coding" submits
             a coding-agent job; "shell" submits a shell-command job that runs
             ``command``. Providing ``command`` implies "shell".
         command: The shell command to run for a shell-command job. Required
             when job_type="shell" (or when used to imply a shell job); ignored
-            for a coding-agent job.
+            for a coding-agent job. Subject to the same test-execution-limits
+            RULE as ``post_completion_command`` above -- no full/whole test
+            suite, module suite, or CI shard.
         workstream_id: Explicit workstream to submit to (from workstream_list).
         target_branch: Git branch to resolve workstream by (alternative to
             workstream_id). Must be paired with ``repo_url`` when more than
@@ -114,8 +134,18 @@ def workstream_submit_task(
             in Slack notifications).
         max_turns: Maximum Claude Code turns (0 = use workstream default).
         max_budget_usd: Maximum cost in USD (0 = use workstream default).
-        protect_test_files: If true, prevent the agent from modifying test files.
+        protect_test_files: If true, the harness keeps every test method that
+            exists on the base branch exactly as it is (new tests and
+            helpers are still allowed). Use it for a job sent to make failing
+            tests pass; every branch is otherwise held to
+            test-integrity-check, which allows editing a test but not
+            weakening it.
         enforce_changes: If true, require the agent to produce code changes.
+        auto_create_pr: If true, the controller opens a pull request for the
+            job's branch against its base branch when the job succeeds, using
+            the job's commit message as the title and description — what the
+            CI-submitted planning and QA rounds do. Leave it off for work that
+            continues on a branch which already has a pull request.
         started_after: Epoch milliseconds timestamp. If a newer job already
             exists on the workstream, the submission is skipped and the
             response includes ``skipped: true``. Used by CI pipelines to
@@ -148,15 +178,21 @@ def workstream_submit_task(
             level of the module hierarchy. Disabled by default to keep routine
             exploratory jobs cheaper. Enable for final pre-merge cleanup jobs
             where placement correctness matters.
+        object_oriented_review_enabled: When ``True``, activates the
+            object-oriented design review after the content rules: one
+            dedicated agent session per changed production class, mandated to
+            fix design violations. Only takes effect while ``review_enabled``
+            is also ``True``. Disabled by default because it runs a session
+            per class and is costly on review-heavy branches.
         retrospective_enabled: When ``True``, activates the retrospective phase
             after all other phases. A separate agent session analyzes the
             primary phase transcript for tool-use and context-efficiency
             improvement opportunities, emitting findings as memories. The
             phase produces no code changes. Disabled by default. The
-            recommended default model for this phase is ``claude-sonnet-4-7``
-            or stronger, since analyzing a transcript benefits from strong
+            recommended default model for this phase is ``sonnet`` or
+            stronger, since analyzing a transcript benefits from strong
             reasoning. Configure via
-            ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
+            ``phase_configs='{"retrospective":{"model":"sonnet"}}'``.
         falsification_enabled: When ``True``, activates the falsification phase
             after the primary session and before the enforcement rules. A
             separate agent session extracts the primary attempt's load-bearing
@@ -168,7 +204,7 @@ def workstream_submit_task(
             only be settled by running something on an unavailable configuration
             is reported UNSETTLED rather than confirmed. Disabled by default.
             Configure the analysis model via
-            ``phase_configs='{"falsification":{"model":"claude-sonnet-4-7"}}'``.
+            ``phase_configs='{"falsification":{"model":"sonnet"}}'``.
         use_tmux: Per-job override for tmux-backed launch, using presence
             semantics. When ``True``, the agent subprocess is launched inside a
             tmux session (a real controlling tty) instead of as a direct child
@@ -209,6 +245,27 @@ def workstream_submit_task(
             forge or substitute the bypass because it does not have access to
             the signing secret. This flag is operator-controlled at job
             submission time and is NEVER settable by the agent itself.
+            It acts only on the harness side (staging and the commit
+            trailer); it never reaches the agent subprocess. On its own it
+            does NOT let the agent write under ``.claude/hooks/`` or
+            ``.claude/settings.json``: the agent runtime still refuses those
+            writes ("... which is a sensitive file"). A job that must edit
+            that tooling also needs ``skip_agent_permission_prompts=True``,
+            or a workstream whose agent-permission-bypass branch prefixes
+            match its target branch.
+        skip_agent_permission_prompts: When ``True``, this one job's agent
+            session is launched with the agent runtime's interactive
+            permission prompts bypassed (for Claude Code,
+            ``--permission-mode bypassPermissions``). A headless session has
+            no human to answer a prompt, so without this the runtime denies
+            every write it would otherwise ask about — notably anything under
+            ``.claude/`` (``settings.json``, ``hooks/``), which it treats as
+            sensitive. Set it only for a job whose task is to change that
+            tooling: the grant also lets the session rewrite the guardrails it
+            runs under. It applies to this job alone and is never inherited by
+            later jobs on the workstream. Like
+            ``sensitive_file_protection_enabled=False`` it is operator-only:
+            an in-flight coding agent cannot set it. Default ``False``.
         review_enabled: When ``True`` (the default), a second-pass review
             session runs after the primary phase. The reviewer is told to
             make surgical fixes only when unambiguous and to defer
@@ -228,19 +285,33 @@ def workstream_submit_task(
             failure. The loop continues until the command exits zero or max
             retries is exhausted. Examples:
 
-            - Run a single test class:
-              ``"mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest"``
-            - Run a pytest file:
-              ``"cd tools/mcp/manager && pytest tests/test_secrets.py"``
+            - Run a single test method:
+              ``"mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest#testFoo"``
+            - Run a pytest node id:
+              ``"cd tools/mcp/manager && pytest tests/test_secrets.py::test_render"``
             - Run a custom script: ``"bash scripts/verify-foo.sh"``
 
             The command runs on the agent's host with the agent's privileges.
             It is NOT sandboxed — treat it like any other trusted instruction.
             Empty string (default) disables the feature.
+
+            RULE, NO BYPASS: this command may never run a full/whole test
+            suite, a module's whole suite, or a CI shard. Concretely, it is
+            rejected when it runs a Maven test-executing phase
+            (test/integration-test/verify/install/package/deploy) without an
+            explicit ``-Dtest=Class#method`` selector (a bare
+            ``-Dtest=Class`` also counts as too broad), when it references
+            ``AR_TEST_GROUP``/``AR_TEST_GROUPS`` in any form, or when it runs
+            pytest against a directory or whole file instead of an explicit
+            node id (``file.py::test_name``). ``mvn install -DskipTests`` is
+            a build, not a test run, and remains allowed. This mirrors the
+            same-named rule on ``command`` for a shell-command job. See
+            ``tools/mcp/manager/execution_limits.py``.
         post_completion_timeout_seconds: Maximum seconds to wait for the
             post-completion command before killing it and treating the run as a
             failure. 0 (default) uses the server-side default of 1800 seconds
-            (30 minutes).
+            (30 minutes). Rejected if greater than 2400 (40 minutes) -- broad
+            verification belongs to CI, not a post-completion gate.
         max_post_completion_passes: Maximum number of post-completion correction
             sessions per job. 0 (default) uses the server-side default of 3.
             Each pass runs a full agent session; without a cap a single flaky
@@ -274,7 +345,7 @@ def workstream_submit_task(
             Each named phase overrides ``default_phase_config``
             field-by-field. Example::
 
-                '{"review": {"model": "claude-opus-4-7", "effort": "high"},
+                '{"review": {"model": "claude-opus-5-5", "effort": "high"},
                   "commit-message": {"runner": "opencode"}}'
 
             Empty (default) inherits the workstream-level configuration.
@@ -323,6 +394,49 @@ def workstream_submit_task(
         Dictionary with job_id and workstream_id on success.
     """
     server._require_scope("submit")
+    # In-flight agent guard for the operator-only flags. When this tool is
+    # called from inside a running agent session (the caller has a
+    # workstream-bound armt_tmp_ HMAC token), the agent must never be able
+    # to widen what a delegated job may change. Both flags below do exactly
+    # that, so only a bearer without a workstream binding (an
+    # admin/operator) may set them. Their defaults are the safe values, so
+    # this is a no-op for callers that leave them alone. Each rejection
+    # writes a local audit entry, because an attempt to widen a delegated
+    # job's capabilities is exactly what the audit log exists to record. The
+    # guard therefore runs FIRST, before any other request validation: a
+    # check that returned earlier (an empty prompt, a missing workstream_id)
+    # would let the attempt be rejected without being recorded. Running
+    # first also keeps it ahead of workspace-scope resolution (which may
+    # refresh the workspace map from the controller), so a rejected call
+    # never contacts the controller at all.
+    caller_workstream_id = server._get_token_workstream_id()
+    if caller_workstream_id and not sensitive_file_protection_enabled:
+        return _operator_only_rejection(
+            caller_workstream_id, workstream_id,
+            "sensitive_file_protection_enabled=False",
+            "opting out of sensitive-file protection for a delegated job would "
+            "let the agent self-authorise a controller-signed bypass HMAC for "
+            "that other workstream",
+            "Leave sensitive_file_protection_enabled at its default (True) and re-submit",
+        )
+    # This parameter is named skip_ rather than bypass_ even though the wire
+    # field and the Java side both call it bypassAgentPermissionPrompts. The
+    # test-execution-limit guard (test_no_bypass_parameter_exists_for_test_
+    # execution_limits) forbids any parameter whose name contains "bypass",
+    # because a "bypass" flag is how an agent-settable test-limit escape hatch
+    # would be smuggled in. This flag is not that: it is operator-only
+    # (rejected below for an in-flight agent) and controls interactive
+    # permission prompts, not test execution. The distinct name keeps the
+    # bright-line guard intact rather than eroding it for one exception.
+    if caller_workstream_id and skip_agent_permission_prompts:
+        return _operator_only_rejection(
+            caller_workstream_id, workstream_id,
+            "skip_agent_permission_prompts=True",
+            "bypassing the permission prompts of a delegated job would let the "
+            "agent grant another session write access to the guardrails "
+            "(.claude/settings.json, .claude/hooks/) that session runs under",
+            "Leave skip_agent_permission_prompts at its default (False) and re-submit",
+        )
     if job_type not in ("", "coding", "shell"):
         return {"ok": False,
                 "error": f"Unknown job_type '{job_type}'; expected 'coding' or 'shell'"}
@@ -352,6 +466,79 @@ def workstream_submit_task(
         model=model, effort=effort, default_runner=default_runner, runners=runners)
     if err:
         return err
+    # Test-execution-limits validation -- no bypass flag exists for any of
+    # these checks (tools/mcp/manager/execution_limits.py). A shell job's
+    # `command` and a coding-agent job's `post_completion_command` are both
+    # shell commands a job submitter can use to run tests directly, so both
+    # are checked the same way: reject a command that would run a
+    # full/whole test suite, a module's whole suite, a CI shard
+    # (AR_TEST_GROUP/AR_TEST_GROUPS), or an over-broad pytest invocation.
+    for field_name, field_value in (("command", command),
+                                     ("post_completion_command", post_completion_command)):
+        cmd_violations = server.validate_post_completion_command(field_value)
+        # The post-completion command is an unattended gate, so it is held to a
+        # stricter selector rule than a shell job's own command: its Maven
+        # -Dtest must name explicit Class#method tests, not a whole class.
+        # TODO(review): the controller (TestExecutionLimitsSubmissionValidator) has no Java mirror of this gate, so a direct /api/submit can bypass it.
+        if field_name == "post_completion_command":
+            cmd_violations = cmd_violations + server.post_completion_gate_violations(field_value)
+        if cmd_violations:
+            # The post-completion command is an unattended gate, so its Maven
+            # -Dtest must name explicit Class#method tests -- a bare class is
+            # not accepted there, even though it is on a shell job's command.
+            if field_name == "post_completion_command":
+                remediation = (
+                    "Rewrite the command to name explicit Class#method tests "
+                    "(Maven: at most 5 classes' worth, 40 Class#method tests "
+                    "total, via -Dtest) or exactly one explicit node id "
+                    "(pytest). A bare class is not accepted for a "
+                    "post_completion_command."
+                )
+            else:
+                remediation = (
+                    "Rewrite the command to select a bounded set of tests "
+                    "(Maven: at most 5 classes and 40 Class#method tests via "
+                    "-Dtest) or exactly one explicit node id (pytest)."
+                )
+            return {
+                "ok": False,
+                "error": (
+                    "{} would run a broad test set, which agents and job "
+                    "submitters may never do -- broad verification belongs to "
+                    "CI. There is no bypass for this check.\n\n"
+                    "Violations found:\n  - {}\n\n{}"
+                    .format(field_name, "\n  - ".join(cmd_violations), remediation)
+                ),
+            }
+    if post_completion_timeout_seconds:
+        timeout_err = server.validate_post_completion_timeout(post_completion_timeout_seconds)
+        if timeout_err:
+            return {"ok": False, "error": timeout_err}
+    # Broad-test-instruction linter -- rejects prompts that instruct the
+    # agent, in English, to run a full/whole/entire suite, a module's
+    # tests, a shard, mvn test without a bounded -Dtest selection, or
+    # AR_TEST_GROUP. No bypass flag; unlike allow_commit_language, this
+    # rule has no legitimate exception -- see execution_limits.py and
+    # prompt_test_lint.py.
+    prompt_test_hits = server.lint_prompt_for_broad_test_instructions(prompt)
+    if prompt_test_hits:
+        lines = []
+        for lineno, snippet, reason in prompt_test_hits:
+            lines.append("  Line {}: {}\n    > {}".format(lineno, reason, snippet))
+        return {
+            "ok": False,
+            "error": (
+                "Prompt instructs the agent to run a broad test set. Agents may "
+                "run only a bounded selection per invocation (at most 5 test "
+                "classes and 40 named Class#method tests for Maven, or one "
+                "pytest node id); broad verification (full suites, module "
+                "suites, CI shards) belongs to CI only. There is no bypass for "
+                "this check.\n\n"
+                "Forbidden phrases found:\n" + "\n".join(lines) +
+                "\n\nRewrite the prompt to name the specific failing test(s) to "
+                "run as a bounded selection."
+            ),
+        }
     if max_wall_clock_hours is not None and max_wall_clock_hours < 0:
         return {
             "ok": False,
@@ -420,7 +607,6 @@ def workstream_submit_task(
     # This check runs before _require_workstream_in_scope so the agent
     # gets a self-explanatory error rather than a generic permission
     # failure when workstream_id is empty.
-    caller_workstream_id = server._get_token_workstream_id()
     if caller_workstream_id:
         if not workstream_id:
             return {
@@ -467,45 +653,57 @@ def workstream_submit_task(
                 ],
             }
 
+    # Archived workstreams are read-only: their history stays queryable but
+    # they accept no new work. Resolving an archived workstream's ownership
+    # now succeeds, so this explicit refusal — checked before the controller
+    # is contacted — is what holds that line. The controller's own submit path
+    # has no archived check, so every way of addressing a workstream is
+    # resolved to an id here: a direct workstream_id, or a target_branch that
+    # names an existing (possibly archived) round by its default branch.
+    #
+    # A workstream_id is only trusted once it resolves. The controller's
+    # resolveOrRegister ignores an unknown body workstreamId and then falls
+    # back to resolving targetBranch, so a submission carrying BOTH an unknown
+    # workstream_id and a target_branch that names an archived round would be
+    # routed there by the controller while a guard keyed on the unknown id saw
+    # nothing. So an unresolved id falls through to the branch resolution
+    # rather than short-circuiting it. The branch match mirrors the
+    # controller's resolveBranch — a repo_url makes it unambiguous, and a
+    # branch alone resolves only when exactly one round carries it (the
+    # branch-only form the controller itself accepts with no repo_url). A
+    # target_branch that resolves to nothing is a new workstream and is left to
+    # the controller. The resolved dict is handed to the guard as ``ws`` so it
+    # reads the archived flag directly instead of re-fetching, whose transient
+    # failure would otherwise be read as "not archived".
+    archived_target = ""
+    archived_ws = None
+    if workstream_id:
+        archived_ws = server._find_workstream(workstream_id)
+        if archived_ws:
+            archived_target = workstream_id
+    if not archived_target and target_branch:
+        archived_ws = server._find_workstream_by_branch(repo_url, target_branch)
+        if archived_ws:
+            archived_target = archived_ws.get("workstreamId", "") or ""
+    archived_err = server._archived_workstream_error(
+        "submit a task", archived_target, ws=archived_ws)
+    if archived_err:
+        return archived_err
+    # The controller selects the workstream by a resolved id but still checks
+    # the job out on targetBranch (Workstream.newJobFactory), so a live id
+    # must not carry a submission onto another round's archived branch.
+    if (archived_ws and archived_target == workstream_id and target_branch
+            and target_branch != archived_ws.get("defaultBranch")):
+        archived_err = server._archived_branch_error(
+            "submit a task", repo_url or archived_ws.get("repoUrl", "") or "",
+            target_branch)
+        if archived_err:
+            return archived_err
     server._require_workstream_in_scope(workstream_id)
     server._audit("workstream_submit_task", workstream_id=workstream_id,
            target_branch=target_branch, repo_url=repo_url,
            create_workstream_if_missing=create_workstream_if_missing,
            prompt_len=len(prompt))
-
-    # In-flight agent guard for sensitive-file protection. When this
-    # tool is called from inside a running agent session (the caller
-    # has a workstream-bound armt_tmp_ HMAC token), the agent must never
-    # be allowed to forward `sensitiveFileProtectionEnabled=False` to
-    # the controller. Doing so would cause the controller to compute a
-    # controller-signed bypass HMAC for the new job, and the resulting
-    # job's commit would be allowed to modify normally-protected files
-    # (test files, CI/workflow files) on its target workstream. The
-    # sensitive-file protection flag is therefore operator-only: only a
-    # bearer without a workstream binding (an admin/operator) may opt
-    # out. The default for `sensitive_file_protection_enabled` is True
-    # anyway, so this is a no-op for callers that leave it at the
-    # default. The check is placed BEFORE the payload is built so a
-    # rejected call is never forwarded to the controller at all.
-    if caller_workstream_id and not sensitive_file_protection_enabled:
-        return {
-            "ok": False,
-            "error": (
-                "sensitive_file_protection_enabled=False is not settable by an "
-                "in-flight coding agent. The current Claude Code session is "
-                f"bound to workstream '{caller_workstream_id}' via a workstream-"
-                "scoped HMAC token; opting out of sensitive-file protection "
-                "for a delegated job would let the agent self-authorise a "
-                "controller-signed bypass HMAC for that other workstream. The "
-                "flag is operator-only. Leave it at the default (True) and "
-                "re-submit, or have an operator with admin scope disable the "
-                "protection explicitly for the target workstream."
-            ),
-            "next_steps": [
-                "Leave sensitive_file_protection_enabled at its default (True) and re-submit",
-                "Or ask an operator to disable the protection out-of-band for the target workstream",
-            ],
-        }
 
     if shell_job:
         payload = {"jobType": "shell", "command": command}
@@ -531,6 +729,8 @@ def workstream_submit_task(
         payload["protectTestFiles"] = True
     if enforce_changes:
         payload["enforceChanges"] = True
+    if auto_create_pr:
+        payload["autoCreatePr"] = True
     if started_after:
         payload["startedAfter"] = started_after
     if required_labels:
@@ -543,6 +743,8 @@ def workstream_submit_task(
         payload["maxDeduplicationPasses"] = max_deduplication_passes
     if organizational_placement_enabled:
         payload["enforceOrganizationalPlacement"] = True
+    if object_oriented_review_enabled:
+        payload["objectOrientedReviewEnabled"] = True
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
     if falsification_enabled:
@@ -568,6 +770,8 @@ def workstream_submit_task(
     # so the controller never mints a bypass HMAC at the request of an agent.
     if not sensitive_file_protection_enabled:
         payload["sensitiveFileProtectionEnabled"] = False
+    if skip_agent_permission_prompts:
+        payload["bypassAgentPermissionPrompts"] = True
     if not review_enabled:
         payload["reviewEnabled"] = False
     if max_review_passes > 0:
@@ -605,3 +809,39 @@ def workstream_submit_task(
         ])
 
     return result
+
+
+def _operator_only_rejection(caller_workstream_id: str, workstream_id: str,
+                             setting: str, consequence: str, remedy: str) -> dict:
+    """Audits and builds the rejection returned when an in-flight agent sets an operator-only flag.
+
+    The audit entry is written to the local audit log only, so recording the
+    attempt never contacts the controller.
+
+    Args:
+        caller_workstream_id: The workstream the calling agent's token is bound to.
+        workstream_id: The workstream the rejected job was to be submitted to.
+        setting: The offending parameter and value, as the caller wrote it.
+        consequence: What honouring the setting would let the agent do.
+        remedy: The first next step: how to re-submit without the setting.
+
+    Returns:
+        dict with ok=False, an error naming the setting, and next_steps.
+    """
+    server._audit("workstream_submit_task.rejected",
+                  caller_workstream_id=caller_workstream_id,
+                  workstream_id=workstream_id, setting=setting)
+    return {
+        "ok": False,
+        "error": (
+            f"{setting} is not settable by an in-flight coding agent. The "
+            "current Claude Code session is bound to workstream "
+            f"'{caller_workstream_id}' via a workstream-scoped HMAC token; "
+            f"{consequence}. The flag is operator-only. Leave it at its default "
+            "and re-submit, or have an operator with admin scope submit the job."
+        ),
+        "next_steps": [
+            remedy,
+            "Or ask an operator to submit the job with the setting out-of-band",
+        ],
+    }

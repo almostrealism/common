@@ -1,6 +1,6 @@
 # Hardware Module
 
-The **hardware** module is the foundational layer for hardware-accelerated computation in Almost Realism. It provides abstractions for memory management, operation compilation, and multi-backend execution (CPU, GPU, OpenCL, Metal) with zero-code configuration.
+The **hardware** module is the foundational layer for hardware-accelerated computation in Almost Realism. It provides abstractions for memory management, operation compilation, and multi-backend execution (CPU, GPU, OpenCL, Metal, and an opt-in CUDA backend) with zero-code configuration.
 
 ## Table of Contents
 
@@ -11,6 +11,7 @@ The **hardware** module is the foundational layer for hardware-accelerated compu
   - [Backend Packages](#backend-packages)
 - [Core Concepts](#core-concepts)
 - [Memory Management Patterns](#memory-management-patterns)
+  - [Ingesting Data From Outside the Process](#ingesting-data-from-outside-the-process)
 - [Environment Configuration](#environment-configuration)
 - [Common Usage Patterns](#common-usage-patterns)
 - [Performance Optimization](#performance-optimization)
@@ -22,7 +23,7 @@ The **hardware** module is the foundational layer for hardware-accelerated compu
 The hardware module enables:
 
 - **Hardware Acceleration**: Execute computations on CPU, GPU, or specialized accelerators
-- **Multi-Backend Support**: OpenCL, Metal, and JNI backends with automatic selection
+- **Multi-Backend Support**: OpenCL, Metal, and JNI backends with automatic selection, plus an opt-in CUDA backend
 - **Memory Abstraction**: Unified memory interface across heap, off-heap, and device memory
 - **Kernel Caching**: Multi-level caching to minimize compilation overhead
 - **Zero-Code Configuration**: Control behavior via environment variables
@@ -35,7 +36,7 @@ The hardware module enables:
 Before using any Almost Realism functionality, set the **required** environment variable:
 
 - `AR_HARDWARE_LIBS`: Directory for generated native libraries. **Auto-detected — do not set manually.** Setting this (especially to `/tmp/ar_libs/`) causes permission errors on shared or sandboxed systems.
-- `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). Can be set to `native`, `cl`, `mtl`, `gpu`, `cpu`, or `*` to force a specific backend.
+- `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). A named token requests a backend that must initialize or the request fails: `native`, `cl`, `mtl`, and `cuda` each name a specific concrete backend, while `cpu` and `gpu` are abstract selectors that resolve to whichever concrete backend the platform provides (`cpu` → JNI on aarch64, OpenCL elsewhere; `gpu` → Metal on macOS, OpenCL elsewhere). `*` (the default when unset) instead performs best-effort auto-detection of the best available backend. CUDA is opt-in: it is used only when `cuda` is named, never by `*`, `gpu`, or an unset value. CUDA is currently packaged only for Linux/aarch64 — the sole bundled bridge is `libARCUDA-linux-aarch64.so`, so selecting `cuda` on macOS, Windows, or any other architecture (including Linux/x86_64, for which `CU` requests the absent `libARCUDA-linux-x86_64.so`) fails to load unless you build the matching `libARCUDA-linux-<arch>.so` yourself.
 
 ### 2. Basic Usage
 
@@ -85,6 +86,7 @@ mvn test
 |    +------------------------------------+                     |
 |    |  * CLDataContext (OpenCL)          |                     |
 |    |  * MetalDataContext (Metal)        |                     |
+|    |  * CudaDataContext (CUDA, opt-in)  |                     |
 |    |  * NativeDataContext (JNI)         |                     |
 |    |                                    |                     |
 |    |  Provides:                         |                     |
@@ -136,6 +138,7 @@ The hardware module includes comprehensive implementations for multiple accelera
 |----------------|---------|-------------|
 | **[cl](src/main/java/org/almostrealism/hardware/cl/)** | OpenCL GPU/CPU acceleration | CLDataContext, CLMemoryProvider, CLOperator |
 | **[metal](src/main/java/org/almostrealism/hardware/metal/)** | Apple Metal GPU acceleration | MetalDataContext, MetalMemoryProvider, MTLDevice |
+| **[cuda](src/main/java/org/almostrealism/hardware/cuda/)** | NVIDIA CUDA GPU acceleration (NVRTC-compiled kernels; opt-in via `AR_HARDWARE_DRIVER=cuda`; bridge packaged for Linux/aarch64 only) | CudaDataContext, CudaMemoryProvider, CudaOperator |
 | **[jni](src/main/java/org/almostrealism/hardware/jni/)** | Native C execution via JNI | NativeCompiler, NativeExecution, NativeDataContext |
 | **[mem](src/main/java/org/almostrealism/hardware/mem/)** | Memory management abstractions | MemoryProvider, Heap, RAM, Bytes |
 | **[ctx](src/main/java/org/almostrealism/hardware/ctx/)** | Context management | AbstractDataContext, AbstractComputeContext |
@@ -214,6 +217,10 @@ call site tells them apart:
   `PackedCollection.set(int, double...)`. Serialized system-boundary ingest
   should use `read(ByteBuffer)`, which stages the values before the framework
   migrates that staging area to the compute device.
+
+Staging is not the only way values from outside the process reach a device, and
+it is not always the right one — see
+[Ingesting Data From Outside the Process](#ingesting-data-from-outside-the-process).
 
 ```java
 PackedCollection source = new PackedCollection(1000);
@@ -431,6 +438,51 @@ See [docs/INSTRUCTION_CACHING.md](docs/INSTRUCTION_CACHING.md) for the caching a
 
 The hardware module implements sophisticated memory management strategies to minimize allocation overhead, enable zero-copy operations, and automatically handle cross-provider transfers.
 
+### Ingesting Data From Outside the Process
+
+Values that enter the process from outside it — a checkpoint, a serialized
+message, a reference dump, a capture callback — reach a device by one of two
+routes. They are not interchangeable, and the choice belongs to the call site.
+
+**Staging.** Allocate from a host provider, write through the allocation's own
+buffer, and wrap the result:
+
+```java
+MemoryProvider<? extends RAM> provider =
+        Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+RAM mem = provider.allocate(count);
+ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+// ... fill staging, converting precision with ByteBufferTransfer if needed ...
+new PackedCollection(shape, shape.getTraversalAxis(), Bytes.of(mem, count), 0);
+```
+
+`ByteBufferTransfer` converts between FP32 and FP64 on the way in, so this route
+is the one to use when the source's element width differs from the provider's.
+`NativeBufferIngestTest` is the worked example. Note that
+`getNativeBufferMemoryProvider()` does **not** always return a host-side
+provider: when `AR_HARDWARE_NATIVE_DIRECT_BUFFERS` is off it returns the data
+context's own provider, and the staged values are then device-resident
+immediately — which is the wrong answer if the consuming device is not yet known.
+
+**Reference.** Implement `Memory` over the source and let the framework migrate
+it when a kernel first requires it. Nothing is materialized on the host and
+nothing reaches a device until something actually reads it. `CollectionDataMemory`
+and `MappedCollectionDataMemory` (in `engine/ml`) are the worked example: they
+serve read-only values still in the file they were written to straight out of a
+`FileMapping`. Migration is generic rather than
+special-cased: it keys off `MemoryData.isReadOnly()`, which reads through to the
+provider, so any read-only provider participates.
+
+The host-accessible RAM implementations themselves live in
+[`org.almostrealism.nio`](src/main/java/org/almostrealism/nio/package-info.java) —
+`NativeBuffer` (a direct `ByteBuffer`, in either private or shared-memory mode)
+and `NativeMemory` (a JNI `malloc` pointer). `NativeMemoryProvider.registerAdapter`
+adapts a foreign `Memory` into a `NativeBuffer` for cross-provider access.
+
+Prefer reference over staging when the values are already in memory the process
+owns and a copy would be pure overhead; prefer staging when a precision
+conversion is required or when the source buffer cannot outlive the collection.
+
 ### Zero-Copy Delegation
 
 `MemoryDataAdapter` enables zero-copy views into existing memory through delegation:
@@ -515,6 +567,11 @@ System.gc();    // Eventually: native memory freed automatically
 2. Reference registered with `ReferenceQueue`
 3. Background threads monitor queue for GC'd objects
 4. Native memory freed when reference appears in queue
+
+For the full lifecycle — including the off-heap budget and its enforcement, the exact
+use-after-free race `KernelMemoryGuard` closes (and the ones it does not), and how this
+interacts with kernel dispatch — see
+[docs/internals/native-runtime-lifecycle.md](../../docs/internals/native-runtime-lifecycle.md).
 
 **Leak Detection:**
 
@@ -695,6 +752,7 @@ export AR_HARDWARE_DRIVER=cpu     # Abstract CPU (auto-selects)
 # GPU Backends (optional overrides)
 export AR_HARDWARE_DRIVER=cl      # OpenCL (cross-platform GPU)
 export AR_HARDWARE_DRIVER=mtl     # Metal (Apple Silicon GPU)
+export AR_HARDWARE_DRIVER=cuda    # CUDA (NVIDIA GPU; opt-in, never auto-selected; Linux/aarch64 bridge only)
 export AR_HARDWARE_DRIVER=gpu     # Abstract GPU (auto-selects)
 
 # Multi-Backend (optional override)
@@ -732,8 +790,23 @@ export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB (FP32)
 # full statement.
 export AR_HARDWARE_MEMORY_LOCATION=device   # OpenCL device memory (the only honored value)
 
-# Enable shared memory (Apple Silicon unified memory)
+# Shared memory between host kernels and an accelerator.
+# Unset (the default): enabled when Metal is selected. Host kernels then allocate
+# from Metal's memory, and every backend uses FP32. CUDA is not shared by default,
+# even on a device integrated with the host whose managed memory host code can
+# address; `enabled` shares it there. Set explicitly to override the decision.
+export AR_HARDWARE_SHARED_MEMORY=disabled
+
+# Enable the NIO shared-memory bridge (Apple Silicon unified memory)
 export AR_HARDWARE_NIO_MEMORY=true
+
+# Keep released CUDA buffers for reuse instead of freeing them immediately.
+# Off by default; enabled with AR_HARDWARE_ALLOCATION_CACHE. Reuse avoids the cost of
+# repeatedly allocating and freeing native memory (freeing synchronizes the device) that a
+# workload such as a training loop otherwise pays on every step, at the cost of holding the
+# cached memory against the reservation (freed when an allocation would exceed it). When
+# disabled, each released buffer is freed at once and every allocation is made fresh.
+export AR_HARDWARE_ALLOCATION_CACHE=enabled   # CUDA released-buffer reuse (off by default)
 ```
 
 ### Development vs Production

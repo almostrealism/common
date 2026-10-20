@@ -31,25 +31,16 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 from collections import Counter, defaultdict
 
+# Add the consultant directory and the shared tools/mcp/common directory to
+# the path for imports
+_CONSULTANT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+sys.path.insert(0, _CONSULTANT_DIR)
+sys.path.insert(1, os.path.join(_CONSULTANT_DIR, "..", "common"))
+from inference import has_speculation
 
-# Hedging phrases that indicate the model is guessing rather than grounding.
-# Kept aligned with scripts/evaluate_dataset.py so the two agree on what
-# "speculation" means.
-SPECULATION_PHRASES = (
-    "does not contain",
-    "does not specifically",
-    "not mentioned",
-    "speculative",
-    "hypothetical",
-    "based on typical",
-    "i can infer",
-    "you may need to refer",
-    "not covered in",
-    "might be",
-    "could be",
-)
 
 PASSTHROUGH_BANNER = "[Consultant model not available"
 
@@ -68,12 +59,6 @@ def _percentiles(values, points=(50, 90, 99)):
         idx = min(len(ordered) - 1, int(round((p / 100.0) * (len(ordered) - 1))))
         out[f"p{p}"] = ordered[idx]
     return out
-
-
-def _has_speculation(text):
-    """True when an answer contains any hedging phrase."""
-    low = (text or "").lower()
-    return any(phrase in low for phrase in SPECULATION_PHRASES)
 
 
 def _keywords_provided(input_params):
@@ -124,7 +109,7 @@ def analyze(db_path):
             mem_miss += 1
         if _keywords_provided(row["input_params"]):
             with_keywords += 1
-        if not is_pt and _has_speculation(response):
+        if not is_pt and has_speculation(response):
             speculation += 1
         if row["status"] == "error":
             errors += 1

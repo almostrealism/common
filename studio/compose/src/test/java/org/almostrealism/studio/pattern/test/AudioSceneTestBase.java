@@ -26,6 +26,7 @@ import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
+import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.music.notes.FileNoteSource;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.pattern.PatternElement;
@@ -38,14 +39,15 @@ import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Assert;
-import org.junit.Assume;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.function.Supplier;
+import java.util.function.LongFunction;
 
 /**
  * Shared test infrastructure for AudioScene tests.
@@ -64,8 +66,9 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * Curated sample library location, overridable via {@code AR_RINGS_LIBRARY}. Defaults to
 	 * the absolute curated-library path (the same directory that holds {@link #PATTERN_FACTORY}).
 	 * Kept absolute so no repo-root symlink to an out-of-repo location is required; when the
-	 * library is absent (e.g. on CI) {@link #getSamplesDir()} returns {@code null} and synthetic
-	 * fallback samples are used.
+	 * library is absent {@link #getSamplesDir()} returns {@code null} and synthetic fallback
+	 * samples are used. A test that needs the real library calls {@link #requireSampleLibrary()}
+	 * or {@link #requireCuratedLibrary()} instead.
 	 */
 	protected static final String SAMPLES_PATH =
 			SystemUtils.getProperty("AR_RINGS_LIBRARY", "/Users/Shared/Music/Samples");
@@ -83,37 +86,39 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	}
 
 	/**
-	 * Returns the curated sample library, skipping or failing the test when the library (or its
-	 * pattern factory) is not present on this host — the choice depends on whether a GPU driver
-	 * is available.
+	 * Returns the curated sample library, failing or skipping the test when the library is not
+	 * present on this host, as decided by {@link #requireResource(String, String, boolean)}.
 	 * <p>
-	 * The real-sample media benchmarks once skipped silently — logging a message and returning — when
-	 * the library was absent, which a runner that never mounts {@link #SAMPLES_PATH} reports as a pass,
-	 * hiding the difference between hosts. The GPU runners (the Metal {@code test-media-mac} job) mount
-	 * the library and are expected to run the real workload; the CPU-only Linux runners never have. So:
-	 * <ul>
-	 *   <li>library present → return it and run the real workload;</li>
-	 *   <li>library absent and <em>no</em> GPU driver available → {@code Assume}-skip (a CPU-only host
-	 *       that is not expected to mount the library, e.g. the native Linux jobs);</li>
-	 *   <li>library absent but a GPU driver <em>is</em> available → {@link Assert#fail} (a GPU host is
-	 *       expected to mount the library; a miss is a real misconfiguration that must not report a
-	 *       false pass).</li>
-	 * </ul>
+	 * The real-sample media tests once skipped silently — logging a message and returning — when
+	 * the library was absent, which a runner that never mounts {@link #SAMPLES_PATH} reports as a pass.
+	 * A new runner without the library let tests that should have failed pass this way. Every GPU
+	 * runner, and every runner that declares {@code AR_RINGS_LIBRARY}, is expected to carry the library
+	 * and run the real workload, so a miss there fails. The only host allowed to skip is one with no
+	 * GPU at all that did not declare the library (the CPU-only native Linux lane).
+	 * <p>
+	 * A library directory that exists but is empty always fails: that is a mount point whose content
+	 * never arrived (a bind-mount of a missing host path, or a sync that did not run), not a host that
+	 * was never meant to have the library.
+	 * <p>
+	 * A test that needs the real library must call this (or {@link #requireCuratedLibrary()}) rather
+	 * than check {@link #getSamplesDir()} itself.
+	 *
+	 * @return the curated sample library directory
+	 */
+	protected File requireSampleLibrary() {
+		return requireResourceDirectory("curated sample library", "AR_RINGS_LIBRARY", new File(SAMPLES_PATH));
+	}
+
+	/**
+	 * Returns the curated sample library, as {@link #requireSampleLibrary()} does, and additionally
+	 * requires the curated {@link #PATTERN_FACTORY} beside it, under the same policy.
 	 *
 	 * @return the curated sample library directory (its {@link #PATTERN_FACTORY} is guaranteed to exist)
 	 */
 	protected File requireCuratedLibrary() {
-		File library = getSamplesDir();
-		if (library != null && new File(PATTERN_FACTORY).exists()) {
-			return library;
-		}
-
-		String detail = "Curated sample library " + SAMPLES_PATH + " / pattern factory "
-				+ PATTERN_FACTORY + " not available on this host.";
-		Assume.assumeTrue(detail + " No GPU driver is available, so this is a CPU-only host that is not"
-				+ " expected to mount the library; skipping rather than failing.", isGpuAvailable());
-		Assert.fail(detail + " A GPU driver IS available, so this host is expected to mount the curated"
-				+ " library; failing rather than reporting a false pass for a workload it did not run.");
+		File library = requireSampleLibrary();
+		requireResource("curated pattern factory " + new File(PATTERN_FACTORY).getAbsolutePath(),
+				"AR_RINGS_PATTERNS", new File(PATTERN_FACTORY).isFile());
 		return library;
 	}
 
@@ -131,26 +136,6 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 				.getDataContext(false, true, ComputeRequirement.MTL) != null;
 	}
 
-	/**
-	 * Returns whether a real GPU accelerator — Metal or OpenCL — is present on this host, used by
-	 * {@link #requireCuratedLibrary()} to decide whether a missing sample library is an expected skip
-	 * (a CPU-only host, such as the {@code native} Linux runners) or a genuine failure (a GPU host — the
-	 * Metal {@code test-media-mac} or the OpenCL {@code test-media-cl} runner — that is expected to mount
-	 * the library).
-	 *
-	 * <p>Delegates to {@link Hardware#isAvailable(ComputeRequirement...)} with
-	 * {@link ComputeRequirement#GPU}, which strictly filters the data contexts built from
-	 * {@code AR_HARDWARE_DRIVER} and so reports false on a CPU-only host and true on a Metal or OpenCL
-	 * host. This is not {@code getDataContext(..., GPU) != null} or {@code getComputeContext(GPU)}:
-	 * when only one data context exists, both return the sole (native) context regardless of the
-	 * requirement, falsely reporting a GPU on a CPU-only host.</p>
-	 *
-	 * @return whether a real GPU accelerator (Metal or OpenCL) is present on this host
-	 */
-	protected boolean isGpuAvailable() {
-		return Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU);
-	}
-
 	/** Curated pattern factory; the real arrangement that decides which samples play where. */
 	protected static final String PATTERN_FACTORY =
 			SystemUtils.getProperty("AR_RINGS_PATTERNS", "/Users/Shared/Music/pattern-factory.json");
@@ -161,10 +146,23 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * {@code PatternSystemManager.Settings.defaultSettings}, which draws fresh random selection
 	 * functions ({@code ParameterFunction.random()}) for every pattern — a different arrangement
 	 * every run. The first run writes the constructed settings here; later runs load them, so the
-	 * same genome seed reproduces the identical arrangement and render.
+	 * same genome seed reproduces the identical arrangement and render. A fresh checkout (every CI
+	 * job) has no such file, so {@link #loadCuratedScene} also reseeds the draw with
+	 * {@link #ARRANGEMENT_SEED}, making the first-run settings the same on every host.
 	 */
 	protected static final String SCENE_SETTINGS =
 			SystemUtils.getProperty("AR_RINGS_SETTINGS", "results/pdsl-cutover/scene-settings.json");
+
+	/**
+	 * Seed for the randomly initialized selection functions drawn while a scene is
+	 * constructed ({@link ParameterFunction#random()}: default pattern settings, element
+	 * factories, envelopes, note audio choices). Reseeding with this value before every
+	 * scene construction makes each {@link #createBaselineScene(File, int)} call produce
+	 * the identical arrangement, so a genome seed found by {@link #findWorkingGenomeSeed}
+	 * on one baseline scene applies unchanged to the next, and the same test performs the
+	 * same work in every JVM run.
+	 */
+	protected static final long ARRANGEMENT_SEED = 1_000_003L;
 
 	/** Sample rate used for all tests. */
 	protected static final int SAMPLE_RATE = OutputLine.sampleRate;
@@ -180,6 +178,29 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 	/** Minimum peak amplitude below which a rendered signal is considered silent. */
 	protected static final double SILENCE_THRESHOLD = 1e-4;
+
+	/** Every scene this test created through {@link #createBaselineScene(File, int)}. */
+	private final List<AudioScene<?>> createdScenes = new ArrayList<>();
+
+	/**
+	 * Destroys every scene this test created. A test that already destroyed one of
+	 * its scenes is unaffected, because {@link AudioScene#destroy()} is idempotent.
+	 */
+	@After
+	public void destroyCreatedScenes() {
+		createdScenes.forEach(AudioScene::destroy);
+		createdScenes.clear();
+	}
+
+	/**
+	 * Restores an unseeded {@link ParameterFunction} source. Scene construction here seeds
+	 * that process-global source with {@link #ARRANGEMENT_SEED}; clearing it keeps a later
+	 * test class in the same JVM from inheriting this test's fixed draws.
+	 */
+	@After
+	public void clearArrangementSeed() {
+		ParameterFunction.clearRandomSeed();
+	}
 
 	/**
 	 * Creates a baseline AudioScene with the default source count (6 channels).
@@ -206,14 +227,39 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * setup. Real-time tests can use the default (6) because they render only small
 	 * buffers per tick.</p>
 	 *
+	 * <p>The arrangement is drawn from {@link #ARRANGEMENT_SEED}, so every call with the
+	 * same arguments builds the identical scene.</p>
+	 *
+	 * <p>The scene belongs to this test and is destroyed when the test finishes.</p>
+	 *
 	 * @param samplesDir  directory containing sample WAV files
 	 * @param sourceCount number of source channels to create
 	 * @return configured AudioScene ready for genome assignment
+	 *
+	 * @see #createBaselineScene(File, int, long)
 	 */
 	protected AudioScene<?> createBaselineScene(File samplesDir, int sourceCount) {
+		return createBaselineScene(samplesDir, sourceCount, ARRANGEMENT_SEED);
+	}
+
+	/**
+	 * Creates a baseline AudioScene, as {@link #createBaselineScene(File, int)} does, whose
+	 * arrangement is drawn from {@code arrangementSeed}. Every call with the same arguments
+	 * builds the identical scene, so this is a valid {@link #renderUntilAudible} factory:
+	 * {@code seed -> createBaselineScene(dir, count, seed)}.
+	 *
+	 * @param samplesDir      directory containing sample WAV files
+	 * @param sourceCount     number of source channels to create
+	 * @param arrangementSeed seed for the selection functions drawn while the scene is built
+	 * @return configured AudioScene ready for genome assignment
+	 */
+	protected AudioScene<?> createBaselineScene(File samplesDir, int sourceCount, long arrangementSeed) {
 		int delayLayers = AudioScene.DEFAULT_DELAY_LAYERS;
 
+		ParameterFunction.setRandomSeed(arrangementSeed);
+
 		AudioScene<?> scene = new AudioScene<>(120.0, sourceCount, delayLayers, SAMPLE_RATE);
+		createdScenes.add(scene);
 		scene.setTuning(new DefaultKeyboardTuning());
 
 		addChoices(scene, samplesDir);
@@ -246,10 +292,30 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * @param totalMeasures  total measures in the arrangement
 	 * @return a freshly loaded scene
 	 * @throws IOException if the scene cannot be loaded
+	 *
+	 * @see #loadCuratedScene(File, File, double, int, long)
 	 */
 	protected AudioScene<?> loadCuratedScene(File library, File patternFactory,
 											 double bpm, int totalMeasures) throws IOException {
+		return loadCuratedScene(library, patternFactory, bpm, totalMeasures, ARRANGEMENT_SEED);
+	}
+
+	/**
+	 * Loads a fresh curated scene, as {@link #loadCuratedScene(File, File, double, int)} does,
+	 * drawing its random selection functions from {@code arrangementSeed}.
+	 *
+	 * @param library         the recursive sample library root
+	 * @param patternFactory  the curated pattern factory JSON
+	 * @param bpm             tempo for the scene
+	 * @param totalMeasures   total measures in the arrangement
+	 * @param arrangementSeed seed for the selection functions drawn while the scene is loaded
+	 * @return a freshly loaded scene
+	 * @throws IOException if the scene cannot be loaded
+	 */
+	protected AudioScene<?> loadCuratedScene(File library, File patternFactory, double bpm,
+											 int totalMeasures, long arrangementSeed) throws IOException {
 		File settings = new File(SCENE_SETTINGS);
+		ParameterFunction.setRandomSeed(arrangementSeed);
 		AudioScene<?> scene = AudioScene.load(
 				settings.exists() ? settings.getAbsolutePath() : null,
 				patternFactory.getAbsolutePath(),
@@ -517,9 +583,11 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * non-silence guarantee is provided by {@link #renderUntilAudible}, which rebuilds the random
 	 * arrangement and re-renders until the output is audible.</p>
 	 *
-	 * <p>The same scene instance must be both searched here and rendered: the scene's arrangement,
-	 * drawn randomly at construction, is part of what determines a channel's content, so a seed found
-	 * against one scene does not transfer to a freshly constructed one.</p>
+	 * <p>The scene's arrangement, drawn at construction, is part of what determines a channel's
+	 * content, so a seed found here applies to another scene only if that scene was drawn from the
+	 * same {@link ParameterFunction#setRandomSeed(long) arrangement seed} — true of every
+	 * {@link #createBaselineScene(File, int)} scene, but not of scenes from different
+	 * {@link #renderUntilAudible} attempts.</p>
 	 *
 	 * @param scene    the scene to search; left with a note-emitting genome assigned on success
 	 * @param channels the channels that must each emit at least one note
@@ -590,11 +658,15 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * which no pre-render count fully predicts (see {@link #findGenomeSeedForChannels}). Rather than gamble
 	 * on a single arrangement, this rebuilds the arrangement (a fresh {@code sceneFactory} scene) and
 	 * re-renders up to {@link #MAX_RENDER_ATTEMPTS} times, returning the first render whose peak exceeds
-	 * {@link #SILENCE_THRESHOLD}. Cold kernel compilation is amortized across attempts by the cross-instance
+	 * {@link #SILENCE_THRESHOLD}. Attempt {@code n} passes {@code ARRANGEMENT_SEED + n} to the factory,
+	 * with {@link ParameterFunction} already reseeded to it, so the attempts differ from one another but
+	 * the sequence, and therefore which attempt succeeds, is the same in every run. A factory that reseeds
+	 * itself must reseed with the seed it is given, or every attempt would draw the same arrangement.
+	 * Cold kernel compilation is amortized across attempts by the cross-instance
 	 * instruction cache, so a retry is cheaper than the first render. Each attempt's scene is destroyed
 	 * before the next; the returned result references a written WAV file that outlives it.</p>
 	 *
-	 * @param sceneFactory     builds a fresh, randomly-arranged scene each attempt
+	 * @param sceneFactory     builds a fresh scene each attempt, drawing its arrangement from the given seed
 	 * @param totalMeasures    arrangement length to render
 	 * @param requiredChannels channels that must carry notes (a cheap pre-filter before rendering)
 	 * @param renderer         renders a prepared scene, returning the result
@@ -603,13 +675,15 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * @return the first render result whose peak exceeds {@link #SILENCE_THRESHOLD}
 	 * @throws Exception if a render or peak extraction fails, or if no arrangement was audible
 	 */
-	protected <T> T renderUntilAudible(Supplier<AudioScene<?>> sceneFactory, int totalMeasures,
+	protected <T> T renderUntilAudible(LongFunction<AudioScene<?>> sceneFactory, int totalMeasures,
 									   List<Integer> requiredChannels, SceneRenderer<T> renderer,
 									   PeakExtractor<T> peakOf) throws Exception {
 		double lastPeak = 0.0;
 
 		for (int attempt = 1; attempt <= MAX_RENDER_ATTEMPTS; attempt++) {
-			AudioScene<?> scene = sceneFactory.get();
+			long arrangementSeed = ARRANGEMENT_SEED + attempt;
+			ParameterFunction.setRandomSeed(arrangementSeed);
+			AudioScene<?> scene = sceneFactory.apply(arrangementSeed);
 			try {
 				scene.setTotalMeasures(totalMeasures);
 

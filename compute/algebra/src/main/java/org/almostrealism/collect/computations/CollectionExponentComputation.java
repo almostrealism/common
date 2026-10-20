@@ -27,7 +27,7 @@ import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -193,7 +193,7 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	protected CollectionExponentComputation(String name, TraversalPolicy shape,
 											Producer<PackedCollection> base,
 											Producer<PackedCollection> exponent) {
-		super(name, shape, MultiTermDeltaStrategy.NONE, base, exponent);
+		super(name, shape, base, exponent);
 	}
 
 	/**
@@ -282,7 +282,7 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	 * <p>The method performs the following steps:
 	 * <ol>
 	 *   <li>Checks if custom delta computation is enabled via {@link #enableCustomDelta}</li>
-	 *   <li>Uses {@link org.almostrealism.algebra.AlgebraFeatures#matchInput} to find which input depends on the target</li>
+	 *   <li>Uses {@link Producer#matchInput} to find which input depends on the target</li>
 	 *   <li>Verifies the match is the base operand (first input after destination)</li>
 	 *   <li>Ensures all operands have fixed counts (no variable-length collections)</li>
 	 *   <li>Applies the power rule: v * u^(v-1) * du/dx</li>
@@ -322,26 +322,26 @@ public class CollectionExponentComputation extends TraversableExpressionComputat
 	 * @return A {@link CollectionProducer} that computes the derivative, or delegates to the parent class
 	 *         if custom delta is disabled or the computation doesn't match the supported pattern
 	 *
-	 * @see org.almostrealism.algebra.AlgebraFeatures#matchInput
+	 * @see Producer#matchInput
 	 * @see #enableCustomDelta
 	 * @throws UnsupportedOperationException if variable count operands are encountered when custom delta is enabled
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		if (!enableCustomDelta) {
-			return super.delta(target);
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (!enableCustomDelta || axis != ReduceAxis.NONE) {
+			return super.deltaDependent(target, axis, weight);
 		}
 
-		Optional<Producer<PackedCollection>> match = AlgebraFeatures.matchInput(this, target);
+		Optional<Producer<PackedCollection>> match = matchInput(target);
 
 		if (match == null || match.orElse(null) != getInputs().get(1)) {
 			// If there are multiple matches, or the match is
 			// not the base, then there is not currently a
 			// shortcut for computing the delta
-			return super.delta(target);
+			return super.deltaDependent(target, axis, weight);
 		} else if (getChildren().stream().anyMatch(o -> !Countable.isFixedCount(o))) {
 			warn("Exponent delta not implemented for variable count operands");
-			return super.delta(target);
+			return super.deltaDependent(target, axis, weight);
 		}
 
 		List<Supplier<Evaluable<? extends PackedCollection>>> operands =

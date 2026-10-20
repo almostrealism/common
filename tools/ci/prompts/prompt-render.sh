@@ -13,7 +13,11 @@
 #   ${NAME}            replaced by the environment variable NAME, for
 #                      every NAME the caller lists (unlisted ones are
 #                      left alone, and the prompt-builder tests reject
-#                      any placeholder that survives to the output)
+#                      any placeholder that survives to the output).
+#                      Names are substituted in the order listed, and a
+#                      later name's placeholder is also replaced inside
+#                      an earlier name's value, so a builder lists free
+#                      text written by a person last.
 #   @include <file>    a whole line, replaced by the named fragment
 #                      from this directory; the fragment's own
 #                      placeholders are substituted the same way
@@ -60,6 +64,10 @@ escape_sed_replacement() {
     value="${value//\\/\\\\}"
     value="${value//&/\\&}"
     value="${value//|/\\|}"
+    # A newline would end the expression; escaped, it is a literal newline
+    # in the replacement, so a multi-line value (a task description) is
+    # substituted whole.
+    value="${value//$'\n'/\\$'\n'}"
     printf '%s' "$value"
 }
 

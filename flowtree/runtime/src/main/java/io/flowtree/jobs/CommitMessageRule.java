@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 
 /**
  * Enforcement rule that ensures {@code commit.txt} exists and contains a
@@ -79,6 +80,10 @@ class CommitMessageRule implements EnforcementRule {
 
     @Override
     public int getMaxRetries() { return MAX_RETRIES; }
+
+    /** Writing {@code commit.txt} is exactly how this rule is resolved. */
+    @Override
+    public Set<String> getProgressPaths() { return Set.of("commit.txt"); }
 
     @Override
     public boolean isViolated(CodingAgentJob job) {

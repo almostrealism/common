@@ -121,7 +121,7 @@ data through string-typed parameters that the tool then parses locally:
   `default_phase_config` field-by-field. Parsed by
   `_parse_phase_configs_json` with the same per-field validation as
   `default_phase_config`. Example:
-  `'{"primary": {"runner": "opencode", "model": "claude-sonnet-4-6",
+  `'{"primary": {"runner": "opencode", "model": "claude-sonnet-5",
   "effort": "high", "provider": "anthropic"},
   "deduplication": {"runner": "opencode", "provider": "openrouter"}}'`
 

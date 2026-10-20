@@ -30,6 +30,7 @@ import org.almostrealism.studio.optimize.FixedFilterChromosome;
 import org.almostrealism.studio.optimize.OptimizeFactorFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.AdjustableDelayCell;
+import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.graph.PassThroughCell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.ReceptorCell;
@@ -163,6 +164,44 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	public static boolean enablePdslMixdown =
 			SystemUtils.isEnabled("AR_PDSL_MIXDOWN").orElse(true);
 
+	/**
+	 * Returns whether the PDSL mixdown path can faithfully render the given channel
+	 * selection. This is the capability contract behind {@link #enablePdslMixdown}: a
+	 * build only routes through {@link MixdownManagerPdslAdapter} when both the flag is
+	 * set and the selection is supported here; otherwise it falls back to the Java
+	 * {@link #createCells} path.
+	 *
+	 * <p>Two selection shapes are supported:</p>
+	 * <ul>
+	 *   <li><b>Any single channel</b> {@code [c]} — including a non-zero selection. The
+	 *       adapter maps bank position 0 to channel {@code c}'s genome (via
+	 *       {@link MixdownManagerPdslAdapter.Config#channel(int)}), so the PDSL render
+	 *       reads the same genes the Java path reads for that channel.</li>
+	 *   <li><b>The zero-based contiguous multi-channel prefix</b> {@code [0, 1, ..., n-1]}
+	 *       — the full-scene render. Here the channel mapping is the identity, so the
+	 *       per-channel genome reads land on the matching pattern channels.</li>
+	 * </ul>
+	 *
+	 * <p>A non-contiguous multi-channel selection (e.g. {@code [0, 2]}) is not yet
+	 * validated and must render through the Java path instead: the cross-channel
+	 * transmission feedback grid is indexed by bank position rather than scene channel,
+	 * so an arbitrary multi-channel subset would not faithfully reproduce the routing.</p>
+	 *
+	 * @param channels the resolved channel indices
+	 * @return true when the PDSL path can faithfully render this selection
+	 */
+	public static boolean supportsPdslMixdown(List<Integer> channels) {
+		if (channels.isEmpty() || channels.stream().anyMatch(c -> c == null)) return false;
+
+		// Any single channel is supported — the adapter maps its genome reads to the
+		// selected channel index, so a non-zero [c] renders channel c's genes.
+		if (channels.size() == 1) return true;
+
+		// Multi-channel: still require the zero-based contiguous prefix [0, 1, ..., n-1].
+		return IntStream.range(0, channels.size())
+				.allMatch(i -> channels.get(i) == i);
+	}
+
 	/** Global reverb wet-level multiplier applied during reverb processing. */
 	protected static double reverbLevel = 2.0;
 
@@ -218,6 +257,15 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 
 	/** Chromosome providing simple (non-automated) delay dynamics genes. */
 	private final Chromosome<PackedCollection> delayDynamicsSimple;
+
+	/**
+	 * Maximum delay time in seconds the delay network can produce, captured from the
+	 * {@link Configuration#maxDelay} that {@link #initRanges} uses to bound the delay gene.
+	 * The delay gene transform is the exact inverse of its range encoding, so a resultant
+	 * delay never exceeds this value; {@link #createEfx} uses it to right-size each delay
+	 * line's ring buffer instead of allocating {@link AcceleratedTimeSeries#defaultSize}.
+	 */
+	private double maxDelaySeconds;
 
 	/** Chromosome controlling reverb parameters. */
 	private final Chromosome<PackedCollection> reverb;
@@ -474,6 +522,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 					pg.setRange(i, config.minWetOut, config.maxWetOut));
 		});
 
+		this.maxDelaySeconds = config.maxDelay;
 		delay.forEach(gene -> {
 			ProjectedGene pg = (ProjectedGene) gene;
 			pg.setRange(0,
@@ -717,6 +766,27 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	}
 
 	/**
+	 * Returns the ring-buffer capacity, in entries, for each delay line built by
+	 * {@link #createEfx}.
+	 *
+	 * <p>The delay gene is bounded to {@link #maxDelaySeconds} (its transform is the exact
+	 * inverse of the range encoding set in {@link #initRanges}), and the delay-dynamics scale
+	 * advances both buffer cursors together, so the number of live entries stays at
+	 * {@code sampleRate * delay} regardless of playback speed. The capacity is therefore the
+	 * {@link AdjustableDelayCell} documented floor — twice the maximum delay window — rather than
+	 * {@link AcceleratedTimeSeries#defaultSize}, whose ~10M-entry default reserves ~160MB of direct
+	 * memory per line and exhausted the direct-buffer budget across sequential scene renders. The
+	 * result is clamped to the default so a very long configured delay can never increase it.</p>
+	 *
+	 * @return the delay-line buffer capacity in entries
+	 */
+	private int delayBufferSize() {
+		long window = (long) Math.ceil(OutputLine.sampleRate * Math.max(0.0, maxDelaySeconds));
+		long size = window * 2 + 2;
+		return (int) Math.min(AcceleratedTimeSeries.defaultSize, Math.max(1, size));
+	}
+
+	/**
 	 * Creates the EFX (effects) cell graph that combines main, EFX delay, reverb, and riser cells,
 	 * routing the final mix to the output receptors.
 	 *
@@ -741,10 +811,13 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			IntFunction<Factor<PackedCollection>> df =
 					i -> toPolycyclicGene(clock, sampleRate, delayDynamicsSimple, i).valueAt(0);
 
+			int delayBufferSize = delayBufferSize();
+
 			CellList delays = IntStream.range(0, delayLayers)
 					.mapToObj(i -> new AdjustableDelayCell(OutputLine.sampleRate,
 							delay.valueAt(i, 0).getResultant(c(1.0)),
-							df.apply(i).getResultant(c(1.0))))
+							df.apply(i).getResultant(c(1.0)),
+							delayBufferSize))
 					.collect(CellList.collector());
 
 			IntFunction<Gene<PackedCollection>> tg =

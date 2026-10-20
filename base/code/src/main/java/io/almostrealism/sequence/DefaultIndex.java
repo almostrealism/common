@@ -22,7 +22,10 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A named {@link Index} with an optional numeric limit (exclusive upper bound).
@@ -39,6 +42,9 @@ import java.util.OptionalLong;
  * @see io.almostrealism.kernel.KernelIndex
  */
 public class DefaultIndex extends StaticReference<Integer> implements Index {
+	/** Counter shared across all temporary indices to keep their names unique. */
+	private static final AtomicLong temporaryCount = new AtomicLong();
+
 	/** The exclusive upper bound of this index, or empty if unbounded. */
 	private OptionalLong limit;
 
@@ -70,6 +76,26 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	public DefaultIndex(String name, Long limit) {
 		super(Integer.class, name);
 		this.limit = limit == null ? OptionalLong.empty() : OptionalLong.of(limit);
+	}
+
+	/**
+	 * Creates a new unbounded temporary index with a unique name of the form "ci_N",
+	 * for constructing intermediate expressions that require a fresh index variable.
+	 *
+	 * @return a new {@link DefaultIndex} with a unique name
+	 */
+	public static DefaultIndex temporary() {
+		return new DefaultIndex("ci_" + temporaryCount.getAndIncrement());
+	}
+
+	/**
+	 * Creates a new bounded temporary index with a unique name of the form "ci_N".
+	 *
+	 * @param limit the exclusive upper bound for valid index values
+	 * @return a new {@link DefaultIndex} with a unique name and the specified limit
+	 */
+	public static DefaultIndex temporary(int limit) {
+		return new DefaultIndex("ci_" + temporaryCount.getAndIncrement(), limit);
 	}
 
 	/**
@@ -113,6 +139,58 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 
 	@Override
 	public boolean isPossiblyNegative() { return false; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index contains the given index when the two have the same name.</p>
+	 */
+	@Override
+	public boolean containsIndex(Index idx) {
+		return Objects.equals(getName(), idx.getName()) || super.containsIndex(idx);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index is replaced by the given expression when the index being replaced
+	 * has its name.</p>
+	 */
+	@Override
+	public Expression<Integer> withIndex(Index index, Expression<?> e) {
+		if (Objects.equals(getName(), index.getName())) return (Expression) e;
+		return super.withIndex(index, e);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index references itself.</p>
+	 */
+	@Override
+	public Set<Index> getIndices() {
+		return Set.of(this);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index answers for itself, as described by {@link Index#getIndexOptions(Index)}.</p>
+	 */
+	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		return Index.super.getIndexOptions(index);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index is already the series of its own values, so it is never a target.</p>
+	 */
+	@Override
+	public boolean isSeriesSimplificationTarget(int depth) {
+		return false;
+	}
 
 	@Override
 	public boolean isValue(IndexValues values) {

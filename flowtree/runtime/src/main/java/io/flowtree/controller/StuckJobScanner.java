@@ -96,6 +96,17 @@ public class StuckJobScanner implements ConsoleFeatures {
 	private int stalenessMultiplier = DEFAULT_STALENESS_MULTIPLIER;
 
 	/**
+	 * Explicit "dead" threshold (the operator's {@code T_dead}): the silence a
+	 * started job may accumulate before it is failed. When set it overrides the
+	 * {@link #wallClockCeiling} × {@link #stalenessMultiplier} derivation, so an
+	 * operator can tune "silent means dead" without a rebuild. {@code null}
+	 * leaves the derived default in place. Never below a sensible floor — a
+	 * misconfigured near-zero value would fail live jobs, so a non-positive set
+	 * is treated as "no override".
+	 */
+	private Duration deadThreshold;
+
+	/**
 	 * Job IDs already failed by this scanner; makes termination idempotent.
 	 *
 	 * <p>A set rather than a list because the only operations are membership
@@ -130,10 +141,33 @@ public class StuckJobScanner implements ConsoleFeatures {
 	 *         because the wall-clock ceiling is itself disabled
 	 */
 	public Duration stalenessThreshold() {
+		if (deadThreshold != null && !deadThreshold.isNegative() && !deadThreshold.isZero()) {
+			return deadThreshold;
+		}
 		if (wallClockCeiling == null || wallClockCeiling.isNegative() || wallClockCeiling.isZero()) {
 			return Duration.ZERO;
 		}
 		return wallClockCeiling.multipliedBy(stalenessMultiplier);
+	}
+
+	/**
+	 * Sets the explicit "dead" threshold — the silence a started job may
+	 * accumulate before the scanner fails it — overriding the wall-clock
+	 * derivation.
+	 *
+	 * <p>This is the operator's {@code T_dead}. The DEAD transition is
+	 * destructive (it fails the job through the ordinary completion path), so
+	 * the scanner stays conservative: a non-positive or {@code null} value is
+	 * treated as "no override" and the derived {@link #wallClockCeiling} ×
+	 * {@link #stalenessMultiplier} default is restored rather than disabling
+	 * the floor and risking a live job being failed.</p>
+	 *
+	 * @param deadThreshold the silence a job may accumulate before it is failed;
+	 *                      {@code null} or non-positive restores the default
+	 */
+	public void setDeadThreshold(Duration deadThreshold) {
+		this.deadThreshold = (deadThreshold != null && !deadThreshold.isNegative()
+				&& !deadThreshold.isZero()) ? deadThreshold : null;
 	}
 
 	/**
@@ -173,7 +207,7 @@ public class StuckJobScanner implements ConsoleFeatures {
 		Duration threshold = stalenessThreshold();
 		if (statsStore == null || threshold.isZero()) return failed;
 
-		for (JobStatsStore.ActiveJob job : statsStore.getActiveJobs(null)) {
+		for (ActiveJob job : statsStore.getActiveJobs(null)) {
 			if (job.jobId() == null || terminated.contains(job.jobId())) continue;
 			if (!job.isStale(threshold, now)) continue;
 

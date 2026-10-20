@@ -99,10 +99,21 @@ def _refresh_workspace_map() -> Optional[tuple]:
     treat the two the same: a fetch failure means "unknown state," not
     "no workspaces exist," and must not overwrite a previously-good cache
     with an empty one (see :func:`_get_cached_maps`).
+
+    Archived workstreams are included (``includeArchived=true``). The map
+    answers "which workspace owns this workstream," and an archived
+    workstream still belongs to its workspace. Resolving ownership for
+    archived rows is what lets the read tools (``workstream_context``,
+    ``workstream_get_job``, ``workstream_get_status``) see an archived
+    round at all; whether an *operation* is permitted on an archived
+    workstream is a separate question answered by the write tools, which
+    refuse it (see :func:`_archived_workstream_error`). The dispatch-capable
+    map is built from a live-only fetch on purpose — dispatch is a property
+    of a workstream that can still accept work.
     """
     import sys as _sys
     _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
-    result = _cget("/api/workstreams")
+    result = _cget("/api/workstreams?includeArchived=true")
     if isinstance(result, list):
         entries = result
     elif isinstance(result, dict) and isinstance(result.get("workstreams"), list):
@@ -271,6 +282,28 @@ _dispatch_capable_cache: dict = {"ids": None, "fetched": 0.0}
 _dispatch_capable_lock = threading.Lock()
 
 
+def _fetch_workstream_entries() -> list:
+    """Fetch the controller's workstream list for a capability check.
+
+    Returns an empty list when the controller is unreachable or returns an
+    unexpected payload. Every capability built on it therefore fails closed:
+    an ar-manager that cannot reach its controller grants nothing.
+    """
+    try:
+        import sys as _sys
+        _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
+        result = _cget("/api/workstreams")
+    except Exception:
+        return []
+    if isinstance(result, list):
+        entries = result
+    elif isinstance(result, dict):
+        entries = result.get("workstreams", [])
+    else:
+        return []
+    return entries if isinstance(entries, list) else []
+
+
 def _refresh_dispatch_capable_ids() -> set:
     """Fetch the workstream list from the controller and return the set
     of workstream IDs that have ``dispatchCapable: true``.
@@ -279,22 +312,8 @@ def _refresh_dispatch_capable_ids() -> set:
     non-list payload.  The empty set is the fail-closed default: an
     ar-manager that cannot reach its controller refuses to grant dispatch.
     """
-    try:
-        import sys as _sys
-        _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
-        result = _cget("/api/workstreams")
-    except Exception:
-        return set()
-    if isinstance(result, list):
-        entries = result
-    elif isinstance(result, dict):
-        entries = result.get("workstreams", [])
-    else:
-        return set()
-    if not isinstance(entries, list):
-        return set()
     ids = set()
-    for ws in entries:
+    for ws in _fetch_workstream_entries():
         if not isinstance(ws, dict):
             continue
         if ws.get("dispatchCapable") is True:
@@ -356,6 +375,110 @@ def _require_dispatch_capable() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tracker capabilities
+# ---------------------------------------------------------------------------
+# The controller's workstream list carries ``"trackerCapabilities": [...]``
+# for a workstream granted any. There is one: ``planner``, whose agents may
+# create tasks with every field set, edit any task in their workspace, and
+# create releases. Cached on the same TTL as the dispatch flag, and failing
+# closed the same way: a workstream whose grant cannot be read is not a
+# planner.
+
+TRACKER_PLANNER = "planner"
+
+# Retired role names, read as the role that replaced them, so a workstream
+# saved before the change keeps what it was granted.
+_TRACKER_CAPABILITY_ALIASES = {"steward": TRACKER_PLANNER}
+
+_tracker_capability_cache: dict = {"map": None, "fetched": 0.0}
+_tracker_capability_lock = threading.Lock()
+
+
+def _canonical_tracker_capability(capability: str) -> str:
+    """Return the current name of a tracker role, mapping a retired name to
+    the role that replaced it."""
+    return _TRACKER_CAPABILITY_ALIASES.get(capability, capability)
+
+
+def _refresh_tracker_capabilities() -> dict:
+    """Return ``{workstream_id: set(capabilities)}`` from the controller."""
+    caps = {}
+    for ws in _fetch_workstream_entries():
+        if not isinstance(ws, dict):
+            continue
+        granted = ws.get("trackerCapabilities")
+        wid = ws.get("workstreamId")
+        if wid and isinstance(granted, list):
+            caps[wid] = {_canonical_tracker_capability(c)
+                         for c in granted if isinstance(c, str)}
+    return caps
+
+
+def _get_tracker_capabilities(workstream_id: str) -> set:
+    """Return the tracker capabilities granted to *workstream_id*, refreshing
+    the cache when it is older than :data:`~config.WORKSPACE_CACHE_TTL`.
+    """
+    now = time.monotonic()
+    with _tracker_capability_lock:
+        caps = _tracker_capability_cache.get("map")
+        fresh = (caps is not None
+                 and (now - _tracker_capability_cache.get("fetched", 0.0))
+                 <= WORKSPACE_CACHE_TTL)
+    if not fresh:
+        caps = _refresh_tracker_capabilities()
+        with _tracker_capability_lock:
+            _tracker_capability_cache["map"] = caps
+            _tracker_capability_cache["fetched"] = time.monotonic()
+    return caps.get(workstream_id, set())
+
+
+def _is_tracker_planner(workstream_id: str) -> bool:
+    """Return True when the agents of *workstream_id* hold the planner role."""
+    return TRACKER_PLANNER in _get_tracker_capabilities(workstream_id)
+
+
+# ---------------------------------------------------------------------------
+# Tracker workspace scope
+# ---------------------------------------------------------------------------
+# A tracker project is owned by one workspace (its ``workspace_id``), and its
+# releases and tasks belong to that workspace; the tracker reports the
+# workspace on every project, release and task it returns. A caller limited
+# to some workspaces sees and changes only what those workspaces own.
+
+
+def _tracker_workspace_limit() -> Optional[str]:
+    """Return the ``workspace_id`` query value that limits a tracker list to
+    the caller's workspaces, or ``None`` when the caller is not limited.
+
+    The tracker treats a present-but-empty value as "no workspace", so a
+    limited caller can never widen its view by having no scopes listed.
+    """
+    scopes = _get_workspace_scopes()
+    if not scopes:
+        return None
+    return ",".join(scopes)
+
+
+def _require_tracker_record_in_scope(record: dict, kind: str) -> None:
+    """Raise :class:`PermissionError` unless *record* — a tracker project,
+    release or task — belongs to a workspace the caller may use.
+
+    A record no workspace owns (a task with no project, or a project nobody
+    has assigned) is out of every limited caller's scope. Unlimited callers
+    always pass.
+    """
+    if not _get_workspace_scopes():
+        return
+    workspace_id = record.get("workspace_id") if isinstance(record, dict) else None
+    if not _is_workspace_allowed(workspace_id):
+        raise PermissionError(
+            f"This {kind} belongs to a tracker project outside your workspace, or to"
+            " no project a workspace owns, so it is not visible to you. A person"
+            " assigns a project to a workspace with tracker_update_project(...,"
+            " workspace_id=...).")
+
+
+# ---------------------------------------------------------------------------
 # Scope-filtered views over the workstream / task lists
 # ---------------------------------------------------------------------------
 
@@ -374,31 +497,6 @@ def _filter_workstreams_by_scope(entries: list) -> list:
             wsid = ws.get("workspaceId") or ws.get("slackWorkspaceId")
             if wsid in scopes:
                 filtered.append(ws)
-    return filtered
-
-
-def _filter_tasks_by_scope(tasks: list) -> list:
-    """Return only those task-dict entries whose linked workstream is
-    permitted by the current request's workspace scope.
-
-    Unscoped callers see all tasks.  Tasks with no ``workstream_id`` are
-    dropped for scoped callers — there is no safe interpretation of
-    "this task belongs to your workspace" when no workstream link exists.
-    Malformed non-list payloads return an empty list for scoped callers.
-    """
-    if not _get_workspace_scopes():
-        return tasks
-    if not isinstance(tasks, list):
-        return []
-    filtered = []
-    for t in tasks:
-        if not isinstance(t, dict):
-            continue
-        ws_id = t.get("workstream_id") or ""
-        if not ws_id:
-            continue
-        if _is_workspace_allowed(_workspace_for_workstream(ws_id)):
-            filtered.append(t)
     return filtered
 
 
@@ -428,6 +526,13 @@ def _pipeline_error(workstream_id: str, missing: str) -> dict:
 def _find_workstream(workstream_id: str) -> Optional[dict]:
     """Fetch a specific workstream from the controller's list.
 
+    Archived workstreams are included (``includeArchived=true``) so an
+    archived round still resolves — its dict carries ``archived=true``,
+    which the write tools read to keep it read-only (see
+    :func:`_archived_workstream_error`). Without this, addressing an
+    archived workstream by id failed as "not found" for every read tool
+    that resolves repo/branch through here.
+
     Enforces the current request's workspace scope as a side effect: a
     scoped caller looking up a workstream in an out-of-scope workspace
     receives ``None`` (the lookup appears to fail, rather than leaking
@@ -438,7 +543,7 @@ def _find_workstream(workstream_id: str) -> Optional[dict]:
     """
     import sys as _sys
     _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
-    result = _cget("/api/workstreams")
+    result = _cget("/api/workstreams?includeArchived=true")
     if isinstance(result, list):
         for ws in result:
             if ws.get("workstreamId") == workstream_id:
@@ -447,3 +552,224 @@ def _find_workstream(workstream_id: str) -> Optional[dict]:
                     return None
                 return ws
     return None
+
+
+def _find_workstream_by_branch(
+        repo_url: str, branch: str, enforce_scope: bool = True) -> Optional[dict]:
+    """Find a workstream by its default branch, optionally scoped to a
+    repository.
+
+    Archived workstreams are included, so a caller that addresses a branch
+    (rather than an id) can still resolve an archived round — the shape a
+    retrospective survey uses for a merged, archived QA round it found
+    through ``workstream_list``. This is what lets :func:`workstream_context`
+    return a job timeline for the repo+branch form, not only when a
+    ``workstream_id`` was supplied, and what lets
+    :func:`workstream_submit_task` refuse a branch-addressed submission to an
+    archived round before the controller — which has no archived check — is
+    contacted.
+
+    Mirrors the controller's own branch resolution
+    (``NotifierRegistry.resolveBranch``): with a ``repo_url`` the lookup is
+    unambiguous and the single ``(branch, repo)`` match is returned — or,
+    when no workstream on the branch names that repository, a workstream on
+    the branch that names no repository at all, exactly as
+    ``SlackNotifier.findWorkstreamByBranchAndRepo`` falls back; without
+    one it falls back to branch-only matching and resolves **only** when
+    exactly one workstream carries that default branch. An ambiguous
+    branch-only match (two repositories sharing a branch) resolves to
+    ``None`` here exactly as the controller refuses to route it — so the
+    submit guard neither mis-attributes the ambiguity to archiving nor lets
+    an archived round through on a branch the controller would reject anyway.
+
+    Enforces workspace scope exactly as :func:`_find_workstream` does: a
+    match owned by an out-of-scope workspace is skipped, so existence is
+    not leaked to a scoped caller. The archived read-only guard is the one
+    caller that passes ``enforce_scope=False``: an archived round is frozen
+    for every caller regardless of workspace, and the scope filter would
+    otherwise hide an out-of-scope archived round from the guard and let a
+    write through (``memory_store`` applies no workspace scope of its own).
+
+    Args:
+        repo_url: The repository to scope the match to; empty for a
+            branch-only lookup across every repository.
+        branch: The ``defaultBranch`` to match. Required.
+        enforce_scope: When True (the default) a match owned by an
+            out-of-scope workspace is skipped. Pass False only for the
+            archived-write guard, which must see an archived round even
+            when the caller's scope would hide it.
+
+    Returns:
+        The workstream dict whose ``defaultBranch`` equals *branch* (the
+        unique match when *repo_url* is empty), or ``None`` when there is no
+        match or a branch-only lookup is ambiguous. When *enforce_scope* is
+        True an out-of-scope match counts as no match.
+    """
+    if not branch:
+        return None
+    matches = _list_workstreams_on_branch(repo_url, branch, enforce_scope)
+    if matches is None:
+        return None
+    if repo_url:
+        if matches:
+            # (branch, repo) is unique; the first match is the match.
+            return matches[0]
+        # The listing's repoUrl filter omits a workstream that names no
+        # repository, but the controller's findWorkstreamByBranchAndRepo
+        # falls back to such an unscoped round when no workstream names the
+        # requested repository — so resolve it the same way here.
+        unfiltered = _list_workstreams_on_branch("", branch, enforce_scope) or []
+        for ws in unfiltered:
+            if not ws.get("repoUrl"):
+                return ws
+        return None
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _list_workstreams_on_branch(
+        repo_url: str, branch: str, enforce_scope: bool) -> Optional[list]:
+    """List the workstreams (archived included) whose default branch is
+    *branch*, filtered by the controller to *repo_url* when one is given.
+
+    The repository filter is applied by the controller's listing, which
+    matches on repository identity (SSH and HTTPS forms of one repository
+    are the same repository), and it excludes a workstream that names no
+    repository.
+
+    Args:
+        repo_url: The repository to filter to; empty for every repository.
+        branch: The ``defaultBranch`` to match.
+        enforce_scope: When True a workstream owned by an out-of-scope
+            workspace is skipped.
+
+    Returns:
+        The matching workstream dicts in listing order, or ``None`` when the
+        controller's response could not be read.
+    """
+    import sys as _sys
+    _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
+    from urllib.parse import urlencode
+    params = {"includeArchived": "true"}
+    if repo_url:
+        params["repoUrl"] = repo_url
+    result = _cget("/api/workstreams?" + urlencode(params))
+    if isinstance(result, list):
+        entries = result
+    elif isinstance(result, dict) and isinstance(result.get("workstreams"), list):
+        entries = result["workstreams"]
+    else:
+        return None
+    matches = []
+    for ws in entries:
+        if not isinstance(ws, dict) or ws.get("defaultBranch") != branch:
+            continue
+        if enforce_scope and _get_workspace_scopes() and not _is_workspace_allowed(
+                ws.get("workspaceId") or ws.get("slackWorkspaceId")):
+            continue
+        matches.append(ws)
+    return matches
+
+
+def _archived_workstream_error(
+        operation: str, workstream_id: str,
+        ws: Optional[dict] = None) -> Optional[dict]:
+    """Return an error dict when *workstream_id* names an archived
+    workstream, or ``None`` when it is live, unknown, or out of scope.
+
+    Archived workstreams are read-only: their context, memories and job
+    history stay queryable, but no job may be submitted to them and their
+    configuration may not be changed. The write tools call this before they
+    contact the controller so the refusal names archiving as the reason
+    rather than surfacing as a generic controller error. Resolving an
+    archived workstream's ownership now succeeds (see
+    :func:`_find_workstream`), so this explicit guard — not the former
+    accidental scope-resolution failure — is what keeps writes off an
+    archived workstream.
+
+    An unknown or out-of-scope workstream resolves to ``None`` here so the
+    caller's existing not-found / scope handling still runs; this guard
+    speaks only to the archived case. It protects a workstream addressed by
+    id, so every caller resolves its target to an id before calling: the
+    submit tool resolves a ``target_branch`` through
+    :func:`_find_workstream_by_branch`, and ``memory_store`` resolves both an
+    explicit ``repo_url`` + ``branch`` and the token-bound workstream, rather
+    than leaving any of those forms to the controller's own archived handling.
+
+    A caller that has already resolved the workstream dict (possibly through
+    a scope-independent lookup) passes it as *ws* so this guard reads its
+    ``archived`` flag directly instead of re-fetching through the
+    scope-filtered :func:`_find_workstream`, which would re-hide an
+    out-of-scope archived round the caller deliberately resolved.
+
+    Args:
+        operation: What the caller was attempting, phrased to complete
+            "Cannot <operation>:" — e.g. ``"submit a task"``.
+        workstream_id: The workstream the write was aimed at.
+        ws: An already-resolved workstream dict for *workstream_id*. When
+            given it is used directly; when ``None`` the workstream is
+            fetched via the scope-filtered :func:`_find_workstream`.
+
+    Returns:
+        An ``{"ok": False, ...}`` dict naming archiving as the reason, or
+        ``None`` when the workstream is not archived (or not resolvable).
+    """
+    if not workstream_id:
+        return None
+    if ws is None:
+        import sys as _sys
+        _find = getattr(_sys.modules.get('server'), '_find_workstream', None) or _find_workstream
+        ws = _find(workstream_id)
+    if not ws or not ws.get("archived"):
+        return None
+    return {
+        "ok": False,
+        "error": (
+            f"Cannot {operation}: workstream '{workstream_id}' is archived. "
+            "Archived workstreams are read-only — their context, memories and "
+            "job history remain readable, but no new job may be submitted to "
+            "them and their configuration may not be changed."
+        ),
+        "next_steps": [
+            f"Unarchive it first with workstream_unarchive('{workstream_id}') to resume work",
+            "Or target a live workstream — workstream_list marks which are archived",
+        ],
+    }
+
+
+def _archived_branch_error(
+        operation: str, repo_url: str, branch: str) -> Optional[dict]:
+    """Return an error dict when the round whose default branch is *branch*
+    in *repo_url* is archived, or ``None`` when it is live or unregistered.
+
+    The write tools that accept an explicit branch alongside a workstream
+    (``memory_store``, ``project_verify_branch``, ``project_commit_plan``,
+    ``github_create_pr``) act on that branch, not on the workstream record
+    they resolved it through. A live workstream id combined with an archived
+    round's branch would pass a guard keyed on the id while the write lands on
+    the archived round, so these tools guard the branch they actually write
+    to through here.
+
+    The lookup uses ``enforce_scope=False`` and hands its dict to
+    :func:`_archived_workstream_error` directly: an archived round is frozen
+    for every caller regardless of workspace, and a scope-filtered lookup
+    would hide an out-of-scope archived round and let the write through.
+
+    Args:
+        operation: What the caller was attempting, phrased to complete
+            "Cannot <operation>:" — e.g. ``"store a memory"``.
+        repo_url: The repository the branch belongs to; empty for a
+            branch-only lookup (which resolves only an unambiguous match).
+        branch: The branch the write targets.
+
+    Returns:
+        An ``{"ok": False, ...}`` dict naming archiving as the reason, or
+        ``None`` when no archived round has *branch* as its default branch.
+    """
+    import sys as _sys
+    _by_branch = (getattr(_sys.modules.get('server'), '_find_workstream_by_branch', None)
+                  or _find_workstream_by_branch)
+    ws = _by_branch(repo_url, branch, enforce_scope=False)
+    target = (ws.get("workstreamId", "") or "") if ws else ""
+    return _archived_workstream_error(operation, target, ws=ws)

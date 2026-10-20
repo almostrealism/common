@@ -72,11 +72,13 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		AtomicInteger index = new AtomicInteger();
 
 		dc(() -> {
-			StableDurationHealthComputation health = new StableDurationHealthComputation(2, false);
+			AudioScene<?> scene = pattern(2, 2);
+			StableDurationHealthComputation health =
+					new StableDurationHealthComputation(scene.getStemCount(), false);
 			health.setMaxDuration(8);
 			health.setOutputFile(() -> "results/cells-pattern-dc-test" + index.incrementAndGet() + ".wav");
 
-			TemporalCellular organ = randomOrgan(pattern(2, 2), health.getOutput(), health.getBatchSize());
+			TemporalCellular organ = randomOrgan(scene, health.getOutput(), health.getBatchSize());
 			organ.reset();
 			health.setTarget(organ);
 			health.computeHealth();
@@ -123,10 +125,12 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		SilenceDurationHealthComputation.enableSilenceCheck = false;
 		HealthComputationAdapter.setStandardDuration(150);
 
-		StableDurationHealthComputation health = new StableDurationHealthComputation(5, false);
+		AudioScene<?> scene = pattern(5, 3);
+		StableDurationHealthComputation health =
+				new StableDurationHealthComputation(scene.getStemCount(), false);
 		health.setOutputFile("results/small-cells-pattern-test.wav");
 
-		TemporalCellular cells = randomOrgan(pattern(5, 3), health.getOutput(), health.getBatchSize());
+		TemporalCellular cells = randomOrgan(scene, health.getOutput(), health.getBatchSize());
 
 		cells.reset();
 		health.setTarget(cells);
@@ -151,15 +155,16 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 
 		IntStream.range(0, 3).forEach(j ->
 			dc(() -> {
-				StableDurationHealthComputation health = new StableDurationHealthComputation(2, false);
+				StableDurationHealthComputation health =
+						new StableDurationHealthComputation(scene.getStemCount(), false);
 				health.setMaxDuration(8);
 
 				health.setOutputFile(() -> "results/samples-pop-test-" + index.incrementAndGet() + ".wav");
 
 				log("Creating AudioScenePopulation...");
 				AudioScenePopulation pop =
-						new AudioScenePopulation(null, AudioScenePopulation.read(new FileInputStream(AudioSceneOptimizer.POPULATION_FILE)));
-				pop.init(pop.getGenomes().get(0), health.getOutput());
+						new AudioScenePopulation(scene, AudioScenePopulation.read(new FileInputStream(AudioSceneOptimizer.POPULATION_FILE)));
+				pop.init(pop.getGenomes().get(0), health.getOutput(), null, health.getBatchSize());
 
 				IntStream.range(0, 2).forEach(i -> {
 					TemporalCellular organ = pop.enableGenome(i);

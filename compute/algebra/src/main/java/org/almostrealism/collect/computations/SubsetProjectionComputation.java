@@ -77,7 +77,7 @@ public class SubsetProjectionComputation extends TraversableExpressionComputatio
 									   TraversalPolicy outputShape,
 									   TraversalPolicy inputShape,
 									   Expression<?>[] positionOffsets) {
-		super("subsetProjection", jacobianShape, MultiTermDeltaStrategy.NONE);
+		super("subsetProjection", jacobianShape);
 		this.outputShape = outputShape;
 		this.inputShape = inputShape;
 		this.positionOffsets = positionOffsets;

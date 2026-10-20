@@ -224,6 +224,67 @@ public class GitOperationsTest extends TestSuiteBase {
     }
 
     /**
+     * {@link GitOperations#fingerprintUncommittedState} changes exactly when
+     * uncommitted work outside scratch space changes: content edits, mode
+     * changes, new and deleted files all move it; rewriting excluded paths
+     * does not, unless the caller names the path as an extra.
+     */
+    @Test(timeout = 10000)
+    public void fingerprintTracksUncommittedWorkOutsideScratchSpace() throws Exception {
+        Path repo = initRepo();
+        Path tracked = repo.resolve("tracked.txt");
+        Files.writeString(tracked, "v1");
+        gitRun(repo, "add", "tracked.txt");
+        gitRun(repo, "commit", "-m", "seed");
+        String dir = repo.toString();
+
+        String clean = GitOperations.fingerprintUncommittedState(dir);
+        Assert.assertEquals("an unchanged tree must fingerprint identically",
+                clean, GitOperations.fingerprintUncommittedState(dir));
+
+        Files.writeString(tracked, "v2");
+        String edited = GitOperations.fingerprintUncommittedState(dir);
+        assertFalse("a content edit must change the fingerprint", clean.equals(edited));
+        Files.writeString(tracked, "v3");
+        assertFalse("a second edit to the same file must change it again",
+                edited.equals(GitOperations.fingerprintUncommittedState(dir)));
+
+        Files.writeString(tracked, "v1");
+        Assert.assertEquals("restoring the committed content restores the fingerprint",
+                clean, GitOperations.fingerprintUncommittedState(dir));
+
+        Files.createDirectories(repo.resolve("target"));
+        Files.writeString(repo.resolve("target/Out.class"), "bytes");
+        Files.writeString(repo.resolve("commit.txt"), "message");
+        Assert.assertEquals("scratch-space writes must not change the fingerprint",
+                clean, GitOperations.fingerprintUncommittedState(dir));
+        assertFalse("a named extra path counts even in scratch space",
+                clean.equals(GitOperations.fingerprintUncommittedState(dir, "commit.txt")));
+
+        assertTrue(tracked.toFile().setExecutable(true));
+        assertFalse("a mode-only change must change the fingerprint",
+                clean.equals(GitOperations.fingerprintUncommittedState(dir)));
+        assertTrue(tracked.toFile().setExecutable(false));
+
+        Files.delete(tracked);
+        assertFalse("deleting a tracked file must change the fingerprint",
+                clean.equals(GitOperations.fingerprintUncommittedState(dir)));
+    }
+
+    /** A directory that is not a git working tree cannot be fingerprinted. */
+    @Test(timeout = 10000)
+    public void fingerprintFailsOutsideAWorkingTree() throws Exception {
+        Path dir = Files.createTempDirectory("git-ops-not-a-repo-");
+        tempDirs.add(dir);
+        try {
+            GitOperations.fingerprintUncommittedState(dir.toString());
+            Assert.fail("fingerprinting a directory outside a working tree must throw");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("git status"));
+        }
+    }
+
+    /**
      * Tests that {@link GitOperations#listFilesOnRef} returns the files tracked
      * on a ref, filtered by suffix, and ignores untracked working-tree files.
      */
@@ -267,6 +328,108 @@ public class GitOperationsTest extends TestSuiteBase {
         Set<String> files = GitOperations.listFilesOnRef(
                 repo.toString(), "origin/does-not-exist", ".bin", warn());
         assertTrue("Unknown ref must yield an empty set", files.isEmpty());
+    }
+
+    /**
+     * Pins the contract of {@link GitOperations#readProcessOutput(Process)} that
+     * every internal caller and {@code GitCommandExecutor} depend on: each line
+     * of the process's output is returned in order, each terminated by a
+     * newline, so the reverse-chronological, multi-line output of
+     * {@code git log --format=%s} round-trips as {@code two\none\n}.
+     */
+    @Test(timeout = 10000)
+    public void readProcessOutputCapturesEveryLineWithTrailingNewline() throws Exception {
+        Path repo = initRepo();
+        Files.writeString(repo.resolve("a.txt"), "a");
+        gitRun(repo, "add", "a.txt");
+        gitRun(repo, "commit", "-m", "one");
+        Files.writeString(repo.resolve("b.txt"), "b");
+        gitRun(repo, "add", "b.txt");
+        gitRun(repo, "commit", "-m", "two");
+
+        ProcessBuilder pb = new ProcessBuilder(
+                GitOperations.resolveGitCommand(), "log", "--format=%s");
+        pb.directory(repo.toFile());
+        pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
+
+        String output = GitOperations.readProcessOutput(pb.start());
+
+        Assert.assertEquals("two\none\n", output);
+    }
+
+    /**
+     * Pins that {@link GitOperations#readProcessOutput(Process)} returns an empty
+     * string, not {@code null}, when the process produces no output. A
+     * {@code git add -- .} on a repository with nothing to stage prints nothing
+     * to stdout; this is the behaviour {@code GitCommandExecutor.executeGit}
+     * relies on when it trims and logs a failing command's output.
+     */
+    @Test(timeout = 10000)
+    public void readProcessOutputReturnsEmptyStringWhenNoOutput() throws Exception {
+        Path repo = initRepo();
+
+        ProcessBuilder pb = new ProcessBuilder(
+                GitOperations.resolveGitCommand(), "add", "--", ".");
+        pb.directory(repo.toFile());
+        GitOperations.augmentPath(pb);
+
+        String output = GitOperations.readProcessOutput(pb.start());
+        Assert.assertEquals("", output);
+    }
+
+    /**
+     * Pins the shared porcelain parse {@link GitOperations#parseChangedFiles(String)}
+     * that both {@link GitOperations#getChangedFiles(String)} and
+     * {@code GitRepositorySetup.getAllDirtyFiles()} now rely on: the path begins
+     * at the fourth column (after the two-character status code and its trailing
+     * space), every status kind (modified, added, deleted, untracked) is listed
+     * alike, a renamed entry yields only its post-rename path, and git's reported
+     * order is preserved.
+     */
+    @Test(timeout = 10000)
+    public void parseChangedFilesReadsPathsAndRenamesInOrder() {
+        String statusOutput = String.join("\n",
+                " M tracked.txt",
+                "A  added.txt",
+                " D deleted.txt",
+                "?? Untracked.java",
+                "R  old/name.txt -> new/name.txt");
+
+        List<String> files = GitOperations.parseChangedFiles(statusOutput);
+
+        Assert.assertEquals(
+                List.of("tracked.txt", "added.txt", "deleted.txt",
+                        "Untracked.java", "new/name.txt"),
+                files);
+    }
+
+    /**
+     * Pins the filtering edges of {@link GitOperations#parseChangedFiles(String)}:
+     * lines too short to hold a path (empty lines, a bare status code, the
+     * trailing fragment left by {@code split}) are ignored, and a line whose
+     * path is blank after trimming is dropped rather than contributing an empty
+     * entry.
+     */
+    @Test(timeout = 10000)
+    public void parseChangedFilesIgnoresShortAndBlankLines() {
+        String statusOutput = String.join("\n",
+                "",
+                "??",
+                " M kept.txt",
+                "    ",
+                " M also/kept.txt");
+
+        List<String> files = GitOperations.parseChangedFiles(statusOutput);
+
+        Assert.assertEquals(List.of("kept.txt", "also/kept.txt"), files);
+    }
+
+    /** Empty status output (a clean tree) parses to no files, never {@code null}. */
+    @Test(timeout = 10000)
+    public void parseChangedFilesEmptyOnNoOutput() {
+        assertTrue("Empty porcelain output must yield no files",
+                GitOperations.parseChangedFiles("").isEmpty());
     }
 
     // -------------------------------------------------------------------------
@@ -347,6 +510,74 @@ public class GitOperationsTest extends TestSuiteBase {
         Assert.assertNull(GitOperations.repositorySlug("   "));
         Assert.assertNull(GitOperations.repositorySlug("not-a-url"));
         Assert.assertNull(GitOperations.repositorySlug("https://github.com/almostrealism"));
+    }
+
+    /**
+     * The host is reported for every repository URL form {@code repositorySlug}
+     * recognises, so that a caller can reject a URL pointing at the wrong
+     * service. Credentials and a trailing slash are tolerated, and the {@code @}
+     * of an SSH remote does not leak into the host.
+     */
+    @Test(timeout = 10000)
+    public void repositoryHostExtractsHostForRecognisedForms() {
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("git@github.com:almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://github.com/almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://github.com/almostrealism/common"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("ssh://git@github.com/almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("  https://github.com/almostrealism/common/  "));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://x-access-token:secret@github.com/almostrealism/common.git"));
+        Assert.assertEquals("gitlab.com",
+                GitOperations.repositoryHost("https://gitlab.com/acme/repo.git"));
+    }
+
+    /**
+     * An explicit port is excluded from the reported host, so a URL with a port
+     * reduces to the same host as one without — a look-alike host such as
+     * {@code github.com.evil.example} is reported verbatim and stays distinct.
+     */
+    @Test(timeout = 10000)
+    public void repositoryHostExcludesPort() {
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("https://github.com:443/almostrealism/common.git"));
+        Assert.assertEquals("github.com",
+                GitOperations.repositoryHost("ssh://git@github.com:22/almostrealism/common.git"));
+        Assert.assertEquals("github.com.evil.example",
+                GitOperations.repositoryHost("https://github.com.evil.example/almostrealism/common.git"));
+    }
+
+    /**
+     * A bracketed IPv6 authority is a repository URL form {@code repositorySlug}
+     * accepts (its authority is {@code [^/]+}), so {@code repositoryHost} must
+     * report a (non-{@code null}) host for it too rather than disagreeing with
+     * the canonical parser; the whole bracketed literal is the host, and its
+     * colons do not leak a port into the capture.
+     */
+    @Test(timeout = 10000)
+    public void repositoryHostCapturesBracketedIpv6Authority() {
+        Assert.assertEquals("[2001:db8::1]",
+                GitOperations.repositoryHost("https://[2001:db8::1]/owner/repo.git"));
+        Assert.assertEquals("[2001:db8::1]",
+                GitOperations.repositoryHost("https://[2001:db8::1]:443/owner/repo.git"));
+
+        // The host guard and the slug must not disagree about whether a URL is a repository.
+        Assert.assertNotNull(GitOperations.repositoryHost("https://[2001:db8::1]/owner/repo.git"));
+        Assert.assertNotNull(GitOperations.repositorySlug("https://[2001:db8::1]/owner/repo.git"));
+    }
+
+    /** A URL that is not a repository URL has no host. */
+    @Test(timeout = 10000)
+    public void repositoryHostRejectsUnrecognisedInput() {
+        Assert.assertNull(GitOperations.repositoryHost(null));
+        Assert.assertNull(GitOperations.repositoryHost(""));
+        Assert.assertNull(GitOperations.repositoryHost("   "));
+        Assert.assertNull(GitOperations.repositoryHost("not-a-url"));
+        Assert.assertNull(GitOperations.repositoryHost("https://github.com/almostrealism"));
     }
 
     /** Equivalent forms of one repository are the same repository. */

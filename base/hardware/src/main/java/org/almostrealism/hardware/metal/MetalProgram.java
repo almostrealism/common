@@ -19,7 +19,6 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
@@ -27,10 +26,6 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 /**
  * Compiled Metal Shading Language (MSL) program containing a {@link MTLFunction}.
@@ -65,9 +60,6 @@ public class MetalProgram implements OperationInfo, Signature, Destroyable, Cons
 	 * Metric tracking Metal kernel compilation time.
 	 */
 	public static TimingMetric compileTime = Hardware.console.timing("mtlCompile");
-
-	/** Counter tracking how many instruction set monitoring outputs have been written. */
-	private static int monitorOutputCount;
 
 	/** Metadata describing this program's operation for identification and profiling. */
 	private final OperationMetadata metadata;
@@ -164,18 +156,7 @@ public class MetalProgram implements OperationInfo, Signature, Destroyable, Cons
 	 * is enabled.</p>
 	 */
 	protected void recordInstructionSet() {
-		String name = "mtl_instruction_set_" + (monitorOutputCount++) + ".c";
-
-		try {
-			Path outputDir = Path.of(HardwareOperator.instructionSetOutputDir);
-			Files.createDirectories(outputDir);
-			Files.writeString(outputDir.resolve(name), src);
-		} catch (IOException ex) {
-			throw new RuntimeException(ex);
-		}
-
-		ScopeSettings.printStats();
-		log("Wrote " + HardwareOperator.instructionSetOutputDir + "/" + name);
+		log("Wrote " + HardwareOperator.recordInstructionSet("mtl", "c", src));
 	}
 
 	/**

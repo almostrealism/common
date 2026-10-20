@@ -1,0 +1,44 @@
+/**
+ * Oobleck (Stable Audio Open / Descript) residual unit.
+ *
+ * This file replaces the Java assembly that used to live in OobleckCodec.buildResidualBlock,
+ * which built this same structure as a SequentialBlock wrapped in residual(...): two
+ * Snake+Conv1d pairs whose output is added back to the block input. The encoder and decoder
+ * embed this unit three times within each of their stages; the Java buildResidualBlock method
+ * now only reads the block's weights (resolving each convolution's weight-normalized g/v
+ * parameters into its effective weight) and loads this asset, so there is one definition of
+ * the structure and it is here.
+ *
+ * Data flow of one forward pass. The input is a [batch, channels, length] activation and the
+ * channel count and length are held constant throughout the unit:
+ *
+ *   [batch, channels, length]
+ *     accum (residual: output = input + main_path(input))
+ *        └─ snake(snake0_alpha, snake0_beta)                 [batch, channels, length]
+ *           conv1d(conv1_weight, conv1_bias, stride 1, pad 3) [batch, channels, length]  (kernel 7)
+ *           snake(snake2_alpha, snake2_beta)                 [batch, channels, length]
+ *           conv1d(conv3_weight, conv3_bias, stride 1, pad 0) [batch, channels, length]  (kernel 1)
+ *
+ * The two convolutions preserve the sequence length: the kernel-7 convolution pads by 3 on each
+ * side and the kernel-1 (pointwise) convolution needs no padding, so the main path returns a
+ * tensor of the input shape and the residual add is well defined. Snake is the periodic
+ * activation f(x) = x + (1 / beta) * sin^2(alpha * x) with one alpha and one beta per channel.
+ */
+layer oobleck_residual_block(
+    snake0_alpha: weight, snake0_beta: weight,
+    conv1_weight: weight, conv1_bias: weight,
+    snake2_alpha: weight, snake2_beta: weight,
+    conv3_weight: weight, conv3_bias: weight
+) {
+    // Residual connection around the two Snake+Conv1d pairs: the block output is the input plus
+    // the main path applied to the input.
+    accum {
+        // First Snake+Conv pair: periodic activation, then a length-preserving kernel-7 conv.
+        snake(snake0_alpha, snake0_beta)
+        conv1d(conv1_weight, conv1_bias, 1, 3)
+
+        // Second Snake+Conv pair: periodic activation, then a pointwise (kernel-1) conv.
+        snake(snake2_alpha, snake2_beta)
+        conv1d(conv3_weight, conv3_bias, 1, 0)
+    }
+}

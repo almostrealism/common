@@ -27,6 +27,8 @@ import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.calculus.ReduceAxis;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 
@@ -174,7 +176,7 @@ public class PackedCollectionRepeat
 	 * @see #PackedCollectionRepeat(TraversalPolicy, int, Producer)
 	 */
 	public PackedCollectionRepeat(int repeat, Producer<?> collection) {
-		this(shape(collection).item(), repeat, collection);
+		this(Shape.requireShape("Repeat", collection).item(), repeat, collection);
 	}
 
 	/**
@@ -213,7 +215,7 @@ public class PackedCollectionRepeat
 	 * @see #shape(int, TraversalPolicy)
 	 */
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
-		super("repeat" + repeat, shape(collection).replace(shape.prependDimension(repeat)).traverse(),
+		super("repeat" + repeat, Shape.requireShape("Repeat", collection).replace(shape.prependDimension(repeat)).traverse(),
 				null, collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
@@ -361,8 +363,11 @@ public class PackedCollectionRepeat
 	 *     {@link PackedCollection#repeat(int)} method</li>
 	 * <li><strong>Provider optimization:</strong> When the input is a Provider,
 	 *     creates an optimized evaluable that applies repetition directly</li>
-	 * <li><strong>Hardware optimization:</strong> Uses hardware-accelerated
-	 *     evaluation with short-circuit capabilities when possible</li>
+	 * <li><strong>Hardware optimization:</strong> For a kernel-backed input, the
+	 *     repetition is attached as a {@link HardwareEvaluable#setResultProcessor
+	 *     result processor}, since it only re-views the handle the kernel produces;
+	 *     as an argument of a dependent kernel the dispatch therefore stays chained
+	 *     on the device instead of being completed on the host first</li>
 	 * </ul>
 	 * 
 	 * <h4>Performance Notes:</h4>
@@ -391,10 +396,7 @@ public class PackedCollectionRepeat
 		}
 
 		HardwareEvaluable<PackedCollection> hev = new HardwareEvaluable(getInputs().get(1)::get, null, null, false);
-		hev.setShortCircuit(args -> {
-			PackedCollection out = hev.getKernel().getValue().evaluate(args);
-			return out.repeat(r);
-		});
+		hev.setResultProcessor(out -> out.repeat(r));
 		return hev;
 	}
 
@@ -416,6 +418,44 @@ public class PackedCollectionRepeat
 	@Override
 	public PackedCollectionRepeat generate(List<Process<?, ?>> children) {
 		return new PackedCollectionRepeat(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(1));
+	}
+
+	/**
+	 * When the input is a sequence of groups, each copied {@code r} times in a row, every
+	 * input element appears in exactly {@code r} outputs with a derivative of one. The
+	 * {@link ReduceAxis#OUT output-reduced} delta therefore sums the weights of the copies
+	 * of each element and passes them on to the input, and, the repetition being linear,
+	 * the {@link ReduceAxis#IN input-reduced} delta is the repetition of the input's own
+	 * input-reduced delta. A repetition of only part of each group uses the general
+	 * implementation.
+	 */
+	@Override
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		Producer<PackedCollection> child = getInputs().get(1);
+		if (axis == ReduceAxis.NONE || !(child instanceof Shape)) {
+			return super.deltaDependent(target, axis, weight);
+		}
+
+		CollectionProducer input = c(child);
+		TraversalPolicy inputShape = input.getShape();
+		int copies = sliceShape.length(0);
+		long size = subsetShape.getTotalSizeLong();
+
+		if (getShape().getTotalSizeLong() != copies * inputShape.getTotalSizeLong() ||
+				inputShape.getTotalSizeLong() % size != 0) {
+			return super.deltaDependent(target, axis, weight);
+		}
+
+		if (axis == ReduceAxis.IN) {
+			return replaceInput(child, reshape(inputShape, input.delta(target, axis, weight)));
+		} else if (weight == null) {
+			return input.delta(target, axis, constant(inputShape, copies));
+		}
+
+		int groups = Math.toIntExact(inputShape.getTotalSizeLong() / size);
+		return input.delta(target, axis,
+				c(weight).reshape(shape(groups, copies, Math.toIntExact(size)))
+						.permute(0, 2, 1).traverse(2).sum().reshape(inputShape));
 	}
 
 	/**
@@ -477,26 +517,6 @@ public class PackedCollectionRepeat
 	@Override
 	public String description(List<String> children) {
 		return children.size() == 1 ? children.get(0) : super.description(children);
-	}
-
-	/**
-	 * Extracts the traversal policy from a collection producer.
-	 * 
-	 * <p>This utility method ensures that the provided producer implements
-	 * the {@link Shape} interface, which is required for repeat operations
-	 * to determine the appropriate traversal policy.</p>
-	 * 
-	 * @param collection the collection producer to extract shape from
-	 * @return the traversal policy of the collection
-	 * @throws IllegalArgumentException if the collection doesn't implement Shape
-	 * 
-	 * @see Shape#getShape()
-	 */
-	private static TraversalPolicy shape(Producer<?> collection) {
-		if (!(collection instanceof Shape))
-			throw new IllegalArgumentException("Repeat cannot be performed without a TraversalPolicy");
-
-		return ((Shape) collection).getShape();
 	}
 
 	/**

@@ -16,7 +16,9 @@
 
 package org.almostrealism.ml.midi.test;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.FundamentalMusicEmbedding;
 import org.almostrealism.ml.midi.MidiCompoundToken;
@@ -25,7 +27,10 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
 /**
  * Tests for {@link FundamentalMusicEmbedding} and {@link CompoundMidiEmbedding},
@@ -239,6 +244,119 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 			assertEquals("Token 2 embedding mismatch at index " + i,
 					emb2.toDouble(i), sequenceResult.toDouble(2 * hidden + i), 1e-15);
 		}
+	}
+
+	/**
+	 * Verify that the build-time {@link CompoundMidiEmbedding#embed(MidiCompoundToken)} path,
+	 * which includes only the branch the already-known token takes, produces the same
+	 * embedding as the evaluation-time {@link CompoundMidiEmbedding#embedValues(Producer)}
+	 * path, which carries every branch and selects among them arithmetically. This pins the
+	 * equivalence the path-selecting {@code embed} relies on across every token class: an
+	 * ordinary token, both special-token rows (start and fill-start take supplementary row 0,
+	 * end and fill-end take row 1), and the pad token, so a regression in either path's branch
+	 * selection is caught.
+	 *
+	 * <p>The embedding is built from a non-zero weight fixture rather than the zero-valued test
+	 * constructor: with zero weights every branch collapses to the zero vector, so the
+	 * equivalence would hold trivially and a wrong supplementary row or mis-routed special token
+	 * would go undetected. The closing assertions confirm the fixture actually discriminates the
+	 * branches (ordinary and both supplementary rows are non-trivial and the two rows differ) and
+	 * that the fill delimiters resolve to the same row as their SOS/EOS counterparts, which is the
+	 * {@code isEOS() || isFillEnd()} routing the change introduced.</p>
+	 */
+	@Test(timeout = 60000)
+	public void testEmbedMatchesEmbedValuesForEachTokenClass() {
+		MoonbeamConfig config = MoonbeamConfig.testConfig();
+		CompoundMidiEmbedding embedding = nonZeroEmbedding(config);
+
+		List<MidiCompoundToken> tokens = Arrays.asList(
+				new MidiCompoundToken(100, 50, 5, 0, 0, 80),
+				MidiCompoundToken.sos(),
+				MidiCompoundToken.eos(),
+				MidiCompoundToken.fillStart(),
+				MidiCompoundToken.fillEnd(),
+				MidiCompoundToken.pad());
+
+		int hidden = config.hiddenSize;
+		for (MidiCompoundToken token : tokens) {
+			PackedCollection pathSelected = embedding.embed(token).evaluate();
+			PackedCollection allBranches = embedding.embedValues(cp(token.pack())).evaluate();
+
+			assertEquals("embed and embedValues must agree on output size for " + token,
+					hidden, pathSelected.getShape().getTotalSize());
+			assertEquals("embed and embedValues must agree on output size for " + token,
+					hidden, allBranches.getShape().getTotalSize());
+			// The two paths compile to differently fused kernels, so the supplementary MLP
+			// accumulates in a different order; the deviation is measured relative to the
+			// output's magnitude so float rounding passes while a wrong branch or row does not.
+			double magnitude = Math.max(1.0, largestDeviation(0.0, allBranches));
+			assertEquals("embed must match embedValues (relative to magnitude " + magnitude + ") for " + token,
+					0.0, largestDeviation(allBranches, pathSelected) / magnitude, 1e-6);
+		}
+
+		// The fixture must actually discriminate the branches, otherwise the equivalence above
+		// holds for the wrong reason. These fail if embed collapses a branch to zeros or selects
+		// the wrong supplementary row.
+		PackedCollection ordinary = embedding.embed(new MidiCompoundToken(100, 50, 5, 0, 0, 80)).evaluate();
+		PackedCollection sos = embedding.embed(MidiCompoundToken.sos()).evaluate();
+		PackedCollection eos = embedding.embed(MidiCompoundToken.eos()).evaluate();
+		PackedCollection fillStart = embedding.embed(MidiCompoundToken.fillStart()).evaluate();
+		PackedCollection fillEnd = embedding.embed(MidiCompoundToken.fillEnd()).evaluate();
+		PackedCollection pad = embedding.embed(MidiCompoundToken.pad()).evaluate();
+
+		assertTrue("ordinary embedding must be non-trivial", largestDeviation(0.0, ordinary) > 1e-3);
+		assertTrue("SOS embedding (supplementary row 0) must be non-trivial", largestDeviation(0.0, sos) > 1e-3);
+		assertTrue("EOS embedding (supplementary row 1) must be non-trivial", largestDeviation(0.0, eos) > 1e-3);
+		assertTrue("SOS and EOS must use different supplementary rows", largestDeviation(sos, eos) > 1e-3);
+		assertEquals("FILL_START must match SOS (supplementary row 0)",
+				0.0, largestDeviation(sos, fillStart), 1e-6);
+		assertEquals("FILL_END must match EOS (supplementary row 1)",
+				0.0, largestDeviation(eos, fillEnd), 1e-6);
+		assertEquals("PAD embedding must be an all-zero vector",
+				0.0, largestDeviation(0.0, pad), 1e-15);
+	}
+
+	/**
+	 * Builds a {@link CompoundMidiEmbedding} whose weights are non-zero, so that each branch
+	 * (the per-attribute embeddings, the two supplementary rows, and the pad zeros) produces a
+	 * distinguishable output. The weight keys and shapes match those read by
+	 * {@link CompoundMidiEmbedding#CompoundMidiEmbedding(StateDictionary, MoonbeamConfig)}. A
+	 * fixed seed keeps the fixture reproducible across runs.
+	 *
+	 * @param config model configuration supplying the embedding dimensions
+	 * @return a CompoundMidiEmbedding over randomly-initialized weights
+	 */
+	private CompoundMidiEmbedding nonZeroEmbedding(MoonbeamConfig config) {
+		int dim = config.embeddingDim;
+		int hidden = config.hiddenSize;
+		int mlpIntermediate = hidden / 2;
+		// Index 4 is the instrument attribute, which uses a lookup table rather than an FME.
+		int instrumentIndex = 4;
+		String[] fmePrefixes = {"onset_embedding", "duration_embedding", "octave_embedding",
+				"pitch_embedding", null, "velocity_embedding"};
+		Random source = new Random(1729);
+
+		Map<String, PackedCollection> weights = new HashMap<>();
+		for (String prefix : fmePrefixes) {
+			if (prefix == null) continue;
+			weights.put(prefix + ".linear.weight", new PackedCollection(shape(dim, dim)).randnFill(source));
+			weights.put(prefix + ".linear.bias", new PackedCollection(shape(dim)).randnFill(source));
+			weights.put(prefix + ".translation_bias", new PackedCollection(shape(1)).randnFill(source));
+		}
+		weights.put("instrument_embedding.weight",
+				new PackedCollection(shape(config.vocabSizes[instrumentIndex], dim)).randnFill(source));
+		weights.put("supplementary_embedding.weight",
+				new PackedCollection(shape(config.supplementaryVocabSize, hidden)).randnFill(source));
+		weights.put("supplementary_mlp.0.weight",
+				new PackedCollection(shape(mlpIntermediate, hidden)).randnFill(source));
+		weights.put("supplementary_mlp.0.bias",
+				new PackedCollection(shape(mlpIntermediate)).randnFill(source));
+		weights.put("supplementary_mlp.2.weight",
+				new PackedCollection(shape(hidden, mlpIntermediate)).randnFill(source));
+		weights.put("supplementary_mlp.2.bias",
+				new PackedCollection(shape(hidden)).randnFill(source));
+
+		return new CompoundMidiEmbedding(new StateDictionary(weights), config);
 	}
 
 	/**

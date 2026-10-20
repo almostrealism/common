@@ -343,6 +343,66 @@ class TestWorkstreamGetStatus(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("maximum length", result["error"])
 
+    @patch.object(server, "_controller_get")
+    def test_active_jobs_warning_uses_controller_state(self, mock_get):
+        _grant_all_scopes()
+
+        def side_effect(path, *args, **kwargs):
+            if "/jobs/active" in path:
+                return [
+                    {"jobId": "j-run", "state": "RUNNING", "sinceHeartbeatSeconds": 10},
+                    {"jobId": "j-silent", "state": "UNRESPONSIVE",
+                     "sinceHeartbeatSeconds": 1200},
+                ]
+            if "/jobs/pending" in path:
+                return []
+            return {"thisWeek": {}, "lastWeek": {}}
+
+        mock_get.side_effect = side_effect
+        result = server.workstream_get_status(workstream_id="ws-test")
+        self.assertEqual(2, len(result["active_jobs"]))
+        self.assertIn("active_jobs_warning", result)
+        self.assertIn("j-silent", result["active_jobs_warning"])
+        self.assertNotIn("j-run", result["active_jobs_warning"])
+
+    @patch.object(server, "_controller_get")
+    def test_pending_jobs_lost_warning(self, mock_get):
+        _grant_all_scopes()
+
+        def side_effect(path, *args, **kwargs):
+            if "/jobs/active" in path:
+                return []
+            if "/jobs/pending" in path:
+                return [
+                    {"jobId": "j-wait", "state": "SUBMITTED"},
+                    {"jobId": "j-lost", "state": "LOST"},
+                ]
+            return {"thisWeek": {}, "lastWeek": {}}
+
+        mock_get.side_effect = side_effect
+        result = server.workstream_get_status(workstream_id="ws-test")
+        self.assertEqual(2, len(result["pending_jobs"]))
+        self.assertIn("pending_jobs_warning", result)
+        self.assertIn("j-lost", result["pending_jobs_warning"])
+        self.assertNotIn("j-wait", result["pending_jobs_warning"])
+
+    @patch.object(server, "_controller_get")
+    def test_active_jobs_warning_falls_back_without_state(self, mock_get):
+        _grant_all_scopes()
+
+        def side_effect(path, *args, **kwargs):
+            if "/jobs/active" in path:
+                return [{"jobId": "j-old", "sinceHeartbeatSeconds": 7 * 3600}]
+            if "/jobs/pending" in path:
+                return []
+            return {"thisWeek": {}, "lastWeek": {}}
+
+        mock_get.side_effect = side_effect
+        result = server.workstream_get_status(workstream_id="ws-test")
+        self.assertIn("active_jobs_warning", result)
+        self.assertIn("j-old", result["active_jobs_warning"])
+
+
 class TestWorkstreamRegister(unittest.TestCase):
 
     @patch.object(server, "_controller_post")

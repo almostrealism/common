@@ -40,7 +40,6 @@ import org.almostrealism.studio.optimize.AudioSceneOptimizer;
 import org.almostrealism.music.pattern.PatternElementFactory;
 import org.almostrealism.studio.persistence.MigrationClassLoader;
 import org.almostrealism.util.TestSuiteBase;
-import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -80,10 +79,10 @@ import java.util.List;
  * graph vs WaveOutput writer). Tests never rely on manual log inspection.</p>
  *
  * <p>Runs against the actual application data: {@code pattern-factory.json}
- * from the Rings app-support directory and {@code AR_RINGS_LIBRARY} as the
- * sample root. Tests that need the library use {@link Assume#assumeTrue} to
- * skip cleanly when either is absent, so these tests do not fail in
- * environments without the sample library available.</p>
+ * from the application's local-destination directory and {@code AR_RINGS_LIBRARY}
+ * as the sample root. A missing pattern factory, which no CI lane carries, is
+ * handled by {@link #requireLocalResource}; a missing sample library is handled by
+ * {@link #requireResource}, which fails on any host meant to carry it.</p>
  */
 public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 
@@ -96,6 +95,32 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 		File app = new File(SystemUtils.getLocalDestination("pattern-factory.json"));
 		if (app.exists()) return app;
 		return new File("pattern-factory.json");
+	}
+
+	/**
+	 * Requires the given pattern factory, which no CI lane carries, via
+	 * {@link #requireLocalResource(String, String, boolean)}.
+	 *
+	 * @param patternFactory the pattern factory file the test reads
+	 * @return {@code patternFactory}
+	 */
+	private File requirePatternFactory(File patternFactory) {
+		requireLocalResource("pattern factory " + patternFactory.getAbsolutePath(), null,
+				patternFactory.exists());
+		return patternFactory;
+	}
+
+	/**
+	 * Requires the optimizer's sample library ({@link AudioSceneOptimizer#LIBRARY}, set by
+	 * {@code AR_RINGS_LIBRARY}) via {@link #requireResource(String, String, boolean)}.
+	 *
+	 * @return the sample library directory
+	 */
+	private File requireLibraryDir() {
+		File libDir = new File(AudioSceneOptimizer.LIBRARY);
+		requireResource("sample library " + libDir.getAbsolutePath(), "AR_RINGS_LIBRARY",
+				libDir.isDirectory());
+		return libDir;
 	}
 
 	/**
@@ -128,13 +153,8 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120_000)
 	public void providerResolution() throws IOException {
-		File patternFactory = patternFactoryFile();
-		Assume.assumeTrue("pattern-factory.json required at " + patternFactory.getAbsolutePath(),
-				patternFactory.exists());
-
-		File libDir = new File(AudioSceneOptimizer.LIBRARY);
-		Assume.assumeTrue("Library directory required at " + libDir.getAbsolutePath(),
-				libDir.exists() && libDir.isDirectory());
+		File patternFactory = requirePatternFactory(patternFactoryFile());
+		File libDir = requireLibraryDir();
 
 		log("Library: " + libDir.getAbsolutePath());
 		log("Pattern factory: " + patternFactory.getAbsolutePath());
@@ -224,13 +244,8 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 300_000)
 	public void sceneRender() throws IOException {
-		File patternFactory = patternFactoryFile();
-		Assume.assumeTrue("pattern-factory.json required",
-				patternFactory.exists());
-
-		File libDir = new File(AudioSceneOptimizer.LIBRARY);
-		Assume.assumeTrue("Library directory required",
-				libDir.exists() && libDir.isDirectory());
+		File patternFactory = requirePatternFactory(patternFactoryFile());
+		File libDir = requireLibraryDir();
 
 		int sourceCount = AudioScene.DEFAULT_SOURCE_COUNT;
 		int delayLayers = AudioScene.DEFAULT_DELAY_LAYERS;
@@ -342,11 +357,8 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120_000)
 	public void directPatternSum() throws IOException {
-		File patternFactory = patternFactoryFile();
-		Assume.assumeTrue("pattern-factory.json required", patternFactory.exists());
-
-		File libDir = new File(AudioSceneOptimizer.LIBRARY);
-		Assume.assumeTrue("Library directory required", libDir.exists());
+		File patternFactory = requirePatternFactory(patternFactoryFile());
+		File libDir = requireLibraryDir();
 
 		int sourceCount = AudioScene.DEFAULT_SOURCE_COUNT;
 		AudioScene<?> scene = new AudioScene<>(120.0, sourceCount,
@@ -431,11 +443,8 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 300_000)
 	public void renderBufferPopulation() throws IOException {
-		File patternFactory = patternFactoryFile();
-		Assume.assumeTrue("pattern-factory.json required", patternFactory.exists());
-
-		File libDir = new File(AudioSceneOptimizer.LIBRARY);
-		Assume.assumeTrue("Library directory required", libDir.exists());
+		File patternFactory = requirePatternFactory(patternFactoryFile());
+		File libDir = requireLibraryDir();
 
 		int sourceCount = AudioScene.DEFAULT_SOURCE_COUNT;
 		AudioScene<?> scene = new AudioScene<>(120.0, sourceCount,
@@ -662,10 +671,8 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 300_000)
 	public void optimizerSetFeatureLevel7ProducesAudio() throws IOException {
-		File libDir = new File(AudioSceneOptimizer.LIBRARY);
-		Assume.assumeTrue("Library directory required", libDir.exists());
-		Assume.assumeTrue("pattern-factory.json required",
-				new File(SystemUtils.getLocalDestination("pattern-factory.json")).exists());
+		requirePatternFactory(new File(SystemUtils.getLocalDestination("pattern-factory.json")));
+		File libDir = requireLibraryDir();
 
 		String savedLibrary = AudioSceneOptimizer.LIBRARY;
 		boolean savedEnableVolumeEnvelope = PatternElementFactory.enableVolumeEnvelope;

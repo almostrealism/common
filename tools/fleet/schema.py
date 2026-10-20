@@ -68,15 +68,27 @@ CREATE TABLE IF NOT EXISTS class_sample (
 RUNNER_STATE = """
 CREATE TABLE IF NOT EXISTS runner_state (
     ts {ts} NOT NULL,
+    -- The host the runner runs on, when known. The GitHub runners API does
+    -- not report it, so the poller writes '' here; a collector that can see
+    -- the runner's process tree may write the real hostname.
     host TEXT NOT NULL,
     runner_name TEXT NOT NULL,
     labels TEXT,
+    -- Derived from `labels` (see `lane`/`platform` on job_event).
+    lane TEXT,
+    platform TEXT,
+    -- busy / idle / offline, as the runners API reports it.
     state TEXT,
-    repo TEXT,
+    -- For a GitHub-API-sourced row (see `github_poller.store_runner_states`),
+    -- the registration scope the runner came from ('owner/repo' or
+    -- 'org:name') -- part of the key alongside `runner_name` because a
+    -- runner's name is unique only within one registration scope, not
+    -- across scopes, and every such row shares `host=''`.
+    repo TEXT NOT NULL DEFAULT '',
     workflow TEXT,
     job_id TEXT,
     agent_version TEXT,
-    PRIMARY KEY (ts, host, runner_name)
+    PRIMARY KEY (ts, host, runner_name, repo)
 )
 """
 
@@ -92,6 +104,13 @@ CREATE TABLE IF NOT EXISTS job_event (
     -- job asked for, so grouping by this column reports actual-runner-label
     -- demand, not per-`runs-on` demand.
     labels TEXT,
+    -- Two projections of `labels`, so a dashboard groups by a short, stable
+    -- key instead of parsing the JSON label set in every panel. `lane` is
+    -- the fleet's own `ar-*` label(s) — the kind of work a runner is for
+    -- (ar-ci, ar-ci-cl, ar-deploy, ...) — and is '' for a GitHub-hosted
+    -- runner, which carries none; `platform` is macos / linux / windows.
+    lane TEXT,
+    platform TEXT,
     created_at {ts},
     started_at {ts},
     completed_at {ts},
@@ -99,6 +118,13 @@ CREATE TABLE IF NOT EXISTS job_event (
     conclusion TEXT,
     runner_name TEXT,
     runner_group TEXT,
+    -- The numeric id GitHub assigns the runner that executed this job (the
+    -- workflow-jobs API's own `runner_id` field), stable and unique across
+    -- registration scopes -- unlike `runner_name`, which is only unique
+    -- within one scope (see `runner_state`'s own `repo` column). Lets a
+    -- dashboard disambiguate two same-named runners registered to
+    -- different scopes instead of merging their utilization into one bar.
+    runner_id INTEGER,
     pre_start_latency_seconds REAL,
     is_entry_point INTEGER,
     queue_wait_seconds REAL
@@ -127,9 +153,47 @@ INDEXES = [
     # range scan behind an unconstrained middle column and force a full scan
     # of every class for the matched hosts.
     "CREATE INDEX IF NOT EXISTS class_sample_host_ts ON class_sample (host, ts, class)",
-    "CREATE INDEX IF NOT EXISTS runner_state_host_ts ON runner_state (host, runner_name, ts)",
+    # repo leads runner_name's use as the third key column (before joining
+    # on ts) because `FleetStore.latest_runner_states` groups and joins on
+    # (host, runner_name, repo, ts) -- a runner's name is only unique within
+    # its registration scope, so repo is part of "this runner" alongside
+    # host/runner_name, not an afterthought filter.
+    "CREATE INDEX IF NOT EXISTS runner_state_host_repo_ts ON runner_state (host, runner_name, repo, ts)",
     "CREATE INDEX IF NOT EXISTS job_event_run ON job_event (run_id)",
     "CREATE INDEX IF NOT EXISTS job_event_created ON job_event (created_at)",
+    # The runners-per-lane panels read the newest sample per runner and
+    # then filter by lane; ts leads so "latest sample" is an index walk.
+    "CREATE INDEX IF NOT EXISTS runner_state_ts ON runner_state (ts)",
+]
+
+# Indexes replaced by a wider definition in INDEXES above, dropped from an
+# existing store by FleetStore.init_schema(): CREATE INDEX IF NOT EXISTS
+# only ever adds an index a store lacks by name, so a store created while an
+# older, narrower definition shipped keeps that narrower index under the old
+# name forever unless it is dropped explicitly -- exactly the ADDED_COLUMNS
+# problem, but for an index's column list instead of a table's columns.
+DROPPED_INDEXES: List[str] = [
+    # Superseded by runner_state_host_repo_ts once runner_state's key
+    # widened to include repo (see FleetStore._widen_runner_state_key):
+    # this narrower index could not serve latest_runner_states' repo-aware
+    # grouping/join, forcing a full scan of the table for "latest per
+    # runner" queries.
+    "runner_state_host_ts",
+]
+
+# Columns added after a table first shipped. ``CREATE TABLE IF NOT EXISTS``
+# leaves an existing table untouched, so a store created before a column
+# existed never acquires it from the definitions above; :meth:`FleetStore.init_schema`
+# adds each of these to a table that lacks it. sqlite has no
+# ``ADD COLUMN IF NOT EXISTS``, so the check is the store's, not the DDL's.
+# Every entry is also present in the ``CREATE TABLE`` above, so a fresh store
+# and a migrated one end up identical.
+ADDED_COLUMNS: List[tuple] = [
+    ("job_event", "lane", "TEXT"),
+    ("job_event", "platform", "TEXT"),
+    ("job_event", "runner_id", "INTEGER"),
+    ("runner_state", "lane", "TEXT"),
+    ("runner_state", "platform", "TEXT"),
 ]
 
 TABLES: List[str] = [

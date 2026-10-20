@@ -91,6 +91,50 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	}
 
 	/**
+	 * Creates a {@link PackedCollection} from an array of {@code int} values, automatically
+	 * determining the shape from the array length.
+	 *
+	 * <p>This overload is the sanctioned surface for genuine integer data — tokenizer output above
+	 * all — entering the system. Unlike {@link #pack(double...)}, an integer source carries no
+	 * computed floating-point value and therefore cannot launder host-side math onto the device:
+	 * there is nothing in an {@code int} that a producer was meant to have computed. For that
+	 * reason it sits outside the host-ingest policy's scalar allowance that caps the
+	 * double-accepting surfaces. (The lexical policy detector inspects argument <em>syntax</em>,
+	 * not type, so an array argument here may still be reported — a limitation of the detector,
+	 * not a property of this surface.)</p>
+	 *
+	 * <p>Note: This method delegates to {@link PackedCollection#of(int...)}.
+	 *
+	 * @param values the {@code int} values to pack into a collection
+	 * @return a new {@link PackedCollection} containing the specified values
+	 */
+	default PackedCollection pack(int... values) {
+		return PackedCollection.of(values);
+	}
+
+	/**
+	 * Creates a {@link PackedCollection} from an array of {@code long} values, automatically
+	 * determining the shape from the array length.
+	 *
+	 * <p>Like {@link #pack(int...)}, this overload is for genuine integer data entering the system
+	 * and sits outside the host-ingest policy's scalar allowance for the same reason.</p>
+	 *
+	 * <p><b>Precision.</b> The backing storage is {@code double}, which represents integers exactly
+	 * only within {@code [-2^53, 2^53]}. A {@code long} beyond that range is rejected with an
+	 * {@link IllegalArgumentException} rather than silently rounded; token ids and comparable
+	 * integer data are far below the limit.</p>
+	 *
+	 * <p>Note: This method delegates to {@link PackedCollection#of(long...)}.
+	 *
+	 * @param values the {@code long} values to pack into a collection
+	 * @return a new {@link PackedCollection} containing the specified values
+	 * @throws IllegalArgumentException if any value's magnitude exceeds {@code 2^53}
+	 */
+	default PackedCollection pack(long... values) {
+		return PackedCollection.of(values);
+	}
+
+	/**
 	 * Creates a {@link PackedCollection} from a {@link List} of {@link Double} values.
 	 * This is one of the primary methods for creating collections from raw data,
 	 * automatically determining the shape based on the size of the list.

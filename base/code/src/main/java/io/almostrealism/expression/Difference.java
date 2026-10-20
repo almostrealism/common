@@ -51,18 +51,53 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 	 * @param values the operands: the first is the minuend, subsequent ones are subtrahends
 	 */
 	public Difference(Expression<T>... values) {
-		super((Class<T>) type(List.of(values)), "-", values);
+		super((Class<T>) promotedType(List.of(values)), "-", values);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The largest difference is reached when the minuend is at its upper bound
+	 * and every subtrahend is at its lower bound.</p>
+	 */
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {
-		List<OptionalLong> values = getChildren().stream()
-				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
-				.collect(Collectors.toList());
-		if (values.size() != getChildren().size()) return OptionalLong.empty();
-		return OptionalLong.of(IntStream.range(0, values.size())
-				.mapToLong(i -> i == 0 ? values.get(i).getAsLong() : -1 * values.get(i).getAsLong())
-				.reduce(0, (a, b) -> a + b));
+		return bound(context, true);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The smallest difference is reached when the minuend is at its lower bound
+	 * and every subtrahend is at its upper bound.</p>
+	 */
+	@Override
+	public OptionalLong lowerBound(KernelStructureContext context) {
+		return bound(context, false);
+	}
+
+	/**
+	 * Combines the bound of the minuend in the requested direction with the
+	 * opposite bound of each subtrahend.
+	 *
+	 * @param context the kernel structure context for bounds analysis
+	 * @param upper   {@code true} for the upper bound, {@code false} for the lower bound
+	 * @return the bound of this difference, or empty if any operand bound is unknown
+	 */
+	private OptionalLong bound(KernelStructureContext context, boolean upper) {
+		List<Expression<?>> children = getChildren();
+		OptionalLong first = upper ? children.get(0).upperBound(context) : children.get(0).lowerBound(context);
+		if (first.isEmpty()) return OptionalLong.empty();
+
+		long result = first.getAsLong();
+		for (int i = 1; i < children.size(); i++) {
+			Expression<?> child = children.get(i);
+			OptionalLong term = upper ? child.lowerBound(context) : child.upperBound(context);
+			if (term.isEmpty()) return OptionalLong.empty();
+			result -= term.getAsLong();
+		}
+
+		return OptionalLong.of(result);
 	}
 
 	@Override

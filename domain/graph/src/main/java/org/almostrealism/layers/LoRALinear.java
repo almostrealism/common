@@ -140,7 +140,11 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	 * @param baseBias Pre-trained bias vector [outputSize], may be null
 	 * @param rank Low-rank dimension for LoRA matrices
 	 * @param alpha Scaling factor for LoRA output
-	 * @param existingLoraWeights Array of [loraA, loraB] if loading from checkpoint, null to initialize fresh
+	 * @param existingLoraWeights Array of [loraA, loraB] if loading from checkpoint, null to initialize fresh.
+	 *                            When supplied, these collections become this layer's trainable weights and
+	 *                            ownership transfers to the layer: they are returned by {@link #getWeights()},
+	 *                            updated during training, and released by {@link #destroy()}. The caller must
+	 *                            not retain or free them independently.
 	 */
 	public LoRALinear(TraversalPolicy inputShape,
 					  PackedCollection baseWeights,
@@ -367,5 +371,21 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	@Override
 	public String describe() {
 		return name + " " + inputShape + "->" + outputShape;
+	}
+
+	/**
+	 * Releases the resources this layer owns.
+	 *
+	 * <p>The trainable {@code loraA} and {@code loraB} matrices are owned by this layer &mdash;
+	 * either allocated fresh in the constructor or adopted from the {@code existingLoraWeights}
+	 * passed to the checkpoint-loading constructor, whose ownership transfers to this layer. They
+	 * are held by the delegate as that delegate's weights, so destroying the delegate frees them
+	 * along with the delegate's forward, backward and setup operations. The frozen base weights and
+	 * bias are supplied by the caller and are not owned here, so they are left untouched. After this
+	 * call the layer is no longer usable.</p>
+	 */
+	@Override
+	public void destroy() {
+		delegate.destroy();
 	}
 }

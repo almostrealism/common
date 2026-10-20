@@ -108,12 +108,40 @@ public class DiffusionSamplerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link DiffusionSampler#runSamplingLoop} must never destroy the buffer {@link DiffusionModel#forward}
+	 * returns, because {@link DiffusionModel#forward} is documented to hand back a buffer owned by the
+	 * model — which a real implementation may reuse across every call. A model that always returns a
+	 * freshly allocated buffer (like the {@link ZeroDiffusionModel} used by the schedule tests above)
+	 * cannot expose a violation of that contract, since destroying one call's buffer does not affect
+	 * the next. This test uses a model that reuses one buffer across every step, matching the reused-
+	 * buffer implementations the sampler actually runs against, and confirms the model can still be
+	 * called successfully after sampling completes.
+	 */
+	@Test(timeout = 60000)
+	public void samplerNeverDestroysTheModelsOwnedOutputBuffer() {
+		TraversalPolicy latentShape = shape(BATCH, CHANNELS, SEQ_LEN);
+		ZeroDiffusionModel model = new ZeroDiffusionModel(latentShape);
+		DiffusionSampler sampler = new DiffusionSampler(
+				model, new PingPongSamplingStrategy(new LogSNRShift()),
+				1000, latentShape)
+				.setNumInferenceSteps(4)
+				.setVerbose(false);
+
+		sampler.sample(42L, null, null);
+
+		PackedCollection output = model.forward(null, null, null, null);
+		assertEquals(0.0, output.toDouble(0), 0.0);
+	}
+
+	/**
 	 * A {@link DiffusionModel} stub predicting one everywhere when the global conditioning is
 	 * non-zero and zero everywhere otherwise, counting how it was called.
 	 */
 	private static class ConditioningSensitiveModel implements DiffusionModel {
-		/** Shape of the prediction returned for every forward pass. */
-		private final TraversalPolicy shape;
+		/** The buffer returned for every forward pass, refilled rather than reallocated so
+		 * this stub honors {@link DiffusionModel#forward}'s model-owned-buffer contract the
+		 * same way a real implementation does. */
+		private final PackedCollection output;
 
 		/** Number of forward passes made. */
 		private int calls;
@@ -127,7 +155,7 @@ public class DiffusionSamplerTest extends TestSuiteBase {
 		 * @param shape shape of the prediction to return
 		 */
 		private ConditioningSensitiveModel(TraversalPolicy shape) {
-			this.shape = shape;
+			this.output = new PackedCollection(shape);
 		}
 
 		@Override
@@ -136,7 +164,7 @@ public class DiffusionSamplerTest extends TestSuiteBase {
 			calls++;
 			boolean conditioned = globalCond != null && globalCond.toDouble(0) != 0.0;
 			if (conditioned) conditionedCalls++;
-			return new PackedCollection(shape).fill(conditioned ? 1.0 : 0.0);
+			return output.fill(conditioned ? 1.0 : 0.0);
 		}
 	}
 
@@ -145,8 +173,11 @@ public class DiffusionSamplerTest extends TestSuiteBase {
 	 * are irrelevant to these schedule-focused tests.
 	 */
 	private static class ZeroDiffusionModel implements DiffusionModel {
-		/** Shape of the prediction returned for every forward pass. */
-		private final TraversalPolicy shape;
+		/** The zero-filled buffer returned for every forward pass. Allocated once and never
+		 * written to again, so it stays zero without needing a refill per call; reusing it
+		 * (rather than allocating a fresh buffer per call) honors {@link DiffusionModel#forward}'s
+		 * model-owned-buffer contract the same way a real implementation does. */
+		private final PackedCollection output;
 
 		/**
 		 * Creates a stub that predicts zero tensors of the given shape.
@@ -154,13 +185,13 @@ public class DiffusionSamplerTest extends TestSuiteBase {
 		 * @param shape shape of the prediction to return
 		 */
 		private ZeroDiffusionModel(TraversalPolicy shape) {
-			this.shape = shape;
+			this.output = new PackedCollection(shape);
 		}
 
 		@Override
 		public PackedCollection forward(PackedCollection x, PackedCollection t,
 										 PackedCollection crossAttnCond, PackedCollection globalCond) {
-			return new PackedCollection(shape);
+			return output;
 		}
 	}
 }

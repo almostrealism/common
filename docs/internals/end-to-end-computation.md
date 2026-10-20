@@ -221,3 +221,9 @@ cp(a)                       Wraps memory as a Producer       CollectionCreationF
   kernel. No Java-side copying occurs during execution.
 - **Parallelism is automatic.** The kernel dispatches one work item per element, derived
   from the output shape.
+
+## The Backward Direction
+
+This page follows a computation forward, from expression to hardware. The reverse direction — how a
+derivative of that same graph is obtained and compiled — is the subject of
+[Automatic Differentiation](automatic-differentiation.md).

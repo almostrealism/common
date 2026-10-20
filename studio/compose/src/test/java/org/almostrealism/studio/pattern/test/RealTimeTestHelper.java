@@ -37,7 +37,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.*;
-import static org.junit.Assume.assumeTrue;
 
 /**
  * Shared test utilities for real-time AudioScene testing.
@@ -118,13 +117,15 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 	}
 
 	/**
-	 * Returns the Library directory if it exists, or skips the test.
+	 * Returns the developer-local Library directory, failing or skipping the test when it is
+	 * absent as decided by {@link AudioSceneTestBase#requireLocalResource(String, String, boolean)}
+	 * (no CI lane carries this directory).
 	 *
 	 * @return the Library directory
 	 */
 	public File requireLibraryDir() {
 		File dir = new File(LIBRARY_PATH);
-		assumeTrue("Library directory not found: " + dir.getAbsolutePath(), dir.exists());
+		testBase.requireLocalResource("local Library directory " + dir.getAbsolutePath(), null, dir.isDirectory());
 		return dir;
 	}
 
@@ -172,6 +173,15 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 	/**
 	 * Renders audio using the real-time runner with timing measurements.
 	 *
+	 * <p>The runner is reset and destroyed before this method returns. The real-time
+	 * runner owns a render-ahead producer thread that renders pattern audio concurrently,
+	 * mutating the scene's per-manager note-audio caches; if the runner is abandoned while
+	 * that thread is still running, a later scene teardown ({@link AudioScene#destroy()}
+	 * clears those caches) races the producer and throws
+	 * {@link java.util.ConcurrentModificationException}. Releasing the runner here — the
+	 * caller's responsibility, mirroring the production {@link AudioScene#renderChannel}
+	 * lifecycle — stops the producer before any such teardown.</p>
+	 *
 	 * @param scene           the AudioScene to render
 	 * @param bufferSize      frames per buffer
 	 * @param durationSeconds how many seconds to render
@@ -183,33 +193,42 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 		File file = new File(outputFile);
 		file.getParentFile().mkdirs();
 
-		WaveOutput output = new WaveOutput(() -> file, 24, true);
-		TemporalCellular runner = scene.runnerRealTime(
-				new MultiChannelAudioOutput(output), bufferSize);
+		try (WaveOutput output = new WaveOutput(() -> file, 24, true)) {
+			TemporalCellular runner = scene.runnerRealTime(
+					new MultiChannelAudioOutput(output), bufferSize);
 
-		runner.setup().get().run();
+			try {
+				runner.setup().get().run();
 
-		int totalFrames = (int) (durationSeconds * SAMPLE_RATE);
-		int numBuffers = totalFrames / bufferSize;
-		double bufferDurationMs = (double) bufferSize / SAMPLE_RATE * 1000;
+				int totalFrames = (int) (durationSeconds * SAMPLE_RATE);
+				int numBuffers = totalFrames / bufferSize;
+				double bufferDurationMs = (double) bufferSize / SAMPLE_RATE * 1000;
 
-		List<Long> bufferTimings = new ArrayList<>();
-		Runnable tick = runner.tick().get();
+				List<Long> bufferTimings = new ArrayList<>();
+				Runnable tick = runner.tick().get();
 
-		long startTime = System.nanoTime();
-		for (int buf = 0; buf < numBuffers; buf++) {
-			long bufferStart = System.nanoTime();
-			tick.run();
-			bufferTimings.add(System.nanoTime() - bufferStart);
+				long startTime = System.nanoTime();
+				for (int buf = 0; buf < numBuffers; buf++) {
+					long bufferStart = System.nanoTime();
+					tick.run();
+					bufferTimings.add(System.nanoTime() - bufferStart);
+				}
+				long totalTime = System.nanoTime() - startTime;
+
+				output.write().get().run();
+
+				TimingStats timing = new TimingStats(bufferTimings, bufferDurationMs, totalTime);
+				AudioStats stats = analyzeAudio(outputFile);
+
+				return new RenderResult(outputFile, stats, timing, numBuffers, totalFrames);
+			} finally {
+				try {
+					runner.reset();
+				} finally {
+					runner.destroy();
+				}
+			}
 		}
-		long totalTime = System.nanoTime() - startTime;
-
-		output.write().get().run();
-
-		TimingStats timing = new TimingStats(bufferTimings, bufferDurationMs, totalTime);
-		AudioStats stats = analyzeAudio(outputFile);
-
-		return new RenderResult(outputFile, stats, timing, numBuffers, totalFrames);
 	}
 
 	/**
@@ -225,8 +244,9 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 				return null;
 			}
 
-			WaveData data = WaveData.load(file);
-			return AudioStats.fromWaveData(data, SAMPLE_RATE);
+			try (WaveData data = WaveData.load(file)) {
+				return AudioStats.fromWaveData(data, SAMPLE_RATE);
+			}
 		} catch (IOException e) {
 			log("Failed to analyze audio: " + e.getMessage());
 			return null;

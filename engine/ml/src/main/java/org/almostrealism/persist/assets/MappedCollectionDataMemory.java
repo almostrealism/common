@@ -16,10 +16,7 @@
 
 package org.almostrealism.persist.assets;
 
-import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.mem.FileMapping;
-
-import java.nio.ByteBuffer;
 
 /**
  * Read-only memory backed by collection data still in the file it was written
@@ -79,12 +76,7 @@ public class MappedCollectionDataMemory extends CollectionDataMemory {
 					" outside 0.." + (reference.getCount() - 1));
 		}
 
-		ByteBuffer buffer = current.buffer();
-		int at = (int) (reference.getValueOffset()
-				+ (long) index * reference.getPrecision().bytes());
-
-		return reference.getPrecision() == Precision.FP64 ?
-				buffer.getDouble(at) : buffer.getFloat(at);
+		return reference.valueAt(current.buffer(), index);
 	}
 
 	/**

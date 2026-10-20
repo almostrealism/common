@@ -72,9 +72,18 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	public static boolean enableFastQueue = false;
 
-	/** Requester metadata identifying blit copies queued by {@link #copy(MemoryData, MemoryData, Semaphore)}. */
-	private static final OperationMetadata BLIT_COPY =
-			new OperationMetadata("mtlBlitCopy", "Metal blit copy");
+	/** Requester metadata identifying copies queued by {@link #copy(MemoryData, MemoryData, Semaphore)}. */
+	private static final OperationMetadata COPY =
+			new OperationMetadata("mtlCopy", "Metal buffer copy");
+
+	/**
+	 * Names of the copy kernels {@link #copy(MemoryData, MemoryData, Semaphore)} dispatches, indexed
+	 * by the base-2 logarithm of the number of bytes each thread copies.
+	 */
+	private static final String[] COPY_KERNEL_NAMES = {"copy8", "copy16", "copy32"};
+
+	/** Metal types of the units each copy kernel copies, indexed as {@link #COPY_KERNEL_NAMES}. */
+	private static final String[] COPY_KERNEL_TYPES = {"uchar", "ushort", "uint"};
 
 	/**
 	 * Standard Metal Shading Language includes prepended to every compiled kernel.
@@ -122,6 +131,15 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 	/** Cache of compiled instruction sets, keyed by name and signature, to avoid redundant compilation. */
 	private Map<String, MetalOperatorMap> instructionSets;
+
+	/** Guards compilation of the copy kernels, separately from {@link #deliver(Scope)}. */
+	private final Object copyKernelLock = new Object();
+
+	/** Compiled programs of the copy kernels, indexed as {@link #COPY_KERNEL_NAMES}; null until first use. */
+	private final MetalProgram[] copyPrograms = new MetalProgram[COPY_KERNEL_NAMES.length];
+
+	/** Pipeline states of the copy kernels, indexed as {@link #COPY_KERNEL_NAMES}; null until first use. */
+	private final MTLComputePipelineState[] copyKernels = new MTLComputePipelineState[COPY_KERNEL_NAMES.length];
 
 	/**
 	 * Creates a Metal compute context for the specified data context.
@@ -187,7 +205,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	@Override
 	public synchronized InstructionSet deliver(Scope scope) {
-		if (instructionSets.containsKey(key(scope.getName(), scope.signature()))) {
+		if (instructionSets.containsKey(instructionSetKey(scope.getName(), scope.signature()))) {
 			if (ScopeSettings.enableInstructionSetReuse) {
 				warn("Compiling instruction set " + scope.getName() +
 						" with duplicate signature");
@@ -195,7 +213,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 				warn("Recompiling instruction set " + scope.getName());
 			}
 
-			instructionSets.get(key(scope.getName(), scope.signature())).destroy();
+			instructionSets.get(instructionSetKey(scope.getName(), scope.signature())).destroy();
 		}
 
 		long start = System.nanoTime();
@@ -209,7 +227,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 			buf.append(enc.apply(scope));
 
 			MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), buf.toString());
-			instructionSets.put(key(scope.getName(), scope.signature()), instSet);
+			instructionSets.put(instructionSetKey(scope.getName(), scope.signature()), instSet);
 			return instSet;
 		} finally {
 			recordCompilation(scope, buf::toString, System.nanoTime() - start);
@@ -225,12 +243,18 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public boolean isCPU() { return false; }
 
 	/**
-	 * Copies all of {@code source} into {@code destination} by queuing a blit onto the command buffer
+	 * Copies all of {@code source} into {@code destination} by queuing a copy onto the command buffer
 	 * (via the {@link MetalCommandRunner}), so the copy batches with the surrounding kernel dispatches,
 	 * and returns its completion semaphore.
 	 *
+	 * <p>The copy is encoded as a compute dispatch of a copy kernel (see {@link #copyCommand}), not as
+	 * a blit. Copies are queued between kernel dispatches — argument preparation copies in before a
+	 * kernel and copies out after it — and every switch between a compute and a blit encoder within a
+	 * command buffer costs the GPU tens of microseconds, several times what a small kernel itself
+	 * costs. A copy kernel keeps the whole command buffer on compute encoders.</p>
+	 *
 	 * <p>{@code dependsOn} is honored by the {@link MetalCommandRunner}: a dependency produced by
-	 * this context's runner orders the blit after it on the GPU (Metal's in-buffer hazard tracking
+	 * this context's runner orders the copy after it on the GPU (Metal's in-buffer hazard tracking
 	 * covers a dependency still in the open buffer), and a foreign dependency is bridged through a
 	 * host-signaled event without blocking (see {@link MetalCommandRunner#submit}). When either
 	 * side is not Metal memory there is nothing to queue, so the
@@ -238,9 +262,9 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * {@code setMem} copy is used.</p>
 	 *
 	 * @param source      the memory region to copy from
-	 * @param destination the memory region to copy into
+	 * @param destination the memory region to copy into, which must not overlap {@code source}
 	 * @param dependsOn   the completion this copy must be ordered after, or {@code null}
-	 * @return the blit's completion semaphore, or {@code null} for the direct-copy fallback
+	 * @return the copy's completion semaphore, or {@code null} for the direct-copy fallback
 	 */
 	@Override
 	public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
@@ -252,12 +276,99 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 			long destinationOffset = destination.getOffset() * elementSize;
 			long size = source.getMemLength() * elementSize;
 
-			return runner.submit(BLIT_COPY,
-					cmdBuf -> cmdBuf.blitCopy(src.getMem(), sourceOffset, dst.getMem(), destinationOffset, size),
+			return runner.submit(COPY,
+					copyCommand(src.getMem(), sourceOffset, dst.getMem(), destinationOffset, size),
 					dependsOn, null);
 		}
 
 		return super.copy(source, destination, dependsOn);
+	}
+
+	/**
+	 * Returns a command that copies {@code size} bytes from {@code source} to {@code destination}
+	 * with a copy kernel, each thread copying the widest unit (four, two or one bytes) that both
+	 * offsets and the size are multiples of. The regions must not overlap.
+	 *
+	 * <p>The kernel addresses units with 32-bit indices, so a copy reaching beyond what they can
+	 * address is encoded as a blit instead. A copy of nothing encodes nothing.</p>
+	 *
+	 * @param source            the buffer to copy from
+	 * @param sourceOffset      byte offset within {@code source}
+	 * @param destination       the buffer to copy into
+	 * @param destinationOffset byte offset within {@code destination}
+	 * @param size              number of bytes to copy
+	 * @return the command encoding the copy, to be submitted to this context's
+	 *         {@link #getCommandRunner() command runner}
+	 */
+	public MetalCommand copyCommand(MTLBuffer source, long sourceOffset,
+									MTLBuffer destination, long destinationOffset, long size) {
+		int unitShift = Math.min(COPY_KERNEL_NAMES.length - 1,
+				Long.numberOfTrailingZeros(sourceOffset | destinationOffset | size));
+		long units = size >> unitShift;
+		long sourceUnit = sourceOffset >> unitShift;
+		long destinationUnit = destinationOffset >> unitShift;
+
+		if (Math.max(sourceUnit, destinationUnit) + units > Integer.MAX_VALUE) {
+			return cmdBuf -> cmdBuf.blitCopy(source, sourceOffset, destination, destinationOffset, size);
+		}
+
+		if (units == 0) {
+			return cmdBuf -> { };
+		}
+
+		MTLComputePipelineState kernel = copyKernel(unitShift);
+		int[] offsets = {(int) destinationUnit, (int) sourceUnit};
+		int groupWidth = (int) Math.min(units, kernel.maxTotalThreadsPerThreadgroup());
+
+		return cmdBuf -> {
+			MTLComputeCommandEncoder encoder = cmdBuf.encoder();
+			encoder.setComputePipelineState(kernel);
+			encoder.setBuffer(0, destination);
+			encoder.setBuffer(1, source);
+			encoder.setBytes(2, offsets);
+			encoder.dispatchThreads(groupWidth, 1, 1, (int) units, 1, 1);
+			encoder.endEncoding();
+		};
+	}
+
+	/**
+	 * Returns the pipeline state of the copy kernel for the given unit width, compiling it on
+	 * first use.
+	 *
+	 * @param unitShift base-2 logarithm of the number of bytes each thread copies
+	 * @return the copy kernel's pipeline state
+	 */
+	private MTLComputePipelineState copyKernel(int unitShift) {
+		synchronized (copyKernelLock) {
+			if (copyKernels[unitShift] == null) {
+				MetalProgram program = new MetalProgram(this, COPY,
+						COPY_KERNEL_NAMES[unitShift], copyKernelSource(unitShift));
+				program.compile();
+				copyPrograms[unitShift] = program;
+				copyKernels[unitShift] = program.newComputePipelineState();
+			}
+
+			return copyKernels[unitShift];
+		}
+	}
+
+	/**
+	 * Returns the Metal source of the copy kernel for the given unit width, containing only that
+	 * kernel so each width compiles nothing else. Each thread copies one unit from the source buffer
+	 * (index 1) to the destination buffer (index 0), at the destination and source unit offsets
+	 * bound at index 2.
+	 *
+	 * @param unitShift base-2 logarithm of the number of bytes each thread copies
+	 * @return the kernel source, whose entry point is {@code COPY_KERNEL_NAMES[unitShift]}
+	 */
+	private static String copyKernelSource(int unitShift) {
+		String type = COPY_KERNEL_TYPES[unitShift];
+		return "#include <metal_stdlib>\n" +
+				"[[kernel]] void " + COPY_KERNEL_NAMES[unitShift] +
+				"(device " + type + " *destination [[buffer(0)]], " +
+				"device const " + type + " *source [[buffer(1)]], constant uint *offsets [[buffer(2)]], " +
+				"uint index [[thread_position_in_grid]]) { " +
+				"destination[offsets[0] + index] = source[offsets[1] + index]; }\n";
 	}
 
 	/**
@@ -290,7 +401,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	protected synchronized void destroyed(String name, String signature) {
 		if (instructionSets != null) {
-			String key = key(name, signature);
+			String key = instructionSetKey(name, signature);
 
 			if (instructionSets.remove(key) == null) {
 				throw new IllegalArgumentException("No instruction set found for " + key);
@@ -306,6 +417,8 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	@Override
 	public synchronized void destroy() {
+		super.destroy();
+
 		List<MetalOperatorMap> toDestroy = new ArrayList<>(instructionSets.values());
 		toDestroy.forEach(MetalOperatorMap::destroy);
 
@@ -316,6 +429,15 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 
 		queue = null;
 		fastQueue = null;
+
+		synchronized (copyKernelLock) {
+			for (int i = 0; i < copyKernels.length; i++) {
+				if (copyKernels[i] != null) copyKernels[i].release();
+				if (copyPrograms[i] != null) copyPrograms[i].destroy();
+				copyKernels[i] = null;
+				copyPrograms[i] = null;
+			}
+		}
 	}
 
 	/**
@@ -325,23 +447,4 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	@Override
 	public Console console() { return Hardware.console; }
-
-	/**
-	 * Returns the cache key for an instruction set, using the signature when reuse is enabled.
-	 *
-	 * <p>When {@link ScopeSettings#enableInstructionSetReuse} is true and a signature is available,
-	 * the signature is used as the key so that structurally identical scopes share compiled programs.
-	 * Otherwise the scope name is used.</p>
-	 *
-	 * @param name Scope name used as fallback key
-	 * @param signature Optional structural signature for deduplication
-	 * @return Cache key for the instruction set map
-	 */
-	protected static String key(String name, String signature) {
-		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
-			return signature;
-		}
-
-		return name;
-	}
 }

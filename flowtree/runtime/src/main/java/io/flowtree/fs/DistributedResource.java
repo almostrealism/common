@@ -151,17 +151,26 @@ public class DistributedResource implements Resource, ConsoleFeatures {
 
 	/**
 	 * Constructs a {@link DistributedResource} with a known total byte size,
-	 * pre-allocating the chunk tracking arrays accordingly.
+	 * pre-allocating the chunk tracking arrays accordingly. The chunk count is
+	 * rounded up so that a final partial chunk is represented, matching the
+	 * sizing performed by {@link #loadFromStream(InputStream)}; truncating would
+	 * leave the trailing bytes of a non-multiple-sized resource unrepresentable.
 	 *
 	 * @param uri         the distributed file-system URI for this resource
 	 * @param permissions access-control permissions to associate
-	 * @param size        total number of bytes this resource contains
+	 * @param size        total number of bytes this resource contains; must not
+	 *                    be negative
+	 * @throws IllegalArgumentException if {@code size} is negative
 	 */
 	protected DistributedResource(String uri, Permissions permissions, long size) {
+		if (size < 0)
+			throw new IllegalArgumentException("size must not be negative (was " + size + ")");
+
 		this.uri = processUri(uri);
-		
+
 		this.tot = size;
 		this.size = (int) (size / this.chunkSize);
+		if (size % this.chunkSize != 0) this.size++;
 		this.loaded = new boolean[this.size];
 		this.toa = new long[this.size];
 		this.data = new byte[this.size][0];

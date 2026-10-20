@@ -3,11 +3,16 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
+import io.almostrealism.concurrent.CompletionConsumer;
+import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.FixedEvaluable;
+import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.streams.StreamingEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.ConsoleFeatures;
@@ -124,6 +129,19 @@ import java.util.function.Supplier;
  * manages the memory (plain JVM heap, for example), a host-mediated {@code toArray}/
  * {@code setMem} transfer is used instead.</p>
  *
+ * <h2>Membership in an Operation List</h2>
+ *
+ * <p>The {@link Runnable} returned by {@link #get()} is also {@link Submittable}, so an
+ * {@link org.almostrealism.hardware.OperationList} that runs its members separately chains a
+ * copy like any compiled kernel: the copy is issued after the previous member's completion
+ * without waiting for it on the host, and its own completion is waited only where the list
+ * ends or a member that cannot be chained needs everything ahead of it to be complete. Under a
+ * batching backend (Metal) a copy that could only run synchronously cost two command-buffer
+ * commits and host round trips (one for everything issued ahead of it, one for itself); a
+ * chained copy is encoded into the open command buffer alongside its neighbours. See
+ * {@link Runner} for how the source and target are resolved without reading memory that pending
+ * work is still producing.</p>
+ *
  * <h2>Verbose Logging</h2>
  *
  * <p>Enable verbose output for debugging:</p>
@@ -147,8 +165,8 @@ import java.util.function.Supplier;
  * place, keep using {@link MemoryDataCopy} rather than open-coding a replacement &mdash; it
  * keeps every reference to the fallback path in one place, and it already targets the
  * {@link io.almostrealism.code.ComputeContext} that manages the memory being written.
- * {@link MemoryDataCopy} remains a plain {@link Process} whose execution neither accepts nor
- * publishes a completion {@link io.almostrealism.streams.Semaphore}.
+ * Its execution accepts and publishes a completion {@link io.almostrealism.streams.Semaphore}
+ * (see {@link Runner}), so keeping it in an operation list costs no host wait.
  */
 @Deprecated
 public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Runnable>, OperationInfo, ConsoleFeatures {
@@ -171,6 +189,12 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 	private Producer<? extends MemoryData> sourceProducer;
 	/** Producer reference for the target; see {@link #sourceProducer}. */
 	private Producer<? extends MemoryData> targetProducer;
+	/**
+	 * Whether the source and target suppliers return fixed {@link MemoryData} handles that no
+	 * pending work produces, so that, like a {@link FixedEvaluable}, they can be resolved before
+	 * the work the copy depends on has completed.
+	 */
+	private boolean fixedOperands;
 	/** Element offset within the source from which copying begins. */
 	private int sourcePosition;
 	/** Element offset within the target at which copying begins. */
@@ -187,6 +211,7 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 	 */
 	public MemoryDataCopy(String name, MemoryData source, MemoryData target) {
 		this(name, () -> source, () -> target, 0, 0, source.getMemLength());
+		this.fixedOperands = true;
 	}
 
 	/**
@@ -297,11 +322,132 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 		return children;
 	}
 
+	/**
+	 * Returns the compiled form of this copy, a {@link Runner}: a {@link Runnable} that is also
+	 * {@link Submittable}, so that an operation list chains it rather than completing everything
+	 * ahead of it on the host.
+	 *
+	 * <p>When the copy was created from {@link Producer}s, their {@link Evaluable}s are obtained
+	 * here, once, so that compiling the producers is part of compiling the copy rather than a
+	 * cost paid every time the copy runs.</p>
+	 *
+	 * @return the runner that performs this copy
+	 */
 	@Override
 	public Runnable get() {
-		return OperationWithInfo.RunnableWithInfo.of(getMetadata(), () -> {
-			MemoryData source = this.source.get();
-			MemoryData target = this.target.get();
+		return new Runner(sourceProducer == null ? null : sourceProducer.get(),
+				targetProducer == null ? null : targetProducer.get());
+	}
+
+	/**
+	 * The {@link Runnable} (and {@link Submittable}) returned by {@link MemoryDataCopy#get()}.
+	 *
+	 * <p>Submitted with a {@code dependsOn} completion, the copy is issued in order after it and
+	 * its own completion is returned without waiting for it. The physical copy is queued through
+	 * the {@link ComputeContext} that manages the target memory, exactly as a provider-to-provider
+	 * {@link org.almostrealism.hardware.computations.Assignment} queues one, so under a backend
+	 * that owns a command buffer the copy is encoded alongside the kernels around it. Run on its
+	 * own, it submits with no dependency and waits for that completion, so a standalone copy has
+	 * finished when {@link #run()} returns.</p>
+	 *
+	 * <p>The source and target are resolved following the convention
+	 * {@link org.almostrealism.hardware.ProcessDetailsFactory} applies to kernel arguments:</p>
+	 * <ul>
+	 *   <li>A {@link FixedEvaluable} (the {@link io.almostrealism.relation.Provider} of a
+	 *       collection, for example) is a handle whose value depends on no pending work. It is
+	 *       bound at once, and only the copy itself is ordered after {@code dependsOn}. The
+	 *       operands of a copy created from two {@link MemoryData} instances are bound the same way.</li>
+	 *   <li>A source whose evaluable is a dispatch-backed {@link StreamingEvaluable} (a compiled
+	 *       kernel, for example) is requested with {@code dependsOn}, which the provider chains
+	 *       into the dispatch, and delivers its result together with the completion of that
+	 *       dispatch. The copy is ordered after that completion, which follows {@code dependsOn}.</li>
+	 *   <li>Any other operand &mdash; a raw {@link Supplier}, or an evaluable that cannot order its
+	 *       own work &mdash; may read memory the pending work is still producing, so
+	 *       {@code dependsOn} is waited for before it is resolved.</li>
+	 * </ul>
+	 *
+	 * <p>Only a copy into memory managed by a device context is left to that context to order; when
+	 * a device's shared memory is also managed by the native context that delegates to it, that
+	 * native context names the device context as the one to use (see
+	 * {@link io.almostrealism.code.DataContext#getComputeContext(io.almostrealism.code.Memory)}). When
+	 * the target's context runs on the CPU (or no context manages the target at all), the transfer
+	 * is performed by the host whichever way it is issued: queuing it behind the pending work would
+	 * only move the wait onto a callback thread and add hand-offs between threads, which costs more
+	 * than the wait it replaces. Such a copy is completed where it is issued, once the work it
+	 * depends on has finished, and reports no outstanding completion.</p>
+	 */
+	private class Runner implements Runnable, Submittable, OperationInfo {
+		/** The compiled source, or {@code null} when the source is a raw {@link Supplier}. */
+		private final Evaluable<? extends MemoryData> sourceEvaluable;
+		/** The compiled target, or {@code null} when the target is a raw {@link Supplier}. */
+		private final Evaluable<? extends MemoryData> targetEvaluable;
+		/** Whether the source is requested in order after the dependency rather than evaluated. */
+		private final boolean chainedSource;
+		/** Whether neither operand requires the dependency to complete before it is resolved. */
+		private final boolean ordered;
+
+		/**
+		 * Creates a runner for this copy.
+		 *
+		 * @param sourceEvaluable the compiled source, or {@code null} to use the source supplier
+		 * @param targetEvaluable the compiled target, or {@code null} to use the target supplier
+		 */
+		private Runner(Evaluable<? extends MemoryData> sourceEvaluable,
+					   Evaluable<? extends MemoryData> targetEvaluable) {
+			this.sourceEvaluable = sourceEvaluable;
+			this.targetEvaluable = targetEvaluable;
+			this.chainedSource = !(sourceEvaluable instanceof FixedEvaluable) &&
+					sourceEvaluable instanceof StreamingEvaluable &&
+					((StreamingEvaluable<?>) sourceEvaluable).isDispatchBacked();
+			this.ordered = fixedOperands || (targetEvaluable instanceof FixedEvaluable &&
+					(sourceEvaluable instanceof FixedEvaluable || chainedSource));
+		}
+
+		@Override
+		public OperationMetadata getMetadata() { return metadata; }
+
+		@Override
+		public String describe() { return getMetadata().getShortDescription(); }
+
+		/**
+		 * Performs the copy and waits for it to finish.
+		 */
+		@Override
+		public void run() {
+			Semaphore done = submit(null);
+			if (done != null) done.waitFor();
+		}
+
+		/**
+		 * Issues the copy in order after {@code dependsOn} and returns its completion without
+		 * waiting for it (see the class javadoc for how the operands are resolved).
+		 *
+		 * @param dependsOn the completion the copy must follow, or {@code null}
+		 * @return the completion of the copy, or {@code null} if it has already finished
+		 */
+		@Override
+		public Semaphore submit(Semaphore dependsOn) {
+			Semaphore order = dependsOn;
+
+			// Uninterruptible: resolving an operand before order has fired would read what it has not produced
+			if (order != null && !ordered) {
+				order.waitForUninterruptibly();
+				order = null;
+			}
+
+			MemoryData target = targetEvaluable == null ?
+					MemoryDataCopy.this.target.get() : targetEvaluable.evaluate();
+
+			MemoryData source;
+			if (chainedSource) {
+				Delivery delivery = new Delivery();
+				((StreamingEvaluable) sourceEvaluable).request(new Object[0], order, delivery);
+				source = delivery.awaitValue();
+				order = delivery.getCompletion();
+			} else {
+				source = sourceEvaluable == null ?
+						MemoryDataCopy.this.source.get() : sourceEvaluable.evaluate();
+			}
 
 			if (enableVerbose) {
 				log("MemoryDataCopy[" + getMetadata().getDisplayName() + "]: Copying " + source + " (" +
@@ -315,16 +461,69 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 			ComputeContext<MemoryData> context =
 					Hardware.getLocalHardware().getComputeContext(target.getMem());
 
+			// See the class javadoc: a transfer the host performs is completed here
+			if ((context == null || context.isCPU()) && order != null) {
+				order.waitForUninterruptibly();
+				order = null;
+			}
+
 			if (context == null) {
 				// Unmanaged memory (plain JVM heap, for example); host-mediated transfer
 				target.setFrom(targetPosition, source, sourcePosition, length);
-			} else {
-				Semaphore done = context.copy(
-						new Bytes(length, source, sourcePosition),
-						new Bytes(length, target, targetPosition), null);
-				if (done != null) done.waitFor();
+				return null;
 			}
-		});
+
+			return context.copy(
+					new Bytes(length, source, sourcePosition),
+					new Bytes(length, target, targetPosition), order);
+		}
+	}
+
+	/**
+	 * Receives the result a {@link StreamingEvaluable} request delivers for the source of a
+	 * {@link Runner}, together with the completion of the work producing its contents.
+	 *
+	 * <p>A dispatch-backed request delivers on the requesting thread as soon as its dispatch has
+	 * been issued, so the result is normally available when the request returns. A request that
+	 * can only deliver once its work has finished (for example while output monitoring must read
+	 * the result) delivers later, with no outstanding completion, and is waited for.</p>
+	 *
+	 * <p>Waiting for a late delivery cannot stall on work that only the waiting thread would
+	 * flush: such a request is delivered from {@link Semaphore#onComplete(Runnable)}, whose
+	 * callback thread calls {@link Semaphore#waitFor()} on the completion it follows, and a
+	 * batching backend's completion commits its open command buffer there.</p>
+	 */
+	private static final class Delivery implements CompletionConsumer<MemoryData> {
+		/** Released once the result has been delivered. */
+		private final LatchSemaphore delivered = new LatchSemaphore(1);
+		/** The delivered result. */
+		private MemoryData value;
+		/** The completion of the work producing the result, or {@code null} if it has finished. */
+		private Semaphore completion;
+
+		@Override
+		public void accept(MemoryData value, Semaphore completion) {
+			this.value = value;
+			this.completion = completion;
+			delivered.countDown();
+		}
+
+		/**
+		 * Waits until the result has been delivered, and returns it.
+		 *
+		 * @return the delivered result
+		 */
+		private MemoryData awaitValue() {
+			delivered.waitForUninterruptibly();
+			return value;
+		}
+
+		/**
+		 * Returns the completion delivered with the result.
+		 *
+		 * @return the completion of the work producing the result, or {@code null} if it has finished
+		 */
+		private Semaphore getCompletion() { return completion; }
 	}
 
 	@Override

@@ -22,6 +22,7 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
 
@@ -34,15 +35,25 @@ import java.io.IOException;
  */
 public class T5GemmaEncoderParityTest extends TestSuiteBase {
 
-	/** Candidate locations for the extracted weight directory (first existing wins). */
+	/**
+	 * Candidate locations for the extracted weight directory (first existing wins). The system
+	 * property is checked first so a sandbox without a writable {@code /workspace} (no env-var
+	 * passthrough to the forked test JVM) can still point at it via the MCP test runner's
+	 * {@code jvm_args}, e.g. {@code -DAR_T5GEMMA_WEIGHTS=/tmp/t5gemma-weights} (same pattern as
+	 * {@code DiffusionTransformerTests#ditWeightsDir}); the env var remains supported for callers
+	 * that can set it directly.
+	 */
 	private static final String[] WEIGHT_DIRS = {
-			System.getenv("AR_T5GEMMA_WEIGHTS"),
+			System.getProperty("AR_T5GEMMA_WEIGHTS", System.getenv("AR_T5GEMMA_WEIGHTS")),
 			"/workspace/t5gemma-weights"
 	};
 
-	/** Candidate locations for the reference directory (first existing wins). */
+	/**
+	 * Candidate locations for the reference directory (first existing wins). See
+	 * {@link #WEIGHT_DIRS} for why the system property is checked first.
+	 */
 	private static final String[] REFERENCE_DIRS = {
-			System.getenv("AR_T5GEMMA_REFERENCES"),
+			System.getProperty("AR_T5GEMMA_REFERENCES", System.getenv("AR_T5GEMMA_REFERENCES")),
 			"target/test-classes/t5gemma-references",
 			"engine/ml/target/test-classes/t5gemma-references"
 	};
@@ -59,51 +70,61 @@ public class T5GemmaEncoderParityTest extends TestSuiteBase {
 	@Test(timeout = 900000)
 	public void lastHiddenStateMatchesReference() throws IOException {
 		File weightDir = ReferenceActivations.firstExisting(WEIGHT_DIRS, "weights");
-		ReferenceActivations references = ReferenceActivations.locate(REFERENCE_DIRS, "t5_last_hidden_state.bin");
-		if (weightDir == null || references == null) {
-			log("skipping T5Gemma parity; gated inputs absent (weights=" + weightDir + ", refs=" + references + ")");
-			return;
-		}
+		ReferenceActivations references = ReferenceActivations.locate(REFERENCE_DIRS, "t5_last_hidden_state");
+		requireLocalResource("T5Gemma weights (tried " + Arrays.toString(WEIGHT_DIRS) + ")",
+				"AR_T5GEMMA_WEIGHTS", weightDir != null);
+		requireLocalResource("T5Gemma reference activations (tried " + Arrays.toString(REFERENCE_DIRS) + ")",
+				"AR_T5GEMMA_REFERENCES", references != null);
 
 		T5GemmaConfig config = T5GemmaConfig.baseUl2();
-		float[] ids = references.load("t5_input_ids.bin");
-		float[] mask = references.load("t5_attention_mask.bin");
-		float[] expected = references.load("t5_last_hidden_state.bin");
-		assertEquals(config.getMaxLength(), ids.length);
-		assertEquals(config.getMaxLength() * config.getHiddenSize(), expected.length);
+		// Destroy the reference shards (and, once created, the encoder weights) in a finally
+		// so a load failure, a parity mismatch, or any other throw above still releases the
+		// shard-backed FileMappings rather than leaking them for the rest of the test JVM.
+		try {
+			float[] ids = references.load("t5_input_ids");
+			float[] mask = references.load("t5_attention_mask");
+			float[] expected = references.load("t5_last_hidden_state");
+			assertEquals(config.getMaxLength(), ids.length);
+			assertEquals(config.getMaxLength() * config.getHiddenSize(), expected.length);
 
-		int valid = 0;
-		while (valid < mask.length && mask[valid] > 0.5) {
-			valid++;
-		}
-		long[] prompt = new long[valid];
-		for (int i = 0; i < valid; i++) {
-			prompt[i] = Math.round(ids[i]);
-		}
-
-		T5GemmaEncoder encoder = new T5GemmaEncoder(config, new StateDictionary(weightDir.getPath()));
-		PackedCollection hidden = encoder.forward(prompt);
-
-		double maxRef = 0.0;
-		double maxErrorPrompt = 0.0;
-		double maxErrorPadding = 0.0;
-		int width = config.getHiddenSize();
-		for (int i = 0; i < expected.length; i++) {
-			maxRef = Math.max(maxRef, Math.abs(expected[i]));
-			double error = Math.abs(hidden.toDouble(i) - expected[i]);
-			if (i / width < valid) {
-				maxErrorPrompt = Math.max(maxErrorPrompt, error);
-			} else {
-				maxErrorPadding = Math.max(maxErrorPadding, error);
+			int valid = 0;
+			while (valid < mask.length && mask[valid] > 0.5) {
+				valid++;
 			}
+			long[] prompt = new long[valid];
+			for (int i = 0; i < valid; i++) {
+				prompt[i] = Math.round(ids[i]);
+			}
+
+			T5GemmaEncoder encoder = new T5GemmaEncoder(config, new StateDictionary(weightDir.getPath()));
+			try {
+				PackedCollection hidden = encoder.forward(prompt);
+
+				double maxRef = 0.0;
+				double maxErrorPrompt = 0.0;
+				double maxErrorPadding = 0.0;
+				int width = config.getHiddenSize();
+				for (int i = 0; i < expected.length; i++) {
+					maxRef = Math.max(maxRef, Math.abs(expected[i]));
+					double error = Math.abs(hidden.toDouble(i) - expected[i]);
+					if (i / width < valid) {
+						maxErrorPrompt = Math.max(maxErrorPrompt, error);
+					} else {
+						maxErrorPadding = Math.max(maxErrorPadding, error);
+					}
+				}
+
+				log("t5gemma parity: validTokens=" + valid + " maxRef=" + maxRef
+						+ " maxErrorPrompt=" + maxErrorPrompt + " maxErrorPadding=" + maxErrorPadding);
+
+				double tolerance = RELATIVE_TOLERANCE * maxRef;
+				assertTrue("prompt positions differ from the reference by " + maxErrorPrompt, maxErrorPrompt <= tolerance);
+				assertTrue("padded positions differ from the reference by " + maxErrorPadding, maxErrorPadding <= tolerance);
+			} finally {
+				encoder.destroy();
+			}
+		} finally {
+			references.destroy();
 		}
-
-		log("t5gemma parity: validTokens=" + valid + " maxRef=" + maxRef
-				+ " maxErrorPrompt=" + maxErrorPrompt + " maxErrorPadding=" + maxErrorPadding);
-		encoder.destroy();
-
-		double tolerance = RELATIVE_TOLERANCE * maxRef;
-		assertTrue("prompt positions differ from the reference by " + maxErrorPrompt, maxErrorPrompt <= tolerance);
-		assertTrue("padded positions differ from the reference by " + maxErrorPadding, maxErrorPadding <= tolerance);
 	}
 }

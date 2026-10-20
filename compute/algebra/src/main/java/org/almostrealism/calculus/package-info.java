@@ -18,8 +18,19 @@
  * Calculus and differentiation utilities for the Almost Realism framework.
  *
  * <p>Provides infrastructure for automatic differentiation and gradient computation
- * over {@link io.almostrealism.relation.Producer} graphs. The key interface
- * {@link org.almostrealism.calculus.DeltaFeatures} defines how gradient (delta)
- * computations are constructed and propagated through the producer graph.</p>
+ * over {@link io.almostrealism.relation.Producer} graphs. Differentiation is behaviour of
+ * the producer being differentiated ({@link org.almostrealism.collect.CollectionProducer#delta}).
+ * A caller names the axis of the Jacobian it will contract with a
+ * {@link org.almostrealism.calculus.ReduceAxis}, so that the vector-Jacobian product (reverse
+ * mode) and the Jacobian-vector product (forward mode) are each a reduced delta that the
+ * computation produces without forming the Jacobian, and
+ * {@link org.almostrealism.calculus.ReduceAxis#NONE} asks for the Jacobian itself. A
+ * computation applies what it knows of its own derivative through the protected extension
+ * points of {@link org.almostrealism.collect.computations.CollectionProducerComputationBase},
+ * which begin at its dependent delta, and {@link org.almostrealism.calculus.InputStub}
+ * isolates an input when the chain rule is applied.
+ * The matrix operations that delta implementations compose (for example
+ * {@link org.almostrealism.algebra.MatrixFeatures#expandAndMultiply}) live on
+ * {@link org.almostrealism.algebra.MatrixFeatures}.</p>
  */
 package org.almostrealism.calculus;

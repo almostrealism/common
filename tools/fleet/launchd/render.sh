@@ -18,11 +18,15 @@
 #                 — before the services are started.
 #   FLEET_PYTHON  interpreter to run the services with (default:
 #                 $FLEET_HOME/venv/bin/python3, created here if absent, with
-#                 psycopg installed into it).
+#                 psycopg and PyYAML installed into it).
 #   FLEET_HOST    host label recorded in every sample (default: the
 #                 LocalHostName, lower-cased — NOT platform.node(), which
 #                 on a Tailscale host can return the FQDN plus junk).
 #   FLEET_REPO    repository the poller reads (default: almostrealism/common).
+#   FLEET_RUNNERS_ORG
+#                 organization whose runners the poller inventories besides
+#                 the repository's (default: the repository's owner) — a
+#                 runner registered org-wide is not in the repository's list.
 #   FLEET_TOKEN_FILE
 #                 the read-only GitHub token file (default:
 #                 /Users/Shared/flowtree/secrets/fleet-github-token).
@@ -46,6 +50,7 @@ FLEET_HOME="${FLEET_HOME:-${HOME}/fleet}"
 FLEET_PYTHON="${FLEET_PYTHON:-${FLEET_HOME}/venv/bin/python3}"
 FLEET_HOST="${FLEET_HOST:-$(scutil --get LocalHostName 2>/dev/null | tr '[:upper:]' '[:lower:]' || hostname -s)}"
 FLEET_REPO="${FLEET_REPO:-almostrealism/common}"
+FLEET_RUNNERS_ORG="${FLEET_RUNNERS_ORG:-${FLEET_REPO%%/*}}"
 FLEET_TOKEN_FILE="${FLEET_TOKEN_FILE:-/Users/Shared/flowtree/secrets/fleet-github-token}"
 FLEET_DISK_PATH="${FLEET_DISK_PATH:-/}"
 
@@ -61,11 +66,23 @@ if [ ! -x "${FLEET_PYTHON}" ]; then
     echo "Creating ${FLEET_HOME}/venv..."
     python3 -m venv "${FLEET_HOME}/venv"
     "${FLEET_HOME}/venv/bin/pip" install --quiet --upgrade pip
-    "${FLEET_HOME}/venv/bin/pip" install --quiet 'psycopg[binary]'
+    "${FLEET_HOME}/venv/bin/pip" install --quiet 'psycopg[binary]' pyyaml
 fi
 if ! "${FLEET_PYTHON}" -c 'import psycopg' 2>/dev/null; then
     echo "ERROR: ${FLEET_PYTHON} cannot import psycopg; install it with: ${FLEET_PYTHON} -m pip install 'psycopg[binary]'" >&2
     exit 1
+fi
+# The poller reads each run's workflow file to tell runner wait from time
+# blocked behind an upstream job; without PyYAML it still runs, but every
+# queue-wait panel stays empty. A venv this script created gets it here so
+# an install that predates the dependency is brought up to date.
+if ! "${FLEET_PYTHON}" -c 'import yaml' 2>/dev/null; then
+    if [ "${FLEET_PYTHON}" = "${FLEET_HOME}/venv/bin/python3" ]; then
+        echo "Installing PyYAML into ${FLEET_HOME}/venv..."
+        "${FLEET_HOME}/venv/bin/pip" install --quiet pyyaml
+    else
+        echo "WARNING: ${FLEET_PYTHON} cannot import yaml; the poller will not resolve job dependencies. Install it with: ${FLEET_PYTHON} -m pip install pyyaml" >&2
+    fi
 fi
 
 # The values land inside XML through sed, so escape for both.
@@ -83,6 +100,7 @@ for label in com.almostrealism.fleet-collector com.almostrealism.fleet-poller; d
         -e "s|@CHECKOUT@|$(plist_value "${CHECKOUT}")|g" \
         -e "s|@HOST@|$(plist_value "${FLEET_HOST}")|g" \
         -e "s|@REPO@|$(plist_value "${FLEET_REPO}")|g" \
+        -e "s|@RUNNERS_ORG@|$(plist_value "${FLEET_RUNNERS_ORG}")|g" \
         -e "s|@TOKEN_FILE@|$(plist_value "${FLEET_TOKEN_FILE}")|g" \
         -e "s|@DISK_PATH@|$(plist_value "${FLEET_DISK_PATH}")|g" \
         "${SCRIPT_DIR}/${label}.plist" > "${FLEET_HOME}/launchd/${label}.plist"

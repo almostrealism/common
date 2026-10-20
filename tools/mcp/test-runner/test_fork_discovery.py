@@ -60,6 +60,10 @@ class TestPidAlive:
     def test_nonexistent_pid_is_not_alive(self):
         assert not fork_discovery.pid_alive(2 ** 22)
 
+    def test_zero_pid_is_not_alive(self):
+        # kill(0, 0) succeeds by addressing this process's own group.
+        assert not fork_discovery.pid_alive(0)
+
 
 class TestFindForkedJvm:
     def _jps_result(self, stdout, returncode=0):

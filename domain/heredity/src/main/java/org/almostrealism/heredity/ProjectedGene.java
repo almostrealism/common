@@ -25,6 +25,8 @@ import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Input;
+import org.almostrealism.hardware.ctx.ContextSpecific;
+import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 
 import java.util.Map;
 import java.util.Random;
@@ -79,9 +81,9 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	/** The shared source data from which this gene projects its factor values. */
 	private final PackedCollection source;
 	/** Projection weight matrix; rows correspond to factors, columns to source elements. */
-	private final PackedCollection weights;
+	private PackedCollection weights;
 	/** Per-factor value ranges used to clamp or scale projected outputs. */
-	private final PackedCollection ranges;
+	private PackedCollection ranges;
 
 	/**
 	 * Compiled projection kernels shared across all genes, keyed by
@@ -90,15 +92,28 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * Matrix products do not support signature-based instruction reuse,
 	 * so without this cache every {@link #refreshValues()} call on every
 	 * gene would compile a fresh kernel.
+	 *
+	 * <p>A compiled kernel belongs to the compute context it was compiled under, so
+	 * the cache is {@link ContextSpecific}: a context started and ended around some
+	 * work (a scoped data context, for example) gets its own set of kernels, which is
+	 * discarded with that context instead of being handed out after it has been
+	 * destroyed.</p>
 	 */
-	private static final Map<String, Evaluable<PackedCollection>> REFRESH_KERNELS = new ConcurrentHashMap<>();
+	private static final ContextSpecific<Map<String, Evaluable<PackedCollection>>> REFRESH_KERNELS =
+			new DefaultContextSpecific<>(ConcurrentHashMap::new);
 
 	/**
 	 * Compiled row-normalization kernels shared across all genes, keyed by
-	 * (factor count, source length), for the same reason as
+	 * (factor count, source length), for the same reasons as
 	 * {@link #REFRESH_KERNELS}.
 	 */
-	private static final Map<String, Evaluable<PackedCollection>> NORMALIZE_KERNELS = new ConcurrentHashMap<>();
+	private static final ContextSpecific<Map<String, Evaluable<PackedCollection>>> NORMALIZE_KERNELS =
+			new DefaultContextSpecific<>(ConcurrentHashMap::new);
+
+	static {
+		REFRESH_KERNELS.init();
+		NORMALIZE_KERNELS.init();
+	}
 
 	/** Cache of the most recently computed factor values for this gene. */
 	private PackedCollection values;
@@ -156,15 +171,43 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 			weightsScratch = new PackedCollection(shape(len, sourceLength));
 		}
 
-		randn(shape(weightsScratch), new Random(seed)).into(weightsScratch).evaluate();
+		randomWeights(seed, weightsScratch);
+		normalizeWeights(weightsScratch);
+	}
 
-		Evaluable<PackedCollection> normalize = NORMALIZE_KERNELS.computeIfAbsent(kernelKey(), key -> {
+	/**
+	 * Sets the weights to the rows of {@code unnormalized}, each scaled to unit length.
+	 * The argument must not be the weights themselves, so that the kernel never reads
+	 * and writes the same memory.
+	 *
+	 * @param unnormalized one row of source length per factor
+	 */
+	void normalizeWeights(PackedCollection unnormalized) {
+		int len = length();
+		int sourceLength = source.getShape().length(0);
+
+		Evaluable<PackedCollection> normalize = NORMALIZE_KERNELS.getValue().computeIfAbsent(kernelKey(), key -> {
 			CollectionProducer w = c(Input.value(shape(len, sourceLength), 0)).traverse(1);
 			return w.divide(sqrt(w.multiply(w).sum())).get();
 		});
 
 		normalize.into(weights.reshape(shape(len, sourceLength)).traverse(1))
-				.evaluate(weightsScratch);
+				.evaluate(unnormalized);
+	}
+
+	/**
+	 * Writes the unnormalized random weights that {@link #initWeights(long)} draws for
+	 * {@code seed} into {@code destination}, which must hold one row of source length per
+	 * factor. The values are generated on the host from a {@link Random} seeded with
+	 * {@code seed}, so the same seed always produces the same rows, whichever buffer
+	 * receives them.
+	 *
+	 * @param seed        the random seed
+	 * @param destination the collection that receives the rows
+	 */
+	void randomWeights(long seed, PackedCollection destination) {
+		randn(shape(length(), source.getShape().length(0)), new Random(seed))
+				.into(destination).evaluate();
 	}
 
 	/**
@@ -194,7 +237,7 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 		int len = length();
 		int sourceLength = source.getShape().length(0);
 
-		Evaluable<PackedCollection> refresh = REFRESH_KERNELS.computeIfAbsent(kernelKey(), key -> {
+		Evaluable<PackedCollection> refresh = REFRESH_KERNELS.getValue().computeIfAbsent(kernelKey(), key -> {
 			CollectionProducer w = c(Input.value(shape(len, sourceLength), 0));
 			CollectionProducer src = c(Input.value(shape(sourceLength), 1));
 			CollectionProducer bounds = c(Input.value(shape(len, 2), 2));
@@ -290,12 +333,66 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * @see ProjectedChromosome#consolidateGeneValues()
 	 */
 	void replaceValues(PackedCollection newValues) {
-		if (newValues.getMemLength() != values.getMemLength()) {
+		this.values = requireSameLength("Values", values, newValues);
+	}
+
+	/**
+	 * Returns the projection weights, one row of source length per factor.
+	 *
+	 * @return the weights collection
+	 */
+	PackedCollection getWeights() { return weights; }
+
+	/**
+	 * Returns the range bounds, one {@code (min, max)} pair per factor.
+	 *
+	 * @return the ranges collection
+	 */
+	PackedCollection getRanges() { return ranges; }
+
+	/**
+	 * Replaces the weights with a new collection, typically a view into a buffer that
+	 * holds the weights of several genes so that they can be initialized together.
+	 * The caller is responsible for the contents of the replacement.
+	 *
+	 * @param newWeights the replacement weights (must have the same length)
+	 * @throws IllegalArgumentException if the lengths do not match
+	 * @see ProjectedChromosome#initWeights(java.util.function.LongSupplier)
+	 */
+	void replaceWeights(PackedCollection newWeights) {
+		this.weights = requireSameLength("Weights", weights, newWeights);
+	}
+
+	/**
+	 * Replaces the range bounds with a new collection, typically a view into a buffer
+	 * that holds the ranges of several genes so that their values can be computed
+	 * together. The caller is responsible for the contents of the replacement.
+	 *
+	 * @param newRanges the replacement ranges (must have the same length)
+	 * @throws IllegalArgumentException if the lengths do not match
+	 * @see ProjectedChromosome#refreshValues()
+	 */
+	void replaceRanges(PackedCollection newRanges) {
+		this.ranges = requireSameLength("Ranges", ranges, newRanges);
+	}
+
+	/**
+	 * Returns {@code replacement} if it has the same length as {@code current}.
+	 *
+	 * @param name        the name of the collection, for the error message
+	 * @param current     the collection being replaced
+	 * @param replacement the collection replacing it
+	 * @return the replacement
+	 * @throws IllegalArgumentException if the lengths do not match
+	 */
+	private static PackedCollection requireSameLength(String name, PackedCollection current,
+													  PackedCollection replacement) {
+		if (replacement.getMemLength() != current.getMemLength()) {
 			throw new IllegalArgumentException(
-					"Values length mismatch: expected " + values.getMemLength() +
-					", got " + newValues.getMemLength());
+					name + " length mismatch: expected " + current.getMemLength() +
+					", got " + replacement.getMemLength());
 		}
 
-		this.values = newValues;
+		return replacement;
 	}
 }

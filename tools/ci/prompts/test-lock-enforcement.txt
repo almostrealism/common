@@ -1,0 +1,23 @@
+## Automated enforcement
+
+This job runs with test-file protection on. The commit harness will not stage
+a change to a test method that exists on origin/master — annotations,
+signature or body — so an edit to one is discarded before it is ever
+committed, however well meant. You MAY add new test methods to an existing
+test class, change the fixtures and helpers of a test class, and change any
+test this branch introduced.
+
+After you finish, every branch is checked the same way:
+
+- `test-integrity-check` rejects a weakened test: `detect-test-hiding.sh`
+  looks for 12 evasion patterns in Java tests (TestDepth escalation, timeout
+  inflation, dimension reduction, tolerance weakening, assertion removal,
+  numeric literal shrinkage and more), and `detect-python-test-hiding.sh`
+  requires every base-branch `def test_*` to survive with its file's
+  assertion count intact.
+- `agent-commit-validation` rejects a change set that only edits existing
+  tests.
+- Files under `.github/workflows/` and `tools/ci/` may change only on a
+  branch named `ci/...`.
+
+**There is no way around these checks. They are mechanical, not judgment-based.**

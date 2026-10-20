@@ -518,12 +518,14 @@ class TestConsult(unittest.TestCase):
         docs = MagicMock()
         docs.get_context_for_query.return_value = {
             "context": context,
-            "markdown_results": [{"file": "docs/internals/a.md"}],
+            "markdown_results": [{"file": "docs/internals/a.md",
+                                  "context": context}],
             "html_refs": ["docs/modules/graph.html"],
         }
         docs.get_context_for_keywords.return_value = {
             "context": context,
-            "markdown_results": [{"file": "docs/internals/kw.md"}],
+            "markdown_results": [{"file": "docs/internals/kw.md",
+                                  "context": context}],
             "html_refs": [],
         }
         return docs
@@ -543,7 +545,7 @@ class TestConsult(unittest.TestCase):
         self.assertEqual(result["answer"], "The answer.")
         self.assertEqual(result["sources"], ["docs/internals/a.md"])
         self.assertEqual(result["html_refs"], ["docs/modules/graph.html"])
-        self.assertEqual(llm.consult.call_args[1]["doc_context"], "DOC CONTEXT")
+        self.assertIn("DOC CONTEXT", llm.consult.call_args[1]["evidence"].render())
 
     @patch.object(server, "_get_memory_client", return_value=None)
     @patch.object(server, "_get_llm")
@@ -623,7 +625,7 @@ class TestConsult(unittest.TestCase):
         self.assertEqual(result["related_memories"][0]["content"], "a prior note")
         self.assertEqual(
             client.search.call_args[1]["repo_url"], "https://github.com/org/repo")
-        self.assertIn("a prior note", llm.consult.call_args[1]["memory_context"])
+        self.assertIn("a prior note", llm.consult.call_args[1]["evidence"].render())
 
     @patch.object(server, "_get_llm")
     @patch.object(server, "_get_docs")
@@ -710,7 +712,8 @@ class TestMemoryRecallDocBlending(unittest.TestCase):
         docs = MagicMock()
         docs.get_context_for_query.return_value = {
             "context": "DOC CONTEXT HERE",
-            "markdown_results": [{"file": "docs/internals/thing.md"}],
+            "markdown_results": [{"file": "docs/internals/thing.md",
+                                  "context": "DOC CONTEXT HERE"}],
             "html_refs": ["docs/modules/graph.html"],
         }
         mock_docs_fn.return_value = docs
@@ -1122,3 +1125,230 @@ class TestMemoryStore(unittest.TestCase):
             branch="feature/x",
         )
         self.assertFalse(result["ok"])
+
+
+class TestMemoryStoreArchived(unittest.TestCase):
+    """``memory_store`` refuses an archived workstream.
+
+    Archived workstreams are read-only: their memories stay readable but the
+    record is frozen. A memory keyed to an archived round's branch is part of
+    what ``workstream_context`` and ``memory_recall`` return for it, so
+    appending one mutates the frozen record — the same category of write the
+    ``send_message`` guard refuses on the conversation history. Resolving an
+    archived workstream's ownership now succeeds (so the read tools can see
+    it), which reopened this write path; these tests pin that the explicit
+    archived guard closes it again, for both the ``workstream_id`` and the
+    explicit ``repo_url`` + ``branch`` addressing forms, and that a live
+    workstream is unaffected.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        # Clear any token context so the guard is exercised on the explicit
+        # identifier, not a token-fallback workstream from a sibling test.
+        server._set_token_context("", "")
+
+    def tearDown(self):
+        server._set_token_context("", "")
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_store_rejected_for_archived_via_workstream_id(
+            self, mock_find, mock_by_branch, mock_client_fn):
+        """A memory aimed at an archived workstream by id is refused before the
+        memory backend is contacted. _resolve_branch_context resolves the id's
+        repo/branch, and the guard checks the round that branch lands on."""
+        arch = {
+            "workstreamId": "ws-arch", "archived": True,
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "qa/retro-x",
+        }
+        mock_find.return_value = arch
+        mock_by_branch.return_value = arch
+        client = MagicMock()
+        mock_client_fn.return_value = client
+        result = server.memory_store(content="note", workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "https://github.com/org/repo", "qa/retro-x", enforce_scope=False)
+        client.store.assert_not_called()
+        client.store_dual.assert_not_called()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_find_workstream_by_branch")
+    def test_store_rejected_for_archived_via_repo_branch(
+            self, mock_by_branch, mock_find, mock_client_fn):
+        """The explicit repo_url + branch form resolves to the archived round
+        and is refused too — the controller/backend has no archived check."""
+        mock_by_branch.return_value = {
+            "workstreamId": "ws-arch", "archived": True}
+        mock_find.return_value = {"workstreamId": "ws-arch", "archived": True}
+        client = MagicMock()
+        mock_client_fn.return_value = client
+        result = server.memory_store(
+            content="note",
+            repo_url="https://github.com/org/repo",
+            branch="qa/retro-x",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "https://github.com/org/repo", "qa/retro-x", enforce_scope=False)
+        client.store.assert_not_called()
+        client.store_dual.assert_not_called()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_store_rejected_for_archived_via_token(
+            self, mock_find, mock_by_branch, mock_client_fn):
+        """A minimal ``content``-only call whose temp token is bound to a
+        workstream archived mid-run is refused, matching the send_message
+        guard — a token can briefly outlive the job that minted it."""
+        server._set_token_context("ws-arch", "job-arch")
+        arch = {
+            "workstreamId": "ws-arch", "archived": True,
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "qa/retro-x",
+        }
+        mock_find.return_value = arch
+        mock_by_branch.return_value = arch
+        client = MagicMock()
+        mock_client_fn.return_value = client
+        result = server.memory_store(content="note")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        client.store.assert_not_called()
+        client.store_dual.assert_not_called()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_store_allowed_for_live_token(
+            self, mock_find, mock_by_branch, mock_client_fn):
+        """A content-only call whose token resolves to a live workstream is
+        unaffected by the archived guard (no false positive on the hot path)."""
+        server._set_token_context("ws-live", "job-live")
+        live = {
+            "workstreamId": "ws-live",
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/live",
+        }
+        mock_find.return_value = live
+        mock_by_branch.return_value = live
+        client = MagicMock()
+        client.store.return_value = {"id": "new-1", "content": "note"}
+        mock_client_fn.return_value = client
+        result = server.memory_store(content="note")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        client.store.assert_called_once()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_find_workstream")
+    def test_store_rejected_for_archived_branch_override_with_live_id(
+            self, mock_find, mock_by_branch, mock_client_fn):
+        """A live ``workstream_id`` passed alongside an archived ``branch``
+        override and NO ``repo_url`` must still be refused.
+        ``_resolve_branch_context`` fills the repo from the live id but keeps
+        the explicit branch override, so the memory lands on the archived
+        round; the guard must resolve the target from those effective values
+        rather than trusting the live id the caller supplied. Without the fix
+        the guard checked the live id and let the write through."""
+        # The live id the caller supplied — repo comes from it, branch does not.
+        mock_find.return_value = {
+            "workstreamId": "ws-live",
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/live",
+        }
+        # The archived round the override branch actually resolves to.
+        mock_by_branch.return_value = {
+            "workstreamId": "ws-arch", "archived": True}
+        client = MagicMock()
+        mock_client_fn.return_value = client
+        result = server.memory_store(
+            content="note", workstream_id="ws-live", branch="qa/retro-x")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "https://github.com/org/repo", "qa/retro-x", enforce_scope=False)
+        client.store.assert_not_called()
+        client.store_dual.assert_not_called()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_find_workstream_by_branch")
+    def test_store_allowed_for_live_repo_branch(
+            self, mock_by_branch, mock_find, mock_client_fn):
+        """A repo_url + branch that resolves to a live workstream is unaffected
+        by the archived guard."""
+        mock_by_branch.return_value = {"workstreamId": "ws-live"}
+        mock_find.return_value = {"workstreamId": "ws-live"}
+        client = MagicMock()
+        client.store.return_value = {"id": "new-1", "content": "note"}
+        mock_client_fn.return_value = client
+        result = server.memory_store(
+            content="note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/live",
+        )
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        client.store.assert_called_once()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_find_workstream_by_branch")
+    def test_store_rejected_for_archived_repo_branch_with_live_workstream_id(
+            self, mock_by_branch, mock_find, mock_client_fn):
+        """A live ``workstream_id`` passed alongside an archived
+        ``repo_url`` + ``branch`` must still be refused. ``_resolve_branch_context``
+        gives the explicit repo+branch precedence, so the memory would land on
+        the archived branch; the guard must resolve the target in that same
+        order rather than trusting the live id the caller also supplied."""
+        mock_by_branch.return_value = {
+            "workstreamId": "ws-arch", "archived": True}
+        # The live id the caller supplied — it must NOT be what the guard checks.
+        mock_find.return_value = {"workstreamId": "ws-live"}
+        client = MagicMock()
+        mock_client_fn.return_value = client
+        result = server.memory_store(
+            content="note",
+            workstream_id="ws-live",
+            repo_url="https://github.com/org/repo",
+            branch="qa/retro-x",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "https://github.com/org/repo", "qa/retro-x", enforce_scope=False)
+        client.store.assert_not_called()
+        client.store_dual.assert_not_called()
+
+    @patch.object(server, "_get_memory_client")
+    @patch.object(server, "_find_workstream_by_branch")
+    def test_store_rejected_for_out_of_scope_archived_repo_branch(
+            self, mock_by_branch, mock_client_fn):
+        """The repo+branch archived check must fire even for a round the
+        caller's workspace scope would hide. memory_store resolves the
+        archived target with ``enforce_scope=False`` and reads the archived
+        flag from that dict, so an out-of-scope archived round is refused
+        rather than written through (memory_store has no workspace scope of
+        its own)."""
+        mock_by_branch.return_value = {
+            "workstreamId": "ws-arch-other-workspace", "archived": True}
+        client = MagicMock()
+        mock_client_fn.return_value = client
+        result = server.memory_store(
+            content="note",
+            repo_url="https://github.com/other/repo",
+            branch="qa/retro-x",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "https://github.com/other/repo", "qa/retro-x", enforce_scope=False)
+        client.store.assert_not_called()
+        client.store_dual.assert_not_called()

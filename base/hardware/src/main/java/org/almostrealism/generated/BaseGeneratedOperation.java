@@ -27,6 +27,14 @@ import org.almostrealism.hardware.jni.NativeInstructionSet;
  * for managing compute context, operation metadata, and parallelism settings
  * required by {@link NativeInstructionSet} implementations.
  *
+ * <p>The concrete {@code GeneratedOperationN} subclasses are pre-generated
+ * <strong>reservation slots</strong>, not stored kernels: empty Java stubs that
+ * declare the {@code native apply} method and exist only to supply a stable class
+ * name for JNI linkage. {@code NativeCompiler.reserveLibraryTarget()} hands them
+ * out by reflection, and the compiled artifact behind each slot is generated
+ * fresh on every JVM run &mdash; nothing is preserved across runs. The pool of
+ * slots is finite; exhausting it throws {@code OperatorPoolExhaustedException}.</p>
+ *
  * @param <T> the type of memory data this operation works with
  */
 public abstract class BaseGeneratedOperation<T extends MemoryData> implements NativeInstructionSet {

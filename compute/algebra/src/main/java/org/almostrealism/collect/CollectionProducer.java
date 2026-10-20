@@ -16,13 +16,15 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.DeltaFeatures;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+import org.almostrealism.algebra.MatrixFeatures;
+import org.almostrealism.calculus.ReduceAxis;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -155,13 +157,13 @@ import java.util.function.Supplier;
  *
  * @author  Michael Murray
  * @see CollectionProducerBase
- * @see DeltaFeatures
+ * @see MatrixFeatures
  * @see PackedCollection
  * @see CollectionProducerComputation
  */
 public interface CollectionProducer extends
 		CollectionProducerBase<PackedCollection, CollectionProducer>,
-		DeltaFeatures {
+		MatrixFeatures {
 
 	@Override
 	default CollectionProducer reshape(int... dims) {
@@ -229,7 +231,7 @@ public interface CollectionProducer extends
 		}
 
 		CollectionProducerComputation result = enumerate(shape.getTraversalAxis() + 1, 1);
-		return (CollectionProducer) reshape(shape(result).trim(), result);
+		return result.reshape(shape(result).trim());
 	}
 
 	/**
@@ -240,7 +242,7 @@ public interface CollectionProducer extends
 	 */
 	default CollectionProducer transpose(int axis) {
 		CollectionProducerComputation result = traverse(axis - 1).enumerate(axis, 1);
-		return (CollectionProducer) reshape(shape(result).trim(), result);
+		return result.reshape(shape(result).trim());
 	}
 
 	/**
@@ -410,7 +412,7 @@ public interface CollectionProducer extends
 	 * @param value the collection to subtract
 	 * @return a computation for the result
 	 */
-	default CollectionProducerComputation subtractIgnoreZero(Producer<PackedCollection> value) {
+	default CollectionProducer subtractIgnoreZero(Producer<PackedCollection> value) {
 		return subtractIgnoreZero(this, value);
 	}
 
@@ -426,14 +428,29 @@ public interface CollectionProducer extends
 	}
 
 	/**
-	 * Multiplies every element of this collection by the given scalar.
+	 * Multiplies every element of this collection by the given scalar. A producer with a
+	 * representation of its own scaled values, such as an arithmetic sequence that rescales
+	 * its parameters, overrides this to return that representation; otherwise the
+	 * {@link #product(Producer, Producer) product} with the scalar is formed. Every
+	 * scalar-by-collection product built by {@link #multiply(Producer, Producer)} goes
+	 * through this method.
 	 *
 	 * @param <T>   the collection type
 	 * @param value the scalar multiplier
 	 * @return a producer for the scaled collection
 	 */
 	default <T extends PackedCollection> CollectionProducer multiply(double value) {
-		return multiply(this, c(value));
+		if (value == 0) {
+			return zeros(getShape());
+		} else if (value == 1.0) {
+			return this;
+		} else if (value == -1.0) {
+			return minus();
+		} else if (isConstant()) {
+			return multiply(getShape(), value, get());
+		}
+
+		return product(this, c(value));
 	}
 
 	/**
@@ -603,42 +620,38 @@ public interface CollectionProducer extends
 	/**
 	 * Returns the maximum element along the specified axis.
 	 *
-	 * @param <T>  the collection type
 	 * @param axis the axis to reduce over
 	 * @return a computation for the maximum value along the axis
 	 */
-	default <T extends PackedCollection> CollectionProducerComputationBase max(int axis) {
+	default CollectionProducer max(int axis) {
 		return max(traverse(axis, this));
 	}
 
 	/**
 	 * Returns the maximum element across the entire collection.
 	 *
-	 * @param <T> the collection type
 	 * @return a computation for the maximum value
 	 */
-	default <T extends PackedCollection> CollectionProducerComputationBase max() {
+	default CollectionProducer max() {
 		return max(this);
 	}
 
 	/**
 	 * Returns the index of the maximum element in this collection.
 	 *
-	 * @param <T> the collection type
 	 * @return a computation for the index of the maximum value
 	 */
-	default <T extends PackedCollection> CollectionProducerComputationBase indexOfMax() {
+	default CollectionProducer indexOfMax() {
 		return indexOfMax(this);
 	}
 
 	/**
 	 * Returns the minimum element across this collection.
 	 *
-	 * @param <T> the collection type
 	 * @return a computation for the minimum value
 	 * @throws UnsupportedOperationException always (not yet implemented)
 	 */
-	default <T extends PackedCollection> CollectionProducerComputationBase min() {
+	default CollectionProducer min() {
 		// TODO  return min((Producer) this);
 		throw new UnsupportedOperationException();
 	}
@@ -878,49 +891,134 @@ public interface CollectionProducer extends
 	}
 
 	/**
-	 * Attempts to compute the gradient of this computation with respect to the given target producer.
-	 * Returns null if the gradient cannot be determined (e.g., target is not a dependency).
+	 * Computes the full Jacobian of this producer with respect to the given target: the
+	 * {@link #delta(Producer, ReduceAxis, Producer) delta} with
+	 * {@link ReduceAxis#NONE no axis} summed away.
 	 *
 	 * @param target the producer with respect to which to differentiate
-	 * @return a CollectionProducer for the gradient, or null if not computable
-	 */
-	default CollectionProducer attemptDelta(Producer<?> target) {
-		return attemptDelta(this, target);
-	}
-
-	/**
-	 * Computes the gradient of this computation with respect to the given target producer.
-	 * Throws an exception if the gradient cannot be computed.
-	 *
-	 * @param target the producer with respect to which to differentiate
-	 * @return a CollectionProducer for the gradient
-	 * @throws UnsupportedOperationException if the gradient cannot be determined
+	 * @return the Jacobian, in the shape of this producer followed by that of the target
+	 * @throws UnsupportedOperationException if this producer cannot be differentiated
 	 */
 	default CollectionProducer delta(Producer<?> target) {
-		CollectionProducer delta = attemptDelta(target);
-		if (delta != null) return delta;
-
-		throw new UnsupportedOperationException();
+		return delta(target, ReduceAxis.NONE, null);
 	}
 
 	/**
-	 * Combines the gradient of this computation with the upstream gradient using the chain rule.
+	 * Computes the delta of this computation with respect to {@code target}, with every
+	 * entry along the reduced axis weighted by one. See
+	 * {@link #delta(Producer, ReduceAxis, Producer)}.
 	 *
-	 * @param target   the parameter with respect to which the gradient is being computed
-	 * @param gradient the upstream gradient producer
-	 * @return a producer for the combined gradient
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   the axis of the Jacobian to sum away
+	 * @return the delta, in the shape of the axes that remain
 	 */
-	default CollectionProducer grad(Producer<?> target, Producer<PackedCollection> gradient) {
-		return combineGradient(this, (Producer<PackedCollection>) target, gradient);
+	default CollectionProducer delta(Producer<?> target, ReduceAxis axis) {
+		return delta(target, axis, null);
 	}
 
 	/**
-	 * Returns the delta (gradient) strategy to use when multiple terms contribute gradients.
-	 * The default is {@link MultiTermDeltaStrategy#NONE}.
+	 * Computes the delta of this computation with respect to {@code target}: its Jacobian
+	 * {@code J}, with one axis summed away after weighting each entry along it, or none.
+	 * <ul>
+	 *   <li>{@link ReduceAxis#NONE} produces {@code J} itself, in the shape of this
+	 *       computation followed by that of the target, and takes no weight.</li>
+	 *   <li>{@link ReduceAxis#OUT} produces the vector-Jacobian product {@code gᵀJ} for a
+	 *       weight {@code g} with the shape of this computation, and has the shape of the
+	 *       target.</li>
+	 *   <li>{@link ReduceAxis#IN} produces the Jacobian-vector product {@code J t} for a
+	 *       weight {@code t} with the shape of the target, and has the shape of this
+	 *       computation.</li>
+	 * </ul>
 	 *
-	 * @return the strategy for combining multi-term gradients
+	 * <p>This is the only method through which a delta is obtained. This implementation
+	 * answers the cases determined by this producer's identity alone: a target this
+	 * producer cannot depend on gives zeros, and a target this producer is gives the
+	 * identity (the weight itself, once reduced). A producer with no derivative of its own
+	 * has no Jacobian with respect to anything else, and its reduced deltas are
+	 * {@link #jacobianContraction contractions} of that Jacobian.</p>
+	 *
+	 * <p>A producer that knows its derivative overrides this method, and leaves the
+	 * identity cases above to this implementation by deferring to it whenever
+	 * {@link #cannotMatch(Producer)} or {@link #refersTo(Producer)} holds for the target.
+	 * Computations do not override it:
+	 * {@link org.almostrealism.collect.computations.CollectionProducerComputationBase} does so
+	 * on their behalf, and offers protected extension points for the derivative of a
+	 * computation instead.</p>
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   the axis of the Jacobian to sum away
+	 * @param weight the weight of each entry along that axis, or null to weight every
+	 *               entry by one
+	 * @return the delta, in the shape of the axes that remain
+	 * @throws UnsupportedOperationException if this producer cannot be differentiated
+	 *                                       with respect to the target
 	 */
-	default MultiTermDeltaStrategy getDeltaStrategy() {
-		return MultiTermDeltaStrategy.NONE;
+	default CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		TraversalPolicy resultShape = axis.resultShape(getShape(), shape(target));
+
+		if (cannotMatch(target)) {
+			return zeros(resultShape);
+		} else if (!refersTo(target)) {
+			if (axis == ReduceAxis.NONE) {
+				throw new UnsupportedOperationException("No Jacobian of " + describe());
+			}
+
+			return jacobianContraction(this, target, axis, weight);
+		} else if (axis == ReduceAxis.NONE) {
+			return identity(shape(getShape().getTotalSize(), shape(target).getTotalSize())).reshape(resultShape);
+		}
+
+		return weight == null ? constant(resultShape, 1.0) : c(weight).reshape(resultShape);
+	}
+
+	/**
+	 * Declares an {@link Evaluable} that produces the same result as this computation
+	 * and may be used in its place when this computation is evaluated on its own. The
+	 * short-circuit is an optimization of evaluation, not a change to its result: a
+	 * producer that has nowhere to keep it ignores it and is evaluated in full.
+	 *
+	 * @param shortCircuit an evaluable equal in result to this computation
+	 * @return this producer (for method chaining)
+	 */
+	default CollectionProducer withShortCircuit(Evaluable<PackedCollection> shortCircuit) {
+		return this;
+	}
+
+	/**
+	 * Indicates whether this producer is itself a reduction, combining groups of its
+	 * input elements into single outputs (an aggregation or a weighted sum). A reduction
+	 * already compiles to an accumulation, so a reduction applied to its output (see
+	 * {@link AggregationFeatures#sum(Producer)}) is not re-expressed in another form.
+	 *
+	 * @return true if this producer reduces its input, false otherwise
+	 */
+	default boolean isReduction() {
+		return false;
+	}
+
+	/**
+	 * Indicates whether an arbitrary producer is a reduction, as {@link #isReduction()}
+	 * does for a {@link CollectionProducer}. A producer that is not a
+	 * {@link CollectionProducer} is not known to be a reduction.
+	 *
+	 * @param producer the producer to inspect
+	 * @return true if the producer reduces its input, false otherwise
+	 */
+	static boolean isReduction(Producer<?> producer) {
+		return producer instanceof CollectionProducer && ((CollectionProducer) producer).isReduction();
+	}
+
+	/**
+	 * Indicates whether this producer may be isolated into an independent process.
+	 * Isolation is permitted only when the process isolation settings allow it and
+	 * the total size of this producer's output does not exceed the maximum memory
+	 * reservation.
+	 *
+	 * @return true if isolation is permitted
+	 * @see Process#isolationPermitted(Supplier)
+	 */
+	default boolean isIsolationPermitted() {
+		return Process.isolationPermitted(this) &&
+				getShape().getTotalSizeLong() <= MemoryProvider.MAX_RESERVATION;
 	}
 }

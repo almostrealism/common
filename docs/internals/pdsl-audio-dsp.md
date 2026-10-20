@@ -42,10 +42,12 @@ PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 
 ## Audio DSL files
 
-All four files live in `engine/ml/src/main/resources/pdsl/audio/`.
+These files live in `engine/ml/src/main/resources/pdsl/audio/`.
 
 | File | What it defines |
 |------|-----------------|
+| `oobleck_residual_block.pdsl` | The Oobleck codec's residual unit — `oobleck_residual_block`: `accum` around Snake → `conv1d` (kernel 7) → Snake → `conv1d` (kernel 1). Loaded by `OobleckCodec.buildResidualBlock`. |
+| `oobleck_codec.pdsl` | The Oobleck codec's stages, which call the residual unit: `oobleck_input_projection`, `oobleck_encoder_block` (three residual units → Snake → strided `conv1d`), `oobleck_encoder_output`, `oobleck_decoder_block` (Snake → `conv_transpose1d` → three residual units) and `oobleck_decoder_output`. `OobleckEncoder` and `OobleckDecoder` build one layer per stage through the `OobleckCodec` stage builders. Because `oobleck_codec.pdsl` imports `oobleck_residual_block.pdsl`, parsing it alone (via `PdslLoader.parseResource`) resolves the residual unit into the same program. |
 | `efx_channel.pdsl` | EFX channel layers — `efx_wet_chain`, `efx_lowpass_wet`, `efx_highpass_wet`, `efx_dry_path`, `efx_delay`, `efx_wet_dry_mix`, the composite `efx_channel` (dry + filtered/scaled/delayed wet via `accum_blocks`), and the `feedback_comb` closed-loop comb. States: `efx_delay_state`, `feedback_comb_state`. |
 | `mixdown_channel.pdsl` | Single-channel mixdown — `mixdown_main` (HP → `scale` → LP) and `mixdown_channel` (full path with wet/delay). State: `mixdown_delay_state`. |
 | `delay_feedback_bank.pdsl` | Multi-channel delay bank — `delay_feedback_bank`: `repeat` → per-channel `delay` → `route` → `sum_channels`. State: `delay_bank_state`. |
@@ -84,17 +86,61 @@ audio-domain assumption:
 | Primitive | Signature | Behavior |
 |-----------|-----------|----------|
 | `identity` | `identity()` | Pass-through (zero computation). |
-| `scale` | `scale(factor)` | Element-wise multiply; `factor` accepts `producer([1])`. |
+| `scale` | `scale(factor)` / `scale(factors, axis)` | Element-wise multiply; `factor` accepts `producer([1])`. The two-argument form multiplies by one factor per position along `axis` (`factors` is `[batch, length(axis)]`), the form a padding mask takes. |
 | `repeat` | `repeat(n)` | Axis-0 replication, `[1, S]` → `[n, S]` (`CollectionProducer.repeat(0, n)`). |
 | `sum_channels` | `sum_channels()` | Axis-0 reduction, `[C, S]` → `[1, S]`. |
 | `capture` | `capture(slot)` | Copies the stage input into a same-sized caller-owned producer slot, then passes the input through unchanged. The copy is part of the compiled operation order, allowing a runner to export intermediate signals such as channel and effects stems after each forward pass. |
 
-(`PdslBuiltins` also supplies the ML primitives — `dense`, `rmsnorm`, `softmax`, the
-activations, `slice`, `reshape`, `range`, `lerp`, `capture`, `repeat_each`, `cache_write`,
-`split_half_rope`, `merge_half_rope`, `rope_rotation`, `mra_rope_rotation`,
-`attention_scores`, `causal_mask`, `weighted_values`, `sqrt`, `attention`, `transformer`,
-`feed_forward` — usable in the same layer bodies. `engine/ml/src/main/resources/pdsl/attention.pdsl`
-composes the KV-cached attention block from these; `attention()` loads that asset.)
+(`PdslBuiltins` also supplies the ML primitives — `dense`, `conv1d`, `conv_transpose1d`,
+`rmsnorm`, `layernorm`, `softmax`, the activations including `snake`, `slice` (also
+`slice([shape], position...)` for an N-dimensional sub-tensor), `reshape`, `permute`, `range`,
+`lerp`, `capture`, `repeat_each`, `cache_write`,
+`cache_read`, `split_half_rope`, `merge_half_rope`, `rope_rotation`, `sequence_rope`,
+`mra_rope_rotation`, `attention_scores`, `causal_mask`, `sequence_causal_mask`, `key_mask`,
+`weighted_values`, `scaled_dot_product`, `sqrt`, `attention`, `shape`, `zeros`, `rope_freqs`
+— usable in the same layer bodies. `shape(dim1, dim2, ...)` builds a `TraversalPolicy` from a
+variadic list of integer dimensions (each argument is an integer, as in `shape(channels, signal_size)` —
+not the `[dim1, dim2]` shape literal that `zeros` and `reshape` take); `zeros([rows, size])`
+allocates a fresh zero-filled state collection (the per-layer
+storage a stateful layer writes on one forward pass and reads on later ones, such as the KV
+caches of autoregressive attention); and `rope_freqs(theta, head_size, seq_len)` builds the
+RoPE `freq_cis` table (shape `[seq_len, head_size / 2, 2]`) that `rope_rotation` reads. `engine/ml/src/main/resources/pdsl/attention.pdsl`
+composes the KV-cached attention block from these and `attention()` loads that asset;
+`engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` composes full-sequence self-attention,
+bidirectional or causal, and `sequenceAttention()` loads it — its keys and values are branches of
+the layer that the score and context products read as operands (`scaled_dot_product` accepts a
+branch as well as a tensor), so the asset trains as well as it infers;
+`engine/ml/src/main/resources/pdsl/differential_attention.pdsl` composes differential self-attention,
+two `attention_map` layers over the sections of one fused projection summed by `accum_blocks`, the
+second map weighted by each head's lambda (`scale(lambda, 1)`, `scale(-1)`) so the sum subtracts it,
+and `differentialSequenceAttention()` loads it; and
+`engine/ml/src/main/resources/pdsl/feed_forward.pdsl` composes the SwiGLU MLP that
+`feedForward()` loads. `engine/ml/src/main/resources/pdsl/transformer.pdsl` composes the
+pre-norm transformer layer from the layers of `attention.pdsl` and `feed_forward.pdsl` — `accum` around an attention
+layer, then `accum` around `swiglu_ffn` — and declares its dependency on them with `import`
+statements (see [Imports](#imports)), so `transformer()` builds it from
+`PdslLoader.parseResource(TRANSFORMER_ASSET)` alone.
+`engine/ml/src/main/resources/pdsl/sdpa.pdsl` is the full-sequence (non-autoregressive)
+counterpart of the `attend` layer inside `attention.pdsl` — the score/context core only, not
+the whole attention block, whose normalization, projections, RoPE, cache writes and output
+projection have no analogue here. Its `sdpa_scores` (with soft-capped and causal variants
+`sdpa_scores_softcapped`, `sdpa_scores_causal` and `sdpa_scores_softcapped_causal`) and
+`sdpa_context` layers compose scaled dot-product attention over a whole sequence at once from
+`scaled_dot_product` (batched `Q Kᵀ` / `A V`), `key_mask` (per-key validity masking) and
+`sequence_causal_mask` (every key after the query's own position masked), and
+`AttentionFeatures.scaledDotProductAttention(...)` loads it. A layer called from another layer
+is built, as a built-in is, for the signal at the point where the call is placed — after the
+stages before it, or as the input of the `accum`, `product`, `accum_blocks` or `concat_blocks`
+that holds it — unless it declares a `-> [shape]` annotation, in which case it is built for that
+shape; so a layer over `[batch, channels, length]` signals nests as readily as one over a
+`[1, dim]` token vector. A called layer
+sees the program's `data` and `state` entries, and a program's own layers take precedence over
+registered primitives and built-ins of the same name — except inside that layer's own construction,
+where its name reaches the primitive or built-in it shadows (so a layer can wrap it), and a call that
+would re-enter a layer under construction with nothing else of that name is rejected with its cycle. `cache_read(cache, position)` outputs one
+row of a caller-owned `[rows, size]` state collection without reading its input — the read that pairs with
+`cache_write`; `engine/ml/src/main/resources/pdsl/midi/gru_decoder.pdsl` uses the pair to
+carry each GRU layer's hidden state from one decode step to the next.)
 
 There is **no `choice()` primitive.** A `Choice` cannot be code-generated inside a compiled
 PDSL model. Gene-driven HP/LP filter selection is performed host-side in the genome→args
@@ -126,7 +172,7 @@ layer delay_feedback_bank(channels: int, signal_size: int, delay_samples: int,
 | `for each channel { }` | `[C, S]` → `[C, S]` | Applies the body per channel; `channel` is bound to the index. State and producer rows are sliced with `expr[channel]`. |
 | `route(matrix)` | `[in, S]` → `[out, S]` | `out[i] = sum_j matrix[i,j] * in[j]`. Matrix must be 2D and its first axis must equal the upstream channel count. Square and rectangular both supported; a rectangular route updates the downstream channel count via the primitive context. |
 | `sum_channels()` | `[C, S]` → `[1, S]` | Within-tensor channel-axis reduction. |
-| `accum_blocks(a, b, …)` | branches → sum | Each brace-delimited sub-block receives the same input; the output is the element-wise sum of their outputs. This is heterogeneous branching (e.g. dry + wet). Distinct from `sum_channels()`, which reduces one tensor's channel axis. |
+| `accum_blocks(a, b, …)` | branches → sum | Each brace-delimited sub-block receives the same input; the output is the element-wise sum of their outputs. This is heterogeneous branching (e.g. dry + wet). The backward pass delivers the full output gradient to every sub-block and sums their input-gradients, so each summed path trains. Distinct from `sum_channels()`, which reduces one tensor's channel axis. |
 
 ### Vectorized `for each channel`
 
@@ -191,3 +237,48 @@ The caller owns and supplies the backing `PackedCollection`s; they persist acros
 `forward()` calls. State is written inside the primitive's `push()` via `into(...)` — a
 `CollectionProducer` write, never `setMem()`/`toDouble()` — so a stateful PDSL block behaves
 like a `CachedStateCell` from the cell graph's perspective without any adapter code.
+
+## Imports
+
+A `.pdsl` file declares the assets it depends on with `import` statements at the top of the
+file, each naming the classpath resource of another asset — the same absolute path a Java
+caller passes to `PdslLoader.parseResource`:
+
+```pdsl
+import "/pdsl/attention.pdsl"
+import "/pdsl/feed_forward.pdsl"
+
+layer transformer(/* ... */) {
+    accum { attention(/* ... */) }
+    accum { swiglu_ffn(/* ... */) }
+}
+```
+
+The imported files' layers, `config`, `data` and `state` blocks are all in scope, so a layer
+may call a layer defined in an imported file. Because the dependency lives in the asset rather
+than in the Java caller, `PdslLoader.parseResource(root)` resolves it: the returned program
+holds `root`'s own definitions together with those of every asset it imports, transitively.
+A caller building a layer from `root` names only `root`; adding a call to a new asset inside
+`root` is a one-line `import` in `root`, not a change every caller must repeat. (Comments may
+precede the imports; the imports must come before the first `config`/`data`/`state`/`layer`/`model`
+definition, and each must name an absolute path beginning with `/`; the parser rejects a
+misplaced or relative import with its line and column. Paths are canonicalized before they are
+compared, so `/pdsl/a/../b.pdsl` and `/pdsl/b.pdsl` are one resource.)
+
+Two rules keep resolution unambiguous:
+
+- **Duplicate definitions are an error.** If two *distinct* resources define the same name for
+  the same kind of definition (two `layer swiglu_ffn`, say), resolution fails with a
+  `PdslParseException` naming the offender, because only one of the two could ever be reached.
+  It is the *resources* that are deduplicated, not the definitions: a diamond — `A` imports `B`
+  and `C`, and both import `D` — pulls `D` in exactly once and succeeds. Definitions collide
+  only when they come from two different files.
+- **Import cycles are an error.** If an asset imports itself, directly or through a chain that
+  leads back to it, resolution fails with a `PdslParseException` naming the cycle
+  (`a.pdsl -> b.pdsl -> a.pdsl`), mirroring the interpreter's rejection of a layer that calls
+  itself.
+
+`PdslLoader.parseResources(String...)` remains for assembling genuinely unrelated assets into
+one program in a single call; it follows each argument's imports and applies the same dedup and
+collision rules. Prefer an `import` in the asset that depends on another — the dependency then
+travels with the asset instead of being re-enumerated at every call site.

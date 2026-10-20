@@ -24,7 +24,6 @@ import org.almostrealism.io.HostFingerprint;
 import org.almostrealism.io.JobOutput;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -431,6 +430,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         // failed; see JobWorkOutcome#capture(boolean).
         boolean workspaceHeld = false;
 
+        // Liveness independent of agent messages, for the whole run; see
+        // HarnessHeartbeatSender.
+        HarnessHeartbeatSender heartbeat = new HarnessHeartbeatSender(
+                HarnessHeartbeatSender.heartbeatUrl(resolveWorkstreamUrl(), taskId),
+                this::postJson, HostFingerprint.node(),
+                ProcessHandle.current().pid(), null, null);
+        heartbeat.start();
+
         try {
             if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
                 postJson(resolveWorkstreamUrl() + "/messages",
@@ -549,6 +556,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         } finally {
             workspaceLock.release();
             fireJobCompleted(error);
+            heartbeat.stop();
             future.complete(null);
         }
     }
@@ -702,6 +710,18 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     protected List<String> getMergeConflictFiles() {
         if (repoSetup == null) return new ArrayList<>();
         return repoSetup.getConflictFiles();
+    }
+
+    /**
+     * Returns the base-branch commit the harness merged into the target branch
+     * and left in progress for the agent to resolve, or {@code null} when it
+     * left no merge in progress; see {@link GitRepositorySetup#getMergeParent()}.
+     * Not {@code final} so tests can supply a merge they performed themselves.
+     *
+     * @return the recorded merge parent SHA, or {@code null}
+     */
+    String getHarnessMergeParent() {
+        return repoSetup != null ? repoSetup.getMergeParent() : null;
     }
 
     // ==================== Job Interface ====================
@@ -1184,26 +1204,13 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      *
      * <p>Not {@code final} so tests can stub the result without a real git
      * working tree, the same testability pattern
-     * {@code CodingAgentJob.hasUncommittedChanges()} already uses.</p>
+     * {@link #hasUncommittedChanges()} already uses.</p>
      *
      * @return the staging result today's changes would produce: which files
      *         would be staged, and which would be skipped and why
      */
     StagingResult previewStaging() {
-        List<String> changedFiles = GitOperations.getChangedFiles(workingDirectory);
-        if (changedFiles.isEmpty()) {
-            return new StagingResult(Collections.emptyList(), Collections.emptyList());
-        }
-
-        FileStagingConfig config = FileStagingConfig.builder()
-                .excludedPatterns(getAllExcludedPatterns())
-                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
-                .protectTestFiles(protectTestFiles && GitCommitHandler.isSensitiveFileProtectionEnabled(this))
-                .baseBranch(baseBranch)
-                .maxFileSizeBytes(maxFileSizeBytes)
-                .build();
-        File workDir = workingDirectory != null ? new File(workingDirectory) : new File(".");
-        return new FileStager().evaluateFiles(changedFiles, config, workDir, asGitOperations());
+        return GitCommitHandler.previewStaging(this);
     }
 
     /**
@@ -1317,14 +1324,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @return the resolved URL, or the original URL if no resolution is needed
      */
     protected String resolveWorkstreamUrl() {
-        String url = workstreamUrl;
-
-        String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-        if (url != null && rootHost != null && !rootHost.isEmpty() && url.contains("0.0.0.0")) {
-            url = url.replace("0.0.0.0", rootHost);
-        }
-
-        return url;
+        return WorkspaceResolver.resolveWorkstreamUrl(workstreamUrl);
     }
 
     /**

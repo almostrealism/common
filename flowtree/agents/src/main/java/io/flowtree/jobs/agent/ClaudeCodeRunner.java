@@ -37,6 +37,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * {@link AgentRunner} that launches the Claude Code CLI to run an agent
@@ -77,10 +80,45 @@ public class ClaudeCodeRunner implements AgentRunner {
     public static final List<String> VALID_EFFORT_LEVELS =
             List.of("low", "medium", "high", "xhigh", "max");
 
-    /** Accepted values for the Claude Code {@code --model} flag (CLI aliases + full IDs). */
-    public static final List<String> VALID_MODELS = List.of(
-            "sonnet", "opus", "haiku",
-            "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001");
+    /**
+     * Tier aliases the Claude Code {@code --model} flag accepts. Each one
+     * resolves, inside the CLI and at the moment the session starts, to the
+     * current model of that tier for the configured provider — so a session
+     * that asks for {@code opus} runs whatever Opus the installed CLI
+     * considers current, and nothing in this codebase pins it to a version.
+     * That is the point of them: the deployment updates the CLI, and the
+     * alias follows, with no change here.
+     */
+    public static final List<String> MODEL_ALIASES =
+            List.of("opus", "sonnet", "haiku", "fable", "best", "opusplan", "default");
+
+    /**
+     * Full model identifiers worth offering an operator alongside the
+     * aliases — the current lineup, plus the recent versions a workstream
+     * may already pin. This list is <em>advertised</em>, not exhaustive:
+     * {@link #isModelSupported(String)} accepts any {@code claude-} identifier,
+     * so a model released after this list was written can be used the day the
+     * CLI supports it. Keep it current for the sake of the operator reading
+     * {@code GET /api/agents}, but nothing breaks when it falls behind.
+     */
+    public static final List<String> KNOWN_MODEL_IDS = List.of(
+            "claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-fable-5-1",
+            "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6",
+            "claude-haiku-4-5-20251001");
+
+    /** Aliases and full identifiers this runner advertises, aliases first. */
+    public static final List<String> VALID_MODELS = Stream
+            .concat(MODEL_ALIASES.stream(), KNOWN_MODEL_IDS.stream())
+            .collect(Collectors.toUnmodifiableList());
+
+    /** Prefix shared by every Anthropic model identifier. */
+    private static final String MODEL_ID_PREFIX = "claude-";
+
+    /**
+     * Matches the context-window suffix an alias may carry, as in
+     * {@code opus[1m]} — a property of the session, not a different model.
+     */
+    private static final Pattern CONTEXT_VARIANT_SUFFIX = Pattern.compile("\\[[^\\[\\]]+\\]$");
 
     /** Path of the binary the runner will launch. Overridable for tests. */
     private final String binaryPath;
@@ -129,13 +167,31 @@ public class ClaudeCodeRunner implements AgentRunner {
     }
 
     /**
-     * Returns {@code true} when {@code model} is recognised by this runner.
+     * Returns {@code true} when the Claude Code CLI will accept {@code model}.
+     *
+     * <p>Accepted are: a tier alias from {@link #MODEL_ALIASES}, optionally
+     * carrying a context-window suffix ({@code opus[1m]}); and any full
+     * Anthropic model identifier, recognised by its {@code claude-} prefix
+     * rather than by membership in {@link #KNOWN_MODEL_IDS}. The prefix rule
+     * is deliberate. Anthropic ships models faster than this list is edited,
+     * and the CLI that actually runs them is upgraded separately — when the
+     * deployment's image pulls a newer Claude Code, every model that release
+     * supports becomes usable here the same day, without waiting on a code
+     * change to permit a string the CLI already understands. The check that
+     * matters — whether the model exists — belongs to the CLI, which reports
+     * an unknown one immediately on launch; what is worth catching here is a
+     * value from the wrong universe entirely ({@code gpt-4}, {@code opus5},
+     * an empty-looking typo), which this still rejects.</p>
      *
      * @param model identifier from {@link AgentRunRequest#getModel()}
-     * @return {@code true} when {@code model} is null, empty, or in {@link #VALID_MODELS}
+     * @return {@code true} when {@code model} is null, empty, an alias, or an
+     *         Anthropic model identifier
      */
+    @Override
     public boolean isModelSupported(String model) {
-        return model == null || model.isEmpty() || VALID_MODELS.contains(model);
+        if (model == null || model.isEmpty()) return true;
+        String base = CONTEXT_VARIANT_SUFFIX.matcher(model).replaceFirst("");
+        return MODEL_ALIASES.contains(base) || base.startsWith(MODEL_ID_PREFIX);
     }
 
     /**
@@ -215,7 +271,9 @@ public class ClaudeCodeRunner implements AgentRunner {
     public void validateRequest(AgentRunRequest request) {
         if (!isModelSupported(request.getModel())) {
             throw new IllegalArgumentException("Invalid model '" + request.getModel()
-                    + "'. Must be one of " + VALID_MODELS);
+                    + "'. Must be a tier alias " + MODEL_ALIASES
+                    + " (optionally with a context suffix, e.g. opus[1m]) or an Anthropic model"
+                    + " identifier such as " + KNOWN_MODEL_IDS.get(0));
         }
         if (!isEffortSupported(request.getEffort())) {
             throw new IllegalArgumentException("Invalid effort level '" + request.getEffort()

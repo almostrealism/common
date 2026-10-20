@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Producer;
@@ -73,8 +74,9 @@ import java.util.function.Function;
  *
  * <h2>Usage Example (Full Sequence)</h2>
  * <pre>{@code
- * // Precompute inverse frequencies
- * PackedCollection invFreq = computeInvFreq(dimHead, theta);
+ * // Precompute inverse frequencies once
+ * PackedCollection invFreq = new PackedCollection(shape(dimHead / 2));
+ * a(cp(invFreq.each()), computeInvFreq(dimHead, theta).each()).get().run();
  *
  * // Apply to full sequence
  * queries.add(applyRotaryPositionEmbedding(shape(batch, heads, seqLen, dimHead), invFreq));
@@ -185,6 +187,8 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * @param headDim per-head dimension
 	 * @param seqLen  maximum sequence length to precompute
 	 * @return frequency tensor of shape (seqLen, headDim/2, 2) with [cos, sin] pairs
+	 * @throws IllegalArgumentException for any {@code headDim} or {@code theta} that
+	 *                                  {@link #computeInvFreq(int, double)} rejects
 	 */
 	static CollectionProducer computeRopeFreqs(double theta, int headDim, int seqLen) {
 		// CRITICAL: This method MUST use CollectionProducer computations, NOT Java loops + setMem.
@@ -193,11 +197,8 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 		// and preventing kernel fusion. Every time this has been reverted to Java math it must be
 		// corrected. The CollectionProducer graph below is the ONLY acceptable implementation.
 		int freqDim = headDim / 2;
-		double logTheta = Math.log(theta);
 		RotationFeatures rf = new RotationFeatures() {};
-		// invFreq[f] = theta^(-2f/headDim) = exp(-logTheta * 2*f / headDim)
-		CollectionProducer invFreq = rf.exp(
-				rf.integers(0, freqDim).multiply(-2.0 * logTheta / headDim));
+		CollectionProducer invFreq = rf.computeInvFreq(headDim, theta);
 		// angles[pos, f] = pos * invFreq[f]  — outer product via matmul
 		CollectionProducer positions = rf.integers(0, seqLen).reshape(rf.shape(seqLen, 1));
 		CollectionProducer angles = rf.matmul(positions, invFreq.reshape(rf.shape(1, freqDim)));
@@ -205,6 +206,52 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 		CollectionProducer cosVals = rf.cos(angles).reshape(rf.shape(seqLen, freqDim, 1));
 		CollectionProducer sinVals = rf.sin(angles).reshape(rf.shape(seqLen, freqDim, 1));
 		return rf.concat(2, cosVals, sinVals);
+	}
+
+	/**
+	 * Computes the RoPE inverse frequencies for full rotary embedding of a head:
+	 * {@code invFreq[i] = theta^(-2i / dimHead)} for {@code i} in {@code [0, dimHead / 2)},
+	 * evaluated as {@code exp(-2i * ln(theta) / dimHead)}. Passed to
+	 * {@link #applyRotaryPositionEmbedding}, these rotate all {@code dimHead} dimensions of each
+	 * head (a shorter array rotates only a leading part of each head).
+	 *
+	 * @param dimHead per-head dimension
+	 * @param theta   RoPE base frequency (e.g., 10000 for Llama, 1000000 for Qwen3)
+	 * @return the inverse frequencies, shape {@code (dimHead / 2)}
+	 * @throws IllegalArgumentException if {@code dimHead} is not positive and even, so that the
+	 *                                  frequencies could not rotate the whole head, or if
+	 *                                  {@code theta} is not a finite positive number, for which
+	 *                                  the inverse frequencies would be {@code NaN}, or is so far
+	 *                                  below one that the largest inverse frequency,
+	 *                                  {@code theta^(-(dimHead - 2) / dimHead)}, would overflow
+	 *                                  single precision to infinity (and the rotation angles to
+	 *                                  {@code NaN}), or so far above one that the smallest inverse
+	 *                                  frequency, the same power, would fall below the smallest
+	 *                                  normal single-precision value (and be flushed to zero,
+	 *                                  leaving that part of the head unrotated)
+	 */
+	default CollectionProducer computeInvFreq(int dimHead, double theta) {
+		if (dimHead <= 0 || dimHead % 2 != 0) {
+			throw new IllegalArgumentException("Full rotary embedding needs a positive even head dimension, not " +
+					dimHead);
+		}
+
+		if (!(theta > 0) || Double.isInfinite(theta)) {
+			throw new IllegalArgumentException("RoPE base must be finite and positive, not " + theta);
+		}
+
+		double extremeExponent = -2.0 * (dimHead / 2 - 1) * Math.log(theta) / dimHead;
+		if (extremeExponent > Math.log(-Precision.FP32.minValue())) {
+			throw new IllegalArgumentException("RoPE base " + theta + " gives inverse frequencies up to e^" +
+					extremeExponent + ", which overflow single precision for head dimension " + dimHead);
+		}
+
+		if (extremeExponent < Math.log(Float.MIN_NORMAL)) {
+			throw new IllegalArgumentException("RoPE base " + theta + " gives inverse frequencies down to e^" +
+					extremeExponent + ", which underflow single precision for head dimension " + dimHead);
+		}
+
+		return exp(integers(0, dimHead / 2).multiply(-2.0 * Math.log(theta) / dimHead));
 	}
 
 	/**
