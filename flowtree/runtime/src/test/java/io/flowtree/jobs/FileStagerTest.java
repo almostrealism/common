@@ -682,20 +682,23 @@ public class FileStagerTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that FlowTree's {@code .flowtree/} scratch directory is excluded from staging both
-	 * at the repository root and inside any module, under the production
-	 * {@link GitJobConfig#DEFAULT_EXCLUDED_PATTERNS}.
+	 * Verifies that FlowTree's {@code .flowtree/} scratch directory is deliberately NOT excluded
+	 * by the production {@link GitJobConfig#DEFAULT_EXCLUDED_PATTERNS}, at the repository root or
+	 * inside any module.
 	 *
-	 * <p>Regression guard for the object-oriented design review: its verdict file
-	 * ({@code .flowtree/oop-review.md}) is scratch space a review session writes, and an agent
-	 * working from a module directory writes {@code <module>/.flowtree/oop-review.md} instead. The
-	 * {@code .flowtree/**} and {@code **}{@code /.flowtree/**} patterns must keep both out of the
-	 * commit so the review's bookkeeping never reaches the pull request.</p>
+	 * <p>The object-oriented design review writes its verdict file
+	 * ({@code .flowtree/oop-review.md}) as scratch, and an agent working from a module directory
+	 * writes {@code <module>/.flowtree/oop-review.md} instead. Keeping those out of the commit is
+	 * the job of the whitelist-aware guard {@link FlowtreeArtifacts#isExcludedFromCommit}, consulted
+	 * in {@link GitCommitHandler} <em>after</em> staging, not of a pattern here. If {@code .flowtree/}
+	 * were excluded at this layer, {@link FileStager} would strip the paths before the guard ran and
+	 * a path the whitelist promotes could never be committed — so the patterns must stay absent and
+	 * these paths must pass the staging filter.</p>
 	 *
 	 * @throws IOException if the temporary tree cannot be written
 	 */
 	@Test(timeout = 30000)
-	public void excludesFlowtreeScratchAtRootAndInModules() throws IOException {
+	public void doesNotExcludeFlowtreeScratchLeavingItToTheCommitGuard() throws IOException {
 		Path tempDir = Files.createTempDirectory("stager-test");
 		try {
 			Files.createDirectories(tempDir.resolve(".flowtree"));
@@ -716,17 +719,15 @@ public class FileStagerTest extends TestSuiteBase {
 				changed, config, tempDir.toFile(), (String... args) -> 0
 			);
 
-			assertTrue("No .flowtree/ scratch file should be staged; got "
-				+ result.getStagedFiles(),
-				result.getStagedFiles().isEmpty());
-			assertEquals("Both root and module-level .flowtree/ scratch files must be skipped; "
-				+ "got skipped=" + result.getSkippedFiles(),
-				changed.size(), result.getSkippedFiles().size());
+			assertEquals("FileStager must not exclude .flowtree/ scratch; the commit guard does. "
+				+ "Got staged=" + result.getStagedFiles(),
+				changed.size(), result.getStagedFiles().size());
+			assertTrue("No .flowtree/ scratch path may be skipped at the staging layer; got "
+				+ result.getSkippedFiles(),
+				result.getSkippedFiles().isEmpty());
 			for (String path : changed) {
-				boolean found = result.getSkippedFiles().stream()
-					.anyMatch(s -> s.startsWith(path));
-				assertTrue("Expected " + path + " to be skipped, got "
-					+ result.getSkippedFiles(), found);
+				assertTrue("Expected " + path + " to pass the staging filter, got "
+					+ result.getStagedFiles(), result.getStagedFiles().contains(path));
 			}
 		} finally {
 			deleteRecursively(tempDir);

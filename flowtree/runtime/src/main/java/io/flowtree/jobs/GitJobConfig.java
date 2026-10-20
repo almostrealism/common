@@ -91,11 +91,9 @@ public final class GitJobConfig {
         "settings.local.json",
 
         // FlowTree internal lock files (placed in <parent>/.flowtree-locks/ outside the workspace)
-        ".flowtree.lock", ".flowtree-locks/**",
-
-        // FlowTree per-session scratch, at the repository root or inside any module
-        // (e.g. the object-oriented design review's oop-review.md verdict file). Never committed.
-        ".flowtree/**", "**/.flowtree/**"
+        ".flowtree.lock", ".flowtree-locks/**"
+        // .flowtree/ scratch is intentionally absent: it is gated at commit time by the
+        // whitelist-aware FlowtreeArtifacts guard, which excluding it here would bypass.
     )));
 
     /**

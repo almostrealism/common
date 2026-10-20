@@ -68,6 +68,31 @@ public class FlowtreeArtifactsTest extends TestSuiteBase {
         assertFalse(FlowtreeArtifacts.isUnderDirectory("commit.txt"));
     }
 
+    /**
+     * A {@code .flowtree/} scratch directory nested inside a module is recognized and excluded
+     * just as the root-level one is, so that a review session run from a module subdirectory
+     * (which writes {@code <module>/.flowtree/oop-review.md}) cannot leak its bookkeeping into a
+     * commit. A source path under the {@code flowtree} module, which merely contains the word,
+     * is not treated as scratch.
+     */
+    @Test(timeout = 30000)
+    public void moduleLevelScratchIsRecognizedAndExcluded() {
+        assertTrue("a module-level .flowtree/ directory is under the scratch directory",
+                FlowtreeArtifacts.isUnderDirectory("engine/ml/.flowtree/oop-review.md"));
+        assertTrue("a deeply nested .flowtree/ directory is under the scratch directory",
+                FlowtreeArtifacts.isUnderDirectory("flowtree/runtime/.flowtree/notes.txt"));
+        assertFalse("an ordinary source path is not scratch",
+                FlowtreeArtifacts.isUnderDirectory("engine/ml/src/main/java/org/example/Window.java"));
+        assertFalse("a source file under the flowtree module is not scratch",
+                FlowtreeArtifacts.isUnderDirectory("flowtree/runtime/src/main/java/io/flowtree/jobs/Foo.java"));
+
+        Set<String> empty = FlowtreeArtifacts.COMMIT_WHITELIST;
+        assertTrue("module-level scratch is excluded under the empty whitelist",
+                FlowtreeArtifacts.isExcludedFromCommit("engine/ml/.flowtree/oop-review.md", empty));
+        assertFalse("a module source path is never gated",
+                FlowtreeArtifacts.isExcludedFromCommit("engine/ml/src/main/java/Window.java", empty));
+    }
+
     /** With the empty whitelist, every path under {@code .flowtree/} is excluded; nothing else is. */
     @Test(timeout = 30000)
     public void emptyWhitelistExcludesEverythingUnderDirectory() {
