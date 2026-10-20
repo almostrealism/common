@@ -392,9 +392,8 @@ changing `RUNNER_LABELS` — the service runs a staged copy of the env file.
 
 `Deploy Controller Stack` has a second job, `deploy-macos-agent`, that keeps a
 **native** FlowTree agent — a JVM under launchd, with Metal — on the same JARs
-as the Docker pool. It runs whenever the pool is rebuilt (`redeploy_agents`, or
-the `FLOWTREE_DEPLOY_AGENTS` variable) and asks for
-`[self-hosted, macos, ar-deploy-agent]`.
+as the Docker pool. It runs whenever the pool is rebuilt (the `redeploy_agents`
+dispatch input) and asks for `[self-hosted, macos, ar-deploy-agent]`.
 
 That is a **third label and a third runner**, and the reason is the account.
 The agent is a launchd service that runs as the `worker` service account, and
