@@ -650,8 +650,8 @@ public abstract class Expression<T> implements
 	 * of a composite node cannot change once computed, and they are memoized when
 	 * {@link ScopeSettings#enableBoundsMemoization} is {@code true}. Leaves are cheap to
 	 * answer and are not memoized; the limit of a {@link io.almostrealism.sequence.DefaultIndex}
-	 * must nevertheless be set before the index takes part in an expression whose bounds are
-	 * requested. Bounds for a specific {@link KernelStructureContext} depend on that context
+	 * is fixed at construction, so the memoized bounds of an expression over it cannot go
+	 * stale. Bounds for a specific {@link KernelStructureContext} depend on that context
 	 * and are always computed.</p>
 	 *
 	 * @param context the kernel structure context the bounds are requested for, or {@code null}
