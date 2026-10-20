@@ -130,9 +130,13 @@ public interface JobFactory {
      * {@code ENTRY_SEPARATOR} sequences that fall inside a value (a leading
      * {@code /} after the separator, or a {@code \}-escaped separator), matching
      * what {@link #encode()} emits. Returns {@code null} when {@code data} is
-     * {@code null} or carries no {@link #ENTRY_SEPARATOR}, and when the class
-     * cannot be found, instantiated, or cast to {@link JobFactory} (the latter
-     * logging the cause).</p>
+     * {@code null} or carries no {@link #ENTRY_SEPARATOR}, when the class
+     * cannot be found, instantiated, or cast to {@link JobFactory}, and when
+     * any entry fails to parse or apply (an entry without
+     * {@link #KEY_VALUE_SEPARATOR}, a dangling trailing separator, or a
+     * {@link #set(String, String)} that throws). A partially-configured factory
+     * is never returned: it would lack every entry after the failure point,
+     * and dispatching it would run a job missing part of its definition.</p>
      *
      * @param data the encoded factory string produced by {@link #encode()}
      * @return the reconstructed factory, or {@code null} on failure
@@ -143,12 +147,10 @@ public interface JobFactory {
         if (index < 0) return null;
         String className = data.substring(0, index);
 
-        Class<?> c = null;
-        JobFactory j = null;
+        JobFactory j;
 
         try {
-            c = Class.forName(className);
-            j = (JobFactory) c.newInstance();
+            j = (JobFactory) Class.forName(className).newInstance();
 
             boolean end = false;
 
@@ -180,11 +182,15 @@ public interface JobFactory {
             }
         } catch (ClassNotFoundException cnf) {
             Console.root().warn("JobFactory: class not found: " + className, cnf);
+            return null;
         } catch (ClassCastException cce) {
             Console.root().warn("JobFactory: " + className + " is not a JobFactory", cce);
+            return null;
         } catch (Exception e) {
-            // TODO(review): a mid-parse failure returns the partially-configured factory, not null as documented; recovery would re-dispatch it.
-            Console.root().warn("JobFactory: failed to decode factory", e);
+            // A factory missing the entries after the failure point (prompt,
+            // branch, ...) must never be dispatched, so discard it entirely.
+            Console.root().warn("JobFactory: failed to decode factory " + className, e);
+            return null;
         }
 
         return j;
