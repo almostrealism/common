@@ -150,8 +150,12 @@ status-string problem is real but secondary to the missing endpoint.
 
 **Fix.**
 - Add an all-workstreams in-flight endpoint to `FlowTreeApiEndpoint`, backed by
-  the store's existing `getActiveJobs(null)` and `getPendingJobs(null)` (already
-  used in-process by `StuckJobScanner`). Preferred shape: `GET /api/jobs/in-flight`
+  the store's existing `getActiveJobs(null)` and `getPendingJobs(null)`. Both
+  accept a `null` workstream id to mean "every workstream"; `getActiveJobs(null)`
+  is already exercised that way in-process by `StuckJobScanner`, while
+  `getPendingJobs` is so far only called per-workstream (by `StatsQueryHandler`),
+  so the `null` path is supported but new to this caller. Preferred shape:
+  `GET /api/jobs/in-flight`
   returning a small JSON object `{ "active": N, "pending": N, "total": N }` where
   `pending` counts `SUBMITTED` rows (assigned but not yet `STARTED`) and `active`
   counts `STARTED` rows. Returning the derived state alongside lets the drain log
