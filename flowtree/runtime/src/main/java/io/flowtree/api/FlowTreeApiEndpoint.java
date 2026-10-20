@@ -118,6 +118,8 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>GET</td><td>/api/agents</td><td>--</td><td>Enumerate available runners, phases, model names, and the built-in default runner</td></tr>
  *   <tr><td>GET</td><td>/api/stats</td><td>--</td><td>Weekly job statistics ({@code thisWeek}/{@code lastWeek}, computed in UTC) from the configured
  *       {@link io.flowtree.controller.JobStatsStore} — see {@link StatsQueryHandler}</td></tr>
+ *   <tr><td>GET</td><td>/api/stats/daily</td><td>--</td><td>Agent wall-clock time per day across every workstream, for
+ *       {@code from}..{@code to} in time zone {@code tz} — see {@link io.flowtree.controller.DailyAgentTime}</td></tr>
  *   <tr><td>POST</td><td>/api/alerts</td><td>{@code {"text":"...","recipients":["..."],"severity":"INFO"}}</td><td>Deliver free-form text to named
  *       recipients, subject to a per-caller rate limit — see {@link AlertRequestHandler}</td></tr>
  * </table>
@@ -1501,6 +1503,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     // TODO(review): javadoc here was compressed to dodge the file-length limit; see memory.
     /** Handles {@code GET /api/stats}. Delegates to {@link StatsQueryHandler}. */
     private Response handleStatsQuery(IHTTPSession session) {
+        if ("/api/stats/daily".equals(session.getUri())) {
+            return statsQueryHandler.handleDaily(session, this::errorResponse);
+        }
         return statsQueryHandler.handle(session, this::errorResponse);
     }
 

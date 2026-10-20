@@ -490,6 +490,31 @@ GET /api/stats?workstream={workstreamId}&period=weekly
 
 Returns aggregated job statistics for the current and previous week, optionally filtered by workstream. The `JobStatsStore` persists job timing data in an embedded database.
 
+### Daily Agent Time Endpoint
+
+```
+GET /api/stats/daily?from=2026-10-01&to=2026-10-20&tz=America/Los_Angeles
+```
+
+Returns agent wall-clock time per calendar day across every workstream, for `from` to `to` inclusive (at most 366 days), with days counted in the zone `tz` (default `UTC`):
+
+```json
+{
+  "tz": "America/Los_Angeles",
+  "days": [
+    {"date": "2026-10-01", "wallClockMs": 14400000, "runningMs": 0, "jobCount": 2, "costUsd": 1.5}
+  ]
+}
+```
+
+- Every day in the range is listed, with zeros where nothing ran.
+- A job's time is split at local midnight, so each day holds only the time spent on it. Jobs in parallel each count in full, so a day can hold more than 24 hours.
+- `wallClockMs` is finished jobs' time. `runningMs` is the time so far of jobs still running. A running job that has been silent longer than the unresponsive threshold stops accruing at its last heartbeat.
+- `jobCount` and `costUsd` belong to the day a job started, as in the weekly statistics. Jobs that were submitted but never started are not counted.
+- Bad dates, an unknown zone, or a reversed or oversized range return HTTP 400. A controller without a stats store answers `{"error":"Stats not configured"}`.
+
+See `DailyAgentTime` for the arithmetic.
+
 ---
 
 ## Quality Gate Evaluation
