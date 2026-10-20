@@ -19,6 +19,7 @@ package io.flowtree.api;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.controller.DailyAgentTime;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.slack.SlackNotifier;
 import org.almostrealism.util.TestSuiteBase;
@@ -126,6 +127,26 @@ public class DailyStatsEndpointTest extends TestSuiteBase {
         assertEquals(400, status("/api/stats/daily?from=2026-10-01&to=2026-10-02&tz=Mars/Olympus"));
         assertEquals(400, status("/api/stats/daily?from=2026-10-02&to=2026-10-01"));
         assertEquals(400, status("/api/stats/daily?from=2024-01-01&to=2026-10-01"));
+    }
+
+    /**
+     * The range limit is inclusive at {@link DailyAgentTime#MAX_DAYS}: a single day and
+     * exactly that many days are answered in full, one day more is a 400, and an empty
+     * {@code tz} falls back to UTC.
+     */
+    @Test(timeout = 30000)
+    public void rangeLimitBoundaries() throws Exception {
+        JsonNode single = get("/api/stats/daily?from=2026-10-02&to=2026-10-02&tz=");
+        assertEquals("UTC", single.get("tz").asText());
+        assertEquals(1, single.get("days").size());
+        assertEquals("2026-10-02", single.get("days").get(0).get("date").asText());
+
+        JsonNode full = get("/api/stats/daily?from=2025-10-02&to=2026-10-02").get("days");
+        assertEquals(DailyAgentTime.MAX_DAYS, full.size());
+        assertEquals("2025-10-02", full.get(0).get("date").asText());
+        assertEquals("2026-10-02", full.get(DailyAgentTime.MAX_DAYS - 1).get("date").asText());
+
+        assertEquals(400, status("/api/stats/daily?from=2025-10-01&to=2026-10-02"));
     }
 
     /** A job that finished before the range and a job that started after it are both left out. */
