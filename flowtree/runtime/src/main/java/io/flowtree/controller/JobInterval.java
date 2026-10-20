@@ -66,6 +66,7 @@ public record JobInterval(String jobId, String workstreamId, String status,
         if (completedAt != null) {
             end = completedAt;
         } else {
+            // TODO(review): builds a throwaway ActiveJob just to reuse isStale; share the rule.
             ActiveJob live = new ActiveJob(jobId, workstreamId, startedAt, heartbeatAt, null, null);
             end = live.isStale(silentThreshold, now)
                     ? (heartbeatAt != null ? heartbeatAt : startedAt)

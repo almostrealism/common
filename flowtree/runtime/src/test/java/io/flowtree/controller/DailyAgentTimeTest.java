@@ -125,6 +125,63 @@ public class DailyAgentTimeTest extends TestSuiteBase {
         assertEquals(25 * HOUR, day.wallClockMs());
     }
 
+    /** A completion recorded before the start yields an empty span rather than negative time. */
+    @Test(timeout = 10000)
+    public void aCompletionBeforeTheStartCountsNothing() {
+        JobInterval job = finished("skewed", "2026-10-10T18:00:00Z", "2026-10-10T17:00:00Z", 0.25);
+        assertEquals(job.startedAt(), job.end(Instant.parse("2026-10-11T00:00:00Z"), SILENT));
+        DailyAgentTime.Day day = DailyAgentTime.compute(List.of(job),
+                LocalDate.parse("2026-10-10"), LocalDate.parse("2026-10-10"), LA,
+                Instant.parse("2026-10-11T00:00:00Z"), SILENT).get(0);
+        assertEquals(0, day.wallClockMs());
+        assertEquals(1, day.jobCount());
+        assertEquals(0.25, day.costUsd(), 1e-9);
+    }
+
+    /** A running job that never sent a heartbeat and went silent stops at its start. */
+    @Test(timeout = 10000)
+    public void aSilentJobWithoutHeartbeatStopsAtItsStart() {
+        Instant start = Instant.parse("2026-10-10T18:00:00Z");
+        JobInterval job = new JobInterval("mute", "ws", "STARTED", start, null, null, 0);
+        assertEquals(start, job.end(Instant.parse("2026-10-10T23:00:00Z"), SILENT));
+    }
+
+    /** A non-positive silence threshold never stops a running job: it accrues up to now. */
+    @Test(timeout = 10000)
+    public void aNonPositiveThresholdNeverStopsARunningJob() {
+        Instant now = Instant.parse("2026-10-10T23:00:00Z");
+        JobInterval job = new JobInterval("old", "ws", "STARTED", Instant.parse("2026-10-10T18:00:00Z"),
+                null, Instant.parse("2026-10-10T19:00:00Z"), 0);
+        assertTrue(job.isRunning());
+        assertEquals(now, job.end(now, Duration.ZERO));
+        assertEquals(now, job.end(now, Duration.ofMinutes(-1)));
+    }
+
+    /** A job with no recorded start is skipped entirely. */
+    @Test(timeout = 10000)
+    public void aJobWithoutAStartIsSkipped() {
+        JobInterval job = new JobInterval("x", "ws", "SUCCESS", null, Instant.parse("2026-10-10T19:00:00Z"), null, 3.0);
+        DailyAgentTime.Day day = DailyAgentTime.compute(List.of(job),
+                LocalDate.parse("2026-10-10"), LocalDate.parse("2026-10-10"), LA,
+                Instant.parse("2026-10-11T00:00:00Z"), SILENT).get(0);
+        assertEquals(0, day.jobCount());
+        assertEquals(0.0, day.costUsd(), 1e-9);
+        assertEquals(0, day.wallClockMs());
+    }
+
+    /** The JSON carries the zone and one object per day with every field. */
+    @Test(timeout = 10000)
+    public void rendersJson() {
+        List<DailyAgentTime.Day> days = List.of(
+                new DailyAgentTime.Day(LocalDate.parse("2026-10-01"), 5, 7, 2, 1.5),
+                new DailyAgentTime.Day(LocalDate.parse("2026-10-02"), 0, 0, 0, 0.0));
+        assertEquals("{\"tz\":\"America/Los_Angeles\",\"days\":["
+                + "{\"date\":\"2026-10-01\",\"wallClockMs\":5,\"runningMs\":7,\"jobCount\":2,\"costUsd\":1.5},"
+                + "{\"date\":\"2026-10-02\",\"wallClockMs\":0,\"runningMs\":0,\"jobCount\":0,\"costUsd\":0.0}]}",
+                DailyAgentTime.toJson(LA, days));
+        assertEquals("{\"tz\":\"UTC\",\"days\":[]}", DailyAgentTime.toJson(ZoneId.of("UTC"), List.of()));
+    }
+
     /** Every day in the range is present, with zeros where nothing ran. */
     @Test(timeout = 10000)
     public void emptyDaysArePresent() {

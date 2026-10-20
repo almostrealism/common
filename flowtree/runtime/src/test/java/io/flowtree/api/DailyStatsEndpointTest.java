@@ -32,6 +32,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.Files;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -124,6 +126,59 @@ public class DailyStatsEndpointTest extends TestSuiteBase {
         assertEquals(400, status("/api/stats/daily?from=2026-10-01&to=2026-10-02&tz=Mars/Olympus"));
         assertEquals(400, status("/api/stats/daily?from=2026-10-02&to=2026-10-01"));
         assertEquals(400, status("/api/stats/daily?from=2024-01-01&to=2026-10-01"));
+    }
+
+    /** A job that finished before the range and a job that started after it are both left out. */
+    @Test(timeout = 30000)
+    public void jobsOutsideTheRangeAreExcluded() throws Exception {
+        finishedJob("before", "ws-1", "2026-09-30T10:00:00Z", "2026-09-30T12:00:00Z", 1.0);
+        finishedJob("after", "ws-1", "2026-10-03T10:00:00Z", "2026-10-03T12:00:00Z", 1.0);
+        finishedJob("inside", "ws-1", "2026-10-01T10:00:00Z", "2026-10-01T11:00:00Z", 0.25);
+
+        JsonNode days = get("/api/stats/daily?from=2026-10-01&to=2026-10-02").get("days");
+        assertEquals(HOUR, days.get(0).get("wallClockMs").asLong());
+        assertEquals(1, days.get(0).get("jobCount").asInt());
+        assertEquals(0.25, days.get(0).get("costUsd").asDouble(), 1e-9);
+        assertEquals(0, days.get(1).get("wallClockMs").asLong());
+        assertEquals(0, days.get(1).get("jobCount").asInt());
+    }
+
+    /** A job still running is read from the store and reported as running time up to now. */
+    @Test(timeout = 30000)
+    public void aRunningJobIsReportedAsRunningTime() throws Exception {
+        Instant now = Instant.now();
+        store.recordJobStarted("live", "ws-1", "live", now.minusMillis(HOUR));
+        store.recordHeartbeat("live", now);
+
+        LocalDate today = now.atZone(ZoneOffset.UTC).toLocalDate();
+        JsonNode days = get("/api/stats/daily?from=" + today.minusDays(1) + "&to=" + today).get("days");
+        long running = days.get(0).get("runningMs").asLong() + days.get(1).get("runningMs").asLong();
+        assertTrue("runningMs=" + running, running >= HOUR && running < HOUR + 60_000L);
+        assertEquals(0, days.get(0).get("wallClockMs").asLong() + days.get(1).get("wallClockMs").asLong());
+    }
+
+    /** Without a stats store the route answers with a JSON error object, as {@code /api/stats} does. */
+    @Test(timeout = 30000)
+    public void answersWithAnErrorWhenStatsAreNotConfigured() throws Exception {
+        FlowTreeApiEndpoint bare = new FlowTreeApiEndpoint(0, new SlackNotifier(null));
+        bare.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL("http://localhost:"
+                    + bare.getListeningPort() + "/api/stats/daily?from=2026-10-01&to=2026-10-02").openConnection();
+            assertEquals(200, conn.getResponseCode());
+            try (InputStream in = conn.getInputStream()) {
+                assertEquals("Stats not configured", MAPPER.readTree(in).get("error").asText());
+            }
+        } finally {
+            bare.stop();
+        }
+    }
+
+    /** A missing date parameter is a 400. */
+    @Test(timeout = 30000)
+    public void rejectsMissingDates() throws Exception {
+        assertEquals(400, status("/api/stats/daily?to=2026-10-02"));
+        assertEquals(400, status("/api/stats/daily?from=2026-10-02"));
     }
 
     /** The weekly route still answers with the weekly shape. */
