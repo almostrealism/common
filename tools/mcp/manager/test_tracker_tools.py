@@ -44,9 +44,10 @@ class TestTrackerTools(unittest.TestCase):
     @patch.object(server, "_tracker_post")
     def test_tracker_create_project(self, mock_post):
         mock_post.return_value = {"ok": True, "project": {"id": "p1", "name": "Renderer"}}
-        result = server.tracker_create_project("Renderer")
+        result = server.tracker_create_project("Renderer", "W1")
         self.assertTrue(result["ok"])
-        mock_post.assert_called_once_with("/v1/projects", {"name": "Renderer"})
+        mock_post.assert_called_once_with("/v1/projects",
+                                          {"name": "Renderer", "workspace_id": "W1"})
 
     @patch.object(server, "_tracker_put")
     def test_tracker_update_project(self, mock_put):
@@ -349,7 +350,7 @@ class TestTrackerTools(unittest.TestCase):
     def test_tracker_tools_require_write_scope(self):
         _grant_scopes("read")
         with self.assertRaises(PermissionError):
-            server.tracker_create_project("P")
+            server.tracker_create_project("P", "W1")
         with self.assertRaises(PermissionError):
             server.tracker_update_project("p1", "New")
         with self.assertRaises(PermissionError):
@@ -441,3 +442,66 @@ class TestTrackerScopedFiltering(unittest.TestCase):
         }
         with self.assertRaises(PermissionError):
             server.tracker_get_task("t1")
+
+
+class TestProjectWorkspaceOwnership(unittest.TestCase):
+    """Every project is owned by a workspace: created with one, never left
+    without one. A person may assign a project from before workspaces existed
+    to one of their own workspaces."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def tearDown(self):
+        _clear_workspaces()
+
+    @patch.object(server, "_tracker_post")
+    def test_a_project_is_not_created_without_a_workspace(self, mock_post):
+        for workspace in ("", "   "):
+            with self.subTest(workspace=workspace):
+                result = server.tracker_create_project("P", workspace)
+                self.assertFalse(result["ok"])
+                self.assertIn("workspace_id is required", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_post")
+    def test_a_limited_person_creates_only_in_their_own_workspace(self, mock_post):
+        _set_workspaces("W1")
+        with self.assertRaises(PermissionError):
+            server.tracker_create_project("P", "W2")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_put")
+    def test_a_workspace_is_never_cleared(self, mock_put):
+        result = server.tracker_update_project("p1", workspace_id="null")
+        self.assertFalse(result["ok"])
+        mock_put.assert_not_called()
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    def test_a_limited_person_adopts_an_unowned_project(self, mock_get, mock_put):
+        _set_workspaces("W1")
+        mock_get.return_value = {"ok": True, "project": {"id": "p1", "workspace_id": None}}
+        mock_put.return_value = {"ok": True, "project": {"id": "p1", "workspace_id": "W1"}}
+        self.assertTrue(server.tracker_update_project("p1", workspace_id="W1")["ok"])
+        mock_put.assert_called_once_with("/v1/projects/p1", {"workspace_id": "W1"})
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    def test_an_unowned_project_is_otherwise_out_of_scope(self, mock_get, mock_put):
+        _set_workspaces("W1")
+        mock_get.return_value = {"ok": True, "project": {"id": "p1", "workspace_id": None}}
+        with self.assertRaises(PermissionError):
+            server.tracker_update_project("p1", name="Renamed")
+        with self.assertRaises(PermissionError):
+            server.tracker_update_project("p1", workspace_id="W2")
+        mock_put.assert_not_called()
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    def test_another_workspaces_project_cannot_be_taken(self, mock_get, mock_put):
+        _set_workspaces("W1")
+        mock_get.return_value = {"ok": True, "project": {"id": "p1", "workspace_id": "W2"}}
+        with self.assertRaises(PermissionError):
+            server.tracker_update_project("p1", workspace_id="W1")
+        mock_put.assert_not_called()

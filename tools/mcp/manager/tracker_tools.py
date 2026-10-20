@@ -155,10 +155,14 @@ def _require_release_in_scope(release_id: str) -> Optional[dict]:
 
 def _require_assignable_workspace(workspace_id: str) -> None:
     """Raise :class:`PermissionError` unless a limited caller is assigning a
-    project to one of its own workspaces. An unlimited caller may assign any,
-    and no value (or "null") assigns none."""
-    if workspace_id and workspace_id != "null":
-        server._require_workspace(workspace_id)
+    project to one of its own workspaces. An unlimited caller may assign any."""
+    server._require_workspace(workspace_id)
+
+
+# Every project is owned by a workspace; a project can move to another, but
+# is never created without one or left without one.
+_WORKSPACE_REQUIRED = {"ok": False,
+                       "error": "workspace_id is required: every project is owned by a workspace"}
 
 
 def _id_list(value: str) -> list:
@@ -197,27 +201,26 @@ def tracker_list_projects() -> dict:
 
 
 @mcp.tool()
-def tracker_create_project(name: str, workspace_id: str = "") -> dict:
+def tracker_create_project(name: str, workspace_id: str) -> dict:
     """Create a new tracker project.
 
     Args:
         name: Human-readable project name (e.g., "Renderer").
-        workspace_id: Workspace that owns the project. Its agents see and work
-            on the project's releases and tasks; agents of any other workspace
-            never see them. Omit to leave the project owned by no workspace,
-            which only callers not limited to a workspace can see.
+        workspace_id: Workspace that owns the project (required). Its agents
+            see and work on the project's releases and tasks; agents of any
+            other workspace never see them.
 
     Returns:
         dict with ok=True and the created project record.
     """
     server._require_scope("write")
     _require_person("tracker_create_project")
+    workspace_id = workspace_id.strip()
+    if not workspace_id:
+        return dict(_WORKSPACE_REQUIRED)
     _require_assignable_workspace(workspace_id)
     server._audit("tracker_create_project", name=name, workspace_id=workspace_id)
-    payload: dict = {"name": name}
-    if workspace_id:
-        payload["workspace_id"] = workspace_id
-    return server._tracker_post("/v1/projects", payload)
+    return server._tracker_post("/v1/projects", {"name": name, "workspace_id": workspace_id})
 
 
 @mcp.tool()
@@ -230,28 +233,59 @@ def tracker_update_project(project_id: str, name: str = "", workspace_id: str = 
         project_id: UUID of the project to update.
         name: New name for the project. Omit to leave unchanged.
         workspace_id: Workspace that owns the project from now on, which moves
-            all its releases and tasks with it. Omit to leave unchanged; pass
-            "null" to leave the project owned by no workspace.
+            all its releases and tasks with it. Omit to leave unchanged. A
+            project's workspace can be changed but never cleared. A project
+            created before workspaces existed is owned by none, and a person
+            may assign it to one of their own workspaces.
 
     Returns:
         dict with ok=True and the updated project record.
     """
     server._require_scope("write")
     _require_person("tracker_update_project")
-    error = _require_project_in_scope(project_id)
-    if error:
-        return error
-    _require_assignable_workspace(workspace_id)
+    workspace_id = workspace_id.strip()
+    if workspace_id == "null":
+        return dict(_WORKSPACE_REQUIRED)
+    if workspace_id:
+        _require_assignable_workspace(workspace_id)
+    if server._get_workspace_scopes():
+        _, error = _fetch_project_for_update(project_id, adopting=bool(workspace_id))
+        if error:
+            return error
     server._audit("tracker_update_project", project_id=project_id,
                   workspace_id=workspace_id)
     payload: dict = {}
     if name:
         payload["name"] = name
-    if workspace_id == "null":
-        payload["workspace_id"] = None
-    elif workspace_id:
+    if workspace_id:
         payload["workspace_id"] = workspace_id
     return server._tracker_put(f"/v1/projects/{project_id}", payload)
+
+
+def _fetch_project_for_update(project_id: str, adopting: bool) -> tuple:
+    """Fetch a project a limited caller is updating, and check they may.
+
+    A project in one of the caller's workspaces may be updated. A project no
+    workspace owns — one created before workspaces existed — may be updated
+    only to assign it to one of the caller's workspaces, which is how those
+    projects are cleaned up; the caller has already been checked to own the
+    workspace being assigned.
+
+    Returns:
+        A ``(project, None)`` tuple, or ``(None, error_response)``.
+
+    Raises:
+        PermissionError: the project belongs to another workspace, or is
+            unowned and not being assigned.
+    """
+    result = server._tracker_get(f"/v1/projects/{project_id}")
+    if not result.get("ok"):
+        return None, result
+    project = result.get("project") or {}
+    if not project.get("workspace_id") and adopting:
+        return project, None
+    server._require_tracker_record_in_scope(project, "project")
+    return project, None
 
 
 @mcp.tool()

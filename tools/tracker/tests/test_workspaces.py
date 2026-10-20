@@ -169,10 +169,22 @@ class WorkspaceApiTests(_WorkspaceTestBase):
         self.assertEqual(("Orphan", "W-OURS"),
                          (resp.json()["project"]["name"], resp.json()["project"]["workspace_id"]))
 
-    def test_update_project_clears_a_workspace_with_null(self):
-        resp = self.client.put(f"/v1/projects/{self.ours['id']}", json={"workspace_id": None})
-        self.assertEqual(200, resp.status_code, resp.text)
-        self.assertIsNone(self.store.get_project(self.ours["id"])["workspace_id"])
+    def test_a_project_cannot_be_created_without_a_workspace(self):
+        for body in ({"name": "New"}, {"name": "New", "workspace_id": None},
+                     {"name": "New", "workspace_id": "  "}):
+            with self.subTest(body=body):
+                resp = self.client.post("/v1/projects", json=body)
+                self.assertEqual(400, resp.status_code, resp.text)
+                self.assertIn("workspace_id is required", resp.json()["error"])
+        self.assertEqual(3, len(self.store.list_projects()))
+
+    def test_a_workspace_can_be_changed_but_never_cleared(self):
+        for value in (None, "", "  "):
+            with self.subTest(value=value):
+                resp = self.client.put(f"/v1/projects/{self.ours['id']}",
+                                       json={"workspace_id": value})
+                self.assertEqual(400, resp.status_code, resp.text)
+        self.assertEqual("W-OURS", self.store.get_project(self.ours["id"])["workspace_id"])
 
     def test_a_non_string_workspace_is_refused(self):
         for method, path in (("post", "/v1/projects"),
@@ -181,7 +193,7 @@ class WorkspaceApiTests(_WorkspaceTestBase):
                 resp = getattr(self.client, method)(
                     path, json={"name": "X", "workspace_id": ["W-OURS"]})
                 self.assertEqual(400, resp.status_code, resp.text)
-                self.assertEqual("workspace_id must be a string or null", resp.json()["error"])
+                self.assertIn("workspace_id is required", resp.json()["error"])
         self.assertEqual("W-OURS", self.store.get_project(self.ours["id"])["workspace_id"])
 
     def test_bulk_import_keeps_an_owner_the_record_does_not_name(self):
@@ -191,6 +203,20 @@ class WorkspaceApiTests(_WorkspaceTestBase):
         self.assertEqual(200, resp.status_code, resp.text)
         self.assertEqual("W-OURS", self.store.get_project(self.ours["id"])["workspace_id"])
         self.assertEqual("W-THEIRS", self.store.get_project("p-new")["workspace_id"])
+
+    def test_bulk_import_refuses_a_new_project_without_a_workspace(self):
+        for project in ({"id": "p-new", "name": "Imported"},
+                        {"id": "p-new", "name": "Imported", "workspace_id": None}):
+            with self.subTest(project=project):
+                resp = self.client.post("/v1/import", json={"projects": [project]})
+                self.assertEqual(400, resp.status_code, resp.text)
+        self.assertIsNone(self.store.get_project("p-new"))
+
+    def test_bulk_import_cannot_clear_an_existing_owner(self):
+        resp = self.client.post("/v1/import", json={"projects": [
+            {"id": self.ours["id"], "name": "Framework", "workspace_id": ""}]})
+        self.assertEqual(400, resp.status_code, resp.text)
+        self.assertEqual("W-OURS", self.store.get_project(self.ours["id"])["workspace_id"])
 
 
 class WorkspaceMigrationTests(unittest.TestCase):
