@@ -547,7 +547,12 @@ class ConsultTurn:
     def _post_process(self, text: str, result: dict, keyword_guidance) -> list:
         """Turn the model's output into the answer fields. Returns the cited
         evidence items."""
-        body, stated, conflict_lines, trailer_present = parse_trailer(text)
+        # The stated basis is parsed only so the line leaves the answer. The
+        # computed basis is authoritative, and the model cannot predict it:
+        # it rests on note tiers and on which sentences the verifier keeps,
+        # so a disagreement is the expected case, not a format fault worth
+        # reporting to the caller.
+        body, _, conflict_lines, trailer_present = parse_trailer(text)
         warnings = []
         if not trailer_present:
             warnings.append("trailer missing")
@@ -559,8 +564,6 @@ class ConsultTurn:
         found_value_conflicts, contradicted = value_conflicts(self.evidence)
         report = verify(body, self.evidence, contradicted)
         basis = compute_basis(report.supporting_ids(), self.evidence)
-        if stated is not None and stated != basis:
-            warnings.append("basis mismatch")
 
         # Sentences resting only on historical or stale notes are history,
         # whatever their tense: those notes never supply present fact.

@@ -58,7 +58,19 @@ _UPPER_CAMEL = re.compile(r"(?<![\w.])[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+\b")
 _BACKTICK = re.compile(r"`([A-Za-z_][\w.$/\-]*)`")
 _PATHISH = re.compile(
     r"(?<![\w/:.@~-])((?:\.?[\w\-]+/)+[\w.\-]*|[\w\-]+\.(?:java|sh|py|md|ya?ml))"
-    r"(?::\d+)?\b")
+    r"(?::\d+)?(?:\b|(?<=[/\-]))")
+# A token carrying a placeholder or a glob — ``build-<x>-prompt.sh``,
+# ``{module}/pom.xml``, ``docs/**/*.md``, ``project/doc-*``. It names a family
+# of files, not a file, so it is dropped whole: cut at the placeholder it
+# leaves fragments (``tools/ci/prompts/build-``, ``-prompt.sh``) that name
+# nothing and would be judged absent. A ``*`` counts as a glob only beside a
+# path character, so markdown emphasis (``**ClaudeCodeJob**``) is kept.
+_TEMPLATE_TOKEN = re.compile(
+    r"[^\s`'\"()\[\],;]*"
+    r"(?:<[^<>\s]+>|\{[^{}\s]*\}|(?<=[/\-])\*|\*(?=[/\-]|\.\w))"
+    r"[^\s`'\"()\[\],;]*")
+# Characters that make a mention a pattern rather than a name.
+_TEMPLATE_CHARS = re.compile(r"[<>{}*]")
 
 
 @dataclass(frozen=True)
@@ -116,7 +128,8 @@ def extract_mentions(text: str) -> list[str]:
     Everything else is *unchecked* — never treated as absent — which keeps
     false stale flags low at the cost of missing some stale notes. Absolute
     paths, URLs and home-relative paths are skipped: they name things outside
-    the snapshot by construction.
+    the snapshot by construction. So are placeholder and glob tokens
+    (``build-<x>-prompt.sh``, ``docs/*.md``): they name a pattern, not a file.
     """
     found: list[str] = []
 
@@ -126,6 +139,7 @@ def extract_mentions(text: str) -> list[str]:
             found.append(token)
 
     cleaned = re.sub(r"https?://\S+|(?<![\w.])[~/][\w./\-]*", " ", text)
+    cleaned = _TEMPLATE_TOKEN.sub(" ", cleaned)
     for match in _BACKTICK.finditer(cleaned):
         _add(match.group(1))
     for match in _PATHISH.finditer(cleaned):
@@ -145,13 +159,24 @@ def classify_mentions(mentions: list[str], index) -> dict:
     the snapshot has yet names no file there; one the snapshot cannot speak to
     (another repository's path, a runtime output under a dot-directory the
     tree lacks) is left unchecked so a correct note is never tiered stale.
-    Without an index every mention is unchecked.
+    A pattern or a prefix — a mention carrying a placeholder or glob, or one
+    ending in ``/`` or ``-`` (``.github/actions/``, a lock pattern; a branch
+    or file-name prefix) — is present when something in the snapshot matches
+    it and otherwise unchecked: a prefix with nothing under it says nothing
+    about whether a note is stale. Without an index every mention is
+    unchecked.
     """
     present: list[str] = []
     absent: list[str] = []
     if index is None:
         return {"present": present, "absent": absent}
     for mention in mentions:
+        if _TEMPLATE_CHARS.search(mention):
+            continue
+        if mention.endswith(("/", "-")):
+            if index.has_path(mention):
+                present.append(mention)
+            continue
         if "/" in mention:
             # A slash-bearing mention is a path only when the tree can speak
             # to it. It is present when the snapshot contains it (including as

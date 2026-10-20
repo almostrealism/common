@@ -266,8 +266,12 @@ checks each sentence against what it cites — every identifier and path must
 appear in a cited item, every number and literal verbatim, a present-tense
 claim may not rest only on historical notes, and a branch-local claim must name
 its branch. An uncited specific found in no evidence item at all is flagged
-too. Failing sentences are marked `[unsupported]` in the answer and listed in
-`citation_warnings`. A question naming a file the snapshot does not contain is
+too. A sentence making a polarity or exclusivity claim ("only", "never",
+"does not", "always", "one X per Y") must be echoed by a cited passage that
+makes a claim of the same kind about the same things; one that is not — the
+shape of a confident "it does not do X, only Y" that no evidence says — is
+flagged `polarity`. Failing sentences are marked `[unsupported]` in the answer
+and listed in `citation_warnings`. A question naming a file the snapshot does not contain is
 answered directly with `nonexistent: true`.
 
 The snapshot index is built in the Dockerfile's `docs` stage before the prune
@@ -275,11 +279,15 @@ The snapshot index is built in the Dockerfile's `docs` stage before the prune
 passed as the `CORPUS_COMMIT` build argument (`rebuild.sh` exports it; a build
 that omits it records `unknown`). `consult` returns it as `corpus`.
 
-Callers holding a job token can continue a consult with `conversation_id`: a
-follow-up keeps the evidence IDs of earlier turns and sees their questions and
-condensed answers. Conversations are in-process, bound to the job that started
-them and to the first turn's repository, expire after 30 idle minutes or four
-hours, and allow 12 turns. Static tokens are always stateless.
+Every consult returns a `conversation_id`, and passing it back continues the
+consult: a follow-up keeps the evidence IDs of earlier turns and sees their
+questions and condensed answers. A conversation is bound to the token identity
+that started it — a job token's workstream and job, a static token's label —
+and to the first turn's repository. Its id is long and random, and holding it is
+the capability to continue it, so several clients sharing one static token keep
+separate conversations; an id presented by another identity is refused exactly
+like an unknown one. Conversations are in-process, expire after 30 idle minutes
+or four hours, allow 12 turns, and persist nothing.
 
 `eval/run_consult_eval.py` measures all of this against a version-controlled
 case set (`eval/consult_cases.json`): `replay` grades frozen deployed
