@@ -113,4 +113,70 @@ public class ProbabilityDistributionTest extends TestSuiteBase {
 		Assert.assertEquals("All three disjoint ranges must be inserted",
 				3, d.getNodeCount());
 	}
+
+	/**
+	 * An overlap detectable only in the <em>left</em> subtree must be rejected.
+	 * The tree built below has root {@code [5, 6]} with a left child {@code [0, 1]};
+	 * the added range {@code [-1, 0.5]} does not overlap the root, so detection
+	 * depends on the recursion descending into {@code left}.
+	 */
+	@Test(timeout = 5000)
+	public void overlapInLeftSubtreeIsRejected() {
+		ProbabilityDistribution d = new ProbabilityDistribution();
+		d.addRange(5.0, 6.0, 0.5);
+		d.addRange(0.0, 1.0, 0.5);
+
+		try {
+			d.addRange(-1.0, 0.5, 0.5);
+			Assert.fail("A range overlapping only a node in the left subtree must throw");
+		} catch (IllegalArgumentException expected) {
+			// expected — [-1, 0.5] overlaps the left child [0, 1]
+		}
+
+		Assert.assertEquals(2, d.getNodeCount());
+	}
+
+	/**
+	 * An overlap detectable only in the <em>right</em> subtree must be rejected.
+	 * The tree built below has root {@code [5, 6]} with a right child {@code [10, 11]};
+	 * the added range {@code [10.5, 12]} does not overlap the root, so detection
+	 * depends on the recursion descending into {@code right}.
+	 */
+	@Test(timeout = 5000)
+	public void overlapInRightSubtreeIsRejected() {
+		ProbabilityDistribution d = new ProbabilityDistribution();
+		d.addRange(5.0, 6.0, 0.5);
+		d.addRange(10.0, 11.0, 0.5);
+
+		try {
+			d.addRange(10.5, 12.0, 0.5);
+			Assert.fail("A range overlapping only a node in the right subtree must throw");
+		} catch (IllegalArgumentException expected) {
+			// expected — [10.5, 12] overlaps the right child [10, 11]
+		}
+
+		Assert.assertEquals(2, d.getNodeCount());
+	}
+
+	/**
+	 * Ranges that meet at a single shared endpoint are treated as overlapping,
+	 * because the intervals are closed: {@code [0, 3]} and {@code [3, 5]} share the
+	 * point {@code 3}. The second {@code addRange} must therefore throw. This
+	 * documents the boundary behavior of the closed-interval overlap test.
+	 */
+	@Test(timeout = 5000)
+	public void sharedEndpointIsRejectedAsOverlap() {
+		ProbabilityDistribution d = new ProbabilityDistribution();
+		d.addRange(0.0, 3.0, 0.5);
+
+		try {
+			d.addRange(3.0, 5.0, 0.5);
+			Assert.fail("Ranges sharing an endpoint overlap under the closed-interval "
+					+ "test and must throw");
+		} catch (IllegalArgumentException expected) {
+			// expected — [0, 3] and [3, 5] share the endpoint 3
+		}
+
+		Assert.assertEquals(1, d.getNodeCount());
+	}
 }
