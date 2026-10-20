@@ -26,6 +26,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -72,6 +74,15 @@ public class PendingJobRecovery implements ConsoleFeatures {
 
     /** Active JDBC connection to the backing HSQLDB database; {@code null} until initialized. */
     private Connection connection;
+
+    /**
+     * Job ids this instance has already dispatched: those {@link #persist
+     * persisted} through it (accepted and dispatched by the running controller,
+     * not a previous process — the endpoint begins accepting submissions before
+     * startup recovery runs) and those {@link #recover} has already handed out.
+     * {@link #recover} never dispatches one of these again.
+     */
+    private final Set<String> dispatchedThisProcess = new HashSet<>();
 
     /**
      * Creates a recovery store backed by an HSQLDB file database.
@@ -137,6 +148,7 @@ public class PendingJobRecovery implements ConsoleFeatures {
             ps.setString(1, jobId);
             ps.setString(2, encodedFactory);
             ps.executeUpdate();
+            dispatchedThisProcess.add(jobId);
         } catch (SQLException e) {
             warn("Failed to persist recoverable factory for job " + jobId + ": " + e.getMessage());
         }
@@ -169,8 +181,13 @@ public class PendingJobRecovery implements ConsoleFeatures {
      * caller passes the set of job ids the stats store reports as
      * {@code SUBMITTED}, so a job that already started (and is therefore
      * {@code STARTED}, not {@code SUBMITTED}) or completed is never re-run even
-     * though its blob may linger until {@link #clear} removes it. A blob that
-     * fails to decode is skipped and logged rather than aborting the sweep.</p>
+     * though its blob may linger until {@link #clear} removes it. A job
+     * {@link #persist persisted} through this instance is skipped too: it was
+     * accepted and dispatched by the running controller (a submission that
+     * landed between the endpoint starting and this sweep), so re-dispatching
+     * it would run it twice. For the same reason a job an earlier call already
+     * recovered is not recovered again. A blob that fails to decode is skipped
+     * and logged rather than aborting the sweep.</p>
      *
      * @param stillPending the job ids the stats store still reports as
      *                     {@code SUBMITTED}; a blob whose id is absent is skipped
@@ -188,12 +205,14 @@ public class PendingJobRecovery implements ConsoleFeatures {
             while (rs.next()) {
                 String jobId = rs.getString("job_id");
                 if (!stillPending.contains(jobId)) continue;
+                if (dispatchedThisProcess.contains(jobId)) continue;
                 JobFactory factory = JobFactory.decode(rs.getString("factory_blob"));
                 if (factory == null) {
                     warn("Could not decode persisted factory for job " + jobId + "; skipping");
                     continue;
                 }
                 dispatch.accept(factory);
+                dispatchedThisProcess.add(jobId);
                 recovered++;
             }
         } catch (SQLException e) {

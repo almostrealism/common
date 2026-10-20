@@ -74,7 +74,8 @@ public class PendingJobRecoveryTest extends TestSuiteBase {
         File dir = Files.createTempDirectory("recovery").toFile();
         dir.deleteOnExit();
         JobStatsStore stats = newStatsStore(dir);
-        PendingJobRecovery recovery = newRecovery(dir);
+        PendingJobRecovery previous = newRecovery(dir);
+        PendingJobRecovery recovery = null;
         try {
             Instant now = Instant.parse("2026-08-22T12:00:00Z");
 
@@ -82,13 +83,17 @@ public class PendingJobRecoveryTest extends TestSuiteBase {
             submitted.setTargetBranch("feature/submitted");
             String submittedId = submitted.getTaskId();
             stats.recordJobSubmitted(submittedId, "ws-1", "submitted work", null, null, now);
-            recovery.persist(submittedId, submitted.encode());
+            previous.persist(submittedId, submitted.encode());
 
             CodingAgentJob.Factory started = new CodingAgentJob.Factory("started work");
             String startedId = started.getTaskId();
             stats.recordJobSubmitted(startedId, "ws-1", "started work", null, null, now);
             stats.recordJobStarted(startedId, "ws-1", "started work", "node-a", now.plusSeconds(60));
-            recovery.persist(startedId, started.encode());
+            previous.persist(startedId, started.encode());
+
+            // The restarted controller opens a fresh store over the same file.
+            previous.close();
+            recovery = newRecovery(dir);
 
             List<JobFactory> dispatched = new ArrayList<>();
             int count = recovery.recover(pendingIds(stats), dispatched::add);
@@ -102,8 +107,13 @@ public class PendingJobRecoveryTest extends TestSuiteBase {
             Assert.assertEquals("the recovered factory's branch survives",
                     "feature/submitted",
                     ((CodingAgentJob.Factory) dispatched.get(0)).getTargetBranch());
+
+            int again = recovery.recover(pendingIds(stats), dispatched::add);
+            Assert.assertEquals("a second sweep in the same process re-dispatches nothing", 0, again);
+            Assert.assertEquals(1, dispatched.size());
         } finally {
-            recovery.close();
+            previous.close();
+            if (recovery != null) recovery.close();
             stats.close();
         }
     }
@@ -132,6 +142,47 @@ public class PendingJobRecoveryTest extends TestSuiteBase {
             Assert.assertTrue(dispatched.isEmpty());
         } finally {
             recovery.close();
+            stats.close();
+        }
+    }
+
+    /**
+     * A job persisted by the running process — one submitted after the endpoint
+     * began accepting requests but before the startup sweep — is not
+     * re-dispatched, while a job persisted by a previous process still is.
+     */
+    @Test(timeout = 30000)
+    public void jobPersistedByThisProcessIsNotRecovered() throws Exception {
+        File dir = Files.createTempDirectory("recovery-current").toFile();
+        dir.deleteOnExit();
+        JobStatsStore stats = newStatsStore(dir);
+        try {
+            Instant now = Instant.parse("2026-08-22T12:00:00Z");
+
+            CodingAgentJob.Factory previous = new CodingAgentJob.Factory("previous process work");
+            String previousId = previous.getTaskId();
+            stats.recordJobSubmitted(previousId, "ws-1", "previous process work", null, null, now);
+            PendingJobRecovery before = newRecovery(dir);
+            before.persist(previousId, previous.encode());
+            before.close();
+
+            PendingJobRecovery current = newRecovery(dir);
+            try {
+                CodingAgentJob.Factory fresh = new CodingAgentJob.Factory("fresh work");
+                String freshId = fresh.getTaskId();
+                stats.recordJobSubmitted(freshId, "ws-1", "fresh work", null, null, now.plusSeconds(5));
+                current.persist(freshId, fresh.encode());
+
+                Assert.assertEquals("both jobs are still SUBMITTED", 2, pendingIds(stats).size());
+
+                List<JobFactory> dispatched = new ArrayList<>();
+                int count = current.recover(pendingIds(stats), dispatched::add);
+                Assert.assertEquals("only the previous process's job is re-dispatched", 1, count);
+                Assert.assertEquals(previousId, dispatched.get(0).getTaskId());
+            } finally {
+                current.close();
+            }
+        } finally {
             stats.close();
         }
     }

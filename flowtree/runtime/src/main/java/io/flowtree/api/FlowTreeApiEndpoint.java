@@ -514,9 +514,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * queue are wired. Each recovered factory is handed to the same dispatch
      * path a fresh submission uses. Re-dispatch is idempotent: only jobs still
      * {@code SUBMITTED} are re-run (a job that already started has been promoted
-     * to {@code STARTED} and is skipped), and the existing {@code job_timing}
-     * row is reused rather than duplicated. A no-op when no recovery store or
-     * dispatch queue is configured.</p>
+     * to {@code STARTED} and is skipped), a job this process already dispatched
+     * (submitted after {@link #start} but before this sweep) is skipped, and
+     * the existing {@code job_timing} row is reused rather than duplicated. A
+     * no-op when no recovery store or dispatch queue is configured.</p>
      */
     public void recoverPendingJobs() {
         if (pendingJobRecovery == null || delayedJobs == null) return;

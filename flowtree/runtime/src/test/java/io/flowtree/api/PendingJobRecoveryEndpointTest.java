@@ -75,15 +75,21 @@ public class PendingJobRecoveryEndpointTest extends FlowTreeApiSubmitTestBase {
         stats.close();
     }
 
-    /** A submitted job that never started is re-dispatched with the same identity. */
+    /**
+     * A job submitted to the running endpoint before the startup sweep — the
+     * endpoint accepts requests before the controller calls
+     * {@link FlowTreeApiEndpoint#recoverPendingJobs()} — is still
+     * {@code SUBMITTED} but was already dispatched by this process, so the sweep
+     * must not dispatch it a second time.
+     */
     @Test(timeout = 30000)
-    public void submittedJobIsRedispatched() throws IOException {
-        String jobId = submit();
+    public void jobSubmittedToRunningEndpointIsNotRedispatched() throws IOException {
+        submit();
 
         endpoint.recoverPendingJobs();
 
-        assertEquals("the recovered job is dispatched a second time", 2, server.queued.size());
-        assertEquals(jobId, server.queued.get(1).getTaskId());
+        assertEquals("a job dispatched by this process is never dispatched twice",
+                1, server.queued.size());
     }
 
     /** A job that has heartbeated (and so been promoted to STARTED) is not re-dispatched. */
