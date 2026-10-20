@@ -579,7 +579,9 @@ def consult(
     )
     caller = consult_engine.resolve_caller(repo_url, branch, workstream_id)
 
-    # TODO(review): one-shot static-token calls now each take a slot in the shared 300-entry LRU; consider a per-owner cap so one busy client cannot evict job conversations.
+    # Every caller now takes a slot in the shared conversation LRU, so a busy
+    # static-token client's one-shot calls can evict a job's conversation
+    # within its idle window. A per-owner cap is deferred (tracker bc4600a3).
     owner = caller_identity(server._get_token_workstream_id() or "",
                             server._get_token_job_id() or "",
                             server._get_token_label())
