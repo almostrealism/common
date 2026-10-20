@@ -190,7 +190,11 @@ class TrackerStore:
     # ------------------------------------------------------------------
 
     def create_project(self, name: str, workspace_id: Optional[str] = None) -> dict:
-        """Create a new project, owned by *workspace_id* when given, and return it."""
+        """Create a new project owned by *workspace_id* and return it.
+
+        The API requires the workspace; the store accepts None only so that a
+        project from before workspaces existed can be represented.
+        """
         project_id = str(uuid.uuid4())
         created_at = _now()
         with self._write():
@@ -1040,7 +1044,10 @@ class TrackerStore:
         for idx, p in enumerate(projects):
             if not p.get("id") or not p.get("name"):
                 return {"error": f"projects[{idx}] must have 'id' and 'name'"}
-            # An absent workspace_id keeps an existing project's owner.
+            # An absent workspace_id keeps an existing project's owner; a
+            # project the import creates must name one.
+            if "workspace_id" in p and not p["workspace_id"]:
+                return {"error": f"projects[{idx}].workspace_id cannot be empty"}
             cur = self._conn.execute(
                 "UPDATE projects SET name = ?, "
                 "workspace_id = CASE WHEN ? THEN ? ELSE workspace_id END WHERE id = ?",
@@ -1048,6 +1055,8 @@ class TrackerStore:
             )
             if cur.rowcount > 0:
                 updated["projects"] += 1
+            elif not p.get("workspace_id"):
+                return {"error": f"projects[{idx}] is new and must have a 'workspace_id'"}
             else:
                 self._conn.execute(
                     "INSERT INTO projects (id, name, workspace_id, created_at) "

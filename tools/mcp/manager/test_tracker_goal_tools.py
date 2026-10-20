@@ -266,7 +266,7 @@ class TestPeopleOnlyTools(_GoalToolTestBase):
         mock_get.return_value = _as_job("ws-plan", ["planner"])
         mock_tget.side_effect = _tracker_records(task=_task(workstream_id="ws-plan"))
         for call in (lambda: server.tracker_delete_task("t1"),
-                     lambda: server.tracker_create_project("P"),
+                     lambda: server.tracker_create_project("P", "W1"),
                      lambda: server.tracker_update_project("p1", name="Q"),
                      lambda: server.tracker_delete_project("p1"),
                      lambda: server.tracker_update_release("r1", name="R"),
