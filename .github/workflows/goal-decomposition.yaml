@@ -38,7 +38,6 @@ name: "Goal Decomposition"
 #       with:
 #         project: "<tracker project>"
 #         version-file: version.txt
-#         controller-url: ${{ vars.FLOWTREE_CONTROLLER_URL }}
 #         cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
 #       secrets:
 #         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -141,7 +140,9 @@ jobs:
 
     env:
       FRAMEWORK: ${{ github.workspace }}/.goal-decomposition/framework
-      CONTROLLER_URL: ${{ inputs.controller-url }}
+      # A caller passing an unset repository variable sends an empty string,
+      # which replaces the input's default rather than falling back to it.
+      CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
       CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
       WORKSTREAM_BRANCH: ${{ inputs.workstream-branch }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
