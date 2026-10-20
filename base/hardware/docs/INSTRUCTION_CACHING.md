@@ -261,11 +261,16 @@ two stages above cannot see extend the Stage 1 result with that state:
 - `CollectionProducerComputationBase` appends the output shape detail, so every collection
   computation's signature reflects its result layout.
 - `ArithmeticSequenceComputation` appends its `initial` and `rate` constants.
-- `AggregatedProducerComputation` appends the iteration count, the loop-replacement setting,
-  and a structural rendering of its initial and combining functions (each applied to opaque
-  placeholder references), so aggregations that share a name and shape but combine values
-  differently never collide. This also covers the raw aggregations its `delta()` constructs,
-  so gradient graphs containing reductions participate in instruction reuse.
+- `RepeatedProducerComputation` appends the concrete class name (`getClass().getName()`). Every
+  repeated computation is abstract with its behaviour fixed by its subclass, so the class name
+  identifies that behaviour: two repeated computations that share a name, shape, and inputs but
+  are different classes — and therefore generate different loop bodies — never collide.
+- `AggregatedProducerComputation` appends the iteration count and the loop-replacement setting.
+  The initial and combining behaviour is fixed by the concrete subclass (the base is abstract),
+  and that class is already appended by `RepeatedProducerComputation`, so aggregations that
+  combine values differently never collide. Its `delta()` reduces the enumerated Jacobian groups
+  with a named `CollectionSumComputation`, so gradient graphs containing reductions participate
+  in instruction reuse through that class's own signature.
 - `WeightedSumComputation` appends its position and group traversal policies, including
   per-axis rates (which the standard policy descriptions omit).
 - `LoopedWeightedSumComputation` appends its inner count, operand shapes, and a structural
@@ -634,9 +639,6 @@ depends on state a standard signature cannot see:
 - `DefaultTraversableExpressionComputation` constructed without `generateSignature` (the
   common constructors default it to false), since its expression function is an arbitrary
   lambda. Factory methods that produce a fixed, name-identified expression pass true.
-- An aggregation whose initial or combining function cannot be rendered against placeholder
-  references (for example, one that inspects its runtime arguments) — see
-  `AggregatedProducerComputation.expressionSignature()`.
 - An `Assignment` whose destination or value lacks a signature.
 
 To diagnose, log `Signature.of(producer)` for each stage of the graph; the first stage that

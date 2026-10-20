@@ -131,6 +131,12 @@ def _workspace_ids(params) -> Optional[list]:
     return [w.strip() for w in params.get("workspace_id", "").split(",") if w.strip()]
 
 
+# Every project is owned by a workspace. The column is nullable only because
+# projects created before workspaces existed have none until a person assigns
+# one; nothing written through the API may create or restore that state.
+_WORKSPACE_REQUIRED = "workspace_id is required: every project is owned by a workspace"
+
+
 def _bad_request(message: str) -> JSONResponse:
     """Return a 400 response carrying *message*."""
     return JSONResponse({"ok": False, "error": message}, status_code=400)
@@ -248,9 +254,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 {"ok": False, "error": "name is required"}, status_code=400
             )
         workspace_id = _text_field(body, "workspace_id")
-        if workspace_id is None:
-            return _bad_request("workspace_id must be a string or null")
-        project = store.create_project(name, workspace_id or None)
+        if not workspace_id:
+            return _bad_request(_WORKSPACE_REQUIRED)
+        project = store.create_project(name, workspace_id)
         return JSONResponse({"ok": True, "project": project}, status_code=201)
 
     async def get_project(request: Request) -> JSONResponse:
@@ -269,8 +275,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         """PUT /v1/projects/{id}
 
         Body: ``{"name", "workspace_id"}``, each optional; an absent field is
-        left unchanged. ``workspace_id`` null (or empty) leaves the project
-        owned by no workspace.
+        left unchanged. A project's workspace can be changed but never
+        cleared.
         """
         auth_err = await _check_auth(request)
         if auth_err:
@@ -288,8 +294,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         workspace_id: object = UNSET
         if "workspace_id" in body:
             workspace_id = _text_field(body, "workspace_id")
-            if workspace_id is None:
-                return _bad_request("workspace_id must be a string or null")
+            if not workspace_id:
+                return _bad_request(_WORKSPACE_REQUIRED)
         project = store.update_project(request.path_params["id"], name, workspace_id)
         if not project:
             return JSONResponse(

@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import migrate_jira  # noqa: E402
 from migrate_jira import (
     _jira_id_to_uuid,
     _parse_date,
@@ -374,6 +375,26 @@ class TestMigrate(unittest.TestCase):
         uid1 = _jira_id_to_uuid("RINGS-42")
         uid2 = _jira_id_to_uuid("RINGS-42")
         self.assertEqual(uid1, uid2)
+
+
+
+class TestProjectWorkspace(unittest.TestCase):
+    """A project the migration creates is owned by the workspace it was given."""
+
+    def test_a_created_project_names_the_workspace(self):
+        with patch.object(migrate_jira, "_post_json",
+                          return_value={"ok": True, "project": {"id": "p1"}}) as post:
+            project_id = migrate_jira._resolve_or_create_project(
+                "Framework", {}, "http://tracker", None, False, "W1")
+        self.assertEqual("p1", project_id)
+        self.assertEqual({"name": "Framework", "workspace_id": "W1"}, post.call_args.args[1])
+
+    def test_an_existing_project_is_reused_without_a_request(self):
+        with patch.object(migrate_jira, "_post_json") as post:
+            project_id = migrate_jira._resolve_or_create_project(
+                "Framework", {"Framework": "p0"}, "http://tracker", None, False, "W1")
+        self.assertEqual("p0", project_id)
+        post.assert_not_called()
 
 
 if __name__ == "__main__":
