@@ -80,9 +80,6 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	/** Whether this is a floating-point modulo ({@code true}) or integer modulo ({@code false}). */
 	private boolean fp;
 
-	/** Cached result of {@link #dividendPossiblyNegative()}; {@code null} until first computed. */
-	private Boolean dividendPossiblyNegative;
-
 	/**
 	 * Constructs a modulo expression.
 	 *
@@ -151,22 +148,16 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	/**
-	 * Returns whether the dividend may be negative, computed once and cached.
+	 * Returns whether the dividend may be negative.
 	 *
-	 * <p>{@link Expression#isPossiblyNegative()} walks the dividend subtree
-	 * (via {@link Expression#lowerBound}), which is recursive and not memoized.
-	 * Because an {@link Expression} is immutable, the result is invariant for this
-	 * node, so it is cached to keep it out of the per-index constant-folding loop
-	 * ({@link #intValue()}, {@link #computeValue}, {@link #evaluate}).</p>
+	 * <p>This is consulted by the per-index constant-folding loop ({@link #intValue()},
+	 * {@link #computeValue}, {@link #evaluate}); it stays cheap there because
+	 * {@link Expression#isPossiblyNegative()} memoizes its answer for a composite dividend.</p>
 	 *
 	 * @return {@code true} if the dividend may be negative
 	 */
 	private boolean dividendPossiblyNegative() {
-		if (dividendPossiblyNegative == null) {
-			dividendPossiblyNegative = getChildren().get(0).isPossiblyNegative();
-		}
-
-		return dividendPossiblyNegative;
+		return getChildren().get(0).isPossiblyNegative();
 	}
 
 	/**
@@ -329,7 +320,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * modulo {@code Long.MIN_VALUE} — still a sound bound.</p>
 	 */
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalLong lower = getLeft().lowerBound(context);
 		OptionalLong upper = getLeft().upperBound(context);
 		OptionalLong m = getRight().longValue();
@@ -372,9 +363,9 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * {@code 0} at an interior point that is neither endpoint.</p>
 	 */
 	@Override
-	public OptionalLong lowerBound(KernelStructureContext context) {
+	protected OptionalLong computeLowerBound(KernelStructureContext context) {
 		if (isFP() || getLeft().isPossiblyNegative() || getRight().isPossiblyNegative())
-			return super.lowerBound(context);
+			return super.computeLowerBound(context);
 
 		OptionalLong lower = getLeft().lowerBound(context);
 		OptionalLong upper = getLeft().upperBound(context);

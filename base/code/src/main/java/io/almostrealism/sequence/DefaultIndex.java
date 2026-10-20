@@ -101,12 +101,19 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	/**
 	 * Sets the limit (exclusive upper bound) for this index.
 	 *
+	 * <p>The limit must be set before this index takes part in an expression whose bounds
+	 * are requested: a composite {@link Expression} memoizes its bounds (see
+	 * {@link Expression#upperBound(KernelStructureContext)}), so a later change of the
+	 * limit would not be reflected in them.</p>
+	 *
 	 * @param limit the new limit as an {@code int}
 	 */
+	// TODO(review): setLimit after a parent's bounds are memoized silently leaves them stale; consider a constructor-only limit or a fail-fast guard
 	public void setLimit(int limit) { this.limit = OptionalLong.of(limit); }
 
 	/**
-	 * Sets the limit (exclusive upper bound) for this index.
+	 * Sets the limit (exclusive upper bound) for this index, under the same condition as
+	 * {@link #setLimit(int)}.
 	 *
 	 * @param limit the new limit as a {@code long}
 	 */
@@ -133,12 +140,12 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return limit.stream().map(i -> i - 1).findFirst();
 	}
 
 	@Override
-	public boolean isPossiblyNegative() { return false; }
+	protected boolean computePossiblyNegative() { return false; }
 
 	/**
 	 * {@inheritDoc}

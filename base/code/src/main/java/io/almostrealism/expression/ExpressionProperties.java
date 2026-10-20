@@ -112,6 +112,40 @@ public interface ExpressionProperties<T> {
 	public default boolean isValue(IndexValues values) { return false; }
 
 	/**
+	 * Returns the type of a local variable that this expression can be hoisted into
+	 * without changing the arithmetic of the code that refers to the variable.
+	 *
+	 * <p>That is this expression's own type, except for an expression typed as
+	 * {@link Integer} that is promoted to {@link Long Long.class} when either</p>
+	 * <ul>
+	 *   <li>it refers to the {@link #isKernelIndex() kernel index}, which every generated
+	 *       language renders as a 64-bit integer, so the expression is evaluated in 64 bits
+	 *       wherever it appears inline. A variable of 32 bits would hold its value, but every
+	 *       product or sum that the variable then takes part in would be evaluated in 32 bits
+	 *       instead, and overflow where the inline expression did not &mdash; for example the
+	 *       row of a flattened Jacobian position multiplied by a stride of a million; or</li>
+	 *   <li>its bounds analysis indicates values that can exceed the 32-bit signed integer
+	 *       range, or cannot bound it at all.</li>
+	 * </ul>
+	 *
+	 * @return the type to declare a variable holding this expression with
+	 */
+	public default Class<?> getDeclarationType() {
+		Class<?> type = self().getType();
+		if (type != Integer.class) return type;
+		if (self().containsKernelIndex()) return Long.class;
+
+		OptionalLong upper = self().upperBound(null);
+		OptionalLong lower = self().lowerBound(null);
+
+		if (upper.isEmpty() || lower.isEmpty()) return Long.class;
+		if (upper.getAsLong() > Integer.MAX_VALUE) return Long.class;
+		if (lower.getAsLong() < Integer.MIN_VALUE) return Long.class;
+
+		return type;
+	}
+
+	/**
 	 * Returns the arithmetic progression this expression follows over the first
 	 * {@code len} values of the given index, derived from its structure alone.
 	 *
@@ -148,6 +182,24 @@ public interface ExpressionProperties<T> {
 	public default List<ArithmeticIndexSequence> arithmeticTerms(Index index, long len) {
 		ArithmeticIndexSequence seq = arithmeticSequence(index, len);
 		return seq == null ? null : List.of(seq);
+	}
+
+	/**
+	 * Checks if this expression's value is a multiple of another expression's value.
+	 *
+	 * <p>This method only works for compile-time constant integer expressions.
+	 * Returns empty if either expression is not a constant.</p>
+	 *
+	 * @param e the expression to check divisibility against
+	 * @return {@link Optional} containing {@code true} if this value is evenly divisible
+	 *         by the other; empty if not determinable at compile time
+	 */
+	public default Optional<Boolean> isMultiple(Expression<?> e) {
+		if (intValue().isPresent() && e.intValue().isPresent()) {
+			return Optional.of(intValue().getAsInt() % e.intValue().getAsInt() == 0);
+		}
+
+		return Optional.empty();
 	}
 
 	/**

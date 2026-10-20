@@ -200,6 +200,17 @@ public class ScopeSettings {
 	public static boolean enableValueMemoization = false;
 
 	/**
+	 * When {@code true}, the context-free {@link Expression#upperBound(KernelStructureContext) bounds}
+	 * and {@link Expression#isPossiblyNegative() sign} of a composite {@link Expression} are memoized
+	 * on the node, so bounds analysis of an expression whose sub-expressions are shared visits each
+	 * node once rather than once per path. Unlike {@link #enableValueMemoization}, the memo is a field
+	 * of the node itself, so a hit costs a single read. Controlled by
+	 * {@code AR_EXPRESSION_BOUNDS_MEMOIZATION}; disable only for differential testing.
+	 */
+	public static boolean enableBoundsMemoization =
+			SystemUtils.isEnabled("AR_EXPRESSION_BOUNDS_MEMOIZATION").orElse(true);
+
+	/**
 	 * When {@code true}, parent {@link Expression} constructors canonicalise
 	 * their children array via {@link LeafInternTable#canonicalize(Expression[])}.
 	 * Each freshly-allocated leaf whose value has already been seen collapses

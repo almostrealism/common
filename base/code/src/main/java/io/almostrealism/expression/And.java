@@ -128,7 +128,7 @@ public class And extends BinaryExpression<Integer> {
 	 * @return the upper bound of the right (mask) operand
 	 */
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return getChildren().get(1).upperBound(context);
 	}
 

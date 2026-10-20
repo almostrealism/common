@@ -61,7 +61,7 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 	 * and every subtrahend is at its lower bound.</p>
 	 */
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return bound(context, true);
 	}
 
@@ -72,7 +72,7 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 	 * and every subtrahend is at its upper bound.</p>
 	 */
 	@Override
-	public OptionalLong lowerBound(KernelStructureContext context) {
+	protected OptionalLong computeLowerBound(KernelStructureContext context) {
 		return bound(context, false);
 	}
 
@@ -101,7 +101,7 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public boolean isPossiblyNegative() {
+	protected boolean computePossiblyNegative() {
 		return true;
 	}
 

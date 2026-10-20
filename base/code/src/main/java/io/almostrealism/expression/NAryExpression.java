@@ -60,7 +60,7 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	@Override
-	public boolean isPossiblyNegative() {
+	protected boolean computePossiblyNegative() {
 		for (Expression<?> child : getChildren()) {
 			if (child.isPossiblyNegative()) return true;
 		}
