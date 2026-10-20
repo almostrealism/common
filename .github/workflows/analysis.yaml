@@ -1656,7 +1656,7 @@ jobs:
   # ─── Container Image Build ─────────────────────────────────────────
   # Builds the controller-stack images so a packaging break surfaces on the PR
   # rather than at deploy time. Build only — nothing is pushed or started here;
-  # deployment lives in deploy.yaml, which runs only on master.
+  # deployment lives in deploy.yaml, which runs only when dispatched by hand.
   #
   # This matters most for ar-manager, whose image bakes in the documentation
   # corpus that grounds memory_recall. A corpus that fails to reach the image
