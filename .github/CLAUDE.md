@@ -736,12 +736,17 @@ documentation grounding, which no startup check would catch.
 
 ### What the `Deploy Controller Stack` workflow does
 
-Lives in its own file (`.github/workflows/deploy.yaml`), triggered by
-`workflow_run` on a **successful master** run of "Build and Test", plus
-`workflow_dispatch` for manual deploys.
+Lives in its own file (`.github/workflows/deploy.yaml`) and is triggered
+**only by `workflow_dispatch`** — a deploy happens only when someone starts it
+by hand. It used to also run automatically, via a `workflow_run` trigger, on
+every **successful master** run of "Build and Test"; that trigger was removed
+after 2026-10-19, when one such automatic deploy rebuilt and restarted the
+controller stack while agent jobs were in flight and dropped their ar-manager
+connections. A deploy restarts the platform, so it must be a deliberate,
+supervised action, not a side effect of a merge to master.
 
-**It is a separate `workflow_run` workflow for the same reason
-`auto-resolve-submit.yaml` is:** a job declaring `environment:` inside a
+**It is a separate workflow (never a job in `analysis.yaml`) for the same
+reason `auto-resolve-submit.yaml` is:** a job declaring `environment:` inside a
 `pull_request` run attaches a deployment status to the PR head, and a pending
 deployment later cancelled shows as a spurious "had a problem deploying" red X.
 Never move a deploy job into `analysis.yaml`, and never give a
@@ -771,9 +776,8 @@ under, for instance) reaches a running agent only when that image is rebuilt.
 The workflow therefore invokes `rebuild.sh --agents`, and then asserts the
 containers were actually recreated by comparing their Docker ids across the
 rebuild; a rebuild that "succeeded" while the old containers kept running fails
-the job. Set the repository variable `FLOWTREE_DEPLOY_AGENTS=false` (or answer
-`false` to the `redeploy_agents` input on a manual run) to deploy the controller
-stack alone.
+the job. Answer `false` to the `redeploy_agents` input when dispatching to
+deploy the controller stack alone.
 
 **Each deploy prunes what it superseded.** Because every build is
 `--no-cache --pull`, a deploy leaves the previous images untagged and writes a
