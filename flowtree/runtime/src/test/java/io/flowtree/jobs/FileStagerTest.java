@@ -682,6 +682,58 @@ public class FileStagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that FlowTree's {@code .flowtree/} scratch directory is excluded from staging both
+	 * at the repository root and inside any module, under the production
+	 * {@link GitJobConfig#DEFAULT_EXCLUDED_PATTERNS}.
+	 *
+	 * <p>Regression guard for the object-oriented design review: its verdict file
+	 * ({@code .flowtree/oop-review.md}) is scratch space a review session writes, and an agent
+	 * working from a module directory writes {@code <module>/.flowtree/oop-review.md} instead. The
+	 * {@code .flowtree/**} and {@code **}{@code /.flowtree/**} patterns must keep both out of the
+	 * commit so the review's bookkeeping never reaches the pull request.</p>
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void excludesFlowtreeScratchAtRootAndInModules() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".flowtree"));
+			Files.createDirectories(tempDir.resolve("engine/ml/.flowtree"));
+			Files.writeString(tempDir.resolve(".flowtree/oop-review.md"), "Window: CLEAN\n");
+			Files.writeString(tempDir.resolve("engine/ml/.flowtree/oop-review.md"), "Model: FIXED\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.excludedPatterns(GitJobConfig.DEFAULT_EXCLUDED_PATTERNS)
+				.build();
+
+			FileStager stager = new FileStager();
+			List<String> changed = Arrays.asList(
+				".flowtree/oop-review.md",
+				"engine/ml/.flowtree/oop-review.md"
+			);
+			StagingResult result = stager.evaluateFiles(
+				changed, config, tempDir.toFile(), (String... args) -> 0
+			);
+
+			assertTrue("No .flowtree/ scratch file should be staged; got "
+				+ result.getStagedFiles(),
+				result.getStagedFiles().isEmpty());
+			assertEquals("Both root and module-level .flowtree/ scratch files must be skipped; "
+				+ "got skipped=" + result.getSkippedFiles(),
+				changed.size(), result.getSkippedFiles().size());
+			for (String path : changed) {
+				boolean found = result.getSkippedFiles().stream()
+					.anyMatch(s -> s.startsWith(path));
+				assertTrue("Expected " + path + " to be skipped, got "
+					+ result.getSkippedFiles(), found);
+			}
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
 	 * Recursively deletes a directory and all its contents.
 	 */
 	private static void deleteRecursively(Path path) throws IOException {

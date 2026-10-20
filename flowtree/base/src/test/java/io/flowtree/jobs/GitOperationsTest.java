@@ -159,6 +159,27 @@ public class GitOperationsTest extends TestSuiteBase {
     }
 
     /**
+     * {@link GitOperations#isExcludedPath} excludes FlowTree scratch directories wherever they
+     * sit — the {@code .flowtree/} directory at the repository root and a {@code .flowtree/}
+     * directory nested inside any module — while leaving ordinary source paths, including other
+     * paths that merely contain {@code flowtree} in a name, untouched.
+     */
+    @Test(timeout = 10000)
+    public void isExcludedPathExcludesModuleScratchDirectories() {
+        assertTrue("root .flowtree/ is excluded",
+                GitOperations.isExcludedPath(".flowtree/oop-review.md"));
+        assertTrue("a module-level .flowtree/ is excluded",
+                GitOperations.isExcludedPath("engine/ml/.flowtree/oop-review.md"));
+        assertTrue("a deeply nested .flowtree/ is excluded",
+                GitOperations.isExcludedPath("flowtree/runtime/.flowtree/notes.txt"));
+
+        assertFalse("an ordinary source path is not excluded",
+                GitOperations.isExcludedPath("engine/ml/src/main/java/org/example/Window.java"));
+        assertFalse("a path merely named flowtree is not the scratch directory",
+                GitOperations.isExcludedPath("flowtree/runtime/src/main/java/io/flowtree/jobs/Foo.java"));
+    }
+
+    /**
      * Tests that changes in dependent repositories are detected separately.
      */
     @Test(timeout = 10000)

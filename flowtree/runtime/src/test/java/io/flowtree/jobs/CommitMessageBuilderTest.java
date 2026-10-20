@@ -179,6 +179,45 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * {@link CommitMessageBuilder#restoreCommitTxt} with a non-null saved message overwrites
+     * whatever a session wrote, so the primary message always wins.
+     */
+    @Test(timeout = 30000)
+    public void restoreCommitTxtOverwritesSessionMessageWithSaved() throws IOException {
+        writeCommitTxt("Session-written verdict message");
+        CodingAgentJob job = job("do the work");
+        CommitMessageBuilder.restoreCommitTxt(job, "Add the sliding window layer");
+        assertEquals("Add the sliding window layer",
+                Files.readString(tempDir.resolve("commit.txt"), StandardCharsets.UTF_8));
+    }
+
+    /**
+     * {@link CommitMessageBuilder#restoreCommitTxt} with a null saved message (nothing was
+     * captured) deletes whatever the session left, so a session message cannot become the commit
+     * message by default.
+     */
+    @Test(timeout = 30000)
+    public void restoreCommitTxtWithNullSavedDeletesSessionMessage() throws IOException {
+        writeCommitTxt("Session-written verdict message");
+        CodingAgentJob job = job("do the work");
+        CommitMessageBuilder.restoreCommitTxt(job, null);
+        assertTrue("commit.txt must be deleted when nothing was captured",
+                !Files.exists(tempDir.resolve("commit.txt")));
+    }
+
+    /**
+     * {@link CommitMessageBuilder#restoreCommitTxt} with a null saved message and no existing
+     * {@code commit.txt} is a no-op: the delete tolerates a missing file.
+     */
+    @Test(timeout = 30000)
+    public void restoreCommitTxtWithNullSavedAndNoFileIsHarmless() {
+        CodingAgentJob job = job("do the work");
+        CommitMessageBuilder.restoreCommitTxt(job, null);
+        assertTrue("no commit.txt is created when there was none and nothing was captured",
+                !Files.exists(tempDir.resolve("commit.txt")));
+    }
+
     /** Fallback body includes the session id only when set; absence leaves no Session: line. */
     @Test(timeout = 30000)
     public void fallbackBodyOmitsSessionLineWhenSessionIdIsNull() {
