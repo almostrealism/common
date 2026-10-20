@@ -16,7 +16,6 @@
 
 package io.flowtree.controller;
 
-import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
@@ -81,7 +80,11 @@ public class JobStatsStore implements ConsoleFeatures {
         + "    error_message  VARCHAR(2000),"
         + "    trigger_reason VARCHAR(64) DEFAULT 'manual',"
         + "    heartbeat_at   TIMESTAMP,"
-        + "    phase          VARCHAR(64)"
+        + "    phase          VARCHAR(64),"
+        + "    submitted_at   TIMESTAMP,"
+        + "    submitted_by   VARCHAR(255),"
+        + "    required_labels VARCHAR(2000),"
+        + "    node           VARCHAR(255)"
         + ")";
 
     /** DDL statement that creates an index on {@code (workstream_id, started_at)} for efficient queries. */
@@ -132,7 +135,11 @@ public class JobStatsStore implements ConsoleFeatures {
         "ALTER TABLE job_timing ADD COLUMN slack_message_ts VARCHAR(64)",
         "ALTER TABLE job_timing ADD COLUMN trigger_reason VARCHAR(64) DEFAULT 'manual'",
         "ALTER TABLE job_timing ADD COLUMN heartbeat_at TIMESTAMP",
-        "ALTER TABLE job_timing ADD COLUMN phase VARCHAR(64)"
+        "ALTER TABLE job_timing ADD COLUMN phase VARCHAR(64)",
+        "ALTER TABLE job_timing ADD COLUMN submitted_at TIMESTAMP",
+        "ALTER TABLE job_timing ADD COLUMN submitted_by VARCHAR(255)",
+        "ALTER TABLE job_timing ADD COLUMN required_labels VARCHAR(2000)",
+        "ALTER TABLE job_timing ADD COLUMN node VARCHAR(255)"
     };
 
     /** DML statement that removes stale {@code STARTED} rows older than a given cutoff timestamp. */
@@ -223,6 +230,85 @@ public class JobStatsStore implements ConsoleFeatures {
     }
 
     /**
+     * Records that the controller has accepted a job for submission, before any
+     * worker has started it.
+     *
+     * <p>This is the durable record root cause #1 of the job-state-tracking
+     * work closes: a job accepted by the controller gets a {@code SUBMITTED}
+     * row the instant it is accepted, independent of any notifier. A job that
+     * is then never started (the "lost" class) is representable as a
+     * {@code SUBMITTED} row that never moved to {@code STARTED}, surfaced by
+     * {@link #getPendingJobs(String)}. The row's {@code started_at} is seeded
+     * to {@code submittedAt} as a non-null placeholder (the column is
+     * {@code NOT NULL}); {@link #recordJobStarted(String, String, String,
+     * String, Instant)} overwrites it with the real start time when the job
+     * actually starts.</p>
+     *
+     * <p>A no-op when a row already exists for the job, so a re-submission or a
+     * started event that races ahead of this call never clobbers later state.</p>
+     *
+     * @param jobId          the job identifier (the factory task ID)
+     * @param workstreamId   the workstream this job belongs to
+     * @param description    human-readable description, or {@code null}
+     * @param submittedBy    the submitter identity, or {@code null} when none
+     *                       is known (the column is nullable until a trusted
+     *                       source exists)
+     * @param requiredLabels the node-routing labels the job was submitted with;
+     *                       serialized compactly, or {@code null}/empty
+     * @param submittedAt    the moment the controller accepted the job
+     */
+    public synchronized void recordJobSubmitted(String jobId, String workstreamId,
+                                                String description, String submittedBy,
+                                                Map<String, String> requiredLabels,
+                                                Instant submittedAt) {
+        if (connection == null || jobId == null || jobId.isEmpty()) return;
+        if (submittedAt == null) return;
+
+        String pendingReason = pendingTriggerReasons.get(jobId);
+        String triggerReason = (pendingReason != null && !pendingReason.isEmpty())
+                ? pendingReason : "manual";
+
+        String sql = "MERGE INTO job_timing USING (VALUES(?, ?, ?, ?, ?, ?, ?, ?)) "
+            + "AS vals(jid, wid, sts, sta, dsc, tr, sby, rl) ON job_timing.job_id = vals.jid "
+            + "WHEN NOT MATCHED THEN INSERT (job_id, workstream_id, status, started_at, "
+            + "submitted_at, description, trigger_reason, submitted_by, required_labels) "
+            + "VALUES (vals.jid, vals.wid, vals.sts, vals.sta, vals.sta, vals.dsc, vals.tr, vals.sby, vals.rl)";
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            ps.setString(2, workstreamId != null ? workstreamId : "unknown");
+            ps.setString(3, "SUBMITTED");
+            ps.setTimestamp(4, Timestamp.from(submittedAt));
+            ps.setString(5, truncate(description, 1000));
+            ps.setString(6, triggerReason);
+            ps.setString(7, truncate(submittedBy, 255));
+            ps.setString(8, truncate(serializeLabels(requiredLabels), 2000));
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to record job submitted: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Serializes a required-label map to a compact {@code key=value;key=value}
+     * string for the {@code required_labels} column. Returns {@code null} for a
+     * {@code null} or empty map so the column stores SQL {@code NULL} rather
+     * than an empty string.
+     *
+     * @param labels the labels to serialize, or {@code null}
+     * @return the serialized form, or {@code null} when there is nothing to store
+     */
+    private static String serializeLabels(Map<String, String> labels) {
+        if (labels == null || labels.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> e : labels.entrySet()) {
+            if (sb.length() > 0) sb.append(';');
+            sb.append(e.getKey()).append('=').append(e.getValue());
+        }
+        return sb.toString();
+    }
+
+    /**
      * Records that a job has started.
      *
      * @param jobId         the job identifier
@@ -232,16 +318,47 @@ public class JobStatsStore implements ConsoleFeatures {
      */
     public synchronized void recordJobStarted(String jobId, String workstreamId,
                                                String description, Instant startedAt) {
+        recordJobStarted(jobId, workstreamId, description, null, startedAt);
+    }
+
+    /**
+     * Records that a job has started, naming the worker that started it.
+     *
+     * <p>Moves an existing {@code SUBMITTED} row to {@code STARTED}, overwriting
+     * the placeholder {@code started_at} with the real start time and recording
+     * the {@code node} identity of the worker. A {@code null} {@code node} leaves
+     * any identity a prior heartbeat recorded on the row intact rather than
+     * clearing it, since a {@code STARTED} status event carries no node of its
+     * own. When no row exists yet (a controller restart, or a started event that
+     * arrives with no prior submission record) a fresh {@code STARTED} row is
+     * inserted. A second {@code STARTED} for an already-started job is a no-op, so
+     * a re-reported start never moves {@code started_at}.</p>
+     *
+     * @param jobId         the job identifier
+     * @param workstreamId  the workstream this job belongs to
+     * @param description   human-readable description
+     * @param node          the worker identity, or {@code null} when unknown
+     * @param startedAt     the start timestamp
+     */
+    public synchronized void recordJobStarted(String jobId, String workstreamId,
+                                               String description, String node,
+                                               Instant startedAt) {
         if (connection == null) return;
 
         String pendingReason = pendingTriggerReasons.remove(jobId);
         String triggerReason = (pendingReason != null && !pendingReason.isEmpty())
                 ? pendingReason : "manual";
 
-        String sql = "MERGE INTO job_timing USING (VALUES(?, ?, ?, ?, ?, ?)) "
-            + "AS vals(jid, wid, sts, sta, dsc, tr) ON job_timing.job_id = vals.jid "
-            + "WHEN NOT MATCHED THEN INSERT (job_id, workstream_id, status, started_at, description, trigger_reason) "
-            + "VALUES (vals.jid, vals.wid, vals.sts, vals.sta, vals.dsc, vals.tr)";
+        // COALESCE preserves a node a prior heartbeat recorded: a STARTED status
+        // event carries no node, so vals.nd is null unless a caller supplies one.
+        String sql = "MERGE INTO job_timing USING (VALUES(?, ?, ?, ?, ?, ?, ?)) "
+            + "AS vals(jid, wid, sts, sta, dsc, tr, nd) ON job_timing.job_id = vals.jid "
+            + "WHEN MATCHED AND job_timing.status = 'SUBMITTED' THEN "
+            + "UPDATE SET status = vals.sts, started_at = vals.sta, "
+            + "node = COALESCE(vals.nd, job_timing.node) "
+            + "WHEN NOT MATCHED THEN INSERT (job_id, workstream_id, status, started_at, "
+            + "description, trigger_reason, node) "
+            + "VALUES (vals.jid, vals.wid, vals.sts, vals.sta, vals.dsc, vals.tr, vals.nd)";
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, jobId);
@@ -250,6 +367,7 @@ public class JobStatsStore implements ConsoleFeatures {
             ps.setTimestamp(4, Timestamp.from(startedAt));
             ps.setString(5, truncate(description, 1000));
             ps.setString(6, triggerReason);
+            ps.setString(7, truncate(node, 255));
             ps.executeUpdate();
         } catch (SQLException e) {
             warn("Failed to record job started: " + e.getMessage());
@@ -537,13 +655,40 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param heartbeatAt the moment the job reported itself alive
      */
     public synchronized void recordHeartbeat(String jobId, Instant heartbeatAt) {
+        recordHeartbeat(jobId, heartbeatAt, null);
+    }
+
+    /**
+     * Records a liveness heartbeat for a running job, also recording the
+     * worker {@code node} identity the heartbeat named.
+     *
+     * <p>A heartbeat posted by the job's own harness carries the worker's
+     * identity, which the controller never otherwise learns (the job is
+     * relayed until a worker accepts it). The {@code node} is recorded only
+     * when non-null, so a bare heartbeat never erases a previously recorded
+     * identity.</p>
+     *
+     * @param jobId       the job identifier
+     * @param heartbeatAt the moment the job reported itself alive
+     * @param node        the worker identity, or {@code null} to leave it
+     *                    unchanged
+     */
+    public synchronized void recordHeartbeat(String jobId, Instant heartbeatAt, String node) {
         if (jobId == null || jobId.isEmpty() || connection == null) return;
         if (heartbeatAt == null) return;
 
-        String sql = "UPDATE job_timing SET heartbeat_at = ? WHERE job_id = ?";
+        boolean withNode = node != null && !node.isEmpty();
+        String sql = withNode
+            ? "UPDATE job_timing SET heartbeat_at = ?, node = ? WHERE job_id = ?"
+            : "UPDATE job_timing SET heartbeat_at = ? WHERE job_id = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setTimestamp(1, Timestamp.from(heartbeatAt));
-            ps.setString(2, jobId);
+            if (withNode) {
+                ps.setString(2, truncate(node, 255));
+                ps.setString(3, jobId);
+            } else {
+                ps.setString(2, jobId);
+            }
             ps.executeUpdate();
         } catch (SQLException e) {
             warn("Failed to record heartbeat: " + e.getMessage());
@@ -615,7 +760,7 @@ public class JobStatsStore implements ConsoleFeatures {
     public synchronized List<ActiveJob> getActiveJobs(String workstreamId) {
         if (connection == null) return Collections.emptyList();
 
-        String sql = "SELECT job_id, workstream_id, started_at, heartbeat_at, description "
+        String sql = "SELECT job_id, workstream_id, started_at, heartbeat_at, description, node "
             + "FROM job_timing WHERE status = 'STARTED' AND completed_at IS NULL"
             + (workstreamId == null ? "" : " AND workstream_id = ?")
             + " ORDER BY started_at DESC";
@@ -632,11 +777,55 @@ public class JobStatsStore implements ConsoleFeatures {
                             rs.getString("workstream_id"),
                             started == null ? null : started.toInstant(),
                             beat == null ? null : beat.toInstant(),
-                            rs.getString("description")));
+                            rs.getString("description"),
+                            rs.getString("node")));
                 }
             }
         } catch (SQLException e) {
             warn("Failed to query active jobs: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Returns every job the controller accepted but which has not yet started
+     * on any worker, newest submission first.
+     *
+     * <p>A job qualifies when its status is {@code SUBMITTED} and it has no
+     * completion timestamp. This is the query behind the pending/lost surface:
+     * a {@link PendingJob} whose {@link PendingJob#isLost(Duration, Instant)}
+     * holds is a job that was accepted and never picked up.</p>
+     *
+     * @param workstreamId restrict to one workstream, or {@code null} for all
+     * @return the pending jobs, or an empty list when none or the store is
+     *         unavailable
+     */
+    public synchronized List<PendingJob> getPendingJobs(String workstreamId) {
+        if (connection == null) return Collections.emptyList();
+
+        String sql = "SELECT job_id, workstream_id, submitted_at, submitted_by, "
+            + "required_labels, description "
+            + "FROM job_timing WHERE status = 'SUBMITTED' AND completed_at IS NULL"
+            + (workstreamId == null ? "" : " AND workstream_id = ?")
+            + " ORDER BY submitted_at DESC";
+
+        List<PendingJob> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            if (workstreamId != null) ps.setString(1, workstreamId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Timestamp submitted = rs.getTimestamp("submitted_at");
+                    result.add(new PendingJob(
+                            rs.getString("job_id"),
+                            rs.getString("workstream_id"),
+                            submitted == null ? null : submitted.toInstant(),
+                            rs.getString("submitted_by"),
+                            rs.getString("required_labels"),
+                            rs.getString("description")));
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query pending jobs: " + e.getMessage());
         }
         return result;
     }
@@ -823,7 +1012,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "COALESCE(SUM(cost_usd), 0) AS total_cost_usd, "
             + "COALESCE(SUM(num_turns), 0) AS total_turns "
             + "FROM job_timing "
-            + "WHERE started_at >= ? AND started_at < ? AND status <> 'STARTED'";
+            + "WHERE started_at >= ? AND started_at < ? AND status NOT IN ('STARTED', 'SUBMITTED')";
 
         if (workstreamId != null) {
             sql += " AND workstream_id = ?";
@@ -931,7 +1120,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "COALESCE(SUM(" + tableAlias + ".cost_usd), 0) AS " + costAlias + " "
             + "FROM " + table + " " + tableAlias + " JOIN job_timing t ON "
             + tableAlias + ".job_id = t.job_id "
-            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status <> 'STARTED'"
+            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status NOT IN ('STARTED', 'SUBMITTED')"
             + (workstreamId != null ? " AND t.workstream_id = ?" : "")
             + " GROUP BY " + tableAlias + "." + keyColumn + " ORDER BY " + costAlias + " DESC";
 
@@ -968,7 +1157,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "COALESCE(SUM(" + tableAlias + ".cost_usd), 0) AS " + costAlias + " "
             + "FROM " + table + " " + tableAlias + " JOIN job_timing t ON "
             + tableAlias + ".job_id = t.job_id "
-            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status <> 'STARTED' "
+            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status NOT IN ('STARTED', 'SUBMITTED') "
             + "GROUP BY t.workstream_id, " + tableAlias + "." + keyColumn + " "
             + "ORDER BY t.workstream_id, " + costAlias + " DESC";
 
@@ -1064,7 +1253,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "COALESCE(SUM(cost_usd), 0) AS total_cost_usd, "
             + "COALESCE(SUM(num_turns), 0) AS total_turns "
             + "FROM job_timing "
-            + "WHERE started_at >= ? AND started_at < ? AND status <> 'STARTED' "
+            + "WHERE started_at >= ? AND started_at < ? AND status NOT IN ('STARTED', 'SUBMITTED') "
             + "GROUP BY workstream_id";
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -1197,7 +1386,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count, "
             + "COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_count "
             + "FROM job_timing "
-            + "WHERE COALESCE(completed_at, started_at) >= ? AND status <> 'STARTED' "
+            + "WHERE COALESCE(completed_at, started_at) >= ? AND status NOT IN ('STARTED', 'SUBMITTED') "
             + "GROUP BY workstream_id "
             + "ORDER BY job_count DESC";
 
@@ -1258,94 +1447,6 @@ public class JobStatsStore implements ConsoleFeatures {
      */
     private static String truncate(String s, int maxLength) {
         return s == null ? null : Truncation.CUT.apply(s, maxLength);
-    }
-
-    /**
-     * A job the store still records as running, with the timestamps that say
-     * whether it is alive.
-     *
-     * <p>Carries the age arithmetic rather than leaving it to each caller: the
-     * scanner, the API endpoint and the operator-facing status tool all ask
-     * the same two questions, and a job that is "stuck" by one caller's
-     * arithmetic and "running" by another's would be worse than either
-     * answer.</p>
-     *
-     * @param jobId        the job identifier
-     * @param workstreamId the workstream the job belongs to
-     * @param startedAt    when the job was recorded as started
-     * @param heartbeatAt  the last heartbeat, or {@code null} if none yet
-     * @param description  the job's human-readable description
-     */
-    public record ActiveJob(String jobId, String workstreamId, Instant startedAt,
-                            Instant heartbeatAt, String description) {
-
-        /**
-         * Returns how long the job has been running.
-         *
-         * @param now the reference instant
-         * @return elapsed time since the job started, or {@link Duration#ZERO}
-         *         when no start time was recorded
-         */
-        public Duration age(Instant now) {
-            return startedAt == null ? Duration.ZERO : Duration.between(startedAt, now);
-        }
-
-        /**
-         * Returns how long it has been since the job last reported itself
-         * alive, falling back to the start time when it has not yet sent a
-         * heartbeat.
-         *
-         * <p>The fallback is what makes a job that died before its first
-         * heartbeat detectable; without it such a job would look permanently
-         * fresh.</p>
-         *
-         * @param now the reference instant
-         * @return elapsed time since the last liveness signal
-         */
-        public Duration sinceHeartbeat(Instant now) {
-            Instant last = heartbeatAt != null ? heartbeatAt : startedAt;
-            return last == null ? Duration.ZERO : Duration.between(last, now);
-        }
-
-        /**
-         * Returns whether the job has been silent for longer than
-         * {@code threshold}.
-         *
-         * @param threshold the silence a job may accumulate before it counts
-         *                  as stuck; non-positive disables the check
-         * @param now       the reference instant
-         * @return {@code true} when the job should be treated as stuck
-         */
-        public boolean isStale(Duration threshold, Instant now) {
-            if (threshold == null || threshold.isNegative() || threshold.isZero()) {
-                return false;
-            }
-            return sinceHeartbeat(now).compareTo(threshold) > 0;
-        }
-
-        /**
-         * Renders this job as a JSON object for the API listing.
-         *
-         * @param now the reference instant for the derived ages
-         * @return a JSON object carrying the identifiers and derived ages
-         */
-        public String toJson(Instant now) {
-            StringBuilder json = new StringBuilder("{");
-            json.append("\"jobId\":\"").append(JsonFieldExtractor.escapeJson(jobId)).append("\"");
-            json.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstreamId)).append("\"");
-            if (startedAt != null) {
-                json.append(",\"startedAt\":\"").append(startedAt).append("\"");
-            }
-            if (heartbeatAt != null) {
-                json.append(",\"heartbeatAt\":\"").append(heartbeatAt).append("\"");
-            }
-            json.append(",\"ageSeconds\":").append(age(now).getSeconds());
-            json.append(",\"sinceHeartbeatSeconds\":").append(sinceHeartbeat(now).getSeconds());
-            if (description != null) {
-                json.append(",\"description\":\"").append(JsonFieldExtractor.escapeJson(description)).append("\"");
-            }
-            return json.append("}").toString();
-        }
     }
 
     /**

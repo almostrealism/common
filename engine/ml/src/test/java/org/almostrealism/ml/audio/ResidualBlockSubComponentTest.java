@@ -220,10 +220,7 @@ public class ResidualBlockSubComponentTest extends OobleckValidationBase {
 	 * Test runner for full residual block with residual add.
 	 */
 	private void runFullResidualBlockTest(String resBlock, String prefix) throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		String logFile = String.format("test_data/stable_audio/test_%s_full_block.log", resBlock);
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
@@ -276,10 +273,7 @@ public class ResidualBlockSubComponentTest extends OobleckValidationBase {
 	 */
 	@Test(timeout = 60000)
 	public void testComposedRes0ThenRes1() throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		String logFile = "test_data/stable_audio/test_composed_res0_res1.log";
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));
@@ -397,10 +391,7 @@ public class ResidualBlockSubComponentTest extends OobleckValidationBase {
 	 */
 	private void runSubComponentTest(String resBlock, String component, String prefix,
 									 BlockBuilder blockBuilder) throws IOException {
-		if (!WEIGHTS_DIR.toFile().exists()) {
-			log("Skipping - weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireWeights();
 
 		String logFile = String.format("test_data/stable_audio/test_%s_%s.log", resBlock, component);
 		Console.root().addListener(OutputFeatures.fileOutput(logFile));

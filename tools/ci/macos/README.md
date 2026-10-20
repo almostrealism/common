@@ -392,9 +392,8 @@ changing `RUNNER_LABELS` — the service runs a staged copy of the env file.
 
 `Deploy Controller Stack` has a second job, `deploy-macos-agent`, that keeps a
 **native** FlowTree agent — a JVM under launchd, with Metal — on the same JARs
-as the Docker pool. It runs whenever the pool is rebuilt (`redeploy_agents`, or
-the `FLOWTREE_DEPLOY_AGENTS` variable) and asks for
-`[self-hosted, macos, ar-deploy-agent]`.
+as the Docker pool. It runs whenever the pool is rebuilt (the `redeploy_agents`
+dispatch input) and asks for `[self-hosted, macos, ar-deploy-agent]`.
 
 That is a **third label and a third runner**, and the reason is the account.
 The agent is a launchd service that runs as the `worker` service account, and
@@ -745,9 +744,12 @@ the runner's environment instead; `xcodebuild` honors it over `xcode-select`.
 
 Some benchmark tests (`AudioSceneSingleVsMultiChannelTest`,
 `PdslHotPathBreakdownTest`, and other sample-dependent suites) read real audio
-from `/Users/Shared/Music/Samples`. A runner **without** that directory silently
-falls back to synthetic samples and reports misleading timings, so every macOS
-runner must have the library present before it picks up jobs.
+from `/Users/Shared/Music/Samples`. `test-media-mac` declares that location
+(`AR_RINGS_LIBRARY` / `AR_RINGS_PATTERNS`) and its `Verify curated sample
+library` step fails the job on a runner **without** the library, as do the tests
+that need it; tests that use it only opportunistically would otherwise fall back
+to synthetic samples and report misleading timings. Every macOS runner must have
+the library present before it picks up jobs.
 
 [`../sync-music-samples.sh`](../sync-music-samples.sh) seeds a runner from a
 machine that already has the library. It lives one level up because it is not

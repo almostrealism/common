@@ -61,6 +61,11 @@ needs `AR_HARDWARE_MEMORY_SCALE=6`.
 
 ## Weight gradients of dense layers
 
+This section explains the reduced delta only as far as a dense layer needs it. The general
+mechanism — the `ReduceAxis` contract, the computation extension points, the expression-level
+Jacobian, and the backward pass — is documented in
+[Automatic Differentiation](automatic-differentiation.md).
+
 For a matrix multiply `y_r = W · x_r` applied to every row `x_r` of a sequence, the gradients the
 backward pass needs are vector-Jacobian products with known structure:
 
@@ -82,8 +87,11 @@ multiply-and-sum lowering is built from exactly those computations, so a dense l
 (`LayerFeatures.denseOperator`: the output reshape of the bias addition of the matrix multiply)
 yields `Σ_r g_r ⊗ x_r`, `Wᵀ · g_r` and the row-summed bias gradient without any code that
 recognizes a matrix multiply. A computation without a reduced form of its own contracts its full
-Jacobian, which is what `GradientFeatures.jacobianGradient` always does; the weighted-sum lowering
-that `matmul` uses for outputs wider than 1000 is one of these. `DefaultGradientPropagation` forms
+Jacobian, which is what `GradientFeatures.jacobianGradient` always does. The weighted-sum lowering
+(`WeightedSumComputation`) that `matmul` uses for outputs wider than 1000 is not one of these: it
+builds its own reduced delta for both axes from a transposed weighted sum, falling back to the full
+Jacobian only for a traversal that cannot be transposed, such as a convolution's sliding window.
+`DefaultGradientPropagation` forms
 both the input gradient and every weight gradient as the output-reduced delta weighted by the
 upstream gradient.
 
@@ -92,13 +100,20 @@ forced full-Jacobian gradient and with the gradient computed on the host from it
 every projection shape of the model below over a 64-row sequence, and checks that no computation in
 the reduced delta's graph is larger than the largest computation of the operator itself.
 
-**The full-Jacobian weight gradient is wrong for the output projection.** For the 256 by 64
-weight over 64 rows, `jacobianGradient` disagrees with the definition in about a tenth of the
+**The full-Jacobian weight gradient was wrong for the output projection.** For the 256 by 64
+weight over 64 rows, `jacobianGradient` disagreed with the definition in about a tenth of the
 16,384 entries (1,536 or 1,728 in the runs measured, always from weight row 64 onward) on Metal,
-while the product agrees exactly. Its kernel sums 16,384 outputs of 64 masked terms for each
-weight entry over an enumeration of 2^34 positions. The 192 by 64 and 128 by 64 weights are
+while the product agreed exactly. Its kernel sums 16,384 outputs of 64 masked terms for each
+weight entry over an enumeration of 2^34 positions. The 192 by 64 and 128 by 64 weights were
 correct. The documentation runs before the product existed therefore trained the output projection
-with partly wrong gradients; the cause inside the sparse-Jacobian machinery is not yet diagnosed.
+with partly wrong gradients. The cause was in code generation, not the sparse-Jacobian machinery:
+the kernel hoisted repeated parts of the flattened position into variables declared as 32-bit
+integers, so a hoisted row multiplied by a stride of 1,048,512 overflowed where the same product
+computed inline, with the 64-bit kernel index, did not. Hoisted variables now take a 64-bit type
+whenever the expression refers to the kernel index (`Expression.getDeclarationType`; see
+[Automatic Differentiation](automatic-differentiation.md)), and
+`DenseVectorJacobianProductTest.outputProjection` asserts the full-Jacobian weight gradient against
+the definition on several evaluations.
 
 ## Pairing axes by size
 

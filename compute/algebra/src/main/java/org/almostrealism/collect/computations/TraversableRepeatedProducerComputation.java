@@ -17,13 +17,11 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -31,92 +29,46 @@ import java.util.List;
 import java.util.function.BiFunction;
 
 /**
- * A specialized {@link RepeatedProducerComputation} that implements {@link TraversableExpression}
- * for efficient traversal operations on collections with fixed iteration counts.
- * 
- * <p>This class extends {@link ConstantRepeatedProducerComputation} to provide traversable
- * functionality, allowing the computation to be used in expression trees that require
- * efficient value access patterns. It is particularly useful for operations that need
- * to access values at computed indices during repeated iterations, such as reduction
- * operations, iterative refinement algorithms, and accumulation computations.</p>
- * 
- * <p>The key difference from the base {@link RepeatedProducerComputation} is that this
- * class returns {@link TraversableExpression} results, enabling more efficient composition
- * with other traversable operations in complex computation graphs. This allows for
- * optimized memory access patterns and better integration with parallel processing
- * strategies.</p>
- * 
- * <h3>Core Functionality</h3>
- * <p>The computation operates with a fixed number of iterations, applying an expression
- * function repeatedly while maintaining traversable access to intermediate and final
- * results. The computation workflow follows this pattern:</p>
- * <ol>
- *   <li>Initialize values using the provided initial function</li>
- *   <li>Apply the expression function for each iteration (count times)</li>
- *   <li>Generate flattened expressions for optimization</li>
- *   <li>Provide traversable access to results via index-based retrieval</li>
- * </ol>
- * 
- * <h3>Usage Example - Index of Maximum Value</h3>
- * <p>A typical usage pattern is finding the index of maximum values in collections,
- * as implemented in {@link org.almostrealism.collect.CollectionFeatures#indexOfMax(io.almostrealism.relation.Producer)}:</p>
- * <pre><code>
- * // Create computation to find index of maximum value
- * TraversableRepeatedProducerComputation&lt;?&gt; indexOfMax = 
- *     new TraversableRepeatedProducerComputation&lt;&gt;("indexOfMax", shape.replace(shape(1)), size,
- *         // Initial: start with index 0
- *         (args, index) -&gt; e(0),
- *         // Expression: compare values and update index if larger value found
- *         (args, position, currentIndex) -&gt; index -&gt;
- *             conditional(args[1].getValueAt(position.multiply(size).add(index))
- *                         .greaterThan(args[1].getValueAt(position.multiply(size).add(currentIndex))),
- *                         index, currentIndex),
- *         input);
- * </code></pre>
- * 
- * <h3>Performance Characteristics</h3>
- * <p>This computation includes several optimization features:</p>
+ * A {@link ConstantRepeatedProducerComputation} that is also a {@link TraversableExpression},
+ * so that its value at any position can be embedded in the expression of a consumer rather
+ * than always computed in a kernel of its own.
+ *
+ * <p>A subclass defines the computation through two paths that must agree:</p>
  * <ul>
- *   <li><strong>Isolation Control:</strong> Automatically determines when to isolate
- *       computations based on iteration count ({@link #isolationCountThreshold}) and
- *       memory requirements ({@link io.almostrealism.code.MemoryProvider#MAX_RESERVATION})</li>
- *   <li><strong>Memory Efficiency:</strong> Leverages traversable expressions for
- *       optimized memory access patterns during repeated operations</li>
- *   <li><strong>Parallel Processing:</strong> Designed to work efficiently with
- *       parallel computation contexts and GPU acceleration</li>
- *   <li><strong>Expression Optimization:</strong> Uses expression flattening and
- *       generation for improved kernel compilation</li>
+ *   <li>{@link #getValueAt(Expression)}, the value of one output element, with every
+ *       iteration unrolled into the expression. This is the path used when the
+ *       computation is embedded in the kernel of a consumer, where the kernel index
+ *       identifies an element of that kernel rather than of this computation, so the
+ *       element must be located by the index given.</li>
+ *   <li>{@link #getExpression(TraversableExpression[], Expression, Expression)}, one
+ *       iteration of the loop, used when the computation is compiled into a kernel of its
+ *       own, where the accumulated value of each output element is held in the output.</li>
  * </ul>
- * 
- * <h3>Relationship to Other Classes</h3>
- * <p>This class fits into the computation hierarchy as follows:</p>
- * <ul>
- *   <li>Extends {@link ConstantRepeatedProducerComputation} for fixed iteration behavior</li>
- *   <li>Implements {@link TraversableExpression} for efficient index-based access</li>
- *   <li>Used as base class for {@link AggregatedProducerComputation} for aggregation operations</li>
- *   <li>Integrates with {@link org.almostrealism.collect.CollectionFeatures} for high-level operations</li>
- * </ul>
- * 
- * @see RepeatedProducerComputation
- * @see ConstantRepeatedProducerComputation
- * @see TraversableExpression
+ *
+ * <p>Whether the computation is embedded or isolated depends on its iteration count (see
+ * {@link #isolationCountThreshold}) and on the size of its output.</p>
+ *
+ * <p>This class is abstract so that the behaviour of every instance is fixed by its class,
+ * which, together with its name and inputs, is what its signature identifies.</p>
+ *
+ * @see IndexOfMaxComputation
  * @see AggregatedProducerComputation
- * @see org.almostrealism.collect.CollectionFeatures#indexOfMax(io.almostrealism.relation.Producer)
+ * @see PrefixAccumulationComputation
  *
  * @author Michael Murray
  */
-public class TraversableRepeatedProducerComputation
+public abstract class TraversableRepeatedProducerComputation
 		extends ConstantRepeatedProducerComputation implements TraversableExpression<Double> {
-	
+
 	/**
 	 * The threshold for the number of iterations above which this computation
 	 * becomes a candidate for isolation during execution.
-	 * 
+	 *
 	 * <p>When the iteration count exceeds this threshold, the computation may be
 	 * isolated into a separate kernel or execution context for better performance
 	 * and memory management. This helps prevent excessive resource consumption
 	 * from computations with very high iteration counts.</p>
-	 * 
+	 *
 	 * <p>The default value of 16 provides a balance between overhead of isolation
 	 * and benefits of separate execution. Set to {@link Integer#MAX_VALUE} to
 	 * effectively disable isolation based on iteration count.</p>
@@ -124,118 +76,32 @@ public class TraversableRepeatedProducerComputation
 	public static int isolationCountThreshold = 16; // Integer.MAX_VALUE;
 
 	/**
-	 * The computation logic applied at each iteration of a
-	 * {@link TraversableRepeatedProducerComputation}.
-	 */
-	@FunctionalInterface
-	public interface Step {
-		/**
-		 * Returns the next state of the computation for the output element at the given
-		 * position. The returned expression is indexed by the iteration number.
-		 *
-		 * <p>The position is the only valid way to locate the inputs that belong to the
-		 * output element. When the computation is embedded in a kernel of a different
-		 * size, the kernel index identifies an element of that kernel rather than of
-		 * this computation, so it must not be used for that purpose.</p>
-		 *
-		 * @param args     The traversable arguments, where args[0] is the output
-		 * @param position The index of the output element being computed
-		 * @param current  The accumulated value so far
-		 * @return A {@link TraversableExpression} for the next state, indexed by iteration
-		 */
-		TraversableExpression<Double> apply(TraversableExpression[] args,
-											Expression<?> position, Expression<?> current);
-	}
-
-	/**
-	 * The function that defines the computation logic applied at each iteration.
+	 * Constructs a repeated computation with a fixed number of iterations.
 	 *
-	 * <p>Unlike the parent class which uses simple {@link Expression}s, this field
-	 * uses {@link TraversableExpression}s to provide more flexible access patterns
-	 * and better integration with traversable computation graphs.</p>
-	 */
-	private final Step expression;
-
-	/**
-	 * Constructs a new TraversableRepeatedProducerComputation with the specified
-	 * parameters for repeated operations on collections.
-	 * 
-	 * <p>This constructor sets up a computation that will perform a fixed number of
-	 * iterations, applying the provided expression function to transform data while
-	 * maintaining traversable access to results. The computation follows a pattern
-	 * of initialization followed by iterative application of the expression.</p>
-	 * 
-	 * <h4>Parameter Usage Example</h4>
-	 * <p>For finding the index of maximum value in a collection:</p>
-	 * <pre><code>
-	 * new TraversableRepeatedProducerComputation&lt;&gt;(
-	 *     "indexOfMax",                    // name: operation identifier
-	 *     shape.replace(shape(1)),         // shape: output dimensions
-	 *     collection.getSize(),            // count: iterate over all elements
-	 *     (args, index) -&gt; e(0),          // initial: start with index 0
-	 *     (args, position, currentIndex) -&gt; index -&gt; // expression: compare and update
-	 *         conditional(args[1].getValueAt(position.multiply(size).add(index))
-	 *                     .greaterThan(args[1].getValueAt(position.multiply(size).add(currentIndex))),
-	 *                     index, currentIndex),
-	 *     input                            // arguments: input collection
-	 * );
-	 * </code></pre>
-	 * 
-	 * @param name A descriptive name for this computation, used for debugging and
-	 *             optimization. Should be camelCase (e.g., "indexOfMax", "sumReduce")
-	 * @param shape The {@link TraversalPolicy} defining the output dimensions and
-	 *              traversal pattern. This determines how results are accessed and stored
-	 * @param count The fixed number of iterations to perform. Must be non-negative.
-	 *              Higher values may trigger isolation based on {@link #isolationCountThreshold}
-	 * @param initial A function that initializes the computation state. Takes the input
-	 *                arguments and current index, returns the initial value expression.
-	 *                Called once before the iteration loop begins
-	 * @param expression The core computation function applied on each iteration. Takes
-	 *                   input arguments, the position of the output element, and the
-	 *                   current accumulated value, and returns a
-	 *                   {@link TraversableExpression} for the next iteration state
-	 * @param arguments Variable number of input suppliers, typically {@link io.almostrealism.relation.Producer}
-	 *                  instances that provide the data to be processed
-	 * 
-	 * @throws IllegalArgumentException if count is negative or if any required parameters are null
-	 * 
-	 * @see io.almostrealism.relation.Producer
-	 * @see org.almostrealism.collect.CollectionProducer
-	 * @see TraversalPolicy
+	 * @param name      the name of the operation, which participates in its signature
+	 * @param shape     the {@link TraversalPolicy} of the output
+	 * @param count     the number of iterations, which may trigger isolation as
+	 *                  {@link #isolationCountThreshold} describes
+	 * @param initial   the value of each output element before the first iteration, given
+	 *                  the traversable arguments and the index of the element, or null if
+	 *                  the subclass initializes its output itself
+	 * @param arguments the inputs of the computation
 	 */
 	@SafeVarargs
-	public TraversableRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
-												  BiFunction<TraversableExpression[], Expression, Expression> initial,
-												  Step expression,
-												  Producer<PackedCollection>... arguments) {
+	protected TraversableRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
+													 BiFunction<TraversableExpression[], Expression, Expression> initial,
+													 Producer<PackedCollection>... arguments) {
 		super(name, shape, count, initial, null, arguments);
-		this.expression = expression;
 		this.count = count;
 	}
 
 	/**
-	 * Retrieves the computed value at the specified multi-dimensional position.
-	 * 
-	 * <p>This method converts the provided positional coordinates into a linear
-	 * index using the computation's {@link TraversalPolicy} shape, then delegates
-	 * to {@link #getValueAt(Expression)} for the actual value retrieval.</p>
-	 * 
-	 * <p>The position array should match the dimensionality of the computation's
-	 * output shape. For example, for a 2D result with shape [4, 3], valid
-	 * positions include [0, 0], [1, 2], [3, 1], etc.</p>
-	 * 
-	 * @param pos Variable number of position coordinates, where each coordinate
-	 *            corresponds to a dimension in the output shape. The number of
-	 *            coordinates must match the shape's dimension count
-	 * @return An {@link Expression} representing the computed value at the specified position
-	 * 
-	 * @throws IllegalArgumentException if the number of position coordinates doesn't
-	 *                                  match the output shape dimensions
-	 * @throws IndexOutOfBoundsException if any coordinate exceeds the corresponding
-	 *                                   dimension bounds
-	 * 
-	 * @see #getValueAt(Expression)
-	 * @see TraversalPolicy#index(Expression[]) 
+	 * Retrieves the computed value at the specified multi-dimensional position, by
+	 * converting the coordinates into a linear index with the output shape and
+	 * delegating to {@link #getValueAt(Expression)}.
+	 *
+	 * @param pos the coordinates of the position, one for each dimension of the output
+	 * @return an {@link Expression} for the value at the position
 	 */
 	@Override
 	public Expression<Double> getValue(Expression... pos) {
@@ -243,115 +109,36 @@ public class TraversableRepeatedProducerComputation
 	}
 
 	/**
-	 * Computes and returns the value at the specified linear index through
-	 * repeated application of the computation expression.
-	 * 
-	 * <p>This method implements the core computation logic by:</p>
-	 * <ol>
-	 *   <li>Converting input arguments to traversable expressions at the given index</li>
-	 *   <li>Initializing the computation state using the initial function</li>
-	 *   <li>Iteratively applying the expression function for the specified count</li>
-	 *   <li>Flattening and optimizing expressions at each iteration</li>
-	 * </ol>
-	 * 
-	 * <p>The repeated application allows for complex accumulation patterns,
-	 * reduction operations, and iterative refinement algorithms. Each iteration
-	 * can access and modify the accumulated state while maintaining efficient
-	 * expression representation through flattening.</p>
-	 * 
-	 * <h4>Computation Flow Example</h4>
-	 * <p>For a sum reduction with count=3:</p>
-	 * <pre><code>
-	 * // Initial: value = 0
-	 * // Iteration 1: value = expression.apply(args, 0).getValueAt(0) -&gt; flattened
-	 * // Iteration 2: value = expression.apply(args, previous).getValueAt(1) -&gt; flattened  
-	 * // Iteration 3: value = expression.apply(args, previous).getValueAt(2) -&gt; flattened
-	 * // Return: final flattened value expression
-	 * </code></pre>
-	 * 
-	 * @param index The linear index position for which to compute the value.
-	 *              This index is used both for accessing input data and for
-	 *              iteration control within the expression function
-	 * @return An {@link Expression} representing the computed value after
-	 *         all iterations are complete
-	 * 
-	 * @see #getTraversableArguments(Expression)
-	 * @see Expression#generate(java.util.List)
-	 * @see Expression#flatten()
+	 * Returns the value of the output element at the given index, with every iteration
+	 * unrolled into the expression, for use when this computation is embedded in the
+	 * expression of a consumer.
+	 *
+	 * @param index the index of the output element
+	 * @return an {@link Expression} for the value of that element after every iteration
 	 */
 	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		TraversableExpression[] args = getTraversableArguments(index);
-
-		Expression value = initial.apply(args, e(0));
-
-		for (int i = 0; i < count; i++) {
-			value = expression.apply(args, index, value).getValueAt(e(i));
-			value = value.generate(value.flatten());
-		}
-
-		return value;
-	}
+	public abstract Expression<Double> getValueAt(Expression index);
 
 	/**
-	 * Generates the expression used in the computation kernel for parallel execution.
-	 * 
-	 * <p>This method is called during kernel compilation to produce the actual
-	 * computation expression that will be executed in parallel contexts. It handles
-	 * the integration between the repeated computation logic and the underlying
-	 * collection variable system.</p>
-	 * 
-	 * <p>The method extracts the current accumulated value from the first argument
-	 * (which represents the output collection) and applies the computation expression
-	 * to generate the result for the specified local index position.</p>
-	 * 
-	 * @param args The traversable expressions representing input arguments,
-	 *             where args[0] typically represents the output collection
-	 * @param globalIndex The global index in the overall computation space,
-	 *                    used for coordination across parallel execution units
-	 * @param localIndex The local index within the current execution context,
-	 *                   used to determine which iteration result to compute
-	 * @return An {@link Expression} representing the computation result for
-	 *         the specified local index position
-	 * 
-	 * @see io.almostrealism.collect.CollectionVariable#reference(io.almostrealism.expression.Expression)
+	 * Returns the expression for one iteration of the loop, for use when this computation
+	 * is compiled into a kernel of its own.
+	 *
+	 * @param args        the traversable arguments, where {@code args[0]} is the output
+	 * @param globalIndex the global index in the overall computation space
+	 * @param localIndex  the index of the iteration
+	 * @return an {@link Expression} for the next value of the output element
 	 */
 	@Override
-	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionVariable variable = (CollectionVariable) args[0];
-		Expression<?> position = new KernelIndex().multiply(variable.length()); // TODO Should this be globalIndex instead of KernelIndex?
-		Expression currentValue = variable.reference(position);
-		return expression.apply(args, position, currentValue).getValueAt(localIndex);
-	}
+	protected abstract Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex);
 
 	/**
-	 * Determines whether this computation should be isolated during execution
-	 * based on resource requirements and iteration complexity.
-	 * 
-	 * <p>Isolation decisions are made based on two primary factors:</p>
-	 * <ul>
-	 *   <li><strong>Memory Requirements:</strong> If the output size exceeds
-	 *       {@link io.almostrealism.code.MemoryProvider#MAX_RESERVATION}, the computation
-	 *       cannot be safely isolated due to memory constraints</li>
-	 *   <li><strong>Iteration Complexity:</strong> If the iteration count exceeds
-	 *       {@link #isolationCountThreshold}, isolation may provide performance benefits</li>
-	 * </ul>
-	 * 
-	 * <p>Isolation can improve performance for complex computations by:</p>
-	 * <ul>
-	 *   <li>Reducing memory pressure on the main computation context</li>
-	 *   <li>Enabling specialized optimization strategies</li>
-	 *   <li>Preventing resource contention with other computations</li>
-	 *   <li>Allowing for different execution strategies (CPU vs GPU)</li>
-	 * </ul>
-	 * 
-	 * @param context The {@link ProcessContext} in which the computation will execute,
-	 *                providing information about available resources and execution environment
-	 * @return {@code true} if this computation should be isolated for execution,
-	 *         {@code false} if it can be executed within the main computation context
-	 * 
-	 * @see io.almostrealism.code.MemoryProvider#MAX_RESERVATION
-	 * @see #isolationCountThreshold
+	 * Determines whether this computation should be isolated: never when its output exceeds
+	 * {@link io.almostrealism.code.MemoryProvider#MAX_RESERVATION}, and otherwise when the
+	 * parent class requires it or the iteration count exceeds {@link #isolationCountThreshold}.
+	 *
+	 * @param context the {@link ProcessContext} in which the computation will execute
+	 * @return {@code true} if this computation should be isolated
+	 *
 	 * @see ConstantRepeatedProducerComputation#isIsolationTarget(ProcessContext)
 	 */
 	@Override
@@ -361,43 +148,32 @@ public class TraversableRepeatedProducerComputation
 	}
 
 	/**
-	 * Creates a new instance of this computation with the specified child processes,
-	 * preserving the original configuration while updating the argument suppliers.
-	 * 
-	 * <p>This method is used during computation graph optimization and compilation
-	 * to create specialized versions of the computation with different input sources.
-	 * The new instance maintains the same name, shape, iteration count, and expression
-	 * functions while substituting the input arguments.</p>
-	 * 
-	 * <p>The first child process is typically skipped (using {@code skip(1)}) because
-	 * it usually represents the output destination rather than an input source. The
-	 * remaining processes are used as the new argument suppliers for the computation.</p>
-	 * 
-	 * <h4>Usage in Computation Graphs</h4>
-	 * <p>This method enables dynamic reconfiguration of computation pipelines:</p>
-	 * <pre><code>
-	 * // Original computation with producer inputs
-	 * TraversableRepeatedProducerComputation original = new TraversableRepeatedProducerComputation(...);
-	 * 
-	 * // Create new version with different input processes
-	 * List&lt;Process&lt;?, ?&gt;&gt; newInputs = Arrays.asList(outputProcess, inputProcess1, inputProcess2);
-	 * TraversableRepeatedProducerComputation optimized = original.generate(newInputs);
-	 * </code></pre>
-	 * 
-	 * @param children The list of child processes to use as input sources for
-	 *                 the new computation instance. The first element is typically
-	 *                 the output process and is skipped when creating argument suppliers
-	 * @return A new {@link TraversableRepeatedProducerComputation} instance with
-	 *         the same configuration but different input sources
-	 * 
-	 * @see io.almostrealism.compute.Process
-	 * @see java.util.stream.Stream#skip(long)
-	 * @see java.util.function.Supplier
+	 * Creates a new instance of this computation for the given children, where the first
+	 * child is the output destination and the remaining children are the inputs.
+	 *
+	 * @param children the child processes of the new computation
+	 * @return a new computation of the same class with those inputs
 	 */
 	@Override
-	public TraversableRepeatedProducerComputation generate(List<Process<?, ?>> children) {
-		return new TraversableRepeatedProducerComputation(getName(), getShape(),
-				count, initial, expression,
-				children.stream().skip(1).toArray(Producer[]::new));
+	public abstract TraversableRepeatedProducerComputation generate(List<Process<?, ?>> children);
+
+	/**
+	 * Extends the standard computation signature with the concrete class of this
+	 * computation. The behaviour of every instance is fixed by its class (see the class
+	 * documentation), but the parent signature captures only the name, inputs, and shape.
+	 * Appending the class ensures that two repeated computations which share a name, shape,
+	 * and inputs but are different classes — and therefore generate different loop bodies —
+	 * produce different signatures rather than sharing a cached kernel through the
+	 * signature-keyed instruction cache. Subclasses whose behaviour is further parameterised
+	 * (for example by a configuration flag) extend this with that state.
+	 *
+	 * @return the signature including the concrete class, or null when the parent signature
+	 *         is unavailable
+	 */
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+		return signature + "{" + getClass().getName() + "}";
 	}
 }

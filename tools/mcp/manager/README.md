@@ -205,6 +205,7 @@ made at all. Neither flag can be set by an in-flight coding agent.
 | `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis: `llamacpp`, `ollama`, `mlx`, `openrouter`, `passthrough`, or `auto` |
 | `AR_CONSULTANT_LLAMACPP_URL` | (auto-discovered) | llama.cpp server URL |
 | `AR_CONSULTANT_OPENROUTER_API_KEY_FILE` | `/secrets/consultant__openrouter-api-key.json` (compose) | The consultant's OpenRouter secret file; other `AR_CONSULTANT_OPENROUTER_*` settings are in [the consultant README](../consultant/README.md#openrouter-hosted) |
+| `AR_SNAPSHOT_INDEX` | `/app/snapshot/snapshot-index.json` (image) | The snapshot index consult checks names and extracts facts from; unset in a checkout, which disables both |
 | `MCP_TRANSPORT` | `http` | Transport: `http` or `sse`. `stdio` is rejected (auth-only HTTP server) |
 | `MCP_PORT` | `8010` | Port for http/sse transport |
 
@@ -227,6 +228,63 @@ memories are returned unsummarized. Neither ever costs you the memories.
 
 When running from a source checkout, `AR_DOCS_DIR` can be left unset —
 `DocsRetriever` falls back to the repository layout relative to its own location.
+
+The retriever indexes every `*.md` and `*.html` under the corpus root except
+the entries in `INDEX_EXCLUSIONS` (`docs/plans/`, the root `README.md` and stray
+working files, the consult evaluation's own reports). A packaging test fails
+when a document in the repository is neither copied into the image and indexed
+nor excluded on purpose. Each retrieved chunk carries its line range and the
+heading trail above it, and a chunk that falls in a short subsection is the
+whole subsection.
+
+## Consult: Evidence, Tiers and Citations
+
+`consult` (`consult_engine.py`) answers from a single evidence list. Every item
+has an ID the model cites and a tier that says what it may supply:
+
+| ID | Kind | Tier | May supply |
+|----|------|------|------------|
+| `D1` | documentation chunk | A | present fact for the snapshot |
+| `I1` | snapshot-index fact (a script's header or exit codes, a literal constant) | A | present fact for the snapshot |
+| `N1` | note, current: on the target branch or merged into it, or on the caller's own branch, within 45 days | B | a fact the documentation lacks; the answer then opens with a fixed sentence saying it rests on notes |
+| `N1` | note, branch-local: on another open or unmerged branch | B′ | a fact qualified by its branch only |
+| `N1` | note, historical: older, closed unmerged, or of unknown branch state | C | history and rationale (`history` field) |
+| `N1` | note, stale: names a type or path the snapshot no longer contains | C✗ | history only; the absent names are listed |
+
+The target branch is the caller's workstream `baseBranch` (default `master`).
+A note's branch state comes from its branch's most recent pull request, looked
+up only when the caller's token holds `github` and its workspace may see the
+note's organization; otherwise it is `unknown` and `degraded_reasons` lists
+`branch_state`. Notes are searched in every semantic namespace (at most six,
+reported as `memory_namespaces_capped` when cut), and a scope that cannot be
+resolved stops note retrieval (`memory_scope`) rather than widening it.
+
+The model cites IDs, never file names; the server expands `[D1]` to
+`[D1: path:start-end]`. The answer basis is recomputed from the IDs actually
+cited, whatever the model's `BASIS:` line says. A deterministic verifier then
+checks each sentence against what it cites — every identifier and path must
+appear in a cited item, every number and literal verbatim, a present-tense
+claim may not rest only on historical notes, and a branch-local claim must name
+its branch. An uncited specific found in no evidence item at all is flagged
+too. Failing sentences are marked `[unsupported]` in the answer and listed in
+`citation_warnings`. A question naming a file the snapshot does not contain is
+answered directly with `nonexistent: true`.
+
+The snapshot index is built in the Dockerfile's `docs` stage before the prune
+(`tools/mcp/common/snapshot_index.py`) and records the commit it was built from,
+passed as the `CORPUS_COMMIT` build argument (`rebuild.sh` exports it; a build
+that omits it records `unknown`). `consult` returns it as `corpus`.
+
+Callers holding a job token can continue a consult with `conversation_id`: a
+follow-up keeps the evidence IDs of earlier turns and sees their questions and
+condensed answers. Conversations are in-process, bound to the job that started
+them and to the first turn's repository, expire after 30 idle minutes or four
+hours, and allow 12 turns. Static tokens are always stateless.
+
+`eval/run_consult_eval.py` measures all of this against a version-controlled
+case set (`eval/consult_cases.json`): `replay` grades frozen deployed
+responses, `scripted` runs the live pipeline with canned model answers, and
+`local` runs it against a real backend.
 
 ## Per-Repository Configuration
 

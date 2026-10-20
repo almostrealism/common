@@ -28,6 +28,148 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-18 — Fix the nondeterministic full-Jacobian weight gradient for the output projection
+
+**Category:** Code Quality (correctness — a silent wrong-gradient defect in the autodiff engine)
+**Branch:** `project/plan-20261018-174738`
+**Plan:** [`PLAN-20261018-full-jacobian-gradient-correctness.md`](PLAN-20261018-full-jacobian-gradient-correctness.md)
+
+#### What changed since last cycle
+
+The autodiff internals page landed (PR #670, with follow-ups #667/#673): the backward half of the
+execution story is now documented end to end, and the prior entry named that page as the
+**prerequisite** for the correctness work below. So the gate it set is now open. Everything else the
+last entry promised is still queued behind it: non-degenerate LM generation (greedy decoding still
+repeats one byte), the weighted-sum `matmul` reduced form, the `io.almostrealism.collect` split.
+
+#### Category assessment (priority order)
+
+- **Documentation — excellent, and newly complete where it mattered.** The internals corpus is 38
+  pages and now includes `automatic-differentiation.md`; `consult` finds no flagship gap. The only
+  standing items (the ONNX-pressure note, line-number hygiene) are low-priority and owned by
+  continuous QA. Moved on.
+- **Code quality — the category, because of a specific, evidenced correctness defect.** It is not a
+  style or coverage gap: `GradientFeatures.jacobianGradient`, the full-Jacobian fallback that is the
+  *reference every reduced-delta test is checked against*, produces a **nondeterministically wrong**
+  weight gradient for the 256×64 output projection over 64 rows — ~1/10 of 16,384 entries, 1,728 on
+  one profiled Metal run and 1,536 on another, always from weight row 64 onward. It is recorded
+  honestly today (a `TODO(review)`, the "known limits" prose, and
+  `DenseVectorJacobianProductTest.outputProjection` logging the disagreement instead of asserting
+  it), and it was explicitly deferred to "its own plan" by the VJP review. This is that plan.
+
+#### Why this task
+
+A learning system whose *reference gradient* is silently, intermittently wrong is the most
+consequential kind of foundation defect: the platform's first self-hosted training runs trained the
+output projection from this path, every operator without a structural reduced form still falls back
+to it, and it is the ground truth the whole reduced-delta suite trusts. Correctness of the
+differentiation engine sits in the second category and ranks above performance and proof of value —
+and this is a concrete, falsifiable instance of it, now unblocked by the documentation it needed.
+
+The plan follows evidence, not the first hypothesis. The `TODO(review)` guesses a 32-bit index
+overflow (2³⁴ iteration space, errors beginning at flat index 2³²), but the profiling already done
+*contradicts* that: a deterministic overflow would miscompute the same entries every run, and this
+does not. The nondeterminism, and the ~1M-element `(64,256,64)` repeat buffer the sum kernel reads,
+point instead at argument binding / aggregation or at the ordering of the kernel that writes that
+buffer and the kernel that reads it. The layernorm "invalid kernel" journal
+(`INVALID_KERNEL_AGGREGATION.md`) is cited only as an untrusted lead: `docs/journals/CONCESSION.md`
+retracts its central claim (the "divergent" kernels were a mismatched comparison), so no aggregation
+defect is established and the plan does not reason from one. So the plan separates the leads with
+cheap single-variable experiments — disabling aggregation via `AR_HARDWARE_ARGUMENT_AGGREGATION`,
+then forcing the write/read ordering — reads the generated kernel with `ar-profile-analyzer` before
+theorizing, fixes the general mechanism (not the one shape), and tightens the existing test to
+*assert* agreement on repeated evaluation. Weakening the test to go green is out of bounds and the
+plan says so.
+
+#### Balance across categories
+
+The last several cycles alternated foundation documentation with proof-of-value milestones, and the
+proof-of-value track (a trained LM that beats its baseline, PR #628) is one honest step from
+speaking. But it cannot speak on a gradient that is sometimes wrong — and the degenerate single-byte
+generation may itself be a symptom of an output projection trained on this very defect. Fixing the
+reference gradient is the right move before the next generation push: it is cheaper now (the
+failing kernel is already profiled and the candidate mechanisms named), it protects every later LM
+step, and it keeps the platform honest about its own learning machinery.
+
+#### What comes next
+
+1. This plan: diagnose the nondeterministic output-projection fallback on Metal via
+   `ar-profile-analyzer`, fix it at the general argument-mapping/ordering (or index-typing) layer,
+   assert the agreement in `DenseVectorJacobianProductTest`, check convolution for the same defect
+   with a new test against a host reference (the existing convolution-delta tests only log shapes),
+   and update the "known limits" docs and the `TODO(review)`.
+2. **Proof of value — non-degenerate generation**, revisited with a now-trustworthy gradient:
+   temperature/top-p in the sliding-window generator, a KV-cache decode, more steps/larger context.
+   Re-run `trainOnDocumentation` to see whether the corrected gradient moves the held-out score.
+3. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000),
+   the last Jacobian-contracting path on a dense layer.
+4. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
+   trained model read the platform's own *source*.
+
+### 2026-10-17 — Document automatic differentiation from `delta` to the backward pass
+
+**Category:** Documentation
+**Branch:** `project/plan-20261018-013621`
+**Plan:** [`PLAN-20261018-automatic-differentiation-internals.md`](PLAN-20261018-automatic-differentiation-internals.md)
+
+#### What changed since last cycle
+
+The matrix-multiply plan landed (PR #628) and paid off: a training step is about ten times cheaper
+(3.6 s → 0.35 s), and `trainOnDocumentation` now **beats its unigram baseline, 4.194 against 4.912
+bits per byte** over all 83 held-out windows. Two findings along the way: `matmul` and the dense
+bias paired axes by size when sizes coincided (fixed), and the full-Jacobian weight gradient is
+itself wrong for the 256×64 output projection on Metal (recorded, undiagnosed). Greedy generation
+is still a single repeated byte, so the test's generation assertion still fails. Then the
+maintainer consolidated the derivative API (PRs #661, #666): the matmul-specific
+`VectorJacobianProduct` became a general reduced delta, `CollectionProducer.delta(target, axis,
+weight)` is the only public derivative method, and computations customize it through four protected
+extension points (`deltaDependent`, `deltaElement`, `deltaPartial`, `deltaMatrix`). Small tracked
+tasks (projection factories, `NumberConditioner`) and the QA retrospective round also landed.
+
+#### Category assessment (priority order)
+
+- **Documentation — a real gap, and it decided the cycle.** The forward story is fully documented;
+  the backward story is not. `consult` confirms there is no internals page for automatic
+  differentiation. What exists is a `package-info` paragraph, a three-line README example, and the
+  dense-layer section of the training page. Nothing covers the extension points and their order,
+  the expression-level rules and `ExpressionMatrix`, or how `DefaultGradientPropagation` and the
+  backward cells turn deltas into a training step. The API has just been redesigned, so this is the
+  moment when the knowledge exists and the page is cheapest to write.
+- Code quality, performance and proof of value all have candidates (below). I did not choose any
+  of them, because documentation comes first and this gap is genuine.
+
+#### Why this task
+
+Autodiff is how the platform learns, and it is the mechanism a model trained on this corpus should
+be able to explain about itself. It is also where the costliest silent failures live. A new
+operator without a reduced form falls back to a full Jacobian without any warning (the
+17-billion-term output projection and `convDeltaMedium` were both that fallback). A wrong sparse
+Jacobian trained the LM's output projection with partly wrong gradients for weeks. A documented
+contract ("which extension point, in what order, how to verify it, where the fallback still
+happens") protects every later LM step from both. The plan requires every claim to be read from
+source or pinned by a test. Defects found along the way are recorded, not fixed.
+
+#### Balance across categories
+
+The last four cycles went to performance and proof of value, and they produced real results. This
+cycle goes back to the foundation, and not by rote: the subsystem those cycles rebuilt now needs
+its own page. It is a medium-sized task that runs on any node.
+
+#### What comes next
+
+1. This plan: `docs/internals/automatic-differentiation.md`, cross-links, a Javadoc pass for names
+   the consolidation removed, and a "known limits" section.
+2. **Correctness:** diagnose the `jacobianGradient` disagreement for the 256×64 output projection
+   (a 2^32 index-overflow hypothesis is on record). The new page is the prerequisite.
+3. **Proof of value:** non-degenerate generation from the trained LM. The baseline is beaten, but
+   greedy decoding still repeats one byte. Next come recipe and scale: batch > 1 in
+   `scaledDotProductAttention`, more steps, a larger context or depth. Then temperature/top-p in
+   the sliding-window generator, and a KV-cache decode.
+4. **Performance:** a reduced form for the weighted-sum `matmul` lowering (outputs wider than
+   1000), the last Jacobian-contracting path on a dense layer.
+5. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
+   trained model read the platform's own *source*.
+
 ### 2026-10-09 — Compute matrix-multiply weight gradients without materializing the Jacobian
 
 **Category:** Performance (directly unblocking Proof of Value)

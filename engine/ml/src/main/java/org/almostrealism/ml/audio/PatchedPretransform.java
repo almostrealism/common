@@ -17,9 +17,12 @@
 package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.model.Block;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * A parameter-free pretransform that folds runs of {@code patchSize} consecutive samples of each
@@ -42,6 +45,9 @@ public class PatchedPretransform implements LayerFeatures {
 
 	/** Number of consecutive samples folded into the channel axis. */
 	private final int patchSize;
+
+	/** The asset whose {@code patch_encode} and {@code patch_decode} layers define the fold. */
+	private static final String PATCH_TRANSFORM_ASSET = "/pdsl/audio/patch_transform.pdsl";
 
 	/**
 	 * Creates a patched pretransform.
@@ -110,14 +116,7 @@ public class PatchedPretransform implements LayerFeatures {
 					" is not a multiple of the patch size " + patchSize);
 		}
 
-		int frames = length / patchSize;
-		TraversalPolicy inShape = shape(batchSize, channels, length);
-		TraversalPolicy outShape = shape(batchSize, channels * patchSize, frames);
-
-		return layer("patchEncode", inShape, outShape, input -> {
-			CollectionProducer x = c(input).reshape(batchSize, channels, frames, patchSize);
-			return x.permute(0, 1, 3, 2).reshape(batchSize, channels * patchSize, frames);
-		});
+		return buildPatchLayer("patch_encode", shape(batchSize, channels, length), "length", length);
 	}
 
 	/**
@@ -129,12 +128,30 @@ public class PatchedPretransform implements LayerFeatures {
 	 *         {@code (batchSize, channels, frames * patchSize)}
 	 */
 	public Block decode(int batchSize, int frames) {
-		TraversalPolicy inShape = shape(batchSize, channels * patchSize, frames);
-		TraversalPolicy outShape = shape(batchSize, channels, frames * patchSize);
+		return buildPatchLayer("patch_decode", shape(batchSize, channels * patchSize, frames), "frames", frames);
+	}
 
-		return layer("patchDecode", inShape, outShape, input -> {
-			CollectionProducer x = c(input).reshape(batchSize, channels, patchSize, frames);
-			return x.permute(0, 1, 3, 2).reshape(batchSize, channels, frames * patchSize);
-		});
+	/**
+	 * Builds one of the fold layers of {@value #PATCH_TRANSFORM_ASSET}, binding the batch (read from
+	 * the input shape), the channel count, the patch size and the layer's sequence-length argument.
+	 *
+	 * @param layer       the layer name ({@code patch_encode} or {@code patch_decode})
+	 * @param inputShape  the layer's input shape, whose first axis is the batch
+	 * @param sequenceKey the name of the layer's sequence-length argument ({@code length} or
+	 *                    {@code frames})
+	 * @param sequenceLen the sequence length to bind to {@code sequenceKey}
+	 * @return the fold layer
+	 */
+	private Block buildPatchLayer(String layer, TraversalPolicy inputShape,
+								  String sequenceKey, int sequenceLen) {
+		Map<String, Object> args = new HashMap<>();
+		args.put("batch", inputShape.length(0));
+		args.put("channels", channels);
+		args.put("patch_size", patchSize);
+		args.put(sequenceKey, sequenceLen);
+
+		// TODO(review): re-parses the asset per call; share a cached parsed Program (see PdslLoader caching follow-up)
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(PATCH_TRANSFORM_ASSET), layer, inputShape, args);
 	}
 }

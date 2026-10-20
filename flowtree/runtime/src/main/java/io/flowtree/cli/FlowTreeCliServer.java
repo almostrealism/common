@@ -74,7 +74,8 @@ import java.util.Properties;
  *
  * @author  Michael Murray
  */
-public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Node.ActivityListener, ConsoleFeatures {
+public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Node.ActivityListener,
+			ConsoleFeatures, AutoCloseable {
 
 	/**
 	 * Extension point that allows external code to contribute custom commands
@@ -112,10 +113,24 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	private int jobSize;
 
 	/** The singleton instance created and managed by {@link #start(String[])}. */
-	private static FlowTreeCliServer current;
+	private static volatile FlowTreeCliServer current;
 
 	/** Server socket accepting raw TCP terminal connections. */
 	private final ServerSocket socket;
+
+	/**
+	 * Set by {@link #close()} to make the {@link #run()} accept loop exit after
+	 * the current {@code accept} call unblocks, rather than looping forever.
+	 */
+	private volatile boolean closed;
+
+	/**
+	 * The terminal connection currently being served by {@link #run()}, or
+	 * {@code null} between connections. Closed by {@link #close()} so that a
+	 * session blocked in {@link #read()} ends promptly rather than lingering until
+	 * its idle timeout.
+	 */
+	private volatile Socket activeConnection;
 
 	/** Input stream of the currently active terminal connection. */
 	private InputStream in;
@@ -317,14 +332,13 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 * @throws IOException if the server socket cannot be bound
 	 */
 	public FlowTreeCliServer(String httpwww, int jobSize, int port, boolean gui) throws IOException {
-		FlowTreeCliServer.current = this;
 		this.httpwww = httpwww;
 		this.jobSize = jobSize;
-		
+
 		this.commands = new LinkedHashMap();
-		
+
 		this.socket = new ServerSocket(port);
-		
+
 		if (gui) {
 			JFrame graphFrame = new JFrame("Graphs");
 			graphFrame.setSize(100, 200);
@@ -464,8 +478,10 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			t.setDaemon(true);
 			t.start();
 		}
+
+		FlowTreeCliServer.publishCurrentInstance(this);
 	}
-	
+
 	/**
 	 * Loads the four tray icon images ({@code active.gif}, {@code inactive.gif},
 	 * {@code sleep.gif}, {@code close.gif}) from the classpath. If a resource
@@ -509,8 +525,10 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 */
 	@Override
 	public void run() {
-		while (true) {
+		while (!closed) {
 			try (Socket connection = this.socket.accept()) {
+				this.activeConnection = connection;
+				if (closed) break;
 				log("Accepted connection...");
 
 				this.in = connection.getInputStream();
@@ -547,11 +565,42 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			} catch (Exception e) {
 				warn(String.valueOf(e));
 			} finally {
+				this.activeConnection = null;
 				JythonJob.closeInterpreter();
 			}
 		}
 	}
-	
+
+	/**
+	 * Closes the terminal server socket and any terminal connection currently
+	 * being served and, when this instance is the current singleton, clears
+	 * {@link #getCurrentInstance()}. A {@link #run()} loop blocked in
+	 * {@code accept} or in {@link #read()} on the active connection observes the
+	 * closed flag and exits promptly. Closing an already-closed server has no
+	 * further effect.
+	 */
+	@Override
+	public void close() {
+		this.closed = true;
+
+		try {
+			this.socket.close();
+		} catch (IOException ioe) {
+			warn("IO error closing terminal socket (" + ioe.getMessage() + ")");
+		}
+
+		Socket connection = this.activeConnection;
+		if (connection != null) {
+			try {
+				connection.close();
+			} catch (IOException ioe) {
+				warn("IO error closing terminal connection (" + ioe.getMessage() + ")");
+			}
+		}
+
+		FlowTreeCliServer.clearCurrentInstance(this);
+	}
+
 	/**
 	 * Writes a US-ASCII string to the current terminal connection's output
 	 * stream. IO errors are logged to standard output and swallowed so that the
@@ -570,8 +619,8 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	/**
 	 * Reads available bytes from the current terminal connection's input stream,
 	 * blocking in 500 ms intervals until at least one byte arrives. Returns
-	 * {@code null} if no data has arrived within three minutes (180 000 ms) or
-	 * if an I/O error occurs.
+	 * {@code null} if no data has arrived within three minutes (180 000 ms), if
+	 * the server has been {@link #close() closed}, or if an I/O error occurs.
 	 *
 	 * @return the bytes decoded as a US-ASCII string, or {@code null} on timeout
 	 *         or error
@@ -580,7 +629,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		long s = System.currentTimeMillis();
 		
 		try {
-			while (true) {
+			while (!closed) {
 				if (this.in.available() >= 1) {
 					byte[] b = new byte[in.available()];
 					this.in.read(b);
@@ -600,6 +649,14 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	}
 	
 	/**
+	 * Returns the local port the terminal server socket is bound to. This is the
+	 * port the OS assigned when the server was constructed with port {@code 0}.
+	 *
+	 * @return the bound terminal port
+	 */
+	public int getPort() { return this.socket.getLocalPort(); }
+
+	/**
 	 * Returns the {@link PrintStream} wrapping the current connection's output.
 	 * If the stream has not yet been created it is constructed lazily from
 	 * {@link #out}.
@@ -616,7 +673,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 
 	/**
 	 * Registers a custom {@link Command} implementation under the given name so
-	 * that it is recognised by {@link #runCommand(String, PrintStream, java.util.Hashtable)}.
+	 * that it is recognised by {@link #runCommand(String, PrintStream, LinkedHashMap)}.
 	 *
 	 * @param name the command name token (without the {@code ::} prefix)
 	 * @param c    the {@link Command} implementation to associate with the name
@@ -624,14 +681,14 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	public void register(String name, Command c) { this.commands.put(name, c); }
 
 	/**
-	 * Dispatches a command string using the registered custom commands and the
-	 * built-in command vocabulary, writing output to the current connection's
-	 * print stream.
+	 * Dispatches a command string using the custom commands registered on this
+	 * instance via {@link #register(String, Command)} and the built-in command
+	 * vocabulary, writing output to the current connection's print stream.
 	 *
 	 * @param c the command string
 	 * @return the command result text
 	 */
-	public String runCommand(String c) { return FlowTreeCliServer.runCommand(c, this.ps); }
+	public String runCommand(String c) { return FlowTreeCliServer.runCommand(c, this.ps, this.commands); }
 
 	/**
 	 * Reads and executes every line from the supplied {@link BufferedReader},
@@ -655,6 +712,34 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	 * @return the current instance, or {@code null}
 	 */
 	public static FlowTreeCliServer getCurrentInstance() { return FlowTreeCliServer.current; }
+
+	/**
+	 * Publishes the given instance as the process-wide {@link #getCurrentInstance()
+	 * current} server. Synchronized on the class monitor so that it is atomic with
+	 * respect to {@link #clearCurrentInstance(FlowTreeCliServer)}: a concurrent
+	 * {@link #close()} of a superseded server cannot observe this instance and then
+	 * clear it after a newer server has replaced it.
+	 *
+	 * @param instance the server to publish as current
+	 */
+	private static synchronized void publishCurrentInstance(FlowTreeCliServer instance) {
+		FlowTreeCliServer.current = instance;
+	}
+
+	/**
+	 * Clears the process-wide {@link #getCurrentInstance() current} server, but only
+	 * if it still refers to the given instance. Synchronized on the class monitor so
+	 * that the identity check and the clear are atomic with respect to
+	 * {@link #publishCurrentInstance(FlowTreeCliServer)}, which prevents a superseded
+	 * server's {@link #close()} from clearing a newer server published concurrently.
+	 *
+	 * @param instance the server that is closing and should be cleared if current
+	 */
+	private static synchronized void clearCurrentInstance(FlowTreeCliServer instance) {
+		if (FlowTreeCliServer.current == instance) {
+			FlowTreeCliServer.current = null;
+		}
+	}
 
 	/**
 	 * Parses and dispatches a CLI command using the built-in command vocabulary

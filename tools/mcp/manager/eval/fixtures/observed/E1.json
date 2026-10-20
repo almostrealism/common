@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "sources": [],
+  "html_refs": [],
+  "note": "No documentation found for this query. Tip: Provide explicit keywords for better results.",
+  "related_memories": [
+    {"content": "Master Agent Dispatch runs seven QA rounds: doc-qa, defect-hunt, coverage-qa ...", "score": 0.31},
+    {"content": "The dispatch workflow caps concurrent work at MAX_OPEN_PRS = 7 ...", "score": 0.42},
+    {"content": "QA retrospective round consumes the exit-interview feedback ...", "score": 0.55}
+  ]
+}

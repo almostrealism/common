@@ -511,6 +511,7 @@ jobs:
             ".claude/hooks/lib/exfil_bash_dispatch.py"
             ".claude/hooks/lib/test_exfiltration_guard_check.py"
             ".claude/hooks/lib/test_exfiltration_guard_transport.py"
+            ".claude/hooks/lib/test_exfiltration_guard_interpreter.py"
             ".claude/hooks/exfil-allowlist.txt"
           )
 
@@ -1655,7 +1656,7 @@ jobs:
   # ─── Container Image Build ─────────────────────────────────────────
   # Builds the controller-stack images so a packaging break surfaces on the PR
   # rather than at deploy time. Build only — nothing is pushed or started here;
-  # deployment lives in deploy.yaml, which runs only on master.
+  # deployment lives in deploy.yaml, which runs only when dispatched by hand.
   #
   # This matters most for ar-manager, whose image bakes in the documentation
   # corpus that grounds memory_recall. A corpus that fails to reach the image
@@ -2738,6 +2739,12 @@ jobs:
     permissions:
       contents: read
       actions: read
+    # The curated sample library this fleet keeps at /Users/Shared/Music (see
+    # tools/ci/macos/README.md, "Test Data"). Declared explicitly, as on the CL and CUDA
+    # lanes, so tests and the "Verify curated sample library" step treat it as required here.
+    env:
+      AR_RINGS_LIBRARY: /Users/Shared/Music/Samples
+      AR_RINGS_PATTERNS: /Users/Shared/Music/pattern-factory.json
     strategy:
       # Run the media set in four groups, up to two at a time (max-parallel 2): each group runs
       # a quarter of every module's tests via AR_TEST_GROUPS=4, on its own runner. Gating the
@@ -2754,6 +2761,22 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+
+      # Every test that needs the curated sample library fails without it on this GPU lane
+      # (TestFeatures.requireResource via AudioSceneTestBase.requireCuratedLibrary). This step
+      # names the cause once, before any test runs, so a runner provisioned without the library
+      # (or with an empty mount) is reported as that rather than as dozens of test failures,
+      # and no test can pass here by quietly falling back to synthetic samples.
+      - name: Verify curated sample library
+        run: |
+          if [ ! -d "$AR_RINGS_LIBRARY" ] || [ -z "$(ls -A "$AR_RINGS_LIBRARY")" ]; then
+            echo "::error::Curated sample library missing or empty at AR_RINGS_LIBRARY=$AR_RINGS_LIBRARY; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
+          if [ ! -f "$AR_RINGS_PATTERNS" ]; then
+            echo "::error::Curated pattern factory missing at AR_RINGS_PATTERNS=$AR_RINGS_PATTERNS; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -2936,6 +2959,22 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
+      # Every test that needs the curated sample library fails without it on this GPU lane
+      # (TestFeatures.requireResource via AudioSceneTestBase.requireCuratedLibrary). This step
+      # names the cause once, before any test runs, so a runner provisioned without the library
+      # (or with an empty mount) is reported as that rather than as dozens of test failures,
+      # and no test can pass here by quietly falling back to synthetic samples.
+      - name: Verify curated sample library
+        run: |
+          if [ ! -d "$AR_RINGS_LIBRARY" ] || [ -z "$(ls -A "$AR_RINGS_LIBRARY")" ]; then
+            echo "::error::Curated sample library missing or empty at AR_RINGS_LIBRARY=$AR_RINGS_LIBRARY; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
+          if [ ! -f "$AR_RINGS_PATTERNS" ]; then
+            echo "::error::Curated pattern factory missing at AR_RINGS_PATTERNS=$AR_RINGS_PATTERNS; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -3098,6 +3137,22 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+
+      # Every test that needs the curated sample library fails without it on this GPU lane
+      # (TestFeatures.requireResource via AudioSceneTestBase.requireCuratedLibrary). This step
+      # names the cause once, before any test runs, so a runner provisioned without the library
+      # (or with an empty mount) is reported as that rather than as dozens of test failures,
+      # and no test can pass here by quietly falling back to synthetic samples.
+      - name: Verify curated sample library
+        run: |
+          if [ ! -d "$AR_RINGS_LIBRARY" ] || [ -z "$(ls -A "$AR_RINGS_LIBRARY")" ]; then
+            echo "::error::Curated sample library missing or empty at AR_RINGS_LIBRARY=$AR_RINGS_LIBRARY; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
+          if [ ! -f "$AR_RINGS_PATTERNS" ]; then
+            echo "::error::Curated pattern factory missing at AR_RINGS_PATTERNS=$AR_RINGS_PATTERNS; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

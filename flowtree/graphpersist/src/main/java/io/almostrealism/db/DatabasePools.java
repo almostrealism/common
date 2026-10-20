@@ -63,4 +63,21 @@ public class DatabasePools {
 	public static Set<String> keys() {
 		return pools.keySet();
 	}
+
+	/**
+	 * Closes the connection pool registered for the given JDBC URL and removes it
+	 * from the registry, releasing the pool's threads and connections. Has no
+	 * effect when no pool is registered for the URL.
+	 *
+	 * @param url The JDBC URL used as the pool key
+	 * @return {@code true} if a pool was registered and has now been closed and
+	 *         removed; {@code false} if no pool was registered for the URL
+	 */
+	public static boolean close(String url) {
+		ComboPooledDataSource pool = pools.remove(url);
+		if (pool == null) return false;
+
+		pool.close();
+		return true;
+	}
 }

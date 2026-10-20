@@ -21,6 +21,7 @@ import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -28,7 +29,9 @@ import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Map;
+import io.flowtree.controller.ActiveJob;
 import io.flowtree.controller.JobStatsStore;
+import io.flowtree.controller.PendingJob;
 import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.jobs.JobCompletionEvent;
 
@@ -53,8 +56,33 @@ import io.flowtree.jobs.JobCompletionEvent;
  */
 class StatsQueryHandler {
 
+    /**
+     * Default silence a {@code STARTED} job may accumulate before the
+     * active-job listing labels it {@code UNRESPONSIVE} (the operator's
+     * {@code T_silent}). Advisory only — labelling, not termination — so it is
+     * set well below the scanner's destructive dead threshold, realizing the
+     * operator's "silent means dead" signal far sooner than a job is actually
+     * failed.
+     */
+    public static final Duration DEFAULT_SILENT_THRESHOLD = Duration.ofMinutes(15);
+
+    /**
+     * Default wait a {@code SUBMITTED} job may accumulate before the
+     * pending-job listing labels it {@code LOST} (the operator's
+     * {@code T_lost}) — a job the controller accepted but no worker ever
+     * picked up. Advisory only; a lost job never ran, so there is nothing to
+     * fail.
+     */
+    public static final Duration DEFAULT_LOST_THRESHOLD = Duration.ofMinutes(30);
+
     /** The backing stats store; may be {@code null} when stats are not configured. */
     private final JobStatsStore statsStore;
+
+    /** Silence threshold for the {@code UNRESPONSIVE} label; see {@link #DEFAULT_SILENT_THRESHOLD}. */
+    private Duration silentThreshold = DEFAULT_SILENT_THRESHOLD;
+
+    /** Wait threshold for the {@code LOST} label; see {@link #DEFAULT_LOST_THRESHOLD}. */
+    private Duration lostThreshold = DEFAULT_LOST_THRESHOLD;
 
     /**
      * Constructs a new handler backed by the given stats store.
@@ -63,6 +91,30 @@ class StatsQueryHandler {
      */
     StatsQueryHandler(JobStatsStore statsStore) {
         this.statsStore = statsStore;
+    }
+
+    /**
+     * Sets the silence threshold used to label an active job
+     * {@code UNRESPONSIVE}. A {@code null} or non-positive value restores the
+     * {@link #DEFAULT_SILENT_THRESHOLD default}.
+     *
+     * @param silentThreshold the operator's {@code T_silent}
+     */
+    void setSilentThreshold(Duration silentThreshold) {
+        this.silentThreshold = (silentThreshold != null && !silentThreshold.isNegative()
+                && !silentThreshold.isZero()) ? silentThreshold : DEFAULT_SILENT_THRESHOLD;
+    }
+
+    /**
+     * Sets the wait threshold used to label a pending job {@code LOST}. A
+     * {@code null} or non-positive value restores the
+     * {@link #DEFAULT_LOST_THRESHOLD default}.
+     *
+     * @param lostThreshold the operator's {@code T_lost}
+     */
+    void setLostThreshold(Duration lostThreshold) {
+        this.lostThreshold = (lostThreshold != null && !lostThreshold.isNegative()
+                && !lostThreshold.isZero()) ? lostThreshold : DEFAULT_LOST_THRESHOLD;
     }
 
     /**
@@ -135,14 +187,79 @@ class StatsQueryHandler {
         Instant now = Instant.now();
         StringBuilder json = new StringBuilder("[");
         boolean first = true;
-        for (JobStatsStore.ActiveJob job : statsStore.getActiveJobs(workstreamId)) {
+        for (ActiveJob job : statsStore.getActiveJobs(workstreamId)) {
             if (!first) json.append(",");
             first = false;
-            json.append(job.toJson(now));
+            json.append(job.toJson(now, silentThreshold));
         }
         json.append("]");
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
             "application/json", json.toString());
+    }
+
+    /**
+     * Handles a {@code GET /api/workstreams/{id}/jobs/pending} request.
+     *
+     * <p>Lists jobs the controller accepted but which no worker has started —
+     * {@code SUBMITTED} rows that have not moved to {@code STARTED}. Each entry
+     * carries its wait since submission and a derived {@code state} of
+     * {@code SUBMITTED} or {@code LOST}, the latter once the wait passes the
+     * configured lost threshold. This is the surface that makes a
+     * submitted-but-dropped job visible; it is never auto-failed, because a job
+     * that never ran has no worker to fail.</p>
+     *
+     * @param workstreamId the workstream whose pending jobs to list, or
+     *                     {@code null} for every workstream
+     * @return an HTTP response carrying a JSON array, empty when nothing is
+     *         pending or no store is configured
+     */
+    Response handlePendingJobs(String workstreamId) {
+        if (statsStore == null) {
+            return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+                "application/json", "[]");
+        }
+        Instant now = Instant.now();
+        StringBuilder json = new StringBuilder("[");
+        boolean first = true;
+        for (PendingJob job : statsStore.getPendingJobs(workstreamId)) {
+            if (!first) json.append(",");
+            first = false;
+            json.append(job.toJson(now, lostThreshold));
+        }
+        json.append("]");
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+            "application/json", json.toString());
+    }
+
+    /**
+     * Handles a {@code POST /api/jobs/{id}/heartbeat} request: records the
+     * liveness heartbeat a job's own harness posts on a timer, along with the
+     * node and phase it names.
+     *
+     * <p>This is the dedicated route the harness heartbeat sender targets, so
+     * liveness no longer depends on a status event (and therefore on agent
+     * message activity) landing. A silent but healthy job keeps beating; a
+     * dead worker visibly stops. The {@code node} the payload carries is the
+     * worker identity the controller otherwise never learns, and the
+     * {@code phase}, when present, updates the job's recorded phase exactly as
+     * a phase-tagged message would. A no-op when no store is configured, so a
+     * controller without job stats answers rather than erroring.</p>
+     *
+     * @param jobId the job reporting itself alive
+     * @param body  the POST body carrying optional {@code node} and {@code phase}
+     * @return a JSON {@code {"ok":true}} response
+     */
+    Response handleHeartbeat(String jobId, String body) {
+        if (statsStore != null && jobId != null && !jobId.isEmpty()) {
+            String node = JsonFieldExtractor.extractString(body, "node");
+            String phase = JsonFieldExtractor.extractString(body, "phase");
+            statsStore.recordHeartbeat(jobId, Instant.now(), node);
+            if (phase != null && !phase.isEmpty()) {
+                statsStore.recordPhase(jobId, phase);
+            }
+        }
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+            "application/json", "{\"ok\":true}");
     }
 
     /**

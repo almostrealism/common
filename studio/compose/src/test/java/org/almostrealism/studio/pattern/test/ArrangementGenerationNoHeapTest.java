@@ -87,13 +87,8 @@ public class ArrangementGenerationNoHeapTest extends AudioSceneTestBase {
 	@Test(timeout = 1_800_000)
 	@TestDepth(2)
 	public void generateArrangementsWithoutHeap() throws Exception {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping generateArrangementsWithoutHeap - need the curated library ("
-					+ SAMPLES_PATH + ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;

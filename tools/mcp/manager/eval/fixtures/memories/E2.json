@@ -1,0 +1,11 @@
+[
+  {
+    "id": "e2-note-1",
+    "content": "The claude-code-job.md doc describes the validation scripts; detect-test-hiding.sh exits 0 on success and 2 when it finds hidden tests. The agent-commit validation is a separate script.",
+    "score": 0.48,
+    "namespace": "context",
+    "created_at": "2026-09-01T00:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "master"
+  }
+]

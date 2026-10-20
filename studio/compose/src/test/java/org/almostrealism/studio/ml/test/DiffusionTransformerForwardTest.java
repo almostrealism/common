@@ -51,10 +51,7 @@ public class DiffusionTransformerForwardTest extends TestSuiteBase {
 	@Test(timeout = 600_000)
 	@TestDepth(1)
 	public void testForwardWithNullGlobalCond() throws IOException {
-		if (!Files.exists(WEIGHTS_DIR)) {
-			log("Weights directory not found, skipping test");
-			return;
-		}
+		requireLocalResource("weights directory at " + WEIGHTS_DIR.toAbsolutePath(), null, Files.exists(WEIGHTS_DIR));
 
 		StateDictionary weights = new StateDictionary(WEIGHTS_DIR.toString());
 

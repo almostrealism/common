@@ -111,11 +111,7 @@ public class AudioSceneMultiGenomeTest extends AudioSceneTestBase {
 	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void multiGenomePatternRender() throws InterruptedException {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
+		File samplesDir = requireSampleLibrary();
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;
@@ -250,11 +246,7 @@ public class AudioSceneMultiGenomeTest extends AudioSceneTestBase {
 	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void multiGenomeFullRunner() throws InterruptedException {
-		File samplesDir = new File(SAMPLES_PATH);
-		if (!samplesDir.exists()) {
-			log("Skipping test - Samples directory not found: " + samplesDir.getAbsolutePath());
-			return;
-		}
+		File samplesDir = requireSampleLibrary();
 
 		MixdownManager.enableMainFilterUp = false;
 		MixdownManager.enableEfxFilters = false;

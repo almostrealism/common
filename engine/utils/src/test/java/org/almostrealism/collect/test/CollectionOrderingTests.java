@@ -389,4 +389,43 @@ public class CollectionOrderingTests extends TestSuiteBase {
 			assertEquals(40.0, copied[3]);
 		}
 	}
+
+	/**
+	 * {@link org.almostrealism.hardware.MemoryData#hasSameElements} recognizes views of one memory
+	 * that present the same elements in the same order, and rejects views that differ in offset,
+	 * length or {@link org.almostrealism.hardware.MemoryData#getMemOrdering() memory ordering}, as
+	 * well as a distinct memory holding equal values.
+	 */
+	@Test(timeout = 10000)
+	public void hasSameElements() {
+		try (PackedCollection values = pack(10.0, 20.0, 30.0, 40.0);
+				PackedCollection copy = pack(10.0, 20.0, 30.0, 40.0);
+				PackedCollection indices = pack(2, 0, 3, 1)) {
+			ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(indices);
+			PackedCollection ordered = new PackedCollection(shape(4), 0, values, 0, order);
+			PackedCollection orderedAgain = new PackedCollection(shape(4), 0, values, 0, order);
+			PackedCollection plainView = new PackedCollection(shape(4), 0, values, 0);
+
+			assertTrue(values.hasSameElements(values));
+			assertFalse(values.hasSameElements(null));
+			assertTrue(values.hasSameElements(values.reshape(shape(2, 2))));
+			assertTrue(values.reshape(shape(2, 2)).hasSameElements(values));
+			assertTrue(values.hasSameElements(plainView));
+			assertTrue(values.reshape(shape(2, 2)).hasSameElements(plainView.reshape(shape(4, 1))));
+
+			assertFalse("a leading part has a different length",
+					values.hasSameElements(values.range(shape(2), 0)));
+			assertFalse("a trailing part has a different offset",
+					values.range(shape(2), 0).hasSameElements(values.range(shape(2), 2)));
+			assertFalse("equal values in distinct memory are different elements",
+					values.hasSameElements(copy));
+
+			assertNotNull(ordered.getMemOrdering());
+			assertFalse("an ordered view presents the elements in a different order",
+					ordered.hasSameElements(plainView));
+			assertFalse(plainView.hasSameElements(ordered));
+			assertTrue("views sharing one ordering present the same elements",
+					ordered.hasSameElements(orderedAgain));
+		}
+	}
 }

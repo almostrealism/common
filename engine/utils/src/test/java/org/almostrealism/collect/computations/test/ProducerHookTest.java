@@ -281,6 +281,32 @@ public class ProducerHookTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * Providers of different views of one collection match when the views present the same
+	 * elements in the same order: {@code cp(c.reshape(...))} refers to {@code cp(c)}, and
+	 * {@code cp(c).reshape(...)} does too, while a view of part of the collection and a
+	 * different collection of the same shape do not. The derivative of a computation that
+	 * reads the reshaped view, taken with respect to {@code cp(c)}, is therefore not zero.
+	 */
+	@Test(timeout = 60000)
+	public void providerViewMatching() {
+		PackedCollection values = pack(1.0, 2.0, 3.0, 4.0);
+		Producer<PackedCollection> provider = cp(values);
+		Producer<PackedCollection> reshapedValue = cp(values.reshape(shape(2, 2)));
+
+		Assert.assertTrue(reshapedValue.refersTo(provider));
+		Assert.assertTrue(provider.refersTo(reshapedValue));
+		Assert.assertTrue(cp(values).reshape(shape(2, 2)).refersTo(reshapedValue));
+		Assert.assertFalse(reshapedValue.cannotMatch(provider));
+
+		Assert.assertFalse(cp(values.range(shape(2), 2)).refersTo(provider));
+		Assert.assertTrue(cp(values.range(shape(2), 2)).cannotMatch(provider));
+		Assert.assertFalse(cp(pack(1.0, 2.0, 3.0, 4.0)).refersTo(provider));
+
+		CollectionProducer delta = c(reshapedValue).multiply(3.0).delta(provider);
+		assertTripledIdentity(delta);
+	}
+
+	/**
 	 * A dynamic producer computed on the host from producer arguments depends on those
 	 * arguments, even though they are not its process children: it contains a match for an
 	 * argument (and for an input of an argument), is not independent of it, and its direct

@@ -342,11 +342,9 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 		String dir = System.getProperty("ditWeightsDir",
 				System.getProperty("user.home") + "/dit-weights");
 		File weightsDir = new File(dir);
-		if (!weightsDir.isDirectory() || weightsDir.listFiles() == null
-				|| weightsDir.listFiles().length < 17) {
-			log("Skipping forwardWithRealWeights: weights directory not present at " + dir);
-			return;
-		}
+		requireLocalResource("DiT weights directory at " + weightsDir.getAbsolutePath(), "ditWeightsDir",
+				weightsDir.isDirectory() && weightsDir.listFiles() != null
+						&& weightsDir.listFiles().length >= 17);
 
 		StateDictionary stateDictionary = new StateDictionary(dir);
 		log("Loaded StateDictionary with " + stateDictionary.keySet().size() + " tensors");

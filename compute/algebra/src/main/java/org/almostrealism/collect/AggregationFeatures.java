@@ -25,7 +25,7 @@ import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.computations.CollectionMaxComputation;
 import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.CumulativeProductComputation;
-import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
+import org.almostrealism.collect.computations.IndexOfMaxComputation;
 
 import java.util.function.Function;
 
@@ -79,32 +79,16 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	}
 
 	/**
-	 * Creates a computation that finds the index of the maximum value in a collection.
-	 * <p>
-	 * This method uses {@link TraversableRepeatedProducerComputation} to identify the index.
-	 * 
-	 * <p>The computation works by:
-	 * <ul>
-	 *   <li>Initializing with index 0 as the current maximum location</li>
-	 *   <li>Iterating through all elements comparing values</li>
-	 *   <li>Updating the stored index when a larger value is found</li>
-	 * </ul>
-	 * 
+	 * Creates a computation that finds the index of the maximum value in each group of a
+	 * collection, where the groups are the items of the input at its traversal axis.
+	 *
 	 * @param input The collection to find the maximum index in
 	 *
-	 * @return A computation that produces the index of the maximum element
+	 * @return A computation that produces the index of the maximum element of each group
+	 * @see IndexOfMaxComputation
 	 */
 	default CollectionProducer indexOfMax(Producer<PackedCollection> input) {
-		TraversalPolicy shape = shape(input);
-		int size = shape.getSize();
-
-		return new TraversableRepeatedProducerComputation("indexOfMax", shape.replace(shape(1)), size,
-				(args, index) -> e(0),
-				(args, position, currentIndex) -> index ->
-						conditional(args[1].getValueAt(position.multiply(size).add(index))
-										.greaterThan(args[1].getValueAt(position.multiply(size).add(currentIndex))),
-								index, currentIndex),
-				input);
+		return new IndexOfMaxComputation(input);
 	}
 
 	/**

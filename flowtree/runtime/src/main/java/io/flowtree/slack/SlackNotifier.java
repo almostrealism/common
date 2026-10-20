@@ -586,17 +586,12 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         trackJob(workstreamId, event);
 
-        if (statsStore != null) {
-            statsStore.recordJobStarted(event.getJobId(), workstreamId,
-                event.getDescription(), event.getTimestamp());
-
-            // Persist the Slack message ts now that the job_timing row exists.
-            // (Moved here from onJobSubmitted so the UPDATE finds the newly created row.)
-            if (event.getJobId() != null) {
-                String linkTs = jobThreadTs.get(event.getJobId());
-                if (linkTs != null) {
-                    statsStore.updateJobSlackTs(event.getJobId(), linkTs);
-                }
+        // The controller owns job-state persistence (see JobLifecycleRecorder);
+        // the notifier only links its Slack message to the already-persisted row.
+        if (statsStore != null && event.getJobId() != null) {
+            String linkTs = jobThreadTs.get(event.getJobId());
+            if (linkTs != null) {
+                statsStore.updateJobSlackTs(event.getJobId(), linkTs);
             }
         }
 
@@ -621,10 +616,8 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         trackJob(workstreamId, event);
 
-        if (statsStore != null) {
-            statsStore.recordJobCompleted(workstreamId, event);
-        }
-
+        // Terminal persistence is owned by the controller's completeJob path
+        // (see JobLifecycleRecorder), not by the notifier.
         String message = formatCompletedMessage(event);
         String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
 

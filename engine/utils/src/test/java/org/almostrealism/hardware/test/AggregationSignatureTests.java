@@ -24,6 +24,7 @@ import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.collect.computations.IndexOfMaxComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -132,6 +133,27 @@ public class AggregationSignatureTests extends TestSuiteBase {
 
 		assertEquals(14.0, sum.get().evaluate().toDouble(0));
 		assertEquals(120.0, product.get().evaluate().toDouble(0));
+	}
+
+	/**
+	 * Verifies that a repeated traversable computation whose behaviour is fixed by its class —
+	 * {@link IndexOfMaxComputation}, which carries no caller-supplied functions — produces a
+	 * stable, non-null signature that identifies the concrete class, and reproduces the same
+	 * signature when rebuilt over equivalent inputs. The class identity is what keeps such a
+	 * computation from sharing a cached kernel with a different computation of the same name,
+	 * shape, and inputs but a different loop body.
+	 */
+	@Test(timeout = 60000)
+	public void indexOfMaxSignatureIdentifiesClass() {
+		PackedCollection data = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
+
+		IndexOfMaxComputation indexOfMax = new IndexOfMaxComputation(cp(data));
+		String signature = indexOfMax.signature();
+		log("indexOfMax signature = " + signature);
+
+		assertNotNull("indexOfMax should have a signature", signature);
+		assertTrue(signature, signature.contains(IndexOfMaxComputation.class.getName()));
+		assertEquals(signature, new IndexOfMaxComputation(cp(data)).signature());
 	}
 
 	/**

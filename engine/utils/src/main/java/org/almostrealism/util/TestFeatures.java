@@ -18,6 +18,7 @@ package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
@@ -39,7 +40,11 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
+import org.almostrealism.io.SystemUtils;
+import org.junit.Assert;
+import org.junit.Assume;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -1067,6 +1072,130 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 	@Override
 	default Console console() {return console;}
+
+	/**
+	 * Returns whether a real GPU accelerator (Metal, OpenCL on a GPU device, or CUDA) is
+	 * present on this host. This is the one host property that may excuse a missing
+	 * {@link #requireResource(String, String, boolean) required resource}: a host without any
+	 * GPU (the CPU-only {@code native} lanes) is not expected to carry the resources the
+	 * accelerated workloads read.
+	 *
+	 * <p>Delegates to {@link Hardware#isAvailable(ComputeRequirement...)} with
+	 * {@link ComputeRequirement#GPU}, which strictly filters the data contexts built from
+	 * {@code AR_HARDWARE_DRIVER}. This is not {@code getDataContext(..., GPU) != null}: when
+	 * only one data context exists that returns the sole (native) context regardless of the
+	 * requirement, falsely reporting a GPU on a CPU-only host.</p>
+	 *
+	 * @return whether a GPU accelerator is present on this host
+	 */
+	default boolean isGpuAvailable() {
+		return Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU);
+	}
+
+	/**
+	 * Makes the calling test fail, skip, or proceed according to whether a resource it needs
+	 * (a sample library, a data set, a model file) is present. This is the single place the
+	 * missing-resource policy is decided; a test must call it rather than check for the
+	 * resource and return, which reports a test that did nothing as passed.
+	 *
+	 * <ul>
+	 *   <li>{@code available} → return, and the test runs its real workload;</li>
+	 *   <li>absent, but {@code locationProperty} is set on this host (the lane declared where
+	 *       the resource lives) → {@link Assert#fail}, because that host is meant to have it;</li>
+	 *   <li>absent on a host with a GPU accelerator ({@link #isGpuAvailable()}) →
+	 *       {@link Assert#fail}, because every accelerated host is meant to carry it;</li>
+	 *   <li>absent on a host with no GPU at all, which did not declare it →
+	 *       {@link Assume}-skip. This is the only case in which a missing resource may decline
+	 *       to run, and it is reported as skipped, never as passed.</li>
+	 * </ul>
+	 *
+	 * @param resource         description of the resource, including where it was looked for
+	 * @param locationProperty the property or environment variable that declares the
+	 *                         resource's location on a host, or {@code null} if there is none
+	 * @param available        whether the resource is present
+	 * @see #requireLocalResource(String, String, boolean)
+	 */
+	default void requireResource(String resource, String locationProperty, boolean available) {
+		if (isLocationDeclared(locationProperty)) {
+			requireResource(resource, available, true,
+					locationProperty + " is set, so this host is meant to carry it");
+		} else {
+			requireResource(resource, available, isGpuAvailable(),
+					"a GPU accelerator is available, so this host is meant to carry it");
+		}
+	}
+
+	/**
+	 * Requires a resource that is a directory, as {@link #requireResource(String, String, boolean)}
+	 * does, and additionally fails, on every host, when the directory exists but is empty. An
+	 * empty directory is a mount point whose content never arrived (a bind-mount of a missing
+	 * host path, or a sync that did not run), not a host that was never meant to have the
+	 * resource, so it is never a reason to skip.
+	 *
+	 * @param resource         description of the resource
+	 * @param locationProperty the property or environment variable that declares the
+	 *                         directory's location on a host, or {@code null} if there is none
+	 * @param directory        the directory the resource is expected in
+	 * @return {@code directory}, which is guaranteed to exist and to have at least one entry
+	 */
+	default File requireResourceDirectory(String resource, String locationProperty, File directory) {
+		String description = resource + " " + directory.getAbsolutePath();
+		requireResource(description, locationProperty, directory.isDirectory());
+
+		String[] entries = directory.list();
+		Assert.assertTrue("Required resource " + description + " exists but is empty;"
+				+ " the mount or sync that should populate it did not run.",
+				entries != null && entries.length > 0);
+		return directory;
+	}
+
+	/**
+	 * Makes the calling test fail, skip, or proceed according to whether a resource that no
+	 * lane carries by default (model weights, a developer's local data) is present. It differs
+	 * from {@link #requireResource(String, String, boolean)} only in that a GPU does not make
+	 * the resource mandatory: it is absent → fail only on a host that declares
+	 * {@code locationProperty}, and absent anywhere else → {@link Assume}-skip, which is
+	 * reported as skipped rather than passed.
+	 *
+	 * @param resource         description of the resource, including where it was looked for
+	 * @param locationProperty the property or environment variable that declares the
+	 *                         resource's location on a host, or {@code null} if there is none
+	 * @param available        whether the resource is present
+	 */
+	default void requireLocalResource(String resource, String locationProperty, boolean available) {
+		requireResource(resource, available, isLocationDeclared(locationProperty),
+				locationProperty + " is set, so this host is meant to carry it");
+	}
+
+	/**
+	 * Returns whether a host declared where a resource lives.
+	 *
+	 * @param locationProperty the property or environment variable naming the location, or {@code null}
+	 * @return whether {@code locationProperty} is set as a system property or environment variable
+	 */
+	private boolean isLocationDeclared(String locationProperty) {
+		return locationProperty != null && SystemUtils.getProperty(locationProperty) != null;
+	}
+
+	/**
+	 * Fails, skips, or returns for a resource check.
+	 *
+	 * @param resource     description of the resource
+	 * @param available    whether the resource is present
+	 * @param required     whether this host is meant to carry the resource
+	 * @param requiredWhy  why this host is meant to carry it, used in the failure message
+	 */
+	private void requireResource(String resource, boolean available, boolean required, String requiredWhy) {
+		if (available) return;
+
+		String detail = "Required resource not available: " + resource + ".";
+		if (required) {
+			Assert.fail(detail + " " + requiredWhy + "; failing rather than reporting a pass for"
+					+ " a workload that did not run.");
+		}
+
+		Assume.assumeTrue(detail + " This host is not meant to carry it; skipping.", false);
+	}
 
 	/**
 	 * Creates a {@link TestDepthRule} for use with {@link TestDepth} annotations.

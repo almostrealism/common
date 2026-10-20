@@ -396,10 +396,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	 */
 	@Test(timeout = 600000) @TestDepth(2)
 	public void testCheckpoint309MLoraConfig() {
-		if (!Files.exists(Path.of(WEIGHTS_DIR))) {
-			log("Skipping: pretrained weights not found at " + WEIGHTS_DIR);
-			return;
-		}
+		requireLocalResource("pretrained Moonbeam weights at " + WEIGHTS_DIR, null, Files.exists(Path.of(WEIGHTS_DIR)));
 
 		MoonbeamConfig config = MoonbeamConfig.checkpoint309M();
 		MidiTrainingConfig trainConfig = MidiTrainingConfig.defaultConfig();

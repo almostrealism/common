@@ -48,6 +48,18 @@ public class JobCompletionEvent {
      * Status of the job completion.
      */
     public enum Status {
+        /**
+         * Job accepted by the controller but not yet started on a worker.
+         *
+         * <p>Written by the controller at submission time, before any worker
+         * has picked the job up, so a job that is accepted but never starts
+         * (the "lost" class) is representable rather than invisible. A
+         * {@code SUBMITTED} row carries a {@code submitted_at} and the
+         * submitter/required-label metadata; it moves to {@link #STARTED}
+         * when the started event lands and to a terminal status on
+         * completion.</p>
+         */
+        SUBMITTED,
         /** Job started but not yet complete */
         STARTED,
         /** Job completed successfully */

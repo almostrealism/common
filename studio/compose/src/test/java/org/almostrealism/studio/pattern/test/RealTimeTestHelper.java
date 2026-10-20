@@ -37,7 +37,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.*;
-import static org.junit.Assume.assumeTrue;
 
 /**
  * Shared test utilities for real-time AudioScene testing.
@@ -118,13 +117,15 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 	}
 
 	/**
-	 * Returns the Library directory if it exists, or skips the test.
+	 * Returns the developer-local Library directory, failing or skipping the test when it is
+	 * absent as decided by {@link AudioSceneTestBase#requireLocalResource(String, String, boolean)}
+	 * (no CI lane carries this directory).
 	 *
 	 * @return the Library directory
 	 */
 	public File requireLibraryDir() {
 		File dir = new File(LIBRARY_PATH);
-		assumeTrue("Library directory not found: " + dir.getAbsolutePath(), dir.exists());
+		testBase.requireLocalResource("local Library directory " + dir.getAbsolutePath(), null, dir.isDirectory());
 		return dir;
 	}
 

@@ -605,6 +605,19 @@ either fail outright without the library (a GPU is available, so
 `AudioSceneTestBase.requireCuratedLibrary()` fails rather than skips) or fall
 back to synthetic samples and report timings that measure nothing real.
 
+**Every GPU media lane declares and verifies the curated library.**
+`test-media-mac`, `test-media-cl` and `test-media-cuda` all set
+`AR_RINGS_LIBRARY` / `AR_RINGS_PATTERNS` at job level (the mac lane to the
+fleet's `/Users/Shared/Music` copy), and each runs a `Verify curated sample
+library` step right after checkout that fails the job when the library is
+missing or empty or the pattern factory is missing. The tests enforce the same
+rule through `TestFeatures.requireResource` (the one place the missing-resource
+policy is decided): a missing resource fails on any GPU host and on any host
+that declares its location, and is skipped — never passed — only on a host with
+no GPU that did not declare it, i.e. the CPU `test-media` lane. A new runner
+without the library therefore turns its lane red instead of letting tests that
+should have failed report a pass.
+
 The memory settings below (`AR_HARDWARE_MEMORY_SCALE=7`, the 8-group split, the
 `_JAVA_OPTIONS` direct-memory caps, `AR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled`)
 were all tuned for Apple's OpenCL on the macOS fleet and moved across unchanged.
@@ -723,12 +736,17 @@ documentation grounding, which no startup check would catch.
 
 ### What the `Deploy Controller Stack` workflow does
 
-Lives in its own file (`.github/workflows/deploy.yaml`), triggered by
-`workflow_run` on a **successful master** run of "Build and Test", plus
-`workflow_dispatch` for manual deploys.
+Lives in its own file (`.github/workflows/deploy.yaml`) and is triggered
+**only by `workflow_dispatch`** — a deploy happens only when someone starts it
+by hand. It used to also run automatically, via a `workflow_run` trigger, on
+every **successful master** run of "Build and Test"; that trigger was removed
+after 2026-10-19, when one such automatic deploy rebuilt and restarted the
+controller stack while agent jobs were in flight and dropped their ar-manager
+connections. A deploy restarts the platform, so it must be a deliberate,
+supervised action, not a side effect of a merge to master.
 
-**It is a separate `workflow_run` workflow for the same reason
-`auto-resolve-submit.yaml` is:** a job declaring `environment:` inside a
+**It is a separate workflow (never a job in `analysis.yaml`) for the same
+reason `auto-resolve-submit.yaml` is:** a job declaring `environment:` inside a
 `pull_request` run attaches a deployment status to the PR head, and a pending
 deployment later cancelled shows as a spurious "had a problem deploying" red X.
 Never move a deploy job into `analysis.yaml`, and never give a
@@ -758,9 +776,8 @@ under, for instance) reaches a running agent only when that image is rebuilt.
 The workflow therefore invokes `rebuild.sh --agents`, and then asserts the
 containers were actually recreated by comparing their Docker ids across the
 rebuild; a rebuild that "succeeded" while the old containers kept running fails
-the job. Set the repository variable `FLOWTREE_DEPLOY_AGENTS=false` (or answer
-`false` to the `redeploy_agents` input on a manual run) to deploy the controller
-stack alone.
+the job. Answer `false` to the `redeploy_agents` input when dispatching to
+deploy the controller stack alone.
 
 **Each deploy prunes what it superseded.** Because every build is
 `--no-cache --pull`, a deploy leaves the previous images untagged and writes a

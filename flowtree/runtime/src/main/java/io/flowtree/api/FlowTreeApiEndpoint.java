@@ -49,6 +49,7 @@ import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import io.flowtree.controller.FlowTreeController;
+import io.flowtree.controller.JobLifecycleRecorder;
 import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.tracker.TaskCloseOutReconciler;
 import io.flowtree.tracker.TrackerService;
@@ -201,6 +202,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * documented "not configured" result.</p>
      */
     private StatsQueryHandler statsQueryHandler = new StatsQueryHandler(null);
+
+    /**
+     * Writes the controller-owned job-state transitions (submitted → started →
+     * terminal) to the stats store, independent of any notifier. Initialised
+     * store-less and replaced by {@link #setStatsStore(JobStatsStore)} so a
+     * controller configured without job stats records nothing rather than
+     * failing. This is the collaborator that keeps job-state persistence out of
+     * {@link io.flowtree.slack.SlackNotifier}: a workspace with no Slack
+     * notifier still gets a complete job row at submit, start, and terminal.
+     */
+    private JobLifecycleRecorder jobLifecycleRecorder = new JobLifecycleRecorder(null);
 
     /** Handles {@code GET /api/agents} metadata requests. */
     private final AgentsQueryHandler agentsQueryHandler = new AgentsQueryHandler();
@@ -487,6 +499,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setStatsStore(JobStatsStore statsStore) {
         this.statsQueryHandler = new StatsQueryHandler(statsStore);
+        this.jobLifecycleRecorder = new JobLifecycleRecorder(statsStore);
     }
 
     /**
@@ -613,6 +626,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return statsQueryHandler.handleActiveJobs(workstreamId);
         }
 
+        if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/")
+                && uri.endsWith("/jobs/pending")) {
+            String workstreamId = uri.substring("/api/workstreams/".length(),
+                    uri.length() - "/jobs/pending".length());
+            return statsQueryHandler.handlePendingJobs(workstreamId);
+        }
+
         if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/") && uri.endsWith("/jobs")) {
             String workstreamId = uri.substring("/api/workstreams/".length(),
                     uri.length() - "/jobs".length());
@@ -661,6 +681,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (Method.POST.equals(method)) {
             if ("/api/submit".equals(uri)) {
                 return handleSubmit(session, null);
+            }
+
+            if (uri.startsWith("/api/jobs/") && uri.endsWith("/heartbeat")) {
+                String jobId = uri.substring("/api/jobs/".length(),
+                        uri.length() - "/heartbeat".length());
+                return statsQueryHandler.handleHeartbeat(jobId, readBody(session));
             }
 
             if ("/api/workstreams".equals(uri)) {
@@ -1056,6 +1082,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 + " (value: " + McpConfigBuilder.pushedToolsConfigPreview(pushedToolsConfig) + ")");
         }
 
+        // Controller-owned SUBMITTED row; see JobLifecycleRecorder.
+        jobLifecycleRecorder.recordSubmitted(factory.getTaskId(), workstreamId,
+                factory.getDisplaySummary(),
+                JsonFieldExtractor.extractString(body, "submittedBy"),
+                requiredLabels, Instant.now());
+
         // Notify that the job has been submitted (not yet executing)
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), factory.getDisplaySummary());
         startEvent.withGitInfo(factory.getTargetBranch(), null, null, null, false);
@@ -1256,6 +1288,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             statsQueryHandler.recordHeartbeat(jobId, Instant.now());
         }
         if (eventStatus == JobCompletionEvent.Status.STARTED) {
+            // Controller-owned STARTED row with node identity; see JobLifecycleRecorder.
+            jobLifecycleRecorder.recordStarted(jobId, workstreamId, description,
+                    JsonFieldExtractor.extractString(body, "node"), Instant.now());
             notifiers.completionListener(workstreamId).onJobStarted(workstreamId, event);
         } else {
             completeJob(workstreamId, event);
@@ -1275,6 +1310,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * record the failure while leaving the dependent chain blocked, which is
      * the situation the scanner exists to resolve.</p>
      *
+     * <p>Because this is the single terminal choke point every event travels,
+     * it is also where controller-owned terminal persistence happens, through
+     * {@link io.flowtree.controller.JobLifecycleRecorder#recordTerminal}, so a
+     * scanner-failed job and an ordinary completion both update {@code
+     * job_timing} with or without a Slack notifier configured.</p>
+     *
      * <p>When the event's {@link JobCompletionEvent#isSelfNotify()} is set —
      * currently only possible for a {@link io.flowtree.jobs.ShellCommandJob}
      * — the fan-out also wakes the completing job's OWN workstream via
@@ -1285,6 +1326,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param event        the terminal event to dispatch
      */
     public void completeJob(String workstreamId, JobCompletionEvent event) {
+        // Controller-owned terminal persistence, independent of any notifier.
+        jobLifecycleRecorder.recordTerminal(workstreamId, event);
         notifiers.completionListener(workstreamId).onJobCompleted(workstreamId, event);
         if (completionListenerFanout == null) return;
         // Clearing the debounce keeps a fast-completing wake-up from

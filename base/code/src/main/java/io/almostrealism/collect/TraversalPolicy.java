@@ -297,13 +297,18 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * Returns the length of the given axis in either the output or input space.
 	 *
 	 * @param axis  the zero-based dimension axis
-	 * @param input {@code true} to return the input length (applying the dimension order and rate)
+	 * @param input {@code true} to return the length of input axis {@code axis} (applying the
+	 *              inverse of the dimension order and the rate)
 	 * @return the axis length
 	 */
 	private long lengthLong(int axis, boolean input) {
 		if (!input) return dims[axis];
 
-		long len = dims[dimsOrder[axis]];
+		// dimsOrder maps output axes to input axes, so the input axis takes the
+		// length of the output axis that maps onto it (the inverse permutation)
+		int outputAxis = IntStream.range(0, dimsOrder.length)
+				.filter(i -> dimsOrder[i] == axis).findFirst().orElseThrow();
+		long len = dims[outputAxis];
 		len = len * rateNumeratorLong(axis);
 		len = len / rateDenominatorLong(axis);
 		return len;

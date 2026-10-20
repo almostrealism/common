@@ -430,6 +430,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         // failed; see JobWorkOutcome#capture(boolean).
         boolean workspaceHeld = false;
 
+        // Liveness independent of agent messages, for the whole run; see
+        // HarnessHeartbeatSender.
+        HarnessHeartbeatSender heartbeat = new HarnessHeartbeatSender(
+                HarnessHeartbeatSender.heartbeatUrl(resolveWorkstreamUrl(), taskId),
+                this::postJson, HostFingerprint.node(),
+                ProcessHandle.current().pid(), null, null);
+        heartbeat.start();
+
         try {
             if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
                 postJson(resolveWorkstreamUrl() + "/messages",
@@ -548,6 +556,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         } finally {
             workspaceLock.release();
             fireJobCompleted(error);
+            heartbeat.stop();
             future.complete(null);
         }
     }

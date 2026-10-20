@@ -65,6 +65,18 @@ public final class HostFingerprint {
         return sb.toString();
     }
 
+    /**
+     * Returns a concise single-line node identity — {@code "hostname (address)"}
+     * — for use where a terse worker identifier is wanted rather than the full
+     * {@link #describe()} block (e.g. a heartbeat payload's {@code node} field).
+     *
+     * @return the concise node identity; the unresolvable parts render as
+     *         {@code unknown}, never throwing
+     */
+    public static String node() {
+        return hostname() + " (" + hostAddress() + ")";
+    }
+
     /** Returns a normalised OS name — Linux/macOS/Windows, falling through to the raw property otherwise. */
     private static String osName() {
         String raw = System.getProperty("os.name", "");

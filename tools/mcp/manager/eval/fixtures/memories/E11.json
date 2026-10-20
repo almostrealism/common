@@ -1,0 +1,11 @@
+[
+  {
+    "id": "9e4ff673-7d69-40bb-8bc5-57fa0a6650c1",
+    "namespace": "default",
+    "created_at": "2026-09-16T23:15:34+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "ci/test-protection-consistency",
+    "score": 0.33,
+    "content": "12th session on ci/test-protection-consistency (PR #502) at commit 7b66d89f43. Re-reproduced both reported gates at current HEAD.\n\n1. agent-commit-validation (test_file_modification): `bash tools/ci/agent-protection/validate-agent-commit.sh origin/master` exits 2, still blocking on the exact same 2 pre-existing base-branch test methods: FileStagerTest.allowsBranchNewTestFiles, InstructionPromptBuilderEnforcementConfigTest.enforcementConfigPrincipleDoesNotContradictTestIntegrityPolicy.\n\n2. deception-audit: `bash tools/ci/agent-protection/deception-audit.sh origin/master` exits 2 with 5x CRITICAL REVERT_THEN_REAPPLY findings."
+  }
+]
