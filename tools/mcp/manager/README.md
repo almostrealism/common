@@ -134,11 +134,19 @@ so the caller can confirm it.
 
 Both are job-level settings; there is no workstream or workspace default for them.
 Organizational placement stays off unless a submission requests it. The
-object-oriented design review is on by default — including for CI auto-resolve and
-auto-review submissions (`tools/ci/submit-agent-job.sh`), which do not send the
-field and so inherit the on-by-default setting; the risk gate keeps its cost low by
-spending a session only on classes whose design it flags, and a submission can send
-`object_oriented_review_enabled=False` to switch it off.
+object-oriented design review is on by default, and the risk gate keeps its cost
+low by spending a session only on classes whose design it flags; a submission can
+send `object_oriented_review_enabled=False` to switch it off.
+
+**On for initial work, off for CI follow-ups.** The review belongs to the job that
+creates a branch's work — QA rounds, planning and task jobs, and jobs submitted by
+hand — which leave the field unset and get the on-by-default. The follow-up jobs CI
+submits in a loop turn it off: `auto-review` (with its code-policy and quality-gate
+routes), `auto-resolve-python` and `auto-resolve` can each fire many times on one
+branch, so each sends `objectOrientedReviewEnabled: false` and the review does not
+ride along on every pass. Those submitters set `OBJECT_ORIENTED_REVIEW_ENABLED=false`
+on the trusted submit step; `tools/ci/submit-agent-job.sh` sends the field only when
+that knob is set, so every other path inherits the default.
 
 ## Test Execution Limits
 

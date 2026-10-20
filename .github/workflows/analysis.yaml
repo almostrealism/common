@@ -3559,6 +3559,9 @@ jobs:
           # under tools/; those are held by detect-python-test-hiding.sh and
           # this job's prompt, which forbid removing a test or its assertions.
           PROTECT_TEST_FILES: "true"
+          # A follow-up job CI runs in a loop; the object-oriented design review
+          # belongs to a branch's initial work, not each remediation pass.
+          OBJECT_ORIENTED_REVIEW_ENABLED: "false"
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -3883,6 +3886,9 @@ jobs:
           # No auto-review prompt is sent to make a failing test pass, so the
           # harness's per-job test lock stays off; test-integrity-check holds.
           PROTECT_TEST_FILES: "false"
+          # A follow-up job CI runs in a loop; the object-oriented design review
+          # belongs to a branch's initial work, not each remediation pass.
+          OBJECT_ORIENTED_REVIEW_ENABLED: "false"
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
