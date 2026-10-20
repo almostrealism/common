@@ -1,0 +1,3 @@
+`ObjectOrientedDesignRule` runs one class per job [D:tools/mcp/manager/README.md]. It records its verdicts in `.flowtree/review-verdicts.md`.
+BASIS: documentation
+CONFLICTS: none

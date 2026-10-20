@@ -79,61 +79,80 @@ class Synthesis:
 
 SYSTEM_PROMPT = """\
 You are the Almost Realism Documentation Consultant. You answer questions \
-about the AR framework by reading the documentation context provided to you.
+about the AR framework from the evidence list provided to you.
 
-Your job is to FIND the answer in the provided documentation and present it \
-clearly. The documentation chunks are retrieved by keyword search, so the \
-answer may not be in the first chunk — read ALL chunks carefully.
+Every evidence item has an ID and a tier label. The tier says what the item \
+may be used for:
+- DOC and INDEX items (tier A) state present fact for the snapshot. Cite them.
+- A "NOTE current" item (tier B) may supply a fact the documentation lacks. \
+An answer that rests on one is labelled as resting on a note.
+- A "NOTE branch-local" item (tier B') is true only on its own branch. Report \
+it only as "on branch X, ..."; never as a fact about master.
+- A "NOTE historical" or "NOTE stale" item (tier C) may supply history and \
+rationale ("this used to...", "it was introduced because..."), never a \
+present-tense fact. For a stale note, say which names are gone.
 
 RULES:
-1. Read ALL provided documentation chunks before answering. The answer is \
-usually there — you just need to find it and connect it to the question.
-2. When a chunk shows code examples, method signatures, or class names that \
-match what the question asks about, USE that information in your answer.
-3. If the documentation says something is NOT supported or does NOT exist, \
-say so — that IS an answer.
-4. When the documentation contains related but not exact information, \
-summarize what IS covered and cite the files.
-5. Only respond with "Not documented" when ALL provided chunks are \
-completely irrelevant to the question.
-6. Be CONCISE — 2-4 sentences. Cite sources like "per file.md:line".
-7. NO hedging ("might be", "could be"). State what the documentation says.
-8. ALWAYS include a concrete code example if the documentation provides one.
-9. Notes from prior sessions are an agent's record of one past task, not \
-documentation. A note is evidence only about the classes and files it names. \
-Never attribute a note's details to anything it does not mention — that a note \
-describes one class holding a flat array says nothing about any other class. \
-A note that mentions a concept in passing does not establish the types, field \
-layout, or implementation of anything it does not spell out; if the detail \
-asked for is not written in the note, it is not known, and "likely" or \
-"probably" is not an answer.
-10. A question about what a particular source file contains cannot be answered \
-from documentation unless a chunk quotes or describes that file. Say the \
-documentation does not cover it rather than inferring from the name, the \
-module, or how the framework usually works.
-11. Cite "per file.md:line" only for a location that states the claim. Never \
-attach a line number to something you inferred.
-12. A question can take a fact for granted that the documentation never \
-establishes — "what does X use arrays for" assumes X uses them. Do not adopt \
-the assumption. Check whether the chunks establish it, and if they do not, say \
-so plainly instead of answering as though it held.
+1. Read ALL evidence items before answering. The answer is usually there.
+2. Cite every claim with the ID of the item that states it, in square \
+brackets: [D1], [N2], [I1]. Never write a file name or a line number as a \
+citation; the server adds the locations.
+3. Cite an item only for a claim it actually states. A claim about one script, \
+class or file needs an item that names that script, class or file. If no item \
+states it, the claim is unknown: leave it out, or say it is not documented.
+4. Copy names, paths, prefixes and numbers exactly as the item writes them. \
+Never derive one from another name.
+5. Answer "Not documented" only when no item is relevant to the question.
+6. Be CONCISE — 2-5 sentences. NO hedging ("might be", "could be").
+7. When two items disagree, report the disagreement; do not silently pick one.
+8. A question can take a fact for granted that no item establishes — "what \
+does X use arrays for" assumes X uses them. Do not adopt the assumption.
+9. End with two lines:
+BASIS: documentation | documentation+notes | notes | none
+CONFLICTS: <ID> vs <ID> — <one line>; or none
 
 EXAMPLES:
-Doc chunk: "## Entering the Graph\\nUse cp() to wrap a PackedCollection...\\n\
-cp(data).multiply(2.0).add(1.0).evaluate()"
+Evidence: [D1] DOC — collection-producer-operations.md § Entering the Graph: \
+"Use cp() to wrap a PackedCollection... cp(data).multiply(2.0).evaluate()"
 Q: "How do I use cp() to chain operations?"
-A: "Use `cp()` to wrap a PackedCollection into a CollectionProducer, then \
-chain operations: `cp(data).multiply(2.0).add(1.0).evaluate()`. Each \
-operation returns a new producer; nothing executes until `evaluate()` \
-per collection-producer-operations.md:4."
+A: "Wrap a PackedCollection with `cp()` and chain operations on the producer: \
+`cp(data).multiply(2.0).evaluate()`; nothing executes until `evaluate()` [D1].
+BASIS: documentation
+CONFLICTS: none"
 
-Doc chunk: "A Features interface is a Java interface whose methods are all \
-default... Adding implements CollectionFeatures makes 40+ factory methods \
-available."
-Q: "What is the Features pattern?"
-A: "A Features interface has only `default` methods — adding `implements \
-CollectionFeatures` to a class gives it 40+ factory methods like `cp()`, \
-`c()`, `scalar()` without inheritance per features-pattern.md:1."
+Evidence: [N1] NOTE current — branch=qa/retro-20261015 state=merged: \
+"open-pr-backlog.sh skips a planning round while 7 or more PRs are open"
+Q: "When does a planning round skip?"
+A: "A planning round is skipped while 7 or more PRs are open [N1].
+BASIS: notes
+CONFLICTS: none"
+
+Evidence: [N2] NOTE stale — names absent from snapshot: ClaudeCodeJob: \
+"ClaudeCodeJob.runCorrectionSession re-runs the review"
+Q: "Where does the review record its verdicts?"
+A: "Not documented. Historically, ClaudeCodeJob (no longer in the snapshot) \
+re-ran the review through runCorrectionSession [N2].
+BASIS: none
+CONFLICTS: none"
+
+Evidence: [D3] DOC: "the job times out after 30 minutes"; [N4] NOTE current: \
+"the job timeout is 45 minutes"
+Q: "What is the job timeout?"
+A: "The documentation gives 30 minutes [D3], but a current note says \
+45 minutes [N4].
+BASIS: documentation+notes
+CONFLICTS: D3 vs N4 — timeout 30 vs 45 minutes"
+"""
+
+# The persona for rewriting a note. Kept apart from SYSTEM_PROMPT because that
+# prompt's answering contract (cite evidence IDs, finish with BASIS:/CONFLICTS:
+# lines) would leak into the stored text of a rewritten note.
+REFORMULATE_SYSTEM_PROMPT = """\
+You rewrite notes that agents wrote about their work on the Almost Realism \
+framework, so that they use the project's own terminology. Keep the note's \
+meaning, its specific names, paths and numbers, and its scope: never add a \
+claim the note or the documentation excerpt does not make. Return only the \
+rewritten note.
 """
 
 # Hedging phrases that indicate an answer is guessing rather than grounded in
@@ -169,28 +188,35 @@ def has_speculation(text: Optional[str]) -> bool:
 
 def build_consult_prompt(
     question: str,
-    doc_context: str = "",
-    memory_context: str = "",
+    evidence="",
     extra_context: Optional[str] = None,
+    history: Optional[str] = None,
+    instructions: Optional[str] = None,
 ) -> str:
-    """Assemble the prompt for a documentation-grounded question.
+    """Assemble the prompt for an evidence-grounded question.
 
     Module-level rather than a backend method because callers differ in how
     they invoke the model — ar-consultant routes synthesis through its
-    request-history recorder — while the wording must not differ at all. Two
-    servers answering from one corpus have to ask the same question.
+    request-history recorder, ``memory_recall`` asks for a summary rather
+    than an answer — while the evidence contract must not differ at all. Two
+    tools answering from one corpus have to present evidence the same way.
 
-    The framing of the memory section is deliberate. Notes are agent-authored
-    records of particular past work, not documentation, and presented as bare
-    text they read with the same authority — so the prompt states their scope
-    explicitly rather than trusting the model to infer it.
+    The evidence is a single list of items, each with an ID, a tier label and
+    its provenance (see ``consult_evidence.EvidenceList``). The model cites the
+    IDs; the tier rules in :data:`SYSTEM_PROMPT` say what each tier may
+    supply. Notes are therefore no longer a separate, uniformly forbidden
+    section: a current note may answer, a stale one only supplies history.
 
     Args:
         question: What the caller asked.
-        doc_context: Documentation chunks retrieved for the question.
-        memory_context: Prior notes, already formatted for display.
+        evidence: The evidence list — an object with ``render()`` or an
+            already rendered string.
         extra_context: Anything supplied alongside the question, such as a
             code snippet or an error message.
+        history: Condensed earlier turns of a conversation, when this is a
+            follow-up.
+        instructions: Replaces the default answering instructions, for a
+            caller (such as a summary) that wants a different output.
 
     Returns:
         The assembled prompt.
@@ -198,41 +224,31 @@ def build_consult_prompt(
     parts = []
 
     # The question goes first so the model knows what to look for while
-    # reading the documentation that follows.
+    # reading the evidence that follows.
     parts.append(f"## Question\n\n{question}")
+
+    if history:
+        parts.append(
+            "## Earlier In This Conversation\n\n"
+            "Earlier questions and answers, for reference only. Evidence IDs "
+            f"are the same as before.\n\n{history}")
 
     if extra_context:
         parts.append(f"## Additional Context from Agent\n\n{extra_context}")
 
-    if doc_context:
-        parts.append(
-            "## Relevant Documentation\n\nRead these chunks carefully — "
-            f"the answer is in here.\n\n{doc_context}"
-        )
-    else:
-        parts.append(
-            "## Relevant Documentation\n\n"
-            "(No documentation found for this query)"
-        )
-
-    if memory_context:
-        parts.append(
-            "## Notes From Prior Sessions\n\n"
-            "These are notes agents wrote about particular past work. They "
-            "are not documentation and carry no authority beyond the classes "
-            "and files they name. Use a note only for the subject it "
-            "explicitly names; never carry its details across to a class, "
-            "file or module it does not mention, and never let its wording "
-            "supply a fact the documentation does not state.\n\n"
-            f"{memory_context}"
-        )
-
+    rendered = evidence.render() if hasattr(evidence, "render") else evidence
     parts.append(
+        "## Evidence\n\nEach item is headed by its ID and tier label. Read "
+        "every item — the answer is usually here.\n\n"
+        + (rendered or "(No evidence found for this query)"))
+
+    parts.append(instructions or (
         "## Instructions\n\n"
-        "Answer the question above using the documentation chunks. "
-        "Include a code example if the docs provide one. "
-        "Cite the source file and line number."
-    )
+        "Answer the question from the evidence list under the tier rules. "
+        "Cite each claim with the ID of the item that states it, e.g. [D1]. "
+        "Include a code example if an item provides one. Finish with the "
+        "BASIS: and CONFLICTS: lines."
+    ))
 
     return "\n\n".join(parts)
 
@@ -357,36 +373,30 @@ class InferenceBackend(ABC):
     def consult(
         self,
         question: str,
-        doc_context: str = "",
-        memory_context: str = "",
+        evidence="",
         extra_context: Optional[str] = None,
+        history: Optional[str] = None,
     ) -> Synthesis:
-        """Answer a question from documentation, grounded by prior notes.
+        """Answer a question from an evidence list.
 
         Lives on the backend for the same reason :meth:`reformulate` does:
         both MCP servers answer questions over one documentation corpus, and a
         second copy of this prompt would let the two give different answers to
         the same question.
 
-        The framing of the memory section is deliberate. Notes are agent-
-        authored records of particular past work, not documentation, and
-        presented as bare text they read with the same authority — so the
-        prompt states their scope explicitly rather than trusting the model to
-        infer it.
-
         Args:
             question: What the caller asked.
-            doc_context: Documentation chunks retrieved for the question.
-            memory_context: Prior notes, already formatted for display.
+            evidence: The evidence list (see :func:`build_consult_prompt`).
             extra_context: Anything the caller supplied alongside the
                 question, such as a code snippet or an error message.
+            history: Condensed earlier turns, for a conversation follow-up.
 
         Returns:
             A :class:`Synthesis`; check :attr:`Synthesis.degraded`.
         """
         return self.synthesize(
             build_consult_prompt(
-                question, doc_context, memory_context, extra_context,
+                question, evidence, extra_context, history=history,
             ),
             system=SYSTEM_PROMPT,
         )
@@ -434,7 +444,8 @@ class InferenceBackend(ABC):
         )
 
         synthesis = self.synthesize(
-            "\n\n".join(parts), system=SYSTEM_PROMPT, max_tokens=max_tokens,
+            "\n\n".join(parts), system=REFORMULATE_SYSTEM_PROMPT,
+            max_tokens=max_tokens,
         )
         if synthesis.degraded:
             return synthesis

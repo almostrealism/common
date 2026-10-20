@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "sources": [
+    ".github/CLAUDE.md",
+    "CLAUDE.md",
+    "docs/internals/test-skip-gating-prevention.md",
+    "flowtree/runtime/docs/file-staging.md",
+    "tools/mcp/manager/README.md"
+  ],
+  "html_refs": [],
+  "related_memories": [
+    {
+      "content": "Task 81430aba on qa/defect-20261004-215827 (PR #609): CORRECTION to prior memory ff8bfe63 ...",
+      "score": 0.439
+    },
+    {
+      "content": "Task 81430aba on qa/defect-20261004-215827 (PR #609), third independent pass ...",
+      "score": 0.48
+    },
+    {
+      "content": "Task 81430aba on qa/defect-20261004-215827 (PR #609), FIFTH independent pass ...",
+      "score": 0.483
+    }
+  ],
+  "answer": "Files under `.github/workflows/**`, `.github/actions/**`, and `tools/ci/**` are protected by the CI file lock (`protectCiFiles`) when `config.isProtectCiFiles()` is true, per file-staging.md:330.\n\nA branch is authorized to change these files if:\n- Its name matches the pattern `ci/...`, **or**\n- Its commits carry a controller-signed `Sensitive-File-Bypass` trailer (e.g., via `workstream_submit_task` with `sensitive_file_protection_enabled=False` and `skip_agent_permission_prompts=True` for `.claude/`-related files, per README.md:181).\n\nThe lock is enforced by `check-ci-file-lock.sh`, which fails jobs on non-`ci/` branches that modify CI files unless the bypass trailer is present, per .github/CLAUDE.md:344."
+}

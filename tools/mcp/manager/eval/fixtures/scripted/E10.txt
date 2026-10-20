@@ -1,0 +1,3 @@
+Files under `.github/workflows/`, `.github/actions/` and `tools/ci/` may change only on a branch named `ci/...` [D:.github/CLAUDE.md]. Another branch is authorised by a controller-signed `Sensitive-File-Bypass` trailer on each commit that touches a locked file [D:.github/CLAUDE.md]. For example: `Sensitive-File-Bypass: signed-by-controller`.
+BASIS: documentation
+CONFLICTS: none

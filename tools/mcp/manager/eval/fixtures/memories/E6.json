@@ -1,0 +1,20 @@
+[
+  {
+    "id": "e6-note-1",
+    "namespace": "decisions",
+    "created_at": "2026-10-17T10:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "feature/conversation-ttl-a",
+    "score": 0.3,
+    "content": "ConversationStore expires an idle consult conversation after 30 minutes."
+  },
+  {
+    "id": "e6-note-2",
+    "namespace": "decisions",
+    "created_at": "2026-10-18T10:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "feature/conversation-ttl-b",
+    "score": 0.33,
+    "content": "ConversationStore expires an idle consult conversation after 15 minutes."
+  }
+]

@@ -21,6 +21,15 @@ The grader vocabulary (see ``validate_case``):
                            ``named_symbols.absent`` list
 - ``basis_in``           — allowed values of ``answer_basis``
 - ``max_citation_warnings`` — ceiling on ``len(citation_warnings)``
+- ``min_citation_warnings`` — floor on ``len(citation_warnings)``: a case
+                           replaying a known-wrong answer asserts it is flagged
+- ``history_must_include`` — list of case-insensitive regexes that must match
+                           the response's ``history`` field
+- ``min_conflicts``      — floor on ``len(conflicts)``
+- ``must_mark_unsupported`` — list of case-insensitive regexes; each must match
+                           a sentence the citation verifier flagged (one marked
+                           ``[unsupported]`` in the prose, or listed in
+                           ``citation_warnings``)
 """
 
 import os
@@ -33,11 +42,19 @@ KNOWN_OUTCOMES = ("answer", "abstain", "nonexistent")
 EXPECT_KEYS = frozenset({
     "outcome", "must_include", "must_not_include", "must_include_any",
     "must_cite_any", "must_not_cite", "must_flag_stale", "basis_in",
-    "max_citation_warnings",
+    "max_citation_warnings", "min_citation_warnings", "must_mark_unsupported",
+    "history_must_include", "min_conflicts",
 })
 
 # Expectation keys whose value is a list of case-insensitive regexes.
-_REGEX_LIST_KEYS = ("must_include", "must_not_include")
+_REGEX_LIST_KEYS = ("must_include", "must_not_include", "must_mark_unsupported",
+                    "history_must_include")
+
+# Expectation keys whose value is a non-negative integer bound.
+_COUNT_KEYS = ("max_citation_warnings", "min_citation_warnings", "min_conflicts")
+
+# The mark the citation verifier puts on a sentence it could not support.
+UNSUPPORTED_MARK = "[unsupported]"
 
 # Expectation keys whose value is a list of plain strings (files, symbols,
 # ``answer_basis`` values), compared literally rather than as regexes.
@@ -317,20 +334,82 @@ def grade(response: dict, expect: dict) -> GradeResult:
             f"{n} warnings exceed ceiling {expect['max_citation_warnings']}",
         )
 
+    if "min_citation_warnings" in expect:
+        n = len(response.get("citation_warnings", []) or [])
+        result.record(
+            "min_citation_warnings", n >= expect["min_citation_warnings"],
+            f"{n} warnings, fewer than {expect['min_citation_warnings']}",
+        )
+
+    history = response.get("history") if isinstance(response.get("history"), str) else ""
+    for pat in expect.get("history_must_include", []):
+        ok = re.search(pat, history, re.IGNORECASE) is not None
+        result.record("history_must_include", ok, f"history lacks {pat!r}")
+
+    if "min_conflicts" in expect:
+        n = len(response.get("conflicts", []) or [])
+        result.record("min_conflicts", n >= expect["min_conflicts"],
+                      f"{n} conflicts reported, fewer than {expect['min_conflicts']}")
+
+    flagged = flagged_sentences(response)
+    for pat in expect.get("must_mark_unsupported", []):
+        ok = any(re.search(pat, s, re.IGNORECASE) for s in flagged)
+        result.record("must_mark_unsupported", ok, f"not flagged: {pat!r}")
+
     return result
+
+
+def flagged_sentences(response: dict) -> list[str]:
+    """Sentences the citation verifier flagged: those carrying the
+    ``[unsupported]`` mark in the answer or ``history``, and every sentence
+    named in ``citation_warnings``."""
+    flagged: list[str] = []
+    for field in ("answer", "history"):
+        text = response.get(field)
+        if not isinstance(text, str):
+            continue
+        sentences = _split_sentences(text)
+        for i, sentence in enumerate(sentences):
+            if UNSUPPORTED_MARK not in sentence:
+                continue
+            # A mark standing alone after a full stop qualifies the sentence
+            # before it.
+            if sentence.strip().strip(".") == UNSUPPORTED_MARK and i:
+                sentence = sentences[i - 1] + " " + sentence
+            flagged.append(sentence)
+    for warning in response.get("citation_warnings", []) or []:
+        if isinstance(warning, dict) and isinstance(warning.get("sentence"), str):
+            flagged.append(warning["sentence"])
+    return flagged
+
+
+_STEP = re.compile(r"^step(\d+)$")
 
 
 def resolve_expect(case: dict, milestone: str = "baseline") -> dict:
     """The expectation for a case at a milestone.
 
-    Starts from the case's baseline ``expect`` and, when ``milestone`` names an
-    entry in the case's ``milestones`` map, overrides those keys. An override
-    replaces a key outright (it is not merged element-wise), so a milestone
-    states the whole expectation for each key it changes.
+    Starts from the case's baseline ``expect`` and applies overrides. A
+    ``stepN`` milestone is cumulative: every ``stepM`` override with
+    ``M <= N`` applies, in step order, so the bar a case reached at step 2
+    still holds at step 12 without being restated. Any other milestone name
+    applies only its own entry. An override replaces a key outright (it is
+    not merged element-wise), so a milestone states the whole expectation for
+    each key it changes.
     """
     resolved = dict(case.get("expect", {}))
-    if milestone != "baseline":
-        resolved.update(case.get("milestones", {}).get(milestone, {}))
+    if milestone == "baseline":
+        return resolved
+    milestones = case.get("milestones", {})
+    target = _STEP.match(milestone)
+    if target is None:
+        resolved.update(milestones.get(milestone, {}))
+        return resolved
+    steps = sorted((int(m.group(1)), name) for name in milestones
+                   for m in [_STEP.match(name)] if m)
+    for number, name in steps:
+        if number <= int(target.group(1)):
+            resolved.update(milestones[name])
     return resolved
 
 
@@ -388,12 +467,12 @@ def validate_case(case: dict) -> list[str]:
         for key in _STRING_LIST_KEYS:
             if key in expect and not _is_string_list(expect[key]):
                 errors.append(f"{cid}: {label} {key} must be a list of strings")
-        if "max_citation_warnings" in expect:
-            ceiling = expect["max_citation_warnings"]
-            if not _is_int(ceiling) or ceiling < 0:
-                errors.append(
-                    f"{cid}: {label} max_citation_warnings must be a "
-                    f"non-negative integer")
+        for key in _COUNT_KEYS:
+            if key in expect:
+                bound = expect[key]
+                if not _is_int(bound) or bound < 0:
+                    errors.append(
+                        f"{cid}: {label} {key} must be a non-negative integer")
         specs = expect.get("must_not_cite", [])
         if not isinstance(specs, list):
             errors.append(f"{cid}: {label} must_not_cite must be a list")
@@ -455,5 +534,11 @@ def validate_case(case: dict) -> list[str]:
 
     if "answerable" in case and not isinstance(case["answerable"], bool):
         errors.append(f"{cid}: 'answerable' must be a boolean")
+    for key in ("scripted", "observed_response", "memories", "now"):
+        if key in case and (not isinstance(case[key], str) or not case[key]):
+            errors.append(f"{cid}: {key!r} must be a non-empty string")
+    for key in ("branch_states", "caller"):
+        if key in case and not isinstance(case[key], dict):
+            errors.append(f"{cid}: {key!r} must be an object")
 
     return errors
