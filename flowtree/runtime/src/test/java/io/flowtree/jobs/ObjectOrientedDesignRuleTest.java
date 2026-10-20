@@ -161,6 +161,56 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Only existing production classes are selected: a changed test source, a {@code package-info} or
+	 * {@code module-info} descriptor, a non-Java file, and a changed path whose file no longer exists
+	 * are all excluded before the gate is even consulted, so a session is never spent on them.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void skipsTestSourcesDescriptorsNonJavaAndDeletedFiles() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String production = "engine/ml/src/main/java/org/example/Window.java";
+			String testSource = "engine/ml/src/test/java/org/example/WindowTest.java";
+			String packageInfo = "engine/ml/src/main/java/org/example/package-info.java";
+			String moduleInfo = "engine/ml/src/main/java/module-info.java";
+			String nonJava = "docs/notes.md";
+			String deleted = "engine/ml/src/main/java/org/example/Deleted.java";
+			for (String path : List.of(production, testSource, packageInfo, moduleInfo, nonJava)) {
+				Files.createDirectories(root.resolve(path).getParent());
+				Files.writeString(root.resolve(path), "class X {}");
+			}
+			StubJob job = new StubJob(root, new ArrayList<>(
+					List.of(testSource, packageInfo, moduleInfo, nonJava, deleted, production)));
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(production, "w1", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(testSource, "t1", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(packageInfo, "pi", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(moduleInfo, "mi", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(nonJava, "nj", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(deleted, "dl", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+
+			assertTrue(rule.isViolated(job));
+			String prompt = rule.buildCorrectionPrompt(job);
+			assertTrue("the existing production class must be reviewed", prompt.contains(production));
+			assertFalse("a test source must not be reviewed", prompt.contains(testSource));
+			assertFalse("a package-info descriptor must not be reviewed", prompt.contains(packageInfo));
+			assertFalse("a module-info descriptor must not be reviewed", prompt.contains(moduleInfo));
+			assertFalse("a non-Java file must not be reviewed", prompt.contains(nonJava));
+			assertFalse("a deleted file must not be reviewed", prompt.contains(deleted));
+
+			appendVerdict(root, VERDICT_FILE, production + ": CLEAN");
+			rule.onCorrectionAttempted(job);
+
+			assertEquals(Set.of(production), rule.getReviewed());
+			assertFalse(rule.isViolated(job));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
 	 * A verdict a session writes into a module's {@code .flowtree/oop-review.md} — not the
 	 * repository root — is still found, so the class is not re-reviewed.
 	 *
