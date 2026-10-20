@@ -1,14 +1,14 @@
 diff --git a/flowtree/runtime/src/main/java/io/flowtree/jobs/McpConfigBuilder.java b/flowtree/runtime/src/main/java/io/flowtree/jobs/McpConfigBuilder.java
-index 335910552..aec7ed371 100644
+index f86b0e9b5..dcfff40f7 100644
 --- a/flowtree/runtime/src/main/java/io/flowtree/jobs/McpConfigBuilder.java
 +++ b/flowtree/runtime/src/main/java/io/flowtree/jobs/McpConfigBuilder.java
-@@ -450,9 +450,6 @@ public class McpConfigBuilder implements ConsoleFeatures {
-      * @return the required server names; empty when ar-manager is not configured
+@@ -482,9 +482,6 @@ public class McpConfigBuilder implements ConsoleFeatures {
       */
      public Set<String> requiredServerNames() {
+         boolean configured = arManagerEnabled();
 -        if (!SystemUtils.isEnabled("AR_REQUIRE_MCP_SERVERS").orElse(false)) {
 -            return Collections.emptySet();
 -        }
-         return arManagerEnabled() ? Set.of("ar-manager") : Collections.emptySet();
+         return configured ? Set.of("ar-manager") : Collections.emptySet();
      }
  
