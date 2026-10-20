@@ -1,0 +1,3 @@
+Not documented. Historically, `ClaudeCodeJob` was replaced by `CodingAgentJob` in the Pluggable agents change so that runners other than Claude Code could be plugged in behind the `AgentRunner` interface [N:e8-note-1].
+BASIS: none
+CONFLICTS: none

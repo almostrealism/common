@@ -101,8 +101,8 @@ The requester identity travels with the completion handle: `MetalCommandRunner.s
 receives the dispatching operation's `OperationMetadata` and creates the dispatch's
 `MetalSemaphore` carrying it, so `waitFor()` can attribute the wait no matter who
 performs it or on which thread. Kernel dispatches are labelled with their compiled
-kernel name (from `MetalOperator.getMetadata()`); blit copies queued by
-`MetalComputeContext.copy` are labelled `mtlBlitCopy`.
+kernel name (from `MetalOperator.getMetadata()`); copies queued by
+`MetalComputeContext.copy` (dispatches of its copy kernel) are labelled `mtlCopy`.
 
 The distribution is **static** — one histogram across all runners and the whole JVM —
 so measurements over a window must snapshot and diff (see below).
@@ -159,11 +159,11 @@ dispatch, not the caller that performed the wait. Two consequences:
   whose completion someone required synchronously. Finding the *caller* is the follow-up
   step (a debugger breakpoint or stack capture in `MetalSemaphore.waitFor()` filtered by
   that requester).
-- `mtlBlitCopy` means the waited semaphore belonged to a blit dispatch. Because copy-out
-  blits are chained *after* kernels, a boundary that waits "for the operation" often
-  actually waits the trailing copy-out blit — so a large `mtlBlitCopy` share can reflect
+- `mtlCopy` means the waited semaphore belonged to a copy dispatch. Because copy-out
+  copies are chained *after* kernels, a boundary that waits "for the operation" often
+  actually waits the trailing copy-out — so a large `mtlCopy` share can reflect
   either synchronous copy machinery or ordinary boundary waits whose chain tail is a
-  copy. Distinguish them by whether the blit waits scale with the number of copies or
+  copy. Distinguish them by whether the copy waits scale with the number of copies or
   with the number of boundaries.
 
 ### Common Fingerprints

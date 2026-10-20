@@ -247,26 +247,26 @@ class TestTrackerTools(unittest.TestCase):
 
     @patch.object(server, "_tracker_get")
     def test_tracker_get_task_workspace_scoping(self, mock_get):
-        """tracker_get_task must enforce workstream scope after fetching the task."""
-        # The task is linked to a workstream outside the caller's scope.
+        """tracker_get_task must refuse a task of another workspace after fetching it."""
         mock_get.return_value = {
             "ok": True,
-            "task": {"id": "t1", "title": "T", "workstream_id": "ws-other"},
+            "task": {"id": "t1", "title": "T", "workstream_id": "ws-other",
+                     "workspace_id": "W-OTHER"},
         }
-        server._set_scopes(["read"], label="test")
-        # Simulate the workstream being outside scope by patching the check.
-        with patch.object(server, "_require_workstream_in_scope",
-                          side_effect=PermissionError("out of scope")) as mock_check:
+        _set_workspaces("W-MINE")
+        try:
             with self.assertRaises(PermissionError):
                 server.tracker_get_task("t1")
-            mock_check.assert_called_once_with("ws-other")
+            mock_get.assert_called_once_with("/v1/tasks/t1")
+        finally:
+            _clear_workspaces()
 
     @patch.object(server, "_tracker_get")
     def test_tracker_get_task_no_workstream_no_scope_check(self, mock_get):
-        """tracker_get_task must not call scope check when task has no workstream."""
+        """An unlimited caller may read a task no workspace owns."""
         mock_get.return_value = {
             "ok": True,
-            "task": {"id": "t1", "title": "T", "workstream_id": None},
+            "task": {"id": "t1", "title": "T", "workstream_id": None, "workspace_id": None},
         }
         with patch.object(server, "_require_workstream_in_scope") as mock_check:
             result = server.tracker_get_task("t1")
@@ -318,36 +318,20 @@ class TestTrackerTools(unittest.TestCase):
 
     @patch.object(server, "_tracker_get")
     def test_tracker_project_summary_filters_workstreams_by_scope(self, mock_get):
-        """by_workstream entries outside caller scope must be silently dropped."""
-        mock_get.return_value = {
-            "ok": True,
-            "summary": {
-                "project_id": "p1",
-                "total_tasks": 2,
-                "by_status": {"open": 2},
-                "by_priority": {},
-                "by_release": [],
-                "by_workstream": [
-                    {"workstream_id": "ws-good", "task_count": 1, "open_count": 1},
-                    {"workstream_id": "ws-bad", "task_count": 1, "open_count": 0},
-                    {"workstream_id": None, "task_count": 0, "open_count": 0},
-                ],
-            },
-        }
-
-        def _scope_check(ws_id):
-            if ws_id == "ws-bad":
-                raise PermissionError("out of scope")
-
-        with patch.object(server, "_require_workstream_in_scope",
-                          side_effect=_scope_check):
-            result = server.tracker_project_summary("p1")
-
-        by_ws = result["summary"]["by_workstream"]
-        ws_ids = [e["workstream_id"] for e in by_ws]
-        self.assertIn("ws-good", ws_ids)
-        self.assertNotIn("ws-bad", ws_ids)
-        self.assertIn(None, ws_ids)
+        """A limited caller may summarise only a project its workspace owns."""
+        summary = {"ok": True, "summary": {"project_id": "p1", "total_tasks": 0,
+                                            "by_workstream": []}}
+        mock_get.side_effect = lambda path: (
+            {"ok": True, "project": {"id": "p1", "workspace_id": "W-OTHER"}}
+            if path == "/v1/projects/p1" else summary)
+        _set_workspaces("W-MINE")
+        try:
+            with self.assertRaises(PermissionError):
+                server.tracker_project_summary("p1")
+            self.assertNotIn("/v1/projects/p1/summary",
+                             [c.args[0] for c in mock_get.call_args_list])
+        finally:
+            _clear_workspaces()
 
     def test_tracker_tools_require_read_scope(self):
         _grant_scopes("write")
@@ -376,11 +360,11 @@ class TestTrackerTools(unittest.TestCase):
             server.tracker_create_task("t")
 
 class TestTrackerScopedFiltering(unittest.TestCase):
-    """Scoped callers (agents) must only see tasks attached to a
-    workstream in their workspace. tracker_list_tasks (without an
-    explicit workstream_id filter) and tracker_search_tasks have to
-    post-filter results, since the underlying tracker has no notion of
-    workspace and would otherwise return tasks from other workspaces.
+    """Scoped callers (agents) see only their workspace's tasks.
+
+    A tracker project is owned by a workspace and its tasks belong to it. The
+    list and search tools pass the caller's workspaces to the tracker, which
+    filters in the query itself, so totals and pagination stay correct.
     """
 
     def setUp(self):
@@ -403,54 +387,48 @@ class TestTrackerScopedFiltering(unittest.TestCase):
     def test_list_tasks_filters_when_workstream_id_omitted(
             self, mock_tracker, mock_controller):
         self._seed_workstream_map(mock_controller)
-        mock_tracker.return_value = {
-            "ok": True,
-            "tasks": [
-                {"id": "t1", "workstream_id": "ws-good"},
-                {"id": "t2", "workstream_id": "ws-bad"},
-                {"id": "t3", "workstream_id": None},
-            ],
-        }
+        mock_tracker.return_value = {"ok": True, "tasks": [{"id": "t1"}], "total": 1}
         result = server.tracker_list_tasks()
         self.assertTrue(result["ok"])
-        ids = [t["id"] for t in result["tasks"]]
-        self.assertEqual(["t1"], ids)
+        mock_tracker.assert_called_once_with("/v1/tasks?workspace_id=TAAA")
+        self.assertEqual(["t1"], [t["id"] for t in result["tasks"]])
 
     @patch.object(server, "_controller_get")
     @patch.object(server, "_tracker_get")
-    def test_list_tasks_does_not_filter_when_workstream_id_specified(
+    def test_list_tasks_limits_to_the_workspace_with_a_workstream_filter(
             self, mock_tracker, mock_controller):
-        # When the caller passes workstream_id, _require_workstream_in_scope
-        # already gates the call. We must not double-filter the results
-        # (which would be wasteful and could mask tracker bugs).
+        # A workstream filter narrows the workspace's tasks; it never widens
+        # the view to another workspace's.
         self._seed_workstream_map(mock_controller)
-        mock_tracker.return_value = {
-            "ok": True,
-            "tasks": [
-                {"id": "t1", "workstream_id": "ws-good"},
-                {"id": "t2", "workstream_id": "ws-good"},
-            ],
-        }
-        result = server.tracker_list_tasks(workstream_id="ws-good")
-        self.assertEqual(["t1", "t2"], [t["id"] for t in result["tasks"]])
+        mock_tracker.return_value = {"ok": True, "tasks": [], "total": 0}
+        server.tracker_list_tasks(workstream_id="ws-bad")
+        called = mock_tracker.call_args[0][0]
+        self.assertIn("workstream_id=ws-bad", called)
+        self.assertIn("workspace_id=TAAA", called)
 
     @patch.object(server, "_controller_get")
     @patch.object(server, "_tracker_get")
     def test_search_tasks_filters_results(
             self, mock_tracker, mock_controller):
         self._seed_workstream_map(mock_controller)
-        mock_tracker.return_value = {
-            "ok": True,
-            "tasks": [
-                {"id": "t1", "workstream_id": "ws-good"},
-                {"id": "t2", "workstream_id": "ws-bad"},
-                {"id": "t3", "workstream_id": None},
-            ],
-        }
+        mock_tracker.return_value = {"ok": True, "tasks": [{"id": "t1"}], "total": 1}
         result = server.tracker_search_tasks("oauth")
         self.assertTrue(result["ok"])
-        ids = [t["id"] for t in result["tasks"]]
-        self.assertEqual(["t1"], ids)
+        self.assertIn("workspace_id=TAAA", mock_tracker.call_args[0][0])
+        self.assertEqual(["t1"], [t["id"] for t in result["tasks"]])
+
+    @patch.object(server, "_tracker_get")
+    def test_several_workspaces_are_sent_together(self, mock_tracker):
+        _set_workspaces("TAAA", "TBBB")
+        mock_tracker.return_value = {"ok": True, "projects": []}
+        server.tracker_list_projects()
+        mock_tracker.assert_called_once_with("/v1/projects?workspace_id=TAAA%2CTBBB")
+
+    @patch.object(server, "_tracker_get")
+    def test_releases_are_limited_to_the_workspace(self, mock_tracker):
+        mock_tracker.return_value = {"ok": True, "releases": []}
+        server.tracker_list_releases(project_id="p1")
+        mock_tracker.assert_called_once_with("/v1/releases?project_id=p1&workspace_id=TAAA")
 
     @patch.object(server, "_controller_get")
     @patch.object(server, "_tracker_get")

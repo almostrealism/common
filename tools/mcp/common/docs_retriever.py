@@ -92,14 +92,12 @@ MODULE_PATHS = {
 }
 
 
-# Standalone (non-layer) documentation roots. These cover dirs that are
-# real first-class documentation but that don't live under a Maven layer
-# module — so they're not in MODULE_PATHS and would otherwise be invisible
-# to search. Listing them explicitly (rather than walking every *.md in
-# the repo) keeps planning docs / proposals / generated cruft out of the
-# index. Add a new entry here when introducing a new source of indexed
-# documentation; the file existence check at lookup time means non-
-# existent paths are silently ignored.
+# Standalone (non-layer) documentation roots: first-class documentation that
+# does not live under a Maven layer module. The corpus walk (walk_corpus)
+# indexes these along with every other document; the list remains as the set
+# of roots that must always resolve to something on disk, which
+# test_docs_retriever asserts, so deleting or moving one of these documents
+# fails a test instead of silently shrinking what consult can answer from.
 #
 # Markdown entries are individual files OR directories (in which case
 # *.md inside is included); HTML entries are individual files OR
@@ -132,6 +130,68 @@ STANDALONE_MD_ROOTS = [
 STANDALONE_HTML_ROOTS = [
     "docs/tutorials",
 ]
+
+
+# What the corpus walk leaves out. Everything else under the corpus root that
+# is markdown or HTML is indexed, so a new document is searchable the moment
+# it is added — the hand-kept allowlist this replaced let the Dockerfile copy
+# documents the index never read. An entry ending in "/" excludes a directory
+# (relative to the corpus root); any other entry is one exact file.
+# tools/mcp/manager/test_dockerfile_packaging.py checks that every *.md and
+# *.html in the repository is either indexed or named here.
+INDEX_EXCLUSIONS = (
+    # Plans describe intended, not actual, behaviour; indexed as documentation
+    # they would plant future-tense claims as present fact.
+    "docs/plans/",
+    # The root README is not copied into the image (only the root CLAUDE.md
+    # is), and the two stray working files beside it are not documentation.
+    "README.md",
+    "HOST_ARRAY_AUDIT.md",
+    "PR_REVIEW_CARRYOVER.md",
+    # The consult evaluation's own reports describe consult's past answers,
+    # wrong ones included; indexed, they would be retrieved as documentation.
+    "tools/mcp/manager/eval/",
+)
+
+# Directory names the walk never enters: build output, caches, VCS state.
+_SKIP_DIRS = frozenset({
+    ".git", "target", "node_modules", "__pycache__", ".pytest_cache",
+    ".mypy_cache", "results", "runs", ".idea", ".vscode",
+})
+
+_DOC_SUFFIXES = (".md", ".html")
+
+# Chunks one file may contribute to a plain search().
+_MAX_HITS_PER_FILE = 3
+
+
+def is_indexed(rel_path: str) -> bool:
+    """Whether the corpus walk indexes the document at ``rel_path``
+    (repository-relative, ``/``-separated)."""
+    if not rel_path.endswith(_DOC_SUFFIXES):
+        return False
+    parts = rel_path.split("/")
+    if any(part in _SKIP_DIRS for part in parts[:-1]):
+        return False
+    for entry in INDEX_EXCLUSIONS:
+        if entry.endswith("/") and rel_path.startswith(entry):
+            return False
+        if rel_path == entry:
+            return False
+    return True
+
+
+def walk_corpus(common_dir: Path) -> list[Path]:
+    """Every indexed document under ``common_dir``, sorted by path."""
+    found: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(common_dir):
+        dirnames[:] = sorted(d for d in dirnames if d not in _SKIP_DIRS)
+        for name in filenames:
+            path = Path(dirpath) / name
+            rel = path.relative_to(common_dir).as_posix()
+            if is_indexed(rel):
+                found.append(path)
+    return sorted(found)
 
 
 def _expand_roots(common_dir: Path, entries: list[str], suffix: str) -> list[Path]:
@@ -309,6 +369,151 @@ def _extract_keywords(query: str) -> list[str]:
     return keywords
 
 
+# A markdown ATX heading. HTML documents reach the matcher with their <h1>-<h3>
+# already rewritten to this form by _extract_text_from_html, so one pattern
+# serves both.
+_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
+
+# A subsection at most this many lines long is returned whole, rather than as
+# the fixed window around the matching line: the whole subsection is what the
+# heading trail names, and a short one fits the chunk budget comfortably.
+SECTION_GROW_LINES = 30
+
+# Separator between the headings of a chunk's trail.
+SECTION_SEPARATOR = " › "
+
+
+def _headings(lines: list[str]) -> list[tuple[int, int, str]]:
+    """The headings of a document as ``(line_index, level, title)``.
+
+    Lines inside fenced code blocks are skipped, so a shell comment such as
+    ``# install`` in an example is not mistaken for a heading.
+    """
+    found: list[tuple[int, int, str]] = []
+    in_fence = False
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        match = _HEADING.match(line)
+        if match:
+            found.append((i, len(match.group(1)), match.group(2).strip()))
+    return found
+
+
+def _enclosing_section(headings: list[tuple[int, int, str]], line_count: int,
+                       index: int) -> tuple[list[str], int, int]:
+    """The heading trail of the line at ``index`` and its section's bounds.
+
+    Returns ``(trail, start, end)``: the titles from the outermost heading
+    down to the deepest one at or above the line, and the zero-based line
+    span of that deepest heading's section (up to, not including, the next
+    heading of the same or a higher level). A line before any heading has an
+    empty trail and the whole document as its span.
+    """
+    stack: list[tuple[int, int, str]] = []
+    for line_index, level, title in headings:
+        if line_index > index:
+            break
+        while stack and stack[-1][1] >= level:
+            stack.pop()
+        stack.append((line_index, level, title))
+    if not stack:
+        return [], 0, line_count - 1
+    start, level, _ = stack[-1]
+    end = line_count - 1
+    for line_index, other_level, _ in headings:
+        if line_index > start and other_level <= level:
+            end = line_index - 1
+            break
+    return [title for _, _, title in stack], start, end
+
+
+def make_chunk(rel_path: str, lines: list[str], index: int, context_lines: int,
+               headings: list[tuple[int, int, str]]) -> dict:
+    """Build one retrieval result for a match on the line at ``index``.
+
+    The chunk is the enclosing subsection when that is at most
+    :data:`SECTION_GROW_LINES` long, and otherwise the ``context_lines``
+    window around the match clipped to the subsection, so a chunk never
+    straddles two subjects. It records the 1-based inclusive line range it
+    actually covers and the heading trail above it, which is what lets a
+    citation state honestly what the reader saw instead of naming only the
+    line that matched.
+
+    Returns:
+        A dict with ``file``, ``line`` (the matching line), ``start``,
+        ``end``, ``section`` (the heading trail) and ``context``.
+    """
+    trail, sec_start, sec_end = _enclosing_section(headings, len(lines), index)
+    if trail and sec_end - sec_start + 1 <= SECTION_GROW_LINES:
+        start, end = sec_start, sec_end
+    else:
+        # Keep the window's full width, sliding it inside the subsection: a
+        # match on the heading line itself then shows the text under it.
+        width = 2 * context_lines + 1
+        start = max(sec_start, index - context_lines)
+        end = min(sec_end, start + width - 1)
+        start = max(sec_start, end - width + 1)
+    return {
+        "file": rel_path,
+        "line": index + 1,
+        "start": start + 1,
+        "end": end + 1,
+        "section": SECTION_SEPARATOR.join(trail),
+        "context": "\n".join(lines[start:end + 1]),
+    }
+
+
+def chunk_label(result: dict) -> str:
+    """The ``file:start-end § section`` label of a retrieval result.
+
+    Falls back to the matching line alone for a result that carries no range
+    (one built by an older caller), so the label never claims more than the
+    result records.
+    """
+    start, end = result.get("start"), result.get("end")
+    loc = (f"{result['file']}:{start}-{end}" if start and end
+           else f"{result['file']}:{result.get('line', '')}")
+    section = result.get("section")
+    return f"{loc} § {section}" if section else loc
+
+
+def _format_context(md_results: list[dict], max_total_chars: int) -> str:
+    """Render markdown results as labelled chunks within a character budget."""
+    parts = []
+    total = 0
+    for r in md_results:
+        chunk = f"[{chunk_label(r)}]\n{r['context']}"
+        if total + len(chunk) > max_total_chars:
+            break
+        parts.append(chunk)
+        total += len(chunk)
+    return "\n\n---\n\n".join(parts)
+
+
+def _result_key(result: dict) -> tuple:
+    """Identity of a result for de-duplication: the span it covers, so two
+    matches inside one short subsection collapse into one chunk."""
+    return (result["file"], result.get("start", result["line"]),
+            result.get("end", result["line"]))
+
+
+def _overlaps(result: dict, others: list[dict]) -> bool:
+    """Whether ``result`` covers lines already covered by one of ``others``
+    in the same file. Overlapping chunks would show the reader the same
+    text twice and spend the chunk budget on it."""
+    _, start, end = _result_key(result)
+    for other in others:
+        o_file, o_start, o_end = _result_key(other)
+        if o_file == result["file"] and start <= o_end and end >= o_start:
+            return True
+    return False
+
+
 def _path_depth(path: Path, base: Path) -> int:
     """Calculate the depth of a path relative to a base directory.
 
@@ -329,6 +534,7 @@ class DocsRetriever:
         self.docs_dir = self.common_dir / "docs"
         self.modules_dir = self.docs_dir / "modules"
         self.internals_dir = self.docs_dir / "internals"
+        self._corpus_files: Optional[list[Path]] = None
 
     def _markdown_files(self, module: Optional[str] = None) -> tuple[list[Path], list[Path]]:
         """Collect markdown documentation files, split into READMEs and others.
@@ -350,33 +556,12 @@ class DocsRetriever:
             if module_docs.exists():
                 others.extend(module_docs.glob("*.md"))
         else:
-            # All module READMEs
-            for mod, mod_path in MODULE_PATHS.items():
-                readme = self.common_dir / mod_path / "README.md"
-                if readme.exists():
-                    readmes.append(readme)
-                mod_docs = self.common_dir / mod_path / "docs"
-                if mod_docs.exists():
-                    others.extend(mod_docs.glob("*.md"))
-
-            # Standalone (non-layer) doc roots: flowtree, tools/mcp, etc.
-            # READMEs go in the readmes bucket so they're guaranteed to be
-            # searched; everything else (docs/*.md per server) goes in others.
-            for path in _expand_roots(self.common_dir, STANDALONE_MD_ROOTS, ".md"):
-                if path.name == "README.md":
-                    readmes.append(path)
-                else:
-                    others.append(path)
-
-            # Quick reference, CLAUDE.md, internals (not READMEs)
-            qr = self.docs_dir / "QUICK_REFERENCE.md"
-            if qr.exists():
-                others.append(qr)
-            claude_md = self.common_dir / "CLAUDE.md"
-            if claude_md.exists():
-                others.append(claude_md)
-            if self.internals_dir.exists():
-                others.extend(self.internals_dir.glob("*.md"))
+            # The whole corpus. READMEs go in the readmes bucket so they're
+            # guaranteed to be searched; everything else goes in others.
+            for path in self._corpus():
+                if path.suffix != ".md":
+                    continue
+                (readmes if path.name == "README.md" else others).append(path)
 
         # Sort others by depth (deepest/most specific first), then alphabetically
         others.sort(key=lambda p: (-_path_depth(p, self.common_dir), str(p)))
@@ -391,9 +576,7 @@ class DocsRetriever:
             if html.exists():
                 files.append(html)
         else:
-            if self.modules_dir.exists():
-                files.extend(sorted(self.modules_dir.glob("*.html")))
-            files.extend(_expand_roots(self.common_dir, STANDALONE_HTML_ROOTS, ".html"))
+            files.extend(p for p in self._corpus() if p.suffix == ".html")
 
         return files
 
@@ -414,34 +597,14 @@ class DocsRetriever:
                 files.extend(module_docs.glob("*.md"))
             return files
 
-        # All module HTML pages
-        if self.modules_dir.exists():
-            files.extend(self.modules_dir.glob("*.html"))
+        return list(self._corpus())
 
-        # All module READMEs and doc subdirectories
-        for mod, mod_path in MODULE_PATHS.items():
-            readme = self.common_dir / mod_path / "README.md"
-            if readme.exists():
-                files.append(readme)
-            mod_docs = self.common_dir / mod_path / "docs"
-            if mod_docs.exists():
-                files.extend(mod_docs.glob("*.md"))
-
-        # Standalone (non-layer) doc roots
-        files.extend(_expand_roots(self.common_dir, STANDALONE_MD_ROOTS, ".md"))
-        files.extend(_expand_roots(self.common_dir, STANDALONE_HTML_ROOTS, ".html"))
-
-        # Quick reference, CLAUDE.md, internals
-        qr = self.docs_dir / "QUICK_REFERENCE.md"
-        if qr.exists():
-            files.append(qr)
-        claude_md = self.common_dir / "CLAUDE.md"
-        if claude_md.exists():
-            files.append(claude_md)
-        if self.internals_dir.exists():
-            files.extend(self.internals_dir.glob("*.md"))
-
-        return files
+    def _corpus(self) -> list[Path]:
+        """Every indexed document (see :func:`walk_corpus`), walked once per
+        retriever: the corpus is fixed for the life of the server."""
+        if self._corpus_files is None:
+            self._corpus_files = walk_corpus(self.common_dir)
+        return self._corpus_files
 
     def search(
         self,
@@ -463,36 +626,49 @@ class DocsRetriever:
         """
         results = []
 
-        for file_path in self._all_doc_files(module):
-            content = _read_file(file_path)
-            if not content:
-                continue
-
-            if file_path.suffix == ".html":
-                content = _extract_text_from_html(content)
-
-            lines = content.split("\n")
+        # Markdown before HTML (the HTML pages are reference renderings), and
+        # at most _MAX_HITS_PER_FILE chunks from one file, so a single long
+        # page cannot fill every result slot.
+        files = sorted(self._all_doc_files(module),
+                       key=lambda p: (p.suffix == ".html", str(p)))
+        for file_path in files:
+            lines = self._lines(file_path)
+            headings = None
+            file_results: list[dict] = []
             for i, line in enumerate(lines):
                 if _fuzzy_match(query, line):
-                    start = max(0, i - context_lines)
-                    end = min(len(lines), i + context_lines + 1)
-                    chunk = "\n".join(lines[start:end])
-
-                    try:
-                        rel_path = str(file_path.relative_to(self.common_dir))
-                    except ValueError:
-                        rel_path = str(file_path)
-
-                    results.append({
-                        "file": rel_path,
-                        "line": i + 1,
-                        "context": chunk,
-                    })
-
+                    if headings is None:
+                        headings = _headings(lines)
+                    chunk = make_chunk(
+                        self._rel(file_path), lines, i, context_lines, headings)
+                    if _overlaps(chunk, file_results):
+                        continue
+                    file_results.append(chunk)
+                    results.append(chunk)
                     if len(results) >= max_results:
                         return results
+                    if len(file_results) >= _MAX_HITS_PER_FILE:
+                        break
 
         return results
+
+    def _rel(self, file_path: Path) -> str:
+        """A file's path relative to the corpus root, as results report it."""
+        try:
+            return str(file_path.relative_to(self.common_dir))
+        except ValueError:
+            return str(file_path)
+
+    @staticmethod
+    def _lines(file_path: Path) -> list[str]:
+        """A document's lines, with HTML reduced to its readable text; empty
+        when the file is missing or unreadable."""
+        content = _read_file(file_path)
+        if not content:
+            return []
+        if file_path.suffix == ".html":
+            content = _extract_text_from_html(content)
+        return content.split("\n")
 
     def search_by_type(
         self,
@@ -531,30 +707,17 @@ class DocsRetriever:
         def _search_file(file_path: Path) -> list[dict]:
             """Search a single file and return matching results."""
             results = []
-            content = _read_file(file_path)
-            if not content:
-                return results
-
-            if file_path.suffix == ".html":
-                content = _extract_text_from_html(content)
-
-            lines = content.split("\n")
+            lines = self._lines(file_path)
+            headings = None
             for i, line in enumerate(lines):
                 if _fuzzy_match(query, line):
-                    start = max(0, i - context_lines)
-                    end = min(len(lines), i + context_lines + 1)
-                    chunk = "\n".join(lines[start:end])
-
-                    try:
-                        rel_path = str(file_path.relative_to(self.common_dir))
-                    except ValueError:
-                        rel_path = str(file_path)
-
-                    results.append({
-                        "file": rel_path,
-                        "line": i + 1,
-                        "context": chunk,
-                    })
+                    if headings is None:
+                        headings = _headings(lines)
+                    chunk = make_chunk(
+                        self._rel(file_path), lines, i, context_lines, headings)
+                    if _overlaps(chunk, results):
+                        continue
+                    results.append(chunk)
 
                     # Limit results per file to avoid one file dominating
                     if len(results) >= 3:
@@ -595,25 +758,17 @@ class DocsRetriever:
             # Take top results, prioritizing lines that match multiple keywords
             file_results = []
             seen_line_ranges = set()  # Avoid overlapping context
+            headings = _headings(lines)
             for line_idx, score in scored_matches[:8]:  # Consider up to 8 candidates
                 # Skip if this line's context would overlap with already-added result
                 if any(abs(line_idx - prev) < context_lines * 2 for prev in seen_line_ranges):
                     continue
 
-                start = max(0, line_idx - context_lines)
-                end = min(len(lines), line_idx + context_lines + 1)
-                chunk = "\n".join(lines[start:end])
-
-                try:
-                    rel_path = str(file_path.relative_to(self.common_dir))
-                except ValueError:
-                    rel_path = str(file_path)
-
-                file_results.append({
-                    "file": rel_path,
-                    "line": line_idx + 1,
-                    "context": chunk,
-                })
+                chunk = make_chunk(
+                    self._rel(file_path), lines, line_idx, context_lines, headings)
+                if _overlaps(chunk, file_results):
+                    continue
+                file_results.append(chunk)
                 seen_line_ranges.add(line_idx)
 
                 if len(file_results) >= 3:  # Max 3 non-overlapping results per file
@@ -681,7 +836,7 @@ class DocsRetriever:
             if len(final_md) >= max_md_results:
                 break
             # Check if this exact result is already included
-            if not any(r["file"] == m["file"] and r["line"] == m["line"] for m in final_md):
+            if not _overlaps(r, final_md):
                 final_md.append(r)
 
         # Step 4: Search HTML files
@@ -764,51 +919,51 @@ class DocsRetriever:
         """
         md_results = []
         html_results = []
-        seen_md: set[tuple[str, int]] = set()
-        seen_html: set[tuple[str, int]] = set()
+        seen_html: set[tuple] = set()
 
-        # Search each keyword and merge results
+        # Search each keyword, then take results round-robin: every keyword's
+        # best chunk before any keyword's second. Filling the budget keyword
+        # by keyword let the first keyword or two (often the broadest, such
+        # as a workflow name) take every slot, so the chunk a later, more
+        # specific keyword matched — the one holding the asked-for value —
+        # never reached the reader.
+        per_keyword: list[list[dict]] = []
         for kw in keywords:
-            if len(md_results) >= max_chunks and len(html_results) >= 3:
-                break
-
             typed = self.search_by_type(
                 kw,
                 max_md_results=max_chunks,
                 max_html_results=3,
                 context_lines=6,
             )
-
-            # Merge markdown results
-            for r in typed["markdown"]:
-                if len(md_results) >= max_chunks:
-                    break
-                key = (r["file"], r["line"])
-                if key not in seen_md:
-                    seen_md.add(key)
-                    md_results.append(r)
+            per_keyword.append(typed["markdown"])
 
             # Merge HTML results (for reference only)
             for r in typed["html"]:
                 if len(html_results) >= 5:
                     break
-                key = (r["file"], r["line"])
+                key = _result_key(r)
                 if key not in seen_html:
                     seen_html.add(key)
                     html_results.append(r)
 
-        # Format markdown context
-        context = ""
-        if md_results:
-            parts = []
-            total = 0
-            for r in md_results:
-                chunk = f"[{r['file']}:{r['line']}]\n{r['context']}"
-                if total + len(chunk) > max_total_chars:
+        # Each pass gives every keyword one *new* chunk: a result another
+        # keyword already contributed is skipped in favour of that keyword's
+        # next one, so a keyword is not starved because its best chunk was
+        # shared.
+        cursors = [0] * len(per_keyword)
+        while len(md_results) < max_chunks and any(
+                cursors[i] < len(r) for i, r in enumerate(per_keyword)):
+            for i, results in enumerate(per_keyword):
+                while cursors[i] < len(results) and _overlaps(
+                        results[cursors[i]], md_results):
+                    cursors[i] += 1
+                if len(md_results) >= max_chunks:
                     break
-                parts.append(chunk)
-                total += len(chunk)
-            context = "\n\n---\n\n".join(parts)
+                if cursors[i] < len(results):
+                    md_results.append(results[cursors[i]])
+                    cursors[i] += 1
+
+        context = _format_context(md_results, max_total_chars)
 
         # Extract unique HTML file references
         html_refs = list({r["file"] for r in html_results})
@@ -853,8 +1008,7 @@ class DocsRetriever:
         """
         md_results = []
         html_results = []
-        seen_md: set[tuple[str, int]] = set()
-        seen_html: set[tuple[str, int]] = set()
+        seen_html: set[tuple] = set()
 
         # First try the full query
         typed = self.search_by_type(
@@ -865,12 +1019,10 @@ class DocsRetriever:
         )
 
         for r in typed["markdown"]:
-            key = (r["file"], r["line"])
-            seen_md.add(key)
             md_results.append(r)
 
         for r in typed["html"]:
-            key = (r["file"], r["line"])
+            key = _result_key(r)
             seen_html.add(key)
             html_results.append(r)
 
@@ -891,31 +1043,18 @@ class DocsRetriever:
                 for r in kw_typed["markdown"]:
                     if len(md_results) >= max_chunks:
                         break
-                    key = (r["file"], r["line"])
-                    if key not in seen_md:
-                        seen_md.add(key)
+                    if not _overlaps(r, md_results):
                         md_results.append(r)
 
                 for r in kw_typed["html"]:
                     if len(html_results) >= 5:
                         break
-                    key = (r["file"], r["line"])
+                    key = _result_key(r)
                     if key not in seen_html:
                         seen_html.add(key)
                         html_results.append(r)
 
-        # Format markdown context
-        context = ""
-        if md_results:
-            parts = []
-            total = 0
-            for r in md_results:
-                chunk = f"[{r['file']}:{r['line']}]\n{r['context']}"
-                if total + len(chunk) > max_total_chars:
-                    break
-                parts.append(chunk)
-                total += len(chunk)
-            context = "\n\n---\n\n".join(parts)
+        context = _format_context(md_results, max_total_chars)
 
         # Extract unique HTML file references
         html_refs = list({r["file"] for r in html_results})

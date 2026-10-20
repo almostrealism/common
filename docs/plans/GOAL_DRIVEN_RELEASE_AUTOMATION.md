@@ -138,6 +138,24 @@ task with a `workstream_id` has a branch working on it.
 
 ### 2. Narrow tracker tools for agents, not the general ones
 
+> **Superseded.** The narrow tools and the *steward* capability described
+> below were built and then replaced by a simpler model. Every agent now has
+> the general tools (`tracker_list_projects`, `tracker_list_releases`,
+> `tracker_list_tasks`, `tracker_search_tasks`, `tracker_get_task`,
+> `tracker_project_summary`, `tracker_create_task`, `tracker_update_task`,
+> `tracker_create_release`); none can delete. Reads are limited to the
+> caller's workspace. Anyone may create a task, but a non-planner's task always
+> lands in the backlog with its provenance set by the server, and a non-planner
+> may edit only the tasks linked to its own workstream. A workstream holding
+> the one tracker role, *planner*, may set every field, edit any task in the
+> workspace and create releases (a saved *steward* loads as *planner*).
+> Claiming moved out of the agent into CI: the task-planning job claims the
+> task through the controller (`POST /api/tracker/claim`) before submitting
+> the agent, and that claim's link is what lets the agent edit its task. The
+> decomposition round holds *planner*, and its prompt — not the tool — keeps it
+> to the tasks under its own `goals:` source prefix. The text below records the
+> original design.
+
 Rather than restoring `tracker_create_task` and `tracker_update_task` to some
 agents, add a small number of purpose-built tools. The server enforces each
 tool's limits itself, so they hold even if an agent is careless:
@@ -198,7 +216,8 @@ whether the release has a claimable task (see *Claimable-task endpoint* below).
 If there is none, the job ends there: no branch, no workstream, no agent. The
 next merge asks again.
 
-**The round's steps:**
+**The round's steps** (as first designed; CI now performs the claim, see the
+note in section 2):
 1. Call `tracker_claim_next_task` for this repository's project and that
    release. The claim is what actually takes the task; the gate only says one
    was available. If another round took the last task in between, the claim
@@ -216,7 +235,7 @@ a network with the tracker. So the controller gains a read-only endpoint:
 - It takes a project name and a release name (for example
   `GET /api/tracker/claimable?project=<name>&release=<name>`).
 - It returns how many tasks in that release are `ready`, unblocked and
-  unclaimed, which is the same condition `tracker_claim_next_task` uses. The
+  unclaimed, which is the same condition the claim uses. The
   tracker should own that condition, as one query both callers use, so the gate
   and the claim can never disagree about what "claimable" means.
 - It changes nothing: it neither claims nor links a task.
@@ -233,7 +252,8 @@ This is a reusable job, provided by this repository and run from a consuming
 repository's CI. Its pieces:
 - a prompt template and builder in `tools/ci/prompts/`, alongside the others;
 - the existing `register-workstream.sh` / `submit-agent-job.sh` path, with
-  the *steward* capability on its workstream.
+  the *planner* capability on its workstream (originally *steward*; see the
+  note in section 2).
 
 **Inputs**, all passed in by the calling workflow:
 - the goal documents;
@@ -304,10 +324,116 @@ As built (`TaskCloseOutReconciler`, tracker `/v1/close-out`):
 ### 6. Parallel planning
 
 Task rounds never write the manager log, so nothing forces them to one at a time
-beyond the claim itself. Once `tracker_claim_next_task` makes claims atomic, the
+beyond the claim itself. Since the claim (now made by CI through the
+controller) is atomic, the
 task round can open up to a configured number of branches at once. Start at
 one, and raise it once the pipeline has proven itself. The open-PR ceiling still
 applies across everything.
+
+### 7. Adoption by other repositories
+
+A consuming repository should get the whole pipeline by opting in, not by
+copying it. Everything that submits agent jobs already lives here: the prompt
+templates and builders, `register-workstream.sh`, `submit-agent-job.sh`, the
+intake and claimable-task gates. A second copy in each consumer would drift from
+the first, and every fix would have to be made twice.
+
+GitHub's mechanism for this is the **reusable workflow**: a workflow in this
+repository declares `on: workflow_call` with typed `inputs` and `secrets`, and a
+consumer calls it from a job:
+
+```yaml
+jobs:
+  decompose:
+    uses: almostrealism/common/.github/workflows/goal-decomposition.yaml@master
+    with:
+      project: <tracker project>
+      version-file: version.txt
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+```
+
+This repository is public, so a private consumer can call its workflows.
+
+**What lives where:**
+
+| Here (reusable, generic) | In the consumer (a thin caller) |
+|---|---|
+| The job's steps, scripts, prompts and gates | The trigger: which pushes and dispatches start the job |
+| Defaults that fit the framework's own layout | Product specifics, passed as inputs: tracker project, version file, goal and plan locations |
+| The trusted scripts the job runs with the controller token | The secrets, passed explicitly |
+
+The rules that make this work:
+
+- **The caller owns the trigger.** A called workflow cannot decide when it runs,
+  so the caller's `on:` holds the path filters and the default-branch guard's
+  first line of defence. The called workflow checks the guard again itself.
+- **Scripts come from this repository, never from the consumer's checkout.** A
+  plain `actions/checkout` inside a called workflow fetches the *caller's*
+  repository, so the reusable workflow checks this repository out explicitly
+  (input `framework-ref`, default `master`) and runs every script from that
+  checkout. That is the same trust rule Verify Completion follows.
+- **No product names here.** This repository is public. Every product-specific
+  value reaches a reusable workflow as an input; its defaults describe the
+  framework's own layout.
+- **This repository will call its own reusable workflows.** The goal is a
+  single implementation rather than a framework copy and a consumer copy: as
+  each round is extracted and this repository's own triggers are pointed at the
+  reusable workflow, `master-agent-dispatch.yaml` (or a sibling caller) calls it
+  the way any consumer does, so this repository's pipeline exercises the same
+  code every consumer runs. This is not yet true of the first reusable workflow:
+  `goal-decomposition.yaml` has no caller in this repository today, so the
+  decomposition round is exercised only by its tests and by a consumer's caller
+  until this repository's self-caller is wired up.
+- **Callers pin `@master` to begin with.** A fix here then reaches every
+  consumer immediately; so does a breakage. A release tag can replace it once
+  the workflows settle.
+
+**The reusable workflows:**
+
+1. `goal-decomposition.yaml`: the decomposition round (section 4). Built first,
+   because it is the stage no consumer can run today.
+2. The task planning round (section 3), extracted from
+   `master-agent-dispatch.yaml` and parameterised by tracker project and version
+   source.
+3. The docs-only plan review and the Verify Completion approval workflow, so a
+   consumer's plan branches get the same review and the same manual
+   implementation trigger.
+
+**The decomposition round as a reusable workflow:**
+
+- **Inputs:** the caller's tracker project; its version file (`pom.xml` is
+  read as a Maven project version, anything else as a plain version string);
+  the goals document; the directory holding one release-plan directory per
+  version; the framework's tracker project and the Maven property in the
+  caller's root `pom.xml` that pins the framework version; a cap on new tasks
+  per run.
+- **Scope:** the release plan directory is `<plans directory>/<version>/`, with
+  `PLAN.md` as its entry point. When it does not exist the job stops before it
+  asks the controller anything: no workstream, no agent.
+- **Workstream:** one standing workstream per repository, on the branch
+  `orchestration/goal-decomposition` (the `orchestration/` prefix makes it
+  `standing`, so it is never archived). Each run moves that branch to the
+  default-branch commit being reconciled, so the agent reads exactly the
+  approved documents that triggered it. The agent changes no files and commits
+  nothing; its output is tracker writes and a summary message.
+- **Framework checkout:** the workstream lists this repository as a dependent
+  repository, so the agent can read the framework's code beside the
+  application's when it decides where a task belongs.
+- **Ownership:** every task the round creates has the source
+  `goals:<owner>/<repository>/<document path>`. A run updates only tasks
+  carrying its own repository's prefix, so two applications' decomposition
+  rounds never edit each other's tasks; the tracker itself refuses any edit to a person's
+  task.
+
+**Consumer checklist** (per consuming repository, planned in that repository):
+
+- the caller workflows, one per reusable workflow;
+- `FLOWTREE_CF_ACCESS_CLIENT_SECRET` as a secret and `FLOWTREE_CONTROLLER_URL` /
+  `FLOWTREE_CF_ACCESS_CLIENT_ID` as variables (or at organisation level);
+- the tracker project, and its goals and release-plan documents;
+- a docs-only skip in its own build workflow, so plan branches do not occupy
+  expensive runners.
 
 ## Safety rails
 
@@ -330,7 +456,9 @@ applies across everything.
 
 ## Phases
 
-Each phase is useful on its own and can be approved separately.
+Each phase is useful on its own and can be approved separately. Phases 1, 2 and 4
+are built. Phase 3 is being built as the reusable `goal-decomposition.yaml`
+(section 7).
 
 1. **Tracker fields and tools.**
    - `stage`, `source`, `blocked_by` and the declined outcome in `tools/tracker`
@@ -338,7 +466,8 @@ Each phase is useful on its own and can be approved separately.
      and `person`.
    - The three narrow tools in ar-manager, with their allowlist entries in both
      `tool_capabilities.py` and `McpConfigBuilder`.
-   - The planner and steward capabilities.
+   - The planner and steward capabilities. (Since replaced: the general tools
+     for every agent, one *planner* role, and claiming in CI; see section 2.)
 2. **Task planning round in this repository.** The claimable-task endpoint in
    the controller, and the new job in `master-agent-dispatch.yaml` gated on it.
    With phase 1 in place, promoting a task to `ready` is enough to get it
@@ -349,8 +478,9 @@ Each phase is useful on its own and can be approved separately.
 4. **Close-out reconciler** in the controller.
 5. **Parallel task planning.**
 6. **Task planning in a consuming repository.** It uses the same tools and
-   prompt, but that repository needs its own equivalents of the planning round,
-   the docs-only review and the approval workflow.
+   prompt. Rather than equivalents written in that repository, the planning
+   round, the docs-only review and the approval workflow become reusable
+   workflows here, and the consumer calls them (section 7).
 7. **Later, optional:** have the free-form planning round record its work in the
    tracker too, once this pipeline is known to work.
 

@@ -281,6 +281,21 @@ class PromptBuilderTests(unittest.TestCase):
                 prompt = _read(self.output)
                 self.assertIn(_SED_METACHARACTER_BRANCH, prompt)
 
+    def test_a_multi_line_value_is_substituted_whole(self):
+        """A task description spans lines; a raw newline would end the sed
+        expression render_prompt builds. It must come through unchanged,
+        and placeholder-like text in it must stay literal, since it is
+        substituted after every other value."""
+        builder = os.path.join(_PROMPT_DIR, "build-task-planning-prompt.sh")
+        description = "First & line | x \\ y\n\n  ${BRANCH} stays\nlast"
+        result = self._run(builder, {"TASK_DESCRIPTION": description,
+                                     "BRANCH": _SED_METACHARACTER_BRANCH})
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", result.stderr)
+        prompt = _read(self.output)
+        self.assertIn(description, prompt)
+        self.assertIn(_SED_METACHARACTER_BRANCH, prompt)
+
     def test_a_missing_variable_is_refused_rather_than_substituted_empty(self):
         for builder in _builders():
             for var in _required_vars(builder):

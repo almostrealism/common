@@ -1,0 +1,3 @@
+`secret_render_file` cannot substitute a payload key containing a hyphen: `tools/mcp/secrets/server.py` matches placeholders with `\{\{(\w+)\}\}`, and `\w` excludes the hyphen [N:e5-note-1].
+BASIS: notes
+CONFLICTS: none

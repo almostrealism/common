@@ -64,49 +64,63 @@ export AR_TRACKER_AUTH_TOKEN=<your-token>
 
 ## MCP Tools
 
-ar-manager exposes 19 MCP tools for the tracker. All follow the `tracker_*` naming
-convention and mirror the REST API:
+ar-manager exposes 15 MCP tools for the tracker. All follow the `tracker_*` naming
+convention and mirror the REST API. Every agent sees the same tools; what a call
+may do depends on who makes it (see [Who may do what](#who-may-do-what)).
 
 | Tool | Scope | Description |
 |------|-------|-------------|
-| `tracker_list_projects` | read | List all projects |
-| `tracker_create_project` | write | Create a project |
-| `tracker_update_project` | write | Rename a project |
-| `tracker_delete_project` | write | Delete a project (tasks are kept, FK set to NULL) |
-| `tracker_list_releases` | read | List releases (optional `project_id` filter) |
-| `tracker_create_release` | write | Create a release |
-| `tracker_update_release` | write | Update a release |
-| `tracker_delete_release` | write | Delete a release (tasks kept, FK set to NULL) |
-| `tracker_create_task` | write | Create a task (optionally set its `stage`; omit to let the tracker default to `backlog`) |
-| `tracker_get_task` | read | Fetch one task by ID (full record, workspace-scoped) |
-| `tracker_list_tasks` | read | List tasks with filtering, pagination, and optional headlines projection |
+| `tracker_list_projects` | read | List your workspace's projects |
+| `tracker_create_project` | write, people only | Create a project, optionally owned by a workspace |
+| `tracker_update_project` | write, people only | Rename a project or assign its workspace |
+| `tracker_delete_project` | write, people only | Delete a project (tasks are kept, FK set to NULL) |
+| `tracker_list_releases` | read | List your workspace's releases (optional `project_id` filter) |
+| `tracker_create_release` | write, people and planners | Create a release |
+| `tracker_update_release` | write, people only | Update a release |
+| `tracker_delete_release` | write, people only | Delete a release (tasks kept, FK set to NULL) |
+| `tracker_create_task` | write, everyone | Create a task; an agent without the `planner` role files it into the backlog |
+| `tracker_get_task` | read | Fetch one task of your workspace by ID (full record) |
+| `tracker_list_tasks` | read | List your workspace's tasks with filtering, pagination, and optional headlines projection |
 | `tracker_update_task` | write | Update a task's fields, including its `stage` (mark it `ready` to queue it for planning) |
-| `tracker_delete_task` | write | Permanently delete a task |
-| `tracker_search_tasks` | read | Full-text search; supports headlines projection |
+| `tracker_delete_task` | write, people only | Permanently delete a task |
+| `tracker_search_tasks` | read | Full-text search over your workspace's tasks; supports headlines projection |
 | `tracker_project_summary` | read | Aggregate task counts for a project (no row fetch) |
-| `tracker_claim_next_task` | write + `planner` role | Claim the next ready task of a release for the calling workstream |
-| `tracker_list_release_tasks` | read + `steward` role | Every task of one release, unscoped |
-| `tracker_upsert_goal_task` | write + `steward` role | Create or update a task derived from goal documents |
-| `tracker_file_follow_up_task` | write (every job) | File a follow-up task for a review point out of scope for the branch; always backlog, unlinked, provenance from the job token, capped per job |
+
+### Workspaces
+
+A project is owned by at most one workspace (its `workspace_id`), and its
+releases and tasks belong to that workspace. The tracker reports the workspace
+on every project, release and task it returns, and its list and search
+endpoints accept `workspace_id=<id>[,<id>...]` to return only what those
+workspaces own.
+
+A caller limited to some workspaces — every agent job, and any person whose
+token is scoped — sees only their projects, releases and tasks. A task with no
+project, or whose project no workspace owns, is visible only to callers that
+are not limited. A project that existed before workspaces were introduced is
+owned by none until a person assigns it with
+`tracker_update_project(project_id, workspace_id=...)`.
 
 ### Readiness, provenance and dependencies
 
 Every task carries three fields that decide whether an agent may pick it up:
 
 - **`stage`** — `backlog` (the default, and every task that existed before
-  these fields), `ready` (may be claimed by a planning agent), or `declined`
+  these fields), `ready` (may be claimed by a planning round), or `declined`
   (its plan was rejected; out of the queue until a person makes it `ready`).
 - **`source`** — `person` (the default), `goals:<document>` for a task an
   agent derived from goal documents, or `follow-up:<workstream>/<job>` for a
-  task a coding agent filed as a follow-up while working a branch. Agents may
-  only change `goals:` tasks; a `follow-up:` source is set by the server from
-  the filing job's token, never from caller input.
+  task an agent job filed. An agent never records a task as written by a
+  person; when it gives no source, the server records its job.
 - **`blocked_by`** — ids of tasks that must close first.
 
 A task is **claimable** when it is open, `ready`, not linked to a workstream,
 and not blocked by an open task. That definition lives in one place
 (`_CLAIMABLE` in `store.py`) and is used by both `/v1/claimable` and
-`/v1/claim`, so asking "is there work?" and taking it never disagree.
+`/v1/claim`, so asking "is there work?" and taking it never disagree. CI
+claims through the FlowTree controller (`POST /api/tracker/claim`) after it
+registers the planning round's workstream; the claim links the task to that
+workstream, which is what lets the round's agent edit it.
 
 A claimed task is **closed out** when its workstream's branch finishes. The
 FlowTree controller checks the branch's pull requests every few minutes
@@ -117,43 +131,31 @@ are open, `ready` and linked change (`_AWAITING_CLOSE_OUT` in `store.py`), so a
 task a person kept in `backlog`, or moved while the branch was in review, is
 left as they left it.
 
-### Agent roles
+### Who may do what
 
-Agents cannot use the general write tools. The three tools above are granted
-to every agent session but refused by ar-manager unless the calling
-workstream holds the matching role in its `trackerCapabilities` setting
-(`workstream_register` / `workstream_update_config`, `tracker_capabilities`):
+ar-manager decides, from the caller's token, what each tracker call may do:
 
-- **`planner`** may claim the next ready task of a release; the claim links
-  the task to the caller's workstream and is atomic.
-- **`steward`** may list a release, and create or update `goals:` tasks. New
-  tasks are created `ready`; updates never change a task's stage or status;
-  a missing release is created, a missing project never is; nothing is
-  deleted.
-
-### Follow-up tasks
-
-`tracker_file_follow_up_task` is granted to **every** coding job, not gated on a
-role, because its server-side limits are what make it safe. A coding agent uses
-it when a pull-request review raises a valid point that is out of scope for the
-current branch, so the point is recorded for later instead of extending the
-branch through more review rounds (an in-scope defect is still fixed on the
-branch). Whatever the caller asks for, the tracker files the task:
-
-- always in stage `backlog` and at the default priority — an agent never
-  creates claimable or high-priority work;
-- never linked to a workstream, so it survives the merge of the branch that
-  raised it rather than being closed out with it;
-- with a `source` of `follow-up:<workstream>/<job>` taken from the filing job's
-  token, and only a small number (`MAX_FOLLOW_UP_TASKS_PER_JOB` in `store.py`)
-  of follow-up tasks per job, counted by that source so a looping agent cannot
-  flood the tracker.
-
-That provenance source is also how an agent reads back what it filed: a scoped
-caller may see, through `tracker_list_tasks` / `tracker_search_tasks` /
-`tracker_get_task`, the unlinked follow-up tasks whose embedded workstream is in
-its own workspace — enough to avoid a duplicate and report the task id — while
-every other unlinked task stays invisible to it as before.
+- **Anyone may read** what their workspaces own.
+- **Anyone may create a task.** An agent should file work it notices outside
+  what it was asked to do instead of widening its branch. An agent job whose
+  workstream does not hold the `planner` role gives only the title,
+  description, project and release; the tracker files the task in stage
+  `backlog`, at the default priority, unlinked, with a `source` of
+  `follow-up:<workstream>/<job>` taken from the job's token, and at most
+  `MAX_FOLLOW_UP_TASKS_PER_JOB` (in `store.py`) per job, so a looping agent
+  cannot flood the tracker.
+- **A `planner`** — an agent job whose workstream holds the role in its
+  `trackerCapabilities` setting (`workstream_register` /
+  `workstream_update_config`, `tracker_capabilities="planner"`) — may set
+  every field of a new task, edit any task in its workspace, and create
+  releases. Goal decomposition runs as a planner. The retired `steward` role
+  is read as `planner`.
+- **Any other agent job** may edit only the tasks linked to its own
+  workstream: the task its branch was given. It may not change their project,
+  workstream link or provenance.
+- **Only people** delete, and create, change or delete projects, and change or
+  delete releases. ar-manager refuses those tools to an agent job's token even
+  when a harness offers them.
 
 ### Context-efficiency: fetching a single task
 
@@ -208,27 +210,17 @@ tracker_project_summary(project_id="<uuid>")
 #   }
 ```
 
-The `by_workstream` breakdown is filtered to only include workstreams accessible
-to the caller's token. The `by_release` list always includes a `null` entry for
-tasks not assigned to any release.
+A caller limited to some workspaces may summarise only a project they own. The
+`by_release` list always includes a `null` entry for tasks not assigned to any
+release.
 
-### Workspace scoping
+### Where the rules live
 
-Workspace scope enforcement is handled by **ar-manager's MCP layer**, not by
-the ar-tracker REST API itself. The tracker service accepts a single shared
-bearer token (`AR_TRACKER_AUTH_TOKEN`) and has no concept of per-workstream
-permissions.
-
-The `tracker_*` MCP tools in ar-manager enforce scope at the MCP layer before
-forwarding requests to the tracker service:
-- **Write operations** (`tracker_create_task`, `tracker_update_task`,
-  `tracker_delete_task`): scoped tokens may only create, update, or delete
-  tasks attached to workstreams within their scope.
-- **Read operations** (`tracker_list_tasks` with a `workstream_id` filter,
-  `tracker_get_task` for tasks linked to a scoped workstream): scope is
-  checked before the GET request is forwarded.
-
-Projects and releases are globally visible — no scope restriction.
+The rules above are enforced by **ar-manager's MCP layer**, not by the
+ar-tracker REST API. The tracker service accepts a single shared bearer token
+(`AR_TRACKER_AUTH_TOKEN`) and trusts its caller; what it holds itself are the
+invariants of the data — the workspace filter, the backlog/unlinked/capped
+filing of an agent's task, and the claim.
 
 ---
 
@@ -239,14 +231,15 @@ The full API is versioned under `/v1/`. Health check is at `/api/health`.
 ```
 GET  /api/health
 
-GET    /v1/projects                     List all projects
-POST   /v1/projects                     Create a project
+GET    /v1/projects                     List projects (?workspace_id=<id>[,<id>...])
+POST   /v1/projects                     Create a project ({"name", "workspace_id"})
 GET    /v1/projects/{id}                Get a project
-PUT    /v1/projects/{id}                Update a project
+PUT    /v1/projects/{id}                Update a project ({"name", "workspace_id"}, each
+                                        optional; workspace_id null owns it by none)
 DELETE /v1/projects/{id}                Delete a project
 GET    /v1/projects/{id}/summary        Aggregate task counts for a project
 
-GET    /v1/releases                     List releases (?project_id=)
+GET    /v1/releases                     List releases (?project_id=&workspace_id=)
 POST   /v1/releases                     Create a release
 GET    /v1/releases/lookup              Find a release by name (?project=&release=)
 POST   /v1/releases/ensure              Atomically get or create a release by name
@@ -255,18 +248,18 @@ GET    /v1/releases/{id}                Get a release
 PUT    /v1/releases/{id}                Update a release
 DELETE /v1/releases/{id}                Delete a release
 
-GET    /v1/tasks                        List tasks (filter + paginate; ?fields=headlines; ?stage=)
+GET    /v1/tasks                        List tasks (filter + paginate; ?fields=headlines;
+                                        ?stage=; ?workspace_id=<id>[,<id>...])
 POST   /v1/tasks                        Create a task
 GET    /v1/tasks/{id}                   Get a task
-PUT    /v1/tasks/{id}                   Update a task (?only_goal_derived=true: only while the
-                                        stored task is a goals: task, else 409, checked atomically)
+PUT    /v1/tasks/{id}                   Update a task
 DELETE /v1/tasks/{id}                   Delete a task
 
 GET    /v1/projects/{id}/tasks          Tasks for a project
 GET    /v1/releases/{id}/tasks          Tasks for a release
 GET    /v1/workstreams/{id}/tasks       Tasks for a workstream
 
-GET    /v1/search/tasks?q=...           Full-text search (?fields=headlines)
+GET    /v1/search/tasks?q=...           Full-text search (?fields=headlines; ?workspace_id=)
 
 GET    /v1/claimable?project=&release=  Count the claimable tasks of a release
 POST   /v1/claim                        Claim the next one for a workstream
@@ -274,11 +267,7 @@ POST   /v1/claim                        Claim the next one for a workstream
 GET    /v1/close-out                    Workstreams with a claimed task awaiting close-out
 POST   /v1/close-out                    Apply a branch outcome to its claimed tasks
                                         ({"workstream_id", "outcome": "merged"|"closed"})
-POST   /v1/goal-tasks                   Ensure the release and create/update a goal task
-                                        in one transaction (a failed write leaves no
-                                        orphan release; a body "task_id" updates only
-                                        while the stored task is still goal-derived)
-POST   /v1/follow-up-tasks              File an agent follow-up task into a project's
+POST   /v1/follow-up-tasks              File an agent's task into a project's
                                         backlog (always unlinked, priority 0, capped per
                                         job by its "follow-up:<ws>/<job>" source)
 POST   /v1/import                       Bulk import (idempotent upsert; all-or-nothing)

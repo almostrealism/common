@@ -20,11 +20,15 @@ import io.almostrealism.code.Memory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.mem.AllocationCache;
+import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.hardware.mem.NativeRef;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
+import org.almostrealism.nio.NativeMemoryProvider;
+
+import java.lang.ref.Reference;
 
 /**
  * Allocates {@link CudaMemory} in the context of a {@link CudaDataContext}.
@@ -34,6 +38,15 @@ import org.almostrealism.io.SystemUtils;
  * through the driver's copy functions in both cases, which are correct for either kind. A
  * copy between two managed allocations is made by the host instead, without a driver call
  * (see {@link CUDeviceBuffer#copyFrom}).</p>
+ *
+ * <p>A copy between a {@link CudaMemory} and host memory that exposes its bytes
+ * ({@link DirectMemory}, such as native memory) moves the bytes in a single driver copy, in
+ * either direction, when both store elements at the same width: into CUDA memory through
+ * {@link #setMem(CudaMemory, int, Memory, int, int)}, and out of it through a
+ * {@link org.almostrealism.nio.NativeBufferWriter} registered with
+ * {@link NativeMemoryProvider}. Any other copy converts through a Java array, element by
+ * element, which for the large arguments a kernel can be handed on every dispatch costs far
+ * more than the kernel itself.</p>
  *
  * <p>Allocation is bounded by a maximum reservation; exceeding it throws a
  * {@link HardwareException} with the message {@code "Memory Max Reached"}, as the other
@@ -65,6 +78,25 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 
 	/** Sizes of deallocations made by all CUDA memory providers. */
 	public static DistributionMetric deallocationSizes = Hardware.console.distribution("cudaDeallocationSizes", 1024 * 1024);
+
+	static {
+		NativeMemoryProvider.registerAdapter(CudaMemory.class,
+				(mem, offset, source, srcOffset, length) -> {
+					int numberSize = source.getProvider().getNumberSize();
+
+					if (mem.getProvider().getNumberSize() != numberSize) {
+						throw new UnsupportedOperationException(
+								"Cannot copy CudaMemory into native memory of a different precision");
+					}
+
+					try {
+						source.getBuffer().read(mem.asByteBuffer(), (long) offset * numberSize,
+								(long) srcOffset * numberSize, (long) length * numberSize);
+					} finally {
+						Reference.reachabilityFence(mem);
+					}
+				});
+	}
 
 	/** The data context whose CUDA context owns the allocations. */
 	private final CudaDataContext context;
@@ -264,6 +296,17 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 			CudaMemory src = (CudaMemory) srcRam;
 			mem.getBuffer().copyFrom(src.getBuffer(), (long) srcOffset * numberSize,
 					(long) offset * numberSize, (long) length * numberSize);
+			return;
+		}
+
+		if (srcRam instanceof DirectMemory direct && srcRam.getProvider().getNumberSize() == numberSize) {
+			try {
+				mem.getBuffer().write(direct.asByteBuffer(), (long) srcOffset * numberSize,
+						(long) offset * numberSize, (long) length * numberSize);
+			} finally {
+				Reference.reachabilityFence(direct);
+			}
+
 			return;
 		}
 

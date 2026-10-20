@@ -16,10 +16,16 @@ the suite's patches still apply. Helpers and constants stay in ``server.py``.
 import logging
 from typing import Optional
 
+import consult_engine
 import repo_config
 import server
+from consult_conversations import ConversationError, ConversationStore
 from memory_text import prefers_reformulated, present, projected
 from server import mcp
+
+# Live consult conversations. In-process: a restart ends them, which the
+# conversation contract states (an unknown id is reported as expired).
+_conversations = ConversationStore()
 
 
 @mcp.tool()
@@ -147,13 +153,18 @@ def memory_recall(
     # that has gone stale against the current docs can be spotted. Both the
     # corpus and the model are optional: either being absent costs part of
     # the summary, never the memories.
-    doc_context = ""
+    from consult_evidence import EvidenceList, TIER_UNTIERED
+
+    evidence = EvidenceList(consult_engine.corpus_identity(
+        consult_engine.snapshot_index()))
+    evidence.show_empty_documentation = False
     doc_refs = []
     docs = server._get_docs()
     if docs is not None:
         try:
             doc_retrieval = docs.get_context_for_query(query)
-            doc_context = doc_retrieval.get("context", "")
+            for r in doc_retrieval.get("markdown_results", []):
+                evidence.add_doc(r)
             doc_refs = sorted({
                 r["file"] for r in doc_retrieval.get("markdown_results", [])
             })
@@ -161,6 +172,8 @@ def memory_recall(
         except OSError as e:
             logging.getLogger("ar-manager").warning(
                 "Documentation retrieval failed for %r: %s", query, e)
+    for m in memories:
+        evidence.add_note(m, TIER_UNTIERED)
 
     # Attempt LLM synthesis. The memories are the substance of the response
     # and are returned either way; synthesis is a convenience over them.
@@ -171,25 +184,19 @@ def memory_recall(
         degraded_reason = "no inference backend could be constructed"
     else:
         try:
-            from inference import SYSTEM_PROMPT
+            from inference import SYSTEM_PROMPT, build_consult_prompt
 
-            mem_text = ""
-            for i, m in enumerate(memories, 1):
-                score = m.get("score", "?")
-                mem_text += f"### Memory {i} (similarity: {score})\n{m.get('content', '')}\n\n"
-
-            sections = []
-            if doc_context:
-                sections.append(f"## Relevant Documentation\n\n{doc_context}")
-            sections.append(f"## Retrieved Memories\n\n{mem_text}")
-            sections.append(
-                f"## Task\n\nThe user searched for: \"{query}\"\n\n"
-                "Summarize the retrieved memories. Highlight key findings and "
-                "any decisions or progress notes. Where the documentation "
-                "above contradicts a memory, say so — a memory can be stale. "
-                "Be concise (2-4 sentences)."
-            )
-            prompt = "\n\n".join(sections)
+            # The same evidence layout consult uses, with a summary task in
+            # place of the answering instructions. Note scores are L2
+            # distances (lower is closer), and the layout labels them so.
+            prompt = build_consult_prompt(
+                f"Summarize what is known about: \"{query}\"", evidence,
+                instructions=(
+                    "## Task\n\nSummarize the retrieved notes. Highlight key "
+                    "findings and any decisions or progress notes, citing "
+                    "items by ID. Where the documentation above contradicts "
+                    "a note, say so — a note can be stale. Be concise (2-4 "
+                    "sentences)."))
             # synthesize() reports an unreachable model as a value rather
             # than raising, and re-probes health so a recovered backend is
             # picked up without restarting this server.
@@ -197,7 +204,8 @@ def memory_recall(
             if synthesis.degraded:
                 degraded_reason = synthesis.reason
             else:
-                summary = synthesis.text
+                body, _, _, _ = consult_engine.parse_trailer(synthesis.text)
+                summary = evidence.expand(body) or None
         except Exception as e:
             degraded_reason = f"LLM synthesis failed: {e}"
 
@@ -475,18 +483,29 @@ def consult(
     repo_url: str = "",
     branch: str = "",
     workstream_id: str = "",
+    conversation_id: str = "",
 ) -> dict:
-    """Ask a question about the codebase, answered from its documentation.
+    """Ask a question about the codebase, answered from cited evidence.
 
-    Searches the documentation corpus, retrieves related notes from prior
-    sessions, and returns an answer grounded in what it found. The corpus
-    ships inside this server, so this works from any repository rather than
-    only from a checkout.
+    Searches the documentation corpus, the snapshot index of the source tree
+    and notes from prior sessions, and returns an answer that cites each
+    claim by evidence ID. The corpus ships inside this server, so this works
+    from any repository rather than only from a checkout.
+
+    Every evidence item carries a tier: ``A`` (documentation or index fact,
+    present fact for the snapshot), ``B`` (current note — may answer what the
+    documentation lacks, and the answer then says so), ``B'`` (true only on
+    its own unmerged branch), ``C``/``C✗`` (historical or stale note — history
+    only). Citations such as ``[D1: path:start-end]`` name the range the model
+    actually saw. A sentence the citation verifier cannot match to the
+    evidence it cites — or an uncited specific found in no evidence at all —
+    is marked ``[unsupported]`` and listed in ``citation_warnings``; treat it
+    as unverified.
 
     A missing inference backend costs the synthesized answer and nothing else:
-    ``sources``, ``html_refs`` and ``related_memories`` are the search results
-    themselves and are returned either way. Read them directly when
-    ``degraded`` is set.
+    ``sources``, ``evidence``, ``html_refs`` and ``related_memories`` are the
+    search results themselves and are returned either way. Read them directly
+    when ``degraded`` is set.
 
     Args:
         question: The question to ask.
@@ -500,10 +519,20 @@ def consult(
             workstream context.
         branch: Optional branch filter for those notes.
         workstream_id: Optional workstream to resolve repo/branch from.
+        conversation_id: Continue an earlier consult as a follow-up. Empty
+            starts a new conversation. Follow-ups keep the evidence IDs of
+            earlier turns. Only job tokens can hold conversations; a static
+            token is always stateless and is refused a ``conversation_id``.
 
     Returns:
         Dictionary with ``answer`` (or ``note`` when nothing could be
-        synthesized), ``sources``, ``html_refs`` and ``related_memories``.
+        synthesized), ``answer_basis`` (documentation, documentation+notes,
+        notes or none), ``evidence``, ``citation_warnings``,
+        ``uncited_claims``, ``conflicts``, ``corpus`` (snapshot commit and
+        build time), ``sources``, ``html_refs`` and ``related_memories``;
+        ``history`` when a historical note supplied rationale; ``abstained``,
+        ``abstained_with_evidence``, ``nonexistent`` and ``searched`` on an
+        abstention; ``conversation_id`` and ``turn`` for job-token callers.
     """
     server._require_scope("memory-read")
     err = server._check_length(question, "question", server.MAX_PROMPT_LEN)
@@ -517,6 +546,7 @@ def consult(
         return err
     err = server._check_short_strings(
         repo_url=repo_url, branch=branch, workstream_id=workstream_id,
+        conversation_id=conversation_id,
     )
     if err:
         return err
@@ -533,84 +563,34 @@ def consult(
             ],
         }
 
-    from docs_retriever import keyword_guidance
-    from memory_text import format_memory_context
+    # Prior notes are scoped to the caller's repository. A scope that cannot
+    # be resolved stops note retrieval altogether (reported as degraded)
+    # rather than searching with whatever filters remain, which would reach
+    # notes outside the requested repository.
+    effective_repo, effective_branch, scope_err = server._resolve_scope_context(
+        scope="repo", repo_url=repo_url, branch=branch,
+        workstream_id=workstream_id,
+    )
+    caller = consult_engine.resolve_caller(repo_url, branch, workstream_id)
+
+    ws_id = server._get_token_workstream_id() or ""
+    job_id = server._get_token_job_id() or ""
+    if not (ws_id and job_id):
+        if conversation_id:
+            return {"ok": False,
+                    "error": "conversations require a job token",
+                    "next_steps": ["call consult without conversation_id"]}
+        return consult_engine.ConsultTurn(
+            question, context, keywords, effective_repo, effective_branch,
+            scope_err is not None, caller,
+        ).run(docs, server._get_memory_client(), server._get_llm())
 
     try:
-        retrieval = (docs.get_context_for_keywords(keywords) if keywords
-                     else docs.get_context_for_query(question))
-    except OSError as e:
-        return {"ok": False, "error": f"Documentation search failed: {e}"}
-
-    doc_context = retrieval.get("context", "")
-    doc_results = retrieval.get("markdown_results", [])
-    html_refs = retrieval.get("html_refs", [])
-
-    # Prior notes, scoped to the caller's repository. Their absence is not an
-    # error — documentation alone answers most questions.
-    memories = []
-    client = server._get_memory_client()
-    if client is not None:
-        effective_repo, effective_branch, _ = server._resolve_scope_context(
-            scope="repo", repo_url=repo_url, branch=branch,
-            workstream_id=workstream_id,
-        )
-        try:
-            memories = client.search(
-                query=question, namespace="default", limit=3,
-                repo_url=effective_repo or None,
-                branch=effective_branch or None,
-            )
-        except ConnectionError as e:
-            logging.getLogger("ar-manager").warning(
-                "Memory search failed during consult: %s", e)
-
-    memories, _ = present(memories, reformulated=prefers_reformulated())
-
-    result = {
-        "ok": True,
-        "sources": sorted({r["file"] for r in doc_results}),
-        "html_refs": html_refs,
-        "related_memories": [
-            {"content": m.get("content", ""), "score": m.get("score")}
-            for m in memories
-        ],
-    }
-
-    llm = server._get_llm()
-    if llm is None:
-        synthesis = None
-        reason = "no inference backend could be constructed"
-    else:
-        synthesis = llm.consult(
-            question,
-            doc_context=doc_context,
-            memory_context=format_memory_context(memories),
-            extra_context=context or None,
-        )
-        reason = synthesis.reason if synthesis.degraded else None
-
-    if synthesis is None or synthesis.degraded:
-        result["degraded"] = True
-        result["note"] = (
-            f"No answer was synthesized ({reason}). The sources, html_refs "
-            "and related_memories fields were retrieved successfully and hold "
-            "the documentation matching this question — read them directly."
-            + keyword_guidance(keywords)
-        )
-        return result
-
-    answer = synthesis.text
-    if answer.strip().lower().rstrip(".") == "not documented":
-        # The model read the corpus and found nothing. Say so, rather than
-        # presenting "not documented" as though it were the answer.
-        result["note"] = (
-            "No direct answer was synthesized, but the sources and html_refs "
-            "fields contain related documentation worth exploring."
-            if result["sources"] or html_refs
-            else "No documentation found for this query."
-        ) + keyword_guidance(keywords)
-    else:
-        result["answer"] = answer
-
-    return result
+        with _conversations.turn(conversation_id, f"{ws_id}/{job_id}",
+                                 effective_repo, effective_branch) as conv:
+            return consult_engine.ConsultTurn(
+                question, context, keywords, effective_repo, effective_branch,
+                scope_err is not None, caller, conversation=conv,
+            ).run(docs, server._get_memory_client(), server._get_llm())
+    except ConversationError as e:
+        return e.response
