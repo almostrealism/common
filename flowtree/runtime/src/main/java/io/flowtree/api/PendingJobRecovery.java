@@ -57,6 +57,9 @@ import java.util.function.Consumer;
  */
 public class PendingJobRecovery implements ConsoleFeatures {
 
+    /** Name of the recovery database file within the controller's data directory. */
+    public static final String DATABASE_NAME = "job-recovery";
+
     /** DDL creating the single-column-plus-key recovery table if absent. */
     private static final String CREATE_TABLE = ""
         + "CREATE TABLE IF NOT EXISTS recoverable_job ("

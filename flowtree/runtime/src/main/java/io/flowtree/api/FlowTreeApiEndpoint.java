@@ -257,7 +257,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Holds the per-workstream conversations that {@code /messages} appends to
      * and {@code /mailbox} reads from. Memory-only until
-     * {@link #setMailboxDirectory(File)} roots it in the controller's data
+     * {@link #setDataDirectory(File)} roots it in the controller's data
      * directory.
      */
     private MailboxRegistry mailboxes = new MailboxRegistry();
@@ -283,7 +283,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Durable store of serialized factories for accepted-but-unfinished jobs,
      * so a {@code SUBMITTED} job survives a controller restart. {@code null}
-     * until {@link #setMailboxDirectory(File)} roots it in the data directory.
+     * until {@link #setDataDirectory(File)} roots it in the data directory.
      */
     private PendingJobRecovery pendingJobRecovery;
 
@@ -484,18 +484,24 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Persists workstream conversations under the controller's data directory,
-     * replacing the memory-only default so a conversation survives a restart.
+     * Roots the endpoint's durable state in the controller's data directory, so
+     * it survives a restart: workstream conversations replace their memory-only
+     * default, and the serialized factory of every accepted job is persisted for
+     * {@link #recoverPendingJobs()}. A recovery store opened by an earlier call
+     * is closed before it is replaced.
      *
      * @param dataDirectory the controller's data directory; conversations are
      *                      written to its
      *                      {@value MailboxRegistry#DIRECTORY_NAME} subdirectory
+     *                      and recoverable factories to its
+     *                      {@value PendingJobRecovery#DATABASE_NAME} database
      */
-    public void setMailboxDirectory(File dataDirectory) {
+    public synchronized void setDataDirectory(File dataDirectory) {
         this.mailboxes = new MailboxRegistry(
                 new File(dataDirectory, MailboxRegistry.DIRECTORY_NAME));
+        if (pendingJobRecovery != null) pendingJobRecovery.close();
         this.pendingJobRecovery = new PendingJobRecovery(
-                new File(dataDirectory, "job-recovery").getAbsolutePath());
+                new File(dataDirectory, PendingJobRecovery.DATABASE_NAME).getAbsolutePath());
         this.pendingJobRecovery.initialize();
     }
 

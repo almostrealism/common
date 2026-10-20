@@ -1214,7 +1214,7 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
-            apiEndpoint.setMailboxDirectory(new File(dataDir));
+            apiEndpoint.setDataDirectory(new File(dataDir));
             apiEndpoint.setAlertRecipients(AlertRecipientEntry.directory(
                     loadedConfig == null ? null : loadedConfig.getAlertRecipients()));
             stuckJobScanner = CompletionListenerFanoutWiring.wire(apiEndpoint,

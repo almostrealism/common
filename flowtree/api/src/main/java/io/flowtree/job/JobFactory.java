@@ -156,8 +156,10 @@ public interface JobFactory {
                 data = data.substring(index + ENTRY_SEPARATOR.length());
                 index = data.indexOf(ENTRY_SEPARATOR);
 
-                while (data.charAt(index + ENTRY_SEPARATOR.length()) == '/'
-                        || index > 0 && data.charAt(index - 1) == '\\') {
+                // index < 0 means this is the last entry; re-searching would
+                // restart from the beginning and never terminate.
+                while (index >= 0 && (data.charAt(index + ENTRY_SEPARATOR.length()) == '/'
+                        || index > 0 && data.charAt(index - 1) == '\\')) {
                     index = data.indexOf(ENTRY_SEPARATOR, index + 1);
                 }
 
@@ -181,6 +183,7 @@ public interface JobFactory {
         } catch (ClassCastException cce) {
             Console.root().warn("JobFactory: " + className + " is not a JobFactory", cce);
         } catch (Exception e) {
+            // TODO(review): a mid-parse failure returns the partially-configured factory, not null as documented; recovery would re-dispatch it.
             Console.root().warn("JobFactory: failed to decode factory", e);
         }
 
