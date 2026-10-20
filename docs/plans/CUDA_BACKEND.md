@@ -75,7 +75,7 @@ All paths are under `base/hardware/src/main/java/org/almostrealism/hardware/`.
 | Metal class | Role | CUDA counterpart |
 |---|---|---|
 | `metal/MetalDataContext` | `HardwareDataContext`. Lazy device start, one shared `ComputeContext` plus thread-scoped ones (`computeContext(...)`), lifecycle RW lock, `deviceMemory(...)` | `cuda/CudaDataContext` |
-| `metal/MetalComputeContext` | `deliver(Scope)`: `ScopeEncoder` + `MetalPrintWriter` → `MetalOperatorMap`, instruction sets keyed by `scope.signature()`. `copy()` override uses a blit | `cuda/CudaComputeContext` |
+| `metal/MetalComputeContext` | `deliver(Scope)`: `ScopeEncoder` + `MetalPrintWriter` → `MetalOperatorMap`, instruction sets keyed by `scope.signature()`. `copy()` override dispatches a copy kernel | `cuda/CudaComputeContext` |
 | `metal/MetalOperatorMap` | `InstructionSet`: compiles the program once, hands out one `MetalOperator` per thread and key | `cuda/CudaOperatorMap` |
 | `metal/MetalProgram` | Compiles source (`MTL.createFunction`), instruction-set monitoring output, compile timing metric | `cuda/CudaProgram` (NVRTC → CUBIN → `CUmodule`/`CUfunction`) |
 | `metal/MetalOperator` | `HardwareOperator.accept`: `prepareArguments`, `KernelMemoryGuard`, binds buffers and offsets/sizes, picks threadgroup size, dispatches through the runner | `cuda/CudaOperator` |
