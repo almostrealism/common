@@ -1,0 +1,20 @@
+[
+  {
+    "id": "e5-note-1",
+    "namespace": "decisions",
+    "created_at": "2026-10-18T09:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "qa/defect-20261018-090000",
+    "score": 0.29,
+    "content": "ar-secrets secret_render_file cannot substitute a payload key that contains a hyphen: tools/mcp/secrets/server.py matches placeholders with \\{\\{(\\w+)\\}\\}, and \\w excludes '-', so {{openrouter-api-key}} is left in the output literally."
+  },
+  {
+    "id": "e5-note-2",
+    "namespace": "default",
+    "created_at": "2026-10-10T09:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "master",
+    "score": 0.61,
+    "content": "Workspace secrets are JSON payload files on the controller host; the controller warns at startup when one is readable by others."
+  }
+]

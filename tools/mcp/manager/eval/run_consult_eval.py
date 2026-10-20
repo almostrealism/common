@@ -1,23 +1,36 @@
 #!/usr/bin/env python3
 """Runner for the consult evaluation set.
 
-Two modes:
+Three modes:
 
 - ``replay`` (default; reproducible, no backend) grades the frozen response in
-  ``fixtures/observed/<id>.json`` for each case. This is how the committed
-  baseline report is produced: it records exactly what consult did on
-  2026-10-17 and what the graders make of it, deterministically and without a
-  model.
-- ``local`` (needs an inference backend) runs the real ``consult`` tool
-  in-process against the backend selected by ``AR_CONSULTANT_BACKEND``, with a
-  stub memory client that injects the case's frozen memories. It evaluates
-  against the same pruned documentation corpus the Dockerfile ships (staged
-  from the checkout using the Dockerfile's own ``COPY`` directives), so a
-  coverage regression in those directives shows up in local results. Each case
-  runs ``--k`` times, every repetition is graded, and the report records the
-  pass fraction.
+  ``fixtures/observed/<id>.json`` for each case — exactly what a deployed
+  consult returned on the date the case records, with no pipeline re-run.
+  This is how the committed baseline report is produced.
+- ``scripted`` (reproducible, no backend) runs the real ``consult`` pipeline
+  in-process — retrieval over the staged corpus, the snapshot index, tiering,
+  the citation verifier, answer-basis computation — with a stub model that
+  returns the case's canned answer (``fixtures/scripted/<id>.txt``). The
+  canned answers reproduce the failure modes consult was observed making, in
+  the citation style the current prompt asks for, so this mode measures what
+  the pipeline does with such an answer: whether it is flagged, demoted or
+  refused. It cannot measure whether a model still makes the mistake.
+- ``local`` (needs an inference backend) runs the same in-process pipeline
+  against the backend selected by ``AR_CONSULTANT_BACKEND``.
 
-Either mode exits 0 by default, since the committed baseline is known to fail;
+``scripted`` and ``local`` evaluate against the same pruned documentation
+corpus the Dockerfile ships (staged from the checkout using the Dockerfile's
+own ``COPY`` directives) and a snapshot index built from the same trees, so a
+coverage regression in those directives shows up in their results. Everything
+else that tiering reads is frozen per case, so two runs agree: the clock
+(``now``), the merge state of note branches (``branch_states``), the caller's
+branch and scopes (``caller``), and the corpus identity (commit ``checkout``,
+built at the case's ``now``). The case's memories are injected through a
+stub memory client. Each case runs ``--k`` times (``scripted`` once, since its
+model is deterministic), every repetition is graded, and the report records
+the pass fraction.
+
+Every mode exits 0 by default, since the committed baseline is known to fail;
 pass ``--check`` to make the run a gate that exits 1 unless every case passed.
 
 A ``live`` mode (calling a deployed ar-manager over MCP) is described in the
@@ -45,6 +58,12 @@ if _MANAGER_DIR not in sys.path:
     sys.path.insert(0, _MANAGER_DIR)
 if _EVAL_DIR not in sys.path:
     sys.path.insert(0, _EVAL_DIR)
+# The consult pipeline's shared modules (consult_engine imports them). The
+# real server adds this directory itself; adding it here keeps the runner
+# importable before, or without, the real server module.
+_COMMON_DIR = os.path.join(os.path.dirname(_MANAGER_DIR), "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.append(_COMMON_DIR)
 
 from graders import (  # noqa: E402
     grade, resolve_expect, response_outcome, validate_case, is_tool_failure,
@@ -93,9 +112,12 @@ def case_memories(case: dict) -> list[dict]:
     return _load_json(rel) if rel else []
 
 
-def observed_response(case: dict) -> dict:
-    """The frozen 2026-10-17 response for a case."""
-    return _load_json(case["observed_response"])
+def observed_response(case: dict):
+    """The frozen observed response for a case, or ``None`` for a case that
+    records no deployed response (one written from a reported failure, which
+    only the scripted and local modes can run)."""
+    rel = case.get("observed_response")
+    return _load_json(rel) if rel else None
 
 
 def build_report(cases: list[dict], responses_by_id: dict,
@@ -282,19 +304,113 @@ def _stage_corpus() -> str:
     return staging
 
 
-def _run_local(cases: list[dict], k: int) -> dict:
-    """Run the real consult tool k times per case with injected memories.
+# The date every case without its own ``now`` is evaluated at.
+DEFAULT_EVAL_NOW = "2026-10-19T12:00:00+00:00"
 
-    Best-effort: requires an inference backend. The corpus is staged from the
-    Dockerfile's own ``COPY`` directives and ``AR_DOCS_DIR`` is pointed at it
-    before the server is imported, so ``DocsRetriever`` reads the shipped
-    corpus rather than the live checkout. Returns, per case, the list of all
-    ``k`` responses so the report can grade and aggregate every repetition.
 
-    Each repetition seeds a synthetic ``eval`` scope; the caller's scope
-    context is snapshotted first and restored on the way out, so a later tool
-    call in the same process does not inherit that authorization.
+class FixtureMemoryClient:
+    """A memory client answering from a case's frozen notes.
+
+    ``search`` honours the namespace (a note without one is in ``default``),
+    as the real store does, so namespace widening is measured rather than
+    assumed; ``namespace_stats`` reports the namespaces the notes use.
     """
+
+    def __init__(self, memories: list[dict]):
+        self.memories = memories
+        self.searched: list[str] = []
+
+    def namespace_stats(self, repo_url=None, branch=None):
+        names: list[str] = []
+        for memory in self.memories:
+            name = memory.get("namespace", "default")
+            if name not in names:
+                names.append(name)
+        return [{"namespace": n, "count": 1} for n in names]
+
+    def search(self, query, namespace="default", limit=5, repo_url=None,
+               branch=None):
+        self.searched.append(namespace)
+        return [m for m in self.memories
+                if m.get("namespace", "default") == namespace][:limit]
+
+    def search_by_branch(self, **_kwargs):
+        return []
+
+
+class ScriptedModel:
+    """A stub model whose answer is fixed per case.
+
+    The script names evidence by what it is rather than by ID, since IDs are
+    assigned at retrieval time: ``[D:<path>]`` is the first documentation
+    chunk from that file, ``[I:<path>]`` the first index fact about it,
+    ``[N:<memory id>]`` that note; ``[D:<path>@<line>]`` narrows to the item
+    covering that line. A placeholder naming evidence that was not
+    retrieved becomes an ID that was never presented (``[D99]``) — what a
+    model inventing a citation produces — so the verifier sees it as such.
+    """
+
+    _PLACEHOLDER = re.compile(r"\[([DIN]):([^\]@]+)(?:@(\d+))?\]")
+
+    def __init__(self, text: str):
+        self.text = text
+        self.prompts: list[str] = []
+
+    def resolve(self, evidence) -> str:
+        """The script with its placeholders replaced by evidence IDs."""
+        def _id(match: re.Match) -> str:
+            kind, ref = match.group(1), match.group(2).strip()
+            line = int(match.group(3)) if match.group(3) else 0
+            for item in evidence.items():
+                if kind == "N" and item.kind == "note" and item.memory_id == ref:
+                    return f"[{item.id}]"
+                if kind in "DI" and item.kind == ("doc" if kind == "D" else "index") \
+                        and (item.file == ref or item.file.endswith("/" + ref)) \
+                        and (not line or item.start <= line <= item.end):
+                    return f"[{item.id}]"
+            return f"[{kind}99]"
+        return self._PLACEHOLDER.sub(_id, self.text)
+
+    def consult(self, question, evidence="", extra_context=None, history=None):
+        from inference import Synthesis, build_consult_prompt
+        self.prompts.append(build_consult_prompt(
+            question, evidence, extra_context, history=history))
+        return Synthesis(self.resolve(evidence), "scripted")
+
+    def synthesize(self, prompt, system=None, max_tokens=1024, temperature=0.3):
+        from inference import Synthesis
+        return Synthesis("(scripted summary)", "scripted")
+
+
+def _pinned_index(index, now: str):
+    """The checkout's snapshot index with its corpus identity pinned to the
+    case: commit ``checkout`` built at ``now``, so the recency window is
+    measured from a fixed date."""
+    from snapshot_index import SnapshotIndex
+    if index is None:
+        return None
+    data = dict(index.data)
+    data["corpus"] = {"commit": "checkout", "built_at": now}
+    return SnapshotIndex(data)
+
+
+def _run_inprocess(cases: list[dict], k: int, model_for) -> dict:
+    """Run the real consult tool k times per case with frozen inputs.
+
+    ``model_for(case)`` returns the model to synthesise with (a backend, or a
+    :class:`ScriptedModel`). The corpus is staged from the Dockerfile's own
+    ``COPY`` directives and ``AR_DOCS_DIR`` is pointed at it before the
+    server is imported, so ``DocsRetriever`` reads the shipped corpus rather
+    than the live checkout; the snapshot index is built from the same trees.
+    Returns, per case, the list of all ``k`` responses.
+
+    Each repetition seeds a synthetic ``eval`` scope (the case's ``caller``
+    scopes, ``memory-read`` by default) with no job token, so the call is
+    stateless; the caller's scope context is snapshotted first and restored
+    on the way out, so a later tool call in the same process does not
+    inherit that authorization.
+    """
+    from datetime import datetime
     from unittest import mock
 
     import auth
@@ -305,6 +421,10 @@ def _run_local(cases: list[dict], k: int) -> dict:
     os.environ["AR_DOCS_DIR"] = os.path.join(staging, "docs")
     try:
         import server  # imported after AR_DOCS_DIR is set so the corpus binds
+        import consult_engine
+        from branch_state import FixedBranchStates
+        from consult_tiers import parse_time
+        from snapshot_index import SnapshotIndex, build
 
         # ``_get_docs`` memoises the retriever in a module global. A prior local
         # run in this process may have bound it to a staging tree that has since
@@ -313,20 +433,40 @@ def _run_local(cases: list[dict], k: int) -> dict:
         server._docs_retriever = None
         server._docs_init_failed = False
         _rebind_docs_retriever()
+        checkout_index = SnapshotIndex(build(
+            _REPO_ROOT, "checkout", DEFAULT_EVAL_NOW, _docs_stage_copies()))
 
         responses: dict = {}
         for case in cases:
-            memories = case_memories(case)
-            client = mock.MagicMock()
-            client.search.return_value = memories
-            client.search_by_branch.return_value = []
+            now = case.get("now", DEFAULT_EVAL_NOW)
+            caller = case.get("caller", {})
+            client = FixtureMemoryClient(case_memories(case))
             runs: list[dict] = []
             for _ in range(max(1, k)):
                 # consult enforces memory-read; seed the request scope the auth
                 # middleware would normally establish before each invocation.
-                server._set_scopes(["memory-read"], label="eval")
+                server._set_scopes(caller.get("scopes", ["memory-read"]),
+                                   label="eval")
                 with mock.patch.object(server, "_get_memory_client",
-                                       return_value=client):
+                                       return_value=client), \
+                        mock.patch.object(server, "_get_token_workstream_id",
+                                          return_value="", create=True), \
+                        mock.patch.object(server, "_get_token_job_id",
+                                          return_value="", create=True), \
+                        mock.patch.object(server, "_get_llm",
+                                          return_value=model_for(case),
+                                          create=True), \
+                        mock.patch.object(consult_engine, "snapshot_index",
+                                          return_value=_pinned_index(
+                                              checkout_index, now)), \
+                        mock.patch.object(consult_engine, "clock",
+                                          return_value=parse_time(now) or
+                                          datetime.fromisoformat(DEFAULT_EVAL_NOW)), \
+                        mock.patch.object(consult_engine, "_branch_states",
+                                          FixedBranchStates(
+                                              case.get("branch_states"))), \
+                        mock.patch.object(consult_engine, "resolve_caller",
+                                          return_value=_caller(caller)):
                     runs.append(server.consult(
                         question=case["question"],
                         keywords=case.get("keywords"),
@@ -349,6 +489,41 @@ def _run_local(cases: list[dict], k: int) -> dict:
             os.environ["AR_DOCS_DIR"] = prior_docs_dir
         _rebind_docs_retriever()
         auth._restore_scopes(prior_scopes)
+
+
+def _caller(spec: dict):
+    """The frozen ``Caller`` of a case (target ``master`` by default)."""
+    from consult_tiers import Caller
+    return Caller(branch=spec.get("branch", ""),
+                  target_branch=spec.get("target_branch", "master"))
+
+
+def scripted_answer(case: dict) -> str:
+    """The canned model answer for a case; ``Not documented.`` when the case
+    names none, which is what a model with nothing to go on should say."""
+    rel = case.get("scripted")
+    if not rel:
+        return "Not documented.\nBASIS: none\nCONFLICTS: none"
+    with open(os.path.join(_EVAL_DIR, rel), encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _run_scripted(cases: list[dict]) -> dict:
+    """Run every case once through the real pipeline with its canned answer."""
+    return _run_inprocess(cases, 1, lambda case: ScriptedModel(scripted_answer(case)))
+
+
+def _run_local(cases: list[dict], k: int) -> dict:
+    """Run every case k times through the real pipeline and a real backend
+    (the one ``AR_CONSULTANT_BACKEND`` selects)."""
+    from inference import create_backend
+    backend: list = []
+
+    def _backend(_case):
+        if not backend:
+            backend.append(create_backend())
+        return backend[0]
+    return _run_inprocess(cases, k, _backend)
 
 
 def _rebind_docs_retriever() -> None:
@@ -388,7 +563,8 @@ def main(argv=None) -> int:
     milestone script cannot mistake a failing evaluation for a passing one.
     """
     parser = argparse.ArgumentParser(description="Run the consult eval set.")
-    parser.add_argument("--mode", choices=["replay", "local"], default="replay")
+    parser.add_argument("--mode", choices=["replay", "scripted", "local"],
+                        default="replay")
     parser.add_argument("--milestone", default="baseline")
     parser.add_argument("--k", type=int, default=3,
                         help="repetitions per case in local mode")
@@ -396,16 +572,24 @@ def main(argv=None) -> int:
                         help="write the markdown report to this path")
     parser.add_argument("--check", action="store_true",
                         help="exit 1 unless every case passed")
+    parser.add_argument("--dump", default="",
+                        help="also write the raw responses as JSON here")
     args = parser.parse_args(argv)
 
     cases = load_cases()
     if args.mode == "replay":
         responses = {c["id"]: observed_response(c) for c in cases}
         backend = "replay (frozen observed responses)"
+    elif args.mode == "scripted":
+        responses = _run_scripted(cases)
+        backend = "scripted (canned answers through the live pipeline)"
     else:
         responses = _run_local(cases, args.k)
         backend = os.environ.get("AR_CONSULTANT_BACKEND", "auto")
 
+    if args.dump:
+        with open(args.dump, "w", encoding="utf-8") as handle:
+            json.dump(responses, handle, indent=2, default=str)
     summary = build_report(cases, responses, args.milestone)
     header = {"mode": args.mode, "backend": backend,
               "cases_file": "consult_cases.json"}

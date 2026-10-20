@@ -26,6 +26,20 @@ COPY tools/ ./tools/
 # listed in STANDALONE_MD_ROOTS (docs_retriever.py) is actually indexed.
 COPY .github/ ./.github/
 COPY .claude/ ./.claude/
+# scripts/ holds no documentation, but the snapshot index below records its
+# paths, so a note or question naming one of its scripts is checked against
+# the tree rather than reported absent. Pruned like everything else.
+COPY scripts/ ./scripts/
+
+# The snapshot index: every path, type, script and literal constant of the
+# tree above, plus the commit it came from. It must be computed before the
+# prune (the tree it describes is gone afterwards) and is written to
+# /snapshot, outside /src, so the prune cannot delete it. .dockerignore
+# excludes .git/, so the commit arrives as a build argument; a build that
+# omits it records the explicit sentinel "unknown", never an empty value.
+ARG CORPUS_COMMIT=unknown
+RUN python3 tools/mcp/common/snapshot_index.py --root /src \
+        --commit "${CORPUS_COMMIT}" --out /snapshot/snapshot-index.json
 
 RUN find . -type f ! -name '*.md' ! -name '*.html' -delete \
     && find . -type d -empty -delete
@@ -58,6 +72,10 @@ RUN rm -f /app/test_*.py
 # "docs" directory, whose parent is treated as the repo root.
 COPY --from=docs /src /app/docs-root
 ENV AR_DOCS_DIR=/app/docs-root/docs
+
+# The snapshot index built beside the corpus, from the same tree.
+COPY --from=docs /snapshot /app/snapshot
+ENV AR_SNAPSHOT_INDEX=/app/snapshot/snapshot-index.json
 
 # Token file mount point
 RUN mkdir -p /config

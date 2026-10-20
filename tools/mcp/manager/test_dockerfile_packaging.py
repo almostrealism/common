@@ -20,11 +20,18 @@ import fnmatch
 import glob
 import os
 import re
+import sys
 import unittest
 
 _MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
 _DOCKERFILE = os.path.join(_MANAGER_DIR, "Dockerfile")
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_MANAGER_DIR)))
+
+_COMMON_DIR = os.path.join(os.path.dirname(_MANAGER_DIR), "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+
+import docs_retriever  # noqa: E402
 
 # COPY sources are relative to the build context, which is the repo root.
 _MANAGER_COPY_PREFIX = "tools/mcp/manager/"
@@ -227,6 +234,123 @@ class DocsCorpusPackagingTests(unittest.TestCase):
                 f"the docs stage of tools/mcp/manager/Dockerfile must copy "
                 f"{directory}/ so its markdown reaches the corpus",
             )
+
+
+def _docs_stage_sources():
+    """Repo-relative sources the docs stage copies (``COPY <src> <dest>``)."""
+    return [m.rstrip("/") for m in re.findall(
+        r"^COPY (?!--)(\S+) \S+$", _docs_stage_text(), re.MULTILINE)]
+
+
+def _repository_documents():
+    """Every ``*.md`` and ``*.html`` in the checkout, repo-relative, outside
+    build output and caches (the directories the corpus walk never enters,
+    and which ``.dockerignore`` keeps out of the build context)."""
+    found = []
+    for dirpath, dirnames, filenames in os.walk(_REPO_ROOT):
+        dirnames[:] = [d for d in dirnames
+                       if d not in docs_retriever._SKIP_DIRS]
+        for name in filenames:
+            if name.endswith((".md", ".html")):
+                rel = os.path.relpath(os.path.join(dirpath, name), _REPO_ROOT)
+                found.append(rel.replace(os.sep, "/"))
+    return sorted(found)
+
+
+def _excluded(path):
+    """Whether ``path`` is named by ``INDEX_EXCLUSIONS``."""
+    return any(path.startswith(e) if e.endswith("/") else path == e
+               for e in docs_retriever.INDEX_EXCLUSIONS)
+
+
+class CorpusCoverageTests(unittest.TestCase):
+    """Guard: every document is either searchable or excluded on purpose.
+
+    The index used to be a hand-kept allowlist beside the Dockerfile's
+    hand-kept ``COPY`` list, and the two drifted: documents were copied into
+    the image that the retriever never read. The retriever now walks the
+    copied tree, minus ``INDEX_EXCLUSIONS``. This closes the loop the other
+    way: a document that is neither copied-and-indexed nor named in the
+    exclusion list fails here, so coverage fails closed.
+    """
+
+    def test_every_document_is_indexed_or_excluded(self):
+        sources = _docs_stage_sources()
+
+        def staged(path):
+            return any(path == src or path.startswith(src + "/")
+                       for src in sources)
+
+        missing = [path for path in _repository_documents()
+                   if not _excluded(path)
+                   and not (staged(path) and docs_retriever.is_indexed(path))]
+        self.assertEqual(
+            missing, [],
+            "these documents are neither indexed by the consult corpus nor "
+            "listed in INDEX_EXCLUSIONS (tools/mcp/common/docs_retriever.py); "
+            "copy their directory in the docs stage of "
+            "tools/mcp/manager/Dockerfile or exclude them on purpose: "
+            f"{missing}")
+
+    def test_every_exclusion_matches_a_document(self):
+        # A stale exclusion is harmless today and a hole tomorrow: it would
+        # silently hide whatever document next takes that path.
+        documents = _repository_documents()
+        for entry in docs_retriever.INDEX_EXCLUSIONS:
+            self.assertTrue(
+                any(_excluded(p) and (p.startswith(entry) or p == entry)
+                    for p in documents),
+                f"INDEX_EXCLUSIONS entry {entry!r} matches no document")
+
+
+class SnapshotIndexPackagingTests(unittest.TestCase):
+    """Guard: the snapshot index is built from the full tree and ships.
+
+    The index must be computed before the docs stage prunes everything but
+    markdown (the tree it describes is gone afterwards) and written outside
+    the pruned tree, or the prune deletes it.
+    """
+
+    def test_index_is_built_before_the_prune(self):
+        text = _docs_stage_text()
+        build = text.find("snapshot_index.py")
+        prune = text.find("! -name '*.md' ! -name '*.html' -delete")
+        self.assertGreater(build, -1, "the docs stage must build the index")
+        self.assertLess(build, prune,
+                        "the index must be built before the prune")
+
+    def test_index_is_written_outside_the_pruned_tree(self):
+        match = re.search(r"--out\s+(\S+)", _docs_stage_text())
+        self.assertIsNotNone(match)
+        self.assertFalse(match.group(1).startswith("/src"),
+                         f"the index at {match.group(1)} would be pruned")
+
+    def test_corpus_commit_defaults_to_unknown(self):
+        # A build that omits the argument must record an explicit sentinel,
+        # never an empty string that reads like a commit.
+        self.assertIn("ARG CORPUS_COMMIT=unknown", _docs_stage_text())
+        self.assertIn('--commit "${CORPUS_COMMIT}"', _docs_stage_text())
+
+    def test_index_ships_and_is_named_by_the_environment(self):
+        text = _dockerfile_text()
+        out = re.search(r"--out\s+(\S+)", _docs_stage_text()).group(1)
+        out_dir = os.path.dirname(out)
+        copy = re.search(rf"COPY --from=docs {re.escape(out_dir)} (\S+)", text)
+        self.assertIsNotNone(copy, f"{out_dir} is not copied into the image")
+        env = re.search(r"ENV AR_SNAPSHOT_INDEX=(\S+)", text)
+        self.assertIsNotNone(env)
+        self.assertEqual(env.group(1),
+                         copy.group(1).rstrip("/") + "/" + os.path.basename(out))
+
+    def test_scripts_are_staged_for_the_index(self):
+        self.assertIn("COPY scripts/ ./scripts/", _docs_stage_text())
+
+    def test_compose_passes_the_corpus_commit(self):
+        compose = os.path.join(_REPO_ROOT, "flowtree", "runtime", "controller",
+                               "docker-compose.yml")
+        with open(compose) as handle:
+            text = handle.read()
+        self.assertIn("CORPUS_COMMIT: ${CORPUS_COMMIT:-unknown}", text)
 
 
 class DockerfilePackagingTests(unittest.TestCase):

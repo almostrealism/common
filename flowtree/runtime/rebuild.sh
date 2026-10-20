@@ -318,6 +318,15 @@ fi
 # seconds of cold build per deploy.
 
 if [ "${AGENTS_ONLY}" = false ]; then
+  # The ar-manager image records which commit its documentation corpus and
+  # snapshot index were built from (the CORPUS_COMMIT build argument in
+  # docker-compose.yml). The build context excludes .git/, so the commit is
+  # read here. A caller may set CORPUS_COMMIT itself; outside a git checkout
+  # it stays unset and the image records "unknown".
+  if [ -z "${CORPUS_COMMIT:-}" ]; then
+    CORPUS_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
+  fi
+  export CORPUS_COMMIT
   if [ ${#SERVICES[@]} -eq 0 ]; then
     echo "Rebuilding all controller-stack containers (cache=${USE_CACHE})..."
     docker compose -f flowtree/runtime/controller/docker-compose.yml build ${NO_CACHE_FLAG} --pull

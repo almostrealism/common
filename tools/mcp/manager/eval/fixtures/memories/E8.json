@@ -1,0 +1,11 @@
+[
+  {
+    "id": "e8-note-1",
+    "namespace": "decisions",
+    "created_at": "2026-05-16T08:00:00+00:00",
+    "repo_url": "git@github.com:almostrealism/common.git",
+    "branch": "feature/pluggable-agents",
+    "score": 0.31,
+    "content": "ClaudeCodeJob was replaced by CodingAgentJob in the Pluggable agents change so that runners other than Claude Code (opencode first) could be plugged in behind the AgentRunner interface."
+  }
+]

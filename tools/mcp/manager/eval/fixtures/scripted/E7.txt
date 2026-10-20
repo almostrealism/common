@@ -1,0 +1,3 @@
+Yes: consult streams partial answers when `stream=true` is passed, and the final chunk carries the evidence list [N:e7-note-1].
+BASIS: notes
+CONFLICTS: none

@@ -518,12 +518,14 @@ class TestConsult(unittest.TestCase):
         docs = MagicMock()
         docs.get_context_for_query.return_value = {
             "context": context,
-            "markdown_results": [{"file": "docs/internals/a.md"}],
+            "markdown_results": [{"file": "docs/internals/a.md",
+                                  "context": context}],
             "html_refs": ["docs/modules/graph.html"],
         }
         docs.get_context_for_keywords.return_value = {
             "context": context,
-            "markdown_results": [{"file": "docs/internals/kw.md"}],
+            "markdown_results": [{"file": "docs/internals/kw.md",
+                                  "context": context}],
             "html_refs": [],
         }
         return docs
@@ -543,7 +545,7 @@ class TestConsult(unittest.TestCase):
         self.assertEqual(result["answer"], "The answer.")
         self.assertEqual(result["sources"], ["docs/internals/a.md"])
         self.assertEqual(result["html_refs"], ["docs/modules/graph.html"])
-        self.assertEqual(llm.consult.call_args[1]["doc_context"], "DOC CONTEXT")
+        self.assertIn("DOC CONTEXT", llm.consult.call_args[1]["evidence"].render())
 
     @patch.object(server, "_get_memory_client", return_value=None)
     @patch.object(server, "_get_llm")
@@ -623,7 +625,7 @@ class TestConsult(unittest.TestCase):
         self.assertEqual(result["related_memories"][0]["content"], "a prior note")
         self.assertEqual(
             client.search.call_args[1]["repo_url"], "https://github.com/org/repo")
-        self.assertIn("a prior note", llm.consult.call_args[1]["memory_context"])
+        self.assertIn("a prior note", llm.consult.call_args[1]["evidence"].render())
 
     @patch.object(server, "_get_llm")
     @patch.object(server, "_get_docs")
@@ -710,7 +712,8 @@ class TestMemoryRecallDocBlending(unittest.TestCase):
         docs = MagicMock()
         docs.get_context_for_query.return_value = {
             "context": "DOC CONTEXT HERE",
-            "markdown_results": [{"file": "docs/internals/thing.md"}],
+            "markdown_results": [{"file": "docs/internals/thing.md",
+                                  "context": "DOC CONTEXT HERE"}],
             "html_refs": ["docs/modules/graph.html"],
         }
         mock_docs_fn.return_value = docs

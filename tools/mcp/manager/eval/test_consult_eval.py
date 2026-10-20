@@ -38,7 +38,9 @@ class TestCaseSchema(unittest.TestCase):
 
     def test_cases_load_and_validate(self):
         cases = load_cases()
-        self.assertEqual([c["id"] for c in cases], ["E1", "E2", "E3", "E4"])
+        self.assertEqual([c["id"] for c in cases],
+                         ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8",
+                          "E9", "E10", "E11", "E12", "E13"])
 
     def test_every_expect_outcome_is_known(self):
         for case in load_cases():
@@ -1006,12 +1008,18 @@ class TestLocalRunLifecycle(unittest.TestCase):
 class TestBaselineReport(unittest.TestCase):
     """The replay-mode baseline over the frozen responses is the documented
     starting point: E1 false-abstains, E2/E3 are false answers, E4 is a correct
-    abstention."""
+    abstention. The counts are those of the cases observed on 2026-10-17 — the
+    seed set the baseline was taken over; cases added later carry their own
+    observation date."""
 
     def setUp(self):
-        self.cases = load_cases()
+        self.cases = [c for c in load_cases()
+                      if c.get("observed", {}).get("date") == "2026-10-17"]
         self.responses = {c["id"]: observed_response(c) for c in self.cases}
         self.summary = build_report(self.cases, self.responses, "baseline")
+
+    def test_the_seed_set_is_the_original_four_cases(self):
+        self.assertEqual([c["id"] for c in self.cases], ["E1", "E2", "E3", "E4"])
 
     def test_counts(self):
         self.assertEqual(self.summary["false_abstention"], 1)  # E1
