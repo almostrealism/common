@@ -140,44 +140,100 @@ pass computes, and its miniature configuration has no coinciding sizes.
 
 `CausalLanguageModelTest.trainOnDocumentation` is a long-running test, excluded from the CI
 pipeline profile. Run it with `AR_LONG_TESTS=enabled` and `AR_HARDWARE_MEMORY_SCALE=6`; it takes
-about 21 minutes on the machine below.
+about 20 minutes on the machine below.
 
 **Configuration**
 
 | Setting | Value |
 |---------|-------|
-| Corpus | Six `docs/internals` pages (`features-pattern`, `producer-evaluable-pattern`, `shape-and-traversal`, `collection-producer-operations`, `state-dictionary`, `end-to-end-computation`), 53,465 bytes when last measured (the pages change, so the size and both baselines drift with them) |
-| Split | First 90% of the bytes for training (48,119), last 10% held out (5,346), split before windowing |
+| Corpus | Six `docs/internals` pages (`features-pattern`, `producer-evaluable-pattern`, `shape-and-traversal`, `collection-producer-operations`, `state-dictionary`, `end-to-end-computation`), 53,731 bytes when last measured (the pages change, so the size and both baselines drift with them) |
+| Split | First 90% of the bytes for training (48,358), last 10% held out (5,373), split before windowing |
 | Model | Byte vocabulary 256, context 64, embed 64, 4 heads, depth 2, feed-forward width 128, full rotary embedding (base 10000), no query/key normalization, final RMS norm; 115,008 parameters |
 | Initialization | Normal(0, 0.02) for embedding and projections, ones for norm scales, seed 20260930 |
-| Optimizer | Adam, betas 0.9 / 0.999; learning rate decaying linearly per epoch from 3e-3 to 3e-4 |
-| Training data | 150 windows per epoch, rotating; the stride is `NextTokenDataset.spanningStride` of the 3,000 windows the run reads (16 bytes for this corpus), so the windows of the run cover the whole training region once, overlapping, ending at the text just before the held-out region |
+| Optimizer | Adam, betas 0.9 / 0.999; learning rate decaying linearly per epoch from 5e-4 to 5e-5 |
+| Training data | 150 windows per epoch, rotating; the stride is `NextTokenDataset.spanningStride` of the 6,000 windows the run reads (8 bytes for this corpus), so the windows of the run cover the whole training region once, overlapping, ending at the text just before the held-out region |
 | Held-out data | 12 fixed non-overlapping windows scored at every epoch boundary (the progress curve); all 83 non-overlapping held-out windows scored once after training (the asserted number) |
-| Length | 20 epochs, 3,000 steps (one step per 64-byte window, batch 1) |
+| Length | 40 epochs, 6,000 steps (one step per 64-byte window, batch 1) |
 
 **Measured curve** (bits per byte, from the mean NLL divided by ln 2). Baselines: uniform 8.0;
-unigram byte entropy of the 5,312 targets the 83 held-out windows score, 4.912; of the 768
-targets the 12 per-epoch windows score, 4.642.
+unigram byte entropy of the 5,312 targets the 83 held-out windows score, 4.904; of the 768
+targets the 12 per-epoch windows score, 4.588. The training column is the mean over that epoch's
+150 windows, which are a different stretch of the training region in every epoch, so it moves
+with the text as much as with the model.
 
 | Epoch | Train | Held-out (12 windows) |
 |-------|-------|-----------------------|
-| 0 | 4.624 | 5.018 |
-| 3 | 4.260 | 4.683 |
-| 6 | 4.289 | 4.431 |
-| 9 | 3.763 | 4.657 |
-| 12 | 3.528 | 4.685 |
-| 15 | 4.220 | 4.257 |
-| 18 | 4.190 | 4.215 |
-| 19 | 3.763 | 4.243 |
+| 0 | 5.497 | 4.686 |
+| 3 | 4.194 | 4.901 |
+| 6 | 3.285 | 4.303 |
+| 9 | 3.711 | 4.058 |
+| 12 | 3.392 | 3.840 |
+| 15 | 3.282 | 4.029 |
+| 18 | 2.820 | 3.925 |
+| 21 | 2.387 | 3.820 |
+| 24 | 2.778 | 4.304 |
+| 27 | 3.156 | 3.901 |
+| 30 | 3.927 | 3.884 |
+| 33 | 3.687 | 4.170 |
+| 36 | 3.498 | 3.805 |
+| 39 | 2.581 | 3.547 |
 
-Scored over all 83 held-out windows after training: **4.194 bits per byte against a baseline of
-4.912**.
+Scored over all 83 held-out windows after training: **3.426 bits per byte against a baseline of
+4.904**.
 
-**The run beats the unigram baseline** by 0.72 bits per byte, measured on exactly the held-out
+**The run beats the unigram baseline** by 1.48 bits per byte, measured on exactly the held-out
 targets the baseline describes (the asserted loss and the asserted baseline come from the same
-`NextTokenDataset` of every held-out window), and the reloaded checkpoint reproduces the per-epoch
-held-out loss exactly. Greedy generation is still 96 spaces (see "Generation"), so the test's
-generation assertion, which runs before the baseline assertion, still fails.
+`NextTokenDataset` of every held-out window), and below the 3.78 of the count-based bigram
+described below. The reloaded checkpoint reproduces the per-epoch held-out loss exactly, and the
+greedy continuation is no longer a single repeated byte (see "Generation"), so both assertions of
+the test pass. Training is deterministic on this backend: a second run of the same configuration
+reproduced every logged loss and the continuation exactly.
+
+### From 96 spaces to words
+
+Until this configuration, every recorded run greedily continued the prompt with 96 spaces. Two
+measurements located the cause, both logged by the test:
+
+- **It was the training, not the decoder or the gradient.** The test logs the most probable bytes
+  after the prompt. With the previous recipe (peak rate 3e-3, 3,000 steps) a space was the most
+  probable byte after `"The computation graph is compiled to "` (p = 0.21, then `a` at 0.07), and
+  also after a verbatim fragment of the first training page, `"A Features interface is a Java
+  interface whose methods are all "` (p = 0.11), whose greedy continuation was 96 spaces as well.
+  A model that collapses on text it trained on is underfit, not failing to generalize. In this
+  corpus the most frequent byte after a space is another space (about 2,700 of the 7,640 spaces in
+  the training region, from the indentation of code blocks), so a model that conditions on little more
+  than the last byte repeats the space forever; a greedy decoder over counts of the last two bytes
+  already writes ``"a `Collection a `Collection"``.
+  `CausalLanguageModelTest.gradientsMatchDirectionalDerivativesAtDocumentedScale` rules out a
+  gradient defect at this size: for every weight of the documented configuration, the analytic
+  gradient projected on a random direction matches the central difference of the loss along that
+  direction (within about 1% for the projections and the embedding, and 2% for the normalization
+  scales, whose differences are closer to single-precision noise).
+- **The peak learning rate was the limit.** With batch 1, a peak rate of 3e-3 holds the training
+  loss near 4 bits per byte however long the run is: 7,500 steps at that rate left it there, and
+  only changed the continuation to `"tere arontighe te te te thate te tion aterororor…"`. Lowering
+  the rate let the same model learn: the training loss falls to 2.4 to 3.5 bits per byte, and the
+  held-out loss with it.
+
+The recipes measured in this round, all at the configuration above apart from the learning rate
+and length (all-window held-out loss, baseline 4.904; first bytes of the greedy continuation of
+`"The computation graph is compiled to "`):
+
+| Learning rate | Steps | Held-out | Greedy continuation |
+|---------------|-------|----------|---------------------|
+| 3e-3 to 3e-4 | 3,000 | 4.495 | 96 spaces |
+| 3e-3 to 3e-4 | 7,500 | 4.669 | `tere arontighe te te te thate te tion aterorororor…` |
+| 1e-3 to 1e-4 | 6,000 | 3.695 | `the the the the the the the the the the the the the troduction.` |
+| 5e-4 to 5e-5 (the configuration above) | 6,000 | 3.426 | ``a the a the a `CollectionProducerCongetionCons a `CollectionProducerCongetion` a `CollectionProd`` |
+| 2.5e-4 to 2.5e-5 | 6,000 | 3.665 | `and the the the the the the the …` |
+
+The first row is the previous documented recipe re-measured on the current code and corpus (it
+had recorded 4.194 on a slightly smaller corpus). Capacity was the more expensive lever and was
+not needed: a step costs 0.35 s at embed 128 and feed-forward width 256 (against 0.18 s at the
+configuration above), and 2.8 s at context 256 with that width, so within the test's time budget
+a larger model reads far fewer bytes. Batch sizes above 1 were not tried.
+
+### Earlier rounds
 
 What was measured on the way, all on this corpus and scored on all 83 windows. The rows above the
 line ran before the dense-layer changes described above (full-Jacobian weight gradients, the size
@@ -191,7 +247,7 @@ pairings in `matmul`); the rows below ran after them, on the same corpus, window
 | Learning rate 1e-2 to 3e-3, spanning stride | 550 | 5.097 | +0.185 |
 | *after* — learning rate 1e-2 to 1e-3, spanning stride | 550 | 4.687 | −0.225 |
 | *after* — learning rate 1e-2 to 1e-3, spanning stride | 3,000 | 4.769 | −0.143 |
-| *after* — learning rate 3e-3 to 3e-4, spanning stride (the configuration above) | 3,000 | 4.194 | −0.718 |
+| *after* — learning rate 3e-3 to 3e-4, spanning stride (the previously documented configuration) | 3,000 | 4.194 | −0.718 |
 
 With the same 550-step recipe as before, the corrected model clears the baseline (4.687 against
 4.957 before). Spending the freed time on 3,000 steps at the same peak rate of 1e-2 does not help
@@ -215,22 +271,21 @@ Lessons from the runs before the dense-layer changes (the first four rows):
   total, and at about 3.6 s per step more did not fit in the 38-minute test timeout. For
   reference, an interpolated count-based bigram fitted to the whole training region scores 3.78
   bits per byte on the held-out targets and a trigram 3.07, so a byte-level model of this corpus
-  has a great deal of headroom; the configuration above, at 4.19, still uses only part of it.
+  has a great deal of headroom; the configuration documented then, at 4.19, used only part of it.
 
 **Timing** (Mac Studio, Apple silicon, Metal, FP32), measured by the test on the same machine
 before and after dense layers took the vector-Jacobian product. The "after" figures were measured
-with an earlier form of the product, a matmul-specific object attached to the matrix multiply,
-which the reduced delta described above has replaced; they have not yet been re-measured with it.
+with an earlier form of the product, a matmul-specific object attached to the matrix multiply; the
+"now" figures with the reduced delta described above that replaced it.
 
-| | Before | After |
-|---|--------|-------|
-| Warm time per window (training step or held-out pass) | about 3.6 s | 0.344 s (550 steps), 0.351 s (3,000 steps) |
-| Warm epoch | about 395 s (110 + 12 windows) | 42 s (110 + 12 windows), 57 s (150 + 12 windows) |
-| Whole run | about 34 min (550 steps) | 5.5 min (550 steps), 21 min (3,000 steps) |
+| | Before | After | Now |
+|---|--------|-------|-----|
+| Warm time per window (training step or held-out pass) | about 3.6 s | 0.344 s (550 steps), 0.351 s (3,000 steps) | 0.182 s (6,000 steps) |
+| Warm epoch | about 395 s (110 + 12 windows) | 42 s (110 + 12 windows), 57 s (150 + 12 windows) | 29.5 s (150 + 12 windows) |
+| Whole run | about 34 min (550 steps) | 5.5 min (550 steps), 21 min (3,000 steps) | 20 min (6,000 steps) |
 
-That is about ten times cheaper per step. Compile takes 2 s, the cold first epoch includes 20 to
-120 s of kernel compilation depending on the native kernel cache, and scoring all 83 held-out
-windows takes 4 to 5 s.
+Compile takes 2 s, the cold first epoch includes 5 to 120 s of kernel compilation depending on
+the native kernel cache, and scoring all 83 held-out windows takes about 1 s.
 
 **Where a step went.** Before the change a forward pass took about 0.03 s and the backward pass
 3.2 to 4.2 s, waiting on Metal command buffers: the weight gradients were formed from each
@@ -293,12 +348,28 @@ query, key and value weights and their own rotary inputs.
 `trainOnDocumentation` generates from the reloaded checkpoint, greedily continuing the prompt
 `"The computation graph is compiled to "` for 96 bytes, and logs the result together with whether
 the bytes are valid UTF-8 under a strict decoder (reported rather than asserted, because a
-byte-level model may emit a partial multi-byte sequence). With the configuration above the
-continuation is still 96 spaces, as it was in every run listed above: at 4.2 bits per byte the
-model is better than the unigram rate on average, but after the prompt's trailing space its most
-probable next byte is again a space, and greedy decoding then repeats it. The test requires the
-continuation to be reproducible and to contain more than one distinct byte, so this assertion
-still fails; the generation path itself is verified by the fast test above. Closing the remaining
-gap to the bigram and trigram rates (and with it, presumably, the degenerate greedy continuation)
-is a question of recipe and scale (batch size above 1, more steps or epochs, a larger context or
-depth) rather than of step cost.
+byte-level model may emit a partial multi-byte sequence). It also logs the five most probable
+bytes after the prompt and continues a verbatim fragment of a training page for comparison. The
+test requires the continuation to be reproducible, to contain more than one distinct byte, and not
+to be the prompt repeated. With the configuration above the platform writes, about 100 bytes per
+second, valid UTF-8:
+
+```
+The computation graph is compiled to a the a the a `CollectionProducerCongetionCons a `CollectionProducerCongetion` a `CollectionProd
+```
+
+and continues the training fragment as
+
+```
+A Features interface is a Java interface whose methods are all a `Collection` `CollectionProducerCongerace tion.
+```
+
+followed by spaces. These are words and identifiers of the platform's own documentation, not yet
+a sentence. The choice of the first byte is narrow (`a` at p = 0.124 against `t` at 0.122), so
+the text is specific to this backend's arithmetic, although the run itself is deterministic.
+The model now beats the count-based bigram on held-out text but not the trigram (3.07), and
+greedy decoding locks onto whatever short loop the model ranks highest, so readable sentences
+need the model to close more of that gap. The next levers are those this round left untried: more steps at the lower rate
+(the held-out curve was still falling in the last epochs), batch sizes above 1, and a single-
+position decode with a key/value cache, which would make sampling with a temperature or top-p
+cheap enough to compare against greedy decoding.
