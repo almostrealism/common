@@ -120,6 +120,11 @@ pre-norm transformer layer from the layers of `attention.pdsl` and `feed_forward
 layer, then `accum` around `swiglu_ffn` — and declares its dependency on them with `import`
 statements (see [Imports](#imports)), so `transformer()` builds it from
 `PdslLoader.parseResource(TRANSFORMER_ASSET)` alone.
+`engine/ml/src/main/resources/pdsl/t5gemma_encoder.pdsl` composes the T5Gemma encoder layer the
+same way from `sequence_attention.pdsl` and `feed_forward.pdsl` — `accum` around
+`sequence_attention_softcapped` with its projections written as `dense(...)` arguments, then
+`accum` around `glu_feed_forward` with a `gelu()` gate, each sub-layer between two `rmsnorm`
+stages — and `T5GemmaEncoder` loads it once per layer.
 `engine/ml/src/main/resources/pdsl/sdpa.pdsl` is the full-sequence (non-autoregressive)
 counterpart of the `attend` layer inside `attention.pdsl` — the score/context core only, not
 the whole attention block, whose normalization, projections, RoPE, cache writes and output
