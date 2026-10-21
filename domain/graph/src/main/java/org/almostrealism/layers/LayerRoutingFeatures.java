@@ -34,7 +34,6 @@ import org.almostrealism.model.SequentialBlock;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -462,13 +461,11 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * to {@code operator} whenever the main forward cell is pushed. The backward pass propagates
 	 * gradients through both branches.</p>
 	 *
-	 * <p>When the main forward cell is pushed before the auxiliary branch has produced anything —
-	 * the branch belongs to a separately compiled model, compiled after this one — the operator
-	 * instead reads a buffer that the auxiliary branch records its output into when that model
-	 * runs. The two models must then be run in order, auxiliary first: until the auxiliary model
-	 * runs, the buffer holds no auxiliary output, and afterwards it holds whatever that model
-	 * last produced. This path is forward-only — gradients computed for the auxiliary operand are
-	 * not delivered to a branch that lives in another model.</p>
+	 * <p>The auxiliary branch must be reached by the same compiled pass as this layer, so that its
+	 * forward output is available when the main forward cell is pushed and its backward cell is driven
+	 * when gradients flow. A branch computed on an auxiliary input of the same
+	 * {@link org.almostrealism.model.Model} (added with
+	 * {@link org.almostrealism.model.Model#addInput(Block)}) satisfies this and trains normally.</p>
 	 *
 	 * @param name         a human-readable label for the composed layer
 	 * @param inputShape   the main input shape
@@ -487,18 +484,10 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 								  Composition<PackedCollection> operator,
 								  ComputeRequirement... requirements) {
 		PackedCollection auxInput = Layer.ioTracking ? new PackedCollection(auxShape) : null;
-		AtomicReference<PackedCollection> detachedAux = new AtomicReference<>();
 
 		Cell<PackedCollection> auxExit = Cell.of((in, next) -> {
 			if (auxInput == null) {
-				PackedCollection detached = detachedAux.get();
-				if (detached == null) return next.push(in);
-
-				OperationList op = new OperationList(name + " composed layer (Detached Entry)");
-				op.add(into(name + " composed layer (Detached Input Record)", in,
-						p(detached), DefaultCellularLayer.enableMemoryDataCopy));
-				op.add(next.push(in));
-				return op;
+				return next.push(in);
 			} else {
 				OperationList op = new OperationList(name + " composed layer (Entry)");
 				op.add(into(name + " composed layer (Input Record)", in,
@@ -518,19 +507,8 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 		}
 
 		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape,
-				Cell.of((input, next) -> {
-					if (next == null) return new OperationList();
-
-					Producer<PackedCollection> auxOutput = auxReceptor.getReceipt();
-					if (auxOutput == null && auxInput != null) {
-						auxOutput = p(auxInput);
-					} else if (auxOutput == null) {
-						if (detachedAux.get() == null) detachedAux.set(new PackedCollection(auxShape));
-						auxOutput = p(detachedAux.get());
-					}
-
-					return next.push(operator.compose(input, auxOutput));
-				}),
+				Cell.of((input, next) -> next == null ? new OperationList() :
+						next.push(operator.compose(input, auxReceptor.getReceipt()))),
 				null, Collections.emptyList(), setup);
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 

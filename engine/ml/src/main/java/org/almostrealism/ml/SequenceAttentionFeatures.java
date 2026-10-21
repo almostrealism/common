@@ -434,12 +434,10 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 	 * normalization weights — the key and value projections of the context train rather than staying
 	 * frozen at their initialization.</p>
 	 *
-	 * <p>Those gradients reach the context only when {@code contextInput} is an input of the same
-	 * {@link org.almostrealism.model.Model} (added with
-	 * {@link org.almostrealism.model.Model#addInput(Block)}) and fed alongside the query. A
-	 * {@code contextInput} that belongs to a separately compiled model, compiled after this one,
-	 * supports the forward pass only: the attention reads the keys and values that model last
-	 * produced, so it must be run first, and no gradient reaches its projections.</p>
+	 * <p>{@code contextInput} is an input of the same {@link org.almostrealism.model.Model} as the
+	 * query (added with {@link org.almostrealism.model.Model#addInput(Block)}) and fed alongside it,
+	 * so the context's keys and values are produced by the same compiled pass that consumes them and
+	 * the backward pass reaches their projections.</p>
 	 *
 	 * @param batchSize Batch dimension
 	 * @param querySeqLen Query sequence length
