@@ -1143,6 +1143,49 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	}
 
 	/**
+	 * Verifies that {@link TransformMatrix#transpose()} reflects the current matrix
+	 * contents after the matrix has been modified with
+	 * {@link TransformMatrix#setMatrix(double[][])}.
+	 *
+	 * <p>{@code transpose()} caches its result; {@code setMatrix} resets the
+	 * inverse-cache guard flag but historically did not clear the transpose cache, so
+	 * a {@code transpose()} call after a modification returned a stale snapshot of the
+	 * matrix as it was before the modification — contradicting the method's contract
+	 * that a stored transposition corresponds to the matrix after its last
+	 * modification.</p>
+	 */
+	@Test(timeout = 10000)
+	public void transposeReflectsMatrixAfterSetMatrix() {
+		TransformMatrix m = new TransformMatrix(new double[][] {
+				{ 1, 2, 3, 4 },
+				{ 5, 6, 7, 8 },
+				{ 9, 10, 11, 12 },
+				{ 13, 14, 15, 16 } });
+
+		// Populate the transpose cache against the original contents
+		m.transpose();
+
+		// Replace the contents entirely
+		double[][] b = {
+				{ 100, 0, 0, 0 },
+				{ 0, 200, 0, 0 },
+				{ 0, 0, 300, 0 },
+				{ 0, 0, 0, 1 } };
+		m.setMatrix(b);
+
+		double[] actual = m.transpose().toArray();
+
+		// b is diagonal, so its transpose equals b itself
+		double[] expected = { 100, 0, 0, 0, 0, 200, 0, 0, 0, 0, 300, 0, 0, 0, 0, 1 };
+		for (int i = 0; i < 16; i++) {
+			assertTrue("transpose()[" + i + "] should be " + expected[i]
+							+ " (transpose of the current matrix) but was " + actual[i]
+							+ " (stale transpose of the pre-setMatrix contents)",
+					Math.abs(actual[i] - expected[i]) < 1e-9);
+		}
+	}
+
+	/**
 	 * Tests the adjoint matrix computation.
 	 */
 	@Test(timeout = 10000)

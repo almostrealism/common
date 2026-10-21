@@ -143,6 +143,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 		boolean id = true;
 
 		for(int i = 0; i < matrix.length && i < 4; i++) {
+			// TODO(review): inner bound uses matrix.length (row count) instead of matrix[i].length (column count); wrong for non-square input
 			for(int j = 0; j < matrix.length && j < 4; j++) {
 				int index = i * 4 + j;
 				newMatrix[index] = matrix[i][j];
@@ -156,6 +157,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 
 		this.inverted = false;
 		this.isIdentity = id;
+		this.transposeMatrix = null;
 	}
 
 	/**
