@@ -152,8 +152,8 @@ its own item rather than folded into this one.
   `SequenceCrossAttentionGradientTest` asserts it (on `master` those gradients are exactly zero).
 - The `TODO(review)` at the `sequenceCrossAttention` buffering site is removed, not merely annotated,
   and no `into(...)` buffer remains on the K/V path of that method.
-- `AttentionTests.sequenceCrossAttentionCompare` and `DiffusionTransformerTests.forwardPassWithCrossAttention`
-  still pass.
+- `AttentionTests.sequenceCrossAttentionCompare` and
+  `DiffusionTransformerTests.forwardPassWithCrossAttention` still pass.
 - `resamplingLayerBlock` either trains all five `to_qkv` sections (verified per section, with
   `SAMEResamplingParityTest` still passing) or its remaining limitation is recorded as an evidenced
   follow-up task, with no test weakened to hide it.
@@ -183,11 +183,34 @@ depends on the answer to "Open questions" 1, which may require a change in `doma
    only. The `into(...)` buffer is also what hands the context's K/V across to the main path, so
    removing it may break the forward wiring, not just the gradient. The earlier framing of this site as
    "the clean case — the proven `compose(...)` wiring applies with no framework change" is therefore not
-   established. The implementer should first build a minimal two-input model (a dense layer on an
-   auxiliary input feeding a product on the main path) and check, by finite differences, whether that
-   dense layer's weight receives a gradient. If it does not, the real deliverable is "backward through
-   auxiliary inputs", which is a `domain/graph` change and may warrant re-scoping this plan before any
-   attention code changes.
+   established.
+
+   The question has two parts, and the code suggests they may have different answers:
+
+   - *Into the context branch (`toKvWeight`, the K normalization weights).* `Block.branch()` appends a
+     `BranchBlock` to `contextInput` and returns a `SequentialBlock` child whose backward cell
+     `BranchBlock.append` wires to the branch's shared `aggregator`. The K/V sub-blocks are ordinary
+     layers inside that child, and a layer computes and applies its weight gradient when its own
+     backward cell is pushed. So if the score and context products push their gradient into the
+     backward cells of the `k` and `v` sub-blocks, `toKvWeight` may train with no `Model` change. That
+     is the part this plan needs.
+   - *Beyond the branch (`condEmbed`'s own `condProjWeight1`/`condProjWeight2`, and anything else
+     upstream).* `BranchBlock.getBackward()` sends the accumulated `aggregator` gradient upstream, and
+     then clears it, only when the `BranchBlock`'s own backward cell is pushed. Nothing pushes it for an
+     auxiliary input: there is no main-chain consumer after the branch point, and `Model.backward()`
+     never reaches `condEmbed`. On a reading of the code, then, gradient pushed into the child
+     accumulates in the aggregator and is never forwarded or cleared. That would leave the
+     conditioning projection frozen, and the buffer would grow from step to step. This is inferred from
+     the code, not yet observed. This plan's success criteria do not cover it either way.
+
+   The implementer should first build a minimal two-input model (an auxiliary input with a dense layer
+   on a `branch()` of it, feeding a product on the main path through `compose`) and check, by finite
+   differences, both the branch dense layer's weight and a dense layer placed on the auxiliary input
+   *before* the branch point. If the first fails, the real deliverable is "backward through auxiliary
+   inputs", a `domain/graph` change that may warrant re-scoping this plan before any attention code
+   changes. If only the second fails, item 1 can proceed. The upstream gap, and whether the
+   never-cleared aggregator is a problem, should then be filed as its own `domain/graph` item, not
+   folded into this one silently.
 2. **Is the resampling materialization load-bearing?** The comments in `resamplingLayerBlock` state
    that the `into(...)` leaves exist to keep every compiled kernel bounded — fusing both differential
    maps and the shared `V` in one kernel "times out at full SAME dimensions" — and that the layout
