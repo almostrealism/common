@@ -163,8 +163,8 @@ public class PdslLoaderTest extends TestSuiteBase {
 
 	/**
 	 * Test that a complete transformer block can be loaded.
-	 * The block composes attention (built-in) + SwiGLU FFN (user-defined)
-	 * with residual connections.
+	 * The block composes the decomposed attention layer (imported from
+	 * /pdsl/attention.pdsl) + SwiGLU FFN (user-defined) with residual connections.
 	 */
 	@Test(timeout = 60000)
 	public void testTransformerBlockLayer() {
