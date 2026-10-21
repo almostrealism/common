@@ -231,5 +231,85 @@ class PlanReviewDocsCheckTests(unittest.TestCase):
         self.assertEqual("docs_only=false", self._docs_only())
 
 
+class ImplementPlanDetectStepTests(unittest.TestCase):
+    """The plan detection of implement-plan.yaml, run for real against a
+    consumer whose default branch and plans directory are not this
+    repository's."""
+
+    def setUp(self):
+        self.repo = tempfile.mkdtemp(prefix="implement-plan-")
+        self.addCleanup(shutil.rmtree, self.repo)
+        self._git("init", "-q", "-b", "main")
+        self._commit("README.md", "base\n")
+        self._commit("planning/EXISTING.md", "# Existing plan\n")
+        self._git("update-ref", "refs/remotes/origin/main", "HEAD")
+        self._git("checkout", "-q", "-b", "project/task-1")
+
+    def _git(self, *args):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                       cwd=self.repo, check=True, capture_output=True, timeout=60)
+
+    def _commit(self, path, text):
+        full = os.path.join(self.repo, path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w") as f:
+            f.write(text)
+        self._git("add", path)
+        self._git("commit", "-q", "-m", "change " + path)
+
+    def _detect(self, plan_file=""):
+        step = _step_script("implement-plan.yaml", "detect-plan", "Detect plan file")
+        output = os.path.join(self.repo, ".git", "github-output")
+        env = dict(os.environ)
+        env.update({"PLAN_FILE_INPUT": plan_file, "PLANS_DIRECTORY": "planning/",
+                    "DEFAULT_BRANCH": "main", "GITHUB_OUTPUT": output})
+        result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=self.repo, env=env,
+                                capture_output=True, text=True, timeout=60)
+        outputs = {}
+        if os.path.exists(output):
+            with open(output) as f:
+                outputs = dict(line.split("=", 1) for line in f.read().splitlines())
+        return result, outputs
+
+    def test_a_new_plan_in_the_plans_directory_is_detected(self):
+        self._commit("planning/PLAN-20261021-thing.md", "# Plan\n")
+        result, outputs = self._detect()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("planning/PLAN-20261021-thing.md", outputs["plan_file"])
+        self.assertEqual("true", outputs["is_new_plan"])
+
+    def test_the_manager_log_and_documents_elsewhere_are_not_plans(self):
+        self._commit("planning/MANAGER_LOG.md", "# Log\n")
+        self._commit("docs/plans/PLAN-20261021-thing.md", "# Elsewhere\n")
+        result, outputs = self._detect()
+        self.assertNotEqual(0, result.returncode)
+        self.assertNotIn("plan_file", outputs)
+        self.assertIn("No new plan document found in planning/", result.stdout)
+
+    def test_a_branch_with_no_new_plan_fails(self):
+        self._commit("planning/EXISTING.md", "# Existing plan, edited\n")
+        result, outputs = self._detect()
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual({}, outputs)
+
+    def test_an_explicit_plan_that_predates_the_branch_is_not_new(self):
+        result, outputs = self._detect("planning/EXISTING.md")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("planning/EXISTING.md", outputs["plan_file"])
+        self.assertEqual("false", outputs["is_new_plan"])
+
+    def test_an_explicit_plan_added_on_the_branch_is_new(self):
+        self._commit("planning/PLAN-20261021-thing.md", "# Plan\n")
+        result, outputs = self._detect("planning/PLAN-20261021-thing.md")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("true", outputs["is_new_plan"])
+
+    def test_a_missing_explicit_plan_fails(self):
+        result, outputs = self._detect("planning/MISSING.md")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Plan file not found: planning/MISSING.md", result.stdout)
+        self.assertEqual({}, outputs)
+
+
 if __name__ == "__main__":
     unittest.main()

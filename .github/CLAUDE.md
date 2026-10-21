@@ -1109,7 +1109,7 @@ client secret as a declared secret), and describes its caller in its header.
   repository.
 
 `tools/tests/test_reusable_workflows.py` pins the trust rule for all four, and
-runs the release and docs-only steps for real. `test_master_agent_dispatch.py`,
+runs the release, plan-detection and docs-only steps for real. `test_master_agent_dispatch.py`,
 `test_automated_intake.py` and `test_verify_completion_workflow.py` follow a
 caller job into the workflow it calls, so their checks still apply to the steps
 that run.
