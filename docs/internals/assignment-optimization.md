@@ -11,29 +11,36 @@ different execution paths depending on the complexity of the destination.
 ### Short-Circuit Path (Fast Path)
 
 Used when:
-- The evaluable is an `AcceleratedOperation` or `Provider`
 - The destination is a simple provider (checked via `Computable.provider(out)`)
-- Aggregation is not required
+- The source resolves to something that can be written into that memory
+  directly — a constant, another `Provider`, or an `AcceleratedOperation`
 
-The short-circuit path:
+When the destination is a provider, `Assignment.get()` can write into the
+destination's memory directly instead of compiling a scope:
 1. Evaluates the destination directly: `MemoryBank destination = (MemoryBank) out.get().evaluate()`
-2. Wraps the source in a `DestinationEvaluable`
-3. Executes the source, writing directly to the destination memory
+2. Dispatches on the source: a constant is filled directly, a `Provider`
+   source becomes a plain memory copy (via the `Runner`), and an
+   `AcceleratedOperation` source is wrapped in a `DestinationEvaluable` so
+   execution writes straight to the destination memory
 
-**Key code** (the short-circuit branch of `Assignment.get()`):
+**Key code** (the provider branch of `Assignment.get()`):
 ```java
-if (shortCircuit) {
+if (Computable.provider(out)) {
     MemoryBank destination = (MemoryBank) out.get().evaluate();
-    return new DestinationEvaluable<>(ev, destination);
+    // ... constant-fill and provider-to-provider copy handled first ...
+    if (ev instanceof AcceleratedOperation<?>) {
+        return new DestinationEvaluable(ev, destination);
+    }
 }
 ```
 
 ### Scope-Based Path (General Path)
 
-Used when:
-- The destination is a computation (not a simple provider)
-- Aggregation is required
-- Dynamic indexing is involved
+Used whenever the direct-write path does not apply, which includes:
+- The destination is a computation, not a simple provider (e.g. dynamic indexing)
+- The source and destination shapes do not have matching total size or count
+- The destination is a provider but the source is neither a constant, a
+  `Provider`, nor an `AcceleratedOperation`
 
 The scope-based path:
 1. Generates a proper `Scope` with statements
@@ -42,7 +49,7 @@ The scope-based path:
 
 **Key code** (the scope-based branch of `Assignment.get()`):
 ```java
-return compile().get();
+return super.get();
 ```
 
 ## The Dynamic Indexing Problem
@@ -75,18 +82,20 @@ If the short-circuit path is used:
 
 ### The Fix
 
-Check if the destination is a simple provider before using short-circuit:
+`Assignment.get()` only takes a direct-write path when the destination is a
+simple provider; anything else falls through to the scope-based path:
 
 ```java
-boolean shortCircuit = ev instanceof AcceleratedOperation<?> || ev instanceof Provider<?>;
-
-// Destination must be a simple provider for short-circuit to work correctly.
-// If the destination is a computation (e.g., dynamically indexed collection),
-// evaluating it creates a temporary collection rather than referencing the
-// underlying memory, so we must use the scope-based path instead.
-if (!Computable.provider(out)) {
-    shortCircuit = false;
+// If the destination is a computation (e.g., a dynamically indexed
+// collection), evaluating it creates a temporary collection rather than
+// referencing the underlying memory. Only a provider destination can be
+// written directly, so anything else uses the scope-based path.
+if (Computable.provider(out)) {
+    // ... direct-write optimizations (constant fill, provider-to-provider
+    //     copy, DestinationEvaluable for an accelerated source) ...
 }
+
+return super.get();
 ```
 
 ## Related Classes
@@ -108,7 +117,8 @@ If assignment appears to do nothing:
 
 See `CollectionComputationTests.java`:
 - `integersIndexAssignment` - Tests assignment with dynamic indices
-- `integersIndexAssignmentParallel` - Tests parallel assignment with dynamic indices
+- `integersIndexAssignmentOptimized` - Tests the same assignment through the optimized path
+- `integersIndexAssignmentOperation` / `integersIndexAssignmentOperationIsolated` - Test dynamic-index assignment as an operation and as an isolated operation
 
 ## See Also
 
