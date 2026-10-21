@@ -59,11 +59,17 @@ import java.nio.file.StandardCopyOption;
  * MTL.releaseBuffer(buffer);
  * }</pre>
  *
+ * <p>This class holds only the native entry points and overloads that fill in their defaults.
+ * Behaviour on a native object belongs to the typed wrapper that represents it &mdash;
+ * {@link MTLObject} and its subclasses, such as {@link MTLCommandBuffer} and
+ * {@link MTLAutoreleasePool} &mdash; which holds the object's native handle and passes it to the
+ * entry points declared here.</p>
+ *
  * @see MTLDevice
  * @see MTLBuffer
  * @see MTLCommandQueue
  */
-public class MTL {
+public final class MTL {
 	static {
 		InputStream is = MTL.class.getClassLoader().getResourceAsStream("libMTL.dylib");
 
@@ -80,6 +86,9 @@ public class MTL {
 
 		System.load(tempLibFile.getAbsolutePath());
 	}
+
+	/** Not instantiable; all bindings are static. */
+	private MTL() { }
 
 	/**
 	 * Creates the system's default Metal device.
@@ -158,8 +167,13 @@ public class MTL {
 	/**
 	 * Creates a command buffer from the command queue.
 	 *
+	 * <p>Metal returns the command buffer autoreleased; this binding retains it explicitly, so it
+	 * survives the autorelease pool of the work that created it (see {@link MTLAutoreleasePool})
+	 * and can be committed and waited for by later work. The caller owns that retain and drops it
+	 * with {@link #releaseCommandBuffer(long)} once the buffer has completed.</p>
+	 *
 	 * @param commandQueue Native command queue pointer
-	 * @return Native pointer to the command buffer
+	 * @return Native pointer to the command buffer, retained for the caller
 	 */
 	public static native long commandBuffer(long commandQueue);
 
@@ -593,24 +607,19 @@ public class MTL {
 
 	/**
 	 * Creates an Objective-C autorelease pool on the calling thread and returns an
-	 * opaque handle to it.
-	 *
-	 * <p>metal-cpp factory methods such as {@code commandBuffer()} and
-	 * {@code computeCommandEncoder()} return autoreleased objects. On a long-lived JNI
-	 * worker thread with no pool in place these are never reclaimed and accumulate in
-	 * the Metal driver until it stalls. Wrap each kernel dispatch between this call and
-	 * {@link #autoreleasePoolPop(long)} (on the same thread) to drain the per-dispatch
-	 * command buffers and encoders.</p>
+	 * opaque handle to it. Reached only through {@link MTLAutoreleasePool}, which pairs
+	 * every push with a pop on the same thread.
 	 *
 	 * @return an opaque handle to the new autorelease pool, for {@link #autoreleasePoolPop(long)}
 	 */
-	public static native long autoreleasePoolPush();
+	static native long autoreleasePoolPush();
 
 	/**
 	 * Drains and releases the autorelease pool created by {@link #autoreleasePoolPush()},
-	 * freeing every object autoreleased on this thread since the matching push.
+	 * freeing every object autoreleased on this thread since the matching push. Reached
+	 * only through {@link MTLAutoreleasePool}.
 	 *
 	 * @param pool the handle returned by {@link #autoreleasePoolPush()}
 	 */
-	public static native void autoreleasePoolPop(long pool);
+	static native void autoreleasePoolPop(long pool);
 }

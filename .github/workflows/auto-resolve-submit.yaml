@@ -164,6 +164,9 @@ jobs:
           BASE_BRANCH: ${{ github.event.workflow_run.pull_requests[0].base.ref || 'master' }}
           ATTEMPT_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
           REQUIRED_LABELS: ${{ steps.labels.outputs.required_labels }}
+          # A follow-up job CI runs in a loop; the object-oriented design review
+          # belongs to a branch's initial work, not each remediation pass.
+          OBJECT_ORIENTED_REVIEW_ENABLED: "false"
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}

@@ -28,6 +28,90 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-19 — Make the self-hosted LM write a readable sentence about itself
+
+**Category:** Proof of Value
+**Branch:** `project/plan-20261019-194959`
+**Plan:** [`PLAN-20261019-self-hosted-lm-nontrivial-generation.md`](PLAN-20261019-self-hosted-lm-nontrivial-generation.md)
+
+#### What changed since last cycle
+
+The gradient-correctness plan landed (PR #675): the nondeterministic full-Jacobian weight gradient
+for the 256×64 output projection is fixed — the kernel hoisted parts of the flattened position into
+32-bit variables, so a hoisted row times a 1,048,512 stride overflowed where the inline 64-bit
+kernel index did not, and hoisted variables that refer to the kernel index now take a 64-bit type
+(`Expression.getDeclarationType`). `DenseVectorJacobianProductTest.outputProjection` now asserts the
+full-Jacobian gradient against the definition over several evaluations, and a new
+`ConvolutionJacobianGradientTest` checks the same class of path for convolution. The reference
+gradient the whole reduced-delta suite trusts is trustworthy again. That was the explicit
+prerequisite the 2026-10-18 entry set for the generation push.
+
+#### Category assessment (priority order)
+
+- **Documentation — excellent, and complete where it matters.** The internals corpus (38+ pages)
+  tells the whole story; `automatic-differentiation.md` and `training-a-language-model.md` are both
+  current, and the latter documents the failing generation honestly. `consult` finds no flagship
+  gap. The one standing low-priority item (the ONNX-pressure note) is owned by continuous QA. Moved
+  on.
+- **Code quality — strong and owned.** The continuous QA pipeline merges fixes daily and enforcement
+  is mechanical. The one standing minor item (`io.almostrealism.collect` split) is unchanged and not
+  a flagship. Moved on.
+- **Performance — no blocker.** The named lever two cycles spent (the matmul vector-Jacobian product)
+  landed and made a training step about ten times cheaper. The remaining perf item (a reduced form
+  for the weighted-sum `matmul` lowering, outputs wider than 1000) is real but blocks nothing and
+  ranks below cashing the proof-of-value milestone. Moved on.
+- **Proof of value — the category.** A known-failing generation assertion and a model that repeats a
+  single byte are precisely the concrete, falsifiable gaps this category exists to close.
+
+#### Why this task
+
+It is the honest completion of the milestone the LM track has been one step short of since
+September, now unblocked. The model beats its unigram baseline (4.194 vs 4.912 bits/byte over all 83
+held-out windows) but `CausalLanguageModelTest.trainOnDocumentation` still fails: greedy decoding of
+`"The computation graph is compiled to "` produces 96 spaces, and `assertNonTrivialGeneration` (which
+runs before the baseline assertion) rejects a single repeated byte.
+
+The investigation established, from source and the existing tests, that the collapse is the *model*,
+not the decoder: `slidingWindowGenerationMatchesFullForward` already proves the generator decodes
+exactly the full forward pass, and the run reaches a training loss near the bigram rate (~3.5) but a
+held-out loss of 4.19 — a weakly generalizing model asked to continue an unseen prompt collapses its
+argmax to the unconditional most-frequent byte (a space). So the honest fix is a better-generalizing
+model via recipe and scale, decoded exactly as the generator already decodes — not a change to what
+the test decodes with or asserts. The headroom is evidenced: a count-based bigram scores 3.78 and a
+trigram 3.07 on the held-out targets, so the corpus has a great deal left to model.
+
+Because this sits on a known-failing acceptance test, the plan is explicit that the only acceptable
+way to turn it green is a genuinely better model measured apples-to-apples. Weakening
+`assertNonTrivialGeneration` (greedy→sampled, lowering the distinct-byte bar), the baseline, the
+dimensions, `@TestDepth` or the timeout is out of bounds and would fail `test-integrity-check`. If
+honest effort within the memory/time budget cannot clear the greedy bar, the correct outcome is an
+evidenced finding for a revised plan, not a green test.
+
+#### Balance across categories
+
+The last two cycles went to the foundation (the autodiff page, then the reference-gradient fix),
+which is what made this milestone safe to attempt. This cycle cashes it: the first readable artifact
+of the self-understanding goal — the software writing a sentence about its own architecture. The
+foundation categories stay covered by continuous QA. It is a medium task bounded by the ~21-minute
+training run and runs on a macOS/Metal node.
+
+#### What comes next
+
+1. This plan, if approved: re-measure the documented run with the corrected reference gradient,
+   diagnose the greedy collapse with `ar-profile-analyzer`, sweep recipe then capacity (and batch > 1
+   only if it is a narrow change), turn the generation assertion green honestly or stop at an
+   evidenced finding, and rewrite the training doc's generation section from measurement.
+2. **Sampling quality and longer generation**: expose top-p (nucleus) through the sliding-window
+   generator — `sampleToken` already takes a top-p argument the generator hardcodes to 1.0 — and a
+   proper single-position KV-cache decode (needs the fused `qkv` split into Q/K/V views and the
+   rotary inputs derived from `rope_inv_freq`).
+3. **Scale**: batch > 1 in `scaledDotProductAttention` if deferred here, larger context/depth, and
+   the K/V gradient wiring still missing in `sequenceCrossAttention`, `TransformerResamplingFeatures`
+   and `DifferentialAttentionFeatures`.
+4. **Performance**: the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
+5. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
+   trained model read the platform's own *source*, the deeper self-understanding aim.
+
 ### 2026-10-18 — Fix the nondeterministic full-Jacobian weight gradient for the output projection
 
 **Category:** Code Quality (correctness — a silent wrong-gradient defect in the autodiff engine)
@@ -418,158 +502,35 @@ covered by the continuous QA pipeline.
 4. Still open: the ONNX-pressure documentation note; the `io.almostrealism.collect` package split;
    a feasibility threshold for production-scale fine-tuning.
 
-### 2026-09-29 — Re-baseline LoRA fine-tuning backward-pass compile scaling
+### 2026-09-29 — Re-baseline LoRA fine-tuning backward-pass compile scaling (condensed)
 
-**Category:** Performance
-**Branch:** `project/plan-20260929-043714`
+**Category:** Performance · **Branch:** `project/plan-20260929-043714` ·
 **Plan:** [`PLAN-20260929-finetune-compile-scaling-rebaseline.md`](PLAN-20260929-finetune-compile-scaling-rebaseline.md)
 
-#### Category assessment (priority order)
+`FINE_TUNE_FAIL.md` (February 2026) declared production-scale LoRA fine-tuning **infeasible** on
+super-linear backward-pass compile time. By September two separate compile-time fronts had moved —
+the `ExplicitExpressionMatrix` cache work against `expressionCacheMatch` and the
+`feature/cl-profile-perf` kernel-series rebuild against `kernelSeries` (`convDeltaSmall`
+172 s → 1.15 s) — so the gating verdict was very likely stale in the pessimistic direction. The task
+re-measured the transformer backward pass with the existing `AggressiveFineTuningTest` harness
+against `master`, scoped tightly to measure → profile → re-baseline → name the next lever, staying
+clear of the in-flight `feature/lora-gradients` autodiff work to avoid the add/revert collision that
+has bitten this area. This re-baseline is what let the next cycle scope the first self-hosted
+training run against reality.
 
-- **Documentation — excellent.** Every layer/domain/engine module has a README; `docs/internals/`
-  now holds 36 pages spanning the whole story (Producer → process tree → process optimization →
-  backend compilation/dispatch → `native-runtime-lifecycle`, which landed last cycle). The only
-  catalogued gap left is the low-priority ONNX-induced-pressure research note in
-  `KERNEL_AND_MEMORY_DOCUMENTATION_GAPS.md`, explicitly "a research task in its own right." Not a
-  flagship. Moved on.
-- **Code quality — strong and actively owned.** The continuous QA pipeline (`qa/defect-*`,
-  `qa/consolidate-*`, `qa/coverage-*`) merges fixes daily, and enforcement (checkstyle, code_policy,
-  duplicate_code, test-integrity) is mechanical. The one flagged structural debt (split
-  `io.almostrealism.collect`) is real but minor and high-churn. No neglected, high-value flagship
-  here. Moved on.
-- **Performance — the category.** The compile-time front saw a decisive win: the kernel-series /
-  `Expression.sequence` analysis that dominated expression simplification was rebuilt on
-  `feature/cl-profile-perf` (2026-09-08), taking `convDeltaSmall` 172 s → 1.15 s and `upsample`
-  233 s → 4 s (see `CONVOLUTION_COMPILE_TIME.md` §Resolution). That is genuine open leverage — see
-  below.
+### 2026-09-26 — Native Runtime Lifecycle Documentation (condensed; log restart)
 
-#### The finding that decided it
-
-`FINE_TUNE_FAIL.md` is the platform's authoritative verdict on training feasibility, and it says, in
-bold, that production-scale LoRA fine-tuning is **infeasible** — backward-pass compile time scaling
-super-linearly, projected to "days, not minutes" at embed=1024/depth=16. That measurement is from
-**February 2026**. Its stage-detail profile lists `expressionCacheMatch` (~1375.6 s) as by far
-the largest accumulated entry and the kernel-series / `Sum.simplify → getSeries →
-Expression.sequence` analysis (`kernelSeries`, ~150 s) as a much smaller one. Both are
-non-exclusive `stageDetailTime` accumulations (the first is listed at 268 % of the 512.8 s run),
-so neither is a wall-clock share and they should not be ranked as exact levers. Both fronts have
-since moved, by *different* work, and it is worth keeping them straight: the September
-`ExplicitExpressionMatrix` cache-bypass and on-demand-entry changes attacked `expressionCacheMatch`
-directly (isolated `testSingleAttentionBackward` ~186 s → ~25 s → 3.6 s on Metal across the two
-changes), while the `feature/cl-profile-perf` kernel-series rebuild (`convDeltaSmall`
-172 s → 1.15 s, ~150×) attacked `kernelSeries`. The ~150× convolution figure therefore is *not* a
-prediction for the fine-tuning backward pass. Nobody has re-measured the transformer backward pass against either.
-The verdict that gates the entire proof-of-value trajectory is very likely stale — and stale in the
-pessimistic direction.
-
-Separately confirmed while investigating: frozen-weight gradient pruning already exists at the
-layer level (`DefaultGradientPropagation` only calls `delta()` on the trainable weight list; LoRA
-excludes base weights), so the remaining backward-compile cost is the *expression-tree size* of
-differentiating the trainable weights through the deep forward graph — precisely the territory
-both the `ExplicitExpressionMatrix` cache work and the kernel-series work attack. That reinforces
-the premise that the old numbers should move.
-
-#### Why this task
-
-It recovers the truth about the platform's most strategically important performance number, using
-the measurement harness that already exists (`AggressiveFineTuningTest`), against optimizations
-already on `master`. It is deliberately scoped to measure → profile (via `ar-profile-analyzer`) →
-re-baseline `FINE_TUNE_FAIL.md` → name the next lever, with an *only-if-clean* conditional step to
-land one small optimization. Crucially it stays clear of the in-flight `feature/lora-gradients`
-core-autodiff work (sparse Jacobians, `Sum` reordering, memoization gating) — avoiding the
-add/revert collision that has bitten this area before.
-
-#### Balance across categories
-
-Foundations are in good shape and under continuous ownership. The right move now is not to open
-another deep front but to *cash in* the compile-time win the platform already has — establishing
-what training is now possible so the next cycle can plan against reality.
-
-#### What comes next
-
-1. This plan executes: first the additive `AggressiveFineTuningTest` harness change (individually
-   selectable, bounded scaling and profiled methods, each excluded from the CI pipeline profile;
-   separate cold/warm columns; profile written under the module's `results/`), then current scaling
-   numbers, a fresh embed=64 backward-compile
-   profile, a rewritten `FINE_TUNE_FAIL.md`, and a named next lever. Open risk: the profiled run
-   may still hit the `IndexProjectionProducerComputation.delta()` scope error recorded in
-   `FINE_TUNE_FAIL.md`, in which case the profile-driven deliverables fall back to wall-clock data
-   and a partial profile (the new profiled method saves the profile even when the run fails).
-   Before execution, the approver fixes the feasibility threshold (target configuration and
-   compile budget); without one, the plan reports timings and growth rates with no feasibility label.
-2. If the verdict flips toward feasible: scope the **minimal end-to-end self-hosted training run** —
-   a tiny model trained on the platform's own docs/source via `ModelOptimizer` — the first concrete
-   step toward software that studies itself. (This was item 4 of the prior cycle's "what next".)
-3. If a clean compile-time lever was identified but deferred, promote it to its own performance plan.
-4. Still open from prior cycles: the ONNX-pressure documentation note; the `io.almostrealism.collect`
-   package split as a code-quality candidate.
-
-### 2026-09-26 — Native Runtime Lifecycle Documentation
-
-**Category:** Documentation
-**Branch:** `project/plan-20260926-172935`
+**Category:** Documentation · **Branch:** `project/plan-20260926-172935` ·
 **Plan:** [`PLAN-20260926-native-runtime-lifecycle-docs.md`](PLAN-20260926-native-runtime-lifecycle-docs.md)
 
-#### Context: the log was restarted
-
-The previous log was deleted on 2026-04-06 together with a batch of completed or obsolete
-plans. Between April and now, planning happened through many focused plan documents in
-`docs/plans/` and continuous QA agents (`qa/docs-*`, `qa/defect-*`, `qa/coverage-*`,
-`qa/performance-*`, `qa/consolidate-*`) that merge small fixes daily. This entry restarts the
-narrative. What carried over from the old log, condensed:
-
-- **March 2026:** the compilation-pipeline internals docs (graph → process tree, process
-  optimization, backend compilation and dispatch) and the ML inference pipeline doc were planned
-  and have since landed in `docs/internals/`. TODO/FIXME work pivoted from mass triage to fixing
-  items individually. The module layer review (`docs/MODULE_REVIEW.md`) reorganized modules and
-  deferred structural debt (split `io.almostrealism.collect` package, JobOutput migration).
-- **April–September 2026:** heavy investment in agent infrastructure (FlowTree, ar-manager,
-  enforcement hooks, test-integrity checks), kernel correctness investigations (see
-  `docs/journals/`), audio/PDSL work, and Stable Audio 3 / Qwen performance tracks.
-
-#### What I investigated
-
-- `docs/internals/` covers the compile side of the pipeline well.
-- The hardware README (~1150 lines) covers memory *usage patterns* thoroughly.
-- `docs/plans/KERNEL_AND_MEMORY_DOCUMENTATION_GAPS.md` (May 2026) lists five gaps exposed when a
-  native-crash investigation in a client application produced three mechanically impossible
-  hypotheses. I checked each against source today: none is closed. `NativeInstructionSet` still
-  defers the thread-safety question; `NativeCompiler` has no library-lifetime Javadoc (and the
-  default library directory, `SystemUtils.getExtensionsPath()`, has no visible delete-on-start —
-  the plan's claim that libraries are "destroyed every JVM start" is itself unverified);
-  the `MEMORY_SCALE`-derived limit is enforced in `MetalMemoryProvider`, `CLMemoryProvider` and
-  `NativeMemoryProvider` (the two GPU providers throw a "Memory Max Reached" `HardwareException`,
-  `NativeMemoryProvider` a "Memory max reached" one), but no doc says
-  so; there is no internals page for any of it.
-- Recent QA documentation passes fix individual stale claims (line-number citations, a
-  non-existent `PackedCollection.load(File)`), but they do not create missing conceptual docs.
-
-#### Why this task
-
-Documentation is the first category, and this is its most consequential remaining gap: the
-*back half* of the execution story — what happens to a compiled kernel and the memory it reads
-after compilation. It is the part people and agents get wrong under pressure (crash triage),
-and the part any future kernel-caching or compile-time optimization must reason about. The
-plan requires every claim to be verified against source or an empirical run, and to record —
-not fix — any defect found, keeping the task a pure documentation task.
-
-#### Balance across categories
-
-Documentation of the conceptual core is now nearly complete; after this task the internals
-corpus tells the whole story from Producer to released memory. Code quality is being handled
-continuously by QA agents. The next planning cycles should lean toward **performance**
-(compile-time and kernel reuse, where an accurate lifecycle doc is a prerequisite) and then
-**proof-of-value** — in particular a small, self-hosted language-model training run, which is
-the most direct step toward the self-understanding goal.
-
-#### What comes next
-
-1. This plan is executed: the native runtime lifecycle internals page and its Javadoc have landed,
-   and `KERNEL_AND_MEMORY_DOCUMENTATION_GAPS.md` is trimmed to its one remaining, out-of-scope entry.
-   Follow up on that entry — the ONNX-induced-pressure gap — as a separate documentation task in
-   `extern/ml-onnx/`, then delete the gap document.
-2. Revisit the deferred structural debt from `docs/MODULE_REVIEW.md` (split
-   `io.almostrealism.collect` package) as a code-quality candidate.
-3. Performance: compile-time reduction building on `CONVOLUTION_COMPILE_TIME.md`.
-4. Proof of value: scope a minimal end-to-end training run of a tiny transformer on platform
-   documentation using `ModelOptimizer`.
+This entry restarted the log (the prior log was deleted 2026-04-06 with a batch of resolved plans).
+Carried over, condensed: in **March 2026** the compilation-pipeline and ML-inference internals docs
+were planned and landed, TODO/FIXME work pivoted to individual fixes, and `docs/MODULE_REVIEW.md`
+deferred the `io.almostrealism.collect` split; from **April–September 2026** the project invested
+heavily in agent infrastructure (FlowTree, ar-manager, enforcement hooks, test-integrity), kernel
+correctness journals, audio/PDSL work, and the Stable Audio 3 / Qwen tracks. The task itself
+documented the back half of the execution story — what happens to a compiled kernel and the memory
+it reads after compilation — closing the most consequential remaining conceptual gap and completing
+the internals corpus from Producer to released memory. It named the next priorities as performance
+(compile-time/kernel reuse) and then a small self-hosted LM training run — the trajectory the
+cycles since have followed.

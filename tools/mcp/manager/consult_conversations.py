@@ -136,6 +136,32 @@ class Conversation:
         notes = [it for it in cited if it.kind == KIND_NOTE]
         return docs[:CARRY_DOCS] + notes[:CARRY_NOTES]
 
+    def carried_terms(self) -> list[str]:
+        """Retrieval terms to seed a follow-up turn with, deduplicated in
+        first-seen order: every earlier turn's keywords, and the subjects (file
+        names and identifiers) of the evidence the previous turn cited.
+
+        A follow-up ("does the drain step see SUBMITTED jobs?") often names its
+        subject only through the conversation, not in its own words. Retrieving
+        on the new question's words alone then misses what the conversation is
+        about; these terms carry that context forward so the follow-up retrieves
+        with it."""
+        terms: list[str] = []
+
+        def _add(token) -> None:
+            if isinstance(token, str):
+                token = token.strip()
+                if token and token not in terms:
+                    terms.append(token)
+
+        for turn in self.turns:
+            for keyword in turn.get("keywords", []):
+                _add(keyword)
+        for item in self.carried():
+            for subject in item.subjects():
+                _add(subject)
+        return terms
+
     def record(self, question: str, keywords, answer: str,
                cited_items: list, flags: dict) -> None:
         """Append a completed turn."""

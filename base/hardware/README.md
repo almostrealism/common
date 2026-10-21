@@ -174,11 +174,15 @@ return **autoreleased** objects. On a long-lived JNI worker thread (the single-t
 executor in `MetalCommandRunner`) there is no Objective-C autorelease pool in place, so
 without intervention these per-dispatch command buffers and encoders are never reclaimed
 and accumulate in the Metal driver until it stalls — fatal for sustained real-time
-rendering (thousands of sequential dispatches). `MTL.cpp` therefore exposes
-`autoreleasePoolPush()`/`autoreleasePoolPop(long)`, and `MetalCommandRunner.submit(...)`
-wraps every dispatch between them so the command buffer and encoder drain after each
-dispatch. Add the equivalent pool wrapping to any new code path that issues Metal
-dispatches off this thread.
+rendering (thousands of sequential dispatches). `MTL.cpp` therefore implements an
+autorelease pool push and pop, which Java reaches only through the `MTLAutoreleasePool`
+wrapper: `MTLAutoreleasePool.run(Runnable)` runs a task inside a fresh pool and drains the
+pool when the task ends, on the same thread. `MetalCommandRunner` runs every task on its
+confined thread through it, so the encoders a task creates drain when the task ends. A
+command buffer outlives the task that opens it, so `MTL.commandBuffer(long)` retains it
+explicitly and `MTLCommandBuffer.release()` drops that retain once the buffer has completed.
+Run any new code path that issues Metal dispatches off this thread through
+`MTLAutoreleasePool.run` as well.
 
 ## Core Concepts
 
@@ -993,6 +997,25 @@ measured and attributed directly.
 
 See [docs/COMMIT_ATTRIBUTION.md](docs/COMMIT_ATTRIBUTION.md) for the measurement pattern
 and how to interpret the results.
+
+### 7. Dispatch Hand-Off Latency (Metal)
+
+`MetalCommandRunner` encodes every dispatch on one confined thread (`ConfinedExecutor`),
+while the dispatching thread waits for the encoding to finish. Encoding a small kernel takes
+a few microseconds, which is less than the scheduler takes to wake a parked thread. A
+workload of many small kernels would therefore spend a large share of its host time on
+those wake-ups. To avoid that, both threads poll for each other for a short window (the
+executor's `HandOffWindow`) before parking, so dispatches issued back to back pass between
+them without either thread being descheduled. A longer pause still parks both threads.
+
+```bash
+# Hand-off polling window in microseconds (default 50). 0 parks at once.
+export AR_HARDWARE_METAL_HANDOFF_SPIN=50
+```
+
+The window does not change which thread a task runs on, the order tasks run in, or how
+failures and interrupts reach the caller. It only changes how soon each side notices the
+other.
 
 ## Advanced Topics
 

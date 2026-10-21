@@ -55,6 +55,13 @@
 #                       held to test-integrity-check, which every branch
 #                       meets anyway.
 #   ENFORCE_CHANGES   - require code changes or retry (default: false)
+#   OBJECT_ORIENTED_REVIEW_ENABLED - run the object-oriented design review
+#                       after the job (true/false). Omitted → the field is not
+#                       sent and the controller's default applies (on). The CI
+#                       follow-up submitters (auto-review, auto-resolve,
+#                       auto-resolve-python) set this to false so the review
+#                       runs once on a branch's initial work, not on each pass
+#                       of the remediation loop.
 #   AUTO_CREATE_PR    - auto-create a GitHub PR on success (default: false)
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
 #   DELAY_SECONDS     - delay execution by this many seconds (default: unset → run immediately)
@@ -191,6 +198,22 @@ fi
 if [ -n "${REQUIRED_LABELS:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson l "$REQUIRED_LABELS" \
         '. + {requiredLabels: $l}')
+fi
+
+# The object-oriented design review defaults to on at the controller, so the
+# field is sent only when a caller explicitly chooses a value. The CI
+# remediation submitters pass false to keep the review off the follow-up jobs
+# they run in a loop; everything else omits it and gets the default.
+if [ -n "${OBJECT_ORIENTED_REVIEW_ENABLED:-}" ]; then
+    case "$OBJECT_ORIENTED_REVIEW_ENABLED" in
+        true|false) ;;
+        *)
+            echo "ERROR: OBJECT_ORIENTED_REVIEW_ENABLED must be true or false (got: $OBJECT_ORIENTED_REVIEW_ENABLED)" >&2
+            exit 1
+            ;;
+    esac
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson o "$OBJECT_ORIENTED_REVIEW_ENABLED" \
+        '. + {objectOrientedReviewEnabled: $o}')
 fi
 
 if [ -n "${STARTED_AFTER:-}" ]; then

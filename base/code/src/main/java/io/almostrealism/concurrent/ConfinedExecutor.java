@@ -23,6 +23,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -43,10 +45,28 @@ import java.util.function.Consumer;
  * shuts the thread down once that work has run. Submission and destruction are coordinated, so no
  * work can ever be queued behind the final task. The thread is shut down even if that last task
  * fails, so a failing drain can never leave the thread alive.</p>
+ *
+ * <h2>Hand-off latency</h2>
+ *
+ * <p>Every call crosses between two threads twice: the confined thread has to notice the task, and
+ * the caller has to notice that it has finished. When the side that must notice is parked, noticing
+ * costs a scheduler wake-up, which can take longer than a short task itself, so a caller issuing a
+ * stream of short tasks spends most of its time waiting for wake-ups rather than for work. An
+ * executor created with a {@link HandOffWindow} ({@link #ConfinedExecutor(Consumer, HandOffWindow)})
+ * keeps both sides awake for that long instead: after finishing a task the confined thread polls
+ * for the next one for up to the window before it parks, and a caller polls for its task to finish
+ * for up to the window before it parks. Tasks issued back to back then pass between the threads
+ * without either being descheduled, while a gap longer than the window, such as a wait for a
+ * device, still parks both. The window changes only how soon each side notices: which thread runs
+ * a task, the order tasks run in, and how failures and interrupts reach the caller are the same
+ * with or without it.</p>
  */
 public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	/** How every task is run on the confined thread. */
 	private final Consumer<Runnable> taskScope;
+
+	/** How long each side of a hand-off polls for the other before parking. */
+	private final HandOffWindow handOff;
 
 	/** The single thread all work is confined to. */
 	private final ExecutorService executor;
@@ -75,17 +95,32 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	}
 
 	/**
-	 * Creates an executor that runs each task through the given scope.
+	 * Creates an executor that runs each task through the given scope, parking both sides of every
+	 * hand-off as soon as they have to wait.
 	 *
 	 * @param taskScope runs one task, with whatever setup and teardown each task needs
 	 */
 	public ConfinedExecutor(Consumer<Runnable> taskScope) {
+		this(taskScope, HandOffWindow.NONE);
+	}
+
+	/**
+	 * Creates an executor that runs each task through the given scope, with each side of a hand-off
+	 * polling for the other for up to the given window before it parks (see the class
+	 * documentation).
+	 *
+	 * @param taskScope runs one task, with whatever setup and teardown each task needs
+	 * @param handOff   how long each side of a hand-off polls before parking
+	 */
+	public ConfinedExecutor(Consumer<Runnable> taskScope, HandOffWindow handOff) {
 		this.taskScope = taskScope;
-		this.executor = Executors.newSingleThreadExecutor(r -> {
-			Thread t = Executors.defaultThreadFactory().newThread(r);
-			confinedThread = t;
-			return t;
-		});
+		this.handOff = handOff;
+		this.executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+				new HandOffQueue(handOff), r -> {
+					Thread t = Executors.defaultThreadFactory().newThread(r);
+					confinedThread = t;
+					return t;
+				});
 	}
 
 	/**
@@ -316,10 +351,17 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 * caller's interrupt status set. Otherwise the wait continues until the task has finished,
 	 * and an interrupt received meanwhile is restored once it has.</p>
 	 *
+	 * <p>The wait first polls for the task to finish for up to the hand-off window (see the class
+	 * documentation), so a task that finishes within it is collected without the caller parking.
+	 * Polling stops at once if the caller is interrupted, leaving the interrupt to the wait below,
+	 * which handles it exactly as it would without polling.</p>
+	 *
 	 * @param future        the submitted task
 	 * @param interruptible whether an interrupt abandons the wait
 	 */
 	private void await(Future<?> future, boolean interruptible) {
+		handOff.pollUntil(future::isDone);
+
 		boolean interrupted = false;
 
 		try {
@@ -343,6 +385,48 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 			}
 		} finally {
 			if (interrupted) Thread.currentThread().interrupt();
+		}
+	}
+
+	/**
+	 * The confined thread's work queue. Taking from it when it is empty polls for a task for up to
+	 * the hand-off window before blocking, so a task queued within the window is picked up by a
+	 * confined thread that never parked (see the class documentation). The confined thread is the
+	 * only consumer, so a task seen by the polling is still there to be taken.
+	 */
+	private static final class HandOffQueue extends LinkedBlockingQueue<Runnable> {
+		/** Serialization version, required because {@link LinkedBlockingQueue} is serializable. */
+		private static final long serialVersionUID = 1L;
+
+		/** How long taking from an empty queue polls for a task before blocking. */
+		private final HandOffWindow handOff;
+
+		/**
+		 * Creates an empty work queue whose take polls for up to the given window.
+		 *
+		 * @param handOff how long taking from an empty queue polls for a task before blocking
+		 */
+		private HandOffQueue(HandOffWindow handOff) {
+			this.handOff = handOff;
+		}
+
+		/**
+		 * Returns the next task, first polling for one for up to the hand-off window. An interrupt,
+		 * which is how {@link ExecutorService#shutdown()} stops an idle confined thread, ends the
+		 * polling at once, and the blocking take that follows reports it exactly as it would have
+		 * without polling.
+		 *
+		 * @return the next task
+		 * @throws InterruptedException if interrupted while waiting for a task
+		 */
+		@Override
+		public Runnable take() throws InterruptedException {
+			if (handOff.pollUntil(() -> !isEmpty())) {
+				Runnable task = poll();
+				if (task != null) return task;
+			}
+
+			return super.take();
 		}
 	}
 }

@@ -59,9 +59,11 @@ import org.almostrealism.stats.BRDF;
 import org.almostrealism.stats.SphericalProbabilityDistribution;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.Set;
+import java.util.NoSuchElementException;
 
 /**
  * An {@link AbsorberHashSet} is an implementation of {@link AbsorberSet}
@@ -77,16 +79,6 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	@Override
 	public Operator<PackedCollection> get() {
 		return null;
-	}
-
-	/**
-	 * Internal listener interface for receiving notifications when the absorber set is modified.
-	 */
-	private interface SetListener {
-		/**
-		 * Called when the absorber set has been updated (absorber added or removed).
-		 */
-		void noteUpdate();
 	}
 
 	/**
@@ -161,6 +153,20 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		 * @param listener The listener to notify on buffer updates
 		 */
 		public void setBufferListener(BufferListener listener) { this.listener = listener; }
+
+		/**
+		 * Returns whether this item's position lies within the given radius of a center point.
+		 * The center is left unchanged.
+		 *
+		 * @param center The center point, as {x, y, z}
+		 * @param radius The maximum distance from the center
+		 * @return True if the distance from the center to this item's position is at most the radius
+		 */
+		public boolean isWithin(double[] center, double radius) {
+			// VectorMath.distance overwrites its first argument, so the freshly evaluated
+			// position is passed first to keep the caller's center intact
+			return VectorMath.distance(this.position.get().evaluate().toArray(), center) <= radius;
+		}
 
 		/**
 		 * Initializes or replaces this item's color buffer with the specified dimensions and scale.
@@ -342,9 +348,6 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	/** Listener notified when color buffers change. */
 	private BufferListener listener;
 
-	/** The set of {@link SetListener}s notified when the absorber set is modified. */
-	private final Set sList;
-
 	/** The RGB color returned by {@link #getValueAt} for this set. */
 	private RGB rgb = new RGB(this.colorDepth, 0.0, 0.0, 0.0);
 
@@ -364,19 +367,13 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	/** True after {@link #clearChecked()} has run; reset when the set is modified. */
 	private boolean cleared = false;
 
-	/** The reusable sorted/shuffled iterator built for this absorber set. */
-	private Iterator items;
-	/** The thread currently using the shared {@link #items} iterator. */
-	private Thread itemsUser;
-	/** True while the items array is being rebuilt; indicates the shared iterator is not ready. */
-	private boolean itemsNow, itemsEnabled = false;
-	
+	/** The cached array of stored items that iterators traverse; null when the set has changed since. */
+	private StoredItem[] items;
+
 	/**
-	 * Constructs an empty {@link AbsorberHashSet} with no absorbers and an empty set listener list.
+	 * Constructs an empty {@link AbsorberHashSet} with no absorbers.
 	 */
-	public AbsorberHashSet() {
-		this.sList = new HashSet();
-	}
+	public AbsorberHashSet() { }
 
 	@Override
 	public int addAbsorber(Absorber a, Producer x) {
@@ -399,30 +396,56 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 
 		if (a instanceof BRDF) item.brdf = ((BRDF)a).getBRDF();
 
-		if (this.add(item)) {
-			this.lastAdded = item;
-			this.notifySetListeners();
-			return this.size();
-		} else {
-			return -1;
-		}
+		return this.add(item) ? this.size() : -1;
+	}
+
+	/**
+	 * Adds the given {@link StoredItem}, recording it as the most recently added item.
+	 *
+	 * @param item The item to add
+	 * @return True if the item was not already present
+	 */
+	@Override
+	public boolean add(StoredItem item) {
+		if (!super.add(item)) return false;
+
+		this.lastAdded = item;
+		this.items = null;
+		return true;
+	}
+
+	/**
+	 * Removes the given {@link StoredItem}, forgetting it as the most recently added item if it was.
+	 * Every other removal, including {@link #removeIf}, {@link #removeAll} and {@link #retainAll},
+	 * goes through this method by way of {@link #iterator()}.
+	 *
+	 * @param o The item to remove
+	 * @return True if the item was present
+	 */
+	@Override
+	public boolean remove(Object o) {
+		if (!super.remove(o)) return false;
+
+		if (o == this.lastAdded) this.lastAdded = null;
+		this.items = null;
+		return true;
+	}
+
+	/**
+	 * Removes every {@link StoredItem}, including the record of the most recently added one.
+	 */
+	@Override
+	public void clear() {
+		super.clear();
+		this.lastAdded = null;
+		this.items = null;
 	}
 
 	@Override
 	public int removeAbsorbers(double[] x, double radius) {
-		Iterator itr = this.iterator();
-		int tot = 0;
-		
-		while (itr.hasNext()) {
-			StoredItem it = (StoredItem) itr.next();
-			
-			if (VectorMath.distance(x, it.position.get().evaluate().toArray()) <= radius) {
-				this.remove(it);
-				tot++;
-			}
-		}
-		
-		return tot;
+		int before = this.size();
+		this.removeIf(it -> it.isWithin(x, radius));
+		return before - this.size();
 	}
 
 	/**
@@ -433,20 +456,13 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	 */
 	@Override
 	public int removeAbsorber(Absorber a) {
-		Iterator itr = this.iterator();
-		
-		while (itr.hasNext()) {
-			StoredItem it = (StoredItem) itr.next();
-			if (it.equals(a)) this.remove(it);
-			this.notifySetListeners();
-		}
-		
+		this.removeIf(it -> it.getAbsorber() == a);
 		return this.size();
 	}
 	
 	/**
-	 * Initializes all absorbers by refreshing their BRDF references and enabling the
-	 * shared items iterator for repeated traversal.
+	 * Initializes all absorbers by refreshing their BRDF references, recursively
+	 * initializing any nested {@link AbsorberHashSet}.
 	 */
 	public void init() {
 		Iterator itr = this.iterator(false);
@@ -459,8 +475,6 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			if (n.absorber instanceof AbsorberHashSet)
 				((AbsorberHashSet)n.absorber).init();
 		}
-		
-		this.itemsEnabled = true;
 	}
 	
 	/**
@@ -505,9 +519,10 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	 * Sets the BRDF on the most recently added absorber.
 	 *
 	 * @param brdf The spherical probability distribution to assign
+	 * @throws IllegalStateException If no absorber has been added, or the most recently added one was removed
 	 */
 	public void setBRDF(SphericalProbabilityDistribution brdf) {
-		this.setBRDF(this.lastAdded.absorber, brdf);
+		this.setBRDF(this.requireLastAdded().absorber, brdf);
 	}
 
 	// TODO  This should store the dimensions, and apply them to new absorbers that are added
@@ -517,9 +532,22 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	 * @param w Width of the color buffer in pixels
 	 * @param h Height of the color buffer in pixels
 	 * @param m Scale factor applied to the color buffer
+	 * @throws IllegalStateException If no absorber has been added, or the most recently added one was removed
 	 */
 	public void setColorBufferDimensions(int w, int h, double m) {
-		this.setColorBufferDimensions(this.lastAdded.absorber, w, h, m);
+		this.setColorBufferDimensions(this.requireLastAdded().absorber, w, h, m);
+	}
+
+	/**
+	 * Returns the most recently added {@link StoredItem}, which is cleared when that item is removed.
+	 *
+	 * @return The most recently added item still in the set
+	 * @throws IllegalStateException If no absorber has been added, or the most recently added one was removed
+	 */
+	private StoredItem requireLastAdded() {
+		if (this.lastAdded == null)
+			throw new IllegalStateException("The most recently added absorber is not in this set");
+		return this.lastAdded;
 	}
 	
 	/**
@@ -851,7 +879,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	@Override
 	public Iterator absorberIterator() {
 		Iterator itr = new Iterator() {
-			private final Iterator itr = AbsorberHashSet.super.iterator();
+			private final Iterator itr = AbsorberHashSet.this.iterator();
 
 			@Override
 			public boolean hasNext() { return this.itr.hasNext(); }
@@ -865,134 +893,87 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	}
 	
 	/**
-	 * Notifies all registered {@link SetListener}s that the absorber set has been modified.
-	 */
-	public void notifySetListeners() {
-		Iterator itr = this.sList.iterator();
-		while (itr.hasNext()) ((SetListener)itr.next()).noteUpdate();
-	}
-	
-	/**
-	 * Registers a {@link SetListener} to receive notifications when the absorber set is modified.
+	 * Returns an iterator over the stored items.
 	 *
-	 * @param l The listener to register
-	 * @return Always returns {@code true}
-	 */
-	public boolean addSetListener(SetListener l) {
-		this.sList.add(l);
-		return true;
-	}
-	
-	/**
-	 * Returns an iterator over stored items without shuffling.
-	 *
-	 * @return An iterator that visits each stored item in default order
+	 * @return An iterator that visits each stored item
 	 */
 	@Override
-	public Iterator iterator() { return this.iterator(false); }
+	public Iterator<StoredItem> iterator() { return this.iterator(false); }
 
 	/**
 	 * Returns an iterator over stored items, optionally shuffled for random traversal order.
 	 *
-	 * <p>When {@code shuffle} is false or {@link #order} is not {@link #RANDOM_ORDER}, a reusable
-	 * sorted iterator is returned and cached for the current thread. When {@code shuffle} is true
-	 * and {@link #order} is {@link #RANDOM_ORDER}, a new randomly shuffled iterator is returned.</p>
+	 * <p>Every call returns an independent iterator over the stored items as they were when
+	 * the call was made, so a traversal that stops early never affects a later one, and the set
+	 * may be modified during a traversal. When {@code shuffle} is true and {@link #order} is
+	 * {@link #RANDOM_ORDER}, the items are visited in a random order.</p>
 	 *
 	 * @param shuffle When true and order is RANDOM_ORDER, the items are visited in random order
 	 * @return An iterator that visits each stored item
 	 */
-	public Iterator iterator(boolean shuffle) {
-		if (this.itemsNow || !this.itemsEnabled)
-			return super.iterator();
-		
-		if ((this.itemsUser == Thread.currentThread()
-				|| this.itemsUser == null)
-				&& this.items != null) {
-			this.itemsUser = Thread.currentThread();
-			return this.items;
-		} else if (this.items != null) {
-			log("Needed extra iterator for " +
-								Thread.currentThread() + " (" + this.itemsUser + ")");
+	public Iterator<StoredItem> iterator(boolean shuffle) {
+		StoredItem[] data = this.items();
+
+		if (shuffle && this.order == RANDOM_ORDER) {
+			data = data.clone();
+			Collections.shuffle(Arrays.asList(data));
+			this.cleared = false;
 		}
-		
-		if (!shuffle || this.order != RANDOM_ORDER) {
-			this.itemsNow = true;
-			
-			this.items = new Iterator() {
-				private final SetListener l = new SetListener() {
-					@Override
-					public void noteUpdate() { myNoteUpdate(); }
-				};
 
-				private int index = 0;
-				private StoredItem[] data = AbsorberHashSet.this.toArray(new StoredItem[0]);
+		return new ItemIterator(data);
+	}
 
-				{
-					AbsorberHashSet.this.addSetListener(l);
-				}
+	/**
+	 * Returns the cached array of stored items, rebuilding it if the set changed since it was built.
+	 *
+	 * @return The stored items; callers must not modify the array
+	 */
+	private StoredItem[] items() {
+		StoredItem[] data = this.items;
 
-				@Override
-				public boolean hasNext() {
-					if (this.index >= data.length) {
-						this.index = 0;
-						AbsorberHashSet.this.itemsUser = null;
-						return false;
-					} else {
-						return true;
-					}
-				}
-
-				@Override
-				public Object next() { return this.data[this.index++]; }
-				@Override
-				public void remove() { }
-
-				public void myNoteUpdate() {
-					AbsorberHashSet.this.itemsNow = true;
-					this.data = AbsorberHashSet.this.toArray(new StoredItem[0]);
-					AbsorberHashSet.this.itemsNow = false;
-				}
-			};
-			
-			this.itemsNow = false;
-			
-			return this.items;
+		if (data == null) {
+			data = super.toArray(new StoredItem[0]);
+			this.items = data;
 		}
-		
-		// this.clearChecked();
-		
-		final StoredItem[] itrs = new StoredItem[this.size()];
-		
-		Iterator itr = super.iterator();
-		
-		int i = 0;
-		
-		while (itr.hasNext() && i < itrs.length) {
-			int start = (int) (Math.random() * itrs.length);
-			boolean first = true;
-			
-			j: for (int j = start; first || j != start; j = (j + 1) % itrs.length) {
-				first = false;
-				if (itrs[j] != null) continue j;
-				
-				itrs[j] = (StoredItem) itr.next();
-				i++;
-				break;
-			}
-		}
-		
-		this.cleared = false;
-		
-		return new Iterator() {
-			private int index = 0;
 
-			@Override
-			public boolean hasNext() { return index < itrs.length; }
-			@Override
-			public Object next() { return itrs[this.index++]; }
-			@Override
-			public void remove() { }
-		};
+		return data;
+	}
+
+	/**
+	 * An {@link Iterator} over a fixed array of the stored items, whose {@link #remove()}
+	 * removes the last returned item from the enclosing {@link AbsorberHashSet}.
+	 */
+	private class ItemIterator implements Iterator<StoredItem> {
+		/** The items visited by this iterator. */
+		private final StoredItem[] data;
+		/** The index of the next item to return. */
+		private int index;
+		/** The item most recently returned by {@link #next()}, or null if it was removed. */
+		private StoredItem current;
+
+		/**
+		 * Creates an iterator over the given items.
+		 *
+		 * @param data The items to visit
+		 */
+		ItemIterator(StoredItem[] data) { this.data = data; }
+
+		@Override
+		public boolean hasNext() { return this.index < this.data.length; }
+
+		@Override
+		public StoredItem next() {
+			if (!this.hasNext()) throw new NoSuchElementException();
+			this.current = this.data[this.index++];
+			return this.current;
+		}
+
+		@Override
+		public void remove() {
+			if (this.current == null) throw new IllegalStateException();
+			AbsorberHashSet.this.remove(this.current);
+			this.current = null;
+		}
 	}
 	
 	/**
