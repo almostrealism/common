@@ -1,1 +1,2 @@
 run_utc	branch	window_since	workstreams_surveyed	jobs_surveyed	prs_surveyed	newest_job_seen	proposal_ids	report_path
+2026-10-19T20:15:36Z	qa/retro-20261019-195827	14 days ago	79	175	33	2026-10-19T20:01:40Z c22fbda9-1ef6-4330-8614-6aa065851f6b	retro-land-artifact,review-scope-guard,review-loop-cap,harness-git-flake,flaky-test-round,jobless-roundup	docs/qa/retrospectives/RETRO-20261019.md
