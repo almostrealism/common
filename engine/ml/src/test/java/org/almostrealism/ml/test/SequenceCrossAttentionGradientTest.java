@@ -113,12 +113,10 @@ public class SequenceCrossAttentionGradientTest extends TestSuiteBase
 		assertRangeGradient("toKvWeight K half", kvNumeric, kvAnalytic, 0, DIM * DIM);
 		assertRangeGradient("toKvWeight V half", kvNumeric, kvAnalytic, DIM * DIM, 2 * DIM * DIM);
 
-		PackedCollection kNormAnalytic = gradientOfSize(captured, dimHead);
-		double[] kNormNumeric = centralDifferences(kNormWeight, EPS, objective);
-		assertRangeGradient("kNormWeight", kNormNumeric, kNormAnalytic, 0, dimHead);
-
-		// The query and output projections are both [dim, dim]; match each finite difference against
-		// whichever recorded gradient of that size it corresponds to.
+		// The query and key normalization weights and biases are all [dimHead], and the query and output
+		// projections are both [dim, dim]; match each finite difference against whichever recorded
+		// gradient of that size it corresponds to, rather than relying on the order of recording.
+		assertMatchingGradient("kNormWeight", centralDifferences(kNormWeight, EPS, objective), captured, dimHead);
 		assertMatchingGradient("toQWeight", centralDifferences(toQ, EPS, objective), captured, DIM * DIM);
 		assertMatchingGradient("toOutWeight", centralDifferences(toOut, EPS, objective), captured, DIM * DIM);
 
@@ -153,8 +151,8 @@ public class SequenceCrossAttentionGradientTest extends TestSuiteBase
 
 	/**
 	 * Asserts that some recorded gradient of the given size matches the finite-difference estimate and
-	 * is not trivially zero. Used for the query and output projections, which share a shape and so
-	 * cannot be told apart by size alone.
+	 * is not trivially zero. Used for weights that share a shape with another weight (the query and
+	 * output projections, the normalization weights and biases) and so cannot be told apart by size.
 	 *
 	 * @param label    what the gradient is of, for the messages
 	 * @param numeric  the finite-difference estimate
@@ -186,17 +184,18 @@ public class SequenceCrossAttentionGradientTest extends TestSuiteBase
 	}
 
 	/**
-	 * Returns the one recorded weight gradient with the given number of values.
+	 * Returns the one recorded weight gradient with the given number of values, failing if no weight
+	 * or more than one weight has that size (in which case the size alone does not identify it).
 	 *
 	 * @param recorded the gradients a backward pass recorded, one per weight
 	 * @param size     the number of values of the weight
 	 * @return the weight's gradient
 	 */
-	// TODO(review): dimHead is shared by qNorm/qNormBias/kNorm/kNormBias; matching by size alone relies on backward recording order, not identity
 	private static PackedCollection gradientOfSize(List<PackedCollection> recorded, int size) {
-		return recorded.stream()
+		List<PackedCollection> matches = recorded.stream()
 				.filter(gradient -> gradient.getShape().getTotalSize() == size)
-				.findFirst()
-				.orElseThrow(() -> new AssertionError("No gradient recorded for a weight of " + size + " values"));
+				.toList();
+		Assert.assertEquals("gradients recorded for a weight of " + size + " values", 1, matches.size());
+		return matches.get(0);
 	}
 }

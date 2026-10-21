@@ -230,7 +230,8 @@ public class BranchBlock implements Block, Learning, Tracking {
 	 * Appends a child block to this branch.
 	 *
 	 * <p>The child's backward cell is wired to push its gradient into the shared
-	 * {@link #aggregator} for accumulation.</p>
+	 * {@link #aggregator} for accumulation. If this branch already holds a {@link ParameterUpdate}
+	 * and the child implements {@link Learning}, the child receives it too.</p>
 	 *
 	 * @param <T> the concrete type of the child block
 	 * @param l   the child to append

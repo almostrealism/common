@@ -603,8 +603,10 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 	 * receptor is supplied the attention weights are tapped to it between the two halves.</p>
 	 *
 	 * <p>The keys and values enter the computation as constants, so no gradient flows to whatever
-	 * produced them. Attention that computes its keys and values in the same graph and trains them,
-	 * as {@link #sequenceAttention} does, reads them from branches of its asset layer instead.</p>
+	 * produced them. Attention that computes its keys and values in the same graph and trains them
+	 * reads them from branches instead: {@link #sequenceAttention} from branches of its asset layer,
+	 * and {@link #sequenceCrossAttention} through the {@link Block}-valued
+	 * {@link #scaledDotProductAttention(int, int, int, int, int, Block, Block, Receptor) overload}.</p>
 	 *
 	 * @param batchSize batch dimension (must be 1)
 	 * @param querySeqLen sequence length for queries
