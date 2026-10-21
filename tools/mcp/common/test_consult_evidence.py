@@ -111,5 +111,23 @@ class TestRenderAndExpand(unittest.TestCase):
         self.assertEqual(note["distance"], 0.2)
 
 
+class TestSubjects(unittest.TestCase):
+
+    def test_a_doc_or_index_item_contributes_its_file_name(self):
+        ev = EvidenceList()
+        doc = ev.add_doc(_doc("tools/ci/README.md"))
+        index = ev.add_index({"path": "tools/ci/drain-agent-jobs.sh", "line": 1,
+                              "label": "behavior", "value": "ACTIVE = {...}"})
+        self.assertEqual(doc.subjects(), ["README.md"])
+        self.assertEqual(index.subjects(), ["drain-agent-jobs.sh"])
+
+    def test_a_note_contributes_its_present_named_symbols(self):
+        ev = EvidenceList()
+        note = ev.add_note(
+            {"id": "m", "content": "n"}, TIER_CURRENT,
+            named_symbols={"present": ["drain-agent-jobs.sh"], "absent": ["Gone"]})
+        self.assertEqual(note.subjects(), ["drain-agent-jobs.sh"])
+
+
 if __name__ == "__main__":
     unittest.main()

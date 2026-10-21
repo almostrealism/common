@@ -18,7 +18,7 @@ if _EVAL_DIR not in sys.path:
 import run_consult_eval  # noqa: E402
 from graders import grade, resolve_expect, validate_case  # noqa: E402
 from run_consult_eval import (  # noqa: E402
-    FixtureMemoryClient, ScriptedModel, build_report, load_cases,
+    FixtureMemoryClient, ScriptedModel, build_report, case_turns, load_cases,
     observed_response,
 )
 
@@ -140,6 +140,54 @@ class TestScriptedModel(unittest.TestCase):
         model = ScriptedModel("x")
         model.consult("q", evidence=self._evidence())
         self.assertIn("[D1]", model.prompts[0])
+
+    def test_a_multi_turn_model_returns_each_turns_answer_in_order(self):
+        model = ScriptedModel(["turn one", "turn two"])
+        ev = self._evidence()
+        self.assertEqual(model.consult("q1", evidence=ev).text, "turn one")
+        self.assertEqual(model.consult("q2", evidence=ev).text, "turn two")
+        # Once exhausted the last answer stands rather than raising.
+        self.assertEqual(model.consult("q3", evidence=ev).text, "turn two")
+
+
+class TestCaseTurns(unittest.TestCase):
+
+    def test_a_single_turn_case_is_one_turn_from_its_top_level_fields(self):
+        turns = case_turns({"id": "X", "question": "q", "keywords": ["k"],
+                            "scripted": "s.txt"})
+        self.assertEqual(turns, [{"question": "q", "keywords": ["k"],
+                                  "scripted": "s.txt"}])
+
+    def test_a_multi_turn_case_runs_its_turns_list(self):
+        case = {"id": "X", "question": "last", "turns": [
+            {"question": "q1"}, {"question": "q2"}]}
+        self.assertEqual([t["question"] for t in case_turns(case)], ["q1", "q2"])
+
+
+class TestFollowUpConversationCase(unittest.TestCase):
+    """E14 replays the 2026-10-21 two-turn conversation: the follow-up must
+    retrieve the drain script's behavior and must not lead with a confident
+    yes resting on an unsupported note."""
+
+    @classmethod
+    def setUpClass(cls):
+        case = _case("E14")
+        responses = run_consult_eval._run_scripted([case])
+        cls.turn2 = responses["E14"][0]
+
+    def test_the_followup_retrieved_the_drain_scripts_behavior(self):
+        drain = [e for e in self.turn2["evidence"]
+                 if e.get("file", "").endswith("drain-agent-jobs.sh")]
+        self.assertTrue(drain, "drain script facts not carried into the follow-up")
+        self.assertTrue(any(e.get("label") == "behavior"
+                            and "ACTIVE" in (e.get("value") or "") for e in drain))
+
+    def test_the_followup_does_not_lead_with_a_confident_yes(self):
+        answer = self.turn2["answer"]
+        self.assertFalse(answer.lower().lstrip().startswith("yes"))
+        self.assertIn("unclear", answer.lower())
+        self.assertEqual(self.turn2["answer_basis"], "notes")
+        self.assertIn("[unsupported]", answer)
 
 
 class TestFixtureMemoryClient(unittest.TestCase):

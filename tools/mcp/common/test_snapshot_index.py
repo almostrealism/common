@@ -12,7 +12,7 @@ if _DIR not in sys.path:
     sys.path.insert(0, _DIR)
 
 from snapshot_index import (  # noqa: E402
-    SnapshotIndex, build, main, script_exits, script_header,
+    SnapshotIndex, build, main, script_exits, script_header, script_signals,
 )
 
 _JAVA = '''package x;
@@ -39,12 +39,25 @@ exit 3
 '''
 
 
+_DRAIN = '''#!/usr/bin/env bash
+# Wait until the controller reports no in-flight jobs.
+set -euo pipefail
+count_running() {
+    curl -fsS "${CONTROLLER_URL}/api/jobs?limit=100" | python3 -c 'import json, sys
+ACTIVE = {"running", "in_progress", "started", "pending", "queued"}
+print(len(ACTIVE))'
+}
+exit 0
+'''
+
+
 class _Tree(unittest.TestCase):
 
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="snapshot-index-test-")
         self._write("flowtree/src/OopRule.java", _JAVA)
         self._write("tools/ci/agent-protection/validate.sh", _SCRIPT)
+        self._write("tools/ci/drain-agent-jobs.sh", _DRAIN)
         self._write("tools/ci/docker/entrypoint.sh", "#!/bin/sh\nexit 0\n")
         self._write("tools/ci/rocm/entrypoint.sh", "#!/bin/sh\nexit 2\n")
         self._write("tools/mcp/common/store.py",
@@ -103,6 +116,12 @@ class TestBuild(_Tree):
         self.assertIn("3 - BLOCKED", facts["header"])
         self.assertEqual([code for _, code in facts["exits"]], [1, 3])
 
+    def test_script_facts_hold_signals(self):
+        facts = build(self.root)["script_facts"]["tools/ci/drain-agent-jobs.sh"]
+        self.assertIn('ACTIVE = {"running", "in_progress", "started", '
+                      '"pending", "queued"}', facts["signals"])
+        self.assertIn("/api/jobs", facts["signals"])
+
     def test_main_writes_json(self):
         out = os.path.join(self.root, "out", "index.json")
         self.assertEqual(main(["--root", self.root, "--out", out, "--commit", " "]), 0)
@@ -149,6 +168,19 @@ class TestReader(_Tree):
         self.assertEqual(len(facts), 1)
         self.assertIn("OopRule.MAX_CLASSES = 12", facts[0]["value"])
 
+    def test_a_script_resolves_by_its_stem(self):
+        # A keyword naming a script without its extension still reaches it.
+        self.assertEqual(self.index.script_paths("drain-agent-jobs"),
+                         ["tools/ci/drain-agent-jobs.sh"])
+        facts = self.index.facts_for(["drain-agent-jobs"], limit=10)
+        behavior = next(f for f in facts if f["label"] == "behavior")
+        self.assertIn("ACTIVE =", behavior["value"])
+        self.assertIn("/api/jobs", behavior["value"])
+
+    def test_an_exact_basename_still_wins_over_a_stem(self):
+        self.assertEqual(self.index.script_paths("validate.sh"),
+                         ["tools/ci/agent-protection/validate.sh"])
+
     def test_facts_respect_the_limit(self):
         self.assertEqual(len(self.index.facts_for(["validate.sh", "OopRule"], 2)), 2)
 
@@ -162,6 +194,16 @@ class TestScriptParsing(unittest.TestCase):
     def test_python_header_is_its_docstring(self):
         self.assertEqual(script_header('#!/usr/bin/env python3\n"""Does X.\n\nMore."""\n',
                                        ".py"), "Does X.\n\nMore.")
+
+    def test_signals_capture_named_collections_and_api_paths(self):
+        signals = script_signals(
+            'ACTIVE = {"running", "pending"}\n'
+            'curl "${URL}/api/jobs?limit=100"\n')
+        self.assertIn('ACTIVE = {"running", "pending"}', signals)
+        self.assertIn("API paths: /api/jobs", signals)
+
+    def test_signals_are_empty_for_a_script_without_them(self):
+        self.assertEqual(script_signals("set -e\nexit 0\n"), "")
 
     def test_commented_exits_are_ignored(self):
         self.assertEqual(script_exits("# exit 9\nexit 4\n", ".sh"), [[2, 4]])

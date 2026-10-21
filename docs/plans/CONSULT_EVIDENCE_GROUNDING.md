@@ -3,11 +3,14 @@
 Status: **FIRST STEPS IMPLEMENTED (1–12), ONE HALF-STEP OUTSTANDING.** Steps 1
 and 2 landed earlier. Steps 3–12 landed together on 2026-10-19 (section 6.1),
 except the `.github/workflows/analysis.yaml` half of step 3, which needs a
-`ci/...` branch and is recorded as a follow-up. Section 6.2 holds the current
-evaluation report. The follow-ups from the 2026-10-20 live test — conversations
-for every caller, the claim-level polarity check, fewer false-stale tiers —
-landed the same day (section 6.3). The other "later refinements" remain plans.
-Author: planning session, 2026-10-17.
+`ci/...` branch and is recorded as a follow-up. The follow-ups from the
+2026-10-20 live test — conversations for every caller, the claim-level polarity
+check, fewer false-stale tiers — landed the same day (section 6.3). The
+2026-10-21 live test produced two more — follow-up-turn retrieval that carries
+the conversation's context, and a hedged lead when a notes-only answer's
+support is gone — landed with the drain-script behaviour now indexed (section
+6.4, which also holds the current evaluation report). The other "later
+refinements" remain plans. Author: planning session, 2026-10-17.
 
 > **Locate code by symbol, not by line.** References below name functions and
 > constants (`consult`, `build_consult_prompt`, `format_memory_context`,
@@ -512,10 +515,20 @@ First version (cheap, high value):
 
 Later versions, in rough order of value:
 
-1. **Script and workflow header comments and exit codes.** For example, the
-   leading comment block of each `tools/ci/**/*.sh` plus its literal
-   `exit N` lines. These scripts *are* the documentation of their own
-   behaviour (see seed case E2).
+1. **Script and workflow header comments, exit codes, and behaviour
+   signals.** For example, the leading comment block of each
+   `tools/ci/**/*.sh` plus its literal `exit N` lines. These scripts *are* the
+   documentation of their own behaviour (see seed case E2). Added 2026-10-21
+   (6.4): a script's `signals` — the named `UPPER_SNAKE` collection constants
+   it defines (a status set, an allowlist) and the `/api/...` paths it calls,
+   emitted as a tier-A `[Ik]` fact labelled `behavior`. A header comment only
+   *paraphrases* the logic ("an unrecognised status is not counted"); the
+   signals state it literally (`ACTIVE = {"running", "in_progress", …}`,
+   `/api/jobs`), which is exactly what the 2026-10-21 live test's follow-up
+   needed and the header did not carry. A keyword that names a script by its
+   stem (`drain-agent-jobs`) now resolves to its path
+   (`SnapshotIndex.script_paths`), so a carried keyword reaches the script's
+   facts.
 2. **`static final String` constants, regardless of visibility**
    (`VERDICT_PATH = ".flowtree/oop-review.md"`). Seed case E3 is answerable
    from nothing else, and `ObjectOrientedDesignRule.VERDICT_PATH` is
@@ -671,6 +684,22 @@ replaces "Not documented" with a note. Proposed contract:
   snapshot does not cover this. The following rests on agent notes:"*. Each
   claim cites its `[Nk]`, and the response's evidence list shows that note's
   date, branch and merge state.
+- **Hedge when the support is gone (added 2026-10-21, 6.4).** The sentence
+  above is for a notes answer the verifier *can* support. When the basis is
+  `notes` *and* the lead claim (the first cited sentence, history aside) is
+  marked unsupported — or every claim is — the notes do not actually establish
+  what the model asserted, so a confident lead would misrepresent the evidence.
+  The 2026-10-21 live test produced exactly this: a follow-up answered "Yes,
+  the drain step does see jobs still in the SUBMITTED state …", resting only on
+  a note whose central claim the verifier flagged. In that case
+  `consult_engine._support_gone` is true and `_hedge_lead` replaces the lead:
+  it strips a leading "Yes"/"No" and opens with a fixed hedge instead — *"This
+  is unclear from the available evidence, and the notes below are unverified —
+  treat the following as unconfirmed:"* — leaving the already-marked sentences
+  to follow. This is the "verifier-driven regeneration" refinement from 2.9,
+  taken as a **deterministic rewrite** rather than a second model call: scoped
+  narrowly to the one case where support is wholly absent, it needs no extra
+  inference and cannot introduce a new unsupported claim.
 - **B′** can answer only questions about that branch, or be reported as
   "on unmerged branch X, …".
 - **C/C✗** never produce `answer_basis: "notes"` for present-tense facts.
@@ -1079,8 +1108,18 @@ point at evidence from the previous answer ("N2 — is that branch merged?").
 
 ### 4.3 What a follow-up turn does
 
-1. **Retrieves fresh evidence** for the new question (with keywords, as
-   today).
+1. **Retrieves fresh evidence** for the new question — but **with the
+   conversation's context, not only the new question's words** (added
+   2026-10-21, 6.4). A follow-up often names its subject only through the
+   conversation ("does the drain step see SUBMITTED jobs?" after a turn about
+   the deploy workflow). `Conversation.carried_terms()` returns every earlier
+   turn's keywords plus the subjects (file names, identifiers) the previous
+   turn's cited evidence resolved to; `ConsultTurn._retrieval_terms()` merges
+   those with the caller's keywords — or, when a follow-up gives none, with the
+   new question's own extracted terms — and the merged set drives documentation
+   retrieval, snapshot-index lookup (the keywords are offered as mentions too,
+   so a script named by its stem resolves, 2.5) and the note query. The first
+   turn has nothing to carry, so it retrieves exactly as before.
 2. **Carries forward** evidence the previous turn cited: up to 2 doc chunks
    and 2 notes, keeping their IDs. IDs are stable within a conversation
    (`D1` stays `D1`), so the caller and the model can refer back to them.
@@ -1522,7 +1561,8 @@ is the follow-up.
 
 ### 6.2 Evaluation report (2026-10-19, step 12)
 
-This is the step-12 report; 6.3 holds the current one.
+This is the step-12 report; 6.4 holds the current one (6.3 is the
+2026-10-20 report it superseded).
 
 Replay (frozen deployed responses; `eval/baselines/baseline-observed.md`):
 2/12 pass, 1 false abstention, 5 false answers. The seed set (E1–E4, observed
@@ -1628,12 +1668,71 @@ Follow-ups: the E1/E2/E8 local-mode expectations (a grader regex and two
 milestone bars that predate notes answering and index facts); a model judge
 for the claims the polarity check cannot read.
 
+### 6.4 Follow-ups from the 2026-10-21 live test, and the current report
+
+A live test against the deployed snapshot `69748d4` ran a two-turn
+conversation. Turn 1 ("why does the controller stack sometimes deploy
+automatically?", keywords including `drain-agent-jobs`) was answered correctly.
+Turn 2, on the same `conversation_id` with no keywords ("does the drain step
+see jobs still in the SUBMITTED state?"), retrieved only on the new question's
+words: it pulled in unrelated docs, never reached `tools/ci/drain-agent-jobs.sh`,
+and answered a confident "Yes … they appear in the `/api/jobs/pending`
+endpoint" resting only on a note whose central claim the verifier flagged
+(`subject`, `polarity`, `[unsupported]`, basis `notes`). Both halves are wrong:
+the script reads `/api/jobs` and counts only
+`running/in_progress/started/pending/queued`, so SUBMITTED is not counted.
+Two changes, landed together:
+
+| Change | What landed | Where |
+|---|---|---|
+| Follow-up-turn retrieval carries the conversation's context | `Conversation.carried_terms()` returns every earlier turn's keywords plus the subjects (file names, identifiers) the previous turn's cited evidence resolved to; `ConsultTurn._retrieval_terms()` merges those with the caller's keywords — or, when a follow-up gives none, the new question's own terms — and the merged set drives documentation retrieval, snapshot-index lookup and the note query (the keywords are offered as index mentions too). First-turn retrieval is unchanged. 4.3 revised. | `consult_conversations.carried_terms`, `consult_engine.ConsultTurn._retrieval_terms`, `consult_evidence.EvidenceItem.subjects` |
+| Drain-script behaviour indexed; scripts reachable by stem | `script_signals` extracts a script's named `UPPER_SNAKE` collection constants (the `ACTIVE` status set) and `/api/…` paths into `script_facts[path]["signals"]`, surfaced by `facts_for` as a tier-A `[Ik]` fact labelled `behavior`; `script_paths` resolves a bare stem (`drain-agent-jobs`) to its file. `INDEX_VERSION` 2→3. 2.5 revised. | `common/snapshot_index.py` |
+| Hedge a notes-only answer when its support is gone | When the basis is `notes` and the lead cited claim (history aside) is marked unsupported — or every claim is — `_hedge_lead` strips a leading "Yes"/"No" and opens with a fixed hedge instead of asserting the note's unestablished claim. The deterministic form of verifier-driven regeneration, scoped narrowly (2.7). | `consult_engine._support_gone`, `_hedge_lead`, `_post_process` |
+
+**New case.** E14 replays the two-turn conversation — the first multi-turn
+case; the eval runner now runs a case's `turns` in order on one conversation
+and grades the last turn. Its scripted turn 2 reproduces the confident-yes
+wrong answer, and the case passes only if (a) the follow-up carries the
+conversation's context so the drain script's `behavior` fact reaches turn 2's
+evidence (`must_cite_any: tools/ci/drain-agent-jobs.sh`, which the grader reads
+from the evidence list), and (b) the notes-only unsupported lead is hedged
+rather than a confident yes (`must_include: unclear`, `must_not_include:
+^yes`, `must_mark_unsupported: drain step does see`). Both gate on the two
+changes: without carry-forward the drain fact is absent from turn 2, and
+without the hedge the lead stays "Yes".
+
+**Scripted** (`eval/baselines/scripted-followup-hedge.md`, milestone `step12`):
+**14/14 pass, 0 false abstentions, 0 false answers.** E1–E13 unchanged; E14
+new.
+
+**Replay** (`eval/baselines/baseline-observed.md`): unchanged at 2 passing; the
+set is now 14 cases and E14 has no captured deployed response (`no-response`).
+
+**Local, against a real model** (`eval/baselines/local-followup-hedge.md`;
+Qwen3-Coder through llama.cpp at `host.docker.internal:8084`, k=3): 3/14 pass,
+read as 6.3 prescribes — the cases that reproduce an observed wrong answer
+(E7, E9–E13) fail by construction when the model does not make the mistake,
+and E1/E2/E8 fail on pre-notes/pre-index expectations. **E14 is the signal
+that matters here:** with carry-forward, turn 2 retrieved the drain script's
+`behavior` fact (the `ACTIVE` set and `/api/jobs`) into its evidence even
+though the turn named no keyword, and the model answered *from the index fact*
+(`answer_basis: documentation`, citing `[I3]`/`[I2]`), once stating outright
+that "SUBMITTED is not in that set … jobs in SUBMITTED state are not considered
+active and do not block the drain step." That is the correct answer the live
+test could not reach, produced by a real model — so E14 "fails" the scripted
+reproduce-and-flag expectations precisely because the model no longer makes the
+mistake, which is the outcome the fix is for. The hedge path is exercised
+deterministically by the scripted E14 and by the `consult_engine` unit tests
+instead.
+
 Later refinements, not yet scheduled:
 
 - per-path last-modified dates and the change-since-note recency signal;
 - durable `consultations` transcripts and `consult_transcript`;
 - value-level conflict detection;
-- verifier-driven regeneration;
+- verifier-driven regeneration — *partly landed 2026-10-21 (6.4) as the
+  deterministic notes-only hedge (2.7); a full regenerate-and-retry against the
+  model remains unscheduled*;
 - feeding conflicts consult finds into `verification_status` once the
   memory schema migration lands;
 - a decision on indexing `docs/plans/`;
