@@ -17,6 +17,7 @@
 package io.almostrealism.concurrent.test;
 
 import io.almostrealism.concurrent.ConfinedExecutor;
+import io.almostrealism.concurrent.HandOffWindow;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -610,6 +611,109 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 		} catch (IllegalStateException expected) {
 			assertFalse(executor.isActive());
 		}
+	}
+
+	/**
+	 * With a hand-off window, every task still runs on the one confined thread rather than the
+	 * caller's, in the order the tasks were submitted, including tasks submitted back to back
+	 * from several callers while the confined thread is polling for work.
+	 */
+	@Test(timeout = 10000)
+	public void handOffWindowRunsTasksInOrderOnConfinedThread() throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor(Runnable::run, new HandOffWindow(1, TimeUnit.MILLISECONDS));
+		List<Thread> threads = Collections.synchronizedList(new ArrayList<>());
+		List<Integer> order = Collections.synchronizedList(new ArrayList<>());
+
+		try {
+			for (int i = 0; i < 1000; i++) {
+				int index = i;
+				executor.run(() -> {
+					threads.add(Thread.currentThread());
+					order.add(index);
+				});
+			}
+
+			List<Thread> callers = new ArrayList<>();
+			for (int c = 0; c < 4; c++) {
+				callers.add(new Thread(() -> {
+					for (int i = 0; i < 250; i++) {
+						executor.run(() -> threads.add(Thread.currentThread()));
+					}
+				}));
+			}
+
+			callers.forEach(Thread::start);
+			for (Thread caller : callers) caller.join(5000);
+
+			assertEquals(2000, threads.size());
+			assertEquals(1, (int) threads.stream().distinct().count());
+			Assert.assertNotSame(Thread.currentThread(), threads.get(0));
+
+			for (int i = 0; i < 1000; i++) {
+				assertEquals(i, order.get(i).intValue());
+			}
+		} finally {
+			executor.destroy();
+		}
+	}
+
+	/**
+	 * A caller interrupted while it waits for a task abandons the wait at once even when the
+	 * hand-off window is long, rather than polling for the rest of the window first, so the
+	 * window never delays how an interrupt reaches the caller.
+	 */
+	@Test(timeout = 10000)
+	public void handOffWindowDoesNotDelayInterruptedWait() throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor(Runnable::run, new HandOffWindow(30, TimeUnit.SECONDS));
+		CountDownLatch releaseTask = new CountDownLatch(1);
+		AtomicBoolean returned = new AtomicBoolean();
+
+		try {
+			Thread caller = new Thread(() -> {
+				Thread.currentThread().interrupt();
+				executor.run(() -> awaitLatch(releaseTask));
+				returned.set(true);
+			});
+			caller.start();
+			caller.join(5000);
+
+			assertFalse("The interrupted wait must not poll for the whole window", caller.isAlive());
+			assertTrue(returned.get());
+		} finally {
+			releaseTask.countDown();
+			executor.destroy();
+		}
+	}
+
+	/**
+	 * Once the hand-off window has passed with no work, the confined thread parks rather than
+	 * continuing to poll, so a quiet executor occupies no core; and a polling confined thread is
+	 * still stopped promptly when the executor is destroyed.
+	 */
+	@Test(timeout = 10000)
+	public void handOffWindowParksIdleThreadAndStopsOnDestroy() throws InterruptedException {
+		ConfinedExecutor quiet = new ConfinedExecutor(Runnable::run, new HandOffWindow(1, TimeUnit.MILLISECONDS));
+		AtomicReference<Thread> quietThread = new AtomicReference<>();
+
+		try {
+			quiet.run(() -> quietThread.set(Thread.currentThread()));
+			Thread.sleep(500);
+			assertEquals(Thread.State.WAITING, quietThread.get().getState());
+		} finally {
+			quiet.destroy();
+		}
+
+		quietThread.get().join(5000);
+		assertFalse(quietThread.get().isAlive());
+
+		ConfinedExecutor polling = new ConfinedExecutor(Runnable::run, new HandOffWindow(30, TimeUnit.SECONDS));
+		AtomicReference<Thread> pollingThread = new AtomicReference<>();
+		polling.run(() -> pollingThread.set(Thread.currentThread()));
+		polling.destroy();
+
+		pollingThread.get().join(5000);
+		assertFalse("Destroying must stop a thread that is polling for work",
+				pollingThread.get().isAlive());
 	}
 
 	/**

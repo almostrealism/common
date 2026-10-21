@@ -170,7 +170,8 @@ or keep this render out of CI and exercise it through a dedicated paced/native h
   `MetalComputeContext` (`19fa029a6`), so a signature-matched kernel always encodes into
   the runner that commits it. This made `AR_PDSL_VECTOR_FOREACH` safe by default.
 - **Metal sustained-dispatch ceiling** — per-task autorelease pools + explicit command
-  buffer retention (`MetalCommandRunner.runInPool`); regression-guarded by
+  buffer retention (`MTLAutoreleasePool.run`, the task scope of `MetalCommandRunner`'s
+  confined executor); regression-guarded by
   `OperationDispatchBatchingTests`. Durable invariants: the platform is a compiler
   (count dispatches from the compiled program, never from op counts); at most ONE active
   command buffer per `ComputeContext`; nothing on the shared executor pool may block on
