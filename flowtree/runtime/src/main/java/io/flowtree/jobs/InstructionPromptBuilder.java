@@ -1148,7 +1148,6 @@ public class InstructionPromptBuilder {
      * @param sb the prompt under construction
      */
     private void appendEmptyResultConsequence(StringBuilder sb) {
-        // TODO(review): EnforcementRunner's stall detector can end re-runs before the cap, so "will be restarted" may not hold.
         if (enforcementAttempt < maxEnforceChangesRetries) {
             sb.append("Exiting without code changes will cause this session to be restarted.\n\n");
         } else {
