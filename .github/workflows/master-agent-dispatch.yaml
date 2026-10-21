@@ -1952,11 +1952,16 @@ jobs:
           DESCRIPTION: "Study recent automated work and propose how the QA process should improve"
           PROTECT_TEST_FILES: "true"
           # The round's contract is to leave a report under docs/qa/retrospectives/
-          # on disk. A run that surveys, records memories and messages, but writes
-          # no file commits nothing — which used to exit SUCCESS. This flag has the
-          # harness report that empty-tree exit as DEGRADED so the non-delivery is
-          # visible rather than hidden behind a green run.
-          REQUIRE_COMMITTED_CHANGE: "true"
+          # on disk. A run that surveys and records memories but writes no file
+          # commits nothing, which used to exit SUCCESS. ENFORCE_CHANGES makes an
+          # empty result DEGRADED once its re-run cap is spent. The cap is 0, so
+          # no re-run happens: the prompt writes the skeleton report first, so an
+          # empty tree means the run ignored its first instruction or ran out of
+          # budget, and a fresh opus/max session (which re-surveys from scratch)
+          # costs as much as the round itself. What the retrospective asked for
+          # is visibility, which DEGRADED provides.
+          ENFORCE_CHANGES: "true"
+          MAX_ENFORCE_CHANGES_RETRIES: "0"
           AUTO_CREATE_PR: "true"
           PHASE_CONFIGS: '{"primary": {"runner": "claude", "model": "opus", "effort": "max", "provider": "anthropic"}}'
         run: |

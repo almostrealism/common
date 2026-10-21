@@ -307,7 +307,6 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		original.setPlanningDocument("## Plan\nDo the thing.");
 		original.setProtectTestFiles(true);
 		original.setEnforceChanges(true);
-		original.setRequireCommittedChange(true);
 		original.setDeduplicationMode(CodingAgentJob.DEDUP_NONE);
 		original.setEnforceMavenDependencies(true);
 
@@ -322,7 +321,6 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		assertEquals(original.getPlanningDocument(), restored.getPlanningDocument());
 		assertTrue("protectTestFiles", restored.isProtectTestFiles());
 		assertTrue("enforceChanges", restored.isEnforceChanges());
-		assertTrue("requireCommittedChange", restored.isRequireCommittedChange());
 		assertEquals(original.getDeduplicationMode(), restored.getDeduplicationMode());
 		assertTrue("enforceMavenDependencies", restored.isEnforceMavenDependencies());
 	}
@@ -354,21 +352,40 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that the {@code requireCommittedChange} flag set on a
-	 * {@link CodingAgentJob.Factory} survives a full encode/decode round-trip
-	 * and is then applied to the jobs the factory configures.
+	 * Verifies that the enforce-changes re-run cap set on a
+	 * {@link CodingAgentJob.Factory} survives a full encode/decode round-trip and
+	 * is then applied to the jobs the factory configures. Uses a cap of 0, the
+	 * value that must not be mistaken for "absent" on the wire.
 	 */
 	@Test(timeout = 30000)
-	public void factoryRequireCommittedChangeRoundTrip() {
+	public void factoryMaxEnforceChangesRetriesRoundTrip() {
 		CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt");
-		factory.setRequireCommittedChange(true);
+		factory.setEnforceChanges(true);
+		factory.setMaxEnforceChangesRetries(0);
 
 		CodingAgentJob.Factory restored = roundTripFactory(factory);
-		assertTrue("requireCommittedChange on factory", restored.isRequireCommittedChange());
+		assertTrue("enforceChanges on factory", restored.isEnforceChanges());
+		assertEquals("maxEnforceChangesRetries on factory", 0, restored.getMaxEnforceChangesRetries());
 
 		CodingAgentJob job = (CodingAgentJob) restored.nextJob();
 		assertNotNull("factory must produce a job", job);
-		assertTrue("requireCommittedChange reaches the job", job.isRequireCommittedChange());
+		assertEquals("maxEnforceChangesRetries reaches the job", 0, job.getMaxEnforceChangesRetries());
+	}
+
+	/**
+	 * Verifies that a job's enforce-changes re-run cap survives the job's own
+	 * encode/decode round-trip (the dispatch to a remote agent node), and that a
+	 * job left at the default decodes to the default.
+	 */
+	@Test(timeout = 30000)
+	public void jobMaxEnforceChangesRetriesRoundTrip() {
+		CodingAgentJob original = new CodingAgentJob("task-enforce-cap", "Prompt");
+		original.setMaxEnforceChangesRetries(1);
+		CodingAgentJob restored = roundTrip(original);
+		assertEquals(1, restored.getMaxEnforceChangesRetries());
+
+		CodingAgentJob defaulted = roundTrip(new CodingAgentJob("task-enforce-default", "Prompt"));
+		assertEquals(CodingAgentJob.DEFAULT_MAX_RULE_RETRIES, defaulted.getMaxEnforceChangesRetries());
 	}
 
 	/**

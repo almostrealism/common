@@ -74,7 +74,7 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
             max_budget_usd=5.0,
             protect_test_files=True,
             enforce_changes=True,
-            require_committed_change=True,
+            max_enforce_changes_retries=0,
             started_after="1710000000000",
         )
         payload = mock_post.call_args[0][1]
@@ -84,7 +84,7 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertEqual(payload["maxBudgetUsd"], 5.0)
         self.assertTrue(payload["protectTestFiles"])
         self.assertTrue(payload["enforceChanges"])
-        self.assertTrue(payload["requireCommittedChange"])
+        self.assertEqual(payload["maxEnforceChangesRetries"], 0)
         self.assertEqual(payload["startedAfter"], "1710000000000")
 
     @patch.object(server, "_controller_post")
@@ -112,7 +112,7 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("maxBudgetUsd", payload)
         self.assertNotIn("protectTestFiles", payload)
         self.assertNotIn("enforceChanges", payload)
-        self.assertNotIn("requireCommittedChange", payload)
+        self.assertNotIn("maxEnforceChangesRetries", payload)
         self.assertNotIn("startedAfter", payload)
 
     @patch.object(server, "_controller_post")

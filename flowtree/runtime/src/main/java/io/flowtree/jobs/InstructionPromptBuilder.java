@@ -64,6 +64,12 @@ public class InstructionPromptBuilder {
      */
     private int enforcementAttempt;
 
+    /**
+     * Whole-job cap on enforce-changes re-runs; decides whether the agent is told
+     * that exiting without changes restarts it or ends the job DEGRADED.
+     */
+    private int maxEnforceChangesRetries = CodingAgentJob.DEFAULT_MAX_RULE_RETRIES;
+
     /** Base branch name used in merge conflict and test protection instructions. */
     private String baseBranch;
 
@@ -214,15 +220,28 @@ public class InstructionPromptBuilder {
      * Sets the enforcement attempt counter for retry-loop mode.
      *
      * <p>When greater than zero, a prominent message is prepended warning
-     * the agent that it has already refused to fix the failures this many
-     * times, and that the session will keep restarting until it produces
-     * code changes or successfully runs the CI command.</p>
+     * the agent that its previous sessions ended this many times without
+     * producing any change.</p>
      *
      * @param enforcementAttempt the number of prior failed attempts (0 for first try)
      * @return this builder for chaining
      */
     public InstructionPromptBuilder setEnforcementAttempt(int enforcementAttempt) {
         this.enforcementAttempt = enforcementAttempt;
+        return this;
+    }
+
+    /**
+     * Sets the whole-job cap on enforce-changes re-runs. Together with
+     * {@link #setEnforcementAttempt(int)} it decides what the agent is told
+     * happens if it exits without changes: another re-run while any remain,
+     * otherwise a DEGRADED result.
+     *
+     * @param maxEnforceChangesRetries the cap; 0 means the job is never re-run
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setMaxEnforceChangesRetries(int maxEnforceChangesRetries) {
+        this.maxEnforceChangesRetries = maxEnforceChangesRetries;
         return this;
     }
 
@@ -626,17 +645,17 @@ public class InstructionPromptBuilder {
         // that may legitimately accept "no changes needed" as resolution.
         if (enforcementAttempt > 0 && !correctionSession) {
             sb.append("## !! SESSION RESTARTED -- RETRY ").append(enforcementAttempt).append(" !!\n\n");
-            sb.append("This job was submitted because CI was failing on this branch. ");
+            sb.append("This job requires changes to files in the repository. ");
             sb.append("Your previous ").append(enforcementAttempt).append(" session");
             if (enforcementAttempt > 1) sb.append("s");
-            sb.append(" ended without producing any code changes.\n\n");
-            sb.append("You MUST investigate the current CI status and produce code changes. ");
-            sb.append("Run the failing CI command (via the MCP test runner, using the exact ");
-            sb.append("CI command — not an individual test, not an alternative you invented) ");
-            sb.append("to determine what is failing. Then fix the production code. ");
+            sb.append(" ended without producing any.\n\n");
+            sb.append("You MUST produce the changes the task asks for. When the task is to ");
+            sb.append("fix failing CI, run the failing CI command (via the MCP test runner, ");
+            sb.append("using the exact CI command — not an individual test, not an alternative ");
+            sb.append("you invented) to determine what is failing, then fix the production code. ");
             sb.append("Leave the changes uncommitted — the harness commits them.\n\n");
             sb.append("Simply stating that you do not see a problem, or that tests seem to ");
-            sb.append("pass in your view, is not acceptable. Produce code changes.\n\n");
+            sb.append("pass in your view, is not acceptable. Produce the changes.\n\n");
             sb.append("---\n\n");
         }
 
@@ -743,13 +762,14 @@ public class InstructionPromptBuilder {
                 // valid outcome, and the outer change-required pressure would
                 // contradict the rule prompt.
                 sb.append("## Code Changes Are Required\n");
-                sb.append("This task was submitted because CI was failing on this branch. ");
-                sb.append("You MUST produce code changes. Run the failing CI command ");
-                sb.append("(via the MCP test runner — the exact CI command, not an individual ");
+                sb.append("This task requires changes to files in the repository; ending ");
+                sb.append("without any is not an acceptable outcome. Produce the changes the ");
+                sb.append("task asks for. When the task is to fix failing CI, run the failing CI ");
+                sb.append("command (via the MCP test runner — the exact CI command, not an individual ");
                 sb.append("test or an alternative you invented) to determine what is failing, ");
                 sb.append("then fix the production code. Leave the changes uncommitted — the ");
                 sb.append("harness commits them. Do NOT commit yourself.\n\n");
-                sb.append("Exiting without code changes will cause this session to be restarted.\n\n");
+                appendEmptyResultConsequence(sb);
             } else {
                 sb.append("## Non-Code Requests\n");
                 sb.append("If the user's request does not require code changes (e.g., a question about ");
@@ -1117,6 +1137,24 @@ public class InstructionPromptBuilder {
         sb.append("\n--- END USER REQUEST ---");
 
         return sb.toString();
+    }
+
+    /**
+     * Appends what happens if an enforce-changes session exits with no change:
+     * a restart while the re-run cap leaves one, otherwise a DEGRADED result.
+     * Telling the agent it will be restarted when it will not would be false,
+     * and with a cap of 0 the first session is the only one.
+     *
+     * @param sb the prompt under construction
+     */
+    private void appendEmptyResultConsequence(StringBuilder sb) {
+        // TODO(review): EnforcementRunner's stall detector can end re-runs before the cap, so "will be restarted" may not hold.
+        if (enforcementAttempt < maxEnforceChangesRetries) {
+            sb.append("Exiting without code changes will cause this session to be restarted.\n\n");
+        } else {
+            sb.append("Exiting without code changes will not restart this session: the job ");
+            sb.append("will end DEGRADED and be reported as having produced nothing.\n\n");
+        }
     }
 
     /**

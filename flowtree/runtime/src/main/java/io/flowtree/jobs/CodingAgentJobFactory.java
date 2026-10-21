@@ -215,6 +215,13 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private final PostCompletionConfig postCompletion = new PostCompletionConfig(this::set);
 
     /**
+     * Change requirement propagated to jobs created by this factory. The same
+     * type backs {@link CodingAgentJob}; constructed with {@link #set(String, String)}
+     * as its property sink so every mutation travels to the worker.
+     */
+    private final EnforceChangesConfig enforceChanges = new EnforceChangesConfig(this::set);
+
+    /**
      * Runner and per-phase model configuration propagated to jobs created by
      * this factory. The same type backs {@link CodingAgentJob}, so a factory
      * and the jobs it creates agree on runner resolution by construction
@@ -714,41 +721,43 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
-     * Returns whether enforcement mode is enabled for jobs.
-     * When enabled, jobs will loop until code changes are produced.
+     * Returns whether jobs created by this factory must produce a change.
+     * A job that leaves none is re-run up to {@link #getMaxEnforceChangesRetries()}
+     * times, and is reported DEGRADED if it still commits nothing.
      */
     public boolean isEnforceChanges() {
-        return "true".equals(get("enforceChanges"));
+        return enforceChanges.isEnabled();
     }
 
     /**
-     * Sets whether enforcement mode is enabled for jobs.
-     * When enabled, the agent session restarts with escalating warnings
-     * if it finishes without producing any code changes.
+     * Sets whether jobs created by this factory must produce a change.
      *
-     * @param enforceChanges true to require code changes for completion
+     * @param enforceChanges true to require a change for completion
      */
     public void setEnforceChanges(boolean enforceChanges) {
-        set("enforceChanges", String.valueOf(enforceChanges));
+        this.enforceChanges.setEnabled(enforceChanges);
     }
 
     /**
-     * Returns whether jobs report a clean exit with nothing committed as
-     * DEGRADED rather than SUCCESS.
-     */
-    public boolean isRequireCommittedChange() {
-        return "true".equals(get("requireCommit"));
-    }
-
-    /**
-     * Sets whether a clean exit with nothing committed is reported DEGRADED.
-     * Turn it on for a job whose contract is to produce a committed change
-     * (e.g. the QA retrospective, which must leave a report on disk).
+     * Returns the whole-job cap on enforce-changes re-runs for jobs created by
+     * this factory.
      *
-     * @param requireCommittedChange true to report an empty-tree exit DEGRADED
+     * @return the re-run cap; defaults to {@link CodingAgentJob#DEFAULT_MAX_RULE_RETRIES}
      */
-    public void setRequireCommittedChange(boolean requireCommittedChange) {
-        set("requireCommit", String.valueOf(requireCommittedChange));
+    public int getMaxEnforceChangesRetries() {
+        return enforceChanges.getMaxRetries();
+    }
+
+    /**
+     * Sets the whole-job cap on enforce-changes re-runs for jobs created by this
+     * factory. Once the cap is spent with nothing committed, the job ends DEGRADED.
+     *
+     * @param maxEnforceChangesRetries the cap; 0 means report an empty result
+     *                                 without re-running
+     * @throws IllegalArgumentException if the value is negative
+     */
+    public void setMaxEnforceChangesRetries(int maxEnforceChangesRetries) {
+        enforceChanges.setMaxRetries(maxEnforceChangesRetries);
     }
 
     /**
@@ -1374,8 +1383,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         if (planningDocument != null) job.setPlanningDocument(planningDocument);
 
         job.setProtectTestFiles(isProtectTestFiles());
-        job.setEnforceChanges(isEnforceChanges());
-        job.setRequireCommittedChange(isRequireCommittedChange());
+        enforceChanges.applyTo(job.enforceChanges());
         job.setDeduplicationMode(deduplicationMode);
         job.setMaxDeduplicationPasses(maxDeduplicationPasses);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
@@ -1466,9 +1474,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             case "planDoc":
                 this.planningDocument = GitManagedJob.base64Decode(value);
                 break;
-            case "enforceChanges":
-            case "requireCommit":
-                break;
             case "runner":
                 phaseRunners.applyLegacyRunner(value);
                 break;
@@ -1504,7 +1509,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 this.deduplicationMode = value;
                 return;
             case "maxDedupPasses":
-                this.maxDeduplicationPasses = CodingAgentJobCodec.parsePositiveOrDefault(
+                this.maxDeduplicationPasses = WireConfig.parsePositiveOrDefault(
                         value, CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES);
                 return;
             case "enforceMavenDeps":
@@ -1542,13 +1547,16 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 this.sensitiveFileBypassSignature = GitManagedJob.base64Decode(value);
                 return;
             case "maxReviewPasses":
-                this.maxReviewPasses = CodingAgentJobCodec.parsePositiveOrDefault(
+                this.maxReviewPasses = WireConfig.parsePositiveOrDefault(
                         value, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES);
                 return;
             default:
-                // Post-completion keys are decoded by their owner; any other key
-                // is already stored in the properties map by AbstractJobFactory.set().
-                postCompletion.applySetting(key, value);
+                // Post-completion and change-requirement keys are decoded by their
+                // owners; any other key is already stored in the properties map by
+                // AbstractJobFactory.set().
+                if (!enforceChanges.applySetting(key, value)) {
+                    postCompletion.applySetting(key, value);
+                }
         }
     }
 

@@ -353,6 +353,18 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertEqual("true", env["PROTECT_TEST_FILES"])
         self.assertNotIn("ENFORCE_CHANGES", env)
 
+    def test_the_retrospective_round_reports_an_empty_result_without_a_rerun(self):
+        """The retrospective's contract is a report on disk. A run that
+        committed nothing used to exit SUCCESS; enforceChanges makes that
+        DEGRADED once its re-run cap is spent, and the cap of 0 reports it at
+        once rather than paying for a second full opus/max survey."""
+        job = self.qa_jobs["qa-retrospective"]
+        submit = next(s for s in job["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        env = submit["env"]
+        self.assertEqual("true", env["ENFORCE_CHANGES"])
+        self.assertEqual("0", env["MAX_ENFORCE_CHANGES_RETRIES"])
+
     def test_the_planning_job_keeps_one_round_open_at_a_time(self):
         """Every planning round rewrites the one docs/plans/MANAGER_LOG.md,
         so two open at once cannot both merge. The job used to gate on the

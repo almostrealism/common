@@ -54,13 +54,15 @@
 #                       changing what its tests assert. Every other job is
 #                       held to test-integrity-check, which every branch
 #                       meets anyway.
-#   ENFORCE_CHANGES   - require code changes or retry (default: false)
-#   REQUIRE_COMMITTED_CHANGE - report a clean exit with nothing committed as
-#                       DEGRADED rather than SUCCESS (default: false). Turn it
-#                       on for a job whose contract is to produce a committed
-#                       change — the QA retrospective, which must leave a report
-#                       on disk — so a run that stalls or exhausts its budget
-#                       without delivering is visible rather than reported green.
+#   ENFORCE_CHANGES   - the job must produce a change (default: false). A run
+#                       that leaves none is re-run, up to the cap below; once
+#                       the cap is spent with nothing committed the job ends
+#                       DEGRADED rather than SUCCESS.
+#   MAX_ENFORCE_CHANGES_RETRIES - the cap on those re-runs, over the whole job
+#                       (a non-negative integer). 0 means never re-run: an
+#                       empty result is reported DEGRADED at once. Omitted →
+#                       the field is not sent and the controller's default
+#                       applies.
 #   OBJECT_ORIENTED_REVIEW_ENABLED - run the object-oriented design review
 #                       after the job (true/false). Omitted → the field is not
 #                       sent and the controller's default applies (on). The CI
@@ -152,7 +154,6 @@ PAYLOAD=$(jq -n \
     --arg base "$BASE_BRANCH" \
     --argjson protect "${PROTECT_TEST_FILES:-false}" \
     --argjson enforce "${ENFORCE_CHANGES:-false}" \
-    --argjson requirecommit "${REQUIRE_COMMITTED_CHANGE:-false}" \
     --argjson autopr "${AUTO_CREATE_PR:-false}" \
     --argjson automated true \
     --argjson createws "$CREATE_WORKSTREAM" \
@@ -162,7 +163,6 @@ PAYLOAD=$(jq -n \
         baseBranch: $base,
         protectTestFiles: $protect,
         enforceChanges: $enforce,
-        requireCommittedChange: $requirecommit,
         autoCreatePr: $autopr,
         automated: $automated,
         createWorkstreamIfMissing: $createws
@@ -222,6 +222,17 @@ if [ -n "${OBJECT_ORIENTED_REVIEW_ENABLED:-}" ]; then
     esac
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson o "$OBJECT_ORIENTED_REVIEW_ENABLED" \
         '. + {objectOrientedReviewEnabled: $o}')
+fi
+
+if [ -n "${MAX_ENFORCE_CHANGES_RETRIES:-}" ]; then
+    case "$MAX_ENFORCE_CHANGES_RETRIES" in
+        *[!0-9]*)
+            echo "ERROR: MAX_ENFORCE_CHANGES_RETRIES must be a non-negative integer (got: $MAX_ENFORCE_CHANGES_RETRIES)" >&2
+            exit 1
+            ;;
+    esac
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson m "$MAX_ENFORCE_CHANGES_RETRIES" \
+        '. + {maxEnforceChangesRetries: $m}')
 fi
 
 if [ -n "${STARTED_AFTER:-}" ]; then
