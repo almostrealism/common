@@ -538,6 +538,26 @@ def validate_case(case: dict) -> list[str]:
         else:
             errors.append(f"{cid}: milestones.{name} must be an object")
 
+    if "turns" in case:
+        turns = case["turns"]
+        if not isinstance(turns, list) or not turns:
+            errors.append(f"{cid}: 'turns' must be a non-empty list")
+        else:
+            for i, turn in enumerate(turns):
+                if not isinstance(turn, dict):
+                    errors.append(f"{cid}: turns[{i}] must be an object")
+                    continue
+                if not isinstance(turn.get("question"), str) or not turn["question"]:
+                    errors.append(f"{cid}: turns[{i}] needs a non-empty 'question'")
+                if "keywords" in turn and turn["keywords"] is not None \
+                        and not _is_string_list(turn["keywords"]):
+                    errors.append(
+                        f"{cid}: turns[{i}] 'keywords' must be a list of strings")
+                if "scripted" in turn and (not isinstance(turn["scripted"], str)
+                                           or not turn["scripted"]):
+                    errors.append(
+                        f"{cid}: turns[{i}] 'scripted' must be a non-empty string")
+
     if "answerable" in case and not isinstance(case["answerable"], bool):
         errors.append(f"{cid}: 'answerable' must be a boolean")
     for key in ("scripted", "observed_response", "memories", "now"):

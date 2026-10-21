@@ -1,0 +1,10 @@
+[
+  {
+    "id": "drain-note-1",
+    "content": "The Deploy Controller Stack workflow closes job intake and then runs drain-agent-jobs.sh, which waits until no in-flight agent jobs remain before the stack restarts.",
+    "namespace": "default",
+    "branch": "master",
+    "created_at": "2026-10-20T00:00:00Z",
+    "repo_url": "git@github.com:almostrealism/common.git"
+  }
+]
