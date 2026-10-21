@@ -1951,6 +1951,12 @@ jobs:
           BASE_BRANCH: master
           DESCRIPTION: "Study recent automated work and propose how the QA process should improve"
           PROTECT_TEST_FILES: "true"
+          # The round's contract is to leave a report under docs/qa/retrospectives/
+          # on disk. A run that surveys, records memories and messages, but writes
+          # no file commits nothing — which used to exit SUCCESS. This flag has the
+          # harness report that empty-tree exit as DEGRADED so the non-delivery is
+          # visible rather than hidden behind a green run.
+          REQUIRE_COMMITTED_CHANGE: "true"
           AUTO_CREATE_PR: "true"
           PHASE_CONFIGS: '{"primary": {"runner": "claude", "model": "opus", "effort": "max", "provider": "anthropic"}}'
         run: |

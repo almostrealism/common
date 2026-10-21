@@ -733,6 +733,25 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns whether jobs report a clean exit with nothing committed as
+     * DEGRADED rather than SUCCESS.
+     */
+    public boolean isRequireCommittedChange() {
+        return "true".equals(get("requireCommit"));
+    }
+
+    /**
+     * Sets whether a clean exit with nothing committed is reported DEGRADED.
+     * Turn it on for a job whose contract is to produce a committed change
+     * (e.g. the QA retrospective, which must leave a report on disk).
+     *
+     * @param requireCommittedChange true to report an empty-tree exit DEGRADED
+     */
+    public void setRequireCommittedChange(boolean requireCommittedChange) {
+        set("requireCommit", String.valueOf(requireCommittedChange));
+    }
+
+    /**
      * Returns the deduplication mode applied to jobs created by this factory.
      * Defaults to {@link CodingAgentJob#DEDUP_NONE} (disabled).
      *
@@ -1356,6 +1375,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
 
         job.setProtectTestFiles(isProtectTestFiles());
         job.setEnforceChanges(isEnforceChanges());
+        job.setRequireCommittedChange(isRequireCommittedChange());
         job.setDeduplicationMode(deduplicationMode);
         job.setMaxDeduplicationPasses(maxDeduplicationPasses);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
@@ -1447,6 +1467,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 this.planningDocument = GitManagedJob.base64Decode(value);
                 break;
             case "enforceChanges":
+            case "requireCommit":
                 break;
             case "runner":
                 phaseRunners.applyLegacyRunner(value);

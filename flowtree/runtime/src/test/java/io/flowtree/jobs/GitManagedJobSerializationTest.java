@@ -307,6 +307,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		original.setPlanningDocument("## Plan\nDo the thing.");
 		original.setProtectTestFiles(true);
 		original.setEnforceChanges(true);
+		original.setRequireCommittedChange(true);
 		original.setDeduplicationMode(CodingAgentJob.DEDUP_NONE);
 		original.setEnforceMavenDependencies(true);
 
@@ -321,6 +322,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		assertEquals(original.getPlanningDocument(), restored.getPlanningDocument());
 		assertTrue("protectTestFiles", restored.isProtectTestFiles());
 		assertTrue("enforceChanges", restored.isEnforceChanges());
+		assertTrue("requireCommittedChange", restored.isRequireCommittedChange());
 		assertEquals(original.getDeduplicationMode(), restored.getDeduplicationMode());
 		assertTrue("enforceMavenDependencies", restored.isEnforceMavenDependencies());
 	}
@@ -349,6 +351,24 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 			encoded.contains("branch:="));
 		assertTrue("Expected tools key in encoded output",
 			encoded.contains("tools:="));
+	}
+
+	/**
+	 * Verifies that the {@code requireCommittedChange} flag set on a
+	 * {@link CodingAgentJob.Factory} survives a full encode/decode round-trip
+	 * and is then applied to the jobs the factory configures.
+	 */
+	@Test(timeout = 30000)
+	public void factoryRequireCommittedChangeRoundTrip() {
+		CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt");
+		factory.setRequireCommittedChange(true);
+
+		CodingAgentJob.Factory restored = roundTripFactory(factory);
+		assertTrue("requireCommittedChange on factory", restored.isRequireCommittedChange());
+
+		CodingAgentJob job = (CodingAgentJob) restored.nextJob();
+		assertNotNull("factory must produce a job", job);
+		assertTrue("requireCommittedChange reaches the job", job.isRequireCommittedChange());
 	}
 
 	/**

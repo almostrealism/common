@@ -75,6 +75,12 @@ final class CodingAgentJobCodec {
         }
         sb.append("::protectTests:=").append(job.isProtectTestFiles());
         sb.append("::enforceChanges:=").append(job.isEnforceChanges());
+        // requireCommittedChange defaults to false; emit only when set so the
+        // wire stays minimal and a job that must deliver a commit keeps that
+        // contract across a dispatch to a remote agent node.
+        if (job.isRequireCommittedChange()) {
+            sb.append("::requireCommit:=true");
+        }
         // dispatchCapable defaults to false; emit only when set so the wire
         // stays minimal. Without this key the flag is dropped on any
         // encode/decode round-trip (e.g. dispatch to a remote agent node),
@@ -178,6 +184,9 @@ final class CodingAgentJobCodec {
                 return true;
             case "enforceChanges":
                 job.setEnforceChanges(Boolean.parseBoolean(value));
+                return true;
+            case "requireCommit":
+                job.setRequireCommittedChange(Boolean.parseBoolean(value));
                 return true;
             case "dispatchCapable":
                 job.setDispatchCapable(Boolean.parseBoolean(value));

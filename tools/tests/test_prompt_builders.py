@@ -330,6 +330,36 @@ class PromptBuilderTests(unittest.TestCase):
                 self.assertTrue(args)
                 self.assertIn("output", args[-1])
 
+    def test_general_review_is_scope_bounded_with_follow_up_routing(self):
+        """The auto-review prompt must bound itself to the branch's scope.
+
+        RETRO-20261019 F5: `general-review.txt` once told the reviewer to "fix
+        every issue you find" over the whole branch diff, with no boundary and
+        no route for out-of-scope work. It now carries the same "stay in scope,
+        defer the rest" shape `coverage.txt` has, routing anything broader to
+        `tracker_file_follow_up_task`.
+        """
+        text = _read(os.path.join(_PROMPT_DIR, "general-review.txt"))
+        self.assertNotIn("fix every issue you find", text)
+        self.assertIn("Stay inside this branch's scope", text)
+        self.assertIn("tracker_file_follow_up_task", text)
+
+    def test_retrospective_writes_its_artifact_before_surveying(self):
+        """The retrospective must put its report on disk before the survey.
+
+        RETRO-20261019 F1: a run that surveyed and then stalled left nothing to
+        review because the report was written only at the end. The prompt now
+        makes writing a skeleton report plus the ledger row the first action,
+        enriched as the survey proceeds.
+        """
+        text = _read(os.path.join(_PROMPT_DIR, "retrospective.txt"))
+        self.assertIn("Write your report skeleton first", text)
+        self.assertIn("survey in progress", text)
+        first = text.index("Write your report skeleton first")
+        survey = text.index("## Survey the QA rounds")
+        self.assertLess(first, survey,
+                        "the skeleton instruction must precede the survey")
+
 
 if __name__ == "__main__":
     unittest.main()

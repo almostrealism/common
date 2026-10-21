@@ -590,6 +590,13 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * Creates the event carrying the terminal status of {@code job}, before
      * its execution state is populated.
      *
+     * <p>A job that set {@link CodingAgentJob#isRequireCommittedChange()} and
+     * exited cleanly with nothing committed is reported
+     * {@link Status#DEGRADED}: its contract was to produce a committed change
+     * (the QA retrospective, for one, must leave a report on disk), so an empty
+     * working tree means it delivered nothing a person can review, and that is
+     * made visible rather than reported as success.</p>
+     *
      * @param job   the job being completed
      * @param error the exception that terminated the job, or {@code null} for normal exit
      * @return the unpopulated event
@@ -621,6 +628,13 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
         String unpublished = job.workOutcome().describeUnpublishedWork();
         if (unpublished != null) {
             return failed(job.getTaskId(), job.getTaskString(), unpublished, null);
+        }
+        // A job contracted to produce a committed change that exits cleanly with
+        // nothing committed delivered nothing a person can review (see statusFor javadoc).
+        if (job.isRequireCommittedChange() && !job.hasPublishedCommit()) {
+            return degraded(job.getTaskId(), job.getTaskString(),
+                    "This job's contract is to produce a committed change, but it exited with "
+                    + "nothing committed on " + job.getTargetBranch() + ".");
         }
         List<String> abandoned = AbandonedTestRunDetector.findAbandonedRunsForJob(
                 job.getWorkingDirectory(), job.getSessionStartedAt());

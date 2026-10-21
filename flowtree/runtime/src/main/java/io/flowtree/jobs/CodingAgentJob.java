@@ -128,6 +128,8 @@ public class CodingAgentJob extends GitManagedJob {
     private String planningDocument;
     /** Whether the job must produce at least one staged file change to succeed. */
     private boolean enforceChanges;
+    /** Whether a clean exit with nothing committed is reported DEGRADED rather than SUCCESS. */
+    private boolean requireCommittedChange;
     /** Number of times enforcement has been re-attempted after an empty commit. */
     private int enforcementAttempt;
     /** Enforcement rule name for the current correction session; {@code null} during primary runs. */
@@ -667,6 +669,11 @@ public class CodingAgentJob extends GitManagedJob {
     public boolean isCollaborative() { return collaborative; }
     /** Sets whether this job collaborates with a peer; {@code true} to announce readiness and then work from messages. */
     public void setCollaborative(boolean collaborative) { this.collaborative = collaborative; }
+
+    /** Returns whether a clean exit with nothing committed is reported DEGRADED rather than SUCCESS; default {@code false}. */
+    public boolean isRequireCommittedChange() { return requireCommittedChange; }
+    /** Sets whether a clean exit with nothing committed is reported DEGRADED; {@code true} for a job whose contract is to produce a committed change. */
+    public void setRequireCommittedChange(boolean requireCommittedChange) { this.requireCommittedChange = requireCommittedChange; }
 
     /** Returns whether the retrospective phase is active for this job; default {@code false}. */
     public boolean isRetrospectiveEnabled() { return retrospectiveEnabled; }

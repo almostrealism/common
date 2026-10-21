@@ -29,6 +29,7 @@ def workstream_submit_task(
     max_budget_usd: float = 0.0,
     protect_test_files: bool = False,
     enforce_changes: bool = False,
+    require_committed_change: bool = False,
     auto_create_pr: bool = False,
     started_after: str = "",
     required_labels: str = "",
@@ -141,6 +142,11 @@ def workstream_submit_task(
             test-integrity-check, which allows editing a test but not
             weakening it.
         enforce_changes: If true, require the agent to produce code changes.
+        require_committed_change: If true, a clean exit with nothing committed
+            is reported DEGRADED rather than SUCCESS. Use it for a job whose
+            contract is to produce a committed change — the QA retrospective,
+            which must leave a report on disk — so a run that delivers nothing
+            is visible rather than reported green.
         auto_create_pr: If true, the controller opens a pull request for the
             job's branch against its base branch when the job succeeds, using
             the job's commit message as the title and description — what the
@@ -735,6 +741,8 @@ def workstream_submit_task(
         payload["protectTestFiles"] = True
     if enforce_changes:
         payload["enforceChanges"] = True
+    if require_committed_change:
+        payload["requireCommittedChange"] = True
     if auto_create_pr:
         payload["autoCreatePr"] = True
     if started_after:

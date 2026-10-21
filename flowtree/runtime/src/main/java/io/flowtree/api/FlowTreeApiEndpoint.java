@@ -899,6 +899,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         double maxBudgetUsd = JsonFieldExtractor.extractDouble(body, "maxBudgetUsd");
         boolean protectTestFiles = JsonFieldExtractor.extractBoolean(body, "protectTestFiles");
         boolean enforceChanges = JsonFieldExtractor.extractBoolean(body, "enforceChanges");
+        boolean requireCommittedChange = JsonFieldExtractor.extractBoolean(body, "requireCommittedChange");
         String deduplicationMode = JsonFieldExtractor.extractString(body, "deduplicationMode");
         int maxDeduplicationPasses = JsonFieldExtractor.extractInt(body, "maxDeduplicationPasses");
         boolean autoCreatePr = JsonFieldExtractor.extractBoolean(body, "autoCreatePr");
@@ -952,6 +953,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Enforcement mode (require code changes or loop)
         if (enforceChanges) {
             factory.setEnforceChanges(true);
+        }
+
+        // Report a clean exit with nothing committed as DEGRADED, not SUCCESS,
+        // for a job whose contract is to produce a committed change.
+        if (requireCommittedChange) {
+            factory.setRequireCommittedChange(true);
         }
 
         // Deduplication mode (local inline session or spawn follow-up job)
@@ -1127,6 +1134,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         json.append(",\"falsificationEnabled\":")
                 .append(factory.isFalsificationEnabled());
         json.append(",\"autoCreatePr\":").append(factory.isAutoCreatePr());
+        json.append(",\"requireCommittedChange\":")
+                .append(factory.isRequireCommittedChange());
         json.append(",\"collaborative\":").append(factory.isCollaborative());
         json.append(",\"sensitiveFileProtectionEnabled\":")
                 .append(factory.isSensitiveFileProtectionEnabled());
