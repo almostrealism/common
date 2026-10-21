@@ -234,9 +234,20 @@ message describes the job's work, not the review verdict.
 The rule is assembled only when **both** review is enabled (`reviewEnabled`, on by
 default) **and** `objectOrientedReviewEnabled` is `true` (also on by default). It
 keeps its place in the rule order: after the content-protection rules and custom
-rules, before the staging and commit-message checks. Jobs decoded without the
-field — older submissions, and CI auto-resolve/auto-review jobs, which do not send
-it — run with it on.
+rules, before the staging and commit-message checks. A job decoded without the
+field — an older submission, or any hand-submitted job — runs with it on.
+
+**On for initial work, off for CI follow-ups.** The review belongs to the job
+that creates a branch's work — QA rounds, planning and task jobs, and jobs
+submitted by hand — which all leave the field unset and get the on-by-default.
+The follow-up jobs CI submits in a loop turn it off: `auto-review` (and its
+code-policy and quality-gate routes), `auto-resolve-python` and `auto-resolve`
+can each fire many times on one branch, so each sends
+`objectOrientedReviewEnabled: false` and the review does not ride along on every
+pass. Those submitters set `OBJECT_ORIENTED_REVIEW_ENABLED=false` on the trusted
+"Submit agent job" step (`tools/ci/submit-agent-job.sh` sends the field only when
+that knob is set); `tools/tests/test_oop_review_follow_up_disabled.py` pins the
+wiring.
 
 ### Via ar-manager MCP
 
