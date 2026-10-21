@@ -29,7 +29,10 @@ import org.almostrealism.raytrace.AbsorberHashSet;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -292,7 +295,7 @@ public class AbsorberHashSetTest extends TestSuiteBase {
 		assertTrue(!itr.hasNext());
 	}
 
-	/** Verifies {@link AbsorberHashSet#init} enables the shared iterator while still yielding every item. */
+	/** Verifies iteration after {@link AbsorberHashSet#init} still yields every item. */
 	@Test(timeout = 30000)
 	public void testInitEnablesSharedIterator() {
 		AbsorberHashSet set = new AbsorberHashSet();
@@ -438,8 +441,8 @@ public class AbsorberHashSetTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies removal after {@link AbsorberHashSet#init} (which enables the shared snapshot iterator)
-	 * actually shrinks the set, and that the shared iterator is refreshed to omit the removed item.
+	 * Verifies removal after {@link AbsorberHashSet#init} actually shrinks the set, and that a
+	 * later iterator omits the removed item.
 	 */
 	@Test(timeout = 30000)
 	public void testRemoveAbsorberAfterInitRefreshesIterator() {
@@ -472,8 +475,8 @@ public class AbsorberHashSetTest extends TestSuiteBase {
 
 	/**
 	 * Verifies {@link AbsorberHashSet#removeIf} honors the {@link java.util.Collection} contract after
-	 * {@link AbsorberHashSet#init} enables the shared snapshot iterator, whose own {@code remove()}
-	 * does nothing: matching items are removed and the result reports whether anything changed.
+	 * {@link AbsorberHashSet#init}: matching items are removed and the result reports whether
+	 * anything changed.
 	 */
 	@Test(timeout = 30000)
 	public void testRemoveIfAfterInit() {
@@ -490,6 +493,69 @@ public class AbsorberHashSetTest extends TestSuiteBase {
 		assertTrue(set.getLocation(b) != null);
 		assertTrue(!set.removeIf(it -> it.getAbsorber() == a));
 		assertEquals(1, set.size());
+	}
+
+	/**
+	 * Verifies the {@link java.util.Set} mutators keep their contract after {@link AbsorberHashSet#init}:
+	 * each one changes the set, later iterators reflect the change, a traversal that stops early
+	 * does not shorten the next one, and the most recently added item is tracked.
+	 */
+	@Test(timeout = 30000)
+	public void testSetMutatorsAfterInit() {
+		AbsorberHashSet set = new AbsorberHashSet();
+		StubAbsorber a = new StubAbsorber();
+		StubAbsorber b = new StubAbsorber();
+		StubAbsorber c = new StubAbsorber();
+		set.addAbsorber(a, vector(0.0, 0.0, 0.0));
+		set.addAbsorber(b, vector(1.0, 0.0, 0.0));
+		set.init();
+
+		AbsorberHashSet.StoredItem itemC = new AbsorberHashSet.StoredItem(c, vector(2.0, 0.0, 0.0));
+		assertTrue(set.add(itemC));
+		assertEquals(3, countIterated(set));
+		set.setColorBufferDimensions(6, 7, 1.0);
+		assertEquals(6, itemC.getColorBufferDimensions()[0]);
+
+		assertTrue(set.remove(itemC));
+		assertTrue(!set.remove(itemC));
+		assertEquals(2, countIterated(set));
+		assertLastAddedUnavailable(set);
+
+		List<AbsorberHashSet.StoredItem> items = new ArrayList<>(set);
+		AbsorberHashSet.StoredItem itemA = items.get(0).getAbsorber() == a ? items.get(0) : items.get(1);
+		assertTrue(set.retainAll(Collections.singleton(itemA)));
+		assertEquals(1, countIterated(set));
+		assertSame(a, ((AbsorberHashSet.StoredItem) set.iterator().next()).getAbsorber());
+
+		assertTrue(set.removeAll(Collections.singleton(itemA)));
+		assertEquals(0, countIterated(set));
+
+		set.addAbsorber(b, vector(1.0, 0.0, 0.0));
+		set.clear();
+		assertEquals(0, set.size());
+		assertEquals(0, countIterated(set));
+
+		set.addAbsorber(a, vector(0.0, 0.0, 0.0));
+		set.addAbsorber(b, vector(1.0, 0.0, 0.0));
+		Iterator itr = set.iterator();
+		itr.next();
+		itr.remove();
+		assertEquals(1, set.size());
+		assertEquals(1, countIterated(set));
+		assertTrue(itr.hasNext());
+		itr.next();
+		assertTrue(!itr.hasNext());
+	}
+
+	/** Returns the number of items yielded by a new iterator over the set. */
+	private static int countIterated(AbsorberHashSet set) {
+		int count = 0;
+		Iterator itr = set.iterator();
+		while (itr.hasNext()) {
+			itr.next();
+			count++;
+		}
+		return count;
 	}
 
 	/**
@@ -524,6 +590,50 @@ public class AbsorberHashSetTest extends TestSuiteBase {
 		int[] dims = item.getColorBufferDimensions();
 		assertEquals(2, dims[0]);
 		assertEquals(3, dims[1]);
+	}
+
+	/**
+	 * Verifies removal tracks the most recently added absorber: removing a different absorber keeps it
+	 * as the target of {@link AbsorberHashSet#setColorBufferDimensions(int, int, double)}, while removing
+	 * it (or never adding one) makes that method fail rather than silently affect nothing.
+	 */
+	@Test(timeout = 30000)
+	public void testRemovalTracksLastAdded() {
+		AbsorberHashSet set = new AbsorberHashSet();
+		assertLastAddedUnavailable(set);
+
+		StubAbsorber first = new StubAbsorber();
+		StubAbsorber last = new StubAbsorber();
+		set.addAbsorber(first, vector(0.0, 0.0, 0.0));
+		set.addAbsorber(last, vector(1.0, 0.0, 0.0));
+
+		set.removeAbsorber(first);
+		set.setColorBufferDimensions(4, 5, 1.0);
+		AbsorberHashSet.StoredItem item = (AbsorberHashSet.StoredItem) set.iterator().next();
+		assertSame(last, item.getAbsorber());
+		int[] dims = item.getColorBufferDimensions();
+		assertEquals(4, dims[0]);
+		assertEquals(5, dims[1]);
+
+		set.removeAbsorber(last);
+		assertLastAddedUnavailable(set);
+	}
+
+	/** Asserts that both most-recently-added operations reject a set with no such absorber. */
+	private void assertLastAddedUnavailable(AbsorberHashSet set) {
+		try {
+			set.setColorBufferDimensions(1, 1, 1.0);
+			fail("Expected IllegalStateException from setColorBufferDimensions");
+		} catch (IllegalStateException expected) {
+			assertTrue(expected.getMessage().contains("most recently added"));
+		}
+
+		try {
+			set.setBRDF(null);
+			fail("Expected IllegalStateException from setBRDF");
+		} catch (IllegalStateException expected) {
+			assertTrue(expected.getMessage().contains("most recently added"));
+		}
 	}
 
 	/**
