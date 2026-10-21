@@ -123,10 +123,10 @@ must still be valid for the output.
 
 ## Related Files
 
-- `ProcessDetailsFactory.java:314-325` - Count validation logic
-- `TraversalPolicy.java:861` - `isFixedCount()` for shapes
-- `CollectionProducerComputationBase.java:459` - `isFixedCount()` for computations
-- `TestFeatures.java:577` - Test harness that can trigger count mismatches
+- `ProcessDetailsFactory.java` - Count validation logic
+- `TraversalPolicy.java` - `isFixedCount()` for shapes
+- `CollectionProducerComputationBase.java` - `isFixedCount()` for computations
+- `TestFeatures.java` - Test harness that can trigger count mismatches
 
 ## Test Cases
 
