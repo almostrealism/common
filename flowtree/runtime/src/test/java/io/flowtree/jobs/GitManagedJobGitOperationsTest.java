@@ -31,6 +31,7 @@ import java.util.Comparator;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -108,6 +109,23 @@ public class GitManagedJobGitOperationsTest extends TestSuiteBase {
         assertNotEquals(0, job.executeGit("rev-parse", "--verify", "--quiet", "refs/heads/missing"));
         String output = job.executeGitWithOutput("rev-parse", "--verify", "refs/heads/missing");
         assertTrue(output, output.contains("fatal"));
+    }
+
+    /** The current branch is read from the job's working directory. */
+    @Test(timeout = 60000)
+    public void getCurrentBranchReadsTheWorkingDirectory() throws IOException, InterruptedException {
+        CodingAgentJob job = job();
+
+        assertEquals("feature/x", job.getCurrentBranch());
+    }
+
+    /** A branch is reported as existing only when it is present in the working directory. */
+    @Test(timeout = 60000)
+    public void branchExistsReflectsLocalBranches() throws IOException, InterruptedException {
+        CodingAgentJob job = job();
+
+        assertTrue(job.branchExists("feature/x"));
+        assertFalse(job.branchExists("no/such/branch"));
     }
 
     /**
