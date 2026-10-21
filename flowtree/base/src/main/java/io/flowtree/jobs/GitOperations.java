@@ -788,8 +788,8 @@ public class GitOperations implements ConsoleFeatures {
      * <p>Each line read from the process is appended followed by a {@code "\n"},
      * so the returned string always ends with a trailing newline when the
      * process produced any output, and is empty when it produced none. This is
-     * the single reader for process output shared by this class and by
-     * {@code GitCommandExecutor}; it uses no instance state and is therefore
+     * the single reader for process output, shared by every command this
+     * class runs; it uses no instance state and is therefore
      * {@code static}.</p>
      *
      * @param process the process to read from

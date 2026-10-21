@@ -353,7 +353,7 @@ public class GitOperationsTest extends TestSuiteBase {
 
     /**
      * Pins the contract of {@link GitOperations#readProcessOutput(Process)} that
-     * every internal caller and {@code GitCommandExecutor} depend on: each line
+     * every command this class runs depends on: each line
      * of the process's output is returned in order, each terminated by a
      * newline, so the reverse-chronological, multi-line output of
      * {@code git log --format=%s} round-trips as {@code two\none\n}.
@@ -383,7 +383,7 @@ public class GitOperationsTest extends TestSuiteBase {
      * Pins that {@link GitOperations#readProcessOutput(Process)} returns an empty
      * string, not {@code null}, when the process produces no output. A
      * {@code git add -- .} on a repository with nothing to stage prints nothing
-     * to stdout; this is the behaviour {@code GitCommandExecutor.executeGit}
+     * to stdout; this is the behaviour {@link GitOperations#execute(String...)}
      * relies on when it trims and logs a failing command's output.
      */
     @Test(timeout = 10000)

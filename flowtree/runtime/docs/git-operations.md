@@ -1042,9 +1042,8 @@ String branch = git.executeWithOutput("rev-parse", "--abbrev-ref", "HEAD").trim(
 All process output (stdout and stderr combined) is read through a
 `BufferedReader` in the public static `GitOperations.readProcessOutput()`
 method. The method reads line by line and joins with newline characters. It
-uses no instance state, so it is exposed as a static helper that
-`GitCommandExecutor` (in `flowtree/runtime`) reuses instead of duplicating the
-read loop.
+uses no instance state, so it is exposed as a static helper that every command
+this class runs shares instead of duplicating the read loop.
 
 ```java
 public static String readProcessOutput(Process process) throws IOException {
@@ -1145,14 +1144,14 @@ chain to apply.
 
 `GitManagedJob` still has its own package-private `executeGit()`,
 `executeGitWithOutput()`, and `executeCommandWithOutput()` methods, but they
-are now thin delegates to `GitCommandExecutor` (`flowtree/runtime/src/main/java/io/flowtree/jobs/GitCommandExecutor.java`),
-a class extracted so `GitManagedJob` stays focused on job lifecycle and
-configuration rather than process plumbing. `GitCommandExecutor` configures
-processes the same way `GitOperations` does (same working directory, same
-SSH command, same identity injection via `GIT_AUTHOR_*`/`GIT_COMMITTER_*`),
-but the two classes remain independent: `GitCommandExecutor` reads its
-working directory and identity from the `GitManagedJob` it is bound to,
-rather than holding its own copies as `GitOperations` does.
+are now thin delegates to a `GitOperations` instance built per call through the
+package-private factory `GitManagedJob.gitOperations(String workingDirectory)`.
+That factory stamps the instance with the job's task id and git identity, so
+every repository the job drives — its own working directory, each dependent
+repository, and each clone target — runs git under the same identity. A fresh
+instance is built per call, so it always reflects the job's current
+configuration (same working directory, same SSH command, same identity
+injection via `GIT_AUTHOR_*`/`GIT_COMMITTER_*`).
 
 `FileStager` defines its own `GitOperations` interface (a functional interface
 with a single `execute` method) to decouple file staging from the concrete
@@ -1162,11 +1161,10 @@ implementation.
 ### Class Hierarchy Summary
 
 ```
-GitOperations              -- Standalone process executor (reusable)
+GitOperations              -- Standalone process executor (reusable); a job
+                              builds one per call via GitManagedJob.gitOperations
 GitManagedJob              -- Abstract job with git lifecycle
   +-- ClaudeCodeJob        -- Concrete job that runs Claude Code agent
-  GitCommandExecutor       -- Process plumbing extracted from GitManagedJob;
-                              bound to one GitManagedJob instance, not reusable
 FileStager                 -- Stateless file evaluation utility
   FileStager.GitOperations -- Functional interface for git commands
 GitJobConfig               -- Immutable configuration for GitManagedJob
