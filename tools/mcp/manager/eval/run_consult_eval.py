@@ -352,9 +352,19 @@ class ScriptedModel:
 
     _PLACEHOLDER = re.compile(r"\[([DIN]):([^\]@]+)(?:@(\d+))?\]")
 
-    def __init__(self, text: str):
-        self.text = text
+    def __init__(self, text):
+        """``text`` is one canned answer, or a list of them — one per turn of a
+        multi-turn case, returned in order as the conversation advances."""
+        self._scripts = [text] if isinstance(text, str) else list(text)
+        if not self._scripts:
+            self._scripts = ["Not documented.\nBASIS: none\nCONFLICTS: none"]
+        self._turn = 0
         self.prompts: list[str] = []
+
+    @property
+    def text(self) -> str:
+        """The canned answer for the current turn (the last once exhausted)."""
+        return self._scripts[min(self._turn, len(self._scripts) - 1)]
 
     def resolve(self, evidence) -> str:
         """The script with its placeholders replaced by evidence IDs."""
@@ -375,7 +385,9 @@ class ScriptedModel:
         from inference import Synthesis, build_consult_prompt
         self.prompts.append(build_consult_prompt(
             question, evidence, extra_context, history=history))
-        return Synthesis(self.resolve(evidence), "scripted")
+        resolved = self.resolve(evidence)
+        self._turn += 1
+        return Synthesis(resolved, "scripted")
 
     def synthesize(self, prompt, system=None, max_tokens=1024, temperature=0.3):
         from inference import Synthesis
@@ -441,37 +453,47 @@ def _run_inprocess(cases: list[dict], k: int, model_for) -> dict:
             now = case.get("now", DEFAULT_EVAL_NOW)
             caller = case.get("caller", {})
             client = FixtureMemoryClient(case_memories(case))
+            turns = case_turns(case)
             runs: list[dict] = []
             for _ in range(max(1, k)):
-                # consult enforces memory-read; seed the request scope the auth
-                # middleware would normally establish before each invocation.
-                server._set_scopes(caller.get("scopes", ["memory-read"]),
-                                   label="eval")
-                with mock.patch.object(server, "_get_memory_client",
-                                       return_value=client), \
-                        mock.patch.object(server, "_get_token_workstream_id",
-                                          return_value="", create=True), \
-                        mock.patch.object(server, "_get_token_job_id",
-                                          return_value="", create=True), \
-                        mock.patch.object(server, "_get_llm",
-                                          return_value=model_for(case),
-                                          create=True), \
-                        mock.patch.object(consult_engine, "snapshot_index",
-                                          return_value=_pinned_index(
-                                              checkout_index, now)), \
-                        mock.patch.object(consult_engine, "clock",
-                                          return_value=parse_time(now) or
-                                          datetime.fromisoformat(DEFAULT_EVAL_NOW)), \
-                        mock.patch.object(consult_engine, "_branch_states",
-                                          FixedBranchStates(
-                                              case.get("branch_states"))), \
-                        mock.patch.object(consult_engine, "resolve_caller",
-                                          return_value=_caller(caller)):
-                    runs.append(server.consult(
-                        question=case["question"],
-                        keywords=case.get("keywords"),
-                        repo_url="git@github.com:almostrealism/common.git",
-                    ))
+                # One model instance per repetition, so a multi-turn scripted
+                # model returns each turn's canned answer as the conversation
+                # advances; the conversation_id threads the turns together.
+                model = model_for(case)
+                conversation_id = ""
+                last: dict = {}
+                for turn in turns:
+                    # consult enforces memory-read; seed the request scope the
+                    # auth middleware would normally establish before each call.
+                    server._set_scopes(caller.get("scopes", ["memory-read"]),
+                                       label="eval")
+                    with mock.patch.object(server, "_get_memory_client",
+                                           return_value=client), \
+                            mock.patch.object(server, "_get_token_workstream_id",
+                                              return_value="", create=True), \
+                            mock.patch.object(server, "_get_token_job_id",
+                                              return_value="", create=True), \
+                            mock.patch.object(server, "_get_llm",
+                                              return_value=model, create=True), \
+                            mock.patch.object(consult_engine, "snapshot_index",
+                                              return_value=_pinned_index(
+                                                  checkout_index, now)), \
+                            mock.patch.object(consult_engine, "clock",
+                                              return_value=parse_time(now) or
+                                              datetime.fromisoformat(DEFAULT_EVAL_NOW)), \
+                            mock.patch.object(consult_engine, "_branch_states",
+                                              FixedBranchStates(
+                                                  case.get("branch_states"))), \
+                            mock.patch.object(consult_engine, "resolve_caller",
+                                              return_value=_caller(caller)):
+                        last = server.consult(
+                            question=turn["question"],
+                            keywords=turn.get("keywords"),
+                            repo_url="git@github.com:almostrealism/common.git",
+                            conversation_id=conversation_id,
+                        )
+                    conversation_id = last.get("conversation_id", "") or conversation_id
+                runs.append(last)
             responses[case["id"]] = runs
         return responses
     finally:
@@ -498,19 +520,35 @@ def _caller(spec: dict):
                   target_branch=spec.get("target_branch", "master"))
 
 
-def scripted_answer(case: dict) -> str:
-    """The canned model answer for a case; ``Not documented.`` when the case
-    names none, which is what a model with nothing to go on should say."""
-    rel = case.get("scripted")
+def _scripted_text(rel: str) -> str:
+    """The canned answer at ``rel``; ``Not documented.`` when a turn names
+    none, which is what a model with nothing to go on should say."""
     if not rel:
         return "Not documented.\nBASIS: none\nCONFLICTS: none"
     with open(os.path.join(_EVAL_DIR, rel), encoding="utf-8") as handle:
         return handle.read()
 
 
+def case_turns(case: dict) -> list[dict]:
+    """The turns of a case as ``{question, keywords, scripted}`` dicts.
+
+    A case with a ``turns`` list is multi-turn: its turns run in order on one
+    conversation, and the last turn's response is what the case is graded on. A
+    case without ``turns`` is one turn built from its top-level question,
+    keywords and scripted answer, so every existing case runs unchanged.
+    """
+    turns = case.get("turns")
+    if isinstance(turns, list) and turns:
+        return turns
+    return [{"question": case["question"], "keywords": case.get("keywords"),
+             "scripted": case.get("scripted")}]
+
+
 def _run_scripted(cases: list[dict]) -> dict:
-    """Run every case once through the real pipeline with its canned answer."""
-    return _run_inprocess(cases, 1, lambda case: ScriptedModel(scripted_answer(case)))
+    """Run every case once through the real pipeline with its canned answers,
+    one per turn."""
+    return _run_inprocess(cases, 1, lambda case: ScriptedModel(
+        [_scripted_text(turn.get("scripted")) for turn in case_turns(case)]))
 
 
 def _run_local(cases: list[dict], k: int) -> dict:

@@ -21,9 +21,11 @@ What the index holds:
   is not mistaken for a deleted project class.
 - ``scripts`` — script basename to *every* path with that name: basenames
   such as ``entrypoint.sh`` repeat across directories.
-- ``script_facts`` — for each script, its leading comment block and the
-  literal exit codes it uses. These scripts are the documentation of their
-  own behaviour.
+- ``script_facts`` — for each script, its leading comment block, the literal
+  exit codes it uses, and its ``signals`` (the named collection constants it
+  defines — a status set, an allowlist — and the API paths it calls). These
+  scripts are the documentation of their own behaviour, and a header comment
+  only paraphrases the logic the signals state literally.
 - ``constants`` — ``static final`` fields initialised with a single string or
   numeric literal, of any visibility, keyed by name, with their owner type.
 
@@ -38,7 +40,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Optional
 
-INDEX_VERSION = 2
+INDEX_VERSION = 3
 
 # Directory names never indexed: build output and caches.
 _SKIP_DIRS = frozenset({
@@ -52,6 +54,15 @@ _SCRIPT_ROOTS = ("tools/", ".github/", "scripts/", ".claude/")
 _HEADER_CHARS = 1500
 _MAX_EXITS = 20
 _MAX_VALUE_CHARS = 200
+_MAX_SIGNAL_CHARS = 400
+
+# A named collection constant a script defines on one line: an UPPER_SNAKE name
+# bound to a ``{...}``/``[...]``/``(...)`` literal — a status set, an allowlist.
+# ``ACTIVE = {"running", "in_progress", "started", "pending", "queued"}``.
+_NAMED_COLLECTION = re.compile(
+    r"^\s*([A-Z][A-Z0-9_]{2,})\s*=\s*([\[{(][^\[\]{}()\n]*[\]})])", re.MULTILINE)
+# An API path a script calls, from a curl URL or a literal: ``/api/jobs``.
+_API_PATH = re.compile(r"/api/[\w./-]+")
 
 _JAVA_TYPE = re.compile(
     r"^\s*(?:(?:public|protected|private|abstract|static|final|sealed|"
@@ -136,6 +147,32 @@ def script_exits(text: str, suffix: str) -> list[list[int]]:
     return exits
 
 
+def script_signals(text: str) -> str:
+    """The salient logic literals of an operations script: the named
+    collection constants it defines (a status set, an allowlist) and the API
+    paths it calls, capped at :data:`_MAX_SIGNAL_CHARS`.
+
+    For a script such as ``drain-agent-jobs.sh`` these *are* its behaviour —
+    which statuses count as active, which endpoint is polled — stated
+    literally where the leading comment only paraphrases them.
+    """
+    collections: list[str] = []
+    for match in _NAMED_COLLECTION.finditer(text):
+        entry = f"{match.group(1)} = {match.group(2).strip()}"
+        if entry not in collections:
+            collections.append(entry)
+    paths: list[str] = []
+    for match in _API_PATH.finditer(text):
+        if match.group(0) not in paths:
+            paths.append(match.group(0))
+    parts: list[str] = []
+    if collections:
+        parts.append("; ".join(collections))
+    if paths:
+        parts.append("API paths: " + ", ".join(paths))
+    return " | ".join(parts)[:_MAX_SIGNAL_CHARS]
+
+
 def build(root: str, commit: str = "unknown", built_at: str = "",
           roots: Optional[list] = None) -> dict:
     """Index the tree under ``root`` (optionally only the ``roots`` beneath it).
@@ -188,7 +225,8 @@ def build(root: str, commit: str = "unknown", built_at: str = "",
             text = _read(abs_path)
             suffix = os.path.splitext(name)[1]
             script_facts[rel] = {"header": script_header(text, suffix),
-                                 "exits": script_exits(text, suffix)}
+                                 "exits": script_exits(text, suffix),
+                                 "signals": script_signals(text)}
 
     return {
         "version": INDEX_VERSION,
@@ -282,8 +320,20 @@ class SnapshotIndex:
         return list(self._types.get(name, []))
 
     def script_paths(self, basename: str) -> list[str]:
-        """Every path of a script with this file name."""
-        return list(self.data.get("scripts", {}).get(basename, []))
+        """Every path of a script with this file name.
+
+        A bare stem (no extension) resolves to a script named by adding a
+        script suffix, so a note or keyword that names ``drain-agent-jobs``
+        reaches ``drain-agent-jobs.sh``; an exact basename is matched first.
+        """
+        scripts = self.data.get("scripts", {})
+        if basename in scripts:
+            return list(scripts[basename])
+        if "." not in basename:
+            for suffix in _SCRIPT_SUFFIXES:
+                if basename + suffix in scripts:
+                    return list(scripts[basename + suffix])
+        return []
 
     def facts_for(self, mentions: list[str], limit: int = 4) -> list[dict]:
         """Index-derived facts about the scripts, types and constants that
@@ -322,6 +372,9 @@ class SnapshotIndex:
                 if fact.get("header"):
                     _add({"path": path, "line": 1, "label": "header comment",
                           "value": fact["header"]})
+                if fact.get("signals"):
+                    _add({"path": path, "line": 1, "label": "behavior",
+                          "value": fact["signals"]})
             for entry in constants.get(mention, []):
                 _add(_constant_fact(mention, entry))
             for type_path in self.type_paths(mention):
