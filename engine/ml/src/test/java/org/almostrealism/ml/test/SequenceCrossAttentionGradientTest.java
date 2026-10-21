@@ -192,6 +192,7 @@ public class SequenceCrossAttentionGradientTest extends TestSuiteBase
 	 * @param size     the number of values of the weight
 	 * @return the weight's gradient
 	 */
+	// TODO(review): dimHead is shared by qNorm/qNormBias/kNorm/kNormBias; matching by size alone relies on backward recording order, not identity
 	private static PackedCollection gradientOfSize(List<PackedCollection> recorded, int size) {
 		return recorded.stream()
 				.filter(gradient -> gradient.getShape().getTotalSize() == size)
