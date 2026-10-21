@@ -519,7 +519,8 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 					if (next == null) return new OperationList();
 
 					Producer<PackedCollection> auxOutput = auxReceptor.getReceipt();
-					// TODO(review): an aux branch that is never run (or runs after this layer) is read silently as zeros/stale data
+					// Branch not reached by this pass: read the record it fills when its model runs,
+					// which (per this method's javadoc) must be before this one.
 					if (auxOutput == null && auxInput != null) {
 						auxOutput = p(auxInput);
 					} else if (auxOutput == null) {
