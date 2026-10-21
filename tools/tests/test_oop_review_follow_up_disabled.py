@@ -1,8 +1,8 @@
 """Guard: CI follow-up jobs turn the object-oriented design review off.
 
-The object-oriented design review (``ObjectOrientedDesignRule``) runs one
-dedicated session per changed production class and is on by default at the
-controller. That is right for the job that creates a branch's work — a QA
+The object-oriented design review (``ObjectOrientedDesignRule``) spends a
+session on the changed production classes its risk gate flags and is on by
+default at the controller. That is right for the job that creates a branch's work — a QA
 round, a planning or task job, a hand-submitted job — but wrong for the
 follow-up jobs CI submits in a loop: ``auto-review`` (and its code-policy and
 quality-gate routes), ``auto-resolve-python`` and ``auto-resolve`` can each
@@ -17,8 +17,13 @@ submission, so every such step must set ``OBJECT_ORIENTED_REVIEW_ENABLED`` to
 field only when the knob is set, so every other submission path omits it and
 gets the controller's default (on).
 """
+import json
 import os
 import re
+import shutil
+import stat
+import subprocess
+import tempfile
 import unittest
 
 import yaml
@@ -100,6 +105,18 @@ class OopReviewFollowUpDisabledTest(unittest.TestCase):
             "These 'Submit agent job' steps do not set "
             "OBJECT_ORIENTED_REVIEW_ENABLED to \"false\": %s" % wrong)
 
+    def test_initial_work_submitters_keep_the_review_on(self):
+        """Workflows that submit a branch's initial work never set the knob."""
+        workflows = os.path.join(_REPO_ROOT, ".github", "workflows")
+        for name in ("verify-completion.yaml", "goal-decomposition.yaml",
+                     "master-agent-dispatch.yaml"):
+            with self.subTest(workflow=name):
+                with open(os.path.join(workflows, name)) as f:
+                    self.assertNotIn("OBJECT_ORIENTED_REVIEW_ENABLED", f.read(),
+                        "%s submits initial work, so it must leave "
+                        "OBJECT_ORIENTED_REVIEW_ENABLED unset and keep the "
+                        "controller default (on)." % name)
+
     def test_submit_agent_job_sends_the_field_only_when_set(self):
         """The knob is optional: unset means the controller default applies."""
         with open(_SUBMIT_AGENT_JOB) as f:
@@ -115,6 +132,74 @@ class OopReviewFollowUpDisabledTest(unittest.TestCase):
             "submit-agent-job.sh must send objectOrientedReviewEnabled only when "
             "OBJECT_ORIENTED_REVIEW_ENABLED is set, so every other submission "
             "path keeps the controller default (on).")
+
+
+class SubmitAgentJobPayloadTest(unittest.TestCase):
+    """Runs submit-agent-job.sh against a stub ``curl`` and reads the payload it sends."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="oop-review-submit-test-")
+        self.payload = os.path.join(self.tmp, "payload.json")
+        self.prompt = os.path.join(self.tmp, "prompt.txt")
+        with open(self.prompt, "w") as f:
+            f.write("prompt")
+        curl = os.path.join(self.tmp, "curl")
+        with open(curl, "w") as f:
+            f.write("""#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  if [ "$1" = "-d" ]; then printf '%%s' "$2" > "%s"; shift; fi
+  shift
+done
+printf '{"ok":true,"jobId":"j1"}\\n200'
+""" % self.payload)
+        os.chmod(curl, os.stat(curl).st_mode | stat.S_IXUSR)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, knob):
+        env = {k: v for k, v in os.environ.items()
+               if k != "OBJECT_ORIENTED_REVIEW_ENABLED"}
+        env.update(PATH=self.tmp + os.pathsep + env.get("PATH", ""),
+                   BRANCH="feature/x", BASE_BRANCH="master",
+                   CONTROLLER_URL="http://controller.invalid")
+        if knob is not None:
+            env["OBJECT_ORIENTED_REVIEW_ENABLED"] = knob
+        return subprocess.run(["bash", _SUBMIT_AGENT_JOB, self.prompt], env=env,
+                              capture_output=True, text=True, timeout=60)
+
+    def _sent(self):
+        with open(self.payload) as f:
+            return json.load(f)
+
+    def test_unset_knob_omits_the_field(self):
+        result = self._run(None)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("objectOrientedReviewEnabled", self._sent())
+
+    def test_empty_knob_omits_the_field(self):
+        result = self._run("")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("objectOrientedReviewEnabled", self._sent())
+
+    def test_false_is_sent_as_a_json_boolean(self):
+        result = self._run("false")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIs(False, self._sent()["objectOrientedReviewEnabled"])
+
+    def test_true_is_sent_as_a_json_boolean(self):
+        result = self._run("true")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIs(True, self._sent()["objectOrientedReviewEnabled"])
+
+    def test_an_invalid_value_submits_nothing(self):
+        for value in ("False", "0", "no", "\"false\""):
+            with self.subTest(value=value):
+                result = self._run(value)
+                self.assertEqual(1, result.returncode)
+                self.assertIn("OBJECT_ORIENTED_REVIEW_ENABLED must be true or false",
+                              result.stderr)
+                self.assertFalse(os.path.exists(self.payload))
 
 
 if __name__ == "__main__":
