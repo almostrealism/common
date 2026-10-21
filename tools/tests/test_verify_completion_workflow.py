@@ -21,15 +21,26 @@ passing pipeline:
   otherwise exfiltrate the token when the workflow is dispatched on that branch.
   So the prompt is built in a separate, token-free job and handed to the submit
   job as an artifact.
+
+The jobs themselves live in the reusable ``implement-plan.yaml``, which other
+repositories call too; ``verify-completion.yaml`` is this repository's caller.
+Their trusted checkout is the framework repository at ``framework-ref``, which
+for this repository is its own default branch.
 """
 
 import os
+import sys
 import unittest
 
 import yaml
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from test_master_agent_dispatch import controller_url  # noqa: E402
+
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "verify-completion.yaml")
+_CALLED = "./.github/workflows/implement-plan.yaml"
 _DOC = os.path.join(_REPO_ROOT, "flowtree", "runtime", "docs", "ci-integration.md")
 
 # YAML 1.1 reads the unquoted key `on` as the boolean True; PyYAML follows it.
@@ -41,9 +52,11 @@ _ON = True
 # token-bearing job runs only trusted default-branch code.
 _CONTROLLER_SCRIPTS = ("register-workstream.sh", "submit-staged-request.sh")
 
-# The trusted checkout the secret-bearing steps must run against: the repository
-# default branch, which only carries reviewed code.
-_TRUSTED_REF = "github.event.repository.default_branch"
+# The trusted checkout the secret-bearing steps must run against: the framework
+# repository at framework-ref (by default its master), which only carries
+# reviewed code, and never the dispatched branch.
+_TRUSTED_REF = "inputs.framework-ref"
+_TRUSTED_REPOSITORY = "inputs.framework-repository"
 
 
 def _workflow():
@@ -51,15 +64,35 @@ def _workflow():
         return yaml.safe_load(f)
 
 
+def _called_jobs(caller):
+    """Returns the jobs of the reusable workflow ``caller`` runs."""
+    with open(os.path.join(_REPO_ROOT, caller["uses"][2:])) as f:
+        return yaml.safe_load(f)["jobs"]
+
+
 class VerifyCompletionWorkflowTests(unittest.TestCase):
     """Structural checks over the Verify Completion workflow."""
 
     def setUp(self):
         self.workflow = _workflow()
-        self.jobs = self.workflow["jobs"]
+        self.caller = self.workflow["jobs"]["implement"]
+        self.jobs = _called_jobs(self.caller)
 
     def test_it_only_runs_when_dispatched(self):
         self.assertEqual(["workflow_dispatch"], list(self.workflow[_ON]))
+
+    def test_it_runs_the_reusable_implementation(self):
+        """This repository runs the same workflow its consumers call, and
+        hands it the service token only as an explicit secret."""
+        self.assertEqual(["implement"], list(self.workflow["jobs"]))
+        self.assertEqual(_CALLED, self.caller["uses"])
+        self.assertEqual("${{ inputs.plan_file }}", self.caller["with"]["plan-file"])
+        self.assertEqual("${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}",
+                         self.caller["secrets"]["FLOWTREE_CF_ACCESS_CLIENT_SECRET"])
+        self.assertIn("FLOWTREE_CF_ACCESS_CLIENT_ID",
+                      self.caller["with"]["cf-access-client-id"])
+        with open(os.path.join(_REPO_ROOT, _CALLED[2:])) as f:
+            self.assertEqual(["workflow_call"], list(yaml.safe_load(f)[_ON]))
 
     def test_it_submits_the_implementation_prompt(self):
         build_runs = " ".join(step.get("run", "")
@@ -107,7 +140,7 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
                 with self.subTest(job=name, step=step["name"]):
                     env = step.get("env", {})
                     self.assertNotIn("CONTROLLER_HOST", env)
-                    self.assertIn("FLOWTREE_CONTROLLER_URL", env.get("CONTROLLER_URL", ""))
+                    self.assertIn("FLOWTREE_CONTROLLER_URL", controller_url(self.caller, env))
                     self.assertIn("CF_ACCESS_CLIENT_ID", env)
                     self.assertIn("secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET",
                                   env.get("CF_ACCESS_CLIENT_SECRET", ""))
@@ -119,17 +152,18 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
         left running the dispatched branch's copy of that script."""
         checked = 0
         for name, job in self.jobs.items():
-            last_checkout_ref = None
+            last_checkout = None
             for step in job["steps"]:
                 if step.get("uses", "").startswith("actions/checkout"):
-                    last_checkout_ref = str(step.get("with", {}).get("ref", ""))
+                    last_checkout = step.get("with", {})
                 if not any(s in step.get("run", "") for s in _CONTROLLER_SCRIPTS):
                     continue
                 checked += 1
                 with self.subTest(job=name, step=step["name"]):
-                    self.assertIsNotNone(last_checkout_ref,
+                    self.assertIsNotNone(last_checkout,
                                          "secret-bearing step has no preceding checkout")
-                    self.assertIn(_TRUSTED_REF, last_checkout_ref)
+                    self.assertIn(_TRUSTED_REF, str(last_checkout.get("ref", "")))
+                    self.assertIn(_TRUSTED_REPOSITORY, str(last_checkout.get("repository", "")))
         self.assertEqual(len(_CONTROLLER_SCRIPTS), checked)
 
     def test_the_plan_file_input_is_not_interpolated_into_a_script(self):
@@ -180,17 +214,24 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
         self.assertNotIn("if", self.jobs["resolve-plan-settings"])
 
     def test_the_plan_settings_are_read_as_data_by_trusted_code(self):
-        """The settings file comes from the dispatched branch. Its files are
-        fetched with `git archive`, never checked out, and are read by the
-        default branch's resolver; the only checkout in the resolving job is
-        the trusted one."""
+        """The settings file comes from the dispatched branch. Only its plans
+        directory is checked out, into a directory of its own and without
+        credentials, and it is read by the framework's resolver: the resolver
+        runs from the trusted checkout, which is the job's working tree."""
         steps = self.jobs["resolve-plan-settings"]["steps"]
-        checkouts = [s for s in steps if str(s.get("uses", "")).startswith("actions/checkout")]
-        self.assertEqual(1, len(checkouts))
-        self.assertIn(_TRUSTED_REF, str(checkouts[0].get("with", {}).get("ref", "")))
+        checkouts = [s.get("with", {}) for s in steps
+                     if str(s.get("uses", "")).startswith("actions/checkout")]
+        self.assertEqual(2, len(checkouts))
+        trusted, data = checkouts
+        self.assertIn(_TRUSTED_REF, str(trusted.get("ref", "")))
+        self.assertIn(_TRUSTED_REPOSITORY, str(trusted.get("repository", "")))
+        self.assertNotIn("path", trusted)
+        self.assertEqual("branch-plans", data["path"])
+        self.assertEqual("${{ inputs.plans-directory }}", data["sparse-checkout"])
+        self.assertIs(False, data["persist-credentials"])
 
         resolve = next(s for s in steps if "plan_workstream_config.py" in s.get("run", ""))
-        self.assertIn("git archive FETCH_HEAD docs/plans", resolve["run"])
+        self.assertIn("branch-plans/${PLANS_DIRECTORY}", resolve["run"])
         self.assertIn("./tools/ci/plan_workstream_config.py", resolve["run"])
         self.assertEqual("plan_settings", resolve.get("id"))
 
@@ -245,9 +286,10 @@ class VerifyCompletionWorkflowTests(unittest.TestCase):
         implementation with labels nobody approved. A fetch failure must stop
         the run rather than submit the implementation without the labels."""
         steps = self.jobs["resolve-plan-settings"]["steps"]
+        data = next(s for s in steps
+                    if s.get("with", {}).get("path") == "branch-plans")
+        self.assertEqual("${{ github.sha }}", data["with"]["ref"])
         resolve = next(s for s in steps if "plan_workstream_config.py" in s.get("run", ""))
-        self.assertEqual("${{ github.sha }}", resolve["env"]["DISPATCHED_SHA"])
-        self.assertIn('origin "$DISPATCHED_SHA"', resolve["run"])
         self.assertNotIn("refs/heads/", resolve["run"])
         self.assertIn("exit 1", resolve["run"])
 

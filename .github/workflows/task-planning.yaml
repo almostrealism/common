@@ -1,0 +1,327 @@
+name: "Task Planning"
+
+# The task-planning round of goal-driven release automation, as a reusable
+# workflow. It plans the next ready tracker task of the release the calling
+# repository's default branch is building: claims the task, creates a
+# project/task-<timestamp> branch, and submits an agent that writes a plan for
+# it and opens the pull request. It never implements anything; that starts by
+# hand, with the Implement Plan workflow, once a person has approved the plan.
+#
+# This repository calls it from Master Agent Dispatch on every merge to
+# master; another repository calls it the same way from its own workflow, so
+# both run one implementation:
+#
+#   on:
+#     push:
+#       branches: [master]
+#     workflow_dispatch:
+#   jobs:
+#     plan-release-task:
+#       uses: almostrealism/common/.github/workflows/task-planning.yaml@master
+#       permissions:
+#         contents: write
+#         pull-requests: write
+#       with:
+#         project: "<tracker project>"
+#         version-file: version.txt
+#         cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+#       secrets:
+#         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+#
+# The round is gated three ways, in order: no task-planning round already in
+# progress (the shared cadence gate on project/task- branches), room in the
+# open-PR backlog (max-open-prs, since every plan competes for one reviewer),
+# and a claimable task in the release (GET /api/tracker/claimable on the
+# controller, which CI can reach and the tracker cannot be reached from).
+# With no claimable task nothing is created: no branch, no workstream, no
+# agent job. `force` bypasses the first two gates but never the third, since
+# without a task there is nothing to plan.
+#
+# Once the branch and workstream exist, CI claims the task for the round
+# (POST /api/tracker/claim, tools/ci/tracker-claim.sh), which links it to the
+# workstream; the claim is atomic, so two rounds never take the same task.
+# That link is also all the tracker permission the agent needs: it may edit
+# the task linked to its own workstream, and file anything else it finds as a
+# backlog task. The workstream holds no tracker role. The prompt names the
+# claimed task. If another round took the last task between the claimable
+# gate and the claim, nothing is submitted and the branch is deleted again
+# (an unused branch would hold off the next round for PR_GRACE_HOURS); its
+# workstream is archived by the next round.
+#
+# Trust: a plain checkout inside a called workflow fetches the *caller's*
+# repository. Every script here therefore runs from an explicit checkout of
+# the framework repository at framework-ref, never from the caller's tree. The
+# caller's repository is checked out at its default branch only to resolve the
+# release and to create the round's branch.
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: "Tracker project of the calling repository; the release is \"<project> <version>\""
+        required: true
+        type: string
+      version-file:
+        description: "File holding the version the default branch is building; a pom.xml is read as its project version, anything else as plain text"
+        required: false
+        default: "pom.xml"
+        type: string
+      max-open-prs:
+        description: "Above this many open pull requests against the default branch, no round starts"
+        required: false
+        default: 7
+        type: number
+      force:
+        description: "\"true\" starts a round even when one is in progress or the backlog is full; a claimable task is still required"
+        required: false
+        default: "false"
+        type: string
+      framework-repository:
+        description: "The framework repository, owner/name: where the scripts and prompts come from"
+        required: false
+        default: "almostrealism/common"
+        type: string
+      framework-ref:
+        description: "Framework branch the scripts and prompts are run from"
+        required: false
+        default: "master"
+        type: string
+      controller-url:
+        description: "FlowTree controller base URL"
+        required: false
+        default: "https://flowtree.almostrealism.ai"
+        type: string
+      cf-access-client-id:
+        description: "Cloudflare Access service token client ID for the controller"
+        required: false
+        default: ""
+        type: string
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET:
+        description: "Cloudflare Access service token client secret for the controller"
+        required: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize so two merges landing together cannot both pass the gate.
+    concurrency:
+      group: task-planning-${{ github.repository }}
+      cancel-in-progress: false
+
+    env:
+      # The tracker project this repository's tasks belong to.
+      TRACKER_PROJECT: ${{ inputs.project }}
+      MAX_OPEN_PRS: ${{ inputs.max-open-prs }}
+      FRAMEWORK: ${{ github.workspace }}/.task-planning/framework
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The trusted copy of every script and prompt this job runs.
+      - name: Checkout the framework
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.framework-repository }}
+          ref: ${{ inputs.framework-ref }}
+          path: .task-planning/framework
+          persist-credentials: false
+
+      # The release is the one the default branch is building: the version in
+      # the version file. A task filed against a later release waits until the
+      # default branch's version reaches it.
+      - name: Resolve the release
+        id: release
+        env:
+          VERSION_FILE: ${{ inputs.version-file }}
+          # The release of this project is all that is needed: naming it as
+          # its own framework keeps the script from reading a framework pin.
+          FRAMEWORK_PROJECT: ${{ inputs.project }}
+        run: |
+          # Only the release is used here; the script's notice about a release
+          # plan concerns goal decomposition, so its stdout is not shown.
+          SCOPE=$(bash "$FRAMEWORK/tools/ci/resolve-release-scope.sh")
+          RELEASE=$(echo "$SCOPE" | sed -n 's/^release=//p')
+          echo "::notice::Planning tasks of release '${RELEASE}'"
+
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: bash "$FRAMEWORK/tools/ci/automated-intake.sh"
+
+      # BRANCH_PREFIX is set on this step rather than the job so the QA-job
+      # checks in tools/tests/test_master_agent_dispatch.py do not claim it.
+      - name: Check for a task-planning round in progress
+        id: decide
+        if: steps.intake.outputs.open == 'true'
+        env:
+          BRANCH_PREFIX: "project/task-"
+          MIN_INTERVAL_DAYS: "0"
+          PR_GRACE_HOURS: "24"
+          FORCE: ${{ inputs.force }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash "$FRAMEWORK/tools/ci/qa-cadence.sh"
+
+      # Retire the task-planning rounds that came before this one. Once the gate
+      # above has found no project/task-* round in progress, each earlier one has
+      # been merged, closed or abandoned; an approved plan being implemented
+      # keeps its pull request open, so the gate stops the run before this.
+      # A forced run skips that check, so it archives nothing. Archiving is
+      # reversible.
+      - name: Archive previous rounds
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH_PREFIX: "project/task-"
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: bash "$FRAMEWORK/tools/ci/archive-stale-workstreams.sh"
+
+      - name: Check the open PR backlog
+        id: backlog
+        if: steps.decide.outputs.run == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ inputs.force }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: bash "$FRAMEWORK/tools/ci/open-pr-backlog.sh"
+
+      - name: Check for a claimable task
+        id: claimable
+        if: steps.backlog.outputs.needs_new_branch == 'true'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          TRACKER_RELEASE: ${{ steps.release.outputs.release }}
+        run: bash "$FRAMEWORK/tools/ci/tracker-claimable.sh"
+
+      - name: Create task-planning branch
+        if: steps.claimable.outputs.run == 'true'
+        id: new_branch
+        run: |
+          BRANCH_NAME="project/task-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        id: register
+        if: steps.claimable.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
+
+      # Claims the task this round plans and links it to the workstream. The
+      # task's text stays in a file; only its id and the file's path are
+      # step outputs.
+      - name: Claim the task
+        id: claim
+        if: steps.claimable.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          TRACKER_RELEASE: ${{ steps.release.outputs.release }}
+          WORKSTREAM_ID: ${{ steps.register.outputs.workstream_id }}
+        run: bash "$FRAMEWORK/tools/ci/tracker-claim.sh"
+
+      # Another round took the last task after the claimable gate counted it.
+      # The branch was created for nothing, and left in place it would read as
+      # a round in progress and hold off the next one for PR_GRACE_HOURS.
+      - name: Remove the unused branch
+        if: steps.claimable.outputs.run == 'true' && steps.claim.outputs.claimed != 'true'
+        env:
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+        run: |
+          echo "::notice::No task was claimed — submitting nothing and deleting ${BRANCH}."
+          git push origin --delete "$BRANCH"
+
+      # The title and description are read from the claimed task's file here,
+      # not passed as step outputs, and reach the builder only through the
+      # environment.
+      - name: Build task-planning prompt
+        if: steps.claimable.outputs.run == 'true' && steps.claim.outputs.claimed == 'true'
+        env:
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          TRACKER_RELEASE: ${{ steps.release.outputs.release }}
+          TASK_ID: ${{ steps.claim.outputs.task_id }}
+          TASK_FILE: ${{ steps.claim.outputs.task_file }}
+        run: |
+          TASK_TITLE=$(jq -r '(.title // "") | gsub("^\\s+|\\s+$"; "") | if . == "" then "(untitled)" else . end' "$TASK_FILE")
+          TASK_DESCRIPTION=$(jq -r '(.description // "") | gsub("^\\s+|\\s+$"; "") | if . == "" then "(The task has no description.)" else . end' "$TASK_FILE")
+          export TASK_TITLE TASK_DESCRIPTION
+          bash "$FRAMEWORK/tools/ci/prompts/build-task-planning-prompt.sh" "${{ runner.temp }}/agent-prompt.txt"
+
+      # No model, runner or effort settings: the round takes the workspace
+      # defaults.
+      - name: Submit task-planning agent job
+        if: steps.claimable.outputs.run == 'true' && steps.claim.outputs.claimed == 'true'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          DESCRIPTION: "Plan the next release task"
+          AUTO_CREATE_PR: "true"
+          PROTECT_TEST_FILES: "false"
+        run: bash "$FRAMEWORK/tools/ci/submit-agent-job.sh" "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        env:
+          RELEASE: ${{ steps.release.outputs.release }}
+          INTAKE: ${{ steps.intake.outputs.open }}
+          DECIDE: ${{ steps.decide.outputs.reason }}
+          OPEN_PRS: ${{ steps.backlog.outputs.open_prs }}
+          CLAIMABLE: ${{ steps.claimable.outputs.claimable }}
+          CLAIMED: ${{ steps.claim.outputs.claimed }}
+          TASK_ID: ${{ steps.claim.outputs.task_id }}
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+        run: |
+          {
+            echo "## Task Planning"
+            echo ""
+            echo "**Release:** ${RELEASE:-unknown}"
+            echo "**Automated intake open:** ${INTAKE:-not checked}"
+            echo "**Round in progress check:** ${DECIDE:-not run}"
+            echo "**Open PRs:** ${OPEN_PRS:-not checked} (limit ${MAX_OPEN_PRS})"
+            echo "**Claimable tasks:** ${CLAIMABLE:-not checked}"
+            echo "**Claimed task:** ${TASK_ID:-none}"
+            echo ""
+            if [ "$CLAIMED" = "true" ]; then
+              echo "Created \`$BRANCH\`, claimed task ${TASK_ID} for it and submitted an agent job to plan it."
+            elif [ -n "$BRANCH" ]; then
+              echo "No task-planning round started: no task could be claimed, so \`$BRANCH\` was deleted again."
+            elif [ "$INTAKE" != "true" ]; then
+              echo "No task-planning round started: the controller is not accepting automated jobs, or could not be asked."
+            else
+              echo "No task-planning round started."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

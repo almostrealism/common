@@ -1,0 +1,167 @@
+name: "Plan Review"
+
+# The review a plan branch gets before anyone approves it, as a reusable
+# workflow for repositories that do not run this repository's full pipeline.
+# When every change on a branch is documentation — which is what a plan
+# branch is until its plan is approved — it submits an agent that reviews the
+# documents and improves them, and never implements the plan. Implementation
+# starts by hand, with the Implement Plan workflow, once a person has
+# approved it. A branch that changes anything else is left to the calling
+# repository's own review.
+#
+# In this repository the same review is a route of auto-review in
+# analysis.yaml, which chooses between it and the reviews that depend on the
+# build and the quality gates; both send the same prompt
+# (tools/ci/prompts/docs-review.txt).
+#
+# A consumer's caller runs it for every pull request against its default
+# branch, the way analysis.yaml does here:
+#
+#   on:
+#     pull_request:
+#       branches: [master]
+#   jobs:
+#     review:
+#       uses: almostrealism/common/.github/workflows/plan-review.yaml@master
+#       permissions:
+#         contents: read
+#       with:
+#         cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+#       secrets:
+#         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+#
+# Trust: the branch is read only as data, in a job that never holds the
+# controller token (detect). The job that holds the token (review) checks out
+# nothing but the framework repository at framework-ref, and runs only its
+# scripts and prompt templates.
+
+on:
+  workflow_call:
+    inputs:
+      framework-repository:
+        description: "The framework repository, owner/name: where the scripts and prompts come from"
+        required: false
+        default: "almostrealism/common"
+        type: string
+      framework-ref:
+        description: "Framework branch the scripts and prompts are run from"
+        required: false
+        default: "master"
+        type: string
+      controller-url:
+        description: "FlowTree controller base URL"
+        required: false
+        default: "https://flowtree.almostrealism.ai"
+        type: string
+      cf-access-client-id:
+        description: "Cloudflare Access service token client ID for the controller"
+        required: false
+        default: ""
+        type: string
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET:
+        description: "Cloudflare Access service token client secret for the controller"
+        required: false
+
+jobs:
+  # ── Decide whether the branch is documentation only (token-free) ───
+  detect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      docs_only: ${{ steps.docs-check.outputs.docs_only }}
+      branch: ${{ steps.event.outputs.branch }}
+      base_branch: ${{ steps.event.outputs.base_branch }}
+      head_sha: ${{ steps.event.outputs.head_sha }}
+      started_at: ${{ steps.event.outputs.started_at }}
+
+    steps:
+      # The branch, its base and its head come from the pull request when
+      # there is one, and from the push otherwise. A newer review supersedes
+      # this one from the time it started.
+      - name: Resolve the branch
+        id: event
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          BASE_BRANCH: ${{ github.base_ref || github.event.repository.default_branch }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          {
+            echo "branch=${BRANCH}"
+            echo "base_branch=${BASE_BRANCH}"
+            echo "head_sha=${HEAD_SHA}"
+            echo "started_at=$(date +%s000)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.event.outputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check for docs-only changes
+        id: docs-check
+        env:
+          BASE_BRANCH: ${{ steps.event.outputs.base_branch }}
+          HEAD_SHA: ${{ steps.event.outputs.head_sha }}
+        run: |
+          # docs/ is fixed: the review prompt promises the agent that every
+          # change is under it, and confines the agent's own edits to it.
+          CHANGED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}...${HEAD_SHA}" || true)
+          NON_DOCS=$(echo "$CHANGED_FILES" | grep -v '^docs/' || true)
+          if [ -n "$CHANGED_FILES" ] && [ -z "$NON_DOCS" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::All changes are under docs/ — submitting the docs review"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::The branch changes more than docs/ — no plan review"
+          fi
+
+  # ── Submit the review (trusted) ────────────────────────────────────
+  review:
+    needs: [detect]
+    if: needs.detect.outputs.docs_only == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.framework-repository }}
+          ref: ${{ inputs.framework-ref }}
+          persist-credentials: false
+
+      - name: Build prompt (docs-only review)
+        env:
+          BRANCH: ${{ needs.detect.outputs.branch }}
+          BASE_BRANCH: ${{ needs.detect.outputs.base_branch }}
+          COMMIT_SHA: ${{ needs.detect.outputs.head_sha }}
+        run: bash ./tools/ci/prompts/build-docs-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Submit agent job
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ needs.detect.outputs.branch }}
+          BASE_BRANCH: ${{ needs.detect.outputs.base_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          STARTED_AFTER: ${{ needs.detect.outputs.started_at }}
+          DESCRIPTION: "Review docs changes"
+          PROTECT_TEST_FILES: "false"
+        run: bash ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        env:
+          BRANCH: ${{ needs.detect.outputs.branch }}
+        run: |
+          {
+            echo "## Plan Review"
+            echo ""
+            echo "**Docs-only change** on \`${BRANCH}\` — submitted a job to review the documents (it does not implement a plan)."
+          } >> "$GITHUB_STEP_SUMMARY"

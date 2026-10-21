@@ -191,8 +191,8 @@ the base, and any job in it can read a repository secret, so a branch that edits
 `analysis.yaml` can reach `FLOWTREE_CF_ACCESS_CLIENT_SECRET` (as it can through
 `register-workstream`). `verify-completion.yaml` has the same exposure by a
 different route: `workflow_dispatch` runs the workflow file from the dispatched
-branch, so its default-branch checkouts protect the secret from the branch's
-scripts but not from the branch's edit to that YAML. Moving the submission into
+branch, so the framework checkouts in the `implement-plan.yaml` it calls protect
+the secret from the branch's scripts but not from the branch's edit to that YAML. Moving the submission into
 a reusable workflow on the default branch would not close this, because the
 branch's caller YAML still decides which jobs receive the secret; closing it
 needs the secret scoped so that a branch's workflow cannot read it at all.
@@ -927,8 +927,10 @@ skipped that check and an approved plan may still be being implemented on its
 workstream.
 
 `plan-release-task` plans the next ready tracker task of the release master is
-building (`<TRACKER_PROJECT> <root pom.xml version>`), beside the free-form
-round rather than instead of it. It is gated three ways, in order: no
+building (`Common <root pom.xml version>`), beside the free-form round rather
+than instead of it. It has no steps of its own: it calls the reusable
+`task-planning.yaml` (see below), the same workflow other repositories call for
+their own tracker projects, so what is described here is that workflow's job. It is gated three ways, in order: no
 `project/task-*` round in progress (`qa-cadence.sh`, same settings as above),
 room in the backlog (`tools/ci/open-pr-backlog.sh`, which `plan-next-task` uses
 too, with the same `MAX_OPEN_PRS`), and a claimable task
@@ -1006,7 +1008,7 @@ follow-up a person opens from an accepted proposal; it is one of the prefixes
 the survey covers (`QA_PREFIXES`), and a person — never a job — creates it.
 
 Each job carries its **own** `concurrency` group (`project-manager`,
-`quality-assurance`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
+`task-planning`, `quality-assurance`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
 `performance-qa`, `pdsl-qa`, `qa-retrospective`, none cancelling in progress), so they serialize
 independently rather than queueing behind one another. Workflow-level
 concurrency would couple them — do not add one.
@@ -1025,8 +1027,8 @@ alone.
 file or the input breaks that tool — update it in the same change.
 
 The policy this reflects: **one workflow per lifecycle event**, with two
-deliberate exemptions. (A reusable workflow, such as `goal-decomposition.yaml`, has
-no lifecycle event of its own — it runs when another workflow calls it — so the
+deliberate exemptions. (A reusable workflow, such as `goal-decomposition.yaml` or
+`task-planning.yaml`, has no lifecycle event of its own — it runs when another workflow calls it — so the
 policy does not apply to it.) `workflow_dispatch`-only workflows stay separate because
 dispatch inputs are per-workflow and merging them produces one form of mostly
 inert fields (`Deploy Controller Stack` is triggered by hand often enough to
@@ -1072,6 +1074,45 @@ reach the workflow as inputs; its defaults describe this repository's own layout
 `tools/tests/test_goal_decomposition.py` pins the trigger, the default-branch
 guard, the script trust rule, the intake ordering, the planner role, the
 prompt's tool use and its variables.
+
+### The other reusable workflows: `Task Planning`, `Implement Plan`, `Plan Review`
+
+Together with `Goal Decomposition` these give another repository the whole
+plan-then-implement pipeline for its own tracker project. Each is triggered only
+by `workflow_call`, follows the same trust rule (every script and prompt
+template from an explicit checkout of this repository at `framework-ref`,
+`persist-credentials: false`; the controller URL and client ID as inputs, the
+client secret as a declared secret), and describes its caller in its header.
+
+- **`task-planning.yaml`** is the task-planning round described under `Master
+  Agent Dispatch` above, parameterised by tracker project and version file (a
+  `pom.xml` is read as its project version, anything else as a plain version
+  string, by `resolve-release-scope.sh` with the caller's project as its own
+  framework). `plan-release-task` calls it with `project: Common`, so this
+  repository runs exactly what its consumers run.
+- **`implement-plan.yaml`** is Verify Completion's work: detect the plan,
+  resolve the plan's workstream settings in a token-free job, register the
+  workstream, build the prompt in a token-free job and submit it from a job
+  that runs only `submit-staged-request.sh`. Every one of its jobs checks out
+  this repository, never the dispatched branch's scripts; the branch is read
+  only as data (its changed file names, and a sparse checkout of its plans
+  directory). `verify-completion.yaml` is this repository's caller and keeps
+  its name and `plan_file` input for the `project_verify_branch` MCP tool.
+  Because the prompt templates now come from `framework-ref`, a branch that
+  edits `verify-completion.txt` is implemented with master's copy of it.
+- **`plan-review.yaml`** sends the docs-only review (`docs-review.txt`) to a
+  branch whose every change is under `docs/`, for a repository that does not run
+  this pipeline. This repository does not call it: here the same review is the
+  docs-only route of `auto-review`, which chooses it ahead of the reviews that
+  depend on the build and the quality gates. Its branch is read in a token-free
+  `detect` job; the `review` job that holds the token checks out only this
+  repository.
+
+`tools/tests/test_reusable_workflows.py` pins the trust rule for all four, and
+runs the release and docs-only steps for real. `test_master_agent_dispatch.py`,
+`test_automated_intake.py` and `test_verify_completion_workflow.py` follow a
+caller job into the workflow it calls, so their checks still apply to the steps
+that run.
 
 ### What the `Cancel Merged PR Runs` workflow does
 
