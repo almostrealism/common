@@ -387,17 +387,125 @@ public class AbsorberHashSetTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies {@link AbsorberHashSet#removeAbsorber(Absorber)} leaves the set size unchanged because
-	 * a {@link AbsorberHashSet.StoredItem} never equals a bare absorber (a pre-existing quirk).
+	 * Verifies {@link AbsorberHashSet#removeAbsorber(Absorber)} removes only the stored item wrapping
+	 * the given absorber and reports the remaining size, and that removing an absorber that is not a
+	 * member leaves the set unchanged.
 	 */
 	@Test(timeout = 30000)
-	public void testRemoveAbsorberByReferenceIsNoOp() {
+	public void testRemoveAbsorberByReference() {
 		AbsorberHashSet set = new AbsorberHashSet();
 		StubAbsorber a = new StubAbsorber();
+		StubAbsorber b = new StubAbsorber();
 		set.addAbsorber(a, vector(0.0, 0.0, 0.0));
+		set.addAbsorber(b, vector(1.0, 0.0, 0.0));
 
 		assertEquals(1, set.removeAbsorber(a));
+		assertNull(set.getLocation(a));
+		assertTrue(set.getLocation(b) != null);
+
+		assertEquals(1, set.removeAbsorber(new StubAbsorber()));
+		assertEquals(0, set.removeAbsorber(b));
+		assertEquals(0, set.size());
+	}
+
+	/**
+	 * Verifies {@link AbsorberHashSet#removeAbsorbers(double[], double)} removes every absorber within
+	 * the radius (inclusive of the boundary) without failing mid-iteration, returns the number
+	 * removed, keeps absorbers outside the radius, and leaves the caller's center array unmodified.
+	 */
+	@Test(timeout = 30000)
+	public void testRemoveAbsorbersWithinRadius() {
+		AbsorberHashSet set = new AbsorberHashSet();
+		StubAbsorber near = new StubAbsorber();
+		StubAbsorber edge = new StubAbsorber();
+		StubAbsorber far = new StubAbsorber();
+		set.addAbsorber(near, vector(0.5, 0.0, 0.0));
+		set.addAbsorber(edge, vector(0.0, 2.0, 0.0));
+		int total = set.addAbsorber(far, vector(0.0, 0.0, 5.0));
+
+		assertEquals(0, set.removeAbsorbers(new double[] { 20.0, 20.0, 20.0 }, 1.0));
+		assertEquals(total, set.size());
+
+		double[] center = { 0.0, 0.0, 0.0 };
+		assertEquals(total - 1, set.removeAbsorbers(center, 2.0));
+		assertEquals(0.0, center[0], 0.0);
+		assertEquals(0.0, center[1], 0.0);
+		assertEquals(0.0, center[2], 0.0);
 		assertEquals(1, set.size());
+		assertNull(set.getLocation(near));
+		assertNull(set.getLocation(edge));
+		assertTrue(set.getLocation(far) != null);
+	}
+
+	/**
+	 * Verifies removal after {@link AbsorberHashSet#init} (which enables the shared snapshot iterator)
+	 * actually shrinks the set, and that the shared iterator is refreshed to omit the removed item.
+	 */
+	@Test(timeout = 30000)
+	public void testRemoveAbsorberAfterInitRefreshesIterator() {
+		AbsorberHashSet set = new AbsorberHashSet();
+		StubAbsorber a = new StubAbsorber();
+		StubAbsorber b = new StubAbsorber();
+		set.addAbsorber(a, vector(0.0, 0.0, 0.0));
+		set.addAbsorber(b, vector(1.0, 0.0, 0.0));
+		set.init();
+
+		int before = 0;
+		Iterator snapshot = set.iterator();
+		while (snapshot.hasNext()) {
+			snapshot.next();
+			before++;
+		}
+		assertEquals(2, before);
+
+		assertEquals(1, set.removeAbsorber(a));
+
+		int count = 0;
+		Iterator itr = set.iterator();
+		while (itr.hasNext()) {
+			AbsorberHashSet.StoredItem item = (AbsorberHashSet.StoredItem) itr.next();
+			assertSame(b, item.getAbsorber());
+			count++;
+		}
+		assertEquals(1, count);
+	}
+
+	/**
+	 * Verifies {@link AbsorberHashSet#removeIf} honors the {@link java.util.Collection} contract after
+	 * {@link AbsorberHashSet#init} enables the shared snapshot iterator, whose own {@code remove()}
+	 * does nothing: matching items are removed and the result reports whether anything changed.
+	 */
+	@Test(timeout = 30000)
+	public void testRemoveIfAfterInit() {
+		AbsorberHashSet set = new AbsorberHashSet();
+		StubAbsorber a = new StubAbsorber();
+		StubAbsorber b = new StubAbsorber();
+		set.addAbsorber(a, vector(0.0, 0.0, 0.0));
+		set.addAbsorber(b, vector(1.0, 0.0, 0.0));
+		set.init();
+
+		assertTrue(set.removeIf(it -> it.getAbsorber() == a));
+		assertEquals(1, set.size());
+		assertNull(set.getLocation(a));
+		assertTrue(set.getLocation(b) != null);
+		assertTrue(!set.removeIf(it -> it.getAbsorber() == a));
+		assertEquals(1, set.size());
+	}
+
+	/**
+	 * Verifies {@link AbsorberHashSet.StoredItem#isWithin(double[], double)} includes the boundary,
+	 * excludes points beyond the radius, and leaves the center array unmodified.
+	 */
+	@Test(timeout = 30000)
+	public void testStoredItemIsWithin() {
+		AbsorberHashSet.StoredItem item = new AbsorberHashSet.StoredItem(new StubAbsorber(), vector(0.0, 3.0, 4.0));
+		double[] center = { 0.0, 0.0, 0.0 };
+
+		assertTrue(item.isWithin(center, 5.0));
+		assertTrue(!item.isWithin(center, 4.9));
+		assertEquals(0.0, center[0], 0.0);
+		assertEquals(0.0, center[1], 0.0);
+		assertEquals(0.0, center[2], 0.0);
 	}
 
 	/**

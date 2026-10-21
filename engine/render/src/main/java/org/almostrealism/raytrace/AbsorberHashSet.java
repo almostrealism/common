@@ -62,6 +62,7 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * An {@link AbsorberHashSet} is an implementation of {@link AbsorberSet}
@@ -161,6 +162,20 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		 * @param listener The listener to notify on buffer updates
 		 */
 		public void setBufferListener(BufferListener listener) { this.listener = listener; }
+
+		/**
+		 * Returns whether this item's position lies within the given radius of a center point.
+		 * The center is left unchanged.
+		 *
+		 * @param center The center point, as {x, y, z}
+		 * @param radius The maximum distance from the center
+		 * @return True if the distance from the center to this item's position is at most the radius
+		 */
+		public boolean isWithin(double[] center, double radius) {
+			// VectorMath.distance overwrites its first argument, so the freshly evaluated
+			// position is passed first to keep the caller's center intact
+			return VectorMath.distance(this.position.get().evaluate().toArray(), center) <= radius;
+		}
 
 		/**
 		 * Initializes or replaces this item's color buffer with the specified dimensions and scale.
@@ -410,19 +425,9 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 
 	@Override
 	public int removeAbsorbers(double[] x, double radius) {
-		Iterator itr = this.iterator();
-		int tot = 0;
-		
-		while (itr.hasNext()) {
-			StoredItem it = (StoredItem) itr.next();
-			
-			if (VectorMath.distance(x, it.position.get().evaluate().toArray()) <= radius) {
-				this.remove(it);
-				tot++;
-			}
-		}
-		
-		return tot;
+		int before = this.size();
+		this.removeIf(it -> it.isWithin(x, radius));
+		return before - this.size();
 	}
 
 	/**
@@ -433,15 +438,36 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	 */
 	@Override
 	public int removeAbsorber(Absorber a) {
-		Iterator itr = this.iterator();
-		
-		while (itr.hasNext()) {
-			StoredItem it = (StoredItem) itr.next();
-			if (it.equals(a)) this.remove(it);
-			this.notifySetListeners();
-		}
-		
+		this.removeIf(it -> it.getAbsorber() == a);
 		return this.size();
+	}
+
+	/**
+	 * Removes every {@link StoredItem} matching the given condition, notifying the set listeners
+	 * once if anything was removed. The inherited implementation cannot be used, because it
+	 * removes through {@link #iterator()}, which may return a shared snapshot whose
+	 * {@code remove()} does nothing; the underlying {@link HashSet} iterator is used instead.
+	 *
+	 * @param filter The condition an item must satisfy to be removed
+	 * @return True if any item was removed
+	 */
+	@Override
+	public boolean removeIf(Predicate<? super StoredItem> filter) {
+		Iterator<StoredItem> itr = super.iterator();
+		boolean removed = false;
+
+		while (itr.hasNext()) {
+			StoredItem it = itr.next();
+
+			if (filter.test(it)) {
+				itr.remove();
+				if (it == this.lastAdded) this.lastAdded = null;
+				removed = true;
+			}
+		}
+
+		if (removed) this.notifySetListeners();
+		return removed;
 	}
 	
 	/**
