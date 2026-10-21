@@ -1356,19 +1356,22 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     // ==================== Git Utilities ====================
 
     /**
-     * Runs git and other subprocess commands for this job. Created lazily so
-     * that jobs which never issue a git command never pay for one.
-     */
-    private GitCommandExecutor commandExecutor;
-
-    /**
-     * Returns the lazily-created {@link GitCommandExecutor} for this job.
+     * Returns a {@link GitOperations} that runs commands in
+     * {@code workingDirectory} under this job's task id and git identity.
+     * Every repository this job drives — its own working directory, each
+     * dependent repository, a clone target — goes through an instance from
+     * here, so all of them run git under the same identity. A new instance is
+     * built per call, so it always reflects the job's current configuration.
      *
-     * @return the command executor
+     * @param workingDirectory the directory to run commands in; {@code null}
+     *                         uses the JVM's current working directory
+     * @return git operations bound to the directory and this job's identity
      */
-    private GitCommandExecutor commandExecutor() {
-        if (commandExecutor == null) commandExecutor = new GitCommandExecutor(this);
-        return commandExecutor;
+    GitOperations gitOperations(String workingDirectory) {
+        GitOperations git = new GitOperations(workingDirectory, getTaskId());
+        git.setGitUserName(getGitUserName());
+        git.setGitUserEmail(getGitUserEmail());
+        return git;
     }
 
     /**
@@ -1379,7 +1382,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the git command is interrupted
      */
     String getCurrentBranch() throws IOException, InterruptedException {
-        return executeGitWithOutput("rev-parse", "--abbrev-ref", "HEAD").trim();
+        return gitOperations(getWorkingDirectory()).getCurrentBranch();
     }
 
     /**
@@ -1421,13 +1424,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if a git command is interrupted
      */
     boolean branchExists(String branch) throws IOException, InterruptedException {
-        // Check local branches
-        int result = executeGit("show-ref", "--verify", "--quiet", "refs/heads/" + branch);
-        if (result == 0) return true;
-
-        // Check remote branches
-        result = executeGit("show-ref", "--verify", "--quiet", "refs/remotes/origin/" + branch);
-        return result == 0;
+        return gitOperations(getWorkingDirectory()).branchExists(branch);
     }
 
     /**
@@ -1481,7 +1478,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /**
      * Executes a git sub-command in the {@link #workingDirectory} and returns
-     * its exit code. Delegates to {@link GitCommandExecutor#executeGit}.
+     * its exit code. Delegates to {@link GitOperations#execute}.
      *
      * @param args git sub-command and its arguments (e.g. {@code "commit", "-m", "msg"})
      * @return the process exit code (0 on success)
@@ -1489,13 +1486,13 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     int executeGit(String... args) throws IOException, InterruptedException {
-        return commandExecutor().executeGit(args);
+        return gitOperations(getWorkingDirectory()).execute(args);
     }
 
     /**
      * Executes a git sub-command in the {@link #workingDirectory} and returns
      * its combined standard-output and standard-error as a string. Delegates
-     * to {@link GitCommandExecutor#executeGitWithOutput}.
+     * to {@link GitOperations#executeWithOutput}.
      *
      * <p>Unlike {@link #executeGit(String...)}, the exit code is not checked;
      * callers that need to detect failure should inspect the returned string
@@ -1507,13 +1504,13 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     String executeGitWithOutput(String... args) throws IOException, InterruptedException {
-        return commandExecutor().executeGitWithOutput(args);
+        return gitOperations(getWorkingDirectory()).executeWithOutput(args);
     }
 
     /**
      * Executes an arbitrary command and returns its output. Used for
      * non-git commands like {@code gh}. Delegates to
-     * {@link GitCommandExecutor#executeCommandWithOutput}.
+     * {@link GitOperations#executeCommandWithOutput}.
      *
      * @param command the command and its arguments
      * @return the combined stdout and stderr of the command
@@ -1521,7 +1518,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     String executeCommandWithOutput(String... command) throws IOException, InterruptedException {
-        return commandExecutor().executeCommandWithOutput(command);
+        return gitOperations(getWorkingDirectory()).executeCommandWithOutput(command);
     }
 
     // ==================== Encoding ====================

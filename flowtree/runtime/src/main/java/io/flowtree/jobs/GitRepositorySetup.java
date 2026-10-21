@@ -303,10 +303,7 @@ class GitRepositorySetup implements ConsoleFeatures {
      * Clones {@link GitManagedJob#getRepoUrl()} into {@code targetPath}.
      */
     private void cloneRepository(String targetPath) throws IOException, InterruptedException {
-        GitOperations gitOps = new GitOperations(null, job.getTaskId());
-        gitOps.setGitUserName(job.getGitUserName());
-        gitOps.setGitUserEmail(job.getGitUserEmail());
-        gitOps.cloneRepository(job.getRepoUrl(), targetPath);
+        job.gitOperations(null).cloneRepository(job.getRepoUrl(), targetPath);
     }
 
     /**
@@ -366,28 +363,16 @@ class GitRepositorySetup implements ConsoleFeatures {
      * tree to {@code HEAD} and removes untracked files and directories.</p>
      */
     private void wipeWorkingTree() throws IOException, InterruptedException {
-        if (GitOperations.isMergeInProgress(job.getWorkingDirectory())) {
-            job.executeGit("merge", "--abort");
-        }
-        int resetExitCode = job.executeGit("reset", "--hard", "HEAD");
-        if (resetExitCode != 0) {
-            throw new IOException("Failed to reset working tree after stash failure"
-                    + " (exit " + resetExitCode + ")");
-        }
-        int cleanExitCode = job.executeGit("clean", "-fd");
-        if (cleanExitCode != 0) {
-            throw new IOException("Failed to clean working tree after stash failure"
-                    + " (exit " + cleanExitCode + ")");
-        }
-        log("Working tree wiped (stash fallback)");
+        wipeWorkingTree(job.gitOperations(job.getWorkingDirectory()));
     }
 
     /**
-     * Discards all uncommitted changes in a dependent repo working directory.
+     * Discards all uncommitted changes in the repository {@code gitOps} is
+     * bound to — the primary working directory or a dependent repo.
      *
      * <p>See {@link #wipeWorkingTree()} for the rationale.</p>
      *
-     * @param gitOps the {@link GitOperations} instance bound to the dependent repo
+     * @param gitOps the {@link GitOperations} instance bound to the repository
      */
     private void wipeWorkingTree(GitOperations gitOps) throws IOException, InterruptedException {
         if (gitOps.isMergeInProgress()) {
@@ -447,8 +432,7 @@ class GitRepositorySetup implements ConsoleFeatures {
                 log("Dependent repo already cloned: " + depPath);
             } else {
                 log("Cloning dependent repo: " + depRepoUrl + " into " + depPath);
-                GitOperations gitOps = new GitOperations(parentDir, job.getTaskId());
-                gitOps.cloneRepository(depRepoUrl, depPath);
+                job.gitOperations(parentDir).cloneRepository(depRepoUrl, depPath);
             }
             dependentRepoPaths.add(depPath);
         }
@@ -466,7 +450,7 @@ class GitRepositorySetup implements ConsoleFeatures {
         String baseBranch = job.getBaseBranch();
         for (String depPath : dependentRepoPaths) {
             log("Preparing dependent repo branch: " + depPath);
-            GitOperations gitOps = new GitOperations(depPath, job.getTaskId());
+            GitOperations gitOps = job.gitOperations(depPath);
 
             String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
             if (!statusOutput.trim().isEmpty()) {

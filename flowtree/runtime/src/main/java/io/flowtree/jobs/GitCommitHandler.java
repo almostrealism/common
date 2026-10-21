@@ -713,11 +713,7 @@ class GitCommitHandler implements ConsoleFeatures {
      */
     void handleDependentRepos(List<String> depPaths) throws IOException, InterruptedException {
         for (String depPath : depPaths) {
-            GitOperations gitOps = new GitOperations(depPath, job.getTaskId());
-            String name = job.getGitUserName();
-            String email = job.getGitUserEmail();
-            if (name != null && !name.isEmpty()) gitOps.setGitUserName(name);
-            if (email != null && !email.isEmpty()) gitOps.setGitUserEmail(email);
+            GitOperations gitOps = job.gitOperations(depPath);
 
             String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
             List<String> changedFiles = new ArrayList<>();
