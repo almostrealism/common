@@ -465,7 +465,10 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * <p>When the main forward cell is pushed before the auxiliary branch has produced anything —
 	 * the branch belongs to a separately compiled model, compiled after this one — the operator
 	 * instead reads a buffer that the auxiliary branch records its output into when that model
-	 * runs. The two models must then be run in order, auxiliary first.</p>
+	 * runs. The two models must then be run in order, auxiliary first: until the auxiliary model
+	 * runs, the buffer holds no auxiliary output, and afterwards it holds whatever that model
+	 * last produced. This path is forward-only — gradients computed for the auxiliary operand are
+	 * not delivered to a branch that lives in another model.</p>
 	 *
 	 * @param name         a human-readable label for the composed layer
 	 * @param inputShape   the main input shape
@@ -522,7 +525,6 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 					if (auxOutput == null && auxInput != null) {
 						auxOutput = p(auxInput);
 					} else if (auxOutput == null) {
-						// TODO(review): detached buffer silently reads zeros/stale data if the aux model is not run first, and carries no gradient to the aux branch
 						if (detachedAux.get() == null) detachedAux.set(new PackedCollection(auxShape));
 						auxOutput = p(detachedAux.get());
 					}
