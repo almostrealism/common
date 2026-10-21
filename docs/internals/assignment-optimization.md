@@ -20,7 +20,7 @@ The short-circuit path:
 2. Wraps the source in a `DestinationEvaluable`
 3. Executes the source, writing directly to the destination memory
 
-**Key code** (Assignment.java ~line 348):
+**Key code** (the short-circuit branch of `Assignment.get()`):
 ```java
 if (shortCircuit) {
     MemoryBank destination = (MemoryBank) out.get().evaluate();
@@ -40,7 +40,7 @@ The scope-based path:
 2. Uses `TraversableExpression.getValueAt(index).assign(value)` for assignments
 3. Compiles the scope into native code
 
-**Key code** (Assignment.java ~line 389):
+**Key code** (the scope-based branch of `Assignment.get()`):
 ```java
 return compile().get();
 ```
