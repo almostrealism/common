@@ -434,6 +434,11 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 	 * normalization weights — the key and value projections of the context train rather than staying
 	 * frozen at their initialization.</p>
 	 *
+	 * <p>Because those operands are driven during the compiled model's own forward pass,
+	 * {@code contextInput} must be an input of the same {@link org.almostrealism.model.Model} (added
+	 * with {@link org.almostrealism.model.Model#addInput(Block)}) and fed alongside the query, rather
+	 * than a block of a separately compiled model.</p>
+	 *
 	 * @param batchSize Batch dimension
 	 * @param querySeqLen Query sequence length
 	 * @param contextSeqLen Context sequence length
