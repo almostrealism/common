@@ -717,6 +717,93 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * While the hand-off window is open the idle confined thread keeps polling for the next task
+	 * instead of parking, and still picks that task up; without a window it parks as soon as its
+	 * queue is empty.
+	 */
+	@Test(timeout = 10000)
+	public void handOffWindowKeepsIdleConfinedThreadPolling() throws InterruptedException {
+		assertEquals(Thread.State.WAITING, idleConfinedThreadState(HandOffWindow.NONE));
+		assertEquals(Thread.State.RUNNABLE, idleConfinedThreadState(new HandOffWindow(30, TimeUnit.SECONDS)));
+	}
+
+	/**
+	 * While the hand-off window is open a caller waiting for its task to finish keeps polling
+	 * instead of parking, and still returns once the task finishes; without a window it parks as
+	 * soon as it has to wait.
+	 */
+	@Test(timeout = 10000)
+	public void handOffWindowKeepsWaitingCallerPolling() throws InterruptedException {
+		assertEquals(Thread.State.WAITING, waitingCallerState(HandOffWindow.NONE));
+		assertEquals(Thread.State.RUNNABLE, waitingCallerState(new HandOffWindow(30, TimeUnit.SECONDS)));
+	}
+
+	/**
+	 * Runs one task on a new executor with the given window, lets the confined thread sit idle,
+	 * and returns the state it settles in. Before returning, checks that the idle thread still
+	 * picks up a second task.
+	 *
+	 * @param handOff the hand-off window of the executor
+	 * @return the state of the idle confined thread
+	 */
+	private Thread.State idleConfinedThreadState(HandOffWindow handOff) throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor(Runnable::run, handOff);
+		AtomicReference<Thread> confined = new AtomicReference<>();
+
+		try {
+			executor.run(() -> confined.set(Thread.currentThread()));
+			Thread.sleep(200);
+			Thread.State state = confined.get().getState();
+
+			AtomicReference<Thread> second = new AtomicReference<>();
+			executor.run(() -> second.set(Thread.currentThread()));
+			Assert.assertSame(confined.get(), second.get());
+			return state;
+		} finally {
+			executor.destroy();
+		}
+	}
+
+	/**
+	 * Starts a caller that runs a task on a new executor with the given window, holds the task
+	 * running, and returns the state the waiting caller settles in. Before returning, releases the
+	 * task and checks that the caller then returns from its wait.
+	 *
+	 * @param handOff the hand-off window of the executor
+	 * @return the state of the caller while it waits for the task
+	 */
+	private Thread.State waitingCallerState(HandOffWindow handOff) throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor(Runnable::run, handOff);
+		CountDownLatch started = new CountDownLatch(1);
+		CountDownLatch releaseTask = new CountDownLatch(1);
+		AtomicBoolean returned = new AtomicBoolean();
+
+		try {
+			Thread caller = new Thread(() -> {
+				executor.run(() -> {
+					started.countDown();
+					awaitLatch(releaseTask);
+				});
+				returned.set(true);
+			});
+			caller.start();
+
+			assertTrue(started.await(5, TimeUnit.SECONDS));
+			Thread.sleep(200);
+			Thread.State state = caller.getState();
+
+			releaseTask.countDown();
+			caller.join(5000);
+			assertFalse(caller.isAlive());
+			assertTrue(returned.get());
+			return state;
+		} finally {
+			releaseTask.countDown();
+			executor.destroy();
+		}
+	}
+
+	/**
 	 * Waits for a latch, failing the calling task if interrupted.
 	 *
 	 * @param latch the latch to wait for
