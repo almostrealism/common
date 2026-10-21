@@ -37,8 +37,17 @@ Differential attention follows the same structure: `differentialSequenceAttentio
 the `differential_attention.pdsl` asset, in which the keys and values of each of its two attention
 maps are branches read by the products, and `accum_blocks` sums the two maps (the second
 lambda-weighted and negated), so all five sections of its fused projection receive gradients
-(`DifferentialAttentionAssetTest`). The buffering pattern remains in `sequenceCrossAttention` and
-`TransformerResamplingFeatures`; those paths do not yet deliver gradients to their K/V projections.
+(`DifferentialAttentionAssetTest`). Cross-attention now trains its K/V projection the same way:
+`sequenceCrossAttention` computes the keys and values on a `branch()` of its context input and feeds
+those branch blocks to the score and context products through the `Block`-valued
+`scaledDotProductAttention` overload (again `compose`), so the backward pass reaches both halves of
+the fused `toKvWeight` and the key normalization weights (`SequenceCrossAttentionGradientTest`).
+Because the context is an auxiliary model input, this also required propagating the training
+`ParameterUpdate` into `BranchBlock` children and into `Model`'s auxiliary inputs, so a weight that
+lives on a branch of an auxiliary input trains like one on the main chain. The buffering pattern
+remains only in `TransformerResamplingFeatures`, whose deliberate materialization bounds each
+compiled kernel at full SAME dimensions; that path does not yet deliver gradients to its K/V
+projections and nothing on the main branch trains it today.
 
 ## Device memory during training
 

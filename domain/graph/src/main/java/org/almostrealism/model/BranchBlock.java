@@ -26,6 +26,8 @@ import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.DefaultGradientPropagation;
+import org.almostrealism.layers.Learning;
+import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.layers.Tracking;
 
 import java.util.ArrayList;
@@ -49,9 +51,12 @@ import java.util.function.Supplier;
  * @see SequentialBlock
  * @author Michael Murray
  */
-public class BranchBlock implements Block, Tracking {
+public class BranchBlock implements Block, Learning, Tracking {
 	/** The common input/output shape for this branch point. */
 	private final TraversalPolicy shape;
+
+	/** The parameter update strategy propagated to all child blocks that implement {@link Learning}. */
+	private ParameterUpdate<PackedCollection> parameterUpdate;
 
 	/** The lazily constructed entry cell returned by {@link #getForward()}. */
 	private Cell<PackedCollection> entry;
@@ -113,6 +118,24 @@ public class BranchBlock implements Block, Tracking {
 	@Override
 	public Supplier<Runnable> setup() {
 		return new OperationList("BranchBlock Setup");
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Stores the update and propagates it to every child branch that implements {@link Learning},
+	 * so a weight computed inside a branch (the key/value projection of cross-attention, say) trains
+	 * when the branch is fed from an auxiliary input rather than the main chain.</p>
+	 */
+	@Override
+	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
+		this.parameterUpdate = update;
+
+		children.forEach(child -> {
+			if (child instanceof Learning) {
+				((Learning) child).setParameterUpdate(update);
+			}
+		});
 	}
 
 	/** {@inheritDoc} */
@@ -216,6 +239,9 @@ public class BranchBlock implements Block, Tracking {
 	public <T extends Block> T append(T l) {
 		children.add(l);
 		l.getBackward().setReceptor(aggregator);
+		if (parameterUpdate != null && l instanceof Learning) {
+			((Learning) l).setParameterUpdate(parameterUpdate);
+		}
 		return l;
 	}
 
