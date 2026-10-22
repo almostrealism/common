@@ -963,6 +963,15 @@ and yet will never be staged. `EnforceChangesRule.isViolated()` now checks
 is judged by what would actually survive staging, not by working-tree
 dirtiness.
 
+**An empty result after the re-run cap is `DEGRADED`.** `EnforceChangesRule`
+re-runs the primary phase (never a phase of its own; `Phase.ENFORCE_CHANGES` is
+deprecated) at most `maxEnforceChangesRetries` times over the whole job, default
+`CodingAgentJob.DEFAULT_MAX_RULE_RETRIES`. A cap of 0 means no re-run at all.
+Once that budget is spent, or the stall detector or the restart governor stops
+the loop first, a job that still committed nothing ends `Status.DEGRADED`, with
+a message naming the empty result. Before, it ended `SUCCESS`, so a job required
+to produce a change looked like one that had delivered.
+
 ---
 
 ## Usage Examples
