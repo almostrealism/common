@@ -144,7 +144,11 @@ InstructionPromptBuilder -- Constructs the full instruction prompt from job stat
 McpToolDiscovery       -- Discovers tool names by parsing Python MCP server source files
 CodingAgentJobFactory  -- Constructs CodingAgentJobs from a prompt list and config
 CodingAgentJobCodec    -- Codec between Factory wire form and a built CodingAgentJob
-PostCompletionConfig   -- Post-completion command settings shared by job, factory, and wire
+WireConfig             -- Base of the config groups shared by job and factory (property sink, wire encoding;
+                          subclasses declare their keys once in writeWireProperties)
+PhaseRunnerConfig      -- Per-phase runner and model settings (a WireConfig)
+PostCompletionConfig   -- Post-completion command settings (a WireConfig)
+EnforceChangesConfig   -- The enforceChanges requirement and its re-run cap (a WireConfig)
 RestartGovernor        -- Per-job ceiling on sessions, turns, and wall-clock time
 EnforcementRunner      -- Runs post-session checks (enforce-changes, dedup, ...) with retries
 ```

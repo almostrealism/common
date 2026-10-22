@@ -57,7 +57,10 @@ owning class delegating to them and its public API unchanged. Find the next
 cohesive group and do the same. If the factory and the job hold two
 implementations of the same idea, one collaborator shared by both removes
 duplication and length together — `PhaseRunnerConfig`, which serves the job and
-the factory through an optional property sink, is the worked example.
+the factory through an optional property sink, is the worked example. Such a
+shared collaborator extends `WireConfig`, which owns the property sink, the
+`::key:=value` encoding and the wire-value parsing, so a new group does not
+re-implement them.
 
 ## The failure this prevents
 

@@ -46,7 +46,7 @@ its model from another.
 | Phase | Wire name | When it runs |
 |-------|-----------|--------------|
 | `PRIMARY` | `primary` | Initial `executeSingleRun()` in `doWork()` — the prompt the operator submitted. |
-| `ENFORCE_CHANGES` | `enforce-changes` | `EnforceChangesRule` — re-runs the primary prompt if no production code changed. |
+| `ENFORCE_CHANGES` | `enforce-changes` | Deprecated. `EnforceChangesRule` re-runs the primary prompt if no change was produced, but the re-run is a `PRIMARY` restart on the primary runner and never dispatches this phase. Re-runs are capped over the whole job by `maxEnforceChangesRetries` (0 = none); an empty result after the cap is `DEGRADED`. |
 | `REVIEW` | `review` | `ReviewRule` — one-shot second-pass review of the primary diff (default-on); makes small surgical fixes and defers the rest. |
 | `DEDUPLICATION` | `deduplication` | `DeduplicationRule` correction, when local dedup mode is on. |
 | `ORGANIZATIONAL_PLACEMENT` | `organizational-placement` | `OrganizationalPlacementRule` correction (default-on). |

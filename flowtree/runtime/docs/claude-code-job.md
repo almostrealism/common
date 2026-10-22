@@ -411,7 +411,7 @@ All setters support chaining. The `build()` method assembles sections in this fi
 
 **Message deduplication.** `WorkstreamMailbox.appendIfNew(text, sender, jobId, activity, messageId)` atomically checks the mailbox for a message carrying the same caller-supplied `messageId` and appends only if none is found, returning a `Dedupe(message, appended)` record. `recent(messageId)` matches only within `DEDUPE_WINDOW_MILLIS` (15 minutes) of the earlier message's timestamp, so a sender's prompt retry after a timeout is treated as the same message, while a repeat sent long after is a new one. `MessageEndpointHandler` uses this so a client that retries a timed-out POST does not duplicate its message in the mailbox.
 
-0e. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0` and the session is not a correction session (`correctionSession` false). Heading: `## !! SESSION RESTARTED -- RETRY N !!`. Used when the previous run produced no code changes and the enforcement loop is asking for another attempt. Tells the agent to investigate CI status with the test runner (using the exact CI command) and produce real production-code changes rather than re-running the prompt verbatim.
+0e. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0` and the session is not a correction session (`correctionSession` false). Heading: `## !! SESSION RESTARTED -- RETRY N !!`. Used when the previous run produced no change and `EnforceChangesRule` is re-running the primary phase. Tells the agent the job requires changes and, when the task is to fix failing CI, to run the exact failing CI command with the test runner and fix the production code. The wording is generic because `enforceChanges` is also set by rounds whose required change is not a CI fix (a coverage round, the QA retrospective's report).
 
 0f. **Falsification Refutation Warning** -- Present when `falsificationFindings` is non-empty. Heading: `## !! SESSION RESTARTED -- A LOAD-BEARING CLAIM DID NOT PASS FALSIFICATION !!`. Used when the falsification phase bounced the job back to primary because a load-bearing behavioural claim the prior attempt relied on was not confirmed by the evidence captured during that attempt. Includes the claim, the dependent code, and the captured evidence.
 
@@ -493,6 +493,7 @@ post-completion command that tries to violate it anyway.
 | `setInvalidFilesViolation(String)` | `String` | Non-null/non-empty enables section 0b. Comma-separated list of `.bin` litter paths from `InvalidFileDetector`. |
 | `setInactivityRestartAttempt(int)` | `int` | `> 0` enables section 0c. The value is the count of prior inactivity-triggered restarts (1 = first relaunch, 2 = second, ...). |
 | `setConversationCatchUp(String)` | `String` | Non-null/non-empty enables section 0d. Rendered by `ConversationCatchUp#render()`. |
+| `setMaxEnforceChangesRetries(int)` | `int` | The whole-job enforce-changes re-run cap. While `enforcementAttempt` is below it, the strict `enforce_changes` block says an empty exit restarts the session; once it is reached (immediately, for a cap of 0) it says the job will end DEGRADED instead. |
 | `setCorrectionSession(boolean)` | `boolean` | `true` suppresses section 0e (enforcement retry warning) and the outer `enforce_changes` pressure, since a rule-specific correction prompt may legitimately accept "no changes needed". |
 | `setFalsificationFindings(String)` | `String` | Non-null/non-empty enables section 0f. |
 
@@ -884,7 +885,8 @@ The first token is the fully qualified class name (used by the deserialization f
 | `wsEnv` | `workstreamEnv` | JSON then Base64 | Non-null, non-empty |
 | `planDoc` | `planningDocument` | Base64 | Non-null |
 | `protectTests` | `protectTestFiles` | Plain boolean | Always |
-| `enforceChanges` | `enforceChanges` | Plain boolean | Always |
+| `enforceChanges` | `enforceChanges.enabled` (`EnforceChangesConfig`) | Plain boolean | Always |
+| `maxEnforceRetries` | `enforceChanges.maxRetries` (`EnforceChangesConfig`) | Plain int (0 is meaningful) | Non-default |
 | `dedupMode` | `deduplicationMode` | Plain string | Non-null |
 | `bypassAgentPermissionPrompts` | `bypassAgentPermissionPrompts` | Plain boolean (`true`) | Only when true |
 
@@ -934,6 +936,7 @@ The `set(String key, String value)` method handles incoming key-value pairs duri
 - `planDoc`: Base64-decoded to `this.planningDocument`
 - `protectTests`: Parsed as boolean
 - `enforceChanges`: Parsed as boolean
+- `maxEnforceRetries`: Parsed as a non-negative int; an absent, invalid or negative value leaves the default (`DEFAULT_MAX_RULE_RETRIES`)
 - `dedupMode`: Stored directly as `this.deduplicationMode` (plain string; `"local"` or `"spawn"`)
 - `bypassAgentPermissionPrompts`: Parsed as boolean into `this.bypassAgentPermissionPrompts` (present only when the grant was made)
 - `maxWallClockHours`: Parsed as `Integer`; an empty value leaves the field `null` so the job inherits the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`
@@ -941,7 +944,7 @@ The `set(String key, String value)` method handles incoming key-value pairs duri
 
 ### Factory Serialization
 
-The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`, `bypassAgentPermissionPrompts`). Unlike the job encoding, the factory stores `bypassAgentPermissionPrompts` as `"true"` or `"false"` whenever its setter is called; `isBypassAgentPermissionPrompts()` treats anything other than `"true"` (including an absent key) as false. The factory also stores `factoryTaskId` for task ID persistence.
+The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `maxEnforceRetries`, `dedupMode`, `bypassAgentPermissionPrompts`). Unlike the job encoding, the factory stores `bypassAgentPermissionPrompts` as `"true"` or `"false"` whenever its setter is called; `isBypassAgentPermissionPrompts()` treats anything other than `"true"` (including an absent key) as false. The factory also stores `factoryTaskId` for task ID persistence.
 
 Prompts are stored via `setPrompts(String... prompts)`, which joins them with `PROMPT_SEPARATOR` (`;;PROMPT;;`), Base64-encodes the result, and stores it under the key `prompts`. Retrieval via `getPrompts()` reverses this process.
 
