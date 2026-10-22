@@ -52,7 +52,7 @@ import java.util.function.Supplier;
  * slice, lerp, reshape, permute, identity,
  * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read, rope_rotation,
  * sequence_rope, mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
- * causal_mask, sequence_causal_mask, key_mask, weighted_values, scaled_dot_product, sqrt, attention,
+ * causal_mask, sequence_causal_mask, key_mask, weighted_values, scaled_dot_product, sqrt,
  * shape, range, zeros, rope_freqs). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List, Set)}; domain
  * libraries (e.g. audio DSP) register additional primitives through
@@ -121,7 +121,6 @@ final class PdslBuiltins {
 			case "weighted_values": return callWeightedValues(producerArg(args, 0, 1, "weighted_values"));
 			case "scaled_dot_product": return callScaledDotProduct(args, consumedBranchOperands);
 			case "sqrt": return callSqrt(args);
-			case "attention": return callAttention(args);
 			case "shape": return callShape(args);
 			case "range": return callRange(args);
 			case "zeros": return callZeros(args);
@@ -1243,73 +1242,6 @@ final class PdslBuiltins {
 			}
 			return FEATURES.applyRotaryPositionEmbedding(FEATURES.shape(inputShape.extent()), invFreq);
 		};
-	}
-
-	/**
-	 * Builds an attention block from 8, 14, or 15 evaluated arguments.
-	 *
-	 * <p>The structure is not assembled here: {@link org.almostrealism.ml.AttentionFeatures#attention}
-	 * allocates the key/value caches and builds the {@code attention} or
-	 * {@code attention_qk_norm} layer of {@code /pdsl/attention.pdsl}, where the stages are
-	 * written out. This built-in remains for assets that take the attention block as one
-	 * stage (the asset's own caches cannot be declared from their parameter lists).</p>
-	 *
-	 * @param args Evaluated arguments matching one of the supported
-	 *             {@link org.almostrealism.ml.AttentionFeatures#attention} overloads
-	 * @return An attention {@link Block}
-	 */
-	private static Block callAttention(List<Object> args) {
-		if (args.size() == 8) {
-			// attention(heads, rms_weight, wk, wv, wq, wo, freq_cis, position)
-			return FEATURES.attention(
-					toInt(args.get(0)),
-					(PackedCollection) args.get(1),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					(PackedCollection) args.get(4),
-					(PackedCollection) args.get(5),
-					toCollectionProducer(args.get(6)),
-					toProducer(args.get(7)));
-		} else if (args.size() == 14) {
-			// attention(heads, kv_heads, rms_weight, wk, wv, wq, wo,
-			//           bk, bv, bq, qk_norm_q, qk_norm_k, freq_cis, position)
-			return FEATURES.attention(
-					toInt(args.get(0)),
-					toInt(args.get(1)),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					(PackedCollection) args.get(4),
-					(PackedCollection) args.get(5),
-					(PackedCollection) args.get(6),
-					(PackedCollection) args.get(7),
-					(PackedCollection) args.get(8),
-					(PackedCollection) args.get(9),
-					(PackedCollection) args.get(10),
-					(PackedCollection) args.get(11),
-					toCollectionProducer(args.get(12)),
-					toProducer(args.get(13)));
-		} else if (args.size() == 15) {
-			// attention(heads, kv_heads, rms_weight, wk, wv, wq, wo,
-			//           bk, bv, bq, qk_norm_q, qk_norm_k, freq_cis, position, epsilon)
-			return FEATURES.attention(
-					toInt(args.get(0)),
-					toInt(args.get(1)),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					(PackedCollection) args.get(4),
-					(PackedCollection) args.get(5),
-					(PackedCollection) args.get(6),
-					(PackedCollection) args.get(7),
-					(PackedCollection) args.get(8),
-					(PackedCollection) args.get(9),
-					(PackedCollection) args.get(10),
-					(PackedCollection) args.get(11),
-					toCollectionProducer(args.get(12)),
-					toProducer(args.get(13)),
-					toDouble(args.get(14)));
-		}
-		throw new PdslParseException(
-				"attention() expects 8, 14, or 15 arguments, got " + args.size());
 	}
 
 	/**

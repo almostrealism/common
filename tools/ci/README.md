@@ -47,6 +47,9 @@ repository (input `framework-ref`), never from the caller's tree.
 | Workflow | Purpose |
 |---|---|
 | `goal-decomposition.yaml` | Decomposition round of goal-driven release automation: on the caller's default branch, resolve its next release and release plan (`resolve-release-scope.sh`), register a standing `orchestration/goal-decomposition` workstream with the tracker `planner` role and this repository as a dependent repository, and submit an agent job that creates or updates the release's tracker tasks |
+| `task-planning.yaml` | Task-planning round: on the caller's default branch, gate on intake, a round in progress (`qa-cadence.sh`), the open-PR backlog (`open-pr-backlog.sh`) and a claimable task (`tracker-claimable.sh`) in `<project> <version>`, then create a `project/task-*` branch, register its workstream, claim the task (`tracker-claim.sh`) and submit an agent that plans it and opens the PR. This repository's `plan-release-task` calls it |
+| `implement-plan.yaml` | The manual "implement the plan" trigger, dispatched by the caller on a plan branch: detect the plan, resolve its workstream settings (`plan_workstream_config.py`), register the workstream, and submit the implementation through a token-free prompt build and `submit-staged-request.sh`. This repository's `verify-completion.yaml` calls it |
+| `plan-review.yaml` | Docs-only review for a repository without this pipeline: when every change on the branch is under `docs/`, submit the `docs-review.txt` agent, which improves the documents and never implements the plan |
 
 ## Coverage (`coverage/`)
 
@@ -154,7 +157,7 @@ it knowingly does not cover are in
 | `build-resolve-prompt.sh` | Build prompt for agent when tests fail |
 | `build-review-prompt.sh` | Build prompt for general code review |
 | `build-retrospective-prompt.sh` | Build prompt for the recurring QA retrospective: survey recent automated work and propose how the process should improve |
-| `build-verify-prompt.sh` | Build prompt for the verify-completion workflow, the manual "implement the plan" trigger |
+| `build-verify-prompt.sh` | Build prompt for the implement-plan workflow (called by verify-completion), the manual "implement the plan" trigger |
 | `consolidation.txt` | Template for the consolidation round: find one duplicated behavior, share it, pin it with tests |
 | `coverage.txt` | Template for the test-coverage round |
 | `defect-hunt.txt` | Template for the defect hunt |

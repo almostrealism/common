@@ -40,6 +40,8 @@ The key components involved are:
 
 The verify-completion workflow (`verify-completion.yaml`) implements a self-improvement loop where coding agents implement and verify plan goals on feature branches. It is triggered manually via `workflow_dispatch` on any non-master branch, and it is the only thing that starts implementing a plan: until someone dispatches it, a plan branch (whose changes are all under `docs/`) receives only the docs-only review from `auto-review` in `analysis.yaml`, which improves the documents and never carries out the plan.
 
+`verify-completion.yaml` itself is a thin caller: its one job calls the reusable `implement-plan.yaml`, which holds the jobs described below. Other repositories call `implement-plan.yaml` the same way for their own plan branches, so it checks this repository out explicitly (inputs `framework-repository` and `framework-ref`, by default `almostrealism/common` at `master`) and runs every script and prompt template from that checkout. In this repository that is the default branch.
+
 ### Four-Phase Pipeline
 
 The workflow runs as a four-phase pipeline of five jobs with conditional execution:
@@ -50,35 +52,35 @@ detect-plan ───────────┐
 resolve-plan-settings ─┘
 ```
 
-No job that holds the controller's Cloudflare Access service token runs any of
-the branch's scripts, or installs anything from the network. The jobs that need
-the token (`register-workstream` and `verify`) check out the default branch and
-run its copies of the scripts; the one job that runs the branch's own code
-(`build-prompt`, which renders the prompt from the branch's templates) never
-sees the token and hands its result to `verify` as an artifact, and the job
-that installs PyYAML to read the plan's settings (`resolve-plan-settings`)
-never sees it either and hands its result to `register-workstream` as job
-outputs. This is the same stage-then-submit pattern the
+No job runs any of the branch's scripts, and no job that holds the
+controller's Cloudflare Access service token installs anything from the
+network. Every job checks out the framework and runs its copies of the scripts
+and prompt templates; the branch is read only as data. The jobs that need the
+token (`register-workstream` and `verify`) run nothing but a controller script;
+the prompt is rendered in `build-prompt`, which never sees the token and hands
+its result to `verify` as an artifact, and the job that installs PyYAML to read
+the plan's settings (`resolve-plan-settings`) never sees it either and hands
+its result to `register-workstream` as job outputs. This is the same stage-then-submit pattern the
 `auto-review` / `auto-review-submit` jobs in `analysis.yaml` use.
 
 This protects against a branch's edits to *scripts*, not to the *workflow file*:
 `workflow_dispatch` runs the workflow definition from the dispatched ref, so a
-branch that edits `verify-completion.yaml` itself controls every job in the run.
+branch that edits `verify-completion.yaml` (or its copy of `implement-plan.yaml`) controls every job in the run.
 That is the same exposure `analysis.yaml` has for `pull_request` runs, and is
 covered by the same mitigations — see "No job that runs pull request code holds
 controller credentials" in `.github/CLAUDE.md`.
 
 **Phase 1: Detect Plan** (`detect-plan`)
 
-Identifies the plan document for the branch. The plan file can be provided explicitly via the `plan_file` workflow input, or auto-detected by scanning for new `.md` files in `docs/plans/` relative to master. The job outputs:
+Identifies the plan document for the branch. The plan file can be provided explicitly via the `plan_file` workflow input, or auto-detected by scanning for new `.md` files in `docs/plans/` (input `plans-directory`) relative to the default branch. It reads only the branch's changed file names. The job outputs:
 - `plan_file`: Path to the detected plan document
 - `is_new_plan`: Whether the plan file is newly added on this branch
 
 **Phase 2: Resolve Settings and Register Workstream** (`resolve-plan-settings`, then `register-workstream`)
 
-Both jobs run on every dispatch; registration is idempotent, and an existing workstream is updated. `register-workstream` checks out the default branch and calls that copy of `tools/ci/register-workstream.sh`, which POSTs to the controller's `POST /api/workstreams` endpoint.
+Both jobs run on every dispatch; registration is idempotent, and an existing workstream is updated. `register-workstream` checks out the framework and calls its copy of `tools/ci/register-workstream.sh`, which POSTs to the controller's `POST /api/workstreams` endpoint.
 
-Registration applies the workstream settings the plan declares for itself, which `resolve-plan-settings` reads first. For a branch under `project/`, the branch name without `project/` is matched against the `<prefix>-workstream.yaml` files in the branch's `docs/plans/`: a prefix matches when the name equals it or continues it at a `-`, and the longest matching prefix wins. So for `project/plan-20260930-180401`, `plan-20260930-180401-workstream.yaml` overrides `plan-20260930-workstream.yaml`, and `plan-2026093-workstream.yaml` never matches. The only setting a file may contain today is `requiredLabels` (e.g. `platform: macos`), which becomes the workstream's default node labels, so the implementation and every later job run on a matching node. The branch's `docs/plans/` is fetched with `git archive`, never checked out, and read by the default branch's `tools/ci/plan_workstream_config.py`, so no branch code runs. Reading it installs PyYAML from the network, and a package's install or import code could rewrite the checked-out scripts or append to `$GITHUB_ENV`/`$GITHUB_PATH` for later steps of the same job, so this happens in `resolve-plan-settings`, which holds no controller token; only the resolved JSON reaches `register-workstream`, as job outputs read through `env:`. It is read from the dispatched commit (`github.sha`), the same commit every other job in the run uses, so a push made after the plan was approved cannot change the settings the implementation runs with. An invalid settings file (unknown key, wrongly shaped value), or a dispatched commit that cannot be fetched, fails `resolve-plan-settings`; `register-workstream` is then skipped, and `build-prompt` requires `resolve-plan-settings` to have succeeded, so the implementation is not submitted. Because the settings take effect only here, approving a plan and dispatching its implementation also approves the environment it asks for. Settings files stay in `docs/plans/` after their branch merges, so a short prefix keeps applying to later branches it matches.
+Registration applies the workstream settings the plan declares for itself, which `resolve-plan-settings` reads first. For a branch under `project/`, the branch name without `project/` is matched against the `<prefix>-workstream.yaml` files in the branch's `docs/plans/`: a prefix matches when the name equals it or continues it at a `-`, and the longest matching prefix wins. So for `project/plan-20260930-180401`, `plan-20260930-180401-workstream.yaml` overrides `plan-20260930-workstream.yaml`, and `plan-2026093-workstream.yaml` never matches. The only setting a file may contain today is `requiredLabels` (e.g. `platform: macos`), which becomes the workstream's default node labels, so the implementation and every later job run on a matching node. Only the branch's `docs/plans/` is checked out (a sparse checkout into a directory of its own, without credentials), and it is read by the framework's `tools/ci/plan_workstream_config.py`, so no branch code runs. Reading it installs PyYAML from the network, and a package's install or import code could rewrite the checked-out scripts or append to `$GITHUB_ENV`/`$GITHUB_PATH` for later steps of the same job, so this happens in `resolve-plan-settings`, which holds no controller token; only the resolved JSON reaches `register-workstream`, as job outputs read through `env:`. It is read from the dispatched commit (`github.sha`), the same commit every other job in the run uses, so a push made after the plan was approved cannot change the settings the implementation runs with. An invalid settings file (unknown key, wrongly shaped value), or a dispatched commit that cannot be checked out, fails `resolve-plan-settings`; `register-workstream` is then skipped, and `build-prompt` requires `resolve-plan-settings` to have succeeded, so the implementation is not submitted. Because the settings take effect only here, approving a plan and dispatching its implementation also approves the environment it asks for. Settings files stay in `docs/plans/` after their branch merges, so a short prefix keeps applying to later branches it matches.
 
 Registration:
 - Creates a new `SlackWorkstream` with the branch name, base branch, repo URL, and plan document path
@@ -88,11 +90,11 @@ Registration:
 
 **Phase 3: Build Prompt** (`build-prompt`)
 
-Runs after detect-plan, resolve-plan-settings and register-workstream succeed (not if registration failed, and not if the settings could not be resolved). Checks out the branch, builds the implementation prompt from the plan document via `build-verify-prompt.sh`, stages it with `stage-submit-request.sh` (which writes `agent-prompt.txt` and `submit.env`), and uploads the result as the `verify-request` artifact. This job holds no controller credentials.
+Runs after detect-plan, resolve-plan-settings and register-workstream succeed (not if registration failed, and not if the settings could not be resolved). Checks out the framework, builds the implementation prompt with its `build-verify-prompt.sh` (the plan document itself reaches the agent through the workstream's planning document), stages it with `stage-submit-request.sh` (which writes `agent-prompt.txt` and `submit.env`), and uploads the result as the `verify-request` artifact. This job holds no controller credentials.
 
 **Phase 4: Verify** (`verify`)
 
-Runs only when build-prompt succeeded. Checks out the default branch, downloads the `verify-request` artifact, and submits it with that branch's `submit-staged-request.sh`. The target branch, base branch and `PROTECT_TEST_FILES` come from this job's own environment, never from the staged request, and `submit-staged-request.sh` reads `submit.env` through a key allowlist, so nothing the branch's code wrote can redirect the submission. Because this job has never run the branch's code, nothing the branch controls has touched `$GITHUB_ENV` or `$GITHUB_PATH` before the token is attached. The agent then implements any unfinished goals, verifies all goals are complete, and ensures each goal has meaningful test coverage.
+Runs only when build-prompt succeeded. Checks out the framework, downloads the `verify-request` artifact, and submits it with the framework's `submit-staged-request.sh`. The target branch, base branch and `PROTECT_TEST_FILES` come from this job's own environment, never from the staged request, and `submit-staged-request.sh` reads `submit.env` through a key allowlist, so nothing in the request can redirect the submission. Because no job in the run executes the branch's code, nothing the branch controls has touched `$GITHUB_ENV` or `$GITHUB_PATH` before the token is attached. The agent then implements any unfinished goals, verifies all goals are complete, and ensures each goal has meaningful test coverage.
 
 ### Register Workstream Script
 
