@@ -997,7 +997,7 @@ This means the `set()` method must handle all keys that `encode()` produces. The
 The Claude Code command is constructed in `doWork()` as a `List<String>`. The final command has this structure:
 
 ```
-claude -p <instruction-prompt> --output-format stream-json --verbose --allowedTools <tools> --max-turns <N> [--max-budget-usd <N.NN>] --mcp-config <json>
+claude -p <instruction-prompt> --output-format stream-json --verbose --setting-sources project,local --allowedTools <tools> --max-turns <N> [--max-budget-usd <N.NN>] --mcp-config <json>
 ```
 
 ### Arguments in Detail
@@ -1011,6 +1011,10 @@ The `-p` flag invokes Claude Code in non-interactive (headless) mode. The argume
 Requests the event stream: one JSON object per line as the session runs — `system`/`init`, each `assistant` turn (including its `tool_use` blocks), each `user` turn carrying `tool_result` blocks, and a final `result` object with the session metrics. The CLI requires `--verbose` alongside `stream-json` in print mode.
 
 The single-object `json` form is deliberately not used: it writes nothing until the session ends, which leaves the inactivity watchdog with no output to observe and turns it into a hard per-session wall clock. The event stream is also what `ClaudeCodeRunner.classifyActivity` reads to tell the watchdog when the agent is waiting on an MCP tool rather than hung (see `AgentActivityTracker`).
+
+#### `--setting-sources project,local`
+
+Loads the repository's `.claude/settings.json` and `.claude/settings.local.json`, and leaves out the user-level settings of the account the node runs under (`ClaudeCodeRunner.SETTING_SOURCES`). Anything installed in that account for interactive use — hooks, plugins, MCP servers — would otherwise run inside every job. A hook written for a person at a terminal can stop a headless session: a `PreToolUse` hook that defers a tool call ends a `-p` session at its first tool use, with exit code 0 and no work done. What a job runs with comes from the repository and from this command line, which passes the model, effort and MCP servers explicitly.
 
 #### `--allowedTools <tools>`
 
@@ -1072,14 +1076,16 @@ The command-line arguments are added to the `List<String>` in a specific order, 
 4. `--output-format`
 5. `stream-json`
 6. `--verbose`
-7. `--allowedTools`
-8. The comma-separated tools string
-9. `--max-turns`
-10. The turn limit as a string
-11. `--max-budget-usd` (conditional)
-12. The budget as a formatted string (conditional)
-13. `--mcp-config`
-14. The JSON config string
+7. `--setting-sources`
+8. `project,local`
+9. `--allowedTools`
+10. The comma-separated tools string
+11. `--max-turns`
+12. The turn limit as a string
+13. `--max-budget-usd` (conditional)
+14. The budget as a formatted string (conditional)
+15. `--mcp-config`
+16. The JSON config string
 
 ### Complete Example Command
 
@@ -1091,6 +1097,7 @@ claude -p "You are working autonomously as a coding agent...
 Fix the memory leak in CacheManager
 --- END USER REQUEST ---" \
 --output-format stream-json --verbose \
+--setting-sources project,local \
 --allowedTools Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop,mcp__ar-manager__send_message,mcp__ar-manager__memory_recall,mcp__ar-manager__github_pr_find,mcp__ar-manager__github_pr_review_comments,mcp__ar-manager__github_pr_conversation,mcp__ar-manager__github_pr_reply,mcp__ar-manager__memory_store,mcp__ar-manager__memory_namespaces,mcp__ar-manager__workstream_context,mcp__ar-manager__consult \
 --max-turns 50 \
 --max-budget-usd 10.00 \

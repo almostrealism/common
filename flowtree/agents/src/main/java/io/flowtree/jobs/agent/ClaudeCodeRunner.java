@@ -76,6 +76,13 @@ public class ClaudeCodeRunner implements AgentRunner {
      */
     public static final String PERMISSION_MODE = "bypassPermissions";
 
+    /**
+     * Value passed to {@code --setting-sources}: the repository's checked-in
+     * and local settings, never the settings of the account the node runs
+     * under. See {@link #buildCommandLine(AgentRunRequest)}.
+     */
+    public static final String SETTING_SOURCES = "project,local";
+
     /** Valid values for the Claude Code {@code --effort} flag (thinking level). */
     public static final List<String> VALID_EFFORT_LEVELS =
             List.of("low", "medium", "high", "xhigh", "max");
@@ -298,6 +305,16 @@ public class ClaudeCodeRunner implements AgentRunner {
      * than assumed here. Without the grant no permission flag is emitted at
      * all, leaving the CLI's own default in place.</p>
      *
+     * <p>{@code --setting-sources} ({@link #SETTING_SOURCES}) leaves out the
+     * user-level settings of the account the node runs under. Whatever is
+     * installed there for that account's interactive use — hooks, plugins, MCP
+     * servers — would otherwise run inside every job, and a hook written for a
+     * person at a terminal can stop a headless session outright: a
+     * {@code PreToolUse} hook that defers the call ends a {@code -p} session at
+     * its first tool use with exit code 0 and nothing done. A job's behaviour
+     * is set by the repository's settings and by this command line, which
+     * passes the model, effort and MCP servers explicitly.</p>
+     *
      * @param request the source of prompt, flags, and MCP config
      * @return the argv list passed to {@link ProcessBuilder}
      */
@@ -310,6 +327,8 @@ public class ClaudeCodeRunner implements AgentRunner {
         command.add("stream-json");
         // The CLI refuses stream-json in print mode without it.
         command.add("--verbose");
+        command.add("--setting-sources");
+        command.add(SETTING_SOURCES);
         command.add("--allowedTools");
         command.add(request.getAllowedTools() != null ? request.getAllowedTools() : "");
         if (request.isBypassPermissionPrompts()) {
