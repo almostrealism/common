@@ -28,9 +28,11 @@ name: "Task Planning"
 #       secrets:
 #         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
 #
-# The round is gated three ways, in order: no task-planning round already in
-# progress (the shared cadence gate on project/task- branches), room in the
-# open-PR backlog (max-open-prs, since every plan competes for one reviewer),
+# The round is gated three ways, in order: fewer than max-rounds
+# task-planning rounds in progress (the shared cadence gate on project/task-
+# branches; a round lasts from its plan until its pull request is merged or
+# closed), room in the open-PR backlog (max-open-prs, since every plan
+# competes for one reviewer),
 # and a claimable task in the release (GET /api/tracker/claimable on the
 # controller, which CI can reach and the tracker cannot be reached from).
 # With no claimable task nothing is created: no branch, no workstream, no
@@ -70,6 +72,11 @@ on:
         description: "Above this many open pull requests against the default branch, no round starts"
         required: false
         default: 7
+        type: number
+      max-rounds:
+        description: "Task-planning rounds that may be in progress at once, each on its own project/task- branch"
+        required: false
+        default: 4
         type: number
       force:
         description: "\"true\" starts a round even when one is in progress or the backlog is full; a claimable task is still required"
@@ -174,16 +181,17 @@ jobs:
           BRANCH_PREFIX: "project/task-"
           MIN_INTERVAL_DAYS: "0"
           PR_GRACE_HOURS: "24"
+          MAX_ROUNDS: ${{ inputs.max-rounds }}
           FORCE: ${{ inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash "$FRAMEWORK/tools/ci/qa-cadence.sh"
 
-      # Retire the task-planning rounds that came before this one. Once the gate
-      # above has found no project/task-* round in progress, each earlier one has
-      # been merged, closed or abandoned; an approved plan being implemented
-      # keeps its pull request open, so the gate stops the run before this.
-      # A forced run skips that check, so it archives nothing. Archiving is
-      # reversible.
+      # Retire the task-planning rounds that are over. The gate above lists
+      # every project/task-* round still in progress as live — an approved plan
+      # being implemented keeps its pull request open, so it is among them —
+      # and those are kept; every other one has been merged, closed or
+      # abandoned. A forced run skips the gate's checks, so it archives
+      # nothing. Archiving is reversible.
       - name: Archive previous rounds
         if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
         env:
@@ -191,6 +199,7 @@ jobs:
           CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH_PREFIX: "project/task-"
+          KEEP_BRANCHES: ${{ steps.decide.outputs.live }}
           REPO_URL: git@github.com:${{ github.repository }}.git
         run: bash "$FRAMEWORK/tools/ci/archive-stale-workstreams.sh"
 
@@ -299,6 +308,8 @@ jobs:
           RELEASE: ${{ steps.release.outputs.release }}
           INTAKE: ${{ steps.intake.outputs.open }}
           DECIDE: ${{ steps.decide.outputs.reason }}
+          ROUNDS: ${{ steps.decide.outputs.rounds }}
+          MAX_ROUNDS: ${{ inputs.max-rounds }}
           OPEN_PRS: ${{ steps.backlog.outputs.open_prs }}
           CLAIMABLE: ${{ steps.claimable.outputs.claimable }}
           CLAIMED: ${{ steps.claim.outputs.claimed }}
@@ -310,7 +321,7 @@ jobs:
             echo ""
             echo "**Release:** ${RELEASE:-unknown}"
             echo "**Automated intake open:** ${INTAKE:-not checked}"
-            echo "**Round in progress check:** ${DECIDE:-not run}"
+            echo "**Rounds in progress check:** ${DECIDE:-not run} (${ROUNDS:-0} found, limit ${MAX_ROUNDS})"
             echo "**Open PRs:** ${OPEN_PRS:-not checked} (limit ${MAX_OPEN_PRS})"
             echo "**Claimable tasks:** ${CLAIMABLE:-not checked}"
             echo "**Claimed task:** ${TASK_ID:-none}"

@@ -40,7 +40,7 @@ has been shown to work.
 |---|---|---|
 | Tracker: projects, releases, tasks | `tools/tracker`, `tracker_*` tools in `tools/mcp/manager/tracker_tools.py` | Where tasks live. Releases are named `<Project> <version>`. |
 | Planning round | `plan-next-task` in `.github/workflows/master-agent-dispatch.yaml`, prompt `tools/ci/prompts/project-planning.txt` | Opens one plan branch at a time; today it invents its own task. |
-| One round open at a time; open-PR ceiling | `tools/ci/qa-cadence.sh` with `PR_GRACE_HOURS`; `MAX_OPEN_PRS` | Throttling that already works. |
+| Rounds open at once; open-PR ceiling | `tools/ci/qa-cadence.sh` with `PR_GRACE_HOURS` and `MAX_ROUNDS`; one `MAX_OPEN_PRS` for every round | Throttling that already works. |
 | Docs-only review | `auto-review` → `tools/ci/prompts/docs-review.txt` in `analysis.yaml` | Reviews a plan; never implements it. |
 | Approval gate | `.github/workflows/verify-completion.yaml` (dispatched by hand or via `project_verify_branch`) | The only thing that starts an implementation. |
 | Workstream ↔ task link | `workstream_id` on a task | Can already record which branch is working on a task. |
@@ -198,7 +198,8 @@ This is a new job in `master-agent-dispatch.yaml`, alongside the free-form
 It keeps the same controls:
 - a grace window for a branch that has no PR yet (`qa-cadence.sh` with
   `PR_GRACE_HOURS`);
-- one task round open at a time to begin with (see Parallel planning);
+- a bounded number of task rounds open at once: one to begin with, now four
+  (`max-rounds`; see Parallel planning);
 - the same open-PR ceiling (`MAX_OPEN_PRS`), because both kinds of plan compete
   for the same reviewer's attention.
 
@@ -326,9 +327,14 @@ As built (`TaskCloseOutReconciler`, tracker `/v1/close-out`):
 Task rounds never write the manager log, so nothing forces them to one at a time
 beyond the claim itself. Since the claim (now made by CI through the
 controller) is atomic, the
-task round can open up to a configured number of branches at once. Start at
-one, and raise it once the pipeline has proven itself. The open-PR ceiling still
-applies across everything.
+task round can open up to a configured number of branches at once. Started at
+one; now four (`max-rounds` of `task-planning.yaml`, `MAX_ROUNDS` of
+`qa-cadence.sh`). A round holds its slot until its PR is merged or closed. The
+open-PR ceiling still applies across everything: every round in Master Agent
+Dispatch, QA included, now checks the one `MAX_OPEN_PRS`.
+
+Each merge to master starts at most one round, so the slots fill one merge at a
+time rather than all at once.
 
 ### 7. Adoption by other repositories
 
