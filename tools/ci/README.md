@@ -20,10 +20,10 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 
 | Script | Purpose |
 |---|---|
-| `archive-stale-workstreams.sh` | Archive the workstreams of a recurring QA job's previous rounds |
+| `archive-stale-workstreams.sh` | Archive the workstreams of a recurring job's previous rounds, keeping the ones still in progress (`KEEP_BRANCHES`) |
 | `parse-surefire-failures.sh` | Extract failing tests from Surefire XML reports |
-| `qa-cadence.sh` | Decide whether a recurring QA round (`BRANCH_PREFIX`) is due |
-| `open-pr-backlog.sh` | Decide whether the open-PR backlog leaves room for a planning round (`MAX_OPEN_PRS`); shared by both planning jobs |
+| `qa-cadence.sh` | Decide whether a recurring round (`BRANCH_PREFIX`) is due: fewer than `MAX_ROUNDS` in progress (reported as `live`), the interval passed, and with `CHECK_BACKLOG` room in the open-PR backlog |
+| `open-pr-backlog.sh` | Decide whether the open-PR backlog leaves room for a round (`MAX_OPEN_PRS`); run by both planning jobs, and by `qa-cadence.sh` for the QA rounds |
 | `plan_workstream_config.py` | Resolve the `docs/plans/<prefix>-workstream.yaml` settings a `project/` branch declares (longest matching prefix; strict schema) |
 | `tracker-claimable.sh` | Ask the controller whether a tracker release has a claimable task; fails closed |
 | `tracker-claim.sh` | Claim the next task of a tracker release for a workstream through the controller (`POST /api/tracker/claim`); writes the task to a file and emits `claimed`, `task_id` and `task_file`; fails closed |

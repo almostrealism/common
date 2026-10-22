@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.job.JobFactory;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -386,6 +387,35 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 
 		CodingAgentJob defaulted = roundTrip(new CodingAgentJob("task-enforce-default", "Prompt"));
 		assertEquals(CodingAgentJob.DEFAULT_MAX_RULE_RETRIES, defaulted.getMaxEnforceChangesRetries());
+	}
+
+	/**
+	 * Verifies that the production wire decoder,
+	 * {@link io.flowtree.job.JobFactory#decode(String)}, reconstructs a
+	 * {@link CodingAgentJob.Factory} from its {@code encode()} output with its
+	 * class and fields intact. This is the decode path controller-side job
+	 * recovery relies on to rehydrate a persisted {@code SUBMITTED} job, so a
+	 * field that fails to survive it would silently change the recovered job.
+	 */
+	@Test(timeout = 30000)
+	public void factoryRoundTripsThroughProductionDecoder() {
+		CodingAgentJob.Factory original = new CodingAgentJob.Factory("Recover me");
+		original.setTargetBranch("feature/recover");
+		original.setRepoUrl("https://github.com/org/repo");
+		original.setMaxTurns(55);
+		original.setArManagerToken("tok-xyz-123");
+
+		JobFactory decoded = JobFactory.decode(original.encode());
+
+		assertNotNull("the production decoder must reconstruct the factory", decoded);
+		assertTrue("the decoded factory must keep its concrete type",
+			decoded instanceof CodingAgentJob.Factory);
+		CodingAgentJob.Factory restored = (CodingAgentJob.Factory) decoded;
+		assertEquals(original.getTaskId(), restored.getTaskId());
+		assertEquals("feature/recover", restored.getTargetBranch());
+		assertEquals("https://github.com/org/repo", restored.getRepoUrl());
+		assertEquals(55, restored.getMaxTurns());
+		assertEquals("tok-xyz-123", restored.getArManagerToken());
 	}
 
 	/**

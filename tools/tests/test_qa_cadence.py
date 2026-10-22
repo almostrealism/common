@@ -118,11 +118,13 @@ class _GateTestBase(unittest.TestCase):
         self._git("push", "-q", "origin", name)
 
     def _decide(self, prefix="qa/docs-", interval="7", force="false",
-                grace="0", api=None, ignore_interval="false"):
+                grace="0", api=None, ignore_interval="false", extra=None):
         """Runs the gate and returns its ``(run, reason)`` outputs.
 
         With ``api`` (a :class:`_PullsStub`) the GitHub queries go to the
-        stub; without it the token is unset and they are skipped.
+        stub; without it the token is unset and they are skipped. ``extra``
+        is added to the environment last. Every output, ``rounds`` and
+        ``live`` among them, is kept in ``self.outputs``.
         """
         env = dict(os.environ)
         env.update({
@@ -142,14 +144,16 @@ class _GateTestBase(unittest.TestCase):
                 "GITHUB_TOKEN": "token",
                 "GITHUB_API_URL": api.url,
             })
+        env.update(extra or {})
         env.pop("GITHUB_OUTPUT", None)
         result = subprocess.run(["bash", _SCRIPT], cwd=self.work, env=env,
                                 capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
         out = dict(
             line.split("=", 1) for line in result.stdout.splitlines()
-            if line.startswith(("run=", "reason="))
+            if line.startswith(("run=", "reason=", "rounds=", "live="))
         )
+        self.outputs = out
         return out.get("run"), out.get("reason")
 
 
@@ -337,6 +341,116 @@ class AwaitingPrTests(_GateTestBase):
     def test_force_overrides_a_round_in_progress(self):
         self._branch(self.PREFIX + _full_stamp(0.2))
         self.assertEqual(("true", "forced"), self._plan(_PullsStub(), force="true"))
+
+
+class MaxRoundsTests(_GateTestBase):
+    """Several rounds at once, as the task-planning job allows them.
+
+    Each task-planning round plans a different task on its own branch, so a
+    job may allow up to ``MAX_ROUNDS`` in progress. A round counts as in
+    progress exactly as it does for a one-round job: an open PR, or a branch
+    within the grace window that has not opened one. The rounds found are
+    reported as ``live`` so the archive step that follows a ``run=true``
+    leaves them alone.
+    """
+
+    PREFIX = "project/task-"
+
+    def _plan(self, api, rounds="4"):
+        self.addCleanup(api.close)
+        return self._decide(prefix=self.PREFIX, interval="0", grace="24", api=api,
+                            extra={"MAX_ROUNDS": rounds})
+
+    def _branches(self, count, hours_ago):
+        names = [self.PREFIX + _full_stamp(hours_ago + i) for i in range(count)]
+        for name in names:
+            self._branch(name)
+        return names
+
+    def test_open_rounds_below_the_limit_leave_room(self):
+        open_prs = self._branches(3, 48)
+        self.assertEqual(("true", "due"), self._plan(_PullsStub(open_heads=open_prs)))
+        self.assertEqual("3", self.outputs["rounds"])
+        self.assertEqual(sorted(open_prs), sorted(self.outputs["live"].split()))
+
+    def test_open_rounds_at_the_limit_hold_off_another(self):
+        open_prs = self._branches(4, 48)
+        self.assertEqual(("false", "pr-open"), self._plan(_PullsStub(open_heads=open_prs)))
+
+    def test_rounds_awaiting_their_pr_count_toward_the_limit(self):
+        open_prs = self._branches(2, 48)
+        awaiting = self._branches(2, 1)
+        self.assertEqual(("false", "awaiting-pr"),
+                         self._plan(_PullsStub(open_heads=open_prs)))
+        self.assertEqual("4", self.outputs["rounds"])
+        self.assertEqual(sorted(open_prs + awaiting), sorted(self.outputs["live"].split()))
+
+    def test_finished_rounds_are_neither_counted_nor_live(self):
+        merged = self._branches(3, 2)
+        open_prs = self._branches(1, 48)
+        api = _PullsStub(open_heads=open_prs, heads_with_prs=merged)
+        self.assertEqual(("true", "due"), self._plan(api))
+        self.assertEqual(open_prs, self.outputs["live"].split())
+
+    def test_the_default_is_one_round(self):
+        open_prs = self._branches(1, 48)
+        api = _PullsStub(open_heads=open_prs)
+        self.addCleanup(api.close)
+        self.assertEqual(("false", "pr-open"),
+                         self._decide(prefix=self.PREFIX, interval="0", grace="24", api=api))
+
+    def test_no_round_in_progress_reports_nothing_live(self):
+        self.assertEqual(("true", "first-run"), self._plan(_PullsStub()))
+        self.assertEqual(("0", ""), (self.outputs["rounds"], self.outputs["live"]))
+
+
+class BacklogConditionTests(_GateTestBase):
+    """Condition 4: with CHECK_BACKLOG on, a full open-PR backlog holds the job off.
+
+    The count comes from ``open-pr-backlog.sh``, which asks ``gh``; a fake
+    ``gh`` on the PATH answers with a fixed count, or fails.
+    """
+
+    def _gh(self, script):
+        bin_dir = os.path.join(self.tmp, "bin")
+        os.makedirs(bin_dir, exist_ok=True)
+        fake = os.path.join(bin_dir, "gh")
+        with open(fake, "w") as f:
+            f.write("#!/usr/bin/env bash\n" + script)
+        os.chmod(fake, 0o755)
+        return bin_dir
+
+    def _check(self, open_prs=None, limit="7", **kwargs):
+        script = "echo %d\n" % open_prs if open_prs is not None else "exit 1\n"
+        extra = {"CHECK_BACKLOG": "true", "MAX_OPEN_PRS": limit,
+                 "PATH": self._gh(script) + os.pathsep + os.environ.get("PATH", "")}
+        return self._decide(extra=extra, **kwargs)
+
+    def test_room_in_the_backlog_runs(self):
+        self.assertEqual(("true", "first-run"), self._check(open_prs=7))
+
+    def test_a_full_backlog_holds_the_job_off(self):
+        self.assertEqual(("false", "backlog-full"), self._check(open_prs=8))
+
+    def test_an_uncountable_backlog_holds_the_job_off(self):
+        self.assertEqual(("false", "backlog-query-failed"), self._check())
+
+    def test_the_backlog_applies_to_the_interval_override(self):
+        self._branch("qa/docs-%s-010101" % _stamp(1))
+        self.assertEqual(("false", "backlog-full"),
+                         self._check(open_prs=8, ignore_interval="true"))
+
+    def test_a_job_that_is_not_due_reports_the_interval_not_the_backlog(self):
+        self._branch("qa/docs-%s-010101" % _stamp(1))
+        self.assertEqual(("false", "too-recent"), self._check(open_prs=8))
+
+    def test_force_ignores_the_backlog(self):
+        self.assertEqual(("true", "forced"), self._check(open_prs=50, force="true"))
+
+    def test_the_condition_is_off_by_default(self):
+        extra = {"MAX_OPEN_PRS": "7",
+                 "PATH": self._gh("exit 1\n") + os.pathsep + os.environ.get("PATH", "")}
+        self.assertEqual(("true", "first-run"), self._decide(extra=extra))
 
 
 if __name__ == "__main__":

@@ -422,7 +422,10 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertEqual("project/plan-", env["BRANCH_PREFIX"])
         self.assertEqual("0", env["MIN_INTERVAL_DAYS"])
         self.assertGreater(int(env["PR_GRACE_HOURS"]), 0)
-        self.assertEqual("7", job["env"]["MAX_OPEN_PRS"])
+        self.assertEqual("1", env.get("MAX_ROUNDS", "1"))
+        self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
+        self.assertNotIn("MAX_OPEN_PRS", job.get("env", {}),
+                         "the job must apply the workflow's shared limit")
 
         # The backlog limit is applied by the script both planning jobs share.
         backlog = next(i for i, s in enumerate(steps)
@@ -600,19 +603,53 @@ class MasterAgentDispatchTests(unittest.TestCase):
 
     def test_both_planning_rounds_share_one_backlog_limit(self):
         """Free-form plans and task plans compete for the same reviewer, so
-        both rounds apply the same open-PR limit through the same script."""
+        both rounds apply the same open-PR limit through the same script:
+        the workflow's, which a called workflow receives as an input."""
         limits = set()
         for name in ("plan-next-task", "plan-release-task"):
             caller = self.jobs[name]
             job = called_job(caller)
             with self.subTest(job=name):
                 self.assertIn("open-pr-backlog.sh", "\n".join(_run_steps(job)))
-                limit = job["env"]["MAX_OPEN_PRS"]
+                limit = job.get("env", {}).get("MAX_OPEN_PRS",
+                                               self.workflow["env"]["MAX_OPEN_PRS"])
                 if job is not caller:
                     self.assertEqual("${{ inputs.max-open-prs }}", limit)
                     limit = str(caller["with"]["max-open-prs"])
                 limits.add(limit)
-        self.assertEqual({"7"}, limits)
+        self.assertEqual({self.workflow["env"]["MAX_OPEN_PRS"]}, limits)
+
+    def test_every_qa_round_applies_the_shared_backlog_limit(self):
+        """Every round ends in a pull request for the same reviewer, so the
+        QA rounds stop at the same open-PR limit as the planning rounds. Their
+        cadence gate checks it (CHECK_BACKLOG) against the workflow's
+        MAX_OPEN_PRS, which no job may override with a limit of its own."""
+        self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
+        for name, job in self.qa_jobs.items():
+            gate = next(s for s in job["steps"] if "qa-cadence.sh" in s.get("run", ""))
+            with self.subTest(job=name):
+                self.assertEqual("true", gate["env"].get("CHECK_BACKLOG"))
+                self.assertNotIn("MAX_OPEN_PRS", job["env"])
+                self.assertNotIn("MAX_OPEN_PRS", gate["env"])
+                self.assertIn("GITHUB_TOKEN", gate["env"])
+                summary = next(s for s in job["steps"] if s["name"] == "Summary")
+                self.assertIn("backlog-full)", summary["run"])
+
+    def test_several_task_rounds_may_be_open_at_once(self):
+        """Each task round plans a different task on its own branch and
+        writes no shared file, so up to max-rounds of them run at once; the
+        Project Manager keeps one. With several open, "a round may start"
+        no longer means "every earlier round is over": the archive step
+        must keep the rounds the gate counted as in progress."""
+        caller = self.jobs["plan-release-task"]
+        steps = self.task_planning["steps"]
+        gate = next(s for s in steps if "qa-cadence.sh" in s.get("run", ""))
+        archive = next(s for s in steps if "archive-stale-workstreams.sh" in s.get("run", ""))
+        self.assertEqual("${{ inputs.max-rounds }}", gate["env"]["MAX_ROUNDS"])
+        self.assertEqual(4, caller["with"]["max-rounds"])
+        self.assertEqual("${{ steps.decide.outputs.live }}", archive["env"]["KEEP_BRANCHES"])
+        self.assertNotIn("CHECK_BACKLOG", gate["env"],
+                         "the round checks the backlog in its own step")
 
     def test_the_planning_dispatch_the_mcp_tool_uses_still_exists(self):
         """project_tools.py dispatches this file by name with this selector."""

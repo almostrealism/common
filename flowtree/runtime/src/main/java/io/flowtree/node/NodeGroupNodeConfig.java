@@ -17,14 +17,11 @@
 package io.flowtree.node;
 
 import io.flowtree.Server;
-import io.flowtree.job.JobFactory;
 import io.flowtree.msg.Message;
-import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.Optional;
 import java.util.Properties;
 
 /**
@@ -310,69 +307,5 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 	 */
 	public static boolean isOfflineMode() {
 		return Boolean.getBoolean(OFFLINE_MODE_PROPERTY);
-	}
-
-	/**
-	 * Decodes an encoded task string into a fully initialised {@link JobFactory}.
-	 * The string format is:
-	 * <pre>
-	 *   &lt;ClassName&gt;&lt;ENTRY_SEP&gt;&lt;key1&gt;:=&lt;value1&gt;&lt;ENTRY_SEP&gt;...
-	 * </pre>
-	 * The first token is the fully-qualified class name; subsequent tokens are
-	 * key-value pairs applied via {@link JobFactory#set(String, String)}.
-	 * Returns {@code null} if the class cannot be found or instantiated.
-	 *
-	 * @param data              Encoded representation of the {@link JobFactory}.
-	 * @param keyValueSeparator The separator token used between key and value fields
-	 *                          (typically {@link NodeGroup#KEY_VALUE_SEPARATOR}).
-	 * @return  The constructed and configured factory, or {@code null} on failure.
-	 */
-	static JobFactory createTask(String data, String keyValueSeparator) {
-		int index = data.indexOf(JobFactory.ENTRY_SEPARATOR);
-		String className = data.substring(0, index);
-
-		Class c = null;
-		JobFactory j = null;
-
-		try {
-			c = Class.forName(className);
-			j = (JobFactory) c.newInstance();
-
-			boolean end = false;
-
-			while (!end) {
-				data = data.substring(index + JobFactory.ENTRY_SEPARATOR.length());
-				index = data.indexOf(JobFactory.ENTRY_SEPARATOR);
-
-				while (data.charAt(index + JobFactory.ENTRY_SEPARATOR.length()) == '/' ||
-						index > 0 && data.charAt(index - 1) == '\\') {
-					index = data.indexOf(JobFactory.ENTRY_SEPARATOR, index + 1);
-				}
-
-				String s = null;
-
-				if (index <= 0) {
-					s = data;
-					end = true;
-				} else {
-					s = data.substring(0, index);
-				}
-
-				String key = s.substring(0, s.indexOf(keyValueSeparator));
-				String value = s.substring(s.indexOf(keyValueSeparator) + keyValueSeparator.length());
-
-				j.set(key, value);
-			}
-		} catch (ClassNotFoundException cnf) {
-			Console.root().warn("NodeGroup: Class not found: " + className, cnf);
-		} catch (ClassCastException cce) {
-			Console.root().warn("NodeGroup: Error casting " +
-					Optional.ofNullable(c).map(Class::getName).orElse(null) +
-					" to JobFactory", cce);
-		} catch (Exception e) {
-			Console.root().warn("NodeGroup: " + e, e);
-		}
-
-		return j;
 	}
 }

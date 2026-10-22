@@ -334,6 +334,13 @@ public class JobStatsStore implements ConsoleFeatures {
      * inserted. A second {@code STARTED} for an already-started job is a no-op, so
      * a re-reported start never moves {@code started_at}.</p>
      *
+     * <p>This remains the path that carries worker node identity for a job that
+     * does post a {@code status=STARTED} event. It is no longer the only way a
+     * row reaches {@code STARTED}: a heartbeat or phase update promotes a still-
+     * {@code SUBMITTED} row through {@link #promoteToStarted}, so the transition
+     * no longer hangs on that single event arriving. The two paths are mutually
+     * idempotent — whichever fires first wins and the other is a no-op.</p>
+     *
      * @param jobId         the job identifier
      * @param workstreamId  the workstream this job belongs to
      * @param description   human-readable description
@@ -636,6 +643,48 @@ public class JobStatsStore implements ConsoleFeatures {
     }
 
     /**
+     * Promotes a row still in {@code SUBMITTED} to {@code STARTED} on the
+     * strength of a liveness signal — a heartbeat or a phase update — that
+     * proves the job is running.
+     *
+     * <p>The controller's {@code STARTED} row otherwise hangs on a single
+     * {@code status=STARTED} event reaching the status-event handler; when that
+     * event is lost or never arrives, a job that heartbeats and records phases
+     * stays {@code SUBMITTED} and is indistinguishable from one that never
+     * started. Making a running-proof signal perform the same transition as
+     * {@link #recordJobStarted}'s {@code WHEN MATCHED AND status='SUBMITTED'}
+     * branch makes {@code STARTED} derivable from evidence the job is alive.</p>
+     *
+     * <p>Idempotent: the {@code WHERE status='SUBMITTED' AND completed_at IS
+     * NULL} guard means a row already {@code STARTED} or terminal is left
+     * untouched, so a later genuine {@code STARTED} event (or a subsequent
+     * heartbeat) is a no-op and a terminal row is never resurrected. The
+     * placeholder {@code started_at} seeded at submission is overwritten with
+     * the signal's instant, exactly as a real start would overwrite it. A
+     * {@code null} {@code node} preserves any identity a prior heartbeat
+     * recorded (a phase update names no node), matching {@code recordJobStarted}.</p>
+     *
+     * @param jobId the job identifier
+     * @param at    the instant the liveness signal arrived, seeded as {@code started_at}
+     * @param node  the worker identity when the signal carried one, else {@code null}
+     */
+    private void promoteToStarted(String jobId, Instant at, String node) {
+        if (connection == null || jobId == null || jobId.isEmpty() || at == null) return;
+
+        String sql = "UPDATE job_timing SET status = 'STARTED', started_at = ?, "
+            + "node = COALESCE(?, node) "
+            + "WHERE job_id = ? AND status = 'SUBMITTED' AND completed_at IS NULL";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(at));
+            ps.setString(2, (node != null && !node.isEmpty()) ? truncate(node, 255) : null);
+            ps.setString(3, jobId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to promote job to STARTED: " + e.getMessage());
+        }
+    }
+
+    /**
      * Records a liveness heartbeat for a running job.
      *
      * <p>Distinct from the inactivity watchdog, which watches the agent
@@ -677,6 +726,9 @@ public class JobStatsStore implements ConsoleFeatures {
         if (jobId == null || jobId.isEmpty() || connection == null) return;
         if (heartbeatAt == null) return;
 
+        // A heartbeat proves liveness, so it promotes a SUBMITTED row first.
+        promoteToStarted(jobId, heartbeatAt, node);
+
         boolean withNode = node != null && !node.isEmpty();
         String sql = withNode
             ? "UPDATE job_timing SET heartbeat_at = ?, node = ? WHERE job_id = ?"
@@ -699,12 +751,17 @@ public class JobStatsStore implements ConsoleFeatures {
      * Records the lifecycle phase a running job has reached, as the job's own
      * harness reports it.
      *
-     * <p>The job row's {@code status} stays {@code STARTED} from submission
-     * until the terminal event, so without this a poller cannot tell a job
-     * still in its primary session from one whose primary work is done and
-     * whose review phase is running. The phase is the harness's word for
-     * where it is — a phase wire name on entry, and the same name marked
-     * complete on exit.</p>
+     * <p>A phase update is itself proof the job is running, so — like a
+     * heartbeat — it promotes a row still {@code SUBMITTED} to {@code STARTED}
+     * before recording the phase (see {@link #promoteToStarted}). A row's
+     * {@code status} therefore reaches {@code STARTED} on the first liveness
+     * signal and stays there until the terminal event; without the promotion a
+     * job that recorded phases but whose single {@code STARTED} event was lost
+     * would remain {@code SUBMITTED} and be misreported as never-started. The
+     * phase itself is the harness's word for where it is — a phase wire name on
+     * entry, and the same name marked complete on exit — which is what lets a
+     * poller tell a job still in its primary session from one whose review
+     * phase is running.</p>
      *
      * @param jobId the job identifier
      * @param phase the phase description; {@code null} or empty is ignored
@@ -712,6 +769,9 @@ public class JobStatsStore implements ConsoleFeatures {
     public synchronized void recordPhase(String jobId, String phase) {
         if (jobId == null || jobId.isEmpty() || connection == null) return;
         if (phase == null || phase.isEmpty()) return;
+
+        // A phase update proves liveness; it names no node, promote on arrival.
+        promoteToStarted(jobId, Instant.now(), null);
 
         String sql = "UPDATE job_timing SET phase = ? WHERE job_id = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {

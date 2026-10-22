@@ -105,6 +105,16 @@ on:
         required: false
         default: ""
 
+# The open-PR limit every round in this workflow applies. Each one ends in a
+# pull request for the same reviewer, so no round of any kind starts while
+# more than this many PRs are open against master: with the round's own PR,
+# the repository then holds at most one more. The planning jobs check it with
+# tools/ci/open-pr-backlog.sh, and the QA rounds through their cadence gate
+# (CHECK_BACKLOG). plan-release-task passes the same number to the workflow it
+# calls, which cannot read this environment.
+env:
+  MAX_OPEN_PRS: "7"
+
 jobs:
   # ── Project Manager ──────────────────────────────────────────────────
   # Keeps exactly one planning branch open: a merge to master starts a new
@@ -132,13 +142,6 @@ jobs:
     concurrency:
       group: project-manager
       cancel-in-progress: false
-
-    env:
-      # Above this many open PRs of any kind, no planning round starts. It
-      # matches the number of automated QA rounds, so a backlog past it
-      # means other work beyond QA is already waiting for review, and a new
-      # proposal would only compete with it.
-      MAX_OPEN_PRS: "7"
 
     steps:
       - name: Checkout Code
@@ -365,8 +368,12 @@ jobs:
       # The release is "Common <root pom.xml version>".
       project: "Common"
       version-file: pom.xml
-      # Kept equal to the Project Manager's; see the note on that job.
+      # The workflow's MAX_OPEN_PRS; see the note above the jobs.
       max-open-prs: 7
+      # Unlike the Project Manager's one round, several task rounds may be
+      # open at once: each plans a different task on its own branch and
+      # writes no shared file.
+      max-rounds: 4
       force: ${{ github.event.inputs.force || 'false' }}
       controller-url: ${{ vars.FLOWTREE_CONTROLLER_URL }}
       cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
@@ -445,6 +452,7 @@ jobs:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
           PR_GRACE_HOURS: "24"
+          CHECK_BACKLOG: "true"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_docs }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -543,6 +551,8 @@ jobs:
               too-recent) echo "Skipped: the last review is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-full) echo "Skipped: more than ${{ env.MAX_OPEN_PRS }} PRs are open against master. Review some first." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-query-failed) echo "Skipped: could not count the open PRs." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
             esac
           fi
@@ -611,6 +621,7 @@ jobs:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
           PR_GRACE_HOURS: "24"
+          CHECK_BACKLOG: "true"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_defect_hunt }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -718,6 +729,8 @@ jobs:
               too-recent) echo "Skipped: the last defect hunt is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-full) echo "Skipped: more than ${{ env.MAX_OPEN_PRS }} PRs are open against master. Review some first." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-query-failed) echo "Skipped: could not count the open PRs." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
             esac
           fi
@@ -800,6 +813,7 @@ jobs:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
           PR_GRACE_HOURS: "24"
+          CHECK_BACKLOG: "true"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_coverage }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1028,6 +1042,8 @@ jobs:
               too-recent) echo "Skipped: the last coverage round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-full) echo "Skipped: more than ${{ env.MAX_OPEN_PRS }} PRs are open against master. Review some first." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-query-failed) echo "Skipped: could not count the open PRs." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
             esac
           fi
@@ -1101,6 +1117,7 @@ jobs:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
           PR_GRACE_HOURS: "24"
+          CHECK_BACKLOG: "true"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_consolidation }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1205,6 +1222,8 @@ jobs:
               too-recent) echo "Skipped: the last consolidation round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-full) echo "Skipped: more than ${{ env.MAX_OPEN_PRS }} PRs are open against master. Review some first." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-query-failed) echo "Skipped: could not count the open PRs." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
             esac
           fi
@@ -1290,6 +1309,7 @@ jobs:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
           PR_GRACE_HOURS: "24"
+          CHECK_BACKLOG: "true"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_performance }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1395,6 +1415,8 @@ jobs:
               too-recent) echo "Skipped: the last performance round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-full) echo "Skipped: more than ${{ env.MAX_OPEN_PRS }} PRs are open against master. Review some first." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-query-failed) echo "Skipped: could not count the open PRs." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
             esac
           fi
@@ -1486,6 +1508,7 @@ jobs:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
           PR_GRACE_HOURS: "24"
+          CHECK_BACKLOG: "true"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_pdsl }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1581,6 +1604,8 @@ jobs:
               too-recent) echo "Skipped: the last PDSL migration round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-full) echo "Skipped: more than ${{ env.MAX_OPEN_PRS }} PRs are open against master. Review some first." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-query-failed) echo "Skipped: could not count the open PRs." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
             esac
           fi
@@ -1665,6 +1690,7 @@ jobs:
           BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
           MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
           PR_GRACE_HOURS: "24"
+          CHECK_BACKLOG: "true"
           IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_retrospective }}
           FORCE: ${{ github.event.inputs.force }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1775,6 +1801,8 @@ jobs:
               too-recent) echo "Skipped: the last retrospective round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-full) echo "Skipped: more than ${{ env.MAX_OPEN_PRS }} PRs are open against master. Review some first." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-query-failed) echo "Skipped: could not count the open PRs." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
             esac
           fi
