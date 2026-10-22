@@ -35,6 +35,7 @@ import io.flowtree.controller.DailyAgentTime;
 import io.flowtree.controller.JobInterval;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.controller.PendingJob;
+import io.flowtree.controller.WeeklyStats;
 import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.jobs.JobCompletionEvent;
 
@@ -449,14 +450,14 @@ class StatsQueryHandler {
         json.append("{\"weekStart\":\"").append(weekStart).append("\",\"stats\":{");
 
         if (workstreamFilter != null && !workstreamFilter.isEmpty()) {
-            JobStatsStore.WeeklyStats stats = statsStore.getWeeklyStats(workstreamFilter, weekStart);
+            WeeklyStats stats = statsStore.getWeeklyStats(workstreamFilter, weekStart);
             json.append("\"").append(JsonFieldExtractor.escapeJson(workstreamFilter)).append("\":");
             appendStatsJson(json, stats);
         } else {
-            Map<String, JobStatsStore.WeeklyStats> byWs =
+            Map<String, WeeklyStats> byWs =
                 statsStore.getWeeklyStatsByWorkstream(weekStart);
             boolean first = true;
-            for (Map.Entry<String, JobStatsStore.WeeklyStats> entry : byWs.entrySet()) {
+            for (Map.Entry<String, WeeklyStats> entry : byWs.entrySet()) {
                 if (!first) json.append(",");
                 first = false;
                 json.append("\"").append(JsonFieldExtractor.escapeJson(entry.getKey())).append("\":");
@@ -469,13 +470,13 @@ class StatsQueryHandler {
     }
 
     /**
-     * Appends a single {@link JobStatsStore.WeeklyStats} as a JSON object to
+     * Appends a single {@link WeeklyStats} as a JSON object to
      * the given builder.
      *
      * @param json  the builder to append to
      * @param stats the stats object to serialise
      */
-    private static void appendStatsJson(StringBuilder json, JobStatsStore.WeeklyStats stats) {
+    private static void appendStatsJson(StringBuilder json, WeeklyStats stats) {
         json.append("{\"jobCount\":").append(stats.jobCount);
         json.append(",\"successCount\":").append(stats.successCount);
         json.append(",\"failedCount\":").append(stats.failedCount);

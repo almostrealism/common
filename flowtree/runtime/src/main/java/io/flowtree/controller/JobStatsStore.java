@@ -16,7 +16,6 @@
 
 package io.flowtree.controller;
 
-import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Truncation;
@@ -32,12 +31,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import io.flowtree.api.FlowTreeApiEndpoint;
@@ -1545,90 +1542,5 @@ public class JobStatsStore implements ConsoleFeatures {
      */
     private static String truncate(String s, int maxLength) {
         return s == null ? null : Truncation.CUT.apply(s, maxLength);
-    }
-
-    /**
-     * Per-workstream activity summary for a rolling time window.
-     */
-    public static class WorkstreamActivity {
-        /** The workstream identifier. */
-        public String workstreamId;
-        /** Total number of completed jobs in the window. */
-        public int jobCount;
-        /** Number of successful jobs in the window. */
-        public int successCount;
-        /** Number of failed jobs in the window. */
-        public int failedCount;
-        /** Number of cancelled jobs in the window. */
-        public int cancelledCount;
-        /**
-         * Up to 5 recent jobs, each as {@code [jobId, slackMessageTs]}.
-         * Only jobs with a stored Slack message timestamp are included.
-         */
-        public List<String[]> recentJobs = new ArrayList<>();
-    }
-
-    /**
-     * Aggregated weekly job statistics.
-     */
-    public static class WeeklyStats {
-        /** Total number of completed jobs. */
-        public int jobCount;
-        /** Number of successful jobs. */
-        public int successCount;
-        /** Number of failed jobs. */
-        public int failedCount;
-        /** Number of cancelled jobs. */
-        public int cancelledCount;
-        /** Total wall-clock time across all jobs in milliseconds. */
-        public long totalWallClockMs;
-        /** Total Claude Code duration across all jobs in milliseconds. */
-        public long totalDurationMs;
-        /** Total cost in USD across all jobs. */
-        public double totalCostUsd;
-        /** Total number of agentic turns across all jobs. */
-        public int totalTurns;
-        /**
-         * Per-runner USD cost breakdown for the window, keyed by runner name and
-         * ordered by cost descending. Empty when no per-runner data is recorded.
-         */
-        public Map<String, Double> costByRunner = Collections.emptyMap();
-        /**
-         * Per-model USD cost breakdown for the window, keyed by provider/model
-         * identifier and ordered by cost descending. Empty when no per-model
-         * data is recorded.
-         */
-        public Map<String, Double> costByModel = Collections.emptyMap();
-
-        /**
-         * Formats this week's statistics as a Slack mrkdwn block for display.
-         *
-         * <p>Outputs a header line with the label and date range, followed by
-         * total wall-clock time, job counts by status, total USD cost (with
-         * per-runner and per-model breakdowns), and total agent turns.</p>
-         *
-         * @param label     display label for the block (e.g., "This Week")
-         * @param weekStart the Monday that begins this week
-         * @return a formatted mrkdwn string ready for posting to Slack
-         */
-        public String toSlackMrkdwn(String label, LocalDate weekStart) {
-            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US);
-            LocalDate weekEnd = weekStart.plusDays(6);
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("*").append(label).append("* (");
-            sb.append(weekStart.format(fmt)).append(" — ").append(weekEnd.format(fmt)).append(")\n");
-            sb.append("  :clock1: Total time: ").append(HarnessStatusReporter.formatDuration(totalWallClockMs)).append("\n");
-            sb.append("  :hammer: Jobs: ").append(jobCount);
-            sb.append(" (:white_check_mark: ").append(successCount);
-            sb.append("  :x: ").append(failedCount);
-            sb.append("  :no_entry_sign: ").append(cancelledCount).append(")\n");
-            sb.append("  :moneybag: Cost: $").append(String.format("%.2f", totalCostUsd));
-            sb.append(formatCostBreakdown(costByRunner));
-            sb.append(formatCostBreakdown(costByModel));
-            sb.append("\n");
-            sb.append("  :speech_balloon: Turns: ").append(String.format("%,d", totalTurns)).append("\n");
-            return sb.toString();
-        }
     }
 }

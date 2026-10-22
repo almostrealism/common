@@ -42,6 +42,8 @@ import java.util.regex.Pattern;
 import io.flowtree.api.FlowTreeApiEndpoint;
 import io.flowtree.controller.FlowTreeController;
 import io.flowtree.controller.JobStatsStore;
+import io.flowtree.controller.WeeklyStats;
+import io.flowtree.controller.WorkstreamActivity;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.api.SecretsRequestHandler;
@@ -1140,8 +1142,8 @@ public class SlackListener implements ConsoleFeatures {
             LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
             LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
 
-            JobStatsStore.WeeklyStats thisWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), thisWeekStart);
-            JobStatsStore.WeeklyStats lastWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), lastWeekStart);
+            WeeklyStats thisWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), thisWeekStart);
+            WeeklyStats lastWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), lastWeekStart);
 
             StringBuilder sb = new StringBuilder();
             sb.append(":bar_chart: *Agent Activity \u2014 ").append(ws.getChannelName()).append("*\n\n");
@@ -1165,19 +1167,19 @@ public class SlackListener implements ConsoleFeatures {
             sb.append(":bar_chart: *Agent Activity \u2014 All Workstreams*\n\n");
 
             // Global totals
-            JobStatsStore.WeeklyStats thisWeekTotal = statsStore.getWeeklyStats(thisWeekStart);
-            JobStatsStore.WeeklyStats lastWeekTotal = statsStore.getWeeklyStats(lastWeekStart);
+            WeeklyStats thisWeekTotal = statsStore.getWeeklyStats(thisWeekStart);
+            WeeklyStats lastWeekTotal = statsStore.getWeeklyStats(lastWeekStart);
             sb.append(thisWeekTotal.toSlackMrkdwn("This Week (total)", thisWeekStart));
             sb.append("\n");
             sb.append(lastWeekTotal.toSlackMrkdwn("Last Week (total)", lastWeekStart));
 
             // Per-workstream breakdown for this week
-            Map<String, JobStatsStore.WeeklyStats> thisWeekByWs = statsStore.getWeeklyStatsByWorkstream(thisWeekStart);
+            Map<String, WeeklyStats> thisWeekByWs = statsStore.getWeeklyStatsByWorkstream(thisWeekStart);
             if (!thisWeekByWs.isEmpty()) {
                 sb.append("\n:mag: *This Week by Workstream*\n");
-                for (Map.Entry<String, JobStatsStore.WeeklyStats> entry : thisWeekByWs.entrySet()) {
+                for (Map.Entry<String, WeeklyStats> entry : thisWeekByWs.entrySet()) {
                     String label = wsToChannel.getOrDefault(entry.getKey(), entry.getKey());
-                    JobStatsStore.WeeklyStats stats = entry.getValue();
+                    WeeklyStats stats = entry.getValue();
                     sb.append("  *").append(label).append("*: ");
                     sb.append(stats.jobCount).append(" jobs, ");
                     sb.append(HarnessStatusReporter.formatDuration(stats.totalWallClockMs)).append(", ");
@@ -1211,7 +1213,7 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         Instant since = Instant.now().minusSeconds(7 * 24 * 3600);
-        Map<String, JobStatsStore.WorkstreamActivity> active = statsStore.getActiveWorkstreams(since);
+        Map<String, WorkstreamActivity> active = statsStore.getActiveWorkstreams(since);
 
         if (active.isEmpty()) {
             ctx.respond(":zzz: No workstreams had activity in the last 7 days.");
@@ -1239,7 +1241,7 @@ public class SlackListener implements ConsoleFeatures {
         final int MAX_PERMALINK_API_CALLS = 9;
         int totalPermalinkApiCalls = 0;
 
-        for (JobStatsStore.WorkstreamActivity activity : active.values()) {
+        for (WorkstreamActivity activity : active.values()) {
             Workstream ws = wsById.get(activity.workstreamId);
             if (ws == null) continue;  // filtered out (different workspace)
 

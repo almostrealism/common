@@ -92,7 +92,7 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
             perModel.put("openrouter:qwen3-coder:exacto", 0.03);
             store.recordModelCosts("job-1", perModel);
 
-            JobStatsStore.WeeklyStats stats = store.getWeeklyStats("ws-mixed", monday);
+            WeeklyStats stats = store.getWeeklyStats("ws-mixed", monday);
             assertEquals(0.42, stats.costByModel.get("claude-opus-4-7"), 1e-9);
             assertEquals(0.03, stats.costByModel.get("openrouter:qwen3-coder:exacto"), 1e-9);
         } finally {
@@ -123,7 +123,7 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
             b.put("claude-opus-4-7", 0.30);
             store.recordModelCosts("job-b", b);
 
-            JobStatsStore.WeeklyStats stats = store.getWeeklyStats("ws-sum", monday);
+            WeeklyStats stats = store.getWeeklyStats("ws-sum", monday);
             assertEquals("claude-opus-4-7 cost sums across both jobs",
                     0.80, stats.costByModel.get("claude-opus-4-7"), 1e-9);
             assertEquals("openrouter:qwen3-coder:exacto appears only from job-a",
@@ -153,7 +153,7 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
             second.put("claude-opus-4-7", 0.25);
             store.recordModelCosts("job-x", second);
 
-            JobStatsStore.WeeklyStats stats = store.getWeeklyStats("ws-idem", monday);
+            WeeklyStats stats = store.getWeeklyStats("ws-idem", monday);
             assertEquals(0.25, stats.costByModel.get("claude-opus-4-7"), 1e-9);
         } finally {
             store.close();
@@ -177,7 +177,7 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
             store.recordModelCosts("job-clear", costs);
             store.recordModelCosts("job-clear", new LinkedHashMap<>());
 
-            JobStatsStore.WeeklyStats stats = store.getWeeklyStats("ws-clear", monday);
+            WeeklyStats stats = store.getWeeklyStats("ws-clear", monday);
             assertFalse("an empty re-record clears prior rows",
                     stats.costByModel.containsKey("claude-opus-4-7"));
         } finally {
@@ -253,7 +253,7 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
             models2.put("claude-opus-4-7", 0.30);
             store.recordModelCosts("job-ws2", models2);
 
-            Map<String, JobStatsStore.WeeklyStats> byWs = store.getWeeklyStatsByWorkstream(monday);
+            Map<String, WeeklyStats> byWs = store.getWeeklyStatsByWorkstream(monday);
             assertTrue("ws-one present", byWs.containsKey("ws-one"));
             assertTrue("ws-two present", byWs.containsKey("ws-two"));
 
