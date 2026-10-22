@@ -220,6 +220,116 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 												ProjectionFactory projectionFactory,
 												NormalizationType qkNorm,
 												Producer<PackedCollection> paddingMask) {
+		return differentialSequenceAttention(batchSize, seqLen, dim, heads, toQkvWeight, toOutWeight,
+				qNormWeight, qNormBias, kNormWeight, kNormBias, invFreq, diffLambda,
+				null, null, null, null, projectionFactory, qkNorm, paddingMask);
+	}
+
+	/**
+	 * Builds a differential self-attention block whose per-head lambda is a learned
+	 * re-parameterization and <em>trains</em>: the four vectors it is built from receive the gradient
+	 * a backward pass implies, so a model fine-tuning a differential-attention block learns how much
+	 * of each head's second map to subtract.
+	 *
+	 * <p>The lambda is {@link #differentialLambda(PackedCollection, PackedCollection, PackedCollection,
+	 * PackedCollection, double) differentialLambda}{@code (λ_q1, λ_k1, λ_q2, λ_k2, λ_init)}; the four
+	 * vectors are registered as the weights of the lambda-scaling stage, which is what carries the
+	 * gradient back to them. The forward pass is identical to passing the same lambda as a fixed
+	 * producer to the {@link #differentialSequenceAttention(int, int, int, int, PackedCollection,
+	 * PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection,
+	 * PackedCollection, Producer, ProjectionFactory, NormalizationType, Producer) producer overload};
+	 * only the backward pass differs, delivering a gradient to {@code λ_q1}, {@code λ_k1}, {@code λ_q2}
+	 * and {@code λ_k2} instead of treating them as constants. With a lambda of zero the block still
+	 * reduces to standard scaled-dot-product attention over {@code [Q1, K1, V]}.</p>
+	 *
+	 * @param batchSize         batch dimension
+	 * @param seqLen            sequence length
+	 * @param dim               model dimension
+	 * @param heads             number of attention heads
+	 * @param toQkvWeight       fused {@code dim*5} projection weights ({@code [Q1, K1, K2, V, Q2]})
+	 * @param toOutWeight       output projection weights
+	 * @param qNormWeight       query normalization weights ({@code null} for no query/key normalization)
+	 * @param qNormBias         query normalization biases ({@code null} for none)
+	 * @param kNormWeight       key normalization weights ({@code null} exactly when {@code qNormWeight} is)
+	 * @param kNormBias         key normalization biases ({@code null} for none)
+	 * @param invFreq           RoPE inverse frequencies
+	 * @param lambdaQ1          first query lambda vectors, shape {@code [heads, lambdaDim]}
+	 * @param lambdaK1          first key lambda vectors, shape {@code [heads, lambdaDim]}
+	 * @param lambdaQ2          second query lambda vectors, shape {@code [heads, lambdaDim]}
+	 * @param lambdaK2          second key lambda vectors, shape {@code [heads, lambdaDim]}
+	 * @param lambdaInit        the depth-dependent initialization constant
+	 * @param projectionFactory factory for creating projection layers
+	 * @param qkNorm            family of the query/key normalization
+	 * @param paddingMask       per-position validity, shape {@code (batch, seqLen)}, or
+	 *                          {@code null} for no masking
+	 * @return the differential self-attention block
+	 * @throws IllegalArgumentException if the lambda vectors do not hold one lambda per head, or only
+	 *                                  one of {@code qNormWeight} and {@code kNormWeight} is supplied
+	 * @throws UnsupportedOperationException if {@code batchSize} is not 1
+	 */
+	default Block differentialSequenceAttention(int batchSize, int seqLen, int dim, int heads,
+												PackedCollection toQkvWeight, PackedCollection toOutWeight,
+												PackedCollection qNormWeight, PackedCollection qNormBias,
+												PackedCollection kNormWeight, PackedCollection kNormBias,
+												PackedCollection invFreq,
+												PackedCollection lambdaQ1, PackedCollection lambdaK1,
+												PackedCollection lambdaQ2, PackedCollection lambdaK2,
+												double lambdaInit,
+												ProjectionFactory projectionFactory,
+												NormalizationType qkNorm,
+												Producer<PackedCollection> paddingMask) {
+		Producer<PackedCollection> diffLambda =
+				differentialLambda(lambdaQ1, lambdaK1, lambdaQ2, lambdaK2, lambdaInit);
+		return differentialSequenceAttention(batchSize, seqLen, dim, heads, toQkvWeight, toOutWeight,
+				qNormWeight, qNormBias, kNormWeight, kNormBias, invFreq, diffLambda,
+				lambdaQ1, lambdaK1, lambdaQ2, lambdaK2, projectionFactory, qkNorm, paddingMask);
+	}
+
+	/**
+	 * The single build path both lambda forms route to: it binds every self-attention argument, the
+	 * forward lambda producer, and the four vectors the lambda is built from (any of which may be
+	 * {@code null}), and builds the {@code differential_attention} layer for the requested query/key
+	 * normalization. When the vectors are supplied they are bound as the weights of the lambda-scaling
+	 * stage, so the stage differentiates the lambda with respect to them; when they are {@code null}
+	 * the stage scales by the lambda without registering a weight, which is how a caller applies a
+	 * fixed, untrained lambda. The forward pass is the same either way.
+	 *
+	 * @param batchSize         batch dimension
+	 * @param seqLen            sequence length
+	 * @param dim               model dimension
+	 * @param heads             number of attention heads
+	 * @param toQkvWeight       fused {@code dim*5} projection weights ({@code [Q1, K1, K2, V, Q2]})
+	 * @param toOutWeight       output projection weights
+	 * @param qNormWeight       query normalization weights ({@code null} for no query/key normalization)
+	 * @param qNormBias         query normalization biases ({@code null} for none)
+	 * @param kNormWeight       key normalization weights ({@code null} exactly when {@code qNormWeight} is)
+	 * @param kNormBias         key normalization biases ({@code null} for none)
+	 * @param invFreq           RoPE inverse frequencies
+	 * @param diffLambda        the per-head lambda forward producer (shape {@code [heads]})
+	 * @param lambdaQ1          first query lambda vectors to register as weights, or {@code null}
+	 * @param lambdaK1          first key lambda vectors to register as weights, or {@code null}
+	 * @param lambdaQ2          second query lambda vectors to register as weights, or {@code null}
+	 * @param lambdaK2          second key lambda vectors to register as weights, or {@code null}
+	 * @param projectionFactory factory for creating projection layers
+	 * @param qkNorm            family of the query/key normalization
+	 * @param paddingMask       per-position validity, or {@code null} for no masking
+	 * @return the differential self-attention block
+	 * @throws IllegalArgumentException if {@code diffLambda} is {@code null} or does not hold one value
+	 *                                  per head, or only one of {@code qNormWeight} and
+	 *                                  {@code kNormWeight} is supplied
+	 * @throws UnsupportedOperationException if {@code batchSize} is not 1
+	 */
+	private Block differentialSequenceAttention(int batchSize, int seqLen, int dim, int heads,
+												PackedCollection toQkvWeight, PackedCollection toOutWeight,
+												PackedCollection qNormWeight, PackedCollection qNormBias,
+												PackedCollection kNormWeight, PackedCollection kNormBias,
+												PackedCollection invFreq,
+												Producer<PackedCollection> diffLambda,
+												PackedCollection lambdaQ1, PackedCollection lambdaK1,
+												PackedCollection lambdaQ2, PackedCollection lambdaK2,
+												ProjectionFactory projectionFactory,
+												NormalizationType qkNorm,
+												Producer<PackedCollection> paddingMask) {
 		if (diffLambda == null) {
 			throw new IllegalArgumentException("Differential attention requires a lambda producer");
 		}
@@ -232,6 +342,10 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 				toQkvWeight, toOutWeight, qNormWeight, qNormBias, kNormWeight, kNormBias,
 				invFreq, projectionFactory, paddingMask, null);
 		args.put("lambda", diffLambda);
+		args.put("lambda_q1", lambdaQ1);
+		args.put("lambda_k1", lambdaK1);
+		args.put("lambda_q2", lambdaQ2);
+		args.put("lambda_k2", lambdaK2);
 
 		PdslLoader loader = new PdslLoader();
 		return loader.buildLayer(loader.parseResource(DIFFERENTIAL_ATTENTION_ASSET),
