@@ -90,9 +90,12 @@ Concrete, in priority order. The committed deliverable is item 1.
    skip-gating.
 
 4. **Documentation.** Update the "Gradient wiring in sequence attention" section of
-   `docs/internals/training-a-language-model.md`, which the cross-attention cycle left naming the
-   differential lambda as the remaining buffered/constant operand, so it states that the lambda
-   re-parameterization now trains (or records precisely what remains, if item 1 stops at a finding).
+   `docs/internals/training-a-language-model.md`, which currently describes the lambda-weighted,
+   negated second map as the mechanism by which all five sections of the fused projection receive
+   gradients but does not note that the lambda re-parameterization itself is frozen, so it states
+   that the lambda re-parameterization now trains (or records precisely what remains, if item 1
+   stops at a finding). The section names only `TransformerResamplingFeatures` as a remaining
+   buffered/constant site today, so the lambda's frozen status should be added, not merely amended.
 
 **Out of scope:** `TransformerResamplingFeatures.resamplingLayerBlock` (the other deferred correctness
 item — K1/V/Q2/K2 still buffered; preventive, gated on a possible SAME-dimension compile blow-up per the

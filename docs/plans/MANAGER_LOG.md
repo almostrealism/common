@@ -51,8 +51,11 @@ fundamental of the two.
 
 - **Documentation — excellent, and tracking reality.** The internals corpus is current at `master`;
   `training-a-language-model.md`'s "Gradient wiring in sequence attention" section honestly records the
-  attention-gradient state, including the lambda this cycle fixes. `consult` finds no flagship doc gap; the
-  standing low-priority items (the ONNX-pressure note) are owned by continuous QA. Moved on.
+  attention-gradient state (the five projection sections, and `TransformerResamplingFeatures` as the one
+  remaining buffered site), and the frozen lambda this cycle fixes is recorded plainly in the
+  `differential_attention.pdsl` asset header itself (the "receives no gradient" paragraph and a
+  `TODO(review)` at each of the three stages). `consult` finds no flagship doc gap; the standing
+  low-priority items (the ONNX-pressure note) are owned by continuous QA. Moved on.
 - **Code quality — the category, because of a specific, evidenced correctness defect.** It is not a style
   or coverage gap. The three `differential_attention*` layers of `/pdsl/differential_attention.pdsl` apply
   the learned per-head lambda with `scale(lambda, 1)`, which reads it as a constant factor; the asset's own
