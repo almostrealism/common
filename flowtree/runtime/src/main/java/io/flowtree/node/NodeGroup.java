@@ -693,27 +693,14 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	
 	/**
 	 * Decodes an encoded task string into a fully initialised
-	 * {@link JobFactory}. The string format is:
-	 * <pre>
-	 *   &lt;ClassName&gt;&lt;ENTRY_SEP&gt;&lt;key1&gt;:=&lt;value1&gt;&lt;ENTRY_SEP&gt;...
-	 * </pre>
-	 * The first token is the fully-qualified class name; subsequent tokens are
-	 * key-value pairs applied to the factory via {@link JobFactory#set(String, String)}.
-	 * Returns {@code null} if the class cannot be found or instantiated.
-	 *
-	 * @param data  Encoded representation of the {@link JobFactory}.
-	 * @return  The constructed and configured factory, or {@code null} on failure.
-	 */
-	/**
-	 * Decodes an encoded task string into a fully initialised
-	 * {@link JobFactory}. Delegates to
-	 * {@link NodeGroupNodeConfig#createTask(String, String)}.
+	 * {@link JobFactory}. Delegates to {@link JobFactory#decode(String)}, the
+	 * single decoder for the wire format.
 	 *
 	 * @param data  Encoded representation of the {@link JobFactory}.
 	 * @return  The constructed and configured factory, or {@code null} on failure.
 	 */
 	protected JobFactory createTask(String data) {
-		return NodeGroupNodeConfig.createTask(data, KEY_VALUE_SEPARATOR);
+		return JobFactory.decode(data);
 	}
 	
 	/**

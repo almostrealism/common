@@ -235,6 +235,37 @@ class StatsQueryHandler {
     }
 
     /**
+     * Handles a {@code GET /api/jobs/in-flight} request: the true count of jobs
+     * holding (or about to hold) an ar-manager connection across every
+     * workstream, which is what a deploy drain must block on.
+     *
+     * <p>"In flight" is {@code STARTED} + {@code SUBMITTED}, read from the same
+     * {@link JobStatsStore#getActiveJobs(String) active} and
+     * {@link JobStatsStore#getPendingJobs(String) pending} views the operator's
+     * job listings use, with a {@code null} workstream meaning every workstream.
+     * Driving the count off those views rather than a hard-coded set of status
+     * strings is deliberate: a future non-terminal status that should hold a
+     * deploy is counted here as soon as it appears in those views, rather than
+     * being silently dropped by a drain that enumerates statuses it knows — the
+     * failure mode this endpoint replaces. The response is a small JSON object
+     * {@code {"active":N,"pending":N,"total":N}} so the drain can log what it is
+     * waiting on. A zero-count object (not an error) is returned when no store
+     * is configured, so a controller without job stats reads as "nothing in
+     * flight" rather than failing the drain's probe.</p>
+     *
+     * @return an HTTP response carrying the in-flight count object
+     */
+    Response handleInFlight() {
+        int active = statsStore == null ? 0 : statsStore.getActiveJobs(null).size();
+        int pending = statsStore == null ? 0 : statsStore.getPendingJobs(null).size();
+        String json = "{\"active\":" + active
+                + ",\"pending\":" + pending
+                + ",\"total\":" + (active + pending) + "}";
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+            "application/json", json);
+    }
+
+    /**
      * Handles a {@code POST /api/jobs/{id}/heartbeat} request: records the
      * liveness heartbeat a job's own harness posts on a timer, along with the
      * node and phase it names.

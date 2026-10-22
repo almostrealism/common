@@ -19,6 +19,7 @@ package io.flowtree.api;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.controller.ActiveJob;
 import io.flowtree.controller.JobStatsStore;
+import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -120,6 +121,47 @@ public class StatsQueryHandlerHeartbeatTest extends TestSuiteBase {
         } finally {
             store.close();
         }
+    }
+
+    /**
+     * The in-flight count is computed from the non-terminal active/pending
+     * views across every workstream: a {@code STARTED} row and a
+     * {@code SUBMITTED}-but-assigned row both count, while a terminal row does
+     * not. This is the regression guard — a future non-terminal status omitted
+     * from those views would fail to be counted here.
+     */
+    @Test(timeout = 30000)
+    public void inFlightCountsStartedAndSubmittedButNotTerminal() throws Exception {
+        JobStatsStore store = newStore();
+        try {
+            // A STARTED job in one workstream.
+            store.recordJobStarted("job-active", "ws-1", "job", "node-a",
+                    Instant.now().minusSeconds(30));
+            // A SUBMITTED-but-not-started job in a different workstream.
+            store.recordJobSubmitted("job-pending", "ws-2", "job", "submitter", null,
+                    Instant.now().minusSeconds(10));
+            // A terminal job that must NOT count.
+            store.recordJobStarted("job-done", "ws-1", "job", "node-b",
+                    Instant.now().minusSeconds(600));
+            store.recordJobCompleted("ws-1",
+                    JobCompletionEvent.success("job-done", "job"));
+
+            StatsQueryHandler handler = new StatsQueryHandler(store);
+            String body = body(handler.handleInFlight());
+
+            Assert.assertEquals("one STARTED job counts as active, across all workstreams",
+                    "{\"active\":1,\"pending\":1,\"total\":2}", body);
+        } finally {
+            store.close();
+        }
+    }
+
+    /** With no store configured the in-flight probe reads as zero rather than failing. */
+    @Test(timeout = 30000)
+    public void inFlightWithoutStoreIsZero() throws Exception {
+        StatsQueryHandler handler = new StatsQueryHandler(null);
+        Assert.assertEquals("{\"active\":0,\"pending\":0,\"total\":0}",
+                body(handler.handleInFlight()));
     }
 
     /** Reads a NanoHTTPD response body as a UTF-8 string. */
