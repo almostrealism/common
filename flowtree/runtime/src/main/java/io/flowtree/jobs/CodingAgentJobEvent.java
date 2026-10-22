@@ -590,6 +590,13 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * Creates the event carrying the terminal status of {@code job}, before
      * its execution state is populated.
      *
+     * <p>A job with {@link CodingAgentJob#isEnforceChanges()} on that exited
+     * cleanly with nothing committed is reported {@link Status#DEGRADED}. It
+     * had to produce a change, and {@link EnforceChangesRule} has spent its
+     * re-run budget ({@link CodingAgentJob#getMaxEnforceChangesRetries()},
+     * possibly 0) without getting one. It delivered nothing a person can review,
+     * and that is made visible rather than reported as success.</p>
+     *
      * @param job   the job being completed
      * @param error the exception that terminated the job, or {@code null} for normal exit
      * @return the unpopulated event
@@ -621,6 +628,12 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
         String unpublished = job.workOutcome().describeUnpublishedWork();
         if (unpublished != null) {
             return failed(job.getTaskId(), job.getTaskString(), unpublished, null);
+        }
+        if (job.isEnforceChanges() && job.workOutcome().publishedNothing()) {
+            return degraded(job.getTaskId(), job.getTaskString(),
+                    "enforceChanges required a change, but the result was empty: nothing was committed on "
+                    + job.getTargetBranch() + " after " + job.getEnforcementAttempt() + " of "
+                    + job.getMaxEnforceChangesRetries() + " permitted re-run(s) of the agent.");
         }
         List<String> abandoned = AbandonedTestRunDetector.findAbandonedRunsForJob(
                 job.getWorkingDirectory(), job.getSessionStartedAt());

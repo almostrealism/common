@@ -43,7 +43,6 @@ import io.flowtree.api.FlowTreeApiEndpoint;
 import io.flowtree.controller.FlowTreeController;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.controller.WeeklyStats;
-import io.flowtree.controller.WorkstreamActivity;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.api.SecretsRequestHandler;
@@ -1213,7 +1212,7 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         Instant since = Instant.now().minusSeconds(7 * 24 * 3600);
-        Map<String, WorkstreamActivity> active = statsStore.getActiveWorkstreams(since);
+        Map<String, JobStatsStore.WorkstreamActivity> active = statsStore.getActiveWorkstreams(since);
 
         if (active.isEmpty()) {
             ctx.respond(":zzz: No workstreams had activity in the last 7 days.");
@@ -1241,7 +1240,7 @@ public class SlackListener implements ConsoleFeatures {
         final int MAX_PERMALINK_API_CALLS = 9;
         int totalPermalinkApiCalls = 0;
 
-        for (WorkstreamActivity activity : active.values()) {
+        for (JobStatsStore.WorkstreamActivity activity : active.values()) {
             Workstream ws = wsById.get(activity.workstreamId);
             if (ws == null) continue;  // filtered out (different workspace)
 

@@ -27,9 +27,15 @@ import java.util.Map;
 /**
  * Aggregated weekly job statistics.
  *
- * <p>Populated by {@link JobStatsStore#getWeeklyStats(String, LocalDate)} and
- * {@link JobStatsStore#getWeeklyStatsByWorkstream(LocalDate)}, and rendered for
- * Slack via {@link #toSlackMrkdwn(String, LocalDate)}.</p>
+ * <p>Produced by {@link WeeklyStatsAggregator} from the {@code job_timing} and
+ * per-cost tables, and consumed by the {@code /flowtree stats} command and the
+ * {@code /api/stats} endpoint. One of the data types of {@link JobStatsStore},
+ * alongside {@link ActiveJob}, {@link PendingJob}, {@link JobInterval} and
+ * {@link DailyAgentTime}.</p>
+ *
+ * @author Michael Murray
+ * @see WeeklyStatsAggregator
+ * @see JobStatsStore
  */
 public class WeeklyStats {
     /** Total number of completed jobs. */

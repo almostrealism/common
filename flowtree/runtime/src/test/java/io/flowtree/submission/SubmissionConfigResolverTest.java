@@ -16,6 +16,8 @@
 
 package io.flowtree.submission;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.Phase;
@@ -25,6 +27,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -33,8 +36,10 @@ import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Tests for {@link SubmissionConfigResolver}. The runner-only and Phase-config
@@ -216,5 +221,85 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
         String beforeRunner = f.getDefaultRunner();
         r.applyTo(f);
         assertEquals(beforeRunner, f.getDefaultRunner());
+    }
+
+    /**
+     * Parses the members {@link SubmissionConfigResolver#appendResolvedJobConfigJson}
+     * appends for {@code factory}, behind a single preceding member so the
+     * leading comma yields a well-formed object.
+     */
+    private static JsonNode resolvedJobConfig(CodingAgentJob.Factory factory) throws IOException {
+        StringBuilder json = new StringBuilder("{\"ok\":true");
+        SubmissionConfigResolver.appendResolvedJobConfigJson(json, factory);
+        json.append('}');
+        return new ObjectMapper().readTree(json.toString());
+    }
+
+    /**
+     * Verifies that a default factory echoes every optional-phase member with its
+     * default value, deduplication reported disabled for the default
+     * {@link CodingAgentJob#DEDUP_NONE} mode, and the enforce-changes cap at its default.
+     */
+    @Test(timeout = 5000)
+    public void resolvedJobConfigEchoesDefaults() throws IOException {
+        CodingAgentJob.Factory f = new CodingAgentJob.Factory("p");
+        JsonNode node = resolvedJobConfig(f);
+        assertTrue(node.get("ok").asBoolean());
+        assertFalse(node.get("deduplicationEnabled").asBoolean());
+        assertFalse(node.get("enforceChanges").asBoolean());
+        assertEquals(CodingAgentJob.DEFAULT_MAX_RULE_RETRIES,
+                node.get("maxEnforceChangesRetries").asInt());
+        assertEquals(f.isAutoCreatePr(), node.get("autoCreatePr").asBoolean());
+        assertEquals(f.isCollaborative(), node.get("collaborative").asBoolean());
+        assertEquals(f.isFalsificationEnabled(), node.get("falsificationEnabled").asBoolean());
+        assertEquals(f.isRetrospectiveEnabled(), node.get("retrospectiveEnabled").asBoolean());
+        assertEquals(f.isObjectOrientedReviewEnabled(),
+                node.get("objectOrientedReviewEnabled").asBoolean());
+        assertEquals(f.isEnforceOrganizationalPlacement(),
+                node.get("organizationalPlacementEnabled").asBoolean());
+        assertEquals(f.isSensitiveFileProtectionEnabled(),
+                node.get("sensitiveFileProtectionEnabled").asBoolean());
+        assertEquals(f.isBypassAgentPermissionPrompts(),
+                node.get("bypassAgentPermissionPrompts").asBoolean());
+        assertEquals("ok plus eleven configuration members", 12, node.size());
+    }
+
+    /**
+     * Verifies that settings applied to the factory are what the echo reports:
+     * enforce-changes with a cap of {@code 0} (a meaningful value, not a default),
+     * and toggled boolean phases.
+     */
+    @Test(timeout = 5000)
+    public void resolvedJobConfigEchoesAppliedSettings() throws IOException {
+        CodingAgentJob.Factory f = new CodingAgentJob.Factory("p");
+        f.setEnforceChanges(true);
+        f.setMaxEnforceChangesRetries(0);
+        f.setCollaborative(true);
+        f.setFalsificationEnabled(true);
+        f.setAutoCreatePr(true);
+        JsonNode node = resolvedJobConfig(f);
+        assertTrue(node.get("enforceChanges").asBoolean());
+        assertEquals(0, node.get("maxEnforceChangesRetries").asInt());
+        assertTrue(node.get("collaborative").asBoolean());
+        assertTrue(node.get("falsificationEnabled").asBoolean());
+        assertTrue(node.get("autoCreatePr").asBoolean());
+    }
+
+    /**
+     * Verifies the deduplication flag: enabled for {@link CodingAgentJob#DEDUP_LOCAL}
+     * and {@link CodingAgentJob#DEDUP_SPAWN}, disabled for an explicit
+     * {@link CodingAgentJob#DEDUP_NONE} and for an empty mode.
+     */
+    @Test(timeout = 5000)
+    public void resolvedJobConfigReportsDeduplicationByMode() throws IOException {
+        CodingAgentJob.Factory f = new CodingAgentJob.Factory("p");
+        f.setDeduplicationMode(CodingAgentJob.DEDUP_LOCAL);
+        assertTrue(resolvedJobConfig(f).get("deduplicationEnabled").asBoolean());
+        f.setDeduplicationMode(CodingAgentJob.DEDUP_SPAWN);
+        assertTrue(resolvedJobConfig(f).get("deduplicationEnabled").asBoolean());
+        f.setDeduplicationMode(CodingAgentJob.DEDUP_NONE);
+        assertFalse(resolvedJobConfig(f).get("deduplicationEnabled").asBoolean());
+        f.setDeduplicationMode("");
+        assertFalse(resolvedJobConfig(f).get("deduplicationEnabled").asBoolean());
     }
 }

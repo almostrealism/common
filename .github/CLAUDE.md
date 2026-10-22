@@ -1013,7 +1013,18 @@ docs-only (a report under `docs/qa/retrospectives/` and a row in that
 directory's ledger), so `PROTECT_TEST_FILES` costs nothing. That scope is the
 prompt's contract, not a harness restriction — no submission setting confines a
 job to a path; the CI-file lock and the test lock bound the worst edits, and
-the rest is caught in review of the PR `AUTO_CREATE_PR` opens. It pins the primary
+the rest is caught in review of the PR `AUTO_CREATE_PR` opens. What *is* a
+harness setting is `ENFORCE_CHANGES: "true"` with `MAX_ENFORCE_CHANGES_RETRIES: "0"`.
+The round's contract is to leave a report on disk. `enforceChanges` re-runs a job
+that left no change, up to its re-run cap, and once the cap is spent with
+nothing committed `CodingAgentJobEvent.statusFor` reports `DEGRADED` rather than
+SUCCESS. A run that surveyed, recorded memories and committed nothing is
+therefore visible instead of reading as a green run. The cap is 0 because a
+re-run is a fresh `opus`/`max` session that re-surveys from scratch, and with
+the report written first an empty tree means something a re-run of the same
+prompt would not fix. The prompt's other half of the same fix (RETRO-20261019 F1) has the agent write
+the skeleton report and ledger row *first*, before the expensive survey, so a
+run that stalls still leaves a reviewable artifact. It pins the primary
 phase to `claude/opus` at `effort: max` for the same reason as `performance-qa`
 and `pdsl-qa` — the judgment is synthesis across many workstreams, jobs and
 PRs, the kind a model under-thinks — and carries no `REQUIRED_LABELS`, since it

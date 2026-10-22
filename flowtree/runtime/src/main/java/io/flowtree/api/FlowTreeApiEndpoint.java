@@ -110,9 +110,15 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs/active</td><td>--</td><td>List jobs still recorded as running for a workstream, newest first. Each entry is a JSON
  *       object carrying {@code jobId}, {@code workstreamId}, {@code startedAt}, {@code heartbeatAt} (ISO-8601 instants,
  *       omitted when absent), {@code ageSeconds} (elapsed since {@code STARTED}), {@code sinceHeartbeatSeconds} (elapsed
- *       since the last status event; falls back to {@code ageSeconds} for jobs that have not yet posted a heartbeat),
- *       and {@code description}. An empty array is returned when nothing is running or the controller is configured
- *       without job stats.</td></tr>
+ *       since the last status event or heartbeat; falls back to {@code ageSeconds} for jobs that have not yet posted
+ *       one), {@code node} (when known), {@code state} ({@code RUNNING} or {@code UNRESPONSIVE}) and {@code description}.
+ *       An empty array is returned when nothing is running or the controller is configured without job stats.</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs/pending</td><td>--</td><td>List jobs submitted but not yet started, each with a
+ *       derived {@code state} of {@code SUBMITTED} or {@code LOST} — see {@link io.flowtree.controller.PendingJob}</td></tr>
+ *   <tr><td>POST</td><td>/api/jobs/{jobId}/heartbeat</td><td>{@code {"node":"...","phase":"..."}}</td><td>Record a job's timed
+ *       liveness heartbeat — see {@link StatsQueryHandler}</td></tr>
+ *   <tr><td>GET</td><td>/api/tracker/claimable</td><td>--</td><td>Count the claimable tasks of a tracker release — see {@link TrackerQueryHandler}</td></tr>
+ *   <tr><td>POST</td><td>/api/tracker/claim</td><td>{@code {"project","release","workstreamId"}}</td><td>Claim the next ready task of a release for a workstream</td></tr>
  *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td><td>Look up a specific job event by ID</td></tr>
  *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td><td>Check whether automated job submissions are accepted</td></tr>
  *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td><td>{@code {"accept":true}}</td><td>Enable or disable automated job submissions</td></tr>
@@ -829,7 +835,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * having been registered by hand first. Supports optional per-job
      * overrides for {@code model}, {@code effort}, {@code maxTurns}, {@code maxBudgetUsd},
      * {@code postCompletionCommand}, {@code postCompletionWorkingDir},
-     * {@code postCompletionTimeoutSeconds}, {@code maxDeduplicationPasses}, and {@code maxPostCompletionPasses}.</p>
+     * {@code postCompletionTimeoutSeconds}, {@code maxDeduplicationPasses}, {@code maxEnforceChangesRetries},
+     * and {@code maxPostCompletionPasses}.</p>
      *
      * <p>{@code bypassAgentPermissionPrompts=true} grants this job alone the agent runtime's
      * permission-prompt bypass (see {@link CodingAgentJobFactory#setBypassAgentPermissionPrompts}),
@@ -1011,6 +1018,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setEnforceChanges(true);
         }
 
+        // Cap on enforce-changes re-runs; 0 is meaningful (report an empty
+        // result DEGRADED without re-running), so presence decides, not value.
+        if (JsonFieldExtractor.hasField(body, "maxEnforceChangesRetries")) {
+            int maxEnforceChangesRetries = JsonFieldExtractor.extractInt(body, "maxEnforceChangesRetries");
+            if (maxEnforceChangesRetries < 0) {
+                return errorResponse("maxEnforceChangesRetries must not be negative");
+            }
+            factory.setMaxEnforceChangesRetries(maxEnforceChangesRetries);
+        }
+
         // Deduplication mode (local inline session or spawn follow-up job)
         if (deduplicationMode != null && !deduplicationMode.isEmpty()) {
             factory.setDeduplicationMode(deduplicationMode);
@@ -1174,25 +1191,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         PhaseConfigResolver.appendBundleJson(json, configResolver.phaseConfigResolver().resolvedBundle());
         // Report which optional phases are active so callers can confirm
         // the effective job configuration without inspecting phase bundles.
-        String effectiveDedupMode = factory.getDeduplicationMode();
-        boolean dedupEnabled = effectiveDedupMode != null
-                && !effectiveDedupMode.isEmpty()
-                && !CodingAgentJob.DEDUP_NONE.equals(effectiveDedupMode);
-        json.append(",\"deduplicationEnabled\":").append(dedupEnabled);
-        json.append(",\"organizationalPlacementEnabled\":")
-                .append(factory.isEnforceOrganizationalPlacement());
-        json.append(",\"objectOrientedReviewEnabled\":")
-                .append(factory.isObjectOrientedReviewEnabled());
-        json.append(",\"retrospectiveEnabled\":")
-                .append(factory.isRetrospectiveEnabled());
-        json.append(",\"falsificationEnabled\":")
-                .append(factory.isFalsificationEnabled());
-        json.append(",\"autoCreatePr\":").append(factory.isAutoCreatePr());
-        json.append(",\"collaborative\":").append(factory.isCollaborative());
-        json.append(",\"sensitiveFileProtectionEnabled\":")
-                .append(factory.isSensitiveFileProtectionEnabled());
-        json.append(",\"bypassAgentPermissionPrompts\":")
-                .append(factory.isBypassAgentPermissionPrompts());
+        SubmissionConfigResolver.appendResolvedJobConfigJson(json, factory);
         // Report an auto-created workstream so a caller that submitted with
         // createWorkstreamIfMissing can tell a first run on a new branch from
         // a run on a workstream someone had already registered.

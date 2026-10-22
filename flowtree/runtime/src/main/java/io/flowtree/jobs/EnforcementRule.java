@@ -106,9 +106,13 @@ public interface EnforcementRule extends Named {
      * <p>When the attempt limit is reached and the violation is still present,
      * the framework logs a warning and moves on to the next rule.</p>
      *
+     * <p>Read at the start of each enforcement pass, so a rule may return a
+     * shrinking value to make its cap a budget for the whole job rather than
+     * for one pass. A rule that returns 0 runs no correction and is retired.</p>
+     *
      * <p>Defaults to {@link CodingAgentJob#DEFAULT_MAX_RULE_RETRIES}.</p>
      *
-     * @return the maximum retry count (must be positive)
+     * @return the maximum retry count; 0 means no correction is attempted
      */
     default int getMaxRetries() {
         return CodingAgentJob.DEFAULT_MAX_RULE_RETRIES;

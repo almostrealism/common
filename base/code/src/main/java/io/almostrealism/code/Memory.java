@@ -79,15 +79,16 @@ public interface Memory {
 	/**
 	 * Reads a single element from this memory region.
 	 *
-	 * <p>Delegates to {@link MemoryProvider#toDouble(Memory, int)}, which a host-addressable
-	 * provider satisfies without allocating the one-element array that {@link #toArray(int, int)}
-	 * would. Use this when reading values one at a time rather than a range.</p>
+	 * <p>The default reads the element through {@link #toArray(int, int)}, which allocates a
+	 * one-element array on every call. Memory whose elements are host-addressable overrides this
+	 * to read the value directly, so a caller inspecting a result one element at a time — the
+	 * common case for host-side readback — does not generate an array per element.</p>
 	 *
 	 * @param offset the position of the element within this memory region
 	 * @return the value at that position
 	 */
 	default double toDouble(int offset) {
-		return getProvider().toDouble(this, offset);
+		return toArray(offset, 1)[0];
 	}
 
 	/**

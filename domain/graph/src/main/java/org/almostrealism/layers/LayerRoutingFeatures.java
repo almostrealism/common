@@ -461,6 +461,20 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * to {@code operator} whenever the main forward cell is pushed. The backward pass propagates
 	 * gradients through both branches.</p>
 	 *
+	 * <p>The auxiliary branch must be reached by the same compiled pass as this layer, so that its
+	 * forward output is available when the main forward cell is pushed and its backward cell is driven
+	 * when gradients flow. A branch computed on an auxiliary input of the same
+	 * {@link org.almostrealism.model.Model} (added with
+	 * {@link org.almostrealism.model.Model#addInput(Block)}) satisfies this and trains normally.</p>
+	 *
+	 * <p>When the main forward cell is pushed before the auxiliary branch has been reached — the
+	 * branch belongs to a model that is compiled after this layer's — the operator reads the
+	 * auxiliary input record instead: the same buffer the branch writes its output into whenever it
+	 * runs, and the same one the backward pass reads, so that model must run before this layer's.
+	 * The backward pass is wired identically in both cases and still pushes the auxiliary gradient
+	 * into the branch's backward cell. The record exists only while
+	 * {@link Layer#ioTracking IO tracking} is enabled; without it, an unreached branch is an error.</p>
+	 *
 	 * @param name         a human-readable label for the composed layer
 	 * @param inputShape   the main input shape
 	 * @param auxShape     the shape of data from the auxiliary branch
@@ -501,8 +515,22 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 		}
 
 		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape,
-				Cell.of((input, next) -> next == null ? new OperationList() :
-						next.push(operator.compose(input, auxReceptor.getReceipt()))),
+				Cell.of((input, next) -> {
+					if (next == null) return new OperationList();
+
+					Producer<PackedCollection> auxOutput = auxReceptor.getReceipt();
+					// Branch not reached by this pass: read the record it fills when its model runs,
+					// which (per this method's javadoc) must be before this one.
+					if (auxOutput == null && auxInput != null) {
+						auxOutput = p(auxInput);
+					} else if (auxOutput == null) {
+						throw new IllegalStateException(name + " cannot read its auxiliary branch: the branch"
+								+ " has not been reached and AR_GRAPH_IO_TRACKING is disabled, so no record"
+								+ " of its output exists");
+					}
+
+					return next.push(operator.compose(input, auxOutput));
+				}),
 				null, Collections.emptyList(), setup);
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 

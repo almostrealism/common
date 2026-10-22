@@ -26,13 +26,12 @@ import org.junit.Test;
 /**
  * The zero-allocation scalar read must return exactly what the array-mediated read returns.
  *
- * <p>{@link NativeMemoryProvider#toDouble(RAM, int)} reads a single element straight from a
- * host-addressable {@link java.nio.DoubleBuffer} or {@link java.nio.FloatBuffer} rather than
- * through the one-element array that {@link MemoryProvider#toArray(Memory, int, int)} allocates;
- * this verifies that the two agree for every element, for both precisions, and that the
- * {@link Memory#toDouble(int)} and {@link MemoryProvider#toDouble(Memory, int)} entry points route
- * to it. The default {@link MemoryProvider#toDouble(Memory, int)} fallback is covered against a
- * minimal provider so that its delegation to {@code toArray} is locked independently of hardware.</p>
+ * <p>{@link NativeBuffer#toDouble(int)} reads a single element straight from its host-addressable
+ * {@link java.nio.DoubleBuffer} or {@link java.nio.FloatBuffer} rather than through the
+ * one-element array that {@link Memory#toArray(int, int)} allocates; this verifies that the two
+ * agree for every element, for both precisions. The default {@link Memory#toDouble(int)} is
+ * covered against a minimal memory and provider so that its delegation to {@code toArray} is
+ * locked independently of hardware.</p>
  *
  * <p>Unlike most tests in this project, this one does not extend {@code TestSuiteBase}: that class
  * lives in the engine layer, which sits above this module, so depending on it would invert the
@@ -53,12 +52,10 @@ public class NativeBufferScalarReadTest {
 
 			for (int i = 0; i < values.length; i++) {
 				double viaArray = provider.toArray(mem, i, 1)[0];
-				Assert.assertEquals("provider.toDouble must match the written value at index " + i,
-						values[i], provider.toDouble(mem, i), 0.0);
-				Assert.assertEquals("provider.toDouble must match the array-mediated read at index " + i,
-						viaArray, provider.toDouble(mem, i), 0.0);
-				Assert.assertEquals("Memory.toDouble must route to the provider at index " + i,
+				Assert.assertEquals("NativeBuffer.toDouble must match the written value at index " + i,
 						values[i], mem.toDouble(i), 0.0);
+				Assert.assertEquals("NativeBuffer.toDouble must match the array-mediated read at index " + i,
+						viaArray, mem.toDouble(i), 0.0);
 			}
 		} finally {
 			provider.destroy();
@@ -78,19 +75,37 @@ public class NativeBufferScalarReadTest {
 
 			for (int i = 0; i < values.length; i++) {
 				double viaArray = provider.toArray(mem, i, 1)[0];
-				Assert.assertEquals("provider.toDouble must match the written value at index " + i,
-						values[i], provider.toDouble(mem, i), 0.0);
-				Assert.assertEquals("provider.toDouble must match the array-mediated read at index " + i,
-						viaArray, provider.toDouble(mem, i), 0.0);
-				Assert.assertEquals("Memory.toDouble must route to the provider at index " + i,
+				Assert.assertEquals("NativeBuffer.toDouble must match the written value at index " + i,
 						values[i], mem.toDouble(i), 0.0);
+				Assert.assertEquals("NativeBuffer.toDouble must match the array-mediated read at index " + i,
+						viaArray, mem.toDouble(i), 0.0);
 			}
 		} finally {
 			provider.destroy();
 		}
 	}
 
-	/** The default {@link MemoryProvider#toDouble(Memory, int)} reads the requested element through {@code toArray}. */
+	/** A copy between two same-precision buffers moves exactly the requested range through {@link NativeBuffer#copyFrom}. */
+	@Test(timeout = 30000)
+	public void sameProviderCopyMovesRequestedRange() {
+		NativeMemoryProvider provider = new NativeMemoryProvider(Precision.FP64, 1024L * 1024, false, null, true);
+		try {
+			double[] values = { 1.0, 2.0, 3.0, 4.0, 5.0 };
+			RAM source = provider.allocate(values.length);
+			RAM target = provider.allocate(values.length);
+			provider.setMem(source, 0, values, 0, values.length);
+			provider.setMem(target, 0, new double[values.length], 0, values.length);
+
+			provider.setMem(target, 1, source, 2, 3);
+
+			double[] expected = { 0.0, 3.0, 4.0, 5.0, 0.0 };
+			Assert.assertArrayEquals(expected, provider.toArray(target, 0, values.length), 0.0);
+		} finally {
+			provider.destroy();
+		}
+	}
+
+	/** The default {@link Memory#toDouble(int)} reads the requested element through {@code toArray}. */
 	@Test(timeout = 30000)
 	public void defaultScalarReadDelegatesToArrayRead() {
 		double[] backing = { 10.0, 20.0, 30.0, 40.0 };
@@ -99,13 +114,11 @@ public class NativeBufferScalarReadTest {
 
 		for (int i = 0; i < backing.length; i++) {
 			Assert.assertEquals("default toDouble must read the element at index " + i,
-					backing[i], provider.toDouble(mem, i), 0.0);
-			Assert.assertEquals("Memory.toDouble must route through the default at index " + i,
 					backing[i], mem.toDouble(i), 0.0);
 		}
 	}
 
-	/** Minimal host memory handle whose data lives in a Java array, for exercising the default read path. */
+	/** Minimal memory that does not override {@code toDouble}, so the interface default is exercised. */
 	private static final class ArrayMemory implements Memory {
 		/** The provider that reads this memory's elements. */
 		private final ArrayMemoryProvider provider;
@@ -125,7 +138,7 @@ public class NativeBufferScalarReadTest {
 		}
 	}
 
-	/** Minimal provider that does not override {@code toDouble}, so the interface default is exercised. */
+	/** Minimal provider that serves {@link ArrayMemory} reads from a Java array. */
 	private static final class ArrayMemoryProvider implements MemoryProvider<ArrayMemory> {
 		/** The backing store this provider reads from. */
 		private final double[] data;

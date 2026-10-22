@@ -28,6 +28,9 @@ import java.io.File;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -38,6 +41,11 @@ import java.util.function.Consumer;
  * <p>Each {@link NativeBuffer} wraps a Java NIO direct {@link Buffer} allocated either via
  * {@link ByteBuffer#allocateDirect} or via shared memory ({@link NativeMemoryProvider#mapSharedMemory}).
  * The raw native pointer to the buffer is exposed for kernel argument passing.</p>
+ *
+ * <p>Host-side element access ({@link #read}, {@link #write}, {@link #copyFrom} and
+ * {@link #toDouble(int)}) is performed by the buffer itself through its typed view, so the
+ * provider's bulk {@code getMem}/{@code setMem} operations delegate here rather than inspecting
+ * the view.</p>
  *
  * <p>When the buffer is backed by shared memory, {@link #destroy()} unmaps the region.
  * Deallocation listeners are called by {@link NativeMemoryProvider} after GC cleanup.</p>
@@ -83,6 +91,102 @@ public class NativeBuffer extends DirectMemory implements Destroyable {
 	public long getContentPointer() { return provider.pointerForBuffer(buffer); }
 
 	public Buffer getBuffer() { return buffer; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When this buffer holds its elements in a {@link DoubleBuffer} or {@link FloatBuffer},
+	 * the value is read straight from it, avoiding the one-element array the array-mediated read
+	 * allocates. The read is absolute, so it neither depends on nor moves the buffer position
+	 * the provider's bulk reads and writes use. FP16 buffers, backed by a {@link ShortBuffer},
+	 * fall back to the array-mediated read, preserving its behavior.</p>
+	 */
+	@Override
+	public double toDouble(int offset) {
+		if (buffer instanceof DoubleBuffer typed) {
+			return typed.get(offset);
+		} else if (buffer instanceof FloatBuffer typed) {
+			return typed.get(offset);
+		}
+
+		return super.toDouble(offset);
+	}
+
+	/**
+	 * Copies elements from another buffer of the same precision into this one, then flushes
+	 * shared memory.
+	 *
+	 * @param offset    position in this buffer of the first element written
+	 * @param source    buffer to copy from, holding elements of the same precision
+	 * @param srcOffset position in {@code source} of the first element read
+	 * @param length    number of elements to copy
+	 * @throws HardwareException if the two buffers do not hold the same precision
+	 */
+	public void copyFrom(int offset, NativeBuffer source, int srcOffset, int length) {
+		if (buffer instanceof DoubleBuffer typed && source.buffer instanceof DoubleBuffer sourceTyped) {
+			typed.put(offset, sourceTyped, srcOffset, length);
+		} else if (buffer instanceof FloatBuffer typed && source.buffer instanceof FloatBuffer sourceTyped) {
+			typed.put(offset, sourceTyped, srcOffset, length);
+		} else if (buffer instanceof ShortBuffer typed && source.buffer instanceof ShortBuffer sourceTyped) {
+			typed.put(offset, sourceTyped, srcOffset, length);
+		} else {
+			throw new HardwareException("Unsupported precision");
+		}
+
+		sync();
+	}
+
+	/**
+	 * Writes values into this buffer, converting them to its precision, then flushes shared memory.
+	 *
+	 * @param offset    position in this buffer of the first element written
+	 * @param source    values to write
+	 * @param srcOffset position in {@code source} of the first value written
+	 * @param length    number of values to write
+	 * @throws UnsupportedOperationException if this buffer holds FP16 elements
+	 */
+	public void write(int offset, double[] source, int srcOffset, int length) {
+		if (buffer instanceof DoubleBuffer typed) {
+			typed.position(offset);
+			typed.put(source, srcOffset, length);
+		} else if (buffer instanceof FloatBuffer typed) {
+			typed.position(offset);
+			for (int i = 0; i < length; i++) {
+				typed.put((float) source[srcOffset + i]);
+			}
+		} else if (buffer instanceof ShortBuffer) {
+			throw new UnsupportedOperationException();
+		} else {
+			throw new HardwareException("Unsupported precision");
+		}
+
+		sync();
+	}
+
+	/**
+	 * Reads elements of this buffer into an array.
+	 *
+	 * @param offset  position in this buffer of the first element read
+	 * @param out     array receiving the values
+	 * @param oOffset position in {@code out} of the first value stored
+	 * @param length  number of elements to read
+	 * @throws UnsupportedOperationException if this buffer holds FP16 elements
+	 */
+	public void read(int offset, double[] out, int oOffset, int length) {
+		if (buffer instanceof DoubleBuffer typed) {
+			typed.position(offset);
+			typed.get(out, oOffset, length);
+		} else if (buffer instanceof FloatBuffer typed) {
+			typed.position(offset);
+			for (int i = 0; i < length; i++) {
+				out[oOffset + i] = typed.get();
+			}
+		} else if (buffer instanceof ShortBuffer) {
+			throw new UnsupportedOperationException();
+		} else {
+			throw new HardwareException("Unsupported precision");
+		}
+	}
 
 	/**
 	 * {@inheritDoc}

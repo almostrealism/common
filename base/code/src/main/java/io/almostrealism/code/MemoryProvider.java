@@ -109,22 +109,6 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	}
 
 	/**
-	 * Reads a single element from the given memory region.
-	 *
-	 * <p>The default reads it through {@link #toArray(Memory, int, int)}, which allocates a
-	 * one-element array on every call. A provider whose memory is host-addressable overrides
-	 * this to read the value directly, so a caller inspecting a result one element at a time —
-	 * the common case for host-side readback — does not generate an array per element.</p>
-	 *
-	 * @param mem the source memory region
-	 * @param offset the position of the element within the memory region
-	 * @return the value at that position
-	 */
-	default double toDouble(T mem, int offset) {
-		return toArray(mem, offset, 1)[0];
-	}
-
-	/**
 	 * Returns whether this provider's memory can only be read.
 	 *
 	 * <p>Asking is not the same as attempting and failing. A caller that is

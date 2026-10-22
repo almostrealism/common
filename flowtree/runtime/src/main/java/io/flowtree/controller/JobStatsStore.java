@@ -30,7 +30,6 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -148,6 +147,13 @@ public class JobStatsStore implements ConsoleFeatures {
     /** Active JDBC connection to the backing HSQLDB database. */
     private Connection connection;
     /**
+     * Computes the weekly-statistics rollups. Recreated whenever
+     * {@link #connection} is opened and discarded when it is closed, so it
+     * always reads through the live connection. {@code null} until
+     * {@link #initialize()} has run.
+     */
+    private WeeklyStatsAggregator weeklyStatsAggregator;
+    /**
      * Trigger reasons registered before the job_timing row exists, applied
      * on the next {@link #recordJobStarted} call. The completion-listener
      * fan-out calls {@link #setTriggerReason(String, String)} immediately
@@ -202,6 +208,8 @@ public class JobStatsStore implements ConsoleFeatures {
                 }
             }
 
+            weeklyStatsAggregator = new WeeklyStatsAggregator(connection);
+
             log("JobStatsStore initialized: " + dbPath);
         } catch (SQLException e) {
             warn("Failed to initialize JobStatsStore: " + e.getMessage());
@@ -223,6 +231,7 @@ public class JobStatsStore implements ConsoleFeatures {
                 warn("Error closing JobStatsStore: " + e.getMessage());
             }
             connection = null;
+            weeklyStatsAggregator = null;
         }
     }
 
@@ -1092,184 +1101,7 @@ public class JobStatsStore implements ConsoleFeatures {
      */
     public synchronized WeeklyStats getWeeklyStats(String workstreamId, LocalDate weekStart) {
         if (connection == null) return new WeeklyStats();
-
-        LocalDate weekEnd = weekStart.plusDays(7);
-        Instant startInstant = weekStart.atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant endInstant = weekEnd.atStartOfDay(ZoneOffset.UTC).toInstant();
-
-        String sql = "SELECT "
-            + "COUNT(*) AS job_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END), 0) AS success_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_count, "
-            + "COALESCE(SUM(wall_clock_ms), 0) AS total_wall_clock_ms, "
-            + "COALESCE(SUM(duration_ms), 0) AS total_duration_ms, "
-            + "COALESCE(SUM(cost_usd), 0) AS total_cost_usd, "
-            + "COALESCE(SUM(num_turns), 0) AS total_turns "
-            + "FROM job_timing "
-            + "WHERE started_at >= ? AND started_at < ? AND status NOT IN ('STARTED', 'SUBMITTED')";
-
-        if (workstreamId != null) {
-            sql += " AND workstream_id = ?";
-        }
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setTimestamp(1, Timestamp.from(startInstant));
-            ps.setTimestamp(2, Timestamp.from(endInstant));
-            if (workstreamId != null) {
-                ps.setString(3, workstreamId);
-            }
-
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    WeeklyStats stats = new WeeklyStats();
-                    stats.jobCount = rs.getInt("job_count");
-                    stats.successCount = rs.getInt("success_count");
-                    stats.failedCount = rs.getInt("failed_count");
-                    stats.cancelledCount = rs.getInt("cancelled_count");
-                    stats.totalWallClockMs = rs.getLong("total_wall_clock_ms");
-                    stats.totalDurationMs = rs.getLong("total_duration_ms");
-                    stats.totalCostUsd = rs.getDouble("total_cost_usd");
-                    stats.totalTurns = rs.getInt("total_turns");
-                    stats.costByRunner = queryCostByRunner(workstreamId, startInstant, endInstant);
-                    stats.costByModel = queryCostByModel(workstreamId, startInstant, endInstant);
-                    return stats;
-                }
-            }
-        } catch (SQLException e) {
-            warn("Failed to query weekly stats: " + e.getMessage());
-        }
-
-        return new WeeklyStats();
-    }
-
-    /**
-     * Sums per-runner cost over the given window, optionally filtered to a
-     * single workstream.
-     *
-     * @param workstreamId the workstream to filter by, or {@code null} for all
-     * @param startInstant inclusive window start
-     * @param endInstant   exclusive window end
-     * @return map of runner name to summed USD cost, ordered by cost descending
-     */
-    private Map<String, Double> queryCostByRunner(String workstreamId,
-                                                  Instant startInstant, Instant endInstant) {
-        return queryCostFromTable(workstreamId, startInstant, endInstant,
-                "job_runner_cost", "rc", "runner", "runner_cost");
-    }
-
-    /**
-     * Sums per-runner cost grouped by workstream over the given window.
-     *
-     * @param startInstant inclusive window start
-     * @param endInstant   exclusive window end
-     * @return map of workstream ID to (runner → summed USD cost), ordered by cost descending within each workstream
-     */
-    private Map<String, Map<String, Double>> queryCostByRunnerPerWorkstream(
-            Instant startInstant, Instant endInstant) {
-        return queryCostPerWorkstreamFromTable(startInstant, endInstant,
-                "job_runner_cost", "rc", "runner", "runner_cost");
-    }
-
-    /**
-     * Sums per-model cost over the given window, optionally filtered to a
-     * single workstream.
-     *
-     * @param workstreamId the workstream to filter by, or {@code null} for all
-     * @param startInstant inclusive window start
-     * @param endInstant   exclusive window end
-     * @return map of provider/model identifier to summed USD cost, ordered by cost descending
-     */
-    private Map<String, Double> queryCostByModel(String workstreamId,
-                                                 Instant startInstant, Instant endInstant) {
-        return queryCostFromTable(workstreamId, startInstant, endInstant,
-                "job_model_cost", "mc", "model", "model_cost");
-    }
-
-    /**
-     * Sums per-model cost grouped by workstream over the given window.
-     *
-     * @param startInstant inclusive window start
-     * @param endInstant   exclusive window end
-     * @return map of workstream ID to (model → summed USD cost), ordered by cost descending within each workstream
-     */
-    private Map<String, Map<String, Double>> queryCostByModelPerWorkstream(
-            Instant startInstant, Instant endInstant) {
-        return queryCostPerWorkstreamFromTable(startInstant, endInstant,
-                "job_model_cost", "mc", "model", "model_cost");
-    }
-
-    /**
-     * Shared implementation for {@link #queryCostByRunner} and {@link #queryCostByModel}.
-     * Joins {@code table} to {@code job_timing} and sums {@code cost_usd} per key,
-     * using the same time-window and status filters as aggregate queries.
-     */
-    private Map<String, Double> queryCostFromTable(String workstreamId,
-                                                   Instant startInstant, Instant endInstant,
-                                                   String table, String tableAlias,
-                                                   String keyColumn, String costAlias) {
-        Map<String, Double> result = new LinkedHashMap<>();
-        if (connection == null) return result;
-
-        String sql = "SELECT " + tableAlias + "." + keyColumn + " AS " + keyColumn + ", "
-            + "COALESCE(SUM(" + tableAlias + ".cost_usd), 0) AS " + costAlias + " "
-            + "FROM " + table + " " + tableAlias + " JOIN job_timing t ON "
-            + tableAlias + ".job_id = t.job_id "
-            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status NOT IN ('STARTED', 'SUBMITTED')"
-            + (workstreamId != null ? " AND t.workstream_id = ?" : "")
-            + " GROUP BY " + tableAlias + "." + keyColumn + " ORDER BY " + costAlias + " DESC";
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setTimestamp(1, Timestamp.from(startInstant));
-            ps.setTimestamp(2, Timestamp.from(endInstant));
-            if (workstreamId != null) {
-                ps.setString(3, workstreamId);
-            }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.put(rs.getString(keyColumn), rs.getDouble(costAlias));
-                }
-            }
-        } catch (SQLException e) {
-            warn("Failed to query cost from " + table + ": " + e.getMessage());
-        }
-        return result;
-    }
-
-    /**
-     * Shared implementation for {@link #queryCostByRunnerPerWorkstream} and
-     * {@link #queryCostByModelPerWorkstream}. Returns a map of workstream ID to
-     * (key → summed cost), grouped and ordered by workstream then cost descending.
-     */
-    private Map<String, Map<String, Double>> queryCostPerWorkstreamFromTable(
-            Instant startInstant, Instant endInstant,
-            String table, String tableAlias,
-            String keyColumn, String costAlias) {
-        Map<String, Map<String, Double>> result = new LinkedHashMap<>();
-        if (connection == null) return result;
-
-        String sql = "SELECT t.workstream_id, " + tableAlias + "." + keyColumn + ", "
-            + "COALESCE(SUM(" + tableAlias + ".cost_usd), 0) AS " + costAlias + " "
-            + "FROM " + table + " " + tableAlias + " JOIN job_timing t ON "
-            + tableAlias + ".job_id = t.job_id "
-            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status NOT IN ('STARTED', 'SUBMITTED') "
-            + "GROUP BY t.workstream_id, " + tableAlias + "." + keyColumn + " "
-            + "ORDER BY t.workstream_id, " + costAlias + " DESC";
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setTimestamp(1, Timestamp.from(startInstant));
-            ps.setTimestamp(2, Timestamp.from(endInstant));
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String wsId = rs.getString("workstream_id");
-                    result.computeIfAbsent(wsId, k -> new LinkedHashMap<>())
-                          .put(rs.getString(keyColumn), rs.getDouble(costAlias));
-                }
-            }
-        } catch (SQLException e) {
-            warn("Failed to query cost per workstream from " + table + ": " + e.getMessage());
-        }
-        return result;
+        return weeklyStatsAggregator.forWeek(workstreamId, weekStart);
     }
 
     /**
@@ -1331,69 +1163,8 @@ public class JobStatsStore implements ConsoleFeatures {
      * @return map of workstream ID to stats
      */
     public synchronized Map<String, WeeklyStats> getWeeklyStatsByWorkstream(LocalDate weekStart) {
-        Map<String, WeeklyStats> result = new LinkedHashMap<>();
-        if (connection == null) return result;
-
-        LocalDate weekEnd = weekStart.plusDays(7);
-        Instant startInstant = weekStart.atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant endInstant = weekEnd.atStartOfDay(ZoneOffset.UTC).toInstant();
-
-        String sql = "SELECT workstream_id, "
-            + "COUNT(*) AS job_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END), 0) AS success_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_count, "
-            + "COALESCE(SUM(wall_clock_ms), 0) AS total_wall_clock_ms, "
-            + "COALESCE(SUM(duration_ms), 0) AS total_duration_ms, "
-            + "COALESCE(SUM(cost_usd), 0) AS total_cost_usd, "
-            + "COALESCE(SUM(num_turns), 0) AS total_turns "
-            + "FROM job_timing "
-            + "WHERE started_at >= ? AND started_at < ? AND status NOT IN ('STARTED', 'SUBMITTED') "
-            + "GROUP BY workstream_id";
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setTimestamp(1, Timestamp.from(startInstant));
-            ps.setTimestamp(2, Timestamp.from(endInstant));
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    WeeklyStats stats = new WeeklyStats();
-                    stats.jobCount = rs.getInt("job_count");
-                    stats.successCount = rs.getInt("success_count");
-                    stats.failedCount = rs.getInt("failed_count");
-                    stats.cancelledCount = rs.getInt("cancelled_count");
-                    stats.totalWallClockMs = rs.getLong("total_wall_clock_ms");
-                    stats.totalDurationMs = rs.getLong("total_duration_ms");
-                    stats.totalCostUsd = rs.getDouble("total_cost_usd");
-                    stats.totalTurns = rs.getInt("total_turns");
-                    result.put(rs.getString("workstream_id"), stats);
-                }
-            }
-        } catch (SQLException e) {
-            warn("Failed to query weekly stats by workstream: " + e.getMessage());
-        }
-
-        // Populate per-runner cost for every workstream in one grouped query
-        Map<String, Map<String, Double>> runnerCosts =
-                queryCostByRunnerPerWorkstream(startInstant, endInstant);
-        for (Map.Entry<String, WeeklyStats> entry : result.entrySet()) {
-            Map<String, Double> runners = runnerCosts.get(entry.getKey());
-            if (runners != null && !runners.isEmpty()) {
-                entry.getValue().costByRunner = runners;
-            }
-        }
-
-        // Populate per-model cost for every workstream in one grouped query
-        Map<String, Map<String, Double>> modelCosts =
-                queryCostByModelPerWorkstream(startInstant, endInstant);
-        for (Map.Entry<String, WeeklyStats> entry : result.entrySet()) {
-            Map<String, Double> models = modelCosts.get(entry.getKey());
-            if (models != null && !models.isEmpty()) {
-                entry.getValue().costByModel = models;
-            }
-        }
-
-        return result;
+        if (connection == null) return new LinkedHashMap<>();
+        return weeklyStatsAggregator.byWorkstream(weekStart);
     }
 
     /**
@@ -1542,5 +1313,26 @@ public class JobStatsStore implements ConsoleFeatures {
      */
     private static String truncate(String s, int maxLength) {
         return s == null ? null : Truncation.CUT.apply(s, maxLength);
+    }
+
+    /**
+     * Per-workstream activity summary for a rolling time window.
+     */
+    public static class WorkstreamActivity {
+        /** The workstream identifier. */
+        public String workstreamId;
+        /** Total number of completed jobs in the window. */
+        public int jobCount;
+        /** Number of successful jobs in the window. */
+        public int successCount;
+        /** Number of failed jobs in the window. */
+        public int failedCount;
+        /** Number of cancelled jobs in the window. */
+        public int cancelledCount;
+        /**
+         * Up to 5 recent jobs, each as {@code [jobId, slackMessageTs]}.
+         * Only jobs with a stored Slack message timestamp are included.
+         */
+        public List<String[]> recentJobs = new ArrayList<>();
     }
 }
