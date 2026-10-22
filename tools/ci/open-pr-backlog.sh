@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# ─── Decide whether the open-PR backlog leaves room for a new plan ────
+# ─── Decide whether the open-PR backlog leaves room for a new round ───
 #
-# Shared by the planning jobs in master-agent-dispatch.yaml. Every plan
-# they open is a pull request someone has to review, so no new planning
+# Shared by every round in master-agent-dispatch.yaml: the planning jobs
+# run it directly, and the QA rounds through qa-cadence.sh (CHECK_BACKLOG).
+# Every round ends in a pull request someone has to review, so no new
 # round starts while more than MAX_OPEN_PRS pull requests of any kind are
 # already open against master.
 #

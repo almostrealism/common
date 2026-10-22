@@ -39,6 +39,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,6 +55,7 @@ import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.tracker.TaskCloseOutReconciler;
 import io.flowtree.tracker.TrackerService;
 import io.flowtree.controller.JobStatsStore;
+import io.flowtree.controller.PendingJob;
 import io.flowtree.submission.SubmissionConfigResolver;
 import io.flowtree.workstream.MailboxRegistry;
 import io.flowtree.workstream.Workstream;
@@ -257,7 +259,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Holds the per-workstream conversations that {@code /messages} appends to
      * and {@code /mailbox} reads from. Memory-only until
-     * {@link #setMailboxDirectory(File)} roots it in the controller's data
+     * {@link #setDataDirectory(File)} roots it in the controller's data
      * directory.
      */
     private MailboxRegistry mailboxes = new MailboxRegistry();
@@ -279,6 +281,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * {@code null} until {@link #setServer(Server)} is called.
      */
     private DelayedJobQueue delayedJobs;
+
+    /**
+     * Durable store of serialized factories for accepted-but-unfinished jobs,
+     * so a {@code SUBMITTED} job survives a controller restart. {@code null}
+     * until {@link #setDataDirectory(File)} roots it in the data directory.
+     */
+    private PendingJobRecovery pendingJobRecovery;
 
     /**
      * Creates a new API endpoint on the specified port, using a single
@@ -447,6 +456,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 taskCloseOut.stop();
                 taskCloseOut = null;
             }
+            if (pendingJobRecovery != null) {
+                pendingJobRecovery.close();
+                pendingJobRecovery = null;
+            }
         }
         super.stop();
     }
@@ -473,16 +486,55 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Persists workstream conversations under the controller's data directory,
-     * replacing the memory-only default so a conversation survives a restart.
+     * Roots the endpoint's durable state in the controller's data directory, so
+     * it survives a restart: workstream conversations replace their memory-only
+     * default, and the serialized factory of every accepted job is persisted for
+     * {@link #recoverPendingJobs()}. A recovery store opened by an earlier call
+     * is closed before it is replaced.
      *
      * @param dataDirectory the controller's data directory; conversations are
      *                      written to its
      *                      {@value MailboxRegistry#DIRECTORY_NAME} subdirectory
+     *                      and recoverable factories to its
+     *                      {@value PendingJobRecovery#DATABASE_NAME} database
      */
-    public void setMailboxDirectory(File dataDirectory) {
+    public synchronized void setDataDirectory(File dataDirectory) {
         this.mailboxes = new MailboxRegistry(
                 new File(dataDirectory, MailboxRegistry.DIRECTORY_NAME));
+        if (pendingJobRecovery != null) pendingJobRecovery.close();
+        this.pendingJobRecovery = new PendingJobRecovery(
+                new File(dataDirectory, PendingJobRecovery.DATABASE_NAME).getAbsolutePath());
+        this.pendingJobRecovery.initialize();
+    }
+
+    /**
+     * Re-dispatches every job the stats store still reports as {@code SUBMITTED}
+     * for which a serialized factory was persisted, so work the controller
+     * accepted but had not yet started survives a restart.
+     *
+     * <p>Called once at controller startup, after the endpoint and its dispatch
+     * queue are wired. Each recovered factory is handed to the same dispatch
+     * path a fresh submission uses. Re-dispatch is idempotent: only jobs still
+     * {@code SUBMITTED} are re-run (a job that already started has been promoted
+     * to {@code STARTED} and is skipped), a job this process already dispatched
+     * (submitted after {@link #start} but before this sweep) is skipped, and
+     * the existing {@code job_timing} row is reused rather than duplicated. A
+     * no-op when no recovery store or dispatch queue is configured.</p>
+     */
+    public void recoverPendingJobs() {
+        if (pendingJobRecovery == null || delayedJobs == null) return;
+        JobStatsStore store = statsQueryHandler.store();
+        if (store == null) return;
+
+        Set<String> pendingIds = new HashSet<>();
+        for (PendingJob job : store.getPendingJobs(null)) {
+            pendingIds.add(job.jobId());
+        }
+        int recovered = pendingJobRecovery.recover(pendingIds,
+                factory -> delayedJobs.submit(factory, 0));
+        if (recovered > 0) {
+            log("Re-dispatched " + recovered + " pending job(s) after restart");
+        }
     }
 
     /**
@@ -643,6 +695,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             int limit = 10;
             try { limit = Integer.parseInt(limitParam); } catch (NumberFormatException ignored) { }
             return jobQueryHandler.listJobs(workstreamId, limit);
+        }
+
+        // Must precede the /api/jobs/{id} branch, which would else shadow it.
+        if (Method.GET.equals(method) && "/api/jobs/in-flight".equals(uri)) {
+            return statsQueryHandler.handleInFlight();
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/jobs/")) {
@@ -1089,6 +1146,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.getDisplaySummary(),
                 JsonFieldExtractor.extractString(body, "submittedBy"),
                 requiredLabels, Instant.now());
+        // Persist for restart recovery; cleared at the terminal choke point.
+        if (pendingJobRecovery != null) {
+            pendingJobRecovery.persist(factory.getTaskId(), factory.encode());
+        }
 
         // Notify that the job has been submitted (not yet executing)
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), factory.getDisplaySummary());
@@ -1330,6 +1391,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     public void completeJob(String workstreamId, JobCompletionEvent event) {
         // Controller-owned terminal persistence, independent of any notifier.
         jobLifecycleRecorder.recordTerminal(workstreamId, event);
+        // A terminal job never needs re-dispatch.
+        if (pendingJobRecovery != null && event != null) {
+            pendingJobRecovery.clear(event.getJobId());
+        }
         notifiers.completionListener(workstreamId).onJobCompleted(workstreamId, event);
         if (completionListenerFanout == null) return;
         // Clearing the debounce keeps a fast-completing wake-up from

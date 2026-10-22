@@ -189,6 +189,118 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * The named regression: a phase update arriving before, or without, a
+     * {@code STARTED} event promotes a still-{@code SUBMITTED} row to
+     * {@code STARTED}, so a job that recorded phases but whose single
+     * {@code STARTED} event was lost is reported running rather than pending.
+     */
+    @Test(timeout = 30000)
+    public void phaseUpdatePromotesSubmittedToStarted() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-phase-promote").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            store.recordPhase("job-1", "primary");
+
+            Assert.assertTrue("a phase update promotes the row out of pending",
+                    store.getPendingJobs("ws-1").isEmpty());
+            List<ActiveJob> active = store.getActiveJobs("ws-1");
+            Assert.assertEquals("the phase update makes the job active", 1, active.size());
+            Assert.assertEquals("job-1", active.get(0).jobId());
+            Assert.assertEquals("the phase itself is still recorded",
+                    "primary", store.getJobPhase("job-1"));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * A heartbeat on a still-{@code SUBMITTED} row promotes it to
+     * {@code STARTED}, seeding {@code started_at} from the heartbeat instant and
+     * recording the worker node the heartbeat named.
+     */
+    @Test(timeout = 30000)
+    public void heartbeatPromotesSubmittedToStartedWithNode() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-beat-promote").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            Instant beatAt = submittedAt.plusSeconds(45);
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            store.recordHeartbeat("job-1", beatAt, "worker (10.0.0.4)");
+
+            Assert.assertTrue("a heartbeat promotes the row out of pending",
+                    store.getPendingJobs("ws-1").isEmpty());
+            List<ActiveJob> active = store.getActiveJobs("ws-1");
+            Assert.assertEquals("the heartbeat makes the job active", 1, active.size());
+            ActiveJob job = active.get(0);
+            Assert.assertEquals("started_at is seeded from the heartbeat instant",
+                    beatAt, job.startedAt());
+            Assert.assertEquals("the heartbeat node is recorded",
+                    "worker (10.0.0.4)", job.node());
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * Promotion is idempotent: a liveness signal on a row already {@code STARTED}
+     * leaves its real {@code started_at} in place rather than moving it to the
+     * signal instant.
+     */
+    @Test(timeout = 30000)
+    public void promotionDoesNotMoveExistingStartTime() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-promote-idempotent").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            Instant startedAt = submittedAt.plusSeconds(60);
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-1", "ws-1", "job", "node-a", startedAt);
+            store.recordHeartbeat("job-1", submittedAt.plusSeconds(600), null);
+
+            ActiveJob job = store.getActiveJobs("ws-1").get(0);
+            Assert.assertEquals("a heartbeat on a STARTED row must not move started_at",
+                    startedAt, job.startedAt());
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * Promotion never resurrects a terminal row: a late heartbeat or phase
+     * update arriving after completion leaves the job terminal, not active.
+     */
+    @Test(timeout = 30000)
+    public void promotionNeverResurrectsTerminalRow() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-promote-terminal").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-1", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+            store.recordJobCompleted("ws-1", JobCompletionEvent.success("job-1", "job"));
+
+            store.recordHeartbeat("job-1", submittedAt.plusSeconds(600), "zombie (10.0.0.9)");
+            store.recordPhase("job-1", "review");
+
+            Assert.assertTrue("a late signal must not make a terminal job active",
+                    store.getActiveJobs("ws-1").isEmpty());
+            Assert.assertTrue("a late signal must not make a terminal job pending",
+                    store.getPendingJobs("ws-1").isEmpty());
+            Assert.assertEquals("the job stays terminal",
+                    JobCompletionEvent.Status.SUCCESS, store.getJob("job-1").getStatus());
+        } finally {
+            store.close();
+        }
+    }
+
     /** An existing database opens again without error and old rows read back (migration safety). */
     @Test(timeout = 30000)
     public void existingDatabaseReopensWithNewColumns() throws Exception {

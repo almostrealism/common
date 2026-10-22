@@ -906,6 +906,20 @@ it starts. A new QA job gets its own `ignore_interval_*` input, sets
 `PR_GRACE_HOURS`, and guards its archive step against the forced reason;
 `tools/tests/test_master_agent_dispatch.py` checks all three.
 
+**One open-PR limit for every round.** Each round, QA or planning, ends in a
+pull request for the same reviewer, so none starts while more than
+`MAX_OPEN_PRS` PRs of any kind are open against master. That limit is defined
+once, as the workflow-level `env` of `master-agent-dispatch.yaml` (7: a round
+may start with seven open, so with its own PR the repository holds at most
+eight). The planning jobs check it with `tools/ci/open-pr-backlog.sh`; the QA
+gates turn on `qa-cadence.sh`'s backlog condition with `CHECK_BACKLOG: "true"`,
+which runs the same script after the round and interval checks and reports
+`backlog-full` (or `backlog-query-failed`, read as full). `plan-release-task`
+passes the same number as its `max-open-prs` input, since a called workflow
+cannot read the caller's `env`. No job sets a limit of its own;
+`tools/tests/test_master_agent_dispatch.py` checks that. The count covers open
+PRs only: a round whose agent has not opened its PR yet is not in it.
+
 `plan-next-task` keeps **exactly one** planning round open, because every round
 rewrites the single `docs/plans/MANAGER_LOG.md` and two open at once cannot both
 merge. It runs `qa-cadence.sh` from a step-level env (so the QA-job checks do
@@ -916,23 +930,26 @@ The grace window is load-bearing: the agent opens its PR only when it finishes,
 so without it a merge landing mid-round started a second round beside the first
 (this is how `project/plan-20260926-172935` and `project/plan-20260926-174202`
 came to coexist). Only when no round is in progress does the job check the
-backlog: it starts a round unless more than `MAX_OPEN_PRS` (7, the number of
-automated QA rounds) PRs of any kind are open. `force` bypasses both checks.
+backlog against the shared `MAX_OPEN_PRS`. `force` bypasses both checks.
 
 Like the QA rounds, both planning jobs retire earlier rounds with
-`tools/ci/archive-stale-workstreams.sh` (their own prefix only) as soon as the
-gate has found no round in progress, which is exactly when every earlier round
-has been merged, closed or abandoned. A forced run archives nothing, since it
-skipped that check and an approved plan may still be being implemented on its
-workstream.
+`tools/ci/archive-stale-workstreams.sh` (their own prefix only) once the gate
+has decided a round may start. For `plan-next-task` that is exactly when every
+earlier round has been merged, closed or abandoned. `plan-release-task` allows
+several rounds at once, so its gate lists the rounds it counted as in progress
+(`live`) and the archive step keeps them (`KEEP_BRANCHES`). A forced run
+archives nothing, since it skipped the gate's checks and an approved plan may
+still be being implemented on its workstream.
 
 `plan-release-task` plans the next ready tracker task of the release master is
 building (`Common <root pom.xml version>`), beside the free-form round rather
 than instead of it. It has no steps of its own: it calls the reusable
 `task-planning.yaml` (see below), the same workflow other repositories call for
-their own tracker projects, so what is described here is that workflow's job. It is gated three ways, in order: no
-`project/task-*` round in progress (`qa-cadence.sh`, same settings as above),
-room in the backlog (`tools/ci/open-pr-backlog.sh`, which `plan-next-task` uses
+their own tracker projects, so what is described here is that workflow's job. It is gated three ways, in order: fewer
+than four `project/task-*` rounds in progress (`qa-cadence.sh`, same settings as
+above plus `MAX_ROUNDS`, the workflow's `max-rounds` input; a round lasts from
+its plan until its PR is merged or closed, so an approved plan being
+implemented holds a slot), room in the backlog (`tools/ci/open-pr-backlog.sh`, which `plan-next-task` uses
 too, with the same `MAX_OPEN_PRS`), and a claimable task
 (`tools/ci/tracker-claimable.sh`, which asks the controller's
 `GET /api/tracker/claimable` and fails closed). With nothing claimable no

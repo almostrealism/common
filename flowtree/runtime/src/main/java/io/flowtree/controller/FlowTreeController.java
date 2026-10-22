@@ -1214,7 +1214,7 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
-            apiEndpoint.setMailboxDirectory(new File(dataDir));
+            apiEndpoint.setDataDirectory(new File(dataDir));
             apiEndpoint.setAlertRecipients(AlertRecipientEntry.directory(
                     loadedConfig == null ? null : loadedConfig.getAlertRecipients()));
             stuckJobScanner = CompletionListenerFanoutWiring.wire(apiEndpoint,
@@ -1264,6 +1264,7 @@ public class FlowTreeController implements ConsoleFeatures {
             int listeningPort = apiEndpoint.getListeningPort();
             listener.setApiPort(listeningPort);
             log("API endpoint started on port " + listeningPort);
+            apiEndpoint.recoverPendingJobs();
         } catch (IOException e) {
             warn("Failed to start API endpoint on port " + apiPort + ": " + e.getMessage());
         }

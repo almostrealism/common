@@ -16,6 +16,8 @@
 
 package org.almostrealism.geometry;
 
+import org.almostrealism.algebra.Vector;
+
 /**
  * Represents an axis-aligned 3D bounding box (AABB).
  * Provides functionality to calculate a minimum bounding solid from a given
@@ -56,8 +58,8 @@ public class BoundingSolid {
     public final double dz;
     /** The volume of this bounding solid (dx * dy * dz). */
     public final double volume;
-    /** The center point of this bounding solid. */
-    public final Positioned center;
+    /** The center point of this bounding solid, at the midpoint of each extent. */
+    public final Vector center;
 
     /**
      * Constructs a new BoundingSolid with the specified extents.
@@ -68,7 +70,6 @@ public class BoundingSolid {
      * @param maxY the maximum y-coordinate
      * @param minZ the minimum z-coordinate
      * @param maxZ the maximum z-coordinate
-     * @throws UnsupportedOperationException currently unimplemented due to center calculation
      */
     public BoundingSolid(double minX, double maxX, double minY, double maxY, double minZ, double maxZ) {
         this.minX = minX;
@@ -84,8 +85,7 @@ public class BoundingSolid {
 
         volume = dx * dy * dz;
 
-        // center = new Vector(minX+dx/2, minY+dy/2, minZ+dz/2); TODO
-        throw new UnsupportedOperationException();
+        center = new Vector(minX + dx / 2, minY + dy / 2, minZ + dz / 2);
     }
 
     /**
@@ -98,11 +98,11 @@ public class BoundingSolid {
      */
     public static BoundingSolid getBounds(Positioned[] points) {
         double minX = Double.MAX_VALUE;
-        double maxX = Double.MIN_VALUE;
+        double maxX = -Double.MAX_VALUE;
         double minY = Double.MAX_VALUE;
-        double maxY = Double.MIN_VALUE;
+        double maxY = -Double.MAX_VALUE;
         double minZ = Double.MAX_VALUE;
-        double maxZ = Double.MIN_VALUE;
+        double maxZ = -Double.MAX_VALUE;
 
         if (points == null || points.length == 0) {
             return new BoundingSolid(0, 0, 0, 0, 0, 0);
