@@ -105,7 +105,7 @@ every test had passed.
 The required set is `analysis.needs` minus `build` (kept in lockstep with
 `all-checks` by design — see `.github/CLAUDE.md`, "What the `analysis` job
 does"), and it covers every test lane, the CL lanes (`test-cl`,
-`test-media-cl`) included. `tools/tests/test_auto_resolve_test_job_coverage.py` asserts every
+`test-media-cl`) and the CUDA lanes (`test-cuda`, `test-media-cuda`) included. `tools/tests/test_auto_resolve_test_job_coverage.py` asserts every
 job in that set is wired into both the failure-detection step and the
 Surefire allowlist — add a new test-execution job to `analysis.needs` and
 this test fails until it is wired into both places.
