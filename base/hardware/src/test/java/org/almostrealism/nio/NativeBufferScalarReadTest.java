@@ -19,6 +19,7 @@ package org.almostrealism.nio;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
+import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.RAM;
 import org.junit.Assert;
 import org.junit.Test;
@@ -115,6 +116,72 @@ public class NativeBufferScalarReadTest {
 		for (int i = 0; i < backing.length; i++) {
 			Assert.assertEquals("default toDouble must read the element at index " + i,
 					backing[i], mem.toDouble(i), 0.0);
+		}
+	}
+
+	/**
+	 * {@link org.almostrealism.hardware.MemoryData#toDouble(int)} without an ordering reads through
+	 * the scalar path at the data's offset, returns 0.0 for a negative index, and rejects an index at
+	 * or beyond its length rather than reading the neighbouring element of the shared memory.
+	 */
+	@Test(timeout = 30000)
+	public void memoryDataScalarReadHonorsOffsetAndBounds() {
+		NativeMemoryProvider provider = new NativeMemoryProvider(Precision.FP64, 1024L * 1024, false, null, true);
+		try {
+			double[] values = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+			RAM mem = provider.allocate(values.length);
+			provider.setMem(mem, 0, values, 0, values.length);
+
+			RamData root = new RamData(values.length, mem);
+			RamData view = new RamData(3, null);
+			view.setDelegate(root, 2, null);
+
+			Assert.assertEquals(3.0, view.toDouble(0), 0.0);
+			Assert.assertEquals(5.0, view.toDouble(2), 0.0);
+			Assert.assertEquals("A negative index reads as zero", 0.0, view.toDouble(-1), 0.0);
+			view.assertRejects(3);
+			Assert.assertEquals(6.0, root.toDouble(5), 0.0);
+			root.assertRejects(6);
+		} finally {
+			provider.destroy();
+		}
+	}
+
+	/** Fixed-length memory data over an existing {@link RAM} (or a delegate), with no allocation of its own. */
+	private static final class RamData extends MemoryDataAdapter {
+		/** The number of elements this data spans. */
+		private final int length;
+
+		/**
+		 * Creates data of the given length, backed by {@code mem} unless a delegate is set later.
+		 *
+		 * @param length the number of elements
+		 * @param mem    backing memory, borrowed rather than owned; {@code null} for a view
+		 */
+		private RamData(int length, RAM mem) {
+			this.length = length;
+			if (mem != null) init(mem, false);
+		}
+
+		@Override
+		public int getMemLength() {
+			return length;
+		}
+
+		/**
+		 * Asserts that reading {@code index} is rejected as out of range, rather than returning the
+		 * element that follows this data in its backing memory.
+		 *
+		 * @param index an index at or beyond the length of this data
+		 */
+		private void assertRejects(int index) {
+			try {
+				double value = toDouble(index);
+				Assert.fail("toDouble(" + index + ") on data of length " + length
+						+ " must be rejected, but returned " + value);
+			} catch (IllegalArgumentException expected) {
+				// The bounds check rejected the read, as required.
+			}
 		}
 	}
 
