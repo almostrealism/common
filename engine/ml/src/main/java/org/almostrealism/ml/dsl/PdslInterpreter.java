@@ -90,7 +90,6 @@ import java.util.function.Function;
  *       {@code sequence_causal_mask()} - the stages of full-sequence attention; the operand of
  *       {@code scaled_dot_product} is a tensor or a branch the layer has split off</li>
  *   <li>{@code sqrt(x)} - numeric square root in configuration arithmetic</li>
- *   <li>{@code attention(...)}</li>
  * </ul>
  *
  * <p>Domain-specific primitives (audio DSP, multi-channel routing, etc.) are not
