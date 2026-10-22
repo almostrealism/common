@@ -207,10 +207,16 @@ A reviewer can confirm the task is done when:
    generator that can host either model is wanted, that is a larger refactor — filed as a
    follow-up task, `aff07cc2-49fb-46f8-a4b2-3a144038c2fc` ("Let the high-level AudioGenerator
    drive native Stable Audio 3") — rather than widening this one.
-3. **Final method naming/overloading.** `generateFromText(long, String, double)` already
-   exists for text-to-audio; the blend overload `generateFromText(long, String, double,
-   double, PackedCollection)` distinguishes by arity. Confirm in review that this is clear
-   enough, or choose a distinct name (e.g. `blendFromText`).
+3. **Final method naming, overloading and parameter order.** `generateFromText(long, String,
+   double)` already exists for text-to-audio; the blend overload `generateFromText(long,
+   String, double, double, PackedCollection)` distinguishes by arity. Confirm in review that
+   this is clear enough, or choose a distinct name (e.g. `blendFromText`). The sketched
+   parameter order above also inserts `strength` between `prompt` and `seconds`, so `seconds`
+   shifts from the third position in `generate(seed, prompt, seconds)` to the fourth in the
+   blend methods. Settling on `generateFrom(seed, prompt, seconds, strength, startLatent)` —
+   keeping `(seed, prompt, seconds)` as a stable prefix shared with `generate` and appending
+   the two blend-only parameters — would read more consistently; the alternative is to accept
+   the sketched order. Either way, pick one deliberately rather than by accident.
 
 ## Machine requirements
 
