@@ -444,6 +444,29 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the memory is a {@link NativeBuffer} holding its elements in a host-addressable
+	 * {@link DoubleBuffer} or {@link FloatBuffer}, the value is read straight from that buffer.
+	 * This avoids the one-element array the array-mediated read allocates, which matters when
+	 * host code inspects a result one element at a time. Any other memory — the FP16 buffers
+	 * backed by a {@link ShortBuffer} and the non-buffer {@link NativeMemory} read through a
+	 * compiled kernel — falls back to the array-mediated read, preserving its behavior.</p>
+	 */
+	@Override
+	public synchronized double toDouble(RAM mem, int offset) {
+		if (mem instanceof NativeBuffer buffer) {
+			if (buffer.getBuffer() instanceof DoubleBuffer typed) {
+				return typed.get(offset);
+			} else if (buffer.getBuffer() instanceof FloatBuffer typed) {
+				return typed.get(offset);
+			}
+		}
+
+		return toArray(mem, offset, 1)[0];
+	}
+
+	/**
 	 * Returns the native address backing the given direct buffer, compiling the operation on first use.
 	 *
 	 * @param b a direct {@link Buffer}

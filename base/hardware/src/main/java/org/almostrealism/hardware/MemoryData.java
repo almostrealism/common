@@ -643,12 +643,13 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 */
 	default double toDouble(int index) {
 		if (getMemOrdering() == null) {
-			return index < 0 ? 0.0 : toArray(index, 1)[0];
+			// TODO(review): this no-ordering branch no longer bounds-checks index against getMemLength(); the old toArray(index, 1) threw for index >= getMemLength()
+			return index < 0 ? 0.0 : getMem().toDouble(getOffset() + index);
 		} else if (getDelegate() == null) {
 			index = getMemOrdering().indexOf(index);
 			if (index < 0) return 0.0;
 
-			return getMem().toArray(getOffset() + index, 1)[0];
+			return getMem().toDouble(getOffset() + index);
 		} else {
 			if (getDelegateOrdering() != null) {
 				index = getDelegateOrdering().indexOf(index);

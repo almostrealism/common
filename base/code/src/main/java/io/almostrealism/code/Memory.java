@@ -77,6 +77,20 @@ public interface Memory {
 	}
 
 	/**
+	 * Reads a single element from this memory region.
+	 *
+	 * <p>Delegates to {@link MemoryProvider#toDouble(Memory, int)}, which a host-addressable
+	 * provider satisfies without allocating the one-element array that {@link #toArray(int, int)}
+	 * would. Use this when reading values one at a time rather than a range.</p>
+	 *
+	 * @param offset the position of the element within this memory region
+	 * @return the value at that position
+	 */
+	default double toDouble(int offset) {
+		return getProvider().toDouble(this, offset);
+	}
+
+	/**
 	 * Returns the raw bytes for the first {@code length} double values in this memory region.
 	 *
 	 * @param length the number of double values to read
