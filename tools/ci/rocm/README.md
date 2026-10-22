@@ -242,9 +242,9 @@ API, so instances self-assign `amd-halo-1`, `-2`, and so on.
 
 Two things decide whether more runners actually help.
 
-**The workflow caps concurrency independently of the fleet.** `test-cl` runs
-`max-parallel: 3` and `test-media-cl` `max-parallel: 2`, and the two never
-overlap because `test-media-cl` gates on `test-cl`. A single pipeline therefore
+**The workflow caps concurrency independently of the fleet.** `test-cl` and
+`test-media-cl` each run `max-parallel: 3`, and the two never overlap because
+`test-media-cl` gates on `test-cl`. A single pipeline therefore
 cannot use more than three runners however many are registered — beyond that they
 only absorb concurrent pipelines. Raise `max-parallel` in `analysis.yaml` if you
 want one pipeline to use more.

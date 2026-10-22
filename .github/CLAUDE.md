@@ -521,18 +521,19 @@ it, had been skipped. `auto-review` and `auto-resolve-python` run exactly when
 `!cancelled()` and check the producer's `result` explicitly.
 
 Every lane-chained job (`test-media`, `test-media-mac`, `test-cl`,
-`test-media-cl`) starts its `if:` with `!cancelled() &&` for this reason. Their
-explicit `result == 'success'` checks on `build` and the four validation jobs
-already exclude every failure path, so `!cancelled()` does not weaken the gate —
-it is what makes the gate run at all. Never add a lane stage that depends on a
-layer-gated stage without it.
+`test-media-cl`, `test-cuda`, `test-media-cuda`) starts its `if:` with
+`!cancelled() &&` for this reason. Their explicit `result == 'success'` checks
+on `build` and the four validation jobs already exclude every failure path, so
+`!cancelled()` does not weaken the gate — it is what makes the gate run at all.
+Never add a lane stage that depends on a layer-gated stage without it.
 
 ### Lanes: CPU (linux), GPU (macOS), CL (linux/ROCm) and CUDA (linux/NVIDIA)
 
 The CUDA lane (`test-cuda` → `test-media-cuda`) is described in its own section
-below, "What the `test-cuda` and `test-media-cuda` jobs cover". It is admitted
-exactly like the CL lane and runs in parallel with it. The rest of this section
-describes the three lanes that are part of the merge gate.
+below, "What the `test-cuda` and `test-media-cuda` jobs cover". It runs in
+parallel with the CL lane but is admitted later: after the macOS lane as well
+as the CPU lane. The rest of this section describes the other three lanes. All
+four are part of the merge gate.
 
 The self-hosted test jobs run as three lanes, each serialised internally so
 heavy suites do not contend on their fleet:
@@ -545,33 +546,35 @@ heavy suites do not contend on their fleet:
 - **CL lane (linux/ROCm, `ar-ci-cl`):** `test-cl` → `test-media-cl`.
   Serialised for the same reason: the ROCm host has a single GPU.
 
-The CPU and GPU lanes run in parallel. The CL lane starts only after **both**
-of them have finished: `test-cl` gates on `test`, `test-media`, `test-mac` and
-`test-media-mac` (each success-or-skipped), and `test-media-cl` gates on
-`test-cl` **and on those same four lanes directly**. The second part is not
-redundant: `test-cl` is skipped either by its own layer gate or by an upstream
-failure, and its `skipped` result cannot tell the two apart — gating
-`test-media-cl` on `test-cl` alone let it run after a Linux suite had failed.
-A downstream job must never infer "upstream was fine" from a `skipped` that has
-more than one cause; it gates on the upstream lanes itself. This is admission
-control, not GPU serialisation — the fleets are
-different machines. The CL lane is sixteen matrix jobs on a single host, the
-most expensive thing a pipeline schedules, and it is "Linux plus an accelerator
-other than Metal": a branch that cannot pass the Linux CPU suites, or cannot
-pass the Metal suites, will not pass their OpenCL duplicates either. Holding the
-CL lane until both lanes are green spends the ROCm runners only on branches
-that have already cleared the equivalent tests, and keeps them free for the
-pipelines that can use a green CL result. The trade is that a healthy
-pipeline's CL lane starts after the slower of the two other lanes.
+The CPU and GPU lanes run in parallel. The CL lane starts once the **CPU lane**
+has finished, and runs alongside the GPU lane: `test-cl` beside `test-mac`,
+`test-media-cl` beside `test-media-mac`. `test-cl` gates on `test` and
+`test-media` (each success-or-skipped), and `test-media-cl` gates on `test-cl`
+**and on those same two jobs directly**. The second part is not redundant:
+`test-cl` is skipped either by its own layer gate or by an upstream failure, and
+its `skipped` result cannot tell the two apart — gating `test-media-cl` on
+`test-cl` alone let it run after a Linux suite had failed. A downstream job must
+never infer "upstream was fine" from a `skipped` that has more than one cause;
+it gates on the upstream lanes itself. This is admission control, not GPU
+serialisation — the fleets are different machines. The CL lane is fourteen
+matrix jobs on a single host, and it is "Linux plus an accelerator": a branch
+that cannot pass the Linux CPU suites will not pass their OpenCL duplicates
+either, so the ROCm runners are spent only on branches that have cleared them.
+
+The CL lane does **not** wait for the Metal suites. It once did, so that a
+branch failing on Metal would not spend the ROCm fleet, but that held a healthy
+pipeline's CL lane until the slower of the two other lanes had finished. Running
+it beside the macOS lane lets more of the pipeline start as soon as the Linux
+suites are green; the cost is that a branch that fails only on Metal still runs
+its CL jobs.
 
 The CL lane was formerly the third and fourth stages of the macOS GPU lane. It
 moved to its own AMD/ROCm fleet (`tools/ci/rocm`) to give the OpenCL backend a
 real, non-deprecated OpenCL implementation. The gates on `test-mac` and
-`test-media-mac` were dropped at that point, because their original purpose
-(serialising the macOS GPUs) no longer applied, and were later restored for the
-admission-control reason above. The gate on the CPU lane came later still,
-after a pipeline in which the mac lane passed, the linux lane failed, and the
-CL lane ran its sixteen jobs anyway.
+`test-media-mac` were dropped at that point, restored for admission control,
+and dropped again so the two accelerator lanes run side by side. The gate on the
+CPU lane came after a pipeline in which the mac lane passed, the linux lane
+failed, and the CL lane ran all its jobs anyway.
 
 The `ar-ci-cl` label is deliberately distinct from `ar-ci`. If the ROCm host
 also carried `ar-ci` it would start picking up general CPU test jobs, putting
@@ -626,12 +629,17 @@ retune them one variable at a time, as measured follow-ups, so a regression stay
 attributable.
 
 Most self-hosted jobs use an 8-group matrix (`test`, `test-media`, `test-mac`,
-`test-cl`, `test-media-cl`). The CL backend hits its memory ceiling under large
-per-group loads even at `AR_HARDWARE_MEMORY_SCALE=7` (the highest scale used
-anywhere — the scale is exponential, so raising it further is not an option), so
-spreading the tests across eight JVMs keeps each group's load small. Eight groups
-also shrink the retry unit: re-running failed jobs re-runs only the failed group,
-not the whole suite.
+`test-media-cl`, and both CUDA jobs); `test-cl` uses six. The CL backend hits its
+memory ceiling under large per-group loads even at `AR_HARDWARE_MEMORY_SCALE=7`
+(the highest scale used anywhere — the scale is exponential, so raising it
+further is not an option), so spreading the tests across several JVMs keeps each
+group's load small. Several groups also shrink the retry unit: re-running failed
+jobs re-runs only the failed group, not the whole suite. A job's matrix and the
+`AR_TEST_GROUPS` its steps pass must agree, or the groups with no matrix entry
+never run; `tools/tests/test_accelerator_lane_admission.py` checks this for
+`test-cl`.
+
+The CL and CUDA jobs each run up to three groups at a time (`max-parallel: 3`).
 
 `test-media-mac` is the exception: it uses **4 groups at `max-parallel: 2`**
 (up to two groups at a time) rather than eight. As the second GPU-lane stage it
@@ -641,13 +649,14 @@ studio benchmark tick tails for shorter wall-clock time.
 
 The accelerator jobs upload surefire reports — `surefire-mac-group-*` and
 `surefire-media-mac-group-*` (Metal), `surefire-cl-group-*` and
-`surefire-media-cl-group-*` (OpenCL) — so a failure specific to one backend,
+`surefire-media-cl-group-*` (OpenCL), `surefire-cuda-group-*` and
+`surefire-media-cuda-group-*` (CUDA) — so a failure specific to one backend,
 which a Linux CPU run would not surface, is still parsed and auto-resolved.
 
-**Every accelerator lane is part of the `all-checks` merge gate.** The CL jobs
-were once informational, outside the gate and the auto-resolve routing, while
-the CL backend carried known flakiness; they were made required once the CL
-lanes passed reliably, because the goal is a pipeline that holds every
+**Every accelerator lane is part of the `all-checks` merge gate.** The CL and
+CUDA jobs were each informational at first, outside the gate and the
+auto-resolve routing, while their backend was new; each was made required once
+it passed reliably, because the goal is a pipeline that holds every
 accelerator it tests to the same bar. They upload no coverage, but they appear
 in `analysis.needs` for the same ordering reason as the mac jobs (see "What the
 `analysis` job does"), and therefore in `auto-resolve`'s failure routing and
@@ -668,22 +677,18 @@ up per `tools/ci/cuda/README.md`. The fleet reuses the Linux CPU fleet's image o
 the host's own Docker and NVIDIA Container Toolkit, so it installs nothing on the
 host.
 
-**Admission** is the CL lane's, for the CL lane's reason. Both stages gate on
-`test`, `test-media`, `test-mac` and `test-media-mac` (success-or-skipped) plus
-`build` and the four validation checks, and `test-media-cuda` gates on those
-upstream lanes directly as well as on `test-cuda`. The two accelerator lanes run
-in parallel on their separate machines; neither gates on the other.
+**Admission** is stricter than the CL lane's. Both stages gate on `test`,
+`test-media`, `test-mac` and `test-media-mac` (success-or-skipped) plus `build`
+and the four validation checks, and `test-media-cuda` gates on those upstream
+lanes directly as well as on `test-cuda`. The CL lane no longer waits for the
+macOS lane; the CUDA lane still does. The two accelerator lanes run on separate
+machines; neither gates on the other.
 
-**The CUDA lane is informational for now.** Unlike every other test lane, it is
-**not** in `analysis.needs`, `all-checks`, `auto-resolve.needs`, the
-`Check for incomplete test execution` step, or the Surefire allowlist, so a
-failure there neither blocks a merge nor reaches an agent. It still uploads
-`surefire-cuda-group-*` and `surefire-media-cuda-group-*`, so a run's CUDA
-results can be assessed from its artifacts. This is deliberate and temporary:
-the lane joins the gate, the same way the CL lanes did, once it has a passing
-baseline. Making it required means wiring it into every place listed at the end
-of the previous section, and `tools/tests/test_auto_resolve_test_job_coverage.py`
-fails until all of them are done.
+**The CUDA lane is required**, like every other test lane: it is in
+`analysis.needs`, `all-checks`, `auto-resolve.needs`, the
+`Check for incomplete test execution` step, and the Surefire allowlist, and
+`tools/tests/test_auto_resolve_test_job_coverage.py` pins it there. It was
+informational until it had a passing baseline.
 
 `ar-ci-cuda` is a **capability** label, distinct from `ar-ci` and `ar-ci-cl`: the
 CUDA jobs require it, and only the CUDA fleet carries it, after its preflight has
@@ -1169,8 +1174,8 @@ here.
 ### What the `analysis` job does
 
 Waits for `build`, `test`, `test-flowtree`, `test-media`, `test-mac`,
-`test-media-mac`, `test-cl` and `test-media-cl` (any may be skipped). The mac
-and CL jobs upload no coverage; they are
+`test-media-mac`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda`
+(any may be skipped). The mac, CL and CUDA jobs upload no coverage; they are
 in `needs` so that the input to `analysis` is not narrower than the input to
 `all-checks` — `auto-resolve` depends on `analysis`, so on its attempt it does
 not proceed until the same set of jobs that decide `all-checks` has reported. Downloads all
