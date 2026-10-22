@@ -636,15 +636,22 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * Returns the double value at the specified index.
 	 *
 	 * <p>If a {@link TraversalOrdering} is set, the logical index is mapped through the ordering
-	 * to find the physical memory location. Returns 0.0 for out-of-bounds negative indices.</p>
+	 * to find the physical memory location. Returns 0.0 for out-of-bounds negative indices. When no
+	 * ordering is set, a positive index at or beyond {@link #getMemLength()} is out of range and is
+	 * rejected, matching {@link #toArray(int, int)}.</p>
 	 *
 	 * @param index The logical index
 	 * @return The double value at that index
+	 * @throws IllegalArgumentException If no ordering is set and {@code index} is at or beyond the length of this data
 	 */
 	default double toDouble(int index) {
 		if (getMemOrdering() == null) {
-			// TODO(review): this no-ordering branch no longer bounds-checks index against getMemLength(); the old toArray(index, 1) threw for index >= getMemLength()
-			return index < 0 ? 0.0 : getMem().toDouble(getOffset() + index);
+			if (index < 0) return 0.0;
+			if (index >= getMemLength()) {
+				throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+			}
+
+			return getMem().toDouble(getOffset() + index);
 		} else if (getDelegate() == null) {
 			index = getMemOrdering().indexOf(index);
 			if (index < 0) return 0.0;
