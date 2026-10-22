@@ -521,11 +521,11 @@ it, had been skipped. `auto-review` and `auto-resolve-python` run exactly when
 `!cancelled()` and check the producer's `result` explicitly.
 
 Every lane-chained job (`test-media`, `test-media-mac`, `test-cl`,
-`test-media-cl`) starts its `if:` with `!cancelled() &&` for this reason. Their
-explicit `result == 'success'` checks on `build` and the four validation jobs
-already exclude every failure path, so `!cancelled()` does not weaken the gate —
-it is what makes the gate run at all. Never add a lane stage that depends on a
-layer-gated stage without it.
+`test-media-cl`, `test-cuda`, `test-media-cuda`) starts its `if:` with
+`!cancelled() &&` for this reason. Their explicit `result == 'success'` checks
+on `build` and the four validation jobs already exclude every failure path, so
+`!cancelled()` does not weaken the gate — it is what makes the gate run at all.
+Never add a lane stage that depends on a layer-gated stage without it.
 
 ### Lanes: CPU (linux), GPU (macOS), CL (linux/ROCm) and CUDA (linux/NVIDIA)
 

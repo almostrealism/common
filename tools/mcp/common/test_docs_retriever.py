@@ -24,6 +24,7 @@ from docs_retriever import (  # noqa: E402
     _MAX_DOC_CHARS,
     _expand_roots,
     _read_file,
+    is_indexed,
 )
 
 
@@ -194,6 +195,37 @@ class TestFileLists(unittest.TestCase):
         files = self._file_set(self.retriever._all_doc_files())
         self.assertIn("flowtree/runtime/docs/claude-code-job.md", files)
         self.assertIn("docs/tutorials/09-workspace-secrets.html", files)
+
+
+class TestSkipDirIndexing(unittest.TestCase):
+    """Guard: documents under a skipped runtime/build directory are never
+    indexed, no matter how deep they are nested.
+
+    ``.flowtree`` is the gitignored directory where FlowTree/oop-review
+    sessions leave per-job agent state (e.g. ``oop-review.md``). Because it
+    is a working-tree artifact absent from a clean checkout, the
+    corpus-coverage guard only exercises it when such an artifact happens to
+    be present; these assertions pin the skip behaviour deterministically so
+    the ``_SKIP_DIRS`` entry cannot silently regress.
+    """
+
+    def test_flowtree_artifact_is_not_indexed(self):
+        self.assertFalse(is_indexed(".flowtree/oop-review.md"))
+
+    def test_nested_flowtree_artifact_is_not_indexed(self):
+        self.assertFalse(is_indexed("tools/mcp/.flowtree/oop-review.md"))
+
+    def test_other_skip_dirs_are_not_indexed(self):
+        self.assertFalse(is_indexed("target/generated/notes.md"))
+        self.assertFalse(is_indexed("results/run.md"))
+        self.assertFalse(is_indexed("node_modules/pkg/README.md"))
+
+    def test_ordinary_document_is_indexed(self):
+        self.assertTrue(is_indexed("docs/QUICK_REFERENCE.md"))
+        self.assertTrue(is_indexed("flowtree/runtime/docs/architecture.md"))
+
+    def test_non_document_suffix_is_not_indexed(self):
+        self.assertFalse(is_indexed(".flowtree/state.json"))
 
 
 if __name__ == "__main__":
