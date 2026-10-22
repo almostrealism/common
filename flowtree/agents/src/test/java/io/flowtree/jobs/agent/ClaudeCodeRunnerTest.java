@@ -283,6 +283,20 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
                 cmd.contains("--dangerously-skip-permissions"));
     }
 
+    /**
+     * Every session loads only the repository's settings. A hook installed in
+     * the node account's user settings for interactive use once deferred each
+     * job's first tool call, which ends a headless session with exit code 0
+     * and no work done.
+     */
+    @Test(timeout = 5000)
+    public void sessionLoadsOnlyRepositorySettings() {
+        List<String> cmd = new ClaudeCodeRunner().buildCommandLine(minimalRequest());
+        assertFlagFollows(cmd, "--setting-sources", "project,local");
+        assertFalse("user settings must not reach a job: " + cmd,
+                ClaudeCodeRunner.SETTING_SOURCES.contains("user"));
+    }
+
     /** Validation rejects unknown models. */
     @Test(timeout = 5000)
     public void validateRequestRejectsUnknownModel() {
