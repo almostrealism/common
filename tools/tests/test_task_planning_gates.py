@@ -436,5 +436,37 @@ class RegisterWorkstreamRoleTests(unittest.TestCase):
             self.assertEqual(["workstream_id=ws-1"], f.read().splitlines())
 
 
+class ArchiveStaleWorkstreamsTests(unittest.TestCase):
+    """archive-stale-workstreams.sh retires finished rounds and keeps live ones.
+
+    A job that allows several rounds at once reaches its archive step while
+    some are still in progress, and passes the cadence gate's ``live`` list as
+    ``KEEP_BRANCHES``.
+    """
+
+    _WORKSTREAMS = [
+        {"workstreamId": "ws-a", "defaultBranch": "project/task-a", "repoUrl": "r"},
+        {"workstreamId": "ws-b", "defaultBranch": "project/task-b", "repoUrl": "r"},
+        {"workstreamId": "ws-c", "defaultBranch": "project/task-c", "repoUrl": "r"},
+        {"workstreamId": "ws-p", "defaultBranch": "project/plan-p", "repoUrl": "r"},
+    ]
+
+    def _archive(self, keep):
+        stub = _ControllerStub(claimable=(200, self._WORKSTREAMS))
+        self.addCleanup(stub.close)
+        code, _, out = _run("archive-stale-workstreams.sh", {
+            "BRANCH_PREFIX": "project/task-", "KEEP_BRANCHES": keep,
+            "CONTROLLER_URL": stub.url, "REPO_URL": "r"})
+        self.assertEqual(0, code, out)
+        return sorted(path.split("/")[3] for method, path, _, _, _ in stub.seen
+                      if method == "POST" and path.endswith("/archive"))
+
+    def test_the_live_rounds_are_kept(self):
+        self.assertEqual(["ws-b"], self._archive("project/task-a project/task-c"))
+
+    def test_with_nothing_live_every_round_of_the_prefix_is_archived(self):
+        self.assertEqual(["ws-a", "ws-b", "ws-c"], self._archive(""))
+
+
 if __name__ == "__main__":
     unittest.main()
