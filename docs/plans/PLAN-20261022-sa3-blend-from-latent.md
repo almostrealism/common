@@ -92,6 +92,11 @@ public CollectionProducer generateFromText(long seed, String prompt, double stre
                                            double seconds, PackedCollection startLatent);
 ```
 
+The parameter order shown here is illustrative only. Open Question 3 flags that placing
+`strength` before `seconds` breaks the `(seed, prompt, seconds)` prefix shared with
+`generate(...)` and recommends `generateFrom(seed, prompt, seconds, strength, startLatent)`
+instead; settle the order there before fixing these signatures.
+
 `startLatent` is a materialized `PackedCollection` in the model's latent shape
 `[BATCH, latentDim, latentLen]` (`equalsIgnoreAxis`, as `sampleFrom` requires). This mirrors
 the older pipeline, where `AudioGenerator` evaluates the composed latent before calling
