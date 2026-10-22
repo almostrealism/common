@@ -58,11 +58,28 @@ public class SAMEAutoEncoderFixture implements CodeFeatures {
 	 * @return the weights
 	 */
 	public StateDictionary weights() {
+		return weights(1.0);
+	}
+
+	/**
+	 * Synthetic weights whose decoded audio is scaled by {@code outputGain}. Every normalization in
+	 * the decoder's resampling block precedes the residual writes, so scaling the weights that write
+	 * into the residual stream — the input mapping, the new tokens, and each layer's attention and
+	 * feed-forward output projections — scales the decoded audio by the same factor. Unit-variance
+	 * weights decode to samples in the hundreds, which the generator's clamp to {@code [-1, 1]}
+	 * would flatten; a small gain keeps them inside it.
+	 *
+	 * @param outputGain the factor applied to the decoder's residual-writing weights
+	 * @return the weights
+	 */
+	public StateDictionary weights(double outputGain) {
 		Map<String, PackedCollection> w = new HashMap<>();
 		config(true).weightShapes("encoder.layers.0").forEach((key, dims) ->
 				w.put(key, new PackedCollection(shape(dims)).randnFill()));
-		config(false).weightShapes("decoder.layers.3").forEach((key, dims) ->
-				w.put(key, new PackedCollection(shape(dims)).randnFill()));
+		config(false).weightShapes("decoder.layers.3").forEach((key, dims) -> {
+			PackedCollection weight = new PackedCollection(shape(dims)).randnFill();
+			w.put(key, writesResidual(key) ? cp(weight).multiply(outputGain).evaluate() : weight);
+		});
 
 		int dim = config(true).getOutChannels();
 		w.put("encoder.layers.2.weight", new PackedCollection(shape(LATENT, dim)).randnFill());
@@ -73,6 +90,18 @@ public class SAMEAutoEncoderFixture implements CodeFeatures {
 		w.put("bottleneck.bias", new PackedCollection(shape(1, LATENT, 1)).randnFill());
 		w.put("bottleneck.running_std", new PackedCollection(shape(1)).fill(1.5));
 		return new StateDictionary(w);
+	}
+
+	/**
+	 * Whether a resampling-block weight writes into the residual stream rather than feeding a
+	 * normalization or the attention scores.
+	 *
+	 * @param key the weight name
+	 * @return whether scaling it scales the block's output
+	 */
+	private static boolean writesResidual(String key) {
+		return key.contains(".mapping.") || key.endsWith(".new_tokens") ||
+				key.contains(".self_attn.to_out.") || key.contains(".ff.ff.2.");
 	}
 
 	/**

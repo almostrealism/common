@@ -234,11 +234,14 @@ public class DiffusionSampler implements ConsoleFeatures {
 		// Add noise to start latent at the target timestep
 		double startT = timesteps[startStep];
 		PackedCollection noise = sampleNoise(startLatent.getShape().extent(), random);
-		PackedCollection x;
+		// At the top of the schedule (t = 1) the start latent's coefficient is zero and the noise's
+		// is one, so the computation can simplify to the noise itself and evaluate to that very
+		// collection; it then becomes the loop's latent and must not be released here.
+		PackedCollection x = null;
 		try {
 			x = strategy.addNoise(startLatent, startT, noise).evaluate();
 		} finally {
-			noise.destroy();
+			if (x == null || x.getRootDelegate() != noise.getRootDelegate()) noise.destroy();
 		}
 
 		if (verbose) {
