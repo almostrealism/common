@@ -163,13 +163,13 @@ public class PdslLoaderTest extends TestSuiteBase {
 
 	/**
 	 * Test that a complete transformer block can be loaded.
-	 * The block composes attention (built-in) + SwiGLU FFN (user-defined)
-	 * with residual connections.
+	 * The block composes the decomposed attention layer (imported from
+	 * /pdsl/attention.pdsl) + SwiGLU FFN (user-defined) with residual connections.
 	 */
 	@Test(timeout = 60000)
 	public void testTransformerBlockLayer() {
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse(loadPdslSource());
+		PdslNode.Program program = loader.parseResource("/pdsl/test_layers.pdsl");
 
 		PackedCollection rmsAttWeight = new PackedCollection(new TraversalPolicy(DIM));
 		PackedCollection wq = new PackedCollection(new TraversalPolicy(DIM, DIM));
@@ -386,14 +386,18 @@ public class PdslLoaderTest extends TestSuiteBase {
 	/**
 	 * {@link PdslLoader#readResource} returns the same source text that
 	 * {@link PdslLoader#parseResource} parses, so callers can combine raw resource text (for
-	 * example, concatenating a wrapper layer onto a production asset) before parsing it.
+	 * example, concatenating a wrapper layer onto a production asset) before parsing it. The asset
+	 * used here declares no imports, so {@link PdslLoader#parse(String)} — which parses raw text and
+	 * does not resolve imports — yields exactly the definitions {@link PdslLoader#parseResource}
+	 * does. ({@code test_layers.pdsl} is no longer suitable: it now imports {@code attention.pdsl},
+	 * whose definitions {@code parseResource} resolves in but {@code parse} does not.)
 	 */
 	@Test(timeout = 60000)
 	public void testReadResourceMatchesParseResource() {
 		PdslLoader loader = new PdslLoader();
-		String text = loader.readResource("/pdsl/test_layers.pdsl");
+		String text = loader.readResource("/pdsl/attention.pdsl");
 		PdslNode.Program fromText = loader.parse(text);
-		PdslNode.Program fromResource = loader.parseResource("/pdsl/test_layers.pdsl");
+		PdslNode.Program fromResource = loader.parseResource("/pdsl/attention.pdsl");
 
 		Assert.assertEquals("Definitions parsed from readResource() text should match parseResource()",
 				fromResource.getDefinitions().size(), fromText.getDefinitions().size());
