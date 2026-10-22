@@ -82,6 +82,16 @@ public final class AgentRunRequest {
      */
     public static final String ENV_WORKSTREAM_ID = "AR_WORKSTREAM_ID";
 
+    /**
+     * Environment variable that marks a process as a FlowTree job session. It
+     * is set on every agent process the harness starts, after the request's
+     * own environment, so no workstream setting can remove it. The
+     * repository's hooks read it to apply the policies that exist only
+     * because of how the harness captures a job's work, such as keeping that
+     * work in the job's own working tree rather than another git worktree.
+     */
+    public static final String ENV_FLOWTREE_JOB = "AR_FLOWTREE_JOB";
+
     /** Constructs an instance from {@code b}. */
     private AgentRunRequest(Builder b) {
         this.prompt = b.prompt;

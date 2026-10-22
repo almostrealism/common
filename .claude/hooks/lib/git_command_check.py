@@ -15,6 +15,11 @@ block-branch-track-master. It is invoked by:
   - .opencode/plugins/block-branch-track-master.ts (opencode, argv)
   - .opencode/plugins/_lib/command_pattern.ts      (helper, argv)
 
+``decide`` answers whether a command matches a policy. Policies in
+``JOB_ONLY_POLICIES`` (block-git-worktree) hold only in a FlowTree job
+session, so both CLI entry points go through ``decide_for_session``,
+which allows them in an interactive one; see agent_session.py.
+
 The decision logic is the simple pattern match that used to live in
 each of the three .sh scripts, centralized here so all six call sites
 agree. The matchers are the original `grep -E` patterns translated to
@@ -48,9 +53,13 @@ Unknown policies return "allow" with a non-empty `stderr` so a typo
 in the adapter cannot accidentally block the agent.
 """
 import json
+import os
 import re
 import shlex
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from agent_session import is_flowtree_job  # noqa: E402
 
 
 # Original shell patterns, translated to Python regex.
@@ -119,9 +128,9 @@ BLOCK_GIT_COMMIT_REASON = (
 )
 
 BLOCK_GIT_WORKTREE_REASON = (
-    "BLOCKED: 'git worktree add' is not permitted for agents.\n"
-    "All changes must remain in the single working tree the developer can see directly.\n"
-    "Do not create separate worktrees or otherwise store work out of sight.\n"
+    "BLOCKED: 'git worktree add' is not permitted in a FlowTree job.\n"
+    "The harness stages, commits and pushes only the job's own working tree; work done\n"
+    "in another worktree is lost when the job ends. Make every change in this tree.\n"
     "Read-only 'git worktree list' is allowed. See CLAUDE.md.\n"
 )
 
@@ -574,6 +583,13 @@ POLICIES = {
     "block-branch-track-master",
 }
 
+# Policies that hold only in a FlowTree job session (see agent_session.py).
+# An interactive session may create worktrees; a job may not, because the
+# harness captures nothing outside the job's own working tree.
+JOB_ONLY_POLICIES = frozenset({"block-git-worktree"})
+
+_ALLOW = {"action": "allow", "reason": "", "context": "", "stderr": ""}
+
 
 def decide(command, policy):
     """Return a Decision dict for a (command, policy) pair.
@@ -634,6 +650,13 @@ def decide(command, policy):
     return {"action": "allow", "reason": "", "context": "", "stderr": ""}
 
 
+def decide_for_session(command, policy, environ=None):
+    """``decide`` scoped to the session: a job-only policy allows outside a job."""
+    if policy in JOB_ONLY_POLICIES and not is_flowtree_job(environ):
+        return dict(_ALLOW)
+    return decide(command, policy)
+
+
 def _read_stdin_command():
     """Read a Claude-Code-style hook payload from stdin and return the command."""
     raw = sys.stdin.read()
@@ -671,7 +694,7 @@ def main(argv=None):
             sys.exit(2)
         policy = argv[1]
         command = _read_stdin_command()
-        _render_harness_native(decide(command, policy))
+        _render_harness_native(decide_for_session(command, policy))
         return
 
     if len(argv) < 2:
@@ -680,7 +703,7 @@ def main(argv=None):
 
     policy = argv[0]
     command = argv[1]
-    print(json.dumps(decide(command, policy)))
+    print(json.dumps(decide_for_session(command, policy)))
     sys.exit(0)
 
 

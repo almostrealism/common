@@ -512,6 +512,7 @@ jobs:
             ".claude/hooks/lib/test_exfiltration_guard_check.py"
             ".claude/hooks/lib/test_exfiltration_guard_transport.py"
             ".claude/hooks/lib/test_exfiltration_guard_interpreter.py"
+            ".claude/hooks/lib/test_exfiltration_guard_worktree.py"
             ".claude/hooks/exfil-allowlist.txt"
           )
 
@@ -1584,6 +1585,15 @@ jobs:
       - name: Run interface bypass hook tests
         run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_block_interface_bypass.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
+      # Worktrees are allowed in interactive sessions and refused in FlowTree
+      # jobs, whose harness captures only the job's own working tree. These
+      # cover both git policy adapters and the job-only worktree hook, which
+      # builds scratch repositories with a real linked worktree.
+      - name: Run worktree policy hook tests
+        run: |
+          python3 -m unittest discover -v -s .claude/hooks/lib -p "test_git_command_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s .claude/hooks/lib -p "test_job_worktree_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
       - name: Run exfiltration guard CI-verifier tests
         run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
@@ -1909,7 +1919,6 @@ jobs:
       - name: Run Hardware Tests
         if: matrix.group == 0
         run: |
-          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1930,7 +1939,6 @@ jobs:
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1953,7 +1961,6 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1978,7 +1985,6 @@ jobs:
       - name: Run Render Tests
         if: matrix.group == 0
         run: |
-          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1992,7 +1998,6 @@ jobs:
       - name: Run IO and HTTP Tests
         if: matrix.group == 0
         run: |
-          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -2127,7 +2132,6 @@ jobs:
 
       - name: Run Audio Tests
         run: |
-          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -2140,7 +2144,6 @@ jobs:
 
       - name: Run Music Tests
         run: |
-          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -2153,7 +2156,6 @@ jobs:
 
       - name: Run Compose Tests
         run: |
-          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -2166,7 +2168,6 @@ jobs:
 
       - name: Run Spatial Tests
         run: |
-          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -2184,7 +2185,6 @@ jobs:
       # and a real sample library that the runners do not carry.
       - name: Run Extern and Experiments Tests
         run: |
-          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \

@@ -139,6 +139,30 @@ def _git_call(argv):
     return argv[j], argv[j + 1:], opts
 
 
+def _git_common_dir(ctx, directory):
+    """Absolute git common directory of the repository found at ``directory``, else None."""
+    rc, out = ctx.git.run(["rev-parse", "--git-common-dir"], cwd=directory)
+    out = out.strip() if rc == 0 else ""
+    if not out:
+        return None
+    return os.path.realpath(out if os.path.isabs(out) else os.path.join(directory, out))
+
+
+def _linked_worktree_of(ctx, directory, toplevel):
+    """True when ``directory`` is in a different work tree of the project's own repository.
+
+    Linked worktrees share one common directory (objects, refs, configuration
+    and remotes); a nested or separate repository has its own.
+    """
+    if not os.path.isdir(directory):
+        return False
+    rc, there = ctx.git.run(["rev-parse", "--show-toplevel"], cwd=directory)
+    if rc != 0 or os.path.realpath(there.strip()) == toplevel:
+        return False
+    common = _git_common_dir(ctx, directory)
+    return common is not None and common == _git_common_dir(ctx, toplevel)
+
+
 def _git_working_dir(ctx, opts):
     """The directory a git invocation runs in, after its global options.
 
@@ -146,7 +170,10 @@ def _git_working_dir(ctx, opts):
     it is followed — provided the repository git finds there is this
     project's own work tree, not a nested repository inside it (a nested
     work tree or a bare repo both resolve to their own git directory). ``-C``
-    anywhere else, a ``-C`` path the shell expands (``$DIR``, ``~/x``, a glob
+    into a linked worktree of this repository (``git worktree add``), inside
+    the work tree or not, is followed too: it shares this repository's git
+    common directory, and with it the configuration and remotes a push is
+    checked against. ``-C`` anywhere else, a ``-C`` path the shell expands (``$DIR``, ``~/x``, a glob
     or brace list), and ``--git-dir`` / ``--work-tree`` at all, point git at
     another repository and are a block. ``--exec-path=DIR`` points git at
     another set of helper programs (``git-remote-*``) and is a block when a
@@ -188,6 +215,8 @@ def _git_working_dir(ctx, opts):
     base = ctx.require_cwd("git -C")
     resolved = os.path.realpath(target if os.path.isabs(target) else os.path.join(base, target))
     toplevel = os.path.realpath(ctx.project_toplevel)
+    if _linked_worktree_of(ctx, resolved, toplevel):
+        return resolved
     if os.path.commonpath([resolved, toplevel]) != toplevel:
         raise _GuardError(f"git -C {target} points at another repository ({resolved}); only "
                           f"this project's origin may be pushed to")
