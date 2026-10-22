@@ -308,9 +308,42 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 	 */
 	@Test(timeout = 900000)
 	public void theLearnedLambdaReceivesItsGradient() {
+		assertLambdaGradient(new Weights(null, false, true), null);
+	}
+
+	/**
+	 * The learned lambda trains in the {@code differential_attention_qk_layernorm} layer, with
+	 * LayerNorm biases, a partial rotation and a padding mask — the configuration of the Stable Audio
+	 * diffusion transformer: each lambda vector receives the gradient its finite differences imply.
+	 */
+	@Test(timeout = 900000)
+	public void theLearnedLambdaReceivesItsGradientThroughQkLayerNorm() {
+		assertLambdaGradient(new Weights(NormalizationType.LAYER, true, false), PADDING_VALID);
+	}
+
+	/**
+	 * The learned lambda trains in the {@code differential_attention_qk_rmsnorm} layer: each lambda
+	 * vector receives the gradient its finite differences imply.
+	 */
+	@Test(timeout = 900000)
+	public void theLearnedLambdaReceivesItsGradientThroughQkRmsNorm() {
+		assertLambdaGradient(new Weights(NormalizationType.RMS, false, true), null);
+	}
+
+	/**
+	 * Builds the attention with a trained lambda for one configuration, runs one backward pass, and
+	 * checks the gradient delivered to each of {@code λq1}, {@code λk1}, {@code λq2} and {@code λk2}
+	 * element by element against central finite differences of {@code L = sum(output * G)} for a fixed
+	 * output gradient {@code G}.
+	 *
+	 * @param w            the attention's weights, which select the query/key normalization layer
+	 * @param paddingValid the number of leading positions the padding mask marks valid, or {@code null}
+	 *                     for no padding mask
+	 */
+	private void assertLambdaGradient(Weights w, Integer paddingValid) {
 		int lambdaDim = 3;
 		double lambdaInit = 0.2;
-		Weights w = new Weights(null, false, true);
+		Producer<PackedCollection> paddingMask = paddingValid == null ? null : cp(validPrefix(paddingValid));
 		PackedCollection[] vectors = new PackedCollection[4];
 		for (int i = 0; i < vectors.length; i++) {
 			vectors[i] = random(HEADS, lambdaDim);
@@ -322,7 +355,7 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 
 		List<PackedCollection> recorded = new ArrayList<>();
 		Model model = new Model(sequenceShape, gradientRecorder(recorded));
-		model.add(w.trained(ProjectionFactory.dense(), null,
+		model.add(w.trained(ProjectionFactory.dense(), paddingMask,
 				vectors[0], vectors[1], vectors[2], vectors[3], lambdaInit));
 		try (CompiledModel compiled = model.compile(true, true)) {
 			compiled.forward(input);
