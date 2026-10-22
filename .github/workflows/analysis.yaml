@@ -1919,6 +1919,7 @@ jobs:
       - name: Run Hardware Tests
         if: matrix.group == 0
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1939,6 +1940,7 @@ jobs:
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1961,6 +1963,7 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1985,6 +1988,7 @@ jobs:
       - name: Run Render Tests
         if: matrix.group == 0
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1998,6 +2002,7 @@ jobs:
       - name: Run IO and HTTP Tests
         if: matrix.group == 0
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -2132,6 +2137,7 @@ jobs:
 
       - name: Run Audio Tests
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -2144,6 +2150,7 @@ jobs:
 
       - name: Run Music Tests
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -2156,6 +2163,7 @@ jobs:
 
       - name: Run Compose Tests
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -2168,6 +2176,7 @@ jobs:
 
       - name: Run Spatial Tests
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -2185,6 +2194,7 @@ jobs:
       # and a real sample library that the runners do not carry.
       - name: Run Extern and Experiments Tests
         run: |
+          set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
