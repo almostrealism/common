@@ -634,16 +634,14 @@ public class AttentionTests extends TestSuiteBase implements TransformerBlockFea
 		assertEquals(contextDim * 2, toKv.getShape().length(0));  // KV projects from contextDim to contextDim*2
 		assertEquals(contextDim, toKv.getShape().length(1));
 
-		// Create context input model
-		Model contextModel = new Model(shape(batchSize, contextSeqLen, contextDim));
-		SequentialBlock contextBlock = contextModel.sequential();
-		// Context input is passed through as-is for this test
-
-		// Create main model with cross-attention
+		// The key/value projection is computed on a branch of the context and fed to the attention
+		// products as graph operands, so the context is an auxiliary input of the same model rather
+		// than a separately compiled one bridged through a buffer.
 		Model mainModel = new Model(shape(batchSize, querySeqLen, embedDim));
+		SequentialBlock contextBlock = new SequentialBlock(shape(batchSize, contextSeqLen, contextDim));
+		mainModel.addInput(contextBlock);
 		SequentialBlock mainBlock = mainModel.sequential();
 
-		// Add cross-attention block (no invFreq parameter since cross-attention doesn't use rotary embeddings)
 		mainBlock.add(sequenceCrossAttention(
 				batchSize, querySeqLen, contextSeqLen,
 				embedDim, heads,
@@ -653,14 +651,9 @@ public class AttentionTests extends TestSuiteBase implements TransformerBlockFea
 				contextBlock, null
 		));
 
-		// Compile and run the model
+		// Drive the query and the context together through one compiled model
 		CompiledModel mainCompiled = mainModel.compile(false);
-
-		// Set context input in context model
-		contextModel.compile(false).forward(contextInput);
-
-		// Run main model with cross-attention
-		PackedCollection actualOutput = mainCompiled.forward(mainInput);
+		PackedCollection actualOutput = mainCompiled.forward(mainInput, contextInput);
 
 		log("Expected output total: " + expectedOutput.doubleStream().map(Math::abs).sum());
 		log("Actual output total: " + actualOutput.doubleStream().map(Math::abs).sum());

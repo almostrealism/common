@@ -723,6 +723,8 @@ Other Stable Audio 3 building blocks:
   autoencoders that compress waveforms to and from the diffusion model's latent space.
 - **`PatchedPretransform`** — a parameter-free pretransform, used by `SAMEAutoEncoder`, that folds
   runs of consecutive samples into the channel axis before encoding and unfolds them after decoding.
+  The fold and unfold are the `patch_encode` and `patch_decode` layers of the PDSL asset
+  `pdsl/audio/patch_transform.pdsl`.
 
 ## Integration with Other Modules
 

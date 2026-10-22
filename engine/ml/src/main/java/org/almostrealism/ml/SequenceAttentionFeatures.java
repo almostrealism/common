@@ -427,6 +427,18 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
 	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
 	 *
+	 * <p>The keys and values are computed on a {@link Block#branch() branch} of {@code contextInput}
+	 * and fed to the score and context products as graph operands (see the {@link Block}-valued
+	 * {@link #scaledDotProductAttention(int, int, int, int, int, Block, Block, Receptor) overload}),
+	 * so the backward pass delivers gradients to both halves of {@code toKvWeight} and to the key
+	 * normalization weights — the key and value projections of the context train rather than staying
+	 * frozen at their initialization.</p>
+	 *
+	 * <p>{@code contextInput} is an input of the same {@link org.almostrealism.model.Model} as the
+	 * query (added with {@link org.almostrealism.model.Model#addInput(Block)}) and fed alongside it,
+	 * so the context's keys and values are produced by the same compiled pass that consumes them and
+	 * the backward pass reaches their projections.</p>
+	 *
 	 * @param batchSize Batch dimension
 	 * @param querySeqLen Query sequence length
 	 * @param contextSeqLen Context sequence length
@@ -485,24 +497,16 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 		// 5. Apply K normalization (no rotary for context keys/values)
 		k.add(norm(normType, kNormWeight, kNormBias, 1e-6));
 
-		// 6. Store K and V tensors for use in attention computation
-		// TODO(review): K/V buffering drops gradients to toKvWeight; feed K and V to the products as branch operands, as sequence_attention.pdsl does
-		PackedCollection kTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
-		PackedCollection vTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
-
-		k.andThen(into(kTensor));
-		v.andThen(into(vTensor));
-
-		// 7. Apply attention to values
+		// 6. Attend over the context, with K and V as gradient-carrying graph operands
 		crossAttention.add(scaledDotProductAttention(
 				batchSize, querySeqLen, contextSeqLen,
-				heads, dimHead, kTensor, vTensor, attentionScores));
+				heads, dimHead, k, v, attentionScores));
 
-		// 8. Rearrange back to (batch, querySeqLen, dim)
+		// 7. Rearrange back to (batch, querySeqLen, dim)
 		crossAttention.permute(0, 2, 1, 3)
 				.reshape(batchSize, querySeqLen, dim);
 
-		// 9. Output projection
+		// 8. Output projection
 		crossAttention.add(projectionFactory.create(queryShape, toOutWeight,
 				AdapterConfig.TargetLayer.CROSS_ATTENTION_OUT));
 
@@ -604,8 +608,10 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 	 * receptor is supplied the attention weights are tapped to it between the two halves.</p>
 	 *
 	 * <p>The keys and values enter the computation as constants, so no gradient flows to whatever
-	 * produced them. Attention that computes its keys and values in the same graph and trains them,
-	 * as {@link #sequenceAttention} does, reads them from branches of its asset layer instead.</p>
+	 * produced them. Attention that computes its keys and values in the same graph and trains them
+	 * reads them from branches instead: {@link #sequenceAttention} from branches of its asset layer,
+	 * and {@link #sequenceCrossAttention} through the {@link Block}-valued
+	 * {@link #scaledDotProductAttention(int, int, int, int, int, Block, Block, Receptor) overload}.</p>
 	 *
 	 * @param batchSize batch dimension (must be 1)
 	 * @param querySeqLen sequence length for queries
@@ -623,6 +629,71 @@ public interface SequenceAttentionFeatures extends RotationFeatures, FeedForward
 	 */
 	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
 											PackedCollection k, PackedCollection v,
+											Receptor<PackedCollection> attentionScores,
+											double logitSoftcap, Producer<PackedCollection> keyMask,
+											boolean causal) {
+		return scaledDotProductAttention(batchSize, querySeqLen, contextSeqLen, heads, dimHead,
+				(Object) k, (Object) v, attentionScores, logitSoftcap, keyMask, causal);
+	}
+
+	/**
+	 * Builds scaled dot-product attention whose keys and values are computed by {@link Block}s in the
+	 * same graph, so a backward pass delivers gradients to whatever produced them. This is the
+	 * gradient-carrying counterpart of the {@link PackedCollection}-valued
+	 * {@link #scaledDotProductAttention(int, int, int, int, int, PackedCollection, PackedCollection,
+	 * Receptor) overload}, which reads the keys and values as constants.
+	 *
+	 * <p>The {@code k} and {@code v} blocks become the second operands of the score and context
+	 * products: the score product reads {@code k}'s output and the context product reads {@code v}'s,
+	 * and the backward pass carries each product's gradient back into the block that produced the
+	 * operand, exactly as a {@code branch} of {@link #SEQUENCE_ATTENTION_ASSET} does for self-attention.
+	 * The blocks may be branches of an auxiliary input (the context of cross-attention), which lets the
+	 * key and value projections of {@link #sequenceCrossAttention} train. Each block feeds one product;
+	 * pass a separate block for the keys and for the values.</p>
+	 *
+	 * @param batchSize batch dimension (must be 1)
+	 * @param querySeqLen sequence length for queries
+	 * @param contextSeqLen sequence length for context (keys/values)
+	 * @param heads number of attention heads
+	 * @param dimHead dimension per head
+	 * @param k block producing the keys, output shape {@code (batch, heads, contextSeqLen, dimHead)}
+	 * @param v block producing the values, output shape {@code (batch, heads, contextSeqLen, dimHead)}
+	 * @param attentionScores Optional receptor to receive the attention weight matrix; may be null
+	 * @return Block computing the attention output
+	 * @throws UnsupportedOperationException if {@code batchSize} is not 1
+	 */
+	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
+											Block k, Block v,
+											Receptor<PackedCollection> attentionScores) {
+		return scaledDotProductAttention(batchSize, querySeqLen, contextSeqLen, heads, dimHead,
+				(Object) k, (Object) v, attentionScores, 0.0, null, false);
+	}
+
+	/**
+	 * Builds scaled dot-product attention from {@link #SDPA_ASSET}, binding the keys and values to the
+	 * asset's score and context products. The operand is either a {@link PackedCollection} (read as a
+	 * constant, so no gradient flows to it) or a {@link Block} whose output is the product's second
+	 * operand (so the backward pass reaches it); the asset's {@code scaled_dot_product} stage handles
+	 * the two uniformly, which is why a single builder serves both. The {@code k} and {@code v} operands
+	 * are typed {@link Object} for that reason — the method genuinely accepts either kind and treats
+	 * them the same — rather than to hide an unknown type.
+	 *
+	 * @param batchSize batch dimension (must be 1)
+	 * @param querySeqLen sequence length for queries
+	 * @param contextSeqLen sequence length for context (keys/values)
+	 * @param heads number of attention heads
+	 * @param dimHead dimension per head
+	 * @param k key operand, a {@code (batch, heads, contextSeqLen, dimHead)} tensor or a block producing one
+	 * @param v value operand, a {@code (batch, heads, contextSeqLen, dimHead)} tensor or a block producing one
+	 * @param attentionScores Optional receptor to receive the attention weight matrix; may be null
+	 * @param logitSoftcap the soft-cap applied to the scaled logits, or {@code 0} for none
+	 * @param keyMask per-key validity, shape {@code (batch, contextSeqLen)}, or {@code null}
+	 * @param causal whether query {@code i} may attend only to keys {@code j <= i}
+	 * @return Block computing the attention output
+	 * @throws UnsupportedOperationException if {@code batchSize} is not 1
+	 */
+	private Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
+											Object k, Object v,
 											Receptor<PackedCollection> attentionScores,
 											double logitSoftcap, Producer<PackedCollection> keyMask,
 											boolean causal) {
