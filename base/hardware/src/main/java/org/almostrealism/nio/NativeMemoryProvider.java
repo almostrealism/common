@@ -32,9 +32,6 @@ import org.almostrealism.io.TimingMetric;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.DoubleBuffer;
-import java.nio.FloatBuffer;
-import java.nio.ShortBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -392,7 +389,7 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 		synchronized (this) {
 			if (mem instanceof NativeBuffer buffer && source instanceof NativeBuffer sourceBuffer
 					&& source.getProvider().getNumberSize() == getNumberSize()) {
-				copyBuffer(buffer, offset, sourceBuffer, srcOffset, length);
+				buffer.copyFrom(offset, sourceBuffer, srcOffset, length);
 				return;
 			}
 
@@ -414,7 +411,7 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	@Override
 	public synchronized void setMem(RAM mem, int offset, double[] source, int srcOffset, int length) {
 		if (mem instanceof NativeBuffer buffer) {
-			writeBuffer(buffer, offset, source, srcOffset, length);
+			buffer.write(offset, source, srcOffset, length);
 		} else {
 			if (write == null) write = new NativeWrite(compiler());
 
@@ -430,7 +427,7 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	@Override
 	public synchronized void getMem(RAM mem, int sOffset, double[] out, int oOffset, int length) {
 		if (mem instanceof NativeBuffer buffer) {
-			readBuffer(buffer, sOffset, out, oOffset, length);
+			buffer.read(sOffset, out, oOffset, length);
 		} else {
 			if (read == null) read = new NativeRead(compiler());
 
@@ -511,57 +508,6 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	synchronized ByteBuffer viewBuffer(long pointer, long bytes) {
 		if (bufferView == null) bufferView = new NativeBufferView(compiler());
 		return bufferView.apply(pointer, 0, bytes).order(ByteOrder.nativeOrder());
-	}
-
-	/** Copies elements between two {@link NativeBuffer} instances and flushes shared memory. */
-	private void copyBuffer(NativeBuffer mem, int offset, NativeBuffer source, int srcOffset, int length) {
-		if (mem.getBuffer() instanceof DoubleBuffer buffer && source.getBuffer() instanceof DoubleBuffer) {
-			buffer.put(offset, (DoubleBuffer) source.getBuffer(), srcOffset, length);
-		} else if (mem.getBuffer() instanceof FloatBuffer buffer && source.getBuffer() instanceof FloatBuffer) {
-			buffer.put(offset, (FloatBuffer) source.getBuffer(), srcOffset, length);
-		} else if (mem.getBuffer() instanceof ShortBuffer buffer && source.getBuffer() instanceof ShortBuffer) {
-			buffer.put(offset, (ShortBuffer) source.getBuffer(), srcOffset, length);
-		} else {
-			throw new HardwareException("Unsupported precision");
-		}
-
-		mem.sync();
-	}
-
-	/** Writes a double array into a {@link NativeBuffer} and flushes shared memory. */
-	private void writeBuffer(NativeBuffer mem, int offset, double[] source, int srcOffset, int length) {
-		if (mem.getBuffer() instanceof DoubleBuffer buffer) {
-			buffer.position(offset);
-			buffer.put(source, srcOffset, length);
-		} else if (mem.getBuffer() instanceof FloatBuffer buffer) {
-			buffer.position(offset);
-			for (int i = 0; i < length; i++) {
-				buffer.put((float) source[srcOffset + i]);
-			}
-		} else if (mem.getBuffer() instanceof ShortBuffer) {
-			throw new UnsupportedOperationException();
-		} else {
-			throw new HardwareException("Unsupported precision");
-		}
-
-		mem.sync();
-	}
-
-	/** Reads a {@link NativeBuffer} into a double array. */
-	private void readBuffer(NativeBuffer mem, int sOffset, double[] out, int oOffset, int length) {
-		if (mem.getBuffer() instanceof DoubleBuffer buffer) {
-			buffer.position(sOffset);
-			buffer.get(out, oOffset, length);
-		} else if (mem.getBuffer() instanceof FloatBuffer buffer) {
-			buffer.position(sOffset);
-			for (int i = 0; i < length; i++) {
-				out[oOffset + i] = buffer.get();
-			}
-		} else if (mem.getBuffer() instanceof ShortBuffer) {
-			throw new UnsupportedOperationException();
-		} else {
-			throw new HardwareException("Unsupported precision");
-		}
 	}
 
 	@Override
