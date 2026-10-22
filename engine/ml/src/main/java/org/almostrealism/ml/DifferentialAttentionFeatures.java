@@ -189,6 +189,11 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 	 * values of each map and the second map itself are branches that the products and the sum read as
 	 * operands — so a backward pass delivers gradients to all five sections.</p>
 	 *
+	 * <p>The lambda given here is applied as a fixed factor: whatever {@code diffLambda} is built from
+	 * receives no gradient. To train a learned lambda, pass the four vectors it is built from to the
+	 * overload that takes {@code lambdaQ1}, {@code lambdaK1}, {@code lambdaQ2}, {@code lambdaK2} and
+	 * {@code lambdaInit}.</p>
+	 *
 	 * @param batchSize         batch dimension
 	 * @param seqLen            sequence length
 	 * @param dim               model dimension
@@ -200,7 +205,7 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 	 * @param kNormWeight       key normalization weights ({@code null} exactly when {@code qNormWeight} is)
 	 * @param kNormBias         key normalization biases ({@code null} for none)
 	 * @param invFreq           RoPE inverse frequencies
-	 * @param diffLambda        learned per-head lambda (shape {@code [heads]})
+	 * @param diffLambda        per-head lambda, applied as a fixed factor (shape {@code [heads]})
 	 * @param projectionFactory factory for creating projection layers
 	 * @param qkNorm            family of the query/key normalization
 	 * @param paddingMask       per-position validity, shape {@code (batch, seqLen)}, or
