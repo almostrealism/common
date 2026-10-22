@@ -381,10 +381,14 @@ The rules that make this work:
   each round is extracted and this repository's own triggers are pointed at the
   reusable workflow, `master-agent-dispatch.yaml` (or a sibling caller) calls it
   the way any consumer does, so this repository's pipeline exercises the same
-  code every consumer runs. This is not yet true of the first reusable workflow:
-  `goal-decomposition.yaml` has no caller in this repository today, so the
-  decomposition round is exercised only by its tests and by a consumer's caller
-  until this repository's self-caller is wired up.
+  code every consumer runs. `plan-release-task` in `master-agent-dispatch.yaml`
+  calls `task-planning.yaml`, and `verify-completion.yaml` calls
+  `implement-plan.yaml`. Two exceptions remain: `goal-decomposition.yaml` has no
+  caller in this repository yet, so the decomposition round is exercised only by
+  its tests and by a consumer's caller; and `plan-review.yaml` is for consumers
+  only, because here the same review is a route of `auto-review` in
+  `analysis.yaml`, which chooses it ahead of the reviews that need the build and
+  the quality gates.
 - **Callers pin `@master` to begin with.** A fix here then reaches every
   consumer immediately; so does a breakage. A release tag can replace it once
   the workflows settle.
@@ -393,12 +397,12 @@ The rules that make this work:
 
 1. `goal-decomposition.yaml`: the decomposition round (section 4). Built first,
    because it is the stage no consumer can run today.
-2. The task planning round (section 3), extracted from
+2. `task-planning.yaml`: the task planning round (section 3), extracted from
    `master-agent-dispatch.yaml` and parameterised by tracker project and version
-   source.
-3. The docs-only plan review and the Verify Completion approval workflow, so a
-   consumer's plan branches get the same review and the same manual
-   implementation trigger.
+   file.
+3. `plan-review.yaml` and `implement-plan.yaml`: the docs-only plan review and
+   the Verify Completion approval workflow, so a consumer's plan branches get the
+   same review and the same manual implementation trigger.
 
 **The decomposition round as a reusable workflow:**
 
@@ -428,7 +432,9 @@ The rules that make this work:
 
 **Consumer checklist** (per consuming repository, planned in that repository):
 
-- the caller workflows, one per reusable workflow;
+- the caller workflows, one per reusable workflow: decomposition and task
+  planning on pushes to the default branch, plan review on pull requests against
+  it, and implementation on a manual dispatch;
 - `FLOWTREE_CF_ACCESS_CLIENT_SECRET` as a secret and `FLOWTREE_CONTROLLER_URL` /
   `FLOWTREE_CF_ACCESS_CLIENT_ID` as variables (or at organisation level);
 - the tracker project, and its goals and release-plan documents;
