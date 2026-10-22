@@ -1191,28 +1191,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         PhaseConfigResolver.appendBundleJson(json, configResolver.phaseConfigResolver().resolvedBundle());
         // Report which optional phases are active so callers can confirm
         // the effective job configuration without inspecting phase bundles.
-        String effectiveDedupMode = factory.getDeduplicationMode();
-        boolean dedupEnabled = effectiveDedupMode != null
-                && !effectiveDedupMode.isEmpty()
-                && !CodingAgentJob.DEDUP_NONE.equals(effectiveDedupMode);
-        json.append(",\"deduplicationEnabled\":").append(dedupEnabled);
-        json.append(",\"organizationalPlacementEnabled\":")
-                .append(factory.isEnforceOrganizationalPlacement());
-        json.append(",\"objectOrientedReviewEnabled\":")
-                .append(factory.isObjectOrientedReviewEnabled());
-        json.append(",\"retrospectiveEnabled\":")
-                .append(factory.isRetrospectiveEnabled());
-        json.append(",\"falsificationEnabled\":")
-                .append(factory.isFalsificationEnabled());
-        json.append(",\"autoCreatePr\":").append(factory.isAutoCreatePr());
-        json.append(",\"enforceChanges\":").append(factory.isEnforceChanges());
-        json.append(",\"maxEnforceChangesRetries\":")
-                .append(factory.getMaxEnforceChangesRetries());
-        json.append(",\"collaborative\":").append(factory.isCollaborative());
-        json.append(",\"sensitiveFileProtectionEnabled\":")
-                .append(factory.isSensitiveFileProtectionEnabled());
-        json.append(",\"bypassAgentPermissionPrompts\":")
-                .append(factory.isBypassAgentPermissionPrompts());
+        SubmissionConfigResolver.appendResolvedJobConfigJson(json, factory);
         // Report an auto-created workstream so a caller that submitted with
         // createWorkstreamIfMissing can tell a first run on a new branch from
         // a run on a workstream someone had already registered.
