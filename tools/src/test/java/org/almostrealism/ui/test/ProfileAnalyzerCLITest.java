@@ -690,4 +690,31 @@ public class ProfileAnalyzerCLITest extends OperationProfileTestBase {
 				0, runForExit(new ArrayList<>(), "source", file, ROOT_KEY));
 		Assert.assertEquals(0, runForExit(new ArrayList<>(), "source-summary", file, MATMUL_KEY));
 	}
+
+	/**
+	 * A node key carrying a quote, a backslash, a tab and a newline is escaped in the
+	 * error document, so the document parses and the key round-trips exactly.
+	 */
+	@Test(timeout = 60000)
+	public void errorDocumentEscapesQuotesBackslashesAndWhitespace() throws IOException {
+		String key = "k-\"quoted\"\\path\tcol\nline\r";
+		JsonNode json = run("children", saveSampleProfile(), key);
+
+		Assert.assertEquals("Node not found: " + key, json.get("error").asText());
+	}
+
+	/**
+	 * A node key carrying control characters without a short escape (an ANSI colour
+	 * sequence's {@code ESC}, a NUL) or with one other than tab/newline/return
+	 * ({@code \b}, {@code \f}) is escaped in the error document. JSON forbids those
+	 * characters literally, so a document that passed them through would be rejected
+	 * by a strict parser such as the one the profile-analyzer MCP server uses.
+	 */
+	@Test(timeout = 60000)
+	public void errorDocumentEscapesControlCharacters() throws IOException {
+		String key = "k-\u001b[31mred\u001b[0m\b\f\u0000\u001f";
+		JsonNode json = run("children", saveSampleProfile(), key);
+
+		Assert.assertEquals("Node not found: " + key, json.get("error").asText());
+	}
 }
