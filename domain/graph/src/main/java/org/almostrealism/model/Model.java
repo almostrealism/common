@@ -147,13 +147,21 @@ public class Model implements Setup, Destroyable, Tracking, CodeFeatures {
 	}
 
 	/**
-	 * Sets the parameter update strategy for all blocks in this model.
+	 * Sets the parameter update strategy for the main chain and every auxiliary input block that
+	 * implements {@link Learning}, so that a weight computed on an auxiliary input (the key/value
+	 * projection of cross-attention, which lives on a branch of the context input) trains like one
+	 * on the main chain.
 	 *
 	 * @param update the parameter update strategy to use during training
 	 */
 	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
 		this.parameterUpdate = update;
 		blocks.setParameterUpdate(update);
+		inputs.forEach(b -> {
+			if (b instanceof Learning) {
+				((Learning) b).setParameterUpdate(update);
+			}
+		});
 	}
 
 	/**
