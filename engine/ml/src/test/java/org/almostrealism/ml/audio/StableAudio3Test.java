@@ -472,6 +472,28 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
+	 * A strength outside {@code [0, 1]} — including a non-finite one, which would otherwise fall
+	 * through both bounds and run as full strength — is rejected rather than clamped.
+	 */
+	@Test(timeout = 240000)
+	public void blendRejectsStrengthOutsideUnitInterval() {
+		StableAudio3 model = smallModel().setSteps(2).setVerbose(false);
+		try (PackedCollection start = new PackedCollection(
+				shape(1, SAMEAutoEncoderFixture.LATENT, model.getLatentLength()))) {
+			for (double strength : new double[] {-0.1, 1.1, Double.NaN}) {
+				try {
+					model.generateFrom(7, new long[]{5}, 0.15, strength, start);
+					throw new AssertionError("strength " + strength + " must be rejected");
+				} catch (IllegalArgumentException expected) {
+					assertTrue(expected.getMessage().contains("Strength"));
+				}
+			}
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
 	 * Encodes two synthetic clips of the model's compiled audio length with the given autoencoder
 	 * and composes their latents by averaging, in the batched latent shape the model accepts.
 	 *

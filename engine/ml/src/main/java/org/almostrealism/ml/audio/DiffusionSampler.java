@@ -205,7 +205,7 @@ public class DiffusionSampler implements ConsoleFeatures {
 	public PackedCollection sampleFrom(PackedCollection startLatent, double strength,
 									   long seed, PackedCollection crossAttnCond,
 									   PackedCollection globalCond) {
-		if (strength < 0.0 || strength > 1.0) {
+		if (!(strength >= 0.0 && strength <= 1.0)) {
 			throw new IllegalArgumentException("Strength must be between 0.0 and 1.0");
 		}
 
