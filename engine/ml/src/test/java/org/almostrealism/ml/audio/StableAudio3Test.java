@@ -494,6 +494,33 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
+	 * The text blend entry point forwards to {@link StableAudio3#generateFrom(long, long[], double,
+	 * double, PackedCollection)} with the tokenized prompt and the same seed, duration, strength and
+	 * start latent, so an empty prompt — which tokenizes to no tokens and needs no tokenizer —
+	 * produces the same audio either way. This pins the argument order: a text overload that swapped
+	 * {@code seconds} and {@code strength} would diffuse from a different point of the schedule and
+	 * truncate to a different length, so the two would differ.
+	 */
+	@Test(timeout = 240000)
+	public void textBlendForwardsToTokenBlend() {
+		SAMEAutoEncoder autoencoder = autoencoders.autoencoder(autoencoders.weights(DECODER_GAIN));
+		StableAudio3 model = smallModel(MAX_SECONDS, SAMPLE_RATE, autoencoder).setSteps(2).setVerbose(false);
+		try {
+			PackedCollection start = composedLatent(model, autoencoder);
+
+			try (PackedCollection viaText = model.generateFromText(13, "", 0.15, 0.5, start).evaluate();
+				 PackedCollection viaTokens = model.generateFrom(13, new long[0], 0.15, 0.5, start).evaluate()) {
+				assertEquals(viaTokens.getShape().getTotalSize(), viaText.getShape().getTotalSize());
+				for (int i = 0; i < viaTokens.getShape().getTotalSize(); i++) {
+					assertEquals("sample " + i, viaTokens.toDouble(i), viaText.toDouble(i), 1e-6);
+				}
+			}
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
 	 * Encodes two synthetic clips of the model's compiled audio length with the given autoencoder
 	 * and composes their latents by averaging, in the batched latent shape the model accepts.
 	 *
