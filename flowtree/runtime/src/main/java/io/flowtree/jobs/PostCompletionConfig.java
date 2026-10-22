@@ -25,24 +25,27 @@ import java.util.function.BiConsumer;
  * may launch when it fails.
  *
  * <p>{@link CodingAgentJob} and {@link CodingAgentJobFactory} both expose this
- * configuration by delegating to an instance of this class, so the two agree on
- * defaults, validation, and wire encoding by construction. Like
- * {@link PhaseRunnerConfig}, a factory supplies a <em>property sink</em> so that
- * every mutation is mirrored into its serialized property store; the job
- * supplies none and is serialized through {@link #appendEncoded(StringBuilder)}.
+ * configuration by delegating to an instance of this class; see
+ * {@link WireConfig} for how the two serialize it.
  * {@link #applySetting(String, String)} is the decode direction for both and
  * assigns without publishing.</p>
  *
  * @author Michael Murray
  * @see PostCompletionCommandRule
  */
-class PostCompletionConfig {
+class PostCompletionConfig extends WireConfig {
 
-    /**
-     * Receives {@code (key, value)} for each wire property a mutation changed,
-     * or {@code null} when this configuration is not serialized as properties.
-     */
-    private final BiConsumer<String, String> propertySink;
+    /** Wire key of {@link #command}, Base64-encoded. */
+    private static final String COMMAND_KEY = "postCmd";
+
+    /** Wire key of {@link #workingDir}, Base64-encoded. */
+    private static final String WORKING_DIR_KEY = "postCmdDir";
+
+    /** Wire key of {@link #timeoutSeconds}. */
+    private static final String TIMEOUT_KEY = "postCmdTimeout";
+
+    /** Wire key of {@link #maxPasses}. */
+    private static final String MAX_PASSES_KEY = "maxPostCmdPasses";
 
     /** Shell command run after the agent completes; non-empty activates {@link PostCompletionCommandRule}. */
     private String command;
@@ -69,7 +72,7 @@ class PostCompletionConfig {
      *                     a mutation changed, or {@code null} for none
      */
     PostCompletionConfig(BiConsumer<String, String> propertySink) {
-        this.propertySink = propertySink;
+        super(propertySink);
     }
 
     /**
@@ -99,13 +102,13 @@ class PostCompletionConfig {
     void setCommand(String command) {
         this.command = command;
         if (isEnabled()) {
-            publish("postCmd", GitManagedJob.base64Encode(command));
+            publish(COMMAND_KEY, GitManagedJob.base64Encode(command));
         } else {
             this.workingDir = null;
             this.timeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
-            publish("postCmd", null);
-            publish("postCmdDir", null);
-            publish("postCmdTimeout", null);
+            publish(COMMAND_KEY, null);
+            publish(WORKING_DIR_KEY, null);
+            publish(TIMEOUT_KEY, null);
         }
     }
 
@@ -123,7 +126,7 @@ class PostCompletionConfig {
      */
     void setWorkingDir(String workingDir) {
         this.workingDir = workingDir;
-        publish("postCmdDir", workingDir == null ? null : GitManagedJob.base64Encode(workingDir));
+        publish(WORKING_DIR_KEY, workingDir == null ? null : GitManagedJob.base64Encode(workingDir));
     }
 
     /**
@@ -140,7 +143,7 @@ class PostCompletionConfig {
      */
     void setTimeoutSeconds(int timeoutSeconds) {
         this.timeoutSeconds = timeoutSeconds;
-        publish("postCmdTimeout", String.valueOf(timeoutSeconds));
+        publish(TIMEOUT_KEY, String.valueOf(timeoutSeconds));
     }
 
     /**
@@ -161,7 +164,7 @@ class PostCompletionConfig {
             throw new IllegalArgumentException("maxPostCompletionPasses must be positive, got: " + maxPasses);
         }
         this.maxPasses = maxPasses;
-        publish("maxPostCmdPasses", String.valueOf(maxPasses));
+        publish(MAX_PASSES_KEY, String.valueOf(maxPasses));
     }
 
     /**
@@ -181,26 +184,24 @@ class PostCompletionConfig {
     }
 
     /**
-     * Appends this configuration in the {@code ::key:=value} wire format. Nothing
-     * is written when no command is configured, and the dependent values are
-     * written only when they differ from their defaults.
+     * Hands this configuration's wire properties to {@code sink}. Every value
+     * is {@code null} when no command is configured, and the dependent values
+     * are {@code null} while they are at their defaults.
      *
-     * @param sb the buffer to append into
+     * @param sink receives {@code (key, value)} for each wire property
      */
-    void appendEncoded(StringBuilder sb) {
-        if (!isEnabled()) {
-            return;
-        }
-        sb.append("::postCmd:=").append(GitManagedJob.base64Encode(command));
-        if (workingDir != null) {
-            sb.append("::postCmdDir:=").append(GitManagedJob.base64Encode(workingDir));
-        }
-        if (timeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
-            sb.append("::postCmdTimeout:=").append(timeoutSeconds);
-        }
-        if (maxPasses != PostCompletionCommandRule.DEFAULT_MAX_PASSES) {
-            sb.append("::maxPostCmdPasses:=").append(maxPasses);
-        }
+    @Override
+    protected void writeWireProperties(BiConsumer<String, String> sink) {
+        boolean enabled = isEnabled();
+        sink.accept(COMMAND_KEY, enabled ? GitManagedJob.base64Encode(command) : null);
+        sink.accept(WORKING_DIR_KEY, enabled && workingDir != null
+                ? GitManagedJob.base64Encode(workingDir) : null);
+        sink.accept(TIMEOUT_KEY,
+                enabled && timeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS
+                        ? String.valueOf(timeoutSeconds) : null);
+        sink.accept(MAX_PASSES_KEY,
+                enabled && maxPasses != PostCompletionCommandRule.DEFAULT_MAX_PASSES
+                        ? String.valueOf(maxPasses) : null);
     }
 
     /**
@@ -212,35 +213,23 @@ class PostCompletionConfig {
      */
     boolean applySetting(String key, String value) {
         switch (key) {
-            case "postCmd":
+            case COMMAND_KEY:
                 this.command = GitManagedJob.base64Decode(value);
                 return true;
-            case "postCmdDir":
+            case WORKING_DIR_KEY:
                 this.workingDir = GitManagedJob.base64Decode(value);
                 return true;
-            case "postCmdTimeout":
+            case TIMEOUT_KEY:
                 this.timeoutSeconds = value == null || value.isEmpty()
                         ? PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS
                         : Integer.parseInt(value);
                 return true;
-            case "maxPostCmdPasses":
-                this.maxPasses = CodingAgentJobCodec.parsePositiveOrDefault(
+            case MAX_PASSES_KEY:
+                this.maxPasses = parsePositiveOrDefault(
                         value, PostCompletionCommandRule.DEFAULT_MAX_PASSES);
                 return true;
             default:
                 return false;
-        }
-    }
-
-    /**
-     * Forwards a changed wire property to the property sink, if any.
-     *
-     * @param key   the wire key
-     * @param value the encoded value, or {@code null} to remove the key
-     */
-    private void publish(String key, String value) {
-        if (propertySink != null) {
-            propertySink.accept(key, value);
         }
     }
 }

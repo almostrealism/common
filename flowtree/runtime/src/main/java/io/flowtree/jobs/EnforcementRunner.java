@@ -84,7 +84,7 @@ class EnforcementRunner implements ConsoleFeatures {
     List<EnforcementRule> buildActiveRules() {
         List<EnforcementRule> rules = new ArrayList<>();
         if (job.isEnforceChanges()) {
-            rules.add(new EnforceChangesRule());
+            rules.add(job.enforceChanges().createRule());
         }
         // Review is deliberately NOT gated on the primary phase's outcome. A
         // primary phase that reports failure has still been observed to leave
@@ -143,7 +143,8 @@ class EnforcementRunner implements ConsoleFeatures {
      *
      * <p>A rule that exhausts its retries is retired for good only when its
      * per-rule cap exceeded the absolute ceiling (re-running would hit the
-     * ceiling again) or an exhaustion fallback resolved it. Otherwise it
+     * ceiling again), an exhaustion fallback resolved it, or it reports no
+     * retries left (see {@link EnforceChangesRule}'s whole-job budget). Otherwise it
      * re-enters across passes, bounded by the global total-attempt cap. A rule
      * retired after {@link #MAX_NO_PROGRESS_ATTEMPTS} attempts that changed
      * nothing is remembered with the working-tree fingerprint it stalled on:
@@ -254,13 +255,15 @@ class EnforcementRunner implements ConsoleFeatures {
                                     + "' reached absolute entry ceiling and was skipped");
                         } else {
                             warn("Enforcement rule '" + ruleName + "': exhausted "
-                                    + rule.getMaxRetries() + " retries without resolution");
+                                    + attempts + " retries without resolution");
                             job.harnessStatus().unusual("Enforcement rule '" + ruleName
-                                    + "' exhausted " + rule.getMaxRetries() + " retries without resolution");
+                                    + "' exhausted " + attempts + " retries without resolution");
                         }
                         if ("post-completion-command".equals(ruleName)) job.setPostCompletionCapHit(true);
                         boolean fallbackApplied = applyExhaustionFallback(rule, job);
-                        if (ceilingLimited || fallbackApplied) {
+                        // A rule with no retries left (a whole-job budget now spent, or a
+                        // cap of 0) has nothing to attempt on a later pass.
+                        if (ceilingLimited || fallbackApplied || rule.getMaxRetries() == 0) {
                             exhaustedRules.add(ruleName);
                         } else if (stalled) {
                             String stalledOn = workingTreeFingerprint(rule);
