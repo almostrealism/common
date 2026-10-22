@@ -43,6 +43,8 @@ runs/
 # Local state that must never reach an image
 **/data/*.db
 **/data/*.faiss
+.flowtree/
+**/.flowtree/
 
 # Media and model weights (large, never needed by a service image)
 assets/
