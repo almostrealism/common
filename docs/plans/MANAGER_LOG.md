@@ -28,6 +28,93 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-22 — Train the learned lambda of differential attention
+
+**Category:** Code Quality (correctness — a silent zero-gradient defect in the attention backward pass)
+**Branch:** `project/plan-20261022-134809`
+**Plan:** [`PLAN-20261022-differential-lambda-gradients.md`](PLAN-20261022-differential-lambda-gradients.md)
+
+#### What changed since last cycle
+
+The cross-attention K/V plan landed (PR #697). `sequenceCrossAttention` now feeds K and V to the score
+and context products as graph operands instead of buffering them through `into(kTensor)`/`into(vTensor)`
+and reading them back as constants, so both halves of `toKvWeight` and the K normalization weights train;
+a new `SequenceCrossAttentionGradientTest` proves it per slice. The work also made the auxiliary-input
+path trainable (`BranchBlock implements Learning`; `Model.setParameterUpdate` propagates to auxiliary
+inputs that are `Learning`), and the review confirmed per-step K/V training is correct — the one residual
+(the branch aggregator never forwarding gradient further upstream to `condEmbed`, which nothing consumes)
+was documented, not papered over. That cycle closed with a named list of what it deferred; two items on it
+are correctness defects of the same class, and the **learned differential lambda** is the cleaner and more
+fundamental of the two.
+
+#### Category assessment (priority order)
+
+- **Documentation — excellent, and tracking reality.** The internals corpus is current at `master`;
+  `training-a-language-model.md`'s "Gradient wiring in sequence attention" section honestly records the
+  attention-gradient state, including the lambda this cycle fixes. `consult` finds no flagship doc gap; the
+  standing low-priority items (the ONNX-pressure note) are owned by continuous QA. Moved on.
+- **Code quality — the category, because of a specific, evidenced correctness defect.** It is not a style
+  or coverage gap. The three `differential_attention*` layers of `/pdsl/differential_attention.pdsl` apply
+  the learned per-head lambda with `scale(lambda, 1)`, which reads it as a constant factor; the asset's own
+  header states that "when lambda is a learned re-parameterization its parameters therefore receive no
+  gradient," and a `TODO(review)` marks each of the three stages. `differentialLambda` computes
+  `λ = exp(λq1·λk1) − exp(λq2·λk2) + λinit` from four learned vectors, and those four vectors are **frozen
+  at initialization** — the one parameter that makes differential attention *differential* never trains.
+  This is the deterministic, total zero-gradient defect the cross-attention cycle named as its first
+  deferred item.
+- Performance (the weighted-sum `matmul` reduced form) and proof of value (top-p / KV-cache / scale for the
+  LM) both have live candidates. Not chosen — a silent wrong-gradient defect in the differentiation engine
+  outranks both, and this is a concrete, falsifiable instance of one.
+
+#### Why this task
+
+Differential attention subtracts a second attention map from the first in proportion to a learned per-head
+λ, so the attention both maps pay to irrelevant positions cancels. `differential_attention_qk_layernorm` is
+the Stable Audio diffusion transformer's attention, so this architecture is on the audio-diffusion
+proof-of-value track. With λ frozen, a differential-attention model trained on this platform cannot learn
+*how much* of the second map to subtract — the defining mechanism stays at initialization, invisibly,
+because the projections compensate and the loss still falls. Nothing on `master` trains differential
+attention yet (it is exercised only by tests), so the defect is preventive today — but it is cheaper and
+safer to repair now than to discover a dead lambda mid-training-run, and it is the honest completion of the
+"make the whole attention family's backward pass honest" arc PR #697 began. After this, every learnable
+operand of every attention variant the platform ships receives its gradient.
+
+The defect is subtler than the K/V case and the plan says so: the forward applies λ as a graph operand
+(`scale` lowers to `multiply(input, broadcast(…, factors))`), so the first step is a minimal
+finite-difference experiment to establish *where* the gradient is lost — most likely that `differentialLambda`
+hands the block an opaque producer whose underlying vectors are never registered as trainable (no backward
+cell, no `ParameterUpdate`), the same structural gap `BranchBlock implements Learning` closed for the K/V
+branch — before any attention code changes. The committed deliverable is a new per-vector finite-difference
+gradient test modeled on `everySectionOfTheProjectionReceivesItsGradient`. Weakening a correctness test to
+go green is out of bounds.
+
+#### Balance across categories
+
+The last cycle was code-quality correctness (cross-attention K/V), preceded by proof-of-value (readable
+generation) and two foundation cycles before that. This cycle stays on the correctness thread deliberately:
+the cross-attention cycle opened a short, finite list of same-class defects, and finishing the cleanest of
+them now — rather than leaving it to surface mid-training-run — is the disciplined move. It is a medium task
+gated by small finite-difference tests, so it **runs on any backend** — no macOS requirement, no workstream
+settings file.
+
+#### What comes next
+
+1. This plan: diagnose where the lambda gradient is lost, make the four `differentialLambda` vectors
+   trainable (following the PR #697 trainable-operand template, placing any general construct at its most
+   general home), add the per-vector finite-difference test, remove the three `TODO(review)` markers, and
+   update the training-doc gradient-wiring section.
+2. The other deferred correctness item — `TransformerResamplingFeatures.resamplingLayerBlock`'s buffered
+   K1/V/Q2/K2 — best taken in the cycle that first fine-tunes the SAME autoencoder (its `into(...)` leaves
+   bound kernel size at full SAME dimensions, so a naive rewiring may reintroduce the compile blow-up
+   `SAMEResamplingParityTest` guards against).
+3. **Proof of value**, on a now fully-honest attention backward pass: top-p through the sliding-window
+   generator (`SlidingWindowAutoregressiveModel` calls `sampleToken` with a top-p of `1.0`), a
+   single-position KV-cache decode, and conditional diffusion training that can learn both its conditioning
+   (K/V) and its differential cancellation (λ).
+4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
+5. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a trained
+   model read the platform's own *source*, the deeper self-understanding aim.
+
 ### 2026-10-21 — Train the K/V projections of cross-attention and transformer resampling
 
 **Category:** Code Quality (correctness — a silent zero-gradient defect in the attention backward pass)
@@ -512,87 +599,24 @@ by-product, keeping the cycle focused.
    aim. Still open from prior cycles: the ONNX-pressure doc note; the `io.almostrealism.collect`
    package split.
 
-### 2026-09-30 — Train a tiny byte-level causal transformer on the platform's own docs
+### 2026-09-30 — Train a tiny byte-level causal transformer on the platform's own docs (condensed)
 
-**Category:** Proof of Value
-**Branch:** `project/plan-20260930-180401`
+**Category:** Proof of Value · **Branch:** `project/plan-20260930-180401` ·
 **Plan:** [`PLAN-20260930-self-hosted-tiny-lm.md`](PLAN-20260930-self-hosted-tiny-lm.md)
 
-#### What changed since last cycle
-
-The fine-tuning re-baseline landed (PR #582) and changed the picture more than expected.
-`FINE_TUNE_FAIL.md` no longer says "infeasible". The cold first training step of a 1–3-block LoRA
-`DiffusionTransformer` is now 13.6–20.8 s across embed 8 → 256 (February: 8 to over 44 min). It
-does not grow with embed, and each block adds about 1 s. The February `delta()` scope-error blocker
-no longer reproduces. Getting there also fixed two outright training failures (a
-`DiffusionTrainingDataset` shape check and an instruction-cache collision at embed ≥ 64) and one
-dominant analysis cost (`ExpressionMatrix.uniqueNonZeroOffset`).
-
-#### Category assessment (priority order)
-
-- **Documentation.** Still excellent. The one catalogued gap (the ONNX-pressure note) is a
-  low-priority research item. Moved on.
-- **Code quality.** Strong, and owned daily by the QA pipeline. The `io.almostrealism.collect`
-  split remains minor. One thing did show up: `AttentionFeatures.java` is 1826 lines, above the
-  1500-line recommendation. The plan requires that the new work not grow it and invites moving the
-  sequence-attention family into its own mixin. That fixes the problem where the change is made,
-  without spending a cycle on it.
-- **Performance.** The re-baseline names one evidenced lever: 13 small reductions compiled as
-  native kernels at about 250 ms each, roughly 3 s of a 7.9 s cold backward. It is real but it is a
-  one-time cost of seconds per JVM, and it no longer stands between the platform and any workload.
-  Whether it matters for a real training run is best learned by *running* one. So I deferred it
-  to follow the proof-of-value run rather than lead it.
-- **Proof of value.** This is where the cycle goes. It is the step the log has promised since March
-  ("if the verdict flips toward feasible, scope the minimal end-to-end self-hosted training run"),
-  and the verdict has flipped.
-
-#### What the survey found
-
-Performance no longer blocks a self-hosted LM; missing capability does. The platform has never
-trained a transformer language model from scratch, and the pieces next-token training needs are
-missing or unverified. Full-sequence attention (`sequenceAttention` /
-`scaledDotProductAttention`) has **no causal mask**; `causalMask` is the single-position KV-cache
-variant. `sequenceAttention` routes K and V through fixed buffers read back as constants, so
-**gradients may reach only the Q slice** of the QKV weight, and nothing has tested this per slice.
-There is **no trainable embedding layer** (`rows()` gradients are untested; Qwen3 looks embeddings
-up on the host). There is **no byte tokenizer**: the text tokenizers need an external model
-vocabulary (SentencePiece, Qwen3 BPE, or arrays passed to `BPE`), and the fixed-mapping MIDI
-tokenizers do not handle text. There is also **no text dataset**. Cross-entropy (`logSoftmax` +
-`NegativeLogLikelihood`) is **not quite ready** for a `(seqLen, vocab)` output:
-`NegativeLogLikelihood.loss` averages over rows but its `gradient` is the unnormalized `-target`,
-so backpropagation would follow the summed loss (64× the reported loss's gradient at context 64).
-Existing users train single-row outputs, where this does not show; the plan adds the `1 / rows`
-normalization and a multi-row gradient test as a prerequisite of the training run.
-`StateDictionary` checkpointing is ready.
-
-#### Why this task
-
-It turns "training is feasible" into "the platform trained a language model on itself," which is
-the first concrete artifact of the self-understanding goal. It puts the risky gradient checks
-(K/V slices, embedding table) first, so the plan either proceeds or pauses early at a precise,
-evidenced finding that goes back for a revised plan. The primitives it adds (causal sequence
-attention, trainable embedding, byte tokenizer, text dataset) are general, and every later
-LM-training step reuses them. The bar is modest and falsifiable: held-out bits-per-byte below the
-unigram baseline, weights round-tripped through `StateDictionary`.
-
-#### Balance across categories
-
-Three of the last four cycles went to documentation and performance measurement. That was the
-right foundation, but proof of value has been deferred since March. This cycle spends the
-compile-time win on the platform's actual reason for existing. The foundation categories stay
-covered by the continuous QA pipeline.
-
-#### What comes next
-
-1. This plan executes, gradient checks first. If K/V gradients need core autodiff work near
-   `feature/lora-gradients`, the recommended path is to split that fix into its own plan.
-2. **Sampling:** wrap the trained weights in `AutoregressiveModel` and generate text, the first
-   time the platform "speaks" about itself.
-3. **Scale:** batch > 1 in `scaledDotProductAttention`, larger context and depth, and whichever
-   per-step cost the training-run profile names. The small-reduction native-compile lever is the
-   standing candidate.
-4. Still open: the ONNX-pressure documentation note; the `io.almostrealism.collect` package split;
-   a feasibility threshold for production-scale fine-tuning.
+With the fine-tuning re-baseline done (PR #582) proving training feasible, this cycle turned "training is
+feasible" into "the platform trained a language model on itself" — the first concrete artifact of the
+self-understanding goal. The survey found performance no longer blocked a self-hosted LM; missing
+capability did. The platform had never trained a transformer from scratch, and the pieces next-token
+training needs were missing or unverified: full-sequence attention had no causal mask; `sequenceAttention`
+routed K/V through fixed buffers read as constants, so gradients reached only the Q slice (the defect the
+2026-10-21 cycle later finished for cross-attention, and the 2026-10-22 cycle for the differential lambda);
+there was no trainable embedding, no byte tokenizer, no text dataset; and `NegativeLogLikelihood.gradient`
+was unnormalized where `loss` averaged over rows (64× the gradient at context 64). The plan put the risky
+gradient checks first and added the missing primitives (causal sequence attention, trainable embedding,
+byte tokenizer, text dataset, the `1/rows` NLL normalization), all general and reused by every later
+LM-training step. It landed as PR #596; the baseline-beating and generation milestones it set up were
+cashed by the 2026-10-09 → 2026-10-19 cycles.
 
 ### 2026-09-29 — Re-baseline LoRA fine-tuning backward-pass compile scaling (condensed)
 
