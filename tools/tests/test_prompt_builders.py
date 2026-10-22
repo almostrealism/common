@@ -337,12 +337,12 @@ class PromptBuilderTests(unittest.TestCase):
         every issue you find" over the whole branch diff, with no boundary and
         no route for out-of-scope work. It now carries the same "stay in scope,
         defer the rest" shape `coverage.txt` has, routing anything broader to
-        `tracker_file_follow_up_task`.
+        `tracker_create_task`.
         """
         text = _read(os.path.join(_PROMPT_DIR, "general-review.txt"))
         self.assertNotIn("fix every issue you find", text)
         self.assertIn("Stay inside this branch's scope", text)
-        self.assertIn("tracker_file_follow_up_task", text)
+        self.assertIn("tracker_create_task", text)
 
     def test_retrospective_writes_its_artifact_before_surveying(self):
         """The retrospective must put its report on disk before the survey.

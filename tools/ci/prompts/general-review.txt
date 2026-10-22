@@ -30,7 +30,7 @@ governs the code it changes. That is the boundary.
   larger refactor beyond the branch's intent, or a gap the branch was never
   trying to close. Widening the branch to chase these is exactly how a narrowly
   scoped round grows into a sprawling, hard-to-review change. For each one, file
-  a backlog task with `tracker_file_follow_up_task` (give it the project id, a
+  a backlog task with `tracker_create_task` (give it the project id, a
   clear title, and a description that says where the problem is and why it is out
   of this branch's scope), and note it in your summary rather than changing the
   code. A genuinely one-line, zero-risk fix adjacent to the work is fine to make;
@@ -231,7 +231,7 @@ not a reviewer.
    one into this branch's scope or outside it per "Stay inside this branch's
    scope" above.
 4. **Fix each in-scope issue directly** by editing the source files. For each
-   out-of-scope issue, file a follow-up task with `tracker_file_follow_up_task`
+   out-of-scope issue, file a follow-up task with `tracker_create_task`
    instead of changing the code.
 5. Verify the build still succeeds: `mvn install -DskipTests`
 6. Run the tests you wrote to confirm they pass.

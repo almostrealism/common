@@ -164,7 +164,7 @@ it knowingly does not cover are in
 | `docs-review.txt` | Template for the docs-only review prompt |
 | `doc-qa.txt` | Template for the documentation-staleness review |
 | `goal-decomposition.txt` | Template for the goal-decomposition round: reconcile a release's tracker tasks with its plan, touching only the goal-derived tasks of the repository being reconciled |
-| `general-review.txt` | Template for general code review prompt: review and fix within what the branch set out to do, routing out-of-scope work to `tracker_file_follow_up_task` rather than widening the branch |
+| `general-review.txt` | Template for general code review prompt: review and fix within what the branch set out to do, routing out-of-scope work to `tracker_create_task` rather than widening the branch |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
 | `retrospective.txt` | Template for the QA retrospective: study recent automated work and propose, with evidence, how the agent harness and the QA jobs should improve — proposes, never implements. Writes a skeleton report and ledger row to disk first, before the survey, so a stalled run still leaves a reviewable artifact; the round is submitted with `ENFORCE_CHANGES` and a re-run cap of 0, so an empty-tree exit is reported DEGRADED without a re-run |
 | `pdsl-migration.txt` | Template for the PDSL migration round: move one piece of pipeline structure from Java into a `.pdsl` asset, delete the Java assembly, pin parity with tests, and report language gaps rather than aliasing around them |
