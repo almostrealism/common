@@ -130,7 +130,7 @@ public class GitManagedJobDegradedStatusTest extends TestSuiteBase {
 
         assertTrue("stagedFiles must be empty", handler.getStagedFiles().isEmpty());
         assertFalse("skippedFiles must be non-empty", handler.getSkippedFiles().isEmpty());
-        assertTrue("hasAllChangesDropped() must be true", job.hasAllChangesDropped());
+        assertTrue("allChangesDropped() must be true", job.workOutcome().allChangesDropped());
 
         JobCompletionEvent event = job.createEvent(null);
         assertEquals(JobCompletionEvent.Status.DEGRADED, event.getStatus());
@@ -155,8 +155,8 @@ public class GitManagedJobDegradedStatusTest extends TestSuiteBase {
 
         assertFalse("A branch-new file must still be staged", handler.getStagedFiles().isEmpty());
         assertFalse("The blocked file must be recorded as skipped", handler.getSkippedFiles().isEmpty());
-        assertFalse("hasAllChangesDropped() must be false when something staged",
-                job.hasAllChangesDropped());
+        assertFalse("allChangesDropped() must be false when something staged",
+                job.workOutcome().allChangesDropped());
 
         JobCompletionEvent event = job.createEvent(null);
         assertEquals(JobCompletionEvent.Status.SUCCESS, event.getStatus());
@@ -172,7 +172,7 @@ public class GitManagedJobDegradedStatusTest extends TestSuiteBase {
 
         assertTrue(handler.getStagedFiles().isEmpty());
         assertTrue(handler.getSkippedFiles().isEmpty());
-        assertFalse(job.hasAllChangesDropped());
+        assertFalse(job.workOutcome().allChangesDropped());
         assertEquals(JobCompletionEvent.Status.SUCCESS, job.createEvent(null).getStatus());
     }
 

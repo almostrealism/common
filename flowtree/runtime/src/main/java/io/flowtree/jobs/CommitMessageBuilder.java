@@ -31,11 +31,19 @@ import java.nio.file.Path;
  * session id, and exit code so a degraded commit still carries useful
  * provenance.</p>
  *
+ * <p>Both fallbacks the harness relies on when an agent forgets
+ * {@code commit.txt} live here: the one {@link #resolve(CodingAgentJob)}
+ * applies at commit time, and the shorter one {@link EnforcementRunner} writes
+ * when {@link CommitMessageRule} exhausts its correction attempts. Each job
+ * owns one instance ({@link CodingAgentJob#commitMessageBuilder()}), so the
+ * whole of "an agent that wrote no message still gets its work committed" is
+ * one collaborator, replaceable as a unit.</p>
+ *
  * <p>The {@code commit_rule_recovered} source tag is reserved for
  * {@link CommitMessageRule}, which may recover an empty {@code commit.txt}
  * via a focused correction session.</p>
  */
-final class CommitMessageBuilder {
+class CommitMessageBuilder {
 
     /** Source tag for an agent-authored commit.txt. */
     static final String SOURCE_AGENT = "agent";
@@ -43,15 +51,38 @@ final class CommitMessageBuilder {
     /** Source tag for the prompt-fallback message constructed when no commit.txt was produced. */
     static final String SOURCE_PROMPT_FALLBACK = "prompt_fallback";
 
-    /** Prevents instantiation; this class only exposes static helpers. */
-    private CommitMessageBuilder() {
+    /** How the job's commit message was produced: one of the source tags, or {@code null} before it was. */
+    private String source;
+
+    /** Creates a builder; each {@link CodingAgentJob} holds its own. */
+    CommitMessageBuilder() {
+    }
+
+    /**
+     * Returns how the job's commit message was produced ({@link #SOURCE_AGENT},
+     * {@link #SOURCE_PROMPT_FALLBACK}, or {@link CommitMessageRule#SOURCE_RECOVERED}).
+     *
+     * @return the source tag, or {@code null} when no message has been resolved or recovered yet
+     */
+    String getSource() {
+        return source;
+    }
+
+    /**
+     * Records how the job's commit message was produced; called by
+     * {@link CommitMessageRule} when a correction session recovers it.
+     *
+     * @param source the source tag
+     */
+    void setSource(String source) {
+        this.source = source;
     }
 
     /**
      * Resolves the commit message for {@code job}.
      *
      * <p>When {@code commit.txt} exists and is non-empty its trimmed content
-     * is returned and {@link CodingAgentJob#setCommitMessageSource(String)} is
+     * is returned and {@link #getSource()} is
      * tagged with {@link #SOURCE_AGENT} (unless an earlier source — e.g.
      * {@code commit_rule_recovered} — is already set). When the file is
      * missing, empty, or unreadable, {@link #buildFallbackMessage(CodingAgentJob)}
@@ -71,15 +102,15 @@ final class CommitMessageBuilder {
      *         attribution that cannot be safely removed
      * @return the commit message text; never {@code null}
      */
-    static String resolve(CodingAgentJob job) {
+    String resolve(CodingAgentJob job) {
         Path commitFile = job.resolveWorkingPath("commit.txt");
         if (commitFile != null && Files.exists(commitFile)) {
             try {
                 String agentMessage = Files.readString(commitFile, StandardCharsets.UTF_8).trim();
                 if (!agentMessage.isEmpty()) {
                     job.log("Using commit message from commit.txt");
-                    if (job.getCommitMessageSource() == null) {
-                        job.setCommitMessageSource(SOURCE_AGENT);
+                    if (source == null) {
+                        source = SOURCE_AGENT;
                     }
                     return sanitizeAttribution(job, agentMessage);
                 }
@@ -89,7 +120,7 @@ final class CommitMessageBuilder {
         }
 
         job.warn("No commit.txt found or it was empty — falling back to task prompt as commit message");
-        job.setCommitMessageSource(SOURCE_PROMPT_FALLBACK);
+        source = SOURCE_PROMPT_FALLBACK;
         return AuthorAttribution.stripLines(buildFallbackMessage(job));
     }
 
@@ -135,7 +166,7 @@ final class CommitMessageBuilder {
      * @param job the orchestrator whose prompt and exit fields are read
      * @return the formatted message; never {@code null}
      */
-    static String buildFallbackMessage(CodingAgentJob job) {
+    String buildFallbackMessage(CodingAgentJob job) {
         StringBuilder msg = new StringBuilder();
         msg.append("Claude Code: ");
 
@@ -155,6 +186,56 @@ final class CommitMessageBuilder {
         msg.append("\nExit code: ").append(job.getExitCode());
 
         return msg.toString();
+    }
+
+    /**
+     * Builds the commit message {@link EnforcementRunner} writes to
+     * {@code commit.txt} when {@link CommitMessageRule} exhausts its retries
+     * without the agent producing one, so the job can still commit. Uses, in
+     * order:
+     * <ol>
+     *   <li>The job prompt's first line, if non-empty and free of author
+     *       attribution (a prompt line that names an author would produce the
+     *       very message {@link #resolve(CodingAgentJob)} refuses to commit)</li>
+     *   <li>{@code "Job {jobId} commit"}</li>
+     * </ol>
+     *
+     * @param job the orchestrator whose prompt and task id are read
+     * @return the message to write; never {@code null}
+     */
+    String buildExhaustionFallback(CodingAgentJob job) {
+        String prompt = job.getPrompt();
+        if (prompt != null && !prompt.trim().isEmpty()) {
+            String firstLine = prompt.trim().split("\n")[0].trim();
+            if (!firstLine.isEmpty() && !AuthorAttribution.containsAttribution(firstLine)) {
+                return firstLine.length() > 72
+                        ? firstLine.substring(0, 69) + "..."
+                        : firstLine;
+            }
+        }
+        return "Job " + job.getTaskId() + " commit";
+    }
+
+    /**
+     * Returns whether the agent wrote a commit message to {@code commit.txt}.
+     * That file is its declaration that it produced changes worth describing,
+     * which is what lets {@link JobWorkOutcome#describeUnpublishedWork()} tell a job that
+     * deliberately changed nothing from one whose changes went missing.
+     *
+     * <p>A file that exists but cannot be read counts as authored. The
+     * alternative reads an unreadable message as an absent one, and since
+     * {@code commit.txt} is excluded from the working-tree query as a harness
+     * artifact, nothing else would notice it either.</p>
+     *
+     * @param job the orchestrator whose working directory holds {@code commit.txt}
+     * @return {@code true} when {@code commit.txt} holds a message, or exists
+     *         and could not be read
+     */
+    boolean isAuthored(CodingAgentJob job) {
+        String message = captureCommitTxt(job);
+        if (message != null) return !message.trim().isEmpty();
+        Path commitFile = job.resolveWorkingPath("commit.txt");
+        return commitFile != null && Files.exists(commitFile);
     }
 
     /**

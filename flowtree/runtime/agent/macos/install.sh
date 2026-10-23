@@ -204,6 +204,40 @@ mkdir -p "${STAGING}"
 cp "${RUNTIME_JAR}" "${STAGING}/"
 cp "${MODULE_DIR}"/target/dependency/*.jar "${STAGING}/"
 
+# ── Build provenance ───────────────────────────────────────────────
+#
+# Written into the staging directory so it is swapped into place by the
+# same mv as the JARs it describes. Written afterwards, it could survive a
+# failed swap and name a build that is not the one installed.
+#
+# What it proves and what it does not: it records the commit this checkout
+# was on and whether the checkout was clean when the JARs were built. It
+# does NOT prove the JARs were compiled from that commit — only a
+# reproducible build proves that, and this is not one. It is enough to
+# catch the realistic failure, a deploy from a stale or dirty tree, and it
+# must not be read as more than that.
+#
+# `built` records whether this run compiled anything. Under --no-build the
+# JARs may predate the checked-out commit entirely, so a consumer that
+# treats the SHA as describing the binary has to know to distrust it.
+#
+# Living in lib/ alongside the JARs is what buys the atomic swap, and it is
+# inert there: run.sh passes `-cp "${AGENT_HOME}/lib/*"` unquoted to the JVM,
+# whose classpath wildcard expands to .jar files only.
+PROVENANCE_CLEAN=true
+if [ -n "$(git -C "${PROJECT_ROOT}" status --porcelain 2>/dev/null)" ]; then
+    PROVENANCE_CLEAN=false
+fi
+{
+    echo "sha=$(git -C "${PROJECT_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
+    echo "branch=$(git -C "${PROJECT_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    echo "clean=${PROVENANCE_CLEAN}"
+    echo "built=${BUILD}"
+    echo "installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "installed_by=$(id -un)"
+    echo "host=$(hostname)"
+} > "${STAGING}/BUILD_PROVENANCE"
+
 rm -rf "${AGENT_HOME}/lib.previous"
 if [ -d "${AGENT_HOME}/lib" ]; then
     mv "${AGENT_HOME}/lib" "${AGENT_HOME}/lib.previous"
@@ -214,7 +248,7 @@ cp "${MODULE_DIR}/conf/agent.properties" "${AGENT_HOME}/conf/agent.properties"
 cp "${SCRIPT_DIR}/run.sh" "${AGENT_HOME}/bin/run.sh"
 chmod +x "${AGENT_HOME}/bin/run.sh"
 
-echo "Installed $(ls "${AGENT_HOME}/lib" | wc -l | tr -d ' ') JARs to ${AGENT_HOME}/lib"
+echo "Installed $(ls "${AGENT_HOME}"/lib/*.jar 2>/dev/null | wc -l | tr -d ' ') JARs to ${AGENT_HOME}/lib"
 
 
 # ── Service definition ─────────────────────────────────────────────

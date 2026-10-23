@@ -943,7 +943,7 @@ git-enabled job, not only those with `protectTestFiles` set, since any
 guardrail — pattern exclusion, size, binary detection — can silently discard
 a real fix.
 
-**Non-success completion status.** `GitManagedJob.hasAllChangesDropped()`
+**Non-success completion status.** `JobWorkOutcome.allChangesDropped()`
 returns `true` when the working tree had changes to stage but every one of
 them was skipped, so nothing was staged or committed. `createEvent()` (and,
 for Claude Code jobs, `CodingAgentJobEvent.forJob()`) checks this and returns
