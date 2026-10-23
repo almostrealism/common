@@ -2,9 +2,12 @@
 
 ## The defect
 
-`CodingAgentJobEvent.forJob()` reports `degraded` when the staging
-guardrails accepted no file and nothing was committed. The patch removes
-that branch.
+`CodingAgentJobEvent.statusFor()` reports `degraded` when the job's
+`JobWorkOutcome.allChangesDropped()` says the staging guardrails accepted no
+file and nothing was committed. `AgentJobFaultCatalogue.MissesDroppedChanges`
+is a `JobWorkOutcome` whose `allChangesDropped()` always answers `false`.
+`allChangesDroppedNotReported` installs it with `GitManagedJob.setWorkOutcome`
+and runs `aCommitMessageWithNothingToPublishIsNotASuccess`.
 
 ## Why this branch, and not the commit-message term
 
@@ -19,7 +22,7 @@ That term never decides anything for a coding-agent job. Tracing it:
 - `commit.txt` is an excluded pattern, so writing it puts an entry in the
   skipped list;
 - a non-empty skipped list with nothing staged and nothing committed is the
-  definition of `hasAllChangesDropped()`;
+  definition of `allChangesDropped()`;
 - and that branch is reached first.
 
 So the rule holds, but the branch enforcing it is not the one written for
@@ -34,13 +37,17 @@ This was found by writing the obvious fault first — deleting the
 ## Why this fault is in the catalogue
 
 `aCommitMessageWithNothingToPublishIsNotASuccess` asserts the status is not
-`SUCCESS` **and** that the reason names `commit.txt`. With this branch gone
-the job still fails, via `describeUnpublishedWork()` and its long-dormant
-`messageAuthored` term, but the reason no longer names the file — so the
-test fails on the reason.
+`SUCCESS` **and** that the reason names `commit.txt`. With this branch
+silenced the job still fails, via `describeUnpublishedWork()` and its
+long-dormant `messageAuthored` term, but the reason no longer names the file
+— so the scenario fails on the reason.
 
-That is the intended sensitivity. The test is pinned to the behaviour rather
-than to whichever of the two overlapping branches currently supplies it, and
-this fault is what proves the reason assertion is load-bearing rather than
-decorative. It is narrower than `dropped-work-reported-as-success`, which
-removes both branches and takes the status down with them.
+That is the intended sensitivity, and no unit test has it: the interplay
+above — an excluded `commit.txt` making the guardrail branch the one that
+fires — only exists when the real stager, the real exclusion list and the
+real event classification run together. The scenario is pinned to the
+behaviour rather than to whichever of the two overlapping branches currently
+supplies it, and this fault is what proves the reason assertion is
+load-bearing rather than decorative. It is narrower than
+`dropped-work-reported-as-success`, which silences both branches and takes
+the status down with them.

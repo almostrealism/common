@@ -2,14 +2,19 @@
 
 ## The defect
 
-`McpConfigBuilder.requiredServerNames()` names ar-manager as required
-whenever it is configured. `ClaudeCodeRunner` reads the session's `init`
-event, sees the server reported as anything other than `connected`, and
-`CodingAgentJob.executeSingleRun()` throws. The throw escapes `doWork()`
-before the commit block, so nothing the session produced is published.
+`McpConfigBuilder.requiredServerNames()` names ar-manager as required only
+when ar-manager is configured **and** the `AR_REQUIRE_MCP_SERVERS`
+enforcement switch is on; it is off by default. When a server is required,
+`ClaudeCodeRunner` reads the session's `init` event, sees the server
+reported as anything other than `connected`, and the job refuses to keep
+the session's work.
 
-The patch removes the gate that currently disables this, restoring the
-behaviour exactly as it shipped.
+`AgentJobFaultCatalogue.RequiresArManagerWheneverConfigured` is a
+`McpConfigBuilder` whose `requiredServerNames()` ignores the switch —
+ar-manager is required whenever it is configured, exactly as the policy
+shipped. `requiredMcpServerKillsJob` installs it with
+`CodingAgentJob.setMcpConfigBuilder` and runs
+`workPublishesWhenArManagerDidNotConnect`.
 
 ## The failure it models
 
@@ -30,9 +35,9 @@ touched the line that was firing.
 
 ## Why this fault is in the catalogue
 
-`workPublishesWhenArManagerDidNotConnect` asserts that a session whose
-ar-manager did not connect still gets its work into the remote. With this
-patch applied that assertion must fail.
+It is the outage this suite exists for. `workPublishesWhenArManagerDidNotConnect`
+asserts that a session whose ar-manager did not connect still gets its work
+into the remote. With this fault installed that assertion must fail.
 
 When it was first written it did **not** fail, because the job it built
 never configured an ar-manager URL or token — and `requiredServerNames()`
@@ -41,4 +46,7 @@ unreachable. The test was green and covered nothing.
 
 That is precisely the shape this catalogue exists to detect, and the reason
 it is not enough to write a test named after a defect. The test has to be
-watched failing.
+watched failing. The unit tests of `McpConfigBuilder` pin what
+`requiredServerNames()` returns; only the end-to-end scenario shows what the
+runner and the job then do with a server that did not connect, which is
+where the outage actually happened.

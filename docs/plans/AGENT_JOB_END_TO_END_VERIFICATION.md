@@ -61,16 +61,56 @@ configured ar-manager and so could not reach the policy being tested. It was
 green and empty. That is F2, committed by the same process writing this
 document, an hour after the outage it describes.
 
-The defence is a **fault catalogue**: a set of real defects, each expressed as
-a patch, each naming the test that must fail when it is applied. CI applies
-each fault to a scratch worktree, runs the named test, and requires it to
-fail. A fault that no longer breaks its test means the test has rotted, and
-the build fails.
+The defence is a **fault catalogue**: a set of real defects, each paired with
+the end-to-end scenario that must fail when it is installed. A fault that no
+longer breaks its scenario means the scenario has rotted, and the build fails.
 
 This is the only mechanism here that detects a test which cannot fail. It is
 the centre of the system.
 
-See `tools/ci/agent-e2e/faults/` and `run-fault-catalogue.sh`.
+Each defect is code in a test class, `AgentJobFaultCatalogue`: a subclass of
+the production collaborator it breaks — the MCP configuration builder, the
+work-outcome classification, the commit-message builder — or a setting of
+one (the restart governor's session cap). It is installed on every job an
+`AgentJobEndToEndTest` fixture builds, through a package-private seam the job
+exposes for the purpose, and the scenario is then run through a method
+reference. Production code carries no defect and no switch for one. CI runs
+the whole catalogue class in one Maven invocation and reads each method's
+verdict from the Surefire report against `tools/ci/agent-e2e/faults/<name>/expect.txt`.
+
+See `tools/ci/agent-e2e/faults/README.md` and `run-fault-catalogue.sh`.
+
+### Why the faults stopped being patches
+
+The catalogue was first built from `fault.patch` files applied with
+`git apply` to a scratch worktree, one module rebuild per fault. The owner
+rejected that design, and the reason is worth keeping:
+
+- **The patches made seven job-system classes de facto protected files.**
+  A patch pins the exact lines it edits. The catalogue is a required check,
+  so any pull request that refactored a patched line — in `CodingAgentJob`,
+  `CodingAgentJobEvent`, `CommitMessageBuilder`, `EnforcementRunner`,
+  `JobWorkOutcome`, `McpConfigBuilder` or `TestMethodProtection` — went red
+  until someone re-cut the patch, and because the patches lived under
+  `tools/ci/`, only a `ci/...` branch could. One patch had already stopped
+  applying after an unrelated refactor of `CodingAgentJobEvent` by the time
+  this was noticed.
+- **As code, a fault moves with the class it breaks.** A refactor that
+  changes a collaborator's shape stops the catalogue compiling, in the same
+  pull request, for the same author, with the same permissions. A refactor
+  that keeps the shape leaves the fault working untouched.
+- **One invocation instead of one rebuild per fault.** The patch runner cost
+  roughly twenty minutes of CI time; the whole catalogue now runs in one
+  Surefire pass on `build`'s shared artifacts.
+
+Moving into code was also the moment to ask, of each entry, whether it earns
+its place: a fault stays only if it models an outage class that has
+happened, or one the unit tests demonstrably cannot catch. The base-branch
+test-method lock fault was dropped on that test — lifting the lock fails five
+methods of `TestMethodProtectionTest` and two of
+`GitManagedJobDegradedStatusTest`. The tampering-revert report and the
+tampering restart were kept: with each defect applied, every nearby unit test
+still passed, and no unit test exercises either path at all.
 
 ### The runner needs the same treatment it applies
 
@@ -87,13 +127,24 @@ verdict it had no evidence for.
    verdict now comes from the surefire XML, and "did not run" is a third
    outcome distinct from pass and fail.
 2. It built its scratch worktree from `HEAD`, which excluded the untracked
-   test the fault was written to validate.
+   test the fault was written to validate. (There is no worktree any more:
+   the faults are code, so the catalogue runs in the tree under review.)
 
 The structural fix is a **control entry**: `outcome=pass` in `expect.txt`, a
-patch that changes no behaviour, and a test that must still pass. The runner
+catalogue method that installs the production collaborators through every
+seam the faults use, and a scenario that must still pass. The runner
 refuses to report success on a full run when no entry declares it. Stuck on
 `detected` fails the control; stuck on `passed` fails every other entry.
-Neither can be green at the same time as the other.
+Neither can be green at the same time as the other. The control also proves
+the seams are inert: a seam that dropped state on the way through would
+otherwise make every fault "detected" for the wrong reason.
+
+The runner holds itself to two further rules. A fault counts as detected
+only when its scenario records a `<failure>` — an assertion tripped — and not
+an `<error>`, which means the defect broke the machinery before anything was
+checked. And every method of the catalogue class must be claimed by a fault
+directory, so a defect cannot be installed in code without a `why.md` saying
+what it models.
 
 The general rule, which applies to anything added here later: *a checking tool
 must be observed producing both verdicts.* A tool that has only ever been seen
@@ -159,7 +210,7 @@ the reason is a chain worth recording:
 - `commit.txt` is an excluded pattern, so writing it puts an entry in the
   skipped list;
 - a non-empty skipped list with nothing staged and nothing committed is what
-  `hasAllChangesDropped()` means;
+  `JobWorkOutcome.allChangesDropped()` means;
 - and that branch is reached first in `CodingAgentJobEvent.forJob()`.
 
 The rule holds — the job reports `DEGRADED`, not `SUCCESS` — but the branch
@@ -191,7 +242,7 @@ ask which disjunct is actually true and assert that one. A test that accepts
 either answer has not been told what the right answer is.
 
 A fourth, smaller finding from the same investigation:
-`GitManagedJob.createEvent()` carries `hasAllChangesDropped()` and
+`GitManagedJob.createEvent()` carries `allChangesDropped()` and
 `describeUnpublishedWork()` branches that `CodingAgentJob` never reaches,
 because it overrides `createEvent()` and `CodingAgentJobEvent.forJob()`
 carries its own copies. Two implementations of one rule, one of them dead
@@ -223,6 +274,23 @@ in the same place: `setDryRun(true)`, because that single line lets the job
 run, log what it "would" commit, satisfy every assertion about its own
 state, and push nothing; and the disappearance of `--bare`, because without
 a real remote the suite can only assert the job's account of itself.
+
+The fault catalogue adds a second declared entry, and it is the reason the
+seam check matters more now than before. The collaborator seams the
+catalogue breaks jobs through (`setMcpConfigBuilder`,
+`setCommitMessageBuilder`, `setWorkOutcome`, the governor's
+`setMaxTotalSessions`) would let the suite itself replace anything it found
+inconvenient, so each is an undeclared token in the suite's own source: one
+use there fails the build. The suite reaches them only through
+`fault.install(job)` in `newJob()`, which is declared, and whose default —
+`Fault.NONE`, installing nothing — `check-seam.sh` requires literally. An
+ordinary run of the suite therefore still substitutes the model and nothing
+else; only `AgentJobFaultCatalogue` installs a fault, on its own instance.
+
+`seam.txt` is also where a **fault switch** would be declared: a test-only
+toggle in production code, permitted only for a defect no seam can reach,
+settable only from test code, obviously named, and proven off by default.
+There are none. Every fault reaches its defect through a seam.
 
 **What it is:** a token scan, not a parser. It cannot prove the absence of a
 stub — an indirection it does not recognise gets through, and no amount of
@@ -299,6 +367,20 @@ properties of its construction are load-bearing:
 - **The canary branch is deliberately not named `ci/*`.** That prefix grants
   permissions ordinary branches do not have; verifying the privileged path
   would leave the common one untested.
+- **Still queued is not failed.** A deploy reopens job intake, and the QA
+  rounds held off by the drain are submitted at the same moment as the
+  canary, which can then wait behind them with nothing wrong with the fleet.
+  The canary waits an hour (raised from thirty minutes), and when the wait
+  runs out it asks the controller's pending view
+  (`/api/workstreams/{id}/jobs/pending`) about its job. A job still
+  `SUBMITTED` there is reported as UNVERIFIED with its own exit status and
+  alert — not a pass, and not a broken fleet. A job the controller marked
+  `LOST` is a failure.
+- **The job is as small as the question.** It is submitted with the review
+  phase and the object-oriented design review both off: the task is a
+  two-line file write, and each extra phase is another agent session that can
+  stall or fail for reasons that say nothing about whether the fleet
+  publishes.
 
 The verifier is separable (`post-deploy-canary.sh selftest`) and is proven in
 both directions against a scratch repository — it must accept a nonce that
@@ -317,11 +399,11 @@ gap after a bad one is visible.
 
 1. L0 and L1 together — the e2e suite is worthless until its failure modes
    are proven, so they ship as one thing. **Built.** `AgentJobEndToEndTest`
-   (5 tests, all asserting against a bare remote) plus the fault catalogue
-   with three real faults and one control, wired into CI as
-   `agent-e2e-faults` and into the `All Checks` merge gate. Two of the faults
-   point at the same test, one per assertion, so neither half of it can
-   quietly stop being checked.
+   (now 8 scenarios, all asserting against a bare remote) plus the fault
+   catalogue, wired into CI as `agent-e2e-faults` and into the `All Checks`
+   merge gate. First built as patches; rebuilt as in-code faults
+   (`AgentJobFaultCatalogue`, six faults and one control) for the reasons in
+   "Why the faults stopped being patches".
 2. L4, the post-deploy canary, because it is the one that would have caught
    the outage. **Built**, wired as `verify-agent-canary` in `deploy.yaml`.
    Not yet observed against the real fleet — until it has run once and
@@ -353,10 +435,11 @@ system that reads as finished:
   deliberately sabotaged, so the checks discriminate; what is unproven is
   the wiring around them. This is the largest gap.
 - **Six real faults and one control.** They cover the outage policy, the
-  base-branch test-method lock, the dropped-work reporting, the
-  commit-message-with-nothing-published rule, the harness's missing-message
-  fallbacks, and the tampering revert's report. They do not cover dependent
-  repositories or the phase machinery.
+  dropped-work reporting, the commit-message-with-nothing-published rule, the
+  harness's missing-message fallbacks, the tampering revert's report, and the
+  restart that replaces reverted work. The base-branch test-method lock is
+  no longer in the catalogue because its unit tests already watch it fail.
+  They do not cover dependent repositories or the phase machinery.
 - **Nothing checks that the fake agent still resembles the real one.** If the
   Claude CLI changes its `stream-json` shape, `fake-agent.sh` keeps emitting
   the old shape and every L0 test stays green against a format production no
@@ -365,6 +448,5 @@ system that reads as finished:
   cannot prove none is present.
 - **No fault covers dependent repositories or the phase machinery.** Each
   has behaviour the suite does not exercise at all, which is a different and
-  larger gap than an unproven assertion. The tampering revert is now
-  covered; the restart that is supposed to replace the reverted work is not
-  — the suite only pins what happens when no restart does.
+  larger gap than an unproven assertion. Both tampering paths are covered:
+  the report of reverted work, and the restart that replaces it.

@@ -60,6 +60,13 @@ import static org.junit.Assert.assertTrue;
  * tests assert on the commit in the remote, so a job that fails to publish
  * fails the build no matter which layer dropped it.</p>
  *
+ * <p>Each scenario is also run by {@link AgentJobFaultCatalogue} with one
+ * collaborator of the job replaced by a deliberately broken one, through
+ * {@link #installFault(Fault)}. That is how the suite proves it can fail: a
+ * scenario that still passes with the defect it is named for installed does
+ * not cover that defect. Run as itself, the suite installs {@link Fault#NONE}
+ * and every job it builds is production code throughout.</p>
+ *
  * @author Michael Murray
  */
 public class AgentJobEndToEndTest extends TestSuiteBase {
@@ -75,6 +82,39 @@ public class AgentJobEndToEndTest extends TestSuiteBase {
 
     /** Scenario environment handed to the fake agent process. */
     private Map<String, String> agentEnv;
+
+    /** Defect installed on every job this instance builds; none unless the fault catalogue chose one. */
+    private Fault fault = Fault.NONE;
+
+    /**
+     * A defect installed on a job before it runs, by replacing one of its
+     * collaborators with a deliberately broken one through a seam the job
+     * exposes for that purpose. Production code carries no defect; a fault
+     * exists only here, in test code, where the compiler holds it to the
+     * current shape of the class it substitutes for.
+     */
+    @FunctionalInterface
+    interface Fault {
+        /** The fault that changes nothing: the suite's own runs. */
+        Fault NONE = job -> { };
+
+        /**
+         * Installs this defect on {@code job}.
+         *
+         * @param job a job that has been constructed and not yet run
+         */
+        void install(CodingAgentJob job);
+    }
+
+    /**
+     * Makes every job this instance builds carry {@code fault}. Called only
+     * by {@link AgentJobFaultCatalogue}.
+     *
+     * @param fault the defect to install
+     */
+    void installFault(Fault fault) {
+        this.fault = fault;
+    }
 
     /** Creates the origin and a clone, and registers the fake runner. */
     @Before
@@ -305,7 +345,7 @@ public class AgentJobEndToEndTest extends TestSuiteBase {
      * <p>What currently produces that reason is worth knowing, because it is
      * not the code written for it. {@code commit.txt} is an excluded pattern,
      * so writing it puts an entry in the skipped list, which is what makes
-     * {@code hasAllChangesDropped()} true — and that branch is reached first.
+     * {@code allChangesDropped()} true — and that branch is reached first.
      * The {@code messageAuthored} term in
      * {@link JobWorkOutcome#describeUnpublishedWork()} is therefore never the
      * deciding factor for a coding-agent job. The rule holds; the explanation
@@ -488,6 +528,7 @@ public class AgentJobEndToEndTest extends TestSuiteBase {
      */
     private CodingAgentJob newJob() {
         CodingAgentJob job = new CodingAgentJob("e2e-task", "do the work");
+        fault.install(job);
         job.setWorkingDirectory(workdir.toString());
         job.setTargetBranch("feature/e2e");
         job.setBaseBranch("master");

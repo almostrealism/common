@@ -10,7 +10,17 @@
 # is the cheapest way to fake an end-to-end guarantee, and it is invisible in
 # a diff that only shows a test going from failing to passing.
 #
+# Fault switches belong here too. A defect the fault catalogue cannot reach
+# through a collaborator seam may, as a last resort, be reached through a
+# test-only switch in production code (package-private, obviously named, off
+# by default and proven off by a test). Every such switch is a substitution
+# and is declared here with the fault that needs it. There are none today:
+# every fault in tools/ci/agent-e2e/faults/ is a test-side double installed
+# through a collaborator seam, and those seams are undeclared tokens in the
+# suite's own sources (see check-seam.sh).
+#
 # Format: <token>|<justification>
 # The token is matched as a literal substring of the test source.
 
 fake-agent.sh|The model, and only the model. ClaudeCodeRunner is constructed with a path to tools/ci/agent-e2e/fake-agent.sh, which speaks real stream-json on stdout and makes real edits in the working tree. Everything above the process boundary — the runner's command line, its NDJSON parsing, the MCP init-event handling, phase dispatch, staging guardrails, commit and push — is production code. The seam is placed here because a language model is the one component whose output cannot be made deterministic, and because the outage this suite exists for was a decision about a stream-json init event, which no test that stubs the runner can reach.
+fault.install(|The fault hook. AgentJobEndToEndTest.newJob() hands every job it builds to a Fault before configuring it. The suite's own default is Fault.NONE, which installs nothing, and check-seam.sh requires that default literally, so an ordinary run of the suite replaces nothing beyond the model. Only AgentJobFaultCatalogue installs another fault, on a separate instance of the suite, to prove each scenario fails for the defect it is named for; that class is the one place a collaborator is deliberately broken, and its verdicts are read by run-fault-catalogue.sh.

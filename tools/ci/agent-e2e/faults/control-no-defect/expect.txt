@@ -1,4 +1,4 @@
 module=flowtree/runtime
-test=AgentJobEndToEndTest
-method=agentWorkReachesTheRemote
+test=AgentJobFaultCatalogue
+method=controlNoDefect
 outcome=pass

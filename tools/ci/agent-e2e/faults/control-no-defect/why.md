@@ -1,21 +1,23 @@
-# Control: a patch that must not break anything
+# Control: a fault that must not break anything
 
 ## What this entry is
 
-Not a defect. This is the catalogue's control: a patch that inserts one
-comment line into `McpConfigBuilder.requiredServerNames()` and changes no
-behaviour whatsoever. `agentWorkReachesTheRemote` must still **pass** with it
-applied, and `run-fault-catalogue.sh` fails if it does not.
+Not a defect. This is the catalogue's control.
+`AgentJobFaultCatalogue.controlNoDefect` installs, through every seam the
+other faults use, the production collaborator that seam normally holds — a
+plain `McpConfigBuilder`, a plain `JobWorkOutcome`, a plain
+`CommitMessageBuilder` — and runs `agentWorkReachesTheRemote`. That scenario
+must still **pass**, and `run-fault-catalogue.sh` fails if it does not.
 
 ## Why it exists
 
-Every other entry asserts a negative result — "the test failed, therefore it
-covers the defect." A runner that reported `detected` unconditionally would
-satisfy all of them, forever, while verifying nothing. That is exactly the
-failure the catalogue was built to catch, occurring one level up in the tool
-that does the catching.
+Every other entry asserts a negative result — "the scenario failed, therefore
+it covers the defect." A runner that reported `detected` unconditionally
+would satisfy all of them, forever, while verifying nothing. That is exactly
+the failure the catalogue was built to catch, occurring one level up in the
+tool that does the catching.
 
-This entry closes that. The two directions are now both pinned:
+This entry closes that. The two directions are both pinned:
 
 - a runner stuck on `detected` fails **this** entry;
 - a runner stuck on `passed` fails **every other** entry.
@@ -29,15 +31,20 @@ The runner refuses to report success on a full run if no entry declares
 
 ## The second thing it measures
 
-The patch is inert, so any failure of `agentWorkReachesTheRemote` under it is
-either flakiness in the test or a patch that does more than it claims. Both
-are reported as `CONTROL BROKEN` rather than as a pass, because while the most
-important test in the suite is unstable, a `detected` verdict from this runner
-is not worth much either — a test that sometimes fails on its own will
-sometimes "detect" a fault it does not cover.
+The seams are only honest if replacing a collaborator with an identical one
+changes nothing. A seam that dropped configuration on the way through — a
+replaced MCP builder that lost the job's ar-manager settings, say — would
+make every fault that uses it "detected" for a reason that has nothing to do
+with its defect. Installing the production collaborators through the same
+seams, and requiring the happy path to survive, is what rules that out.
 
-## Choosing the method
+Any failure here is therefore either a seam that is not inert or flakiness
+in the test. Both are reported as `CONTROL BROKEN` rather than as a pass,
+because while the most important scenario in the suite is unstable, a
+`detected` verdict from this runner is not worth much either.
 
-It names `agentWorkReachesTheRemote` deliberately: the plain happy path, an
+## Choosing the scenario
+
+It runs `agentWorkReachesTheRemote` deliberately: the plain happy path, an
 agent's edit arriving in a bare remote. If the catalogue is going to hold one
-test to a stability standard, that is the one.
+scenario to a stability standard, that is the one.

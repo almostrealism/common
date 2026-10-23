@@ -2,19 +2,18 @@
 
 ## The defect
 
-`JobWorkOutcome.computeUnpublishedWork()` opens with the case where the
-tampering detector reverted the agent's own commits and no restart replaced
-them:
+`JobWorkOutcome.computeUnpublishedWork()` opens with
+`describeRevertedWork()`: the case where the tampering detector reverted the
+agent's own changes and no restart replaced them with a primary commit.
 
-```java
-if (job.hasRevertedAgentWork() && !primaryCommitted) {
-```
-
-The patch inverts the second term to `primaryCommitted`, so the branch fires
-only when a commit *was* published — that is, never in the case it exists
-for. A condition inverted is chosen over a block deleted because it is the
-more realistic defect: it survives review, it reads as correct, and it
-leaves every symbol in use.
+`AgentJobFaultCatalogue.ForgetsTheTamperingRevert` is a `JobWorkOutcome`
+whose `describeRevertedWork()` never reports anything; every other check
+runs as normal. `revertedWorkNotReported` installs it with
+`GitManagedJob.setWorkOutcome` and runs
+`workDestroyedByTheTamperingRevertIsReported`. It is the same defect as a
+condition inverted inside that check — the branch never fires in the case it
+exists for — which is the realistic shape: it survives review and reads as
+correct.
 
 ## The failure it models
 
@@ -26,9 +25,17 @@ later session to find. The only artefact is the report.
 
 Without this branch the job falls through to the ordinary checks, finds a
 clean tree and no commit, and looks exactly like a session that deliberately
-did nothing.
+did nothing. Observed with the fault installed: the job ends `SUCCESS`.
 
 ## Why this fault is in the catalogue
+
+No unit test catches it. With the defect applied as a condition inverted in
+the production check, `GitManagedJobUnpublishedWorkTest`,
+`CodingAgentJobEventTest` and `GitManagedJobDegradedStatusTest` all still
+pass, and no unit test in `flowtree/runtime` exercises
+`hasRevertedAgentWork()` at all — a revert needs a real repository, a real
+agent commit and the real tampering detector, which only the end-to-end
+scenario assembles.
 
 `workDestroyedByTheTamperingRevertIsReported` scripts an agent that edits a
 file, writes a commit message, and makes its own git commit. It requires

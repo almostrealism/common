@@ -411,13 +411,26 @@ jobs:
       # The oracle is the git remote, never the job's own status. A job that
       # reports success while publishing nothing is reported as its own
       # distinct failure, because that combination is the outage signature.
+      #
+      # A canary still waiting for a worker when its hour runs out (typically
+      # queued behind the rounds submitted when intake reopened) is reported
+      # as UNVERIFIED, not as a broken fleet: the step still fails, because
+      # the deploy has not been proven, but the alert says which it was.
       - name: Run one real job on the deployed fleet
+        id: canary
         run: ./tools/ci/agent-e2e/post-deploy-canary.sh run
 
-      - name: Report a broken fleet
+      - name: Report a broken or unverified fleet
         if: failure()
+        env:
+          OUTCOME: ${{ steps.canary.outputs.outcome }}
         run: |
+          if [ "$OUTCOME" = "queued" ]; then
+            message="Post-deploy agent canary UNVERIFIED — the canary job was still queued, waiting for a worker, when its wait ran out. The fleet has not been shown broken or working; check the queue and re-run the canary. See the Deploy Controller Stack run."
+          else
+            message="Post-deploy agent canary FAILED — the deployed fleet did not publish a commit. Agent jobs are likely broken fleet-wide. See the Deploy Controller Stack run."
+          fi
           curl -fsS -X POST "$CONTROLLER_URL/api/alerts" \
             -H 'Content-Type: application/json' \
-            -d '{"message":"Post-deploy agent canary FAILED — the deployed fleet did not publish a commit. Agent jobs are likely broken fleet-wide. See the Deploy Controller Stack run."}' \
+            -d "$(jq -n --arg m "$message" '{message: $m}')" \
             >/dev/null || echo "::warning::Could not reach the controller to raise an alert"

@@ -1,3 +1,0 @@
-module=flowtree/runtime
-test=AgentJobEndToEndTest
-method=rejectedChangesAreReportedNotSilentlyDropped

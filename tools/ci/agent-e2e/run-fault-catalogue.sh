@@ -1,46 +1,160 @@
 #!/usr/bin/env bash
 # ─── Prove the end-to-end tests can fail ────────────────────────────
 #
-# Applies each fault in faults/ to a scratch worktree, runs the test that
-# fault names, and requires the outcome the fault declares. Normally that
-# outcome is `fail`: the defect is reintroduced and the test that exists to
-# catch it must catch it. A fault whose test passes means the test no longer
-# covers what it claims to, and this script exits non-zero.
+# Each fault in faults/ names a method of a fault-catalogue test class — today
+# AgentJobFaultCatalogue — that runs one end-to-end scenario against a job
+# carrying a deliberately broken collaborator. The fault declares the outcome
+# that method must record. Normally that outcome is `fail`: the defect is
+# installed and the scenario that exists to catch it must catch it. A fault
+# whose method passes means the scenario no longer covers what it claims to,
+# and this script exits non-zero.
+#
+# The defects live in test code, as subclasses of the production collaborators
+# they break, installed through seams the job exposes. Nothing here edits a
+# source file. A change to one of those collaborators that breaks its fault
+# breaks compilation of the catalogue, in the same pull request, for the same
+# author — which is why the faults are code and not patches.
 #
 # The pipeline runs the suite normally (must pass) and this script (every
 # fault must produce its declared outcome). Together they say: the tests are
 # green, and they are green for a reason.
 #
-# Three rules this script follows about its own evidence, because it is the
-# thing standing between a green pipeline and a fiction:
+# Rules this script follows about its own evidence, because it is the thing
+# standing between a green pipeline and a fiction:
 #
 #   1. It never infers a result from an exit code. Maven exits 0 for a test
 #      that does not exist, for a selector that matches nothing, and for a
-#      run that was skipped. The first version of this script did exactly
-#      that and reported a fault "undetected" when in truth no test had run
-#      at all. A verification tool that passes when it verified nothing is
-#      the defect it exists to find. So the verdict comes from the surefire
-#      XML: the named test must be present, must have run, and must have
-#      recorded the declared outcome.
+#      run that was skipped — and here it exits non-zero on every healthy run,
+#      because the faults are supposed to fail. The verdict comes from the
+#      surefire XML: the named method must be present, must have run, and must
+#      have recorded the declared outcome.
 #
-#   2. It tests the working tree, not HEAD. Uncommitted work is the state a
-#      change is actually in while it is being reviewed, and building the
-#      worktree from HEAD silently excluded the very test being validated.
+#   2. A failure counts as detection; an error does not. A fault is proven
+#      when the scenario's own assertion fails (`<failure>`). An exception
+#      (`<error>`) means the defect broke the scenario's machinery before any
+#      assertion was reached — a double that throws, a timeout — which says
+#      nothing about whether the assertion named for the defect would notice
+#      it.
 #
 #   3. It is itself two-sided. A runner that reports "detected" no matter
-#      what would keep this catalogue green forever while proving nothing —
-#      the precise failure it exists to detect, one level up. So at least one
-#      fault must declare `outcome=pass`: a patch that must NOT break its
-#      test. A runner stuck on "detected" fails that entry; a runner stuck on
-#      "passed" fails every other one. See faults/control-no-defect.
+#      what would keep this catalogue green forever while proving nothing.
+#      So at least one fault must declare `outcome=pass`: a fault that must
+#      NOT break its scenario. A runner stuck on "detected" fails that entry;
+#      a runner stuck on "passed" fails every other one. See
+#      faults/control-no-defect. `selftest` checks the verdict reader against
+#      synthetic reports in both directions, offline.
+#
+#   4. The catalogue class and the fault directories must agree. Every
+#      method the class ran must be claimed by a fault, and every fault's
+#      method must have run, so neither side can gain or lose an entry
+#      without the other.
+#
+# All faults that name the same module and class run in ONE Maven
+# invocation: the module is built once and every scenario shares it.
 #
 # Usage:
-#   run-fault-catalogue.sh [fault-name ...]      (default: every fault)
+#   run-fault-catalogue.sh [fault-name ...]   (default: every fault)
+#   run-fault-catalogue.sh selftest           prove the verdict reader
+#                                             discriminates (offline, no build)
+#
+# The modules the catalogue's module depends on must already be installed in
+# the local Maven repository — in CI, `build`'s restored artifacts. Set
+# MVN_OFFLINE= to let Maven reach the network; it defaults to offline.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-FAULTS_DIR="${REPO_ROOT}/tools/ci/agent-e2e/faults"
-WORKTREE="${TMPDIR:-/tmp}/ar-fault-catalogue-$$"
+FAULTS_DIR="${FAULTS_DIR:-${REPO_ROOT}/tools/ci/agent-e2e/faults}"
+
+# ── Verdict reader ──────────────────────────────────────────────────
+#
+# Prints, for each method named, one of: pass, failure, error, skipped,
+# missing. Then prints "unclaimed <method>" for every testcase in the report
+# that was not named. The report is the only evidence accepted.
+read_verdicts() {
+    local report="$1"; shift
+    python3 - "$report" "$@" <<'PYEOF'
+import re, sys
+report, methods = sys.argv[1], sys.argv[2:]
+xml = open(report, encoding="utf-8", errors="replace").read()
+cases = {}
+for m in re.finditer(r'<testcase\b([^>]*?)(/>|>(.*?)</testcase>)', xml, re.S):
+    name = re.search(r'\bname="([^"]*)"', m.group(1))
+    if not name:
+        continue
+    body = m.group(3) or ""
+    if "<failure" in body:
+        verdict = "failure"
+    elif "<error" in body:
+        verdict = "error"
+    elif "<skipped" in body:
+        verdict = "skipped"
+    else:
+        verdict = "pass"
+    cases[name.group(1)] = verdict
+for method in methods:
+    print("%s %s" % (method, cases.get(method, "missing")))
+for name in sorted(cases):
+    if name not in methods:
+        print("unclaimed %s" % name)
+PYEOF
+}
+
+expect_value() {
+    local file="$1" key="$2"
+    while IFS='=' read -r k v; do
+        k="$(printf '%s' "$k" | tr -d '[:space:]')"
+        if [ "$k" = "$key" ]; then
+            printf '%s' "$v" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+            return 0
+        fi
+    done < "$file"
+    return 1
+}
+
+if [ "${1:-}" = "selftest" ]; then
+    # Two-sided, like everything else here. A reader that called every
+    # testcase a failure would certify every fault; one that called every
+    # testcase a pass would certify the control. Both are checked, along with
+    # the cases that must be neither: an error, a method that never ran, and
+    # a method nobody claimed.
+    echo "Fault-catalogue selftest: the verdict reader must tell every outcome apart."
+    scratch="$(mktemp -d)"
+    trap 'rm -rf "$scratch"' EXIT
+    report="${scratch}/TEST-Synthetic.xml"
+    cat > "$report" <<'XMLEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Synthetic" tests="5" failures="1" errors="1" skipped="1">
+  <testcase name="passes" classname="Synthetic" time="0.1"/>
+  <testcase name="fails" classname="Synthetic" time="0.1">
+    <failure message="expected" type="java.lang.AssertionError">trace</failure>
+  </testcase>
+  <testcase name="throws" classname="Synthetic" time="0.1">
+    <error message="boom" type="java.lang.IllegalStateException">trace</error>
+  </testcase>
+  <testcase name="skips" classname="Synthetic" time="0.0">
+    <skipped/>
+  </testcase>
+  <testcase name="nobodyAsked" classname="Synthetic" time="0.1"/>
+</testsuite>
+XMLEOF
+    got="$(read_verdicts "$report" passes fails throws skips neverRan)"
+    want="passes pass
+fails failure
+throws error
+skips skipped
+neverRan missing
+unclaimed nobodyAsked"
+    if [ "$got" != "$want" ]; then
+        echo "::error::SELFTEST FAILED: the verdict reader misread a synthetic report."
+        echo "  expected:"; printf '%s\n' "$want" | sed 's/^/    /'
+        echo "  got:";      printf '%s\n' "$got"  | sed 's/^/    /'
+        exit 1
+    fi
+    echo "  reads pass, failure, error, skipped and missing as distinct verdicts"
+    echo "  reports a testcase no fault claimed"
+    echo "::notice::Fault-catalogue selftest passed"
+    exit 0
+fi
 
 cd "$REPO_ROOT"
 
@@ -108,87 +222,27 @@ check_manifest() {
 
 # Short-circuits rather than folding into the final tally: if the catalogue
 # is not the catalogue it claims to be, the results of running it do not mean
-# what they would otherwise mean, and printing a row of "detected" underneath
-# a missing entry invites reading past it.
+# what they would otherwise mean.
 if [ "$#" -eq 0 ] && ! check_manifest; then
     echo
     echo "The catalogue does not match its manifest. Nothing was run."
     exit 1
 fi
 
-expect_value() {
-    local file="$1" key="$2"
-    while IFS='=' read -r k v; do
-        k="$(printf '%s' "$k" | tr -d '[:space:]')"
-        if [ "$k" = "$key" ]; then
-            printf '%s' "$v" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
-            return 0
-        fi
-    done < "$file"
-    return 1
-}
-
-cleanup() {
-    cd "$REPO_ROOT"
-    git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
-}
-trap cleanup EXIT
-
-# ── The state under test is the working tree, not HEAD ──────────────
-#
-# A change is reviewed in the state it is in, which includes files not yet
-# committed. `git stash create` covers tracked modifications but not new
-# files, and a brand-new test is exactly what a new fault is usually paired
-# with — building from HEAD silently excluded it and the run proved nothing.
-# So the worktree starts at HEAD and every path git reports as changed,
-# added or untracked is copied over it.
-overlay_working_tree() {
-    local dest="$1" status path
-    while IFS= read -r status; do
-        [ -z "$status" ] && continue
-        path="${status:3}"
-        # Renames report "old -> new"; the new path is what exists on disk.
-        case "$path" in *" -> "*) path="${path##* -> }" ;; esac
-        # Deletions have nothing to copy; the worktree already lacks them
-        # only if they were never committed, so remove explicitly.
-        if [ ! -e "$path" ]; then
-            rm -f "${dest}/${path}" 2>/dev/null || true
-            continue
-        fi
-        mkdir -p "${dest}/$(dirname "$path")" 2>/dev/null || true
-        cp -R "$path" "${dest}/${path}" 2>/dev/null || true
-    done < <(git status --porcelain -uall)
-}
-
-# One worktree, reused. Rebuilding it per fault meant a full compile of the
-# module chain each time, which made every additional fault cost minutes —
-# and a catalogue that is expensive to extend does not get extended. Between
-# faults the tree is returned to the reviewed state: tracked files back to
-# HEAD, untracked files removed, then the working tree overlaid again.
-# `git clean -fd` without -x leaves ignored paths alone, so target/ survives
-# and each subsequent build is incremental.
-reset_worktree() {
-    (cd "$WORKTREE" && git checkout -f --quiet -- . && git clean -qfd) || return 1
-    overlay_working_tree "$WORKTREE"
-}
-
-if ! git worktree add --quiet --detach "$WORKTREE" HEAD; then
-    echo "ERROR: could not create a scratch worktree"
-    exit 1
-fi
-overlay_working_tree "$WORKTREE"
-
 FAILURES=0
 CHECKED=0
 SAW_CONTROL=0
 
+# fault name -> "module|class|method|outcome", for every well-formed entry.
+entries=()
+groups=""
+
 for name in "${selected[@]}"; do
     dir="${FAULTS_DIR}/${name}"
-    patch="${dir}/fault.patch"
     expect="${dir}/expect.txt"
 
-    if [ ! -f "$patch" ] || [ ! -f "$expect" ]; then
-        echo "FAULT ${name}: missing fault.patch or expect.txt"
+    if [ ! -f "$expect" ] || [ ! -f "${dir}/why.md" ]; then
+        echo "FAULT ${name}: missing expect.txt or why.md"
         FAILURES=$((FAILURES + 1))
         continue
     fi
@@ -201,8 +255,6 @@ for name in "${selected[@]}"; do
 
     if [ -z "$module" ] || [ -z "$test_class" ] || [ -z "$method" ]; then
         echo "FAULT ${name}: expect.txt must set module, test and method."
-        echo "  The method is required: a fault that breaks compilation, or breaks"
-        echo "  some unrelated test, would otherwise satisfy 'something failed'."
         FAILURES=$((FAILURES + 1))
         continue
     fi
@@ -211,97 +263,108 @@ for name in "${selected[@]}"; do
         fail) ;;
         pass) SAW_CONTROL=1 ;;
         *)  echo "FAULT ${name}: outcome must be 'fail' (the usual: the defect"
-            echo "  must break its test) or 'pass' (a control: the patch must not"
-            echo "  break it, proving this runner can report a negative)."
+            echo "  must break its scenario) or 'pass' (a control: it must not,"
+            echo "  proving this runner can report a negative)."
             FAILURES=$((FAILURES + 1))
             continue ;;
     esac
 
+    entries+=("${name}|${module}|${test_class}|${method}|${outcome}")
+    case " ${groups} " in
+        *" ${module}|${test_class} "*) ;;
+        *) groups="${groups} ${module}|${test_class}" ;;
+    esac
+done
+
+# ── One invocation per catalogue class ──────────────────────────────
+for group in $groups; do
+    module="${group%%|*}"
+    test_class="${group#*|}"
+
+    methods=()
+    for entry in "${entries[@]}"; do
+        IFS='|' read -r name e_module e_class method outcome <<< "$entry"
+        [ "$e_module" = "$module" ] && [ "$e_class" = "$test_class" ] && methods+=("$method")
+    done
+
     echo "───────────────────────────────────────────────────────────"
-    if [ "$outcome" = "fail" ]; then
-        echo "FAULT ${name}: expecting ${test_class}#${method} to FAIL"
-    else
-        echo "CONTROL ${name}: expecting ${test_class}#${method} to PASS"
-    fi
+    echo "Running ${test_class} in ${module} (${#methods[@]} fault(s), one invocation)"
 
-    if ! reset_worktree; then
-        echo "  ERROR: could not return the scratch worktree to the reviewed state"
-        FAILURES=$((FAILURES + 1))
-        continue
-    fi
+    reports="${REPO_ROOT}/${module}/target/surefire-reports"
+    rm -f "${reports}/TEST-"*"${test_class}.xml" 2>/dev/null || true
 
-    if ! (cd "$WORKTREE" && git apply "$patch" 2>&1); then
-        echo "  ERROR: fault.patch no longer applies — the code it targets moved."
-        echo "  Re-cut it against the current tree, or delete the fault if the"
-        echo "  defect is no longer expressible."
-        FAILURES=$((FAILURES + 1))
-        continue
-    fi
-
-    CHECKED=$((CHECKED + 1))
-
-    rm -rf "${WORKTREE}/${module}/target/surefire-reports" 2>/dev/null || true
-
-    # Checkstyle is skipped deliberately. A fault patch is a deliberately
-    # malformed piece of code; tripping a style rule would fail the build
-    # before the test ran and be reported as NO EVIDENCE, which is true but
-    # says nothing about the defect the fault models.
-    (cd "$WORKTREE" && mvn -q ${MVN_OFFLINE--o} install -DskipTests \
-        -Dcheckstyle.skip=true -pl "$module" -am) >/dev/null 2>&1
-    (cd "$WORKTREE" && mvn ${MVN_OFFLINE--o} test -pl "$module" \
+    # The exit code is deliberately ignored: a healthy catalogue fails every
+    # entry but the control. Checkstyle is skipped because it is not what is
+    # being asked, and a style failure would surface as NO EVIDENCE below.
+    (cd "$REPO_ROOT" && mvn ${MVN_OFFLINE--o} test -pl "$module" \
         -Dcheckstyle.skip=true -DAR_TEST_PROFILE=pipeline \
-        -Dtest="${test_class}#${method}" -DfailIfNoTests=true) >/dev/null 2>&1
+        -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+        -Dtest="${test_class}" -Dsurefire.failIfNoSpecifiedTests=true) >"${TMPDIR:-/tmp}/fault-catalogue-mvn.log" 2>&1
 
-    # ── The verdict comes from the report, never the exit code ──────
-    report="$(find "${WORKTREE}/${module}/target/surefire-reports" \
-        -name "TEST-*${test_class}.xml" 2>/dev/null | head -1)"
-
+    report="$(find "$reports" -name "TEST-*${test_class}.xml" 2>/dev/null | head -1)"
     if [ -z "$report" ] || [ ! -f "$report" ]; then
         echo "  NO EVIDENCE — no surefire report for ${test_class}."
-        echo "  The test did not run. That is not a pass and not a failure; it"
-        echo "  means this fault is currently proving nothing."
-        FAILURES=$((FAILURES + 1))
+        echo "  Nothing ran, so every fault in it is currently proving nothing."
+        echo "  Last lines of the Maven log:"
+        tail -30 "${TMPDIR:-/tmp}/fault-catalogue-mvn.log" | sed 's/^/    /'
+        FAILURES=$((FAILURES + ${#methods[@]}))
         continue
     fi
 
-    # The failure/error element sits inside the named testcase element.
-    python3 - "$report" "$method" <<'PYEOF'
-import re, sys
-report, method = sys.argv[1], sys.argv[2]
-xml = open(report, encoding="utf-8", errors="replace").read()
-# Each testcase is either self-closing (passed) or has a body (failed/errored).
-pattern = r'<testcase[^>]*\bname="%s"[^>]*(/>|>(.*?)</testcase>)' % re.escape(method)
-m = re.search(pattern, xml, re.S)
-if not m:
-    sys.exit(2)
-body = m.group(2) or ""
-sys.exit(0 if ("<failure" in body or "<error" in body) else 1)
-PYEOF
-    verdict=$?
+    verdicts="$(read_verdicts "$report" "${methods[@]}")"
 
-    case "${verdict}:${outcome}" in
-        0:fail)
-            echo "  detected" ;;
-        1:pass)
-            echo "  passed, as the control requires" ;;
-        1:fail)
-            echo "  NOT DETECTED — ${test_class}#${method} passed with the fault applied."
-            echo "  That test does not cover the defect it is named for."
-            sed 's/^/    /' "${dir}/why.md" 2>/dev/null
-            FAILURES=$((FAILURES + 1)) ;;
-        0:pass)
-            echo "  CONTROL BROKEN — ${test_class}#${method} failed under a patch that"
-            echo "  should not affect it. Either the patch does more than it claims,"
-            echo "  or the test is flaky. Until this is resolved, a 'detected' verdict"
-            echo "  from this runner is not trustworthy."
-            sed 's/^/    /' "${dir}/why.md" 2>/dev/null
-            FAILURES=$((FAILURES + 1)) ;;
-        *)
-            echo "  NO EVIDENCE — ${test_class} ran but recorded no verdict for"
-            echo "  ${method}. The method was renamed or removed; this entry proves"
-            echo "  nothing."
-            FAILURES=$((FAILURES + 1)) ;;
-    esac
+    # On a full run the class and the directories must agree. A catalogue
+    # method nobody claims is a fault with no why.md and no MANIFEST entry —
+    # a defect someone installed without saying what it models.
+    if [ "$#" -eq 0 ]; then
+        while read -r label unclaimed; do
+            [ "$label" = "unclaimed" ] || continue
+            echo "UNCLAIMED: ${test_class}#${unclaimed} ran, but no fault directory names it."
+            echo "  Add faults/<name>/ with expect.txt and why.md, and list it in MANIFEST."
+            FAILURES=$((FAILURES + 1))
+        done <<< "$verdicts"
+    fi
+
+    for entry in "${entries[@]}"; do
+        IFS='|' read -r name e_module e_class method outcome <<< "$entry"
+        [ "$e_module" = "$module" ] && [ "$e_class" = "$test_class" ] || continue
+        verdict="$(printf '%s\n' "$verdicts" | awk -v m="$method" '$1 == m {print $2; exit}')"
+        CHECKED=$((CHECKED + 1))
+
+        if [ "$outcome" = "fail" ]; then
+            echo "FAULT ${name}: expecting ${test_class}#${method} to FAIL"
+        else
+            echo "CONTROL ${name}: expecting ${test_class}#${method} to PASS"
+        fi
+
+        case "${verdict}:${outcome}" in
+            failure:fail)
+                echo "  detected" ;;
+            pass:pass)
+                echo "  passed, as the control requires" ;;
+            pass:fail)
+                echo "  NOT DETECTED — the scenario passed with the fault installed."
+                echo "  It does not cover the defect it is named for."
+                sed 's/^/    /' "${FAULTS_DIR}/${name}/why.md" 2>/dev/null
+                FAILURES=$((FAILURES + 1)) ;;
+            error:*)
+                echo "  ERRORED — the scenario threw rather than failing an assertion."
+                echo "  The defect broke the machinery before anything was checked, so"
+                echo "  this proves nothing about the assertion named for it."
+                FAILURES=$((FAILURES + 1)) ;;
+            failure:pass)
+                echo "  CONTROL BROKEN — the scenario failed with only production"
+                echo "  collaborators installed. Either a seam is not inert or the"
+                echo "  scenario is flaky; until resolved, no 'detected' verdict from"
+                echo "  this run is trustworthy."
+                sed 's/^/    /' "${FAULTS_DIR}/${name}/why.md" 2>/dev/null
+                FAILURES=$((FAILURES + 1)) ;;
+            *)
+                echo "  NO EVIDENCE — ${test_class} recorded ${verdict:-nothing} for ${method}."
+                echo "  The method was renamed, removed or skipped; this entry proves nothing."
+                FAILURES=$((FAILURES + 1)) ;;
+        esac
+    done
 done
 
 echo "───────────────────────────────────────────────────────────"
@@ -321,7 +384,7 @@ fi
 if [ "$FAILURES" -gt 0 ]; then
     echo
     echo "A fault is unproven: it did not produce its declared outcome, did not"
-    echo "run, or its patch no longer applies. Each of those means the suite's"
-    echo "green result claims more than it can support."
+    echo "run, or the catalogue and its directories disagree. Each of those means"
+    echo "the suite's green result claims more than it can support."
     exit 1
 fi

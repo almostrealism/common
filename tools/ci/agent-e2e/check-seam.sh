@@ -45,6 +45,13 @@ die() { echo "::error::$*" >&2; exit 1; }
 # log fills with what it "would" commit, every assertion about the job's own
 # state still holds, and nothing is ever pushed. An end-to-end suite in dry
 # run is a suite that has stopped testing the only thing it exists for.
+#
+# The collaborator seams the fault catalogue installs its defects through are
+# here too. They exist so AgentJobFaultCatalogue can break a job on purpose;
+# the same seams would let the suite itself quietly replace whatever it found
+# inconvenient. In the suite's own sources they are undeclared, so any use of
+# one fails this check. `fault.install(` is the single place the suite hands
+# its jobs to a fault, and is declared in seam.txt.
 SUBSTITUTION_TOKENS="
 Mockito
 mockito
@@ -54,7 +61,18 @@ PowerMock
  spy(
 setDryRun(true)
 fake-agent.sh
+setMcpConfigBuilder(
+setCommitMessageBuilder(
+setWorkOutcome(
+setMaxTotalSessions(
+fault.install(
 "
+
+# The fault hook's default, required literally. The suite runs its own tests
+# with no fault installed; a different default would make every scenario run
+# against a substituted job while still reading as the plain suite.
+FAULT_DEFAULT='private Fault fault = Fault.NONE;'
+
 
 declared() {
     local token="$1" line rest
@@ -101,6 +119,14 @@ check_sources() {
             echo "  assertions can only be about the job's account of itself."
             violations=$((violations + 1))
         fi
+
+        if grep -qF -- 'fault.install(' "$src" 2>/dev/null \
+                && ! grep -qF -- "$FAULT_DEFAULT" "$src" 2>/dev/null; then
+            echo "  ${src} installs a fault on its jobs but no longer defaults it to"
+            echo "  Fault.NONE. The suite's own runs must use production collaborators;"
+            echo "  only the fault catalogue may choose another."
+            violations=$((violations + 1))
+        fi
     done
 
     [ "$violations" -eq 0 ]
@@ -141,6 +167,25 @@ if [ "${1:-check}" = "selftest" ]; then
         die "SELFTEST FAILED: a planted setDryRun(true) was not flagged. That one line turns the whole suite into an assertion about what the job intended."
     fi
     echo "  flags a planted dry run"
+
+    # A fault-catalogue seam used by the suite itself replaces a production
+    # collaborator in every ordinary run, which is the stub this check exists
+    # to make loud.
+    seam="${scratch}/Seam.java"
+    cp "$clean" "$seam"
+    printf '\n// planted: job.setWorkOutcome(new JobWorkOutcome(job));\n' >> "$seam"
+    if check_sources "$seam" >/dev/null 2>&1; then
+        die "SELFTEST FAILED: a planted use of a fault-catalogue seam was not flagged. The suite could replace any collaborator it found inconvenient."
+    fi
+    echo "  flags a planted fault-catalogue seam"
+
+    # The suite defaulting to a fault would substitute in every ordinary run.
+    defaulted="${scratch}/Defaulted.java"
+    sed 's/private Fault fault = Fault.NONE;/private Fault fault = job -> { };/' "$clean" > "$defaulted"
+    if check_sources "$defaulted" >/dev/null 2>&1; then
+        die "SELFTEST FAILED: a fault hook with no Fault.NONE default was treated as passing."
+    fi
+    echo "  flags a fault hook that no longer defaults to none"
 
     # Removing the bare repository leaves the tests asserting on the job's
     # own account of itself, which is what they exist not to do.

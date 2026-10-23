@@ -17,8 +17,8 @@ Built and verified locally:
 | Layer | Artefact | State |
 |---|---|---|
 | L0 — oracle outside the process | `AgentJobEndToEndTest` | 8 scenarios, all asserting against a bare git remote |
-| L1 — proven failure modes | `tools/ci/agent-e2e/faults/` + `run-fault-catalogue.sh` | 7 faults + 1 control |
-| L2 — enumerated seam | `seam.txt` + `check-seam.sh` | 1 declared substitution |
+| L1 — proven failure modes | `AgentJobFaultCatalogue` + `tools/ci/agent-e2e/faults/` + `run-fault-catalogue.sh` | 6 faults + 1 control, as test-side doubles, one Maven invocation |
+| L2 — enumerated seam | `seam.txt` + `check-seam.sh` | 2 declared substitutions (the model; the fault hook, default none); no fault switches |
 | L3 — deployment parity | `BUILD_PROVENANCE` (written by `install.sh`) + `verify-deployed-build.sh` | selftest passes |
 | L4 — post-deploy canary | `post-deploy-canary.sh` | selftest passes; never run against the fleet |
 
@@ -70,7 +70,8 @@ Recorded so the first failure is diagnosed rather than rediscovered:
   first sight.
 - **Runner contention.** `verify-agent-canary` occupies the
   `ar-deploy-agent` macOS runner for up to `CANARY_TIMEOUT_SECONDS` (default
-  1800) while polling. If that is the only runner with that label, nothing
+  3600, raised from 1800 so a canary queued behind the rounds submitted when
+  intake reopens is not a false failure) while polling. If that is the only runner with that label, nothing
   else using it can proceed meanwhile.
 - **Job intake.** `deploy-macos-agent` closes intake for the install and
   reopens it in an `always()` step. The canary is a separate job so it
@@ -133,7 +134,7 @@ because of the log line.
 
 `CodingAgentJob` overrides `createEvent()` and delegates to
 `CodingAgentJobEvent.forJob()`, which carries its own copies of
-`hasAllChangesDropped()` and `describeUnpublishedWork()`. One rule, two
+`allChangesDropped()` and `describeUnpublishedWork()` checks. One rule, two
 implementations, one dead for the only subclass that matters.
 
 *Suggested fix:* collapse to one. The live copy is
@@ -147,7 +148,7 @@ changes to push is a failure, not a success — has a term written for it,
 decides anything: `hasAuthoredCommitMessage()` is true exactly when
 `commit.txt` exists; `commit.txt` is an excluded pattern so writing it puts
 an entry in the skipped list; a non-empty skipped list with nothing staged
-and nothing committed is `hasAllChangesDropped()`; and that branch is
+and nothing committed is `JobWorkOutcome.allChangesDropped()`; and that branch is
 checked first.
 
 The rule holds, but the reported reason is "All changes were dropped by
@@ -157,7 +158,7 @@ debugging it to the staging code, where nothing is wrong.
 *Suggested fix:* check the authored-message case before the
 all-changes-dropped case, so the more specific explanation wins; or exclude
 `commit.txt` from the skipped-files tally that feeds
-`hasAllChangesDropped()`, since it is a harness artefact rather than
+`allChangesDropped()`, since it is a harness artefact rather than
 agent work that got dropped.
 
 ### 3d. `CommitMessageBuilder`'s prompt fallback is a backstop only
@@ -236,11 +237,17 @@ past a check.
 - **The fault catalogue runs one module.** Every fault targets
   `flowtree/runtime`. Nothing prevents a fault elsewhere; nothing exercises
   that path either.
-- **`git apply` brittleness.** Fault patches are line-context diffs against
-  specific files. Ordinary refactoring will break them, and the runner
-  reports "patch no longer applies" rather than silently skipping — correct,
-  but it means the catalogue has a real maintenance cost that must be paid
-  rather than deferred.
+- **The seams are the price of in-code faults.** The catalogue's defects
+  were first `git apply` patches against seven job-system classes; any
+  refactor of a patched line turned the required check red, and only a
+  `ci/...` branch could re-cut a patch, which made those classes de facto
+  protected. The faults are now subclasses of the collaborators they break,
+  installed through package-private seams (`setMcpConfigBuilder`,
+  `setCommitMessageBuilder`, `setWorkOutcome`) — a refactor that changes a
+  collaborator's shape breaks compilation in the same pull request instead.
+  What is left to watch: a seam that stopped being inert would make faults
+  "detected" for the wrong reason. The control installs the production
+  collaborators through every seam to catch exactly that.
 
 ---
 
@@ -301,7 +308,8 @@ Things a reviewer will reasonably ask, answered here to save the round trip:
   under `agent-e2e-faults`, which is in the `All Checks` merge gate. The
   canary and the deployed-build check run in `deploy.yaml` after the agent
   redeploy, not on pull requests.
-- **"Has any of it been seen failing?"** Every fault was watched failing.
+- **"Has any of it been seen failing?"** Every fault was watched failing, on
+  the assertion named for it rather than on an exception.
   The fault-catalogue runner, the seam check and the deployed-build check
   were each watched failing against a sabotaged copy of themselves. The
   canary's selftest passes — it accepts a landed nonce and rejects an absent

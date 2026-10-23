@@ -1849,16 +1849,19 @@ jobs:
   # `test-flowtree` runs AgentJobEndToEndTest and reports it green. This job
   # answers the question that a green result does not: green for what reason?
   #
-  # It reintroduces each defect in tools/ci/agent-e2e/faults/ and requires the
-  # test named for that defect to fail. The need is not hypothetical — during
-  # the outage this tooling was built after, the end-to-end test named for the
-  # live defect passed, because the job it constructed never configured the
-  # credentials that make the failing policy reachable. The test was green and
-  # covered nothing, and the entire pipeline agreed with it.
+  # It installs each defect in tools/ci/agent-e2e/faults/ and requires the
+  # scenario named for that defect to fail. The need is not hypothetical —
+  # during the outage this tooling was built after, the end-to-end test named
+  # for the live defect passed, because the job it constructed never configured
+  # the credentials that make the failing policy reachable. The test was green
+  # and covered nothing, and the entire pipeline agreed with it.
   #
-  # One catalogue entry is a control that must PASS, so a runner that reported
-  # "detected" unconditionally fails here rather than certifying everything
-  # forever. No coverage is produced, so this job is not in `analysis` needs.
+  # The defects are test-side doubles in AgentJobFaultCatalogue, not patches,
+  # so every fault runs in one Maven invocation against `build`'s shared
+  # artifacts. One catalogue entry is a control that must PASS, so a runner
+  # that reported "detected" unconditionally fails here rather than certifying
+  # everything forever. No coverage is produced, so this job is not in
+  # `analysis` needs.
   agent-e2e-faults:
     needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     if: >-
@@ -1870,14 +1873,15 @@ jobs:
       needs.test-integrity-check.result == 'success' &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          # The catalogue runs each fault in a `git worktree`, which needs
-          # real history rather than a shallow clone.
-          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -1886,10 +1890,25 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      # Primes ~/.m2 with every plugin and third-party artifact, so the
-      # per-fault builds inside the scratch worktree can run offline.
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       # Cheap, offline, and it runs here rather than only at deploy time: the
       # post-deploy canary's verifier is the thing that decides whether a
@@ -1911,7 +1930,17 @@ jobs:
       - name: Every substitution must be declared
         run: ./tools/ci/agent-e2e/check-seam.sh
 
-      - name: Every fault must break its test
+      # Offline, no build: the verdict reader must tell a pass, a failure, an
+      # error and a missing method apart before its verdicts are trusted.
+      - name: Prove the fault-catalogue runner discriminates
+        run: ./tools/ci/agent-e2e/run-fault-catalogue.sh selftest
+
+      # One Maven invocation for the whole catalogue. Maven may reach the
+      # network: the restored artifacts cover this project's modules, not
+      # every third-party plugin and dependency.
+      - name: Every fault must break its scenario
+        env:
+          MVN_OFFLINE: ""
         run: ./tools/ci/agent-e2e/run-fault-catalogue.sh
 
   test:

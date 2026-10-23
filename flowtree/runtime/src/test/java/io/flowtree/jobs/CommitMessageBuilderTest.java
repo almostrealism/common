@@ -87,7 +87,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     public void resolveReturnsTrimmedAgentMessageWhenCommitTxtPresent() throws IOException {
         writeCommitTxt("  Fix bug X\n  ");
         CodingAgentJob job = job("do the work");
-        String msg = CommitMessageBuilder.resolve(job);
+        String msg = job.commitMessageBuilder().resolve(job);
         assertEquals("Fix bug X", msg);
         assertEquals(CommitMessageBuilder.SOURCE_AGENT, job.getCommitMessageSource());
     }
@@ -97,8 +97,8 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     public void resolveDoesNotOverwriteExistingSource() throws IOException {
         writeCommitTxt("Fix bug Y");
         CodingAgentJob job = job("do the work");
-        job.setCommitMessageSource(CommitMessageRule.SOURCE_RECOVERED);
-        String msg = CommitMessageBuilder.resolve(job);
+        job.commitMessageBuilder().setSource(CommitMessageRule.SOURCE_RECOVERED);
+        String msg = job.commitMessageBuilder().resolve(job);
         assertEquals("Fix bug Y", msg);
         assertEquals(CommitMessageRule.SOURCE_RECOVERED, job.getCommitMessageSource());
     }
@@ -107,7 +107,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void resolveFallsBackToPromptWhenCommitTxtMissing() {
         CodingAgentJob job = job("do the work");
-        String msg = CommitMessageBuilder.resolve(job);
+        String msg = job.commitMessageBuilder().resolve(job);
         assertNotNull(msg);
         assertTrue("Fallback must start with 'Claude Code:'", msg.startsWith("Claude Code:"));
         assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
@@ -118,7 +118,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     public void resolveFallsBackWhenCommitTxtIsBlank() throws IOException {
         writeCommitTxt("   \n\t");
         CodingAgentJob job = job("do the work");
-        String msg = CommitMessageBuilder.resolve(job);
+        String msg = job.commitMessageBuilder().resolve(job);
         assertTrue(msg.startsWith("Claude Code:"));
         assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
     }
@@ -127,7 +127,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void fallbackSummaryUnderLimitIsVerbatim() {
         CodingAgentJob job = job("short prompt");
-        String msg = CommitMessageBuilder.buildFallbackMessage(job);
+        String msg = job.commitMessageBuilder().buildFallbackMessage(job);
         assertTrue("Subject line should include the full short prompt",
                 msg.startsWith("Claude Code: short prompt"));
     }
@@ -137,7 +137,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     public void fallbackSummaryOver72CharsIsTruncatedWithEllipsis() {
         String longPrompt = "a".repeat(120);
         CodingAgentJob job = job(longPrompt);
-        String msg = CommitMessageBuilder.buildFallbackMessage(job);
+        String msg = job.commitMessageBuilder().buildFallbackMessage(job);
         String firstLine = msg.split("\n", 2)[0];
         // "Claude Code: " (13 chars) + first 69 chars + "..." = 13 + 69 + 3 = 85
         assertEquals("Claude Code: " + "a".repeat(69) + "...", firstLine);
@@ -147,7 +147,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void fallbackBodyIncludesFullPromptAndExitCode() {
         CodingAgentJob job = job("do the work please");
-        String msg = CommitMessageBuilder.buildFallbackMessage(job);
+        String msg = job.commitMessageBuilder().buildFallbackMessage(job);
         assertTrue("Body must echo the full prompt",
                 msg.contains("Prompt: do the work please"));
         assertTrue("Body must include the exit code line",
@@ -160,7 +160,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         writeCommitTxt("Fix bug X\n\nThe guard was inverted.\n\n"
                 + "Co-Authored-By: Claude <noreply@anthropic.com>\n");
         CodingAgentJob job = job("do the work");
-        assertEquals("Fix bug X\n\nThe guard was inverted.", CommitMessageBuilder.resolve(job));
+        assertEquals("Fix bug X\n\nThe guard was inverted.", job.commitMessageBuilder().resolve(job));
         assertEquals(CommitMessageBuilder.SOURCE_AGENT, job.getCommitMessageSource());
     }
 
@@ -171,7 +171,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
                 + "Body content written after the trailer.");
         CodingAgentJob job = job("do the work");
         try {
-            CommitMessageBuilder.resolve(job);
+            job.commitMessageBuilder().resolve(job);
             fail("Expected an IllegalStateException for unremovable author attribution");
         } catch (IllegalStateException e) {
             assertTrue("Failure must name the offending content",
@@ -223,7 +223,7 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     public void fallbackBodyOmitsSessionLineWhenSessionIdIsNull() {
         CodingAgentJob job = job("do the work");
         assertNull("Pre-condition: sessionId starts null", job.getSessionId());
-        String msg = CommitMessageBuilder.buildFallbackMessage(job);
+        String msg = job.commitMessageBuilder().buildFallbackMessage(job);
         assertTrue("No Session: line when sessionId is null",
                 !msg.contains("\nSession: "));
     }
