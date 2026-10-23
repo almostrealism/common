@@ -231,6 +231,11 @@ public class CLOperator extends HardwareOperator {
 	 * memory is a {@link CLMemory}. Each is resolved once, has its host read cache invalidated
 	 * (the kernel may write it), and supplies the {@code cl_mem} handle bound to the kernel.</p>
 	 *
+	 * <p>Known limitation, tracked separately: {@link CLNativeComputeContext}
+	 * ({@link io.almostrealism.compute.ComputeRequirement#C}) writes CL buffers from generated JNI
+	 * code without invalidating their host read caches here, so a buffer written only by that
+	 * path can still serve a stale host snapshot until some later kernel takes it as an argument.</p>
+	 *
 	 * @param args      the arguments to pass to the kernel (MemoryData objects)
 	 * @param dependsOn an event this dispatch must be ordered after on the device, or null
 	 * @return the dispatch's completion semaphore
@@ -253,7 +258,6 @@ public class CLOperator extends HardwareOperator {
 		MemoryData data[] = prepareArguments(argCount, args);
 
 		// Invalidate the host read caches of the argument buffers: this kernel may write them.
-		// TODO(review): CLNativeComputeContext (ComputeRequirement.C) writes CL buffers from generated JNI code and never invalidates their host caches
 		CLMemory mems[] = new CLMemory[argCount];
 		for (int i = 0; i < argCount; i++) {
 			mems[i] = (CLMemory) data[i].getMem();
