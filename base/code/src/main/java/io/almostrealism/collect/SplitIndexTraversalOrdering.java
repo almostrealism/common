@@ -38,7 +38,7 @@ import java.util.stream.IntStream;
  * <p>interleaved, so the index for logical position {@code i} occupies the two consecutive
  * elements {@code 2i} (high lane) and {@code 2i + 1} (low lane) of a collection of shape
  * {@code (n, 2)}. With {@link #BASE} {@code = 2^12}, every {@code int} index yields a high lane
- * whose magnitude is below {@code 2^19} and a low lane in {@code [0, 2^12)}, so each lane is
+ * whose magnitude is at most {@code 2^19} and a low lane in {@code [0, 2^12)}, so each lane is
  * exactly representable in FP32. {@link #indexOf(Expression)} reconstructs
  * {@code hi * BASE + lo} on integer expressions inside the kernel, so the value never passes back
  * through a floating-point representation and stays exact for the full {@code int} range.</p>
@@ -53,7 +53,7 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	/**
 	 * The radix that separates the high and low lanes. Any power of two in
 	 * {@code [2^12, 2^24]} keeps both lanes exact in FP32 for {@code int} indices;
-	 * {@code 2^12} leaves the widest margin on the high lane.
+	 * {@code 2^12} leaves the widest margin on the low lane.
 	 */
 	public static final int BASE = 1 << 12;
 

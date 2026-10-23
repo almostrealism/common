@@ -94,9 +94,9 @@ v  = hi * BASE + lo
 ```
 
 `BASE` is `SplitIndexTraversalOrdering.BASE = 2^12`. For any `int` index the high lane's
-magnitude is below `2^19` and the low lane lies in `[0, 2^12)`, so both lanes are exactly
+magnitude is at most `2^19` and the low lane lies in `[0, 2^12)`, so both lanes are exactly
 representable in FP32 (any power of two in `[2^12, 2^24]` would also work; `2^12` leaves the
-widest margin). Negative indices are supported: the high lane carries the sign. The ordering
+widest margin on the low lane). Negative indices are supported: the high lane carries the sign. The ordering
 owns both directions of the layout: `SplitIndexTraversalOrdering.encode(int...)` produces the
 lanes and `indexOf` decodes them; `PackedCollection.ofSplitIndices` stores `encode`'s output.
 
