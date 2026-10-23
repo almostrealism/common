@@ -132,6 +132,11 @@ class WithHeaderTest(unittest.TestCase):
         self.assertTrue(text.startswith(PlanFrontMatter.new(TODAY).render()))
         self.assertEqual(PlanFrontMatter.parse(text)[1], [])
 
+    def test_byte_order_mark_is_not_kept_after_added_header(self):
+        text, _ = with_header("\ufeff\ufeff# Plan\nBody\n", TODAY)
+        self.assertNotIn("\ufeff", text)
+        self.assertEqual(text, PlanFrontMatter.new(TODAY).render() + "\n# Plan\nBody\n")
+
 
 if __name__ == "__main__":
     unittest.main()

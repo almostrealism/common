@@ -132,10 +132,13 @@ def with_header(text: str, today: datetime.date) -> Tuple[str, List[str]]:
     """Return a plan's text with a valid header, and the problems preventing one.
 
     Text with no header gets a new ``proposed`` header dated today. Text that
-    already has one is returned unchanged with whatever problems it has.
+    already has one is returned unchanged with whatever problems it has. A
+    leading byte-order mark is dropped when a header is added, so it does not
+    end up in the middle of the file in front of the plan's first line.
     """
-    if not text.lstrip("\ufeff").startswith("---"):
-        return PlanFrontMatter.new(today).render() + "\n" + text, []
+    body = text.lstrip("\ufeff")
+    if not body.startswith("---"):
+        return PlanFrontMatter.new(today).render() + "\n" + body, []
     _, problems = PlanFrontMatter.parse(text)
     return text, problems
 
