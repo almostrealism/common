@@ -360,6 +360,47 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertLess(first, survey,
                         "the skeleton instruction must precede the survey")
 
+    def test_retrospective_surveys_open_prs_before_reporting_a_proposal_open(self):
+        """The retrospective must catch in-flight implementations of prior proposals.
+
+        RETRO-20261022 F5: the previous run reported two proposals "still open"
+        while a PR was already implementing them, because a master-only status
+        read cannot see an unmerged implementation. The prompt now tells the
+        round to list open PRs with `github_list_open_prs` and in-window
+        branches with `workstream_list`, resolve candidates with
+        `github_pr_find(state="all")`, and report such a proposal "in progress
+        (PR #N)" — all before the survey, in the history-reading step.
+        """
+        text = _read(os.path.join(_PROMPT_DIR, "retrospective.txt"))
+        self.assertIn("github_list_open_prs", text)
+        self.assertIn('github_pr_find(state="all")', text)
+        self.assertIn("in progress (PR #N)", text)
+        check = text.index("github_list_open_prs")
+        survey = text.index("## Survey the QA rounds")
+        self.assertLess(check, survey,
+                        "the in-flight check must precede the survey")
+
+    def test_flaky_hunt_bounds_its_runs_and_routes_follow_ups_in_scope(self):
+        """The flaky-hunt pilot must stay inside the test-execution limits and
+        not weaken the test that reveals a flake.
+
+        RETRO-20261022 F6: the round runs a small, named selection repeatedly on
+        one commit. The prompt must forbid a module/full-suite run and
+        AR_TEST_GROUP(S), require an explicit timeout, tell the round to repeat
+        a small selection rather than widen it, forbid editing existing test
+        methods, and route an out-of-scope cause to a follow-up via
+        `tracker_create_task` (the same routing `general-review.txt` uses, not
+        the removed `tracker_file_follow_up_task`).
+        """
+        text = _read(os.path.join(_PROMPT_DIR, "flaky-hunt.txt"))
+        self.assertIn("AR_TEST_GROUP", text)
+        self.assertIn("2400", text)
+        self.assertIn("tracker_create_task", text)
+        self.assertNotIn("tracker_file_follow_up_task", text)
+        lowered = text.lower()
+        self.assertIn("must not edit", lowered)
+        self.assertIn("do not widen", lowered)
+
 
 if __name__ == "__main__":
     unittest.main()

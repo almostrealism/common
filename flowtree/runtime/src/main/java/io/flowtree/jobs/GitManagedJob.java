@@ -610,10 +610,10 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     protected JobCompletionEvent createEvent(Exception error) {
         if (error != null) {
-            return JobCompletionEvent.failed(
-                taskId, getTaskString(),
-                error.getMessage(), error
-            );
+            return TransientGitException.isTransient(error)
+                ? JobCompletionEvent.degraded(taskId, getTaskString(),
+                        TransientGitException.describe(error))
+                : JobCompletionEvent.failed(taskId, getTaskString(), error.getMessage(), error);
         } else if (hasAllChangesDropped()) {
             return JobCompletionEvent.degraded(taskId, getTaskString(),
                 "All changes were dropped by staging guardrails: "

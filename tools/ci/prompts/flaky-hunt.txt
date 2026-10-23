@@ -1,0 +1,116 @@
+You are hunting for a flaky test: one whose pass/fail outcome varies across
+runs of the same commit, with no change to the code under test.
+
+This is a pilot round. Its job is not to run the suite broadly — the CI
+pipeline already does that — but to take ONE small, named slice of tests and
+run it enough times, on a single fixed commit, to catch an outcome that is not
+a function of the code. A flaky test is a defect in the test or in the
+production code it exercises, not an act of nature, and the deliverable is
+either a fix for the source of the nondeterminism or a precise follow-up task
+describing it.
+
+Branch: ${BRANCH}
+Base:   ${BASE_BRANCH}
+
+You work on the commit this branch already points at. Do not change the code
+under test to make a test pass or fail; you are measuring, not editing, until
+you have found something real.
+
+## Scope: one module, a small slice, held fixed
+
+Pick ONE module (for example `engine/ml`, `domain/graph`, or `engine/audio`)
+and, within it, a SMALL named set of tests to put under repeated execution.
+Say which module and which tests you picked, and why — a module whose tests
+touch concurrency, time, random seeds, floating-point reductions, shared
+caches, GPU kernels, ordering of a `Set`/`Map`, or external resources is where
+nondeterminism concentrates.
+
+This is a pilot, so keep the slice narrow and do not let it grow. Creating a
+new Maven module is out of scope.
+
+## How to look
+
+**1. Choose the slice by judgment.** Name at most five test classes, or a
+short list of specific methods within them. Prefer tests that already look
+suspect: ones with sleeps, timeouts, wall-clock assertions, tolerance windows,
+iteration over an unordered collection, or a dependence on seeding or GPU
+state.
+
+**2. Run the SAME named selection repeatedly.** Use the MCP test runner and
+name the exact classes or methods — never a module, a whole suite, a Surefire
+wildcard, or `AR_TEST_GROUP`/`AR_TEST_GROUPS` (that is CI-shard partitioning,
+not yours to use):
+
+    mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest","BarTest"]
+    mcp__ar-test-runner__start_test_run module:"<module>" test_methods:["FooTest#a","FooTest#b"]
+
+Give every run an explicit timeout of at most 2400 seconds. Repeat the SAME
+small selection several times (begin with five to ten runs) rather than
+widening it: a test that is flaky one run in ten shows itself by repetition of
+a narrow selection, not by running more tests once. If a slice looks stable
+after a reasonable number of repeats, say so and either pick a different small
+slice within the module or report the slice clean — do not widen a single run
+to cover the module.
+
+**3. Confirm the flakiness before believing it.** One failure in ten runs is a
+finding only once you can point at the run that failed and the run that passed
+on the same commit. Record the exact outcomes you saw. A test that fails for a
+real, deterministic reason on this commit is a different finding — a broken
+test, worth reporting — not a flaky one.
+
+## When you find a flaky test
+
+Diagnose the source of the nondeterminism and decide where it lives:
+
+- **Production or test-helper code (fix it here).** When the varying outcome
+  comes from the code under test or from a shared test fixture, helper, or
+  base class — an unseeded random source, iteration over a `HashMap`, a
+  resource not reset between tests, a race in the production code — fix it
+  there. A deterministic fix (seed the generator, order the collection, reset
+  the shared state, close the race) is the best outcome. Prove it by running
+  the same named selection again, repeatedly, and showing the outcome is now
+  stable.
+
+- **You must NOT edit the existing test methods.** The test that revealed the
+  flakiness is the specification, and this round runs with the test lock on.
+  Do not delete it, weaken an assertion, widen a tolerance, raise `@TestDepth`,
+  inflate a timeout, shrink a dimension, or add a skip/`Assume` guard to make
+  it stop varying — those hide the defect instead of fixing it, and
+  `test-integrity-check` rejects them. Adding a NEW test, or editing a shared
+  fixture/helper that is not itself an existing test method, is allowed when it
+  is what the fix needs.
+
+- **Otherwise, file a follow-up and do not force a fix.** When the cause is
+  outside this pilot's narrow scope, needs a larger refactor, or you cannot
+  pin it down with confidence, file a backlog task with `tracker_create_task`
+  (give it the project id, a clear title, and a description naming the module,
+  the test, the exact runs that disagreed, and what you believe the cause is).
+  Report its id in your summary rather than editing code you are unsure about.
+  This is the same follow-up routing the general review uses: fix what is
+  genuinely in scope here, route the rest to the backlog instead of widening
+  the round.
+
+## What counts as success
+
+In descending order:
+
+1. A demonstrated flaky test, a diagnosed cause, and a deterministic fix in
+   production or test-helper code, proven by repeated runs now stable.
+2. A demonstrated flaky test, honestly reported, with a follow-up task filed
+   because the fix is out of this pilot's scope.
+3. A careful account of the module and slice you examined, how many times you
+   ran it, and the outcomes you saw, concluding that the slice is stable on
+   this commit. An honestly empty-handed round is a valid outcome; do not
+   manufacture a finding, and do not widen the run to chase one.
+
+## Constraints
+
+- Named, bounded test selections only, each with an explicit timeout of at
+  most 2400 seconds. Never a module's whole suite, a wildcard, or
+  `AR_TEST_GROUP`/`AR_TEST_GROUPS`. Repeat a small selection; do not widen it.
+- Do not edit, weaken, disable, or skip any existing test method.
+- Do not report a flaky test you have not reproduced, and report the actual
+  run outcomes, not a claim that you verified it.
+- Keep the change focused on the one source of nondeterminism you found. If
+  you find several, fix or file the most serious and note the others in your
+  summary.

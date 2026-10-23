@@ -52,6 +52,7 @@ on:
           - "task-planning"
           - "quality-assurance"
           - "defect-hunt"
+          - "flaky"
           - "coverage"
           - "consolidation"
           - "performance"
@@ -68,6 +69,11 @@ on:
         type: boolean
       ignore_interval_defect_hunt:
         description: "Run the defect hunt even if its minimum interval has not passed (a round still in progress blocks it)"
+        required: false
+        default: false
+        type: boolean
+      ignore_interval_flaky:
+        description: "Run the flaky-test hunt even if its minimum interval has not passed (a round still in progress blocks it)"
         required: false
         default: false
         type: boolean
@@ -727,6 +733,192 @@ jobs:
               "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-open) echo "Skipped: a previous defect-hunt PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last defect hunt is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-full) echo "Skipped: more than ${{ env.MAX_OPEN_PRS }} PRs are open against master. Review some first." >> "$GITHUB_STEP_SUMMARY" ;;
+              backlog-query-failed) echo "Skipped: could not count the open PRs." >> "$GITHUB_STEP_SUMMARY" ;;
+              *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
+            esac
+          fi
+
+  # ── Quality Assurance — Flaky-Test Hunt (pilot) ──────────────────────
+  # Submits a FlowTree coding-agent job that takes one module and a small,
+  # named slice of its tests, runs that slice repeatedly on the current commit,
+  # and looks for a test whose pass/fail outcome varies with no change to the
+  # code under test. On a finding it fixes the source of the nondeterminism in
+  # production or test-helper code, or — when the cause is out of scope — files
+  # a follow-up task with tracker_create_task, the same routing the general
+  # review uses. An honestly empty-handed round is a valid outcome (hence no
+  # ENFORCE_CHANGES, matching the defect hunt).
+  #
+  # This is a PILOT (RETRO-20261022 F6), not a full cadence job: its interval
+  # is the longest of any round (7 days), its scope is deliberately one module
+  # at a time, and the prompt keeps it inside the repository's test-execution
+  # limits — named, bounded selections only, each with an explicit timeout,
+  # repeating a small selection rather than widening it, never a module or full
+  # suite or AR_TEST_GROUP. Because it is a pilot it does NOT raise the shared
+  # MAX_OPEN_PRS limit (see the note above the jobs): the limit stays sized to
+  # the full-cadence QA rounds until this round proves its yield.
+  #
+  # PROTECT_TEST_FILES stays "true": the test that reveals the flakiness is the
+  # specification, and the prompt treats "the only way to stop it varying is to
+  # edit that test" as a reason to fix the production/helper cause or file a
+  # follow-up, never to weaken the test. Like the defect hunt it pins the
+  # primary phase to claude/opus: telling a real flake from a deterministic
+  # failure, and finding its cause, is judgment rather than mechanism.
+  #
+  # Cadence and cleanup are shared with the other QA-style jobs through
+  # tools/ci/qa-cadence.sh and tools/ci/archive-stale-workstreams.sh: skip
+  # while a previous round's PR is still open, otherwise run at most once per
+  # MIN_INTERVAL_DAYS.
+  flaky-qa:
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.agent == 'all' ||
+      github.event.inputs.agent == 'flaky'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize so two merges landing together cannot both pass the gate.
+    concurrency:
+      group: flaky-qa
+      cancel-in-progress: false
+
+    env:
+      BRANCH_PREFIX: "qa/flaky-"
+      MIN_INTERVAL_DAYS: "7"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Ask before creating anything: a round the controller will refuse
+      # leaves an orphaned branch and workstream behind. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/automated-intake.sh
+          ./tools/ci/automated-intake.sh
+
+      - name: Decide whether to submit
+        id: decide
+        if: steps.intake.outputs.open == 'true'
+        env:
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          PR_GRACE_HOURS: "24"
+          CHECK_BACKLOG: "true"
+          IGNORE_INTERVAL: ${{ github.event.inputs.ignore_interval_flaky }}
+          FORCE: ${{ github.event.inputs.force }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./tools/ci/qa-cadence.sh
+          ./tools/ci/qa-cadence.sh
+
+      # Retire the rounds that came before this one. Safe here because the
+      # gate above has already established that none of them is in progress
+      # (no open PR, and no branch within PR_GRACE_HOURS still awaiting one):
+      # anything still registered has been merged, closed, or abandoned. A
+      # forced run skips that check, so it archives nothing — a round still
+      # being worked must not be retired beside the one it starts. Archiving
+      # is reversible.
+      - name: Archive previous rounds
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/archive-stale-workstreams.sh
+          ./tools/ci/archive-stale-workstreams.sh
+
+      - name: Create flaky-hunt branch
+        if: steps.decide.outputs.run == 'true'
+        id: branch
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          BRANCH_NAME="${BRANCH_PREFIX}${TIMESTAMP}"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
+      - name: Build flaky-hunt prompt
+        if: steps.decide.outputs.run == 'true'
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+        run: |
+          chmod +x ./tools/ci/prompts/build-flaky-hunt-prompt.sh
+          ./tools/ci/prompts/build-flaky-hunt-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      # The primary phase is pinned to claude/opus for the same reason the
+      # defect hunt pins it: telling a real flake from a deterministic failure
+      # and finding its cause is judgment, not mechanism. Runner, model and
+      # provider are set together — see the defect hunt's note above for what
+      # happens when only one of the three is overridden.
+      #
+      # PROTECT_TEST_FILES stays "true": the test that reveals the flakiness is
+      # the specification, so the prompt fixes the production/helper cause or
+      # files a follow-up rather than weakening the test.
+      - name: Submit flaky-hunt agent job
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          DESCRIPTION: "Pilot: hunt a flaky test and fix its nondeterminism or file a follow-up"
+          PROTECT_TEST_FILES: "true"
+          AUTO_CREATE_PR: "true"
+          PHASE_CONFIGS: '{"primary": {"runner": "claude", "model": "opus", "provider": "anthropic"}}'
+        run: |
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Quality Assurance — Flaky-Test Hunt (pilot)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.decide.outputs.run }}" = "true" ]; then
+            echo "Created \`${{ steps.branch.outputs.branch }}\` and submitted a flaky-hunt job" >> "$GITHUB_STEP_SUMMARY"
+            echo "with the primary phase pinned to claude/opus (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            case "${{ steps.decide.outputs.reason }}" in
+              "") echo "Skipped: the cadence gate did not run — see Automated intake above." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-open) echo "Skipped: a previous flaky-hunt PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
+              too-recent) echo "Skipped: the last flaky hunt is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
               backlog-full) echo "Skipped: more than ${{ env.MAX_OPEN_PRS }} PRs are open against master. Review some first." >> "$GITHUB_STEP_SUMMARY" ;;
@@ -1659,8 +1851,8 @@ jobs:
       # The branch prefixes the survey covers: every QA job's BRANCH_PREFIX
       # plus ci/qa- (the convention for pipeline-subject QA follow-ups). Passed
       # from this one place so the prompt never hard-codes a stale list; a
-      # future eighth QA job must be added here.
-      QA_PREFIXES: "qa/docs- qa/defect- qa/coverage- qa/consolidate- qa/performance- qa/pdsl- qa/retro- ci/qa-"
+      # future ninth QA job must be added here.
+      QA_PREFIXES: "qa/docs- qa/defect- qa/flaky- qa/coverage- qa/consolidate- qa/performance- qa/pdsl- qa/retro- ci/qa-"
 
     steps:
       - name: Checkout Code

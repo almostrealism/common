@@ -41,6 +41,16 @@ import java.util.Set;
  */
 class GitRepositorySetup implements ConsoleFeatures {
 
+    /**
+     * Attempts for a transient git sync step (fetch, pull, reset) before it is
+     * reported as an infrastructure failure. A non-fast-forward sync or a lock
+     * held by a concurrent process usually clears within a couple of tries.
+     */
+    private static final int SYNC_ATTEMPTS = 3;
+
+    /** Backoff unit between sync retries; the wait grows linearly per attempt. */
+    private static final long SYNC_BACKOFF_MILLIS = 500L;
+
     /** The job whose repository is being prepared. */
     private final GitManagedJob job;
 
@@ -151,10 +161,13 @@ class GitRepositorySetup implements ConsoleFeatures {
             }
         }
 
-        // 2. Fetch latest from origin.
+        // 2. Fetch latest from origin, retrying a transient failure before
+        //    reporting it as an infrastructure failure rather than crashing.
         log("Fetching latest from origin...");
-        if (job.executeGit("fetch", "origin") != 0) {
-            throw new RuntimeException("Failed to fetch from origin");
+        if (GitOperations.retryTransient(SYNC_ATTEMPTS, SYNC_BACKOFF_MILLIS,
+                () -> job.executeGit("fetch", "origin")) != 0) {
+            throw new TransientGitException(
+                    "Failed to fetch from origin after " + SYNC_ATTEMPTS + " attempts");
         }
 
         // 3. Checkout target branch.
@@ -169,12 +182,17 @@ class GitRepositorySetup implements ConsoleFeatures {
                 "refs/remotes/origin/" + targetBranch) == 0;
         if (remoteBranchExists) {
             log("Syncing with origin/" + targetBranch + "...");
-            int pullResult = job.executeGit("pull", "--ff-only", "origin", targetBranch);
+            // Both the fast-forward pull and the hard-reset fallback race with
+            // a target branch that advances during the job, so retry each with
+            // bounded backoff before failing the sync.
+            int pullResult = GitOperations.retryTransient(SYNC_ATTEMPTS, SYNC_BACKOFF_MILLIS,
+                    () -> job.executeGit("pull", "--ff-only", "origin", targetBranch));
             if (pullResult != 0) {
                 log("Fast-forward pull failed; resetting to origin/" + targetBranch);
-                int resetResult = job.executeGit("reset", "--hard", "origin/" + targetBranch);
+                int resetResult = GitOperations.retryTransient(SYNC_ATTEMPTS, SYNC_BACKOFF_MILLIS,
+                        () -> job.executeGit("reset", "--hard", "origin/" + targetBranch));
                 if (resetResult != 0) {
-                    throw new RuntimeException(
+                    throw new TransientGitException(
                             "Failed to sync with origin/" + targetBranch
                                     + " -- both pull and reset failed");
                 }
