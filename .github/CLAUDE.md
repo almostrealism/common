@@ -254,9 +254,7 @@ pins that mapping. The early submit jobs set the flag themselves;
 adds nothing over `test-integrity-check`'s Python step; the Python suites under
 `tools/` are not in them. In `master-agent-dispatch.yaml` the
 performance, consolidation, PDSL-migration and flaky-test-hunt rounds keep it
-on, because their premise is that existing tests stay the reference — the flaky
-hunt fixes the production or test-helper cause of a flake, never the test that
-revealed it.
+on, because their premise is that existing tests stay the reference.
 
 **A required test job's `failure` result must never go unresolved on
 `auto-resolve`'s attempt.** The `Check for incomplete test execution` step

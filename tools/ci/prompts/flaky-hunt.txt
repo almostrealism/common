@@ -38,8 +38,8 @@ state.
 
 **2. Run the SAME named selection repeatedly.** Use the MCP test runner and
 name the exact classes or methods — never a module, a whole suite, a Surefire
-wildcard, or `AR_TEST_GROUP`/`AR_TEST_GROUPS` (that is CI-shard partitioning,
-not yours to use):
+wildcard, or a CI shard selector (that is CI-shard partitioning, not yours to
+use):
 
     mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest","BarTest"]
     mcp__ar-test-runner__start_test_run module:"<module>" test_methods:["FooTest#a","FooTest#b"]
@@ -106,8 +106,8 @@ In descending order:
 ## Constraints
 
 - Named, bounded test selections only, each with an explicit timeout of at
-  most 2400 seconds. Never a module's whole suite, a wildcard, or
-  `AR_TEST_GROUP`/`AR_TEST_GROUPS`. Repeat a small selection; do not widen it.
+  most 2400 seconds. Never a module's whole suite, a wildcard, or a CI shard
+  selector. Repeat a small selection; do not widen it.
 - Do not edit, weaken, disable, or skip any existing test method.
 - Do not report a flaky test you have not reproduced, and report the actual
   run outcomes, not a claim that you verified it.

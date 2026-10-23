@@ -385,15 +385,15 @@ class PromptBuilderTests(unittest.TestCase):
         not weaken the test that reveals a flake.
 
         RETRO-20261022 F6: the round runs a small, named selection repeatedly on
-        one commit. The prompt must forbid a module/full-suite run and
-        AR_TEST_GROUP(S), require an explicit timeout, tell the round to repeat
+        one commit. The prompt must forbid a module/full-suite run and a CI
+        shard selector, require an explicit timeout, tell the round to repeat
         a small selection rather than widen it, forbid editing existing test
         methods, and route an out-of-scope cause to a follow-up via
         `tracker_create_task` (the same routing `general-review.txt` uses, not
         the removed `tracker_file_follow_up_task`).
         """
         text = _read(os.path.join(_PROMPT_DIR, "flaky-hunt.txt"))
-        self.assertIn("AR_TEST_GROUP", text)
+        self.assertIn("CI shard selector", text)
         self.assertIn("2400", text)
         self.assertIn("tracker_create_task", text)
         self.assertNotIn("tracker_file_follow_up_task", text)
