@@ -260,8 +260,9 @@ A reviewer can confirm the task is done when:
    ordered outputs here) is a materially larger change and risks overlapping [87b95b81].
 2. **What is the one correct default for `TraversableExpression.containsIndex`?** Membership against
    the shape size, delegation to a carried ordering, or the unique-non-zero-offset analysis the TODO
-   names — or a composition. This needs the implementer's judgement against the more than 20 types that implement or extend it;
-   the plan commits only to replacing the throw with a correct, interface-honouring default.
+   names — or a composition. This needs the implementer's judgement against the more than 20 types
+   that implement or extend it; the plan commits only to replacing the throw with a correct,
+   interface-honouring default.
 3. **Index precision on FP32/Metal.** The ordered tests here use tiny shapes, so float indices are
    exact. A production sparse matrix needs integer-exact indices ([2c0793a7]). Confirm the new
    tests stay within 2^24 so a float-index ordering is not silently validated at a scale it cannot
