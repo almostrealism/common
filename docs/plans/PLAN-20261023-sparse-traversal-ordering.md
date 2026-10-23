@@ -58,9 +58,29 @@ The orderings themselves:
 The pieces that refuse an ordered shape outright:
 
 - `TraversableExpression.containsIndex` throws `UnsupportedOperationException` by default (TODO:
-  exploit unique non-zero offset).
+  exploit unique non-zero offset). Not every type reaches that default:
+  - `CollectionExpression` overrides it with `Shape.super.containsIndex(index)`, and
+    `Shape.containsIndex` is `getShape().getOrder().containsIndex(index)`. So `CollectionVariable`
+    (which implements `CollectionExpression`) **already delegates membership to its ordering**. That is the
+    delegation scope item 2 proposes. But it dereferences `getOrder()` without a null check, so it
+    throws a `NullPointerException` for an unordered shape. Today the generated-code membership
+    gate (scope item 1) could only call it when an ordering is present.
+  - `MemoryDataAdapter` (and so `PackedCollection`) overrides it only to call
+    `MemoryData.super.containsIndex`, which is the throwing `TraversableExpression` default.
+  - Other overrides (`TraversableExpressionComputation`, `CollectionProducerComputationBase`,
+    `InputStub`, `ArithmeticSequenceExpression`, `ConditionalExpressionBase`) either compute
+    membership themselves or forward to a supertype default.
+  - Apart from overrides that forward to another `containsIndex` (the ones above, plus
+    `ConditionalIndexExpression.containsIndex(int)`), no production code calls
+    `IndexSet.containsIndex` today. The other `containsIndex(...)` calls in `base/code`'s
+    `kernel`, `sequence`, `expression` and `scope` packages go to unrelated methods,
+    `containsIndex(Index)` on expressions and `IndexValues.containsIndex(String)`. So the item 1
+    gate would be the method's first real consumer.
 - `ReshapeProducer.containsIndex` throws `UnsupportedOperationException` when
-  `shape.getOrder() != null`.
+  `shape.getOrder() != null`. When the shape is unordered and the wrapped producer is a
+  `TraversableExpression`, it returns `producer.getValueAt(index)`: the element's *value*, through
+  a raw cast, not a membership test. Item 4 changes this method, so the implementer should decide
+  whether that branch is intended ("non-zero means present") or a defect.
 - `SlicingFeatures.pad(int[] axes, int depth, ...)` throws `UnsupportedOperationException` when
   `shape.getOrder() != null`.
 - `CollectionProducerComputationBase`'s constructor sets `this.shape = outputShape.withOrder(null)`,
@@ -124,7 +144,11 @@ In scope — everything needed for an ordered collection to be a correct *input*
    code. The natural definitions are: when the expression carries an ordering, delegate to the
    ordering's `containsIndex`; otherwise fall back to a bounds test against the shape's size (and/or
    the unique-non-zero-offset analysis the existing TODO names). Decide the single correct default
-   and override where a type knows better.
+   and override where a type knows better. The ordering-delegation half already exists for every
+   `CollectionExpression` through `Shape.containsIndex`. What is missing there is the
+   unordered-shape fallback, because `Shape.containsIndex` throws a `NullPointerException` when
+   `getOrder()` is `null`. `MemoryData`/`PackedCollection` still reach the throwing default (see
+   Current state).
 3. **Symbolic `indexOf` for the sparse orderings.**
    - `ExplicitIndexTraversalOrdering` (direct table): confirm it already produces a symbolic
      `indexOf`, and make its backing index collection reach the kernel as an argument (the core
@@ -262,7 +286,14 @@ A reviewer can confirm the task is done when:
    the shape size, delegation to a carried ordering, or the unique-non-zero-offset analysis the TODO
    names — or a composition. This needs the implementer's judgement against the more than 20 types
    that implement or extend it; the plan commits only to replacing the throw with a correct,
-   interface-honouring default.
+   interface-honouring default. Two facts narrow the choice. First, `Shape.containsIndex` already
+   delegates to the ordering for `CollectionExpression` types, so the new default must at least
+   agree with it, and `Shape.containsIndex` itself needs a null-order fallback. Second, the
+   existing overrides do not agree on what "contains" means. `TraversalOrdering` means "has a
+   physical slot" (`indexOf >= 0`). `ArithmeticSequenceExpression` documents "the index holds a
+   non-zero value". `ReshapeProducer` returns the element's value. For the item 1 gate both readings
+   give the same answer (an absent element is `0`). They differ for a present element whose stored
+   value is `0`, so the default's Javadoc should pick one meaning and state it.
 3. **Index precision on FP32/Metal.** The ordered tests here use tiny shapes, so float indices are
    exact. A production sparse matrix needs integer-exact indices ([2c0793a7]). Confirm the new
    tests stay within 2^24 so a float-index ordering is not silently validated at a scale it cannot
