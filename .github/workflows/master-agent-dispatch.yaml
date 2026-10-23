@@ -752,7 +752,7 @@ jobs:
   # ENFORCE_CHANGES, matching the defect hunt).
   #
   # This is a PILOT (RETRO-20261022 F6), not a full cadence job: its interval
-  # is the longest of any round (7 days), its scope is deliberately one module
+  # is tied for the longest of any round (7 days), its scope is deliberately one module
   # at a time, and the prompt keeps it inside the repository's test-execution
   # limits — named, bounded selections only, each with an explicit timeout,
   # repeating a small selection rather than widening it, never a module or full

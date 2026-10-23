@@ -1064,8 +1064,8 @@ commit, and looks for a test whose pass/fail outcome varies with no change to
 the code under test; on a finding it fixes the source of the nondeterminism in
 production or test-helper code, or — when the cause is out of scope — files a
 follow-up with `tracker_create_task`, the same routing the general review uses.
-Three things set it apart. Its `MIN_INTERVAL_DAYS` is 7, the longest of any
-round, because it is a pilot rather than a full cadence job — and for the same
+Three things set it apart. Its `MIN_INTERVAL_DAYS` is 7, tied with `qa-retrospective`
+for the longest of any round, because it is a pilot rather than a full cadence job — and for the same
 reason it does **not** raise `MAX_OPEN_PRS` (see "One open-PR limit" above). Its
 prompt keeps it inside the repository's test-execution limits: named, bounded
 selections through the MCP test runner only, each with an explicit timeout,
