@@ -21,11 +21,14 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Node;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Comprehensive metadata and analysis results for an audio sample.
@@ -83,19 +86,43 @@ public class WaveDetails implements CodeFeatures, Node {
 	/** FFT frequency data, shaped [channels][frames][bins]. */
 	private PackedCollection freqData;
 
-	/** Sample rate used during feature extraction. */
+	/**
+	 * Sample rate used during feature extraction, for the legacy unkeyed slot.
+	 * See {@link #getFeatureData()} for how the legacy slot relates to the
+	 * model-keyed feature sets.
+	 */
 	private double featureSampleRate;
-	/** Number of channels in the feature data. */
+	/** Number of channels in the legacy unkeyed feature data. */
 	private int featureChannelCount;
-	/** Number of feature bins per feature frame. */
+	/** Number of feature bins per feature frame in the legacy unkeyed slot. */
 	private int featureBinCount;
-	/** Number of feature frames. */
+	/** Number of feature frames in the legacy unkeyed slot. */
 	private int featureFrameCount;
-	/** Extracted feature data for similarity comparison, shaped [frames][bins]. */
+	/** Legacy unkeyed feature data, shaped [frames][bins], with no model provenance. */
 	private PackedCollection featureData;
 
-	/** Similarity scores to other samples, keyed by their identifiers. */
+	/** Legacy unkeyed similarity scores to other samples, keyed by their identifiers. */
 	private Map<String, Double> similarities;
+
+	/**
+	 * Feature analyses keyed by the identifier of the model that produced them.
+	 * This is the provenance-aware storage: features from a new model sit here
+	 * beside features from an old one, each carrying the similarities derived
+	 * from it, so switching models neither corrupts nor is blocked by existing
+	 * data. The {@link #featureData}/{@code feature*}/{@link #similarities}
+	 * fields above remain as the <em>legacy unkeyed slot</em> — the data an
+	 * older application wrote with no provenance.
+	 */
+	private final Map<String, WaveFeatures> featureSets = new HashMap<>();
+
+	/**
+	 * Identifier of the model whose features the no-argument accessors read, set
+	 * by the library when it resolves or computes this item for the configured
+	 * provider. When {@code null}, the no-argument accessors read the single
+	 * keyed feature set if exactly one is present, and otherwise fall back to the
+	 * legacy unkeyed slot.
+	 */
+	private String activeModelIdentifier;
 
 	/**
 	 * Persistent sort rank for ordering this sample within the library tree.
@@ -371,12 +398,36 @@ public class WaveDetails implements CodeFeatures, Node {
 	}
 
 	/**
-	 * Returns the sample rate used during feature extraction.
+	 * Returns the feature set the no-argument feature accessors read, or
+	 * {@code null} to indicate they should read the legacy unkeyed slot.
+	 *
+	 * <p>Resolution: the active model's feature set when an active model
+	 * identifier is set; otherwise the single keyed set when exactly one is
+	 * present; otherwise {@code null} (legacy slot). An active identifier is only
+	 * ever set to a model whose feature set is present, so this never mixes one
+	 * model's feature data with another's.</p>
+	 *
+	 * @return the resolved feature set, or {@code null} for the legacy slot
+	 */
+	private WaveFeatures view() {
+		if (activeModelIdentifier != null) {
+			return featureSets.get(activeModelIdentifier);
+		}
+		if (featureSets.size() == 1) {
+			return featureSets.values().iterator().next();
+		}
+		return null;
+	}
+
+	/**
+	 * Returns the sample rate used during feature extraction, for the active
+	 * model's features (falling back to the legacy unkeyed slot).
 	 *
 	 * @return the feature extraction sample rate
 	 */
 	public double getFeatureSampleRate() {
-		return featureSampleRate;
+		WaveFeatures f = view();
+		return f != null ? f.getFeatureSampleRate() : featureSampleRate;
 	}
 
 	/**
@@ -389,12 +440,14 @@ public class WaveDetails implements CodeFeatures, Node {
 	}
 
 	/**
-	 * Returns the number of channels in the feature data.
+	 * Returns the number of channels in the active model's feature data
+	 * (falling back to the legacy unkeyed slot).
 	 *
 	 * @return the feature channel count
 	 */
 	public int getFeatureChannelCount() {
-		return featureChannelCount;
+		WaveFeatures f = view();
+		return f != null ? f.getFeatureChannelCount() : featureChannelCount;
 	}
 
 	/**
@@ -407,12 +460,14 @@ public class WaveDetails implements CodeFeatures, Node {
 	}
 
 	/**
-	 * Returns the number of feature bins per feature frame.
+	 * Returns the number of feature bins per feature frame for the active
+	 * model's features (falling back to the legacy unkeyed slot).
 	 *
 	 * @return the feature bin count
 	 */
 	public int getFeatureBinCount() {
-		return featureBinCount;
+		WaveFeatures f = view();
+		return f != null ? f.getFeatureBinCount() : featureBinCount;
 	}
 
 	/**
@@ -425,12 +480,14 @@ public class WaveDetails implements CodeFeatures, Node {
 	}
 
 	/**
-	 * Returns the number of feature frames.
+	 * Returns the number of feature frames for the active model's features
+	 * (falling back to the legacy unkeyed slot).
 	 *
 	 * @return the feature frame count
 	 */
 	public int getFeatureFrameCount() {
-		return featureFrameCount;
+		WaveFeatures f = view();
+		return f != null ? f.getFeatureFrameCount() : featureFrameCount;
 	}
 
 	/**
@@ -455,17 +512,33 @@ public class WaveDetails implements CodeFeatures, Node {
 	 * {@code WaveDetailsFactory} first synthesizes audio via IFFT before
 	 * encoding.</p>
 	 *
+	 * <h2>Model provenance</h2>
+	 * <p>Feature data is stored keyed by the identifier of the model that
+	 * produced it (see {@link WaveFeatures}), so features from several models can
+	 * coexist. This no-argument accessor returns the <em>active</em> model's
+	 * feature data — the model the library last resolved or computed this item
+	 * for. When no active model is set it returns the single keyed set if exactly
+	 * one is present, and otherwise the legacy unkeyed slot. The legacy slot is
+	 * reachable directly through {@link #getLegacyFeatureData()}.</p>
+	 *
 	 * @return the latent feature tensor, or null if not yet computed
 	 * @see #getFeatureData(boolean)
+	 * @see #getFeatures(String)
 	 */
 	public PackedCollection getFeatureData() {
-		return featureData;
+		WaveFeatures f = view();
+		return f != null ? f.getFeatureData() : featureData;
 	}
 
 	/**
-	 * Sets the autoencoder latent features for this audio clip.
+	 * Sets the latent features in the legacy unkeyed slot.
 	 *
-	 * @param featureData the autoencoder latent features
+	 * <p>This writes the unkeyed slot with no model provenance. Provenance-aware
+	 * callers store a {@link WaveFeatures} via {@link #putFeatures(WaveFeatures)}
+	 * instead; this setter is retained for the persistence layer (which decodes
+	 * the legacy proto fields) and for callers that predate provenance.</p>
+	 *
+	 * @param featureData the latent features
 	 */
 	public void setFeatureData(PackedCollection featureData) {
 		this.featureData = featureData;
@@ -481,10 +554,11 @@ public class WaveDetails implements CodeFeatures, Node {
 	 * @return the feature tensor, or null if not yet computed
 	 */
 	public PackedCollection getFeatureData(boolean transpose) {
+		PackedCollection data = getFeatureData();
 		if (transpose) {
-			return featureData.transpose();
+			return data.transpose();
 		} else {
-			return featureData;
+			return data;
 		}
 	}
 
@@ -510,21 +584,238 @@ public class WaveDetails implements CodeFeatures, Node {
 	}
 
 	/**
-	 * Returns the similarity scores to other samples, keyed by their identifiers.
+	 * Returns the similarity scores to other samples for the active model's
+	 * features, keyed by their identifiers.
+	 *
+	 * <p>Resolves the same way as {@link #getFeatureData()}: the active model's
+	 * similarity map, else the single keyed set's map, else the legacy unkeyed
+	 * map. Because the map returned is the one derived from a single model's
+	 * features, a similarity is never computed or stored across models.</p>
 	 *
 	 * @return a map from sample identifier to similarity score
 	 */
 	public Map<String, Double> getSimilarities() {
-		return similarities;
+		WaveFeatures f = view();
+		return f != null ? f.getSimilarities() : similarities;
 	}
 
 	/**
-	 * Sets the similarity scores to other samples.
+	 * Sets the similarity scores in the legacy unkeyed slot.
 	 *
 	 * @param similarities a map from sample identifier to similarity score
 	 */
 	public void setSimilarities(Map<String, Double> similarities) {
 		this.similarities = similarities;
+	}
+
+	/**
+	 * Returns the feature analysis produced by the given model, or {@code null}
+	 * if this item has no features for that model.
+	 *
+	 * @param modelIdentifier the identifier of the producing model
+	 * @return the model's feature set, or {@code null}
+	 */
+	public WaveFeatures getFeatures(String modelIdentifier) {
+		return featureSets.get(modelIdentifier);
+	}
+
+	/**
+	 * Stores a model's feature analysis, keyed by its model identifier. Any
+	 * existing feature set for the same model is replaced.
+	 *
+	 * @param features the feature set to store
+	 */
+	public void putFeatures(WaveFeatures features) {
+		featureSets.put(features.getModelIdentifier(), features);
+	}
+
+	/**
+	 * Returns the identifiers of every model that has produced feature data for
+	 * this item. The legacy unkeyed slot is not included.
+	 *
+	 * @return the set of model identifiers present
+	 */
+	public Set<String> getFeatureModelIdentifiers() {
+		return new HashSet<>(featureSets.keySet());
+	}
+
+	/**
+	 * Returns the identifier of the active model — the one the no-argument
+	 * feature accessors read — or {@code null} if none has been set.
+	 *
+	 * @return the active model identifier, or {@code null}
+	 */
+	public String getActiveModelIdentifier() {
+		return activeModelIdentifier;
+	}
+
+	/**
+	 * Sets the active model identifier. The no-argument feature accessors then
+	 * read that model's features. It should only be set to a model whose features
+	 * are present (see {@link #getFeatures(String)}); when set to a model whose
+	 * features are absent, {@link #view()} resolves to {@code null} and the
+	 * no-argument accessors fall back to the legacy unkeyed slot — never to
+	 * another keyed model's data — so one model's features are never mistaken for
+	 * another's.
+	 *
+	 * @param activeModelIdentifier the model identifier to activate, or {@code null}
+	 */
+	public void setActiveModelIdentifier(String activeModelIdentifier) {
+		this.activeModelIdentifier = activeModelIdentifier;
+	}
+
+	/**
+	 * Returns the legacy unkeyed feature data exactly as stored, bypassing the
+	 * active-model resolution of {@link #getFeatureData()}. Used by the
+	 * persistence layer, which preserves the legacy proto fields verbatim, and
+	 * by the other-model cleanup accounting.
+	 *
+	 * @return the legacy unkeyed feature data, or {@code null}
+	 */
+	public PackedCollection getLegacyFeatureData() { return featureData; }
+
+	/**
+	 * Returns the legacy unkeyed feature sample rate, bypassing active-model
+	 * resolution.
+	 *
+	 * @return the legacy feature sample rate
+	 */
+	public double getLegacyFeatureSampleRate() { return featureSampleRate; }
+
+	/**
+	 * Returns the legacy unkeyed feature channel count, bypassing active-model
+	 * resolution.
+	 *
+	 * @return the legacy feature channel count
+	 */
+	public int getLegacyFeatureChannelCount() { return featureChannelCount; }
+
+	/**
+	 * Returns the legacy unkeyed feature bin count, bypassing active-model
+	 * resolution.
+	 *
+	 * @return the legacy feature bin count
+	 */
+	public int getLegacyFeatureBinCount() { return featureBinCount; }
+
+	/**
+	 * Returns the legacy unkeyed feature frame count, bypassing active-model
+	 * resolution.
+	 *
+	 * @return the legacy feature frame count
+	 */
+	public int getLegacyFeatureFrameCount() { return featureFrameCount; }
+
+	/**
+	 * Returns the legacy unkeyed similarity map exactly as stored, bypassing
+	 * active-model resolution.
+	 *
+	 * @return the legacy unkeyed similarity map
+	 */
+	public Map<String, Double> getLegacySimilarities() { return similarities; }
+
+	/**
+	 * Returns whether this item holds any feature data belonging to a model
+	 * other than the given one — that is, a keyed feature set for a different
+	 * model, or non-empty legacy unkeyed data.
+	 *
+	 * @param keepModelIdentifier the identifier of the model to keep
+	 * @return true if other-model data is present
+	 */
+	public boolean hasOtherModelFeatures(String keepModelIdentifier) {
+		if (featureData != null) return true;
+		for (String id : featureSets.keySet()) {
+			if (!id.equals(keepModelIdentifier)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Returns the number of bytes of feature data this item holds for models
+	 * other than the given one, including the legacy unkeyed slot.
+	 *
+	 * @param keepModelIdentifier the identifier of the model to keep
+	 * @return the total other-model feature data size in bytes
+	 */
+	public long otherModelByteLength(String keepModelIdentifier) {
+		long total = featureData == null ? 0L
+				: (long) featureData.getMemLength() * Double.BYTES;
+		for (Map.Entry<String, WaveFeatures> e : featureSets.entrySet()) {
+			if (!e.getKey().equals(keepModelIdentifier)) {
+				total += e.getValue().byteLength();
+			}
+		}
+		return total;
+	}
+
+	/**
+	 * Removes every feature set belonging to a model other than the given one
+	 * and clears the legacy unkeyed slot, leaving only the kept model's data.
+	 *
+	 * <p>The discarded feature tensors are potentially GPU-resident, so their
+	 * native memory is {@linkplain WaveFeatures#destroy() released} immediately
+	 * rather than left for the garbage collector — the same deterministic release
+	 * {@link #releaseData()} performs for the raw samples. This is what makes the
+	 * bytes {@link org.almostrealism.audio.WaveFeatureCleanup} reports as reclaimed
+	 * actually free rather than merely unreferenced. Because this permanently
+	 * deletes the discarded data, do not call it while anything still reads the
+	 * other-model or legacy feature tensors.</p>
+	 *
+	 * @param keepModelIdentifier the identifier of the model to keep
+	 */
+	public void removeOtherModelFeatures(String keepModelIdentifier) {
+		featureSets.values().removeIf(features -> {
+			if (features.getModelIdentifier().equals(keepModelIdentifier)) return false;
+			features.destroy();
+			return true;
+		});
+
+		if (featureData != null) featureData.destroy();
+		featureData = null;
+		featureSampleRate = 0;
+		featureChannelCount = 0;
+		featureBinCount = 0;
+		featureFrameCount = 0;
+		similarities = new HashMap<>();
+
+		if (activeModelIdentifier != null && !featureSets.containsKey(activeModelIdentifier)) {
+			activeModelIdentifier = null;
+		}
+	}
+
+	/**
+	 * Computes a mean-pooled embedding vector from the active model's feature
+	 * data, averaging across feature frames. Returns {@code null} when there is
+	 * no feature data to pool.
+	 *
+	 * <p>This reads this item's own feature data, so it is a method of
+	 * {@link WaveDetails} rather than of a caller that would otherwise reach in
+	 * for the feature tensor. The embedding uses only the active model's
+	 * features, so an index built from these embeddings never mixes models.</p>
+	 *
+	 * @return the mean-pooled embedding vector, or {@code null}
+	 */
+	public PackedCollection meanPooledEmbedding() {
+		PackedCollection featureData = getFeatureData();
+		if (featureData == null) return null;
+
+		int frames = featureData.getShape().length(0);
+		int bins = featureData.getShape().length(1);
+		if (frames == 0 || bins == 0) return null;
+
+		CollectionProducer sum = null;
+
+		for (int f = 0; f < frames; f++) {
+			if ((f + 1) * bins > featureData.getMemLength()) break;
+
+			CollectionProducer row = Ops.o().cp(
+					featureData.range(Ops.o().shape(bins), f * bins));
+			sum = sum == null ? row : sum.add(row);
+		}
+
+		if (sum == null) return null;
+
+		return sum.multiply(1.0 / frames).evaluate();
 	}
 
 	/**

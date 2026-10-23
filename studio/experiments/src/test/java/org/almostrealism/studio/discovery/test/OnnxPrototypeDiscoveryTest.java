@@ -147,7 +147,8 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 		long onnxMs = System.currentTimeMillis() - startOnnx;
 		log("Autoencoder loaded in " + onnxMs + " ms");
 
-		AutoEncoderFeatureProvider featureProvider = new AutoEncoderFeatureProvider(autoencoder);
+		AutoEncoderFeatureProvider featureProvider =
+				new AutoEncoderFeatureProvider(autoencoder, "onnx-autoencoder");
 
 		// Initialize store and library
 		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir);

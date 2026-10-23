@@ -30,16 +30,27 @@ public class AutoEncoderFeatureProvider implements WaveDataFeatureProvider, Code
 	/** The autoencoder used to encode audio into latent feature vectors. */
 	private final AutoEncoder autoencoder;
 
+	/** Identifier of the model this provider's features are attributed to. */
+	private final String modelIdentifier;
+
 	/**
 	 * Creates a feature provider backed by the given autoencoder.
 	 *
-	 * @param autoencoder the autoencoder to use for feature extraction
+	 * @param autoencoder     the autoencoder to use for feature extraction
+	 * @param modelIdentifier the identifier of the model that produced the
+	 *                        autoencoder (for example the model asset name the
+	 *                        application loaded); recorded as the provenance of
+	 *                        every feature set this provider computes
 	 */
-	public AutoEncoderFeatureProvider(AutoEncoder autoencoder) {
+	public AutoEncoderFeatureProvider(AutoEncoder autoencoder, String modelIdentifier) {
 		this.autoencoder = autoencoder;
+		this.modelIdentifier = modelIdentifier;
 	}
 
 	public AutoEncoder getAutoEncoder() { return autoencoder; }
+
+	@Override
+	public String getModelIdentifier() { return modelIdentifier; }
 
 	@Override
 	public PackedCollection computeFeatures(WaveData waveData) {
