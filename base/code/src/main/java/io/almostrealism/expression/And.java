@@ -107,6 +107,7 @@ public class And<T extends Number> extends BitwiseExpression<T> {
 			return left;
 		}
 
+		// TODO(review): when both operands may be negative (or right spans both signs), right's bound is not conservative
 		return right;
 	}
 

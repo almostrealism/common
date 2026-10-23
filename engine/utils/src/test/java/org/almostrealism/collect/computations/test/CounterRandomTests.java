@@ -178,6 +178,41 @@ public class CounterRandomTests extends TestSuiteBase {
 		counter.destroy();
 	}
 
+	/**
+	 * The signature, which keys the kernel cache, distinguishes the seed (compiled into the
+	 * kernel as a constant) and the variant, and is shared by computations that differ only
+	 * in the counter producer, since the counter is a kernel argument.
+	 */
+	@Test(timeout = 10000)
+	public void signatureDistinguishesSeedAndVariant() {
+		PackedCollection a = new PackedCollection(1);
+		PackedCollection b = new PackedCollection(1);
+
+		String uniform = counterRand(shape(64), SEED, p(a)).signature();
+		Assert.assertNotNull(uniform);
+		Assert.assertEquals(uniform, counterRand(shape(64), SEED, p(b)).signature());
+		Assert.assertNotEquals(uniform, counterRand(shape(64), SEED + 1, p(a)).signature());
+		Assert.assertNotEquals(uniform, counterRandn(shape(64), SEED, p(a)).signature());
+		Assert.assertNotEquals(uniform, counterRand(shape(128), SEED, p(a)).signature());
+
+		a.destroy();
+		b.destroy();
+	}
+
+	/**
+	 * A negative counter takes part in the key through its two's complement low 32 bits,
+	 * exactly as the reference treats it, so the output is still well defined.
+	 */
+	@Test(timeout = 120000)
+	public void negativeCounterWraps() {
+		int size = 1024;
+		double[] u = generate(false, SEED, -3, size);
+
+		for (int i = 0; i < size; i++) {
+			Assert.assertEquals("uniform " + i, uniform(SEED, -3, i), u[i], 0.0);
+		}
+	}
+
 	/** Uniform values lie in [0, 1) and have mean 1/2 and variance 1/12. */
 	@Test(timeout = 120000)
 	public void uniformMoments() {

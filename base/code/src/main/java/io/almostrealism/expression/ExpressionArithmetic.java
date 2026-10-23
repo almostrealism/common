@@ -316,13 +316,20 @@ public interface ExpressionArithmetic<T> {
 	 * unsigned 32-bit arithmetic is represented in the expression tree. The expression layer
 	 * has no unsigned type, and signed 32-bit overflow is undefined in the generated C code, so
 	 * 32-bit wraparound is carried out in {@code long} and made explicit with the mask
-	 * {@code 0xFFFFFFFF}; the result lies in {@code [0, 2^32)}.
+	 * {@code 0xFFFFFFFF}; the result lies in {@code [0, 2^32)}. A floating-point expression
+	 * must be converted explicitly (for example with {@link Expression#toLong()}) first, so
+	 * that truncation is never applied silently.
 	 *
 	 * @return an expression representing {@code ((long) this) & 0xFFFFFFFF}
 	 * @throws UnsupportedOperationException if this expression is not integer typed
 	 */
 	public default Expression<?> toUnsigned32() {
-		// TODO(review): @throws is inaccurate for FP input; toLong(true) casts FP to long, so FP is truncated, not rejected (pcgHash inherits this)
+		if (!self().isIntegral()) {
+			throw new UnsupportedOperationException(
+					"Unsigned 32-bit wraparound requires an integer operand, not " +
+							self().getType().getSimpleName());
+		}
+
 		return self().toLong(true).bitwiseAnd(new LongConstant(0xFFFFFFFFL));
 	}
 

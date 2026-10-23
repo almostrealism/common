@@ -132,6 +132,109 @@ public class BitwiseExpressionTests extends TestSuiteBase implements ExpressionF
 				.add(new LongConstant(2891336453L)).longValue().getAsLong());
 	}
 
+	/**
+	 * Substituting a constant for the index in a {@code Long} product or sum folds it
+	 * exactly, even beyond 2^53 where a double accumulator would round.
+	 */
+	@Test(timeout = 10000)
+	public void exactLongFoldingWithIndex() {
+		KernelIndex index = kernel();
+		long a = 4294967291L;
+		long b = 747796405L;
+
+		Expression<?> product = index.toLong(true).multiply(new LongConstant(b));
+		Assert.assertEquals(a * b, product.withIndex(index, new LongConstant(a)).longValue().getAsLong());
+
+		long big = (1L << 53) + 1;
+		Expression<?> sum = index.toLong(true).add(new LongConstant(big));
+		Assert.assertEquals(big + 2, sum.withIndex(index, new LongConstant(2)).longValue().getAsLong());
+	}
+
+	/**
+	 * A {@link LongConstant} outside the {@code int} range reports its value as a double and
+	 * as both of its bounds, so it is recognized as a constant and as negative or not.
+	 */
+	@Test(timeout = 10000)
+	public void longConstantOutsideIntRange() {
+		long large = 3L << 40;
+		LongConstant positive = new LongConstant(large);
+		Assert.assertEquals((double) large, positive.doubleValue().getAsDouble(), 0.0);
+		Assert.assertEquals(large, positive.lowerBound(null).getAsLong());
+		Assert.assertEquals(large, positive.upperBound(null).getAsLong());
+		Assert.assertFalse(positive.isPossiblyNegative());
+
+		LongConstant negative = new LongConstant(-large);
+		Assert.assertEquals(-large, negative.lowerBound(null).getAsLong());
+		Assert.assertTrue(negative.isPossiblyNegative());
+	}
+
+	/**
+	 * Bounds of the bitwise operators are conservative: AND is bounded by the smaller
+	 * non-negative operand and is non-negative when either operand is; XOR is bounded by the
+	 * all-ones value covering the larger operand; a right shift divides the bound.
+	 */
+	@Test(timeout = 10000)
+	public void bounds() {
+		Expression<?> wide = kernel().toUnsigned32();
+		Expression<?> byte8 = kernel().bitwiseAnd(e(0xFF));
+
+		Expression<?> and = And.of(wide, e(0x0F));
+		Assert.assertEquals(0x0F, and.upperBound(null).getAsLong());
+		Assert.assertEquals(0L, and.lowerBound(null).getAsLong());
+
+		Expression<?> mixed = And.of(byte8, e(-16));
+		Assert.assertFalse(mixed.isPossiblyNegative());
+		Assert.assertEquals(0xFF, mixed.upperBound(null).getAsLong());
+
+		Expression<?> xor = Xor.of(byte8, e(0x100));
+		Assert.assertEquals(0x1FF, xor.upperBound(null).getAsLong());
+		Assert.assertFalse(xor.isPossiblyNegative());
+
+		Expression<?> shift = ShiftRight.of(wide, e(8));
+		Assert.assertEquals(MASK >> 8, shift.upperBound(null).getAsLong());
+		Assert.assertEquals(0L, shift.lowerBound(null).getAsLong());
+
+		Expression<?> negative = Xor.of(kernel().toLong(true).multiply(-1), e(1));
+		Assert.assertTrue(negative.isPossiblyNegative());
+		Assert.assertFalse(negative.upperBound(null).isPresent());
+	}
+
+	/** A 32-bit operation truncates each operand to its low 32 bits, as {@code int} code does. */
+	@Test(timeout = 10000)
+	public void integerWidthTruncates() {
+		Expression<?> xor = Xor.of(e(-1), e(0x0F));
+		Assert.assertEquals(Integer.class, xor.getType());
+		Assert.assertEquals(-1 ^ 0x0F, xor.intValue().getAsInt());
+
+		KernelIndex index = kernel();
+		Expression<?> shift = index.shiftRight(4);
+		Assert.assertEquals(Integer.class, shift.getType());
+		Assert.assertEquals(0x12345678 >> 4, shift.value(new IndexValues().put(index, 0x12345678)).intValue());
+	}
+
+	/**
+	 * Unsigned wraparound and the PCG hash reject floating-point input rather than silently
+	 * truncating it; the caller converts explicitly.
+	 */
+	@Test(timeout = 10000)
+	public void unsigned32RejectsFloatingPoint() {
+		try {
+			new DoubleConstant(1.5).toUnsigned32();
+			Assert.fail("toUnsigned32 accepted a floating-point operand");
+		} catch (UnsupportedOperationException expected) {
+			Assert.assertTrue(expected.getMessage().contains("Double"));
+		}
+
+		try {
+			new DoubleConstant(1.5).pcgHash();
+			Assert.fail("pcgHash accepted a floating-point operand");
+		} catch (UnsupportedOperationException expected) {
+			Assert.assertTrue(expected.getMessage().contains("Double"));
+		}
+
+		Assert.assertEquals(pcg(1), new DoubleConstant(1.5).toLong().pcgHash().longValue().getAsLong());
+	}
+
 	/** The PCG hash of a constant folds on the host to the reference value. */
 	@Test(timeout = 30000)
 	public void pcgHashConstant() {
