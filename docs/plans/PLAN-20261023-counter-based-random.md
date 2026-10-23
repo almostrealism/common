@@ -205,11 +205,20 @@ FP32 backend is exact only to 2^24 and would diverge. Two consequences:
 
 - **Uniform:** final `uint → [0,1)` conversion of the hashed word.
 - **Normal:** derive from two uniforms via **Box–Muller**
-  (`sqrt(-2 ln u1) · cos(2π u2)`) using the existing `Logarithm` (`log()`),
-  `Exponent` (`pow(0.5)` — there is no dedicated square-root expression) and
-  `Cosine`/`Sine` expressions, or via a **Moro inverse-CDF**
-  polynomial. Box–Muller is simplest and composes from primitives that already
-  exist; it consumes two counter sub-streams (e.g. index `2k` and `2k+1`, or two
+  (`sqrt(-2 ln u1) · cos(2π u2)`) using the existing `Logarithm`, `Exponent`
+  (there is no dedicated square-root `Expression`, so the square root is an
+  `Exponent` with exponent `0.5` — the same thing the `ArithmeticFeatures.sqrt()`
+  convenience compiles to, `pow(value, c(0.5))`) and `Cosine`/`Sine`
+  expressions, or via a **Moro inverse-CDF** polynomial. These expressions all
+  live in `base/code` and so are reachable from the computation, which composes
+  them symbolically in `getValueAt`; the producer-level `cos()`/`sin()`
+  conveniences happen to live downstream in `GeometryFeatures`
+  (`compute/geometry`), so the computation uses the `Cosine`/`Sine` expressions
+  directly rather than those methods. The Box–Muller transcendentals (`log`,
+  the `0.5` power, `cos`) are the part of the normal variant whose cross-backend
+  agreement is looser than the uniform's (see success criterion 5). Box–Muller
+  is simplest and composes from expressions that already exist; it consumes two
+  counter sub-streams (e.g. index `2k` and `2k+1`, or two
   distinct seed lanes) so each normal sample stays a pure function of the key.
   `u1` must be mapped to `(0, 1]` (not `[0, 1)`), otherwise `ln(0)` yields
   `-inf` and the sample is infinite for the one key that hashes to zero.
@@ -228,6 +237,7 @@ FP32 backend is exact only to 2^24 and would diverge. Two consequences:
 | Pinning a computation to one backend in a test | `setComputeRequirements(List.of(ComputeRequirement.MTL))`, as in `engine/utils/.../hardware/test/MemoryDataCopyChainingTest.java` |
 | Device-resident counter pattern | `engine/ml/.../ml/AutoregressiveModel.java` (`position`, `advancePosition`) |
 | Distribution helpers (possible stats home) | `compute/stats/.../stats/DistributionFeatures.java` |
+| Box–Muller expressions (composed in `getValueAt`) | `base/code/.../expression/{Logarithm,Exponent,Cosine,Sine}.java` (no dedicated `Sqrt`; square root is `Exponent` with `0.5`). Producer-level `sqrt`/`log` are in `compute/algebra/.../collect/ArithmeticFeatures.java` and `cos`/`sin` in `compute/geometry/.../geometry/GeometryFeatures.java` (downstream of algebra). |
 
 ## Success criteria
 
