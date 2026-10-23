@@ -14,7 +14,7 @@
 // The structural plumbing (path resolution, subprocess spawn, callID
 // cache, error handling) lives in
 //   .opencode/plugins/_lib/command_pattern.ts
-// so this file is just the policy wiring. See docs/plans/OPENCODE_HOOKS.md.
+// so this file is just the policy wiring. See docs/internals/agent-hooks.md.
 
 import { makeCommandPatternPlugin } from "./_lib/command_pattern"
 

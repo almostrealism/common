@@ -56,3 +56,9 @@ message:
 
 If anything remains incomplete after your best effort, explain exactly what is missing
 and why you were unable to complete it.
+
+When the status is COMPLETE and the planning document is under `docs/plans/`, close it:
+set `status: completed` and `closed:` to today's date (YYYY-MM-DD) in its front matter,
+and commit that with your work. A closed plan is removed by the periodic sweep after its
+retention window; the rules are in `docs/plans/CLAUDE.md`. Leave the header open when
+anything is incomplete.

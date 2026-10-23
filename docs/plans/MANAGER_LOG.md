@@ -32,7 +32,7 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 **Category:** Code Quality (correctness — a silent zero-gradient defect in the attention backward pass)
 **Branch:** `project/plan-20261021-012939`
-**Plan:** [`PLAN-20261021-cross-attention-kv-gradients.md`](PLAN-20261021-cross-attention-kv-gradients.md)
+**Plan:** `PLAN-20261021-cross-attention-kv-gradients.md` (since removed; see git history)
 
 #### What changed since last cycle
 
@@ -124,7 +124,7 @@ requirement, no workstream settings file.
 
 **Category:** Proof of Value
 **Branch:** `project/plan-20261019-194959`
-**Plan:** [`PLAN-20261019-self-hosted-lm-nontrivial-generation.md`](PLAN-20261019-self-hosted-lm-nontrivial-generation.md)
+**Plan:** `PLAN-20261019-self-hosted-lm-nontrivial-generation.md` (since removed; see git history)
 
 #### What changed since last cycle
 
@@ -208,7 +208,7 @@ training run and runs on a macOS/Metal node.
 
 **Category:** Code Quality (correctness — a silent wrong-gradient defect in the autodiff engine)
 **Branch:** `project/plan-20261018-174738`
-**Plan:** [`PLAN-20261018-full-jacobian-gradient-correctness.md`](PLAN-20261018-full-jacobian-gradient-correctness.md)
+**Plan:** `PLAN-20261018-full-jacobian-gradient-correctness.md` (since removed; see git history)
 
 #### What changed since last cycle
 
@@ -286,7 +286,7 @@ step, and it keeps the platform honest about its own learning machinery.
 
 **Category:** Documentation
 **Branch:** `project/plan-20261018-013621`
-**Plan:** [`PLAN-20261018-automatic-differentiation-internals.md`](PLAN-20261018-automatic-differentiation-internals.md)
+**Plan:** `PLAN-20261018-automatic-differentiation-internals.md` (since removed; see git history)
 
 #### What changed since last cycle
 
@@ -350,7 +350,7 @@ its own page. It is a medium-sized task that runs on any node.
 
 **Category:** Performance (directly unblocking Proof of Value)
 **Branch:** `project/plan-20261009-171224`
-**Plan:** [`PLAN-20261009-matmul-weight-gradient-vjp.md`](PLAN-20261009-matmul-weight-gradient-vjp.md)
+**Plan:** `PLAN-20261009-matmul-weight-gradient-vjp.md` (since removed; see git history)
 
 #### What changed since last cycle
 
@@ -434,7 +434,7 @@ deferred — now promoted to its own plan, with the profile in hand to name it.
 
 **Category:** Proof of Value
 **Branch:** `project/plan-20261005-185050`
-**Plan:** [`PLAN-20261005-self-hosted-lm-beat-baseline-and-generate.md`](PLAN-20261005-self-hosted-lm-beat-baseline-and-generate.md)
+**Plan:** `PLAN-20261005-self-hosted-lm-beat-baseline-and-generate.md` (since removed; see git history)
 
 #### What changed since last cycle
 
@@ -516,7 +516,7 @@ by-product, keeping the cycle focused.
 
 **Category:** Proof of Value
 **Branch:** `project/plan-20260930-180401`
-**Plan:** [`PLAN-20260930-self-hosted-tiny-lm.md`](PLAN-20260930-self-hosted-tiny-lm.md)
+**Plan:** `PLAN-20260930-self-hosted-tiny-lm.md` (since removed; see git history)
 
 #### What changed since last cycle
 
@@ -597,7 +597,7 @@ covered by the continuous QA pipeline.
 ### 2026-09-29 — Re-baseline LoRA fine-tuning backward-pass compile scaling (condensed)
 
 **Category:** Performance · **Branch:** `project/plan-20260929-043714` ·
-**Plan:** [`PLAN-20260929-finetune-compile-scaling-rebaseline.md`](PLAN-20260929-finetune-compile-scaling-rebaseline.md)
+**Plan:** `PLAN-20260929-finetune-compile-scaling-rebaseline.md` (since removed; see git history)
 
 `FINE_TUNE_FAIL.md` (February 2026) declared production-scale LoRA fine-tuning **infeasible** on
 super-linear backward-pass compile time. By September two separate compile-time fronts had moved —
@@ -613,7 +613,7 @@ training run against reality.
 ### 2026-09-26 — Native Runtime Lifecycle Documentation (condensed; log restart)
 
 **Category:** Documentation · **Branch:** `project/plan-20260926-172935` ·
-**Plan:** [`PLAN-20260926-native-runtime-lifecycle-docs.md`](PLAN-20260926-native-runtime-lifecycle-docs.md)
+**Plan:** `PLAN-20260926-native-runtime-lifecycle-docs.md` (since removed; see git history)
 
 This entry restarted the log (the prior log was deleted 2026-04-06 with a batch of resolved plans).
 Carried over, condensed: in **March 2026** the compilation-pipeline and ML-inference internals docs

@@ -7,8 +7,9 @@ rest of the project; the audio primitives add stateful and multi-channel block f
 top of the interpreter core.
 
 The production consumer of this substrate is the `AudioScene` real-time mixdown
-(`AudioSceneRealtimeRunner.createPdsl` driving `mixdown_master_wet`); in-progress work
-on that path is planned in `docs/plans/audio-scene-redesign/`.
+(`AudioSceneRealtimeRunner.createPdsl` driving `mixdown_master_wet`); see
+[The AudioScene mixdown on PDSL](#the-audioscene-mixdown-on-pdsl) below for how it behaves
+relative to the legacy `CellList` mixdown and the constraints callers must respect.
 
 Note on the stateful ring primitives (`delay`, `feedback`, `delay_network`): a
 block-parallel ring only holds samples of the requested age inside a band set by its
@@ -288,3 +289,66 @@ Two rules keep resolution unambiguous:
 one program in a single call; it follows each argument's imports and applies the same dedup and
 collision rules. Prefer an `import` in the asset that depends on another — the dependency then
 travels with the asset instead of being re-enumerated at every call site.
+
+## The AudioScene mixdown on PDSL
+
+The PDSL mixdown (`mixdown_manager.pdsl`; the default since `MixdownManager.enablePdslMixdown`)
+replaced a per-sample `CellList` signal path with block-parallel evaluation over one buffer at a
+time. Most of the signal path is identical; the differences below are deliberate or accepted
+consequences of block-parallel evaluation.
+
+### Behaviour
+
+- **Feedback is sample-exact above a one-buffer floor.** For a delay `D ≥ signalSize` in an
+  adequately sized ring, the feedback network evaluates `y[t] = x[t] + (M·y)[t−D]` exactly, so
+  repeats land on exact multiples of the delay, as in the per-sample recurrence. What the buffer
+  size sets is the *floor*: no regeneration interval shorter than one buffer can exist
+  block-parallel (the ring-band invariant above), and short delays are quantized up to one frame.
+  The floor scales linearly with buffer size (about 93 ms at 4096 frames).
+- **Continuous delay-time modulation** is a fractional gather, not a recurrence. The network
+  receives the previous and current per-line delays, forms a linear delay trajectory across the
+  frame and interpolates between neighbouring ring samples, so shortening a delay pitches up and
+  lengthening it pitches down. A static delay stays integer-exact, and the trajectory re-anchors
+  at each buffer boundary so it cannot drift.
+- **Automation is refreshed once per buffer.** Hot-bus gains interpolate between the previous and
+  current values across the frame (`ramp_scale`); filter coefficients and other un-ramped values
+  step per buffer.
+- **Filters are FIR approximations.** The main high-pass and master low-pass use short
+  truncated-biquad impulse-response tables (one row selected per buffer), matched to the
+  12 dB/octave shape of the legacy biquads. The efx-loop filter uses the same windowed-sinc FIR
+  coefficients as the legacy path. The wet bus is a high-pass followed by a low-pass, as in the
+  legacy cascade.
+- **Two regeneration structures, as in the legacy path:** a per-channel echo (a diagonal
+  `delay_network` with per-channel self-feedback, inside the apply chain, on both the main and
+  wet buses of a wet channel), and a bus-level network that sends into its first line, modulates
+  line lengths and recirculates through the genome transmission matrix.
+- **The reverb is deterministic.** It uses 32 taps with golden-ratio spacing over a
+  seconds-denominated ring. The legacy reverb used 128 randomly sized lines, re-randomized every
+  run.
+- **Known remaining differences:**
+  - The master is dual-mono: one rendered master streams to both stereo writers, and there is no
+    pan.
+  - Floating-point reduction order can drift across recompiles, by about 1–3% RMS late in
+    feedback-heavy renders.
+  - Some filter coefficients are sampled when the arguments are built rather than refreshed
+    live.
+
+### Constraints for callers
+
+- **Don't force a single backend.** The mixdown relies on hybrid routing: JNI for the recurrent
+  DSP loop and Metal for the parallel pattern kernels. Forcing `AR_HARDWARE_DRIVER=mtl` fails to
+  compile the per-frame loop, which exceeds Metal's 31-buffer kernel argument limit. Forcing
+  `native` is many times slower. Leave the driver unset.
+- **Sustained rendering needs `-DAR_PATTERN_CACHE_PERSIST=true`.** Without it, note-audio
+  deallocation churn leaks native memory on every buffer. `PatternLayerManager` reads the flag
+  once, at class load, so it must be a JVM `-D` argument (for tests, in the surefire `argLine`),
+  not something set at runtime. Callers that switch arrangements at runtime must leave it off or
+  call `invalidateCaches()`.
+- **Block-outward integration.** To connect a compiled PDSL `Block` to a `Cell`/`CellList`
+  consumer, make the consumer accept the `Block`; never wrap the `Block` to masquerade as a
+  `CellList`. The real-time contract is `TemporalCellular` (`setup()`/`tick()`/`reset()`), which
+  `AudioSceneRealtimeRunner` implements on top of the PDSL block.
+- **Channel selection.** The PDSL path accepts a single channel or a zero-based contiguous prefix
+  of channels (`MixdownManager.supportsPdslMixdown`). A non-contiguous subset falls back to the
+  `CellList` mixdown, because the feedback grid is indexed by bank position.
+

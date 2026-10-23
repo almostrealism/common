@@ -8,7 +8,7 @@
 # model supplying those values routinely reads a stale branch name out of the
 # harness-injected gitStatus snapshot, or out of a value cached near the top of
 # a long context window, and names a branch that was switched many tool calls
-# ago. See docs/plans/MANAGER_CONSULTANT_CONSOLIDATION.md §4.1.
+# ago.
 #
 # Calibrated by consequence:
 #   memory_store                       a write onto the wrong branch

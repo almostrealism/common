@@ -884,7 +884,7 @@ class TestMemoryStoreReformulation(unittest.TestCase):
 
     The contract that matters is that enabling reformulation never costs the
     caller the memory: when no model is reachable the author's own text is
-    stored anyway. See docs/plans/MANAGER_CONSULTANT_CONSOLIDATION.md.
+    stored anyway.
     """
 
     def setUp(self):

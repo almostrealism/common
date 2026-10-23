@@ -6,8 +6,7 @@ interlude" policy. It is invoked by:
 
   - .claude/hooks/topic-interlude.sh   (Claude Code, argv)
 
-Design rationale lives in item 10 of
-docs/plans/AR_MANAGER_TOOL_ERGONOMICS.md. The short version: a long
+The rationale: a long
 coding session is a uniform stretch of programmatic success-and-failure
 signal, and the argument this responds to is that training on narrow
 success signals selects for a persona organised entirely around passing

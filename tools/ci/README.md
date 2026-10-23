@@ -186,15 +186,13 @@ reproduce it (e.g. "run the full CI command", "run the relevant module's tests")
 bug in the prompt, not a fair characterization of what the session should do. This is
 enforced mechanically elsewhere too — `workstream_submit_task`'s prompt/command
 validation (`tools/mcp/manager/execution_limits.py`) and the controller's
-`PostCompletionCommandValidator` both reject it with no bypass. An agent-side
-`PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also restricts what a
-running agent session can do directly, but it is only a partial backstop today: it
-covers a direct `mvn test`/`mvn integration-test` and nothing else — not
-`verify`/`install`/`package`/`deploy` without `-DskipTests`, not a bare `AR_TEST_GROUP`/
-`AR_TEST_GROUPS` reference, and there is no pytest hook at all yet. The diff that closes
-that gap has been recorded for a human to apply by hand — coding-agent sessions cannot
-write under `.claude/hooks/` or `.claude/settings.json`. A prompt written to violate the rule fails loudly at the two
-mechanically-enforced surfaces above regardless of whether the hook has landed.
+`PostCompletionCommandValidator` both reject it with no bypass. Agent-side
+`PreToolUse` Bash hooks (`.claude/hooks/block-mvn-test-direct.sh` and
+`.claude/hooks/block-pytest-broad-run.sh`) also restrict what a running agent session can
+do directly — a test-running Maven phase without `-DskipTests`, an `AR_TEST_GROUP`
+assignment, an unbounded pytest run — but they parse command text and are a backstop. A
+prompt written to violate the rule fails loudly at the two mechanically-enforced surfaces
+above regardless of the hooks.
 
 Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
 variables named in its header, and writes the result to an output-file argument.

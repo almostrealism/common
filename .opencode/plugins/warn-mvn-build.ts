@@ -30,7 +30,7 @@
 // Performance: same callID cache pattern as block-mvn-test-direct.ts
 // so the python3 subprocess runs at most once per bash tool call.
 //
-// See docs/plans/OPENCODE_HOOKS.md for the architecture.
+// See docs/internals/agent-hooks.md for the architecture.
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { spawnSync } from "node:child_process"

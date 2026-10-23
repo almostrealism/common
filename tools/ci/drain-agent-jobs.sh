@@ -19,16 +19,18 @@ CONTROLLER_URL="${CONTROLLER_URL:-http://localhost:7780}"
 DRAIN_TIMEOUT_SECONDS="${DRAIN_TIMEOUT_SECONDS:-1800}"
 DRAIN_POLL_SECONDS="${DRAIN_POLL_SECONDS:-30}"
 
-# Statuses that mean "this job still holds an ar-manager connection".
-# An unrecognised status is NOT counted as running: the failure mode to avoid
-# is blocking every deploy forever on a status nobody remembers adding.
+# The controller's GET /api/jobs/in-flight reports {"active":N,"pending":N,
+# "total":N}: STARTED plus SUBMITTED jobs across every workstream, read from the
+# same job-state views the operator's listings use. Counting is the
+# controller's job, so a new non-terminal status is counted there rather than
+# dropped by a list of status strings kept here.
 #
 # The controller being unreachable counts as zero. The workflow already skips
 # the drain when the controller is down before it starts; this covers it going
 # away mid-wait, where there is no longer a connection left to protect.
 count_running() {
     local body
-    if ! body=$(curl -fsS "${CONTROLLER_URL}/api/jobs?limit=100" 2>/dev/null); then
+    if ! body=$(curl -fsS "${CONTROLLER_URL}/api/jobs/in-flight" 2>/dev/null); then
         echo 0
         return 0
     fi
@@ -36,16 +38,11 @@ count_running() {
     # python3 reports 0 for any payload it cannot make sense of, so this
     # emits exactly one integer on every path.
     printf '%s' "${body}" | python3 -c 'import json, sys
-ACTIVE = {"running", "in_progress", "started", "pending", "queued"}
 try:
-    jobs = json.load(sys.stdin)
+    total = json.load(sys.stdin).get("total", 0)
 except Exception:
-    jobs = []
-if not isinstance(jobs, list):
-    jobs = []
-print(sum(1 for j in jobs
-          if isinstance(j, dict)
-          and str(j.get("status", "")).lower() in ACTIVE))'
+    total = 0
+print(total if isinstance(total, int) and total > 0 else 0)'
 }
 
 deadline=$(( $(date +%s) + DRAIN_TIMEOUT_SECONDS ))
