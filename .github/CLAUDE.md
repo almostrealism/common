@@ -462,10 +462,10 @@ coverage" above and `tools/ci/README.md`.
 
 ### What the `test` job covers
 
-Runs the main test matrix (8 groups) for engine/domain/compute/base layers:
+Runs the main test matrix (7 groups) for engine/domain/compute/base layers:
 `base/hardware`, `engine/utils`, `engine/ml`, plus `engine/render` and
 `base/io,engine/utils-http` on group 0 only. Skipped when none of those layers
-change. Uploads `coverage-group-{0..7}`.
+change. Uploads `coverage-group-{0..6}`.
 
 ### What the `test-media` job covers
 
@@ -621,15 +621,17 @@ no GPU that did not declare it, i.e. the CPU `test-media` lane. A new runner
 without the library therefore turns its lane red instead of letting tests that
 should have failed report a pass.
 
-The memory settings below (`AR_HARDWARE_MEMORY_SCALE=7`, the 8-group split, the
+The memory settings below (`AR_HARDWARE_MEMORY_SCALE=7`, the group split, the
 `_JAVA_OPTIONS` direct-memory caps, `AR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled`)
 were all tuned for Apple's OpenCL on the macOS fleet and moved across unchanged.
 The AMD device exposes far more memory, so several are likely over-constrained —
 retune them one variable at a time, as measured follow-ups, so a regression stays
 attributable.
 
-Most self-hosted jobs use an 8-group matrix (`test`, `test-media`, `test-mac`,
-`test-media-cl`, and both CUDA jobs); `test-cl` uses six. The CL backend hits its
+The self-hosted jobs split their suites across several groups, with group counts
+tuned per lane: `test-media-cl` uses eight; `test`, `test-media` and
+`test-media-cuda` seven; `test-mac`, `test-cl` and `test-cuda` six; and
+`test-media-mac` four. The CL backend hits its
 memory ceiling under large per-group loads even at `AR_HARDWARE_MEMORY_SCALE=7`
 (the highest scale used anywhere — the scale is exponential, so raising it
 further is not an option), so spreading the tests across several JVMs keeps each
@@ -642,7 +644,7 @@ never run; `tools/tests/test_accelerator_lane_admission.py` checks this for
 The CL and CUDA jobs each run up to three groups at a time (`max-parallel: 3`).
 
 `test-media-mac` is the exception: it uses **4 groups at `max-parallel: 2`**
-(up to two groups at a time) rather than eight. As the second GPU-lane stage it
+(up to two groups at a time), fewer groups than any other lane. As the second GPU-lane stage it
 already runs alone on the fleet (no other GPU-heavy stage runs concurrently), so
 running two of its four groups at once trades some GPU contention on the
 studio benchmark tick tails for shorter wall-clock time.
@@ -669,7 +671,8 @@ until all of them are in place.
 ### What the `test-cuda` and `test-media-cuda` jobs cover
 
 CUDA-backend duplicates of `test-cl` and `test-media-cl`: the same modules,
-groups, memory settings and `AR_HARDWARE_PRECISION=FP32`, with
+memory settings and `AR_HARDWARE_PRECISION=FP32` (group counts are tuned per
+lane; see above), with
 `AR_HARDWARE_DRIVER=native,cuda` where the CL jobs use `native,cl`. They are the
 two stages of the CUDA lane (`test-media-cuda` after `test-cuda`, because the
 host has one GPU), on `[self-hosted, linux, ar-ci-cuda]`: an NVIDIA DGX Spark set

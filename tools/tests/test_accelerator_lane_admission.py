@@ -74,6 +74,31 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
         self.assertEqual(list(range(len(groups))), groups)
         self.assertEqual({len(groups)}, _test_group_counts(job))
 
+    def test_every_matrix_job_matches_its_test_groups(self):
+        """Every job that both shards a matrix over ``group`` and passes
+        ``AR_TEST_GROUPS`` must keep the two in agreement: a contiguous
+        ``[0..n-1]`` matrix and a single ``AR_TEST_GROUPS == n`` across all of
+        its steps. A disagreement silently drops the groups with no matrix
+        entry, so this guards every lane's group count, not only ``test-cl``."""
+        checked = []
+        for name, job in self.jobs.items():
+            group = job.get("strategy", {}).get("matrix", {}).get("group")
+            counts = _test_group_counts(job)
+            if group is None or not counts:
+                continue
+            checked.append(name)
+            self.assertEqual(list(range(len(group))), group,
+                             "%s matrix groups must be a contiguous [0..n-1] range, got %r"
+                             % (name, group))
+            self.assertEqual({len(group)}, counts,
+                             "%s passes AR_TEST_GROUPS %r but its matrix has %d groups"
+                             % (name, sorted(counts), len(group)))
+        # Guard the discovery itself: all eight sharded test lanes must be seen,
+        # so a renamed or dropped lane fails here rather than going unchecked.
+        self.assertEqual(
+            sorted(_CPU_LANE + _MAC_LANE + _CL_LANE + _CUDA_LANE),
+            sorted(checked))
+
     def test_accelerator_jobs_run_at_least_three_groups_at_once(self):
         for name in _CL_LANE + _CUDA_LANE:
             self.assertGreaterEqual(self.jobs[name]["strategy"]["max-parallel"],
