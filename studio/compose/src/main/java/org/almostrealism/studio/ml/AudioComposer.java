@@ -31,8 +31,13 @@ import java.util.Random;
 
 /**
  * Composes audio by interpolating multiple encoded audio sources in latent space.
- * Each source is encoded via an {@link AutoEncoder} and assigned random weight vectors
- * that are used to blend the sources based on a supplied position vector.
+ * Each source is encoded via an {@link AutoEncoder} and assigned a merge weight vector
+ * that is used to blend the sources based on a supplied position vector. By default the
+ * weight vector is sampled from a Gaussian; a caller may instead supply it explicitly
+ * ({@link #addSource(Producer, Producer)}, {@link #setWeights(int, Producer)}) and may
+ * scale each source by a blend contribution
+ * ({@link ComposableAudioFeatures#setContribution(double)}), which makes the composed
+ * latent a deterministic function of the sources.
  */
 public class AudioComposer implements Factor<PackedCollection>, Destroyable, CodeFeatures {
 	/** When {@code true}, weight vectors are L2-normalized before use. */
@@ -159,8 +164,56 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	 * @param features the encoded latent features to add
 	 */
 	public void addSource(Producer<PackedCollection> features) {
-		addSource(new ComposableAudioFeatures(features, createWeights(features)));
+		addSource(new ComposableAudioFeatures(features, createWeights()));
 	}
+
+	/**
+	 * Wraps the given encoded feature producer in a {@link ComposableAudioFeatures} whose
+	 * merge weights are the supplied length-{@link #getEmbeddingDimension()} vector, which
+	 * that object broadcasts across the feature cells exactly as it does the sampled weights.
+	 * The vector is used verbatim: no random draw is made and {@link #normalizeWeights}
+	 * does not apply, so the source's contribution for a given position vector is fully
+	 * determined by the caller.
+	 *
+	 * @param features the encoded latent features to add
+	 * @param weights  the merge weight vector for this source, of length {@code dim}
+	 * @throws IllegalArgumentException if the weight vector is not of length {@code dim},
+	 *                                  or the feature shape is inconsistent with prior sources
+	 */
+	public void addSource(Producer<PackedCollection> features, Producer<PackedCollection> weights) {
+		addSource(new ComposableAudioFeatures(features, requireWeightVector(weights)));
+	}
+
+	/**
+	 * Replaces the merge weight vector of an already-added source. Any blend contribution
+	 * previously set on that source is preserved. As with
+	 * {@link #addSource(Producer, Producer)}, the vector is used verbatim.
+	 *
+	 * @param index   the index of the source, in the order sources were added
+	 * @param weights the new merge weight vector for the source, of length {@code dim}
+	 * @throws IndexOutOfBoundsException if no source exists at {@code index}
+	 * @throws IllegalArgumentException  if the weight vector is not of length {@code dim}
+	 */
+	public void setWeights(int index, Producer<PackedCollection> weights) {
+		getSource(index).setWeights(requireWeightVector(weights));
+	}
+
+	/**
+	 * Returns the source at the given index. Per-source state that does not depend on
+	 * the composer, such as the blend contribution
+	 * ({@link ComposableAudioFeatures#setContribution(double)}), is set on the returned
+	 * object directly.
+	 *
+	 * @param index the index of the source, in the order sources were added
+	 * @return the composable audio features for that source
+	 * @throws IndexOutOfBoundsException if no source exists at {@code index}
+	 */
+	public ComposableAudioFeatures getSource(int index) {
+		return features.get(index);
+	}
+
+	/** Returns the number of sources that have been added. */
+	public int getSourceCount() { return features.size(); }
 
 	/**
 	 * Adds the given composable audio features as a source, verifying that its
@@ -213,21 +266,36 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	}
 
 	/**
-	 * Creates a random weight tensor for the given feature producer, repeated across
-	 * the feature's bin and time dimensions.
+	 * Samples a random length-{@code dim} merge weight vector, L2-normalized when
+	 * {@link #normalizeWeights} is set. The {@link ComposableAudioFeatures} it is given
+	 * to broadcasts it across the feature cells.
 	 *
-	 * @param features the feature producer whose shape determines the weight repetition
-	 * @return the weight tensor producer
+	 * @return the weight vector producer
 	 */
-	protected CollectionProducer createWeights(Producer<PackedCollection> features) {
+	protected CollectionProducer createWeights() {
 		double scale = 1.0;
-		int bins = shape(features).length(0);
-		int time = shape(features).length(1);
 
 		CollectionProducer rand = randn(shape(dim), scale, scale * getDeviation(), random);
 		if (normalizeWeights)
 			rand = normalize(rand);
-		return rand.repeat(bins).repeat(time);
+		return rand;
+	}
+
+	/**
+	 * Verifies that the given merge weight vector has the length this composer
+	 * interpolates over.
+	 *
+	 * @param weights the weight vector
+	 * @return the same weight vector
+	 * @throws IllegalArgumentException if the weight vector is not of length {@code dim}
+	 */
+	protected Producer<PackedCollection> requireWeightVector(Producer<PackedCollection> weights) {
+		if (shape(weights).getTotalSize() != dim) {
+			throw new IllegalArgumentException("Merge weight vector must have length " + dim
+					+ " but has shape " + shape(weights));
+		}
+
+		return weights;
 	}
 
 	@Override

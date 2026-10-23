@@ -36,19 +36,83 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 	/** The weight tensor shaped {@code (T, B, L)} used to compute scaling factors. */
 	private Producer<PackedCollection> weights;
 
+	/** Scalar multiplier applied to the resultant; {@code 1.0} leaves it unscaled. */
+	private double contribution;
+
 	/**
 	 * Create {@link ComposableAudioFeatures} with the provided features and weights.
 	 * <p>
-	 * For time (T), bin (B), and decision vector length (L).
+	 * For time (T), bin (B), and decision vector length (L). The weights are either a
+	 * {@code (T, B, L)} tensor holding a decision vector per feature cell, or a single
+	 * length-{@code L} vector that is shared by every cell (see {@link #setWeights(Producer)}).
+	 * </p>
+	 * <p>
+	 * This object takes ownership of both producers: {@link #destroy()} destroys them,
+	 * and destroying a computation also destroys its inputs.
 	 * </p>
 	 *
 	 * @param features  (T, B)
-	 * @param weights  (T, B, L)
+	 * @param weights  (T, B, L), or (L)
 	 */
 	public ComposableAudioFeatures(Producer<PackedCollection> features,
 								   Producer<PackedCollection> weights) {
 		this.features = features;
-		this.weights = weights;
+		this.weights = broadcastWeights(weights);
+		this.contribution = 1.0;
+	}
+
+	/**
+	 * Replaces the weights used to compute the scaling factors. The weights are either a
+	 * {@code (T, B, L)} tensor, used as is, or a decision vector of any other shape, which
+	 * is flattened to length {@code L} and broadcast across every {@code (T, B)} feature
+	 * cell. The previous weights are owned by this object and are destroyed, together with
+	 * any producer they were computed from; ownership of the new weights passes to this
+	 * object. The blend contribution is unaffected.
+	 *
+	 * @param weights  the new weights, {@code (T, B, L)} or {@code (L)}
+	 */
+	public void setWeights(Producer<PackedCollection> weights) {
+		if (weights != this.weights) {
+			Destroyable.destroy(this.weights);
+		}
+
+		this.weights = broadcastWeights(weights);
+	}
+
+	/**
+	 * Broadcasts the given weights across the {@code (T, B)} cells of the feature data.
+	 * A producer with one more dimension than the features is already a per-cell
+	 * {@code (T, B, L)} tensor and is returned unchanged; any other producer is a single
+	 * decision vector, which is flattened and repeated for every cell.
+	 *
+	 * @param weights  the weights, {@code (T, B, L)} or a decision vector
+	 * @return  the per-cell weight tensor, {@code (T, B, L)}
+	 */
+	protected Producer<PackedCollection> broadcastWeights(Producer<PackedCollection> weights) {
+		TraversalPolicy featureShape = getFeatureShape();
+		TraversalPolicy weightShape = shape(weights);
+		if (weightShape.getDimensions() == featureShape.getDimensions() + 1) {
+			return weights;
+		}
+
+		CollectionProducer vector = c(weights);
+		if (weightShape.getDimensions() != 1)
+			vector = vector.reshape(shape(weightShape.getTotalSize()));
+		return vector.repeat(featureShape.length(1)).repeat(featureShape.length(0));
+	}
+
+	/** Returns the scalar multiplier applied to the resultant. */
+	public double getContribution() { return contribution; }
+
+	/**
+	 * Sets the scalar multiplier applied to the resultant, so that a sum of several
+	 * resultants weights this one by {@code contribution} independently of the value
+	 * vector. The default of {@code 1.0} leaves the resultant unscaled.
+	 *
+	 * @param contribution  the multiplier for the resultant
+	 */
+	public void setContribution(double contribution) {
+		this.contribution = contribution;
 	}
 
 	/**
@@ -60,16 +124,31 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 
 	/**
 	 * Compute the dot product of each weight vector with the provided value vector
-	 * and use the resulting values to scale the feature data.
+	 * and use the resulting values, clamped to be non-negative and multiplied by the
+	 * {@link #getContribution() contribution}, to scale the feature data.
 	 *
-	 * @param value  the vector to use to determine the scaling factors
+	 * <p>
+	 * The value vector is tiled explicitly to the {@code (T, B, L)} shape of the weights
+	 * before the element-wise product, so that every weight vector is paired with the
+	 * whole value vector. Relying on implicit broadcasting of a length-{@code L} vector
+	 * against the weight tensor pairs it with a leading axis instead.
+	 * </p>
+	 *
+	 * @param value  the vector of length {@code L} used to determine the scaling factors
 	 * @return  scaled feature data
 	 */
 	@Override
 	public Producer<PackedCollection> getResultant(Producer<PackedCollection> value) {
-		CollectionProducer scale = c(weights).traverse(2).multiply(c(value)).sum();
+		TraversalPolicy weightShape = shape(weights);
+		int length = weightShape.length(2);
+		CollectionProducer tiled = c(value).reshape(shape(length))
+				.repeat(weightShape.getTotalSize() / length)
+				.reshape(weightShape);
+
+		CollectionProducer scale = c(weights).multiply(tiled).traverse(2).sum();
 		scale = scale.reshape(scale.getShape().trim());
-		return c(features).multiply(max(scale, c(0)));
+		CollectionProducer result = c(features).multiply(max(scale, c(0)));
+		return contribution == 1.0 ? result : result.multiply(c(contribution));
 	}
 
 	@Override

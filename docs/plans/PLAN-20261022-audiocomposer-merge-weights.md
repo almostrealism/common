@@ -16,6 +16,7 @@ source's latent features; the composer sums the scaled sources. A caller can
 steer the blend only indirectly, by moving the position vector through a latent
 field of weights it did not choose and cannot inspect.
 
+<!-- TODO(review): remove the private-product reference below; public repo docs must describe motivation in platform terms -->
 This is the framework capability behind the Rings 0.41 *"Audio sculpting becomes
 the real workflow"* goal — specifically *"media brushes … with fine-grained
 control over how the different sources are merged during diffusion."* Merging
@@ -191,6 +192,33 @@ arithmetic, so no GPU/Metal is required.
 - **Surfacing through the generators:** exposing the new control through
   `AudioModulator`/`AudioGenerator`/`LegacyAudioGenerator` is deliberately out of
   scope; if the approver wants it, it should be filed as a follow-up task.
+
+## Implementation notes
+
+- Open questions were resolved as recommended: `AudioComposer.setWeights(index, …)`
+  delegates to a `ComposableAudioFeatures.setWeights` mutator (contribution is
+  preserved), explicit vectors are used verbatim (no `normalizeWeights`), and only a
+  length-`dim` vector is accepted (`AudioComposer.requireWeightVector` rejects any
+  other length). Broadcasting a weight vector across the feature cells is done by
+  `ComposableAudioFeatures` itself (its constructor and `setWeights` accept either a
+  `(T, B, L)` tensor or a length-`L` vector), since only it knows its feature shape;
+  the composer passes vectors and never reads a source's features.
+  The per-source contribution is set on the source itself via
+  `AudioComposer.getSource(index).setContribution(…)`.
+- **Pre-existing defect fixed.** `ComposableAudioFeatures.getResultant` computed
+  `c(weights).traverse(2).multiply(c(value)).sum()`. Evaluation showed the
+  length-`L` value vector was broadcast along the weight tensor's *leading* axis, so
+  each cell's scale was a single component of `value` selected by row — the weights
+  played no part and no dot product was taken. Explicit merge weights could not
+  have had any effect on top of that, so the value is now tiled explicitly to the
+  weight shape before the element-wise product. This intentionally changes the
+  numbers the default random-weight path produces; success criterion 2 is therefore
+  guarded as "the default path builds the same graph as sampling a Gaussian vector
+  with the seed and broadcasting it" (`AudioComposerTest.defaultPathMatchesRandomWeights`)
+  rather than as bit-identity with the defective output.
+- Tests: `AudioComposerTest` (explicit weights, clamping, contributions, override,
+  length validation, default path) and `ComposableAudioFeaturesTest` (per-cell dot
+  product with distinct weight vectors per cell, contribution).
 
 ## No special machine required
 
