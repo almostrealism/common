@@ -238,9 +238,10 @@ A reviewer can confirm the task is done when:
 4. **Is `getLength()` returning max (not max+1) genuinely a bug, or relied upon somewhere?** The
    plan treats it as a bug; the implementer must grep callers of `TraversalOrdering.getLength()` and
    the `PackedCollection` allocation path before changing it, and store the finding. Note
-   `MemoryData.getMemLength()` already consumes `getDelegateOrdering().getLength()` through its
-   delegate path, so the three `knownIssue` tests (which build delegated views) may already be
-   exposed to this value — a reason to settle the `getLength()` fix before the host tests, not after.
+   `MemoryData.getDelegatedLength()` already consumes `getDelegateOrdering().getLength()` (falling
+   back to `getMemLength()` when the ordering declares no length), so the three `knownIssue` tests
+   (which build delegated views) may already be exposed to this value — a reason to settle the
+   `getLength()` fix before the host tests, not after.
 5. **Why exactly do `compactOrdering` and `maskOrdering` fail on the host today?** The sibling
    `explicitIndexOrderingAppliedOnce` reads a full permutation through the same host `ExplicitIndex`
    path and passes (confirmed 2026-10-23), and `maskOrdering` uses only constant indices, so the
