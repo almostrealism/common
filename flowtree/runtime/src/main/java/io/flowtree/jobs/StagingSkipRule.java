@@ -29,7 +29,7 @@ import java.util.List;
  * {@code doWork()} returns, when {@link GitCommitHandler} actually stages
  * files: by then the agent's session has already ended, so a discarded fix
  * is invisible until the job's completion status is inspected (see
- * {@link GitManagedJob#hasAllChangesDropped()}). This rule surfaces the same
+ * {@link JobWorkOutcome#allChangesDropped()}). This rule surfaces the same
  * information earlier, during the enforcement retry loop, so the agent can
  * find another approach — for a protected test file, editing only a method
  * it introduced on this branch rather than a pre-existing one — or say

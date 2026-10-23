@@ -122,4 +122,61 @@ public class CodingAgentJobEventTest extends TestSuiteBase {
 		assertTrue("toJson must emit the costIncomplete flag",
 				JsonFieldExtractor.extractBoolean(json, "costIncomplete"));
 	}
+
+	/**
+	 * A coding-agent job that terminated with a {@link TransientGitException} —
+	 * a sync race or a commit that could not be written despite staged changes,
+	 * after its bounded retries were spent — is classified
+	 * {@link JobCompletionEvent.Status#DEGRADED} with an infrastructure-labelled
+	 * message, not FAILED, so a harness git hiccup is not conflated with an
+	 * agent failure. Covers the transient branch of
+	 * {@code CodingAgentJobEvent.statusFor}, which is distinct from the base
+	 * {@code GitManagedJob.createEvent} override exercised by
+	 * {@code GitManagedJobDegradedStatusTest}.
+	 */
+	@Test(timeout = 30000)
+	public void transientGitFailureIsDegradedForCodingAgentJob() {
+		CodingAgentJob job = new CodingAgentJob("cc-transient", "write the report");
+
+		CodingAgentJobEvent event = job.createEvent(
+				new TransientGitException("both pull and reset failed"));
+
+		assertEquals(JobCompletionEvent.Status.DEGRADED, event.getStatus());
+		assertTrue("message must name the underlying failure: " + event.getErrorMessage(),
+				event.getErrorMessage().contains("both pull and reset failed"));
+		assertTrue("message must label it as infrastructure: " + event.getErrorMessage(),
+				event.getErrorMessage().startsWith("Transient git infrastructure failure:"));
+	}
+
+	/**
+	 * A transient failure wrapped by a higher-level exception is still
+	 * recognised through the cause chain by the coding-agent classifier.
+	 */
+	@Test(timeout = 30000)
+	public void wrappedTransientGitFailureIsDegradedForCodingAgentJob() {
+		CodingAgentJob job = new CodingAgentJob("cc-transient-wrapped", "write the report");
+
+		CodingAgentJobEvent event = job.createEvent(
+				new RuntimeException("sync phase failed",
+						new TransientGitException("commit race")));
+
+		assertEquals(JobCompletionEvent.Status.DEGRADED, event.getStatus());
+		assertTrue("message must name the underlying failure: " + event.getErrorMessage(),
+				event.getErrorMessage().contains("commit race"));
+	}
+
+	/**
+	 * An ordinary (non-transient) failure is still classified FAILED by the
+	 * coding-agent classifier — the transient branch must not swallow a genuine
+	 * agent failure.
+	 */
+	@Test(timeout = 30000)
+	public void ordinaryFailureStaysFailedForCodingAgentJob() {
+		CodingAgentJob job = new CodingAgentJob("cc-ordinary", "write the report");
+
+		CodingAgentJobEvent event = job.createEvent(
+				new IllegalStateException("change validation rejected this job's work"));
+
+		assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
+	}
 }

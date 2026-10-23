@@ -70,6 +70,12 @@
 #                       auto-resolve-python) set this to false so the review
 #                       runs once on a branch's initial work, not on each pass
 #                       of the remediation loop.
+#   REVIEW_ENABLED    - run the review phase after the job (true/false).
+#                       Omitted → the field is not sent and the controller's
+#                       default applies (on). The post-deploy canary sets it
+#                       to false: its task is a two-line file write, and a
+#                       review pass only adds time and failure modes that are
+#                       not the ones it measures.
 #   AUTO_CREATE_PR    - auto-create a GitHub PR on success (default: false)
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
 #   DELAY_SECONDS     - delay execution by this many seconds (default: unset → run immediately)
@@ -94,7 +100,8 @@
 #   1 - submission failed (unreachable host, non-200 response, etc.)
 #
 # Outputs (to stdout):
-#   job_id=<id>   (on success)
+#   job_id=<id>          (on success)
+#   workstream_id=<id>   (on success, when the controller reports one)
 
 set -euo pipefail
 
@@ -224,6 +231,20 @@ if [ -n "${OBJECT_ORIENTED_REVIEW_ENABLED:-}" ]; then
         '. + {objectOrientedReviewEnabled: $o}')
 fi
 
+# The review phase defaults to on at the controller, so, like the
+# object-oriented review above, the field is sent only when a caller chooses.
+if [ -n "${REVIEW_ENABLED:-}" ]; then
+    case "$REVIEW_ENABLED" in
+        true|false) ;;
+        *)
+            echo "ERROR: REVIEW_ENABLED must be true or false (got: $REVIEW_ENABLED)" >&2
+            exit 1
+            ;;
+    esac
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson r "$REVIEW_ENABLED" \
+        '. + {reviewEnabled: $r}')
+fi
+
 if [ -n "${MAX_ENFORCE_CHANGES_RETRIES:-}" ]; then
     case "$MAX_ENFORCE_CHANGES_RETRIES" in
         *[!0-9]*)
@@ -290,6 +311,7 @@ fi
 
 JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
 echo "job_id=$JOB_ID"
+echo "workstream_id=$(echo "$BODY" | jq -r '.workstreamId // empty')"
 echo "Agent job submitted: $JOB_ID"
 
 if [ "$(echo "$BODY" | jq -r '.workstreamCreated // empty')" = "true" ]; then

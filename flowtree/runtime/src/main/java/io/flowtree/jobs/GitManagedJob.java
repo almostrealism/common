@@ -228,13 +228,13 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     private GitCommitHandler commitHandler;
 
     /** Reports what became of this job's work: committed, dropped, or left behind. */
-    private final JobWorkOutcome workOutcome = new JobWorkOutcome(this);
+    private JobWorkOutcome workOutcome = new JobWorkOutcome(this);
 
     /**
      * Test-only hook: injects the result of a {@link GitCommitHandler} run
      * without driving the full {@link #run()} lifecycle (clone, branch
      * preparation, tampering detection), so status-reporting logic that
-     * reads {@link #commitHandler} — {@link #hasAllChangesDropped()},
+     * reads {@link #commitHandler} — {@link JobWorkOutcome#allChangesDropped()},
      * {@link #createEvent(Exception)} — can be exercised directly against a
      * handler a test ran itself.
      *
@@ -242,6 +242,17 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     void setCommitHandlerForTesting(GitCommitHandler commitHandler) {
         this.commitHandler = commitHandler;
+    }
+
+    /**
+     * Replaces the view that classifies what became of this job's work. Call
+     * before the job runs. A seam for tests that run the whole job against a
+     * classification carrying a known defect; production code never calls it.
+     *
+     * @param workOutcome the outcome view, built over this job
+     */
+    void setWorkOutcome(JobWorkOutcome workOutcome) {
+        this.workOutcome = workOutcome;
     }
 
     /**
@@ -614,7 +625,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 ? JobCompletionEvent.degraded(taskId, getTaskString(),
                         TransientGitException.describe(error))
                 : JobCompletionEvent.failed(taskId, getTaskString(), error.getMessage(), error);
-        } else if (hasAllChangesDropped()) {
+        } else if (workOutcome.allChangesDropped()) {
             return JobCompletionEvent.degraded(taskId, getTaskString(),
                 "All changes were dropped by staging guardrails: "
                     + String.join("; ", commitHandler.getSkippedFiles()));
@@ -1211,17 +1222,6 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     StagingResult previewStaging() {
         return GitCommitHandler.previewStaging(this);
-    }
-
-    /**
-     * Returns whether every file the agent changed was dropped by a staging
-     * guardrail; delegates to {@link JobWorkOutcome#allChangesDropped()}.
-     *
-     * @return {@code true} when every changed file was skipped and nothing
-     *         was staged or committed
-     */
-    protected boolean hasAllChangesDropped() {
-        return workOutcome.allChangesDropped();
     }
 
     /**
