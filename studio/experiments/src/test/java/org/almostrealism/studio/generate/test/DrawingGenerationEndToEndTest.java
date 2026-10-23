@@ -135,7 +135,7 @@ public class DrawingGenerationEndToEndTest extends TestSuiteBase {
 		AudioLibrary library = new AudioLibrary(tempDir.toFile(), SAMPLE_RATE);
 		OnnxAutoEncoder autoEncoder = new OnnxAutoEncoder(autoEncoderAssets);
 		library.getWaveDetailsFactory().setFeatureProvider(
-				new AutoEncoderFeatureProvider(autoEncoder));
+				new AutoEncoderFeatureProvider(autoEncoder, "onnx-autoencoder"));
 
 		try {
 			WaveDetails drawing = createDrawingDetails("e2e-drawing-id");
