@@ -296,6 +296,85 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		}
 	}
 
+	/**
+	 * The learned lambda trains. When the four re-parameterization vectors are given to
+	 * {@link DifferentialAttentionFeatures#differentialSequenceAttention} as weights — rather than a
+	 * fixed lambda producer — each of {@code λq1}, {@code λk1}, {@code λq2} and {@code λk2} receives
+	 * the gradient the forward pass implies, compared element by element against central finite
+	 * differences of {@code L = sum(output * G)} for a fixed output gradient {@code G}. On master the
+	 * lambda was applied with a weightless {@code scale(lambda, 1)}, so its parameters were captured as
+	 * a constant and received no gradient at all; the re-parameterization — the mechanism that makes
+	 * differential attention differential — never trained.
+	 */
+	@Test(timeout = 900000)
+	public void theLearnedLambdaReceivesItsGradient() {
+		assertLambdaGradient(new Weights(null, false, true), null);
+	}
+
+	/**
+	 * The learned lambda trains in the {@code differential_attention_qk_layernorm} layer, with
+	 * LayerNorm biases, a partial rotation and a padding mask — the configuration of the Stable Audio
+	 * diffusion transformer: each lambda vector receives the gradient its finite differences imply.
+	 */
+	@Test(timeout = 900000)
+	public void theLearnedLambdaReceivesItsGradientThroughQkLayerNorm() {
+		assertLambdaGradient(new Weights(NormalizationType.LAYER, true, false), PADDING_VALID);
+	}
+
+	/**
+	 * The learned lambda trains in the {@code differential_attention_qk_rmsnorm} layer: each lambda
+	 * vector receives the gradient its finite differences imply.
+	 */
+	@Test(timeout = 900000)
+	public void theLearnedLambdaReceivesItsGradientThroughQkRmsNorm() {
+		assertLambdaGradient(new Weights(NormalizationType.RMS, false, true), null);
+	}
+
+	/**
+	 * Builds the attention with a trained lambda for one configuration, runs one backward pass, and
+	 * checks the gradient delivered to each of {@code λq1}, {@code λk1}, {@code λq2} and {@code λk2}
+	 * element by element against central finite differences of {@code L = sum(output * G)} for a fixed
+	 * output gradient {@code G}.
+	 *
+	 * @param w            the attention's weights, which select the query/key normalization layer
+	 * @param paddingValid the number of leading positions the padding mask marks valid, or {@code null}
+	 *                     for no padding mask
+	 */
+	private void assertLambdaGradient(Weights w, Integer paddingValid) {
+		int lambdaDim = 3;
+		double lambdaInit = 0.2;
+		Producer<PackedCollection> paddingMask = paddingValid == null ? null : cp(validPrefix(paddingValid));
+		PackedCollection[] vectors = new PackedCollection[4];
+		for (int i = 0; i < vectors.length; i++) {
+			vectors[i] = random(HEADS, lambdaDim);
+		}
+
+		TraversalPolicy sequenceShape = shape(BATCH, SEQ_LEN, DIM);
+		PackedCollection input = new PackedCollection(sequenceShape).randnFill();
+		PackedCollection outputGradient = new PackedCollection(sequenceShape).randnFill();
+
+		List<PackedCollection> recorded = new ArrayList<>();
+		Model model = new Model(sequenceShape, gradientRecorder(recorded));
+		model.add(w.trained(ProjectionFactory.dense(), paddingMask,
+				vectors[0], vectors[1], vectors[2], vectors[3], lambdaInit));
+		try (CompiledModel compiled = model.compile(true, true)) {
+			compiled.forward(input);
+			compiled.backward(outputGradient);
+
+			List<double[]> analytic = gradientsOfSize(recorded, HEADS * lambdaDim);
+			assertEquals("one gradient per lambda vector", vectors.length, analytic.size());
+
+			Evaluable<PackedCollection> loss = multiply(cv(sequenceShape, 0), cv(sequenceShape, 1)).sum().get();
+			DoubleSupplier objective = () -> loss.evaluate(compiled.forward(input), outputGradient).toDouble();
+
+			String[] names = { "lambda q1", "lambda k1", "lambda q2", "lambda k2" };
+			for (int i = 0; i < vectors.length; i++) {
+				assertGradient(names[i], centralDifferences(vectors[i], FINITE_DIFFERENCE_STEP, objective),
+						analytic.get(i));
+			}
+		}
+	}
+
 	/** The lambda is required: differential attention without one is rejected. */
 	@Test(timeout = 60000)
 	public void lambdaIsRequired() {
@@ -401,6 +480,26 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 				.findFirst()
 				.orElseThrow(() -> new AssertionError("No gradient recorded for a weight of " + size + " values"))
 				.doubleStream().toArray();
+	}
+
+	/**
+	 * Returns every recorded weight gradient with the given number of values, in the order the model
+	 * wired them: the four lambda vectors share one shape, so they are matched to the vectors they are
+	 * the gradient of by their wiring order ({@code λq1}, {@code λk1}, {@code λq2}, {@code λk2}, the
+	 * order they are registered as the lambda-scaling stage's weights) rather than by their size.
+	 *
+	 * @param recorded the gradients a backward pass recorded, one per weight
+	 * @param size     the number of values of each weight
+	 * @return the gradients of the weights of that size, flattened, in recording order
+	 */
+	private static List<double[]> gradientsOfSize(List<PackedCollection> recorded, int size) {
+		List<double[]> gradients = new ArrayList<>();
+		for (PackedCollection gradient : recorded) {
+			if (gradient.getShape().getTotalSize() == size) {
+				gradients.add(gradient.doubleStream().toArray());
+			}
+		}
+		return gradients;
 	}
 
 	/**
@@ -569,6 +668,29 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		}
 
 		/**
+		 * The attention built by the feature method with a <em>trained</em> lambda: the four
+		 * re-parameterization vectors are given to the attention as weights, so a backward pass
+		 * delivers a gradient to each of them rather than treating the lambda as a constant.
+		 *
+		 * @param projections the projection factory
+		 * @param paddingMask the padding mask, or {@code null}
+		 * @param lambdaQ1    first query lambda vectors
+		 * @param lambdaK1    first key lambda vectors
+		 * @param lambdaQ2    second query lambda vectors
+		 * @param lambdaK2    second key lambda vectors
+		 * @param lambdaInit  the initialization constant
+		 * @return the block
+		 */
+		Block trained(ProjectionFactory projections, Producer<PackedCollection> paddingMask,
+					  PackedCollection lambdaQ1, PackedCollection lambdaK1,
+					  PackedCollection lambdaQ2, PackedCollection lambdaK2, double lambdaInit) {
+			return differentialSequenceAttention(BATCH, SEQ_LEN, DIM, HEADS, qkv, out,
+					qNormWeight, qNormBias, kNormWeight, kNormBias, invFreq,
+					lambdaQ1, lambdaK1, lambdaQ2, lambdaK2, lambdaInit, projections,
+					qkNorm == null ? NormalizationType.LAYER : qkNorm, paddingMask);
+		}
+
+		/**
 		 * A fixed copy of the Java assembly {@code differentialSequenceAttention} built before it loaded
 		 * the asset, with dense projections: the fused projection is split into five per-head paths, the
 		 * keys, the values and the second map are written to stores and read back as constants, and the
@@ -674,6 +796,10 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 			args.put("padding_mask", padding == null ? validPrefix(SEQ_LEN) : padding);
 			args.put("key_mask", validPrefix(SEQ_LEN));
 			args.put("lambda", lambda());
+			args.put("lambda_q1", null);
+			args.put("lambda_k1", null);
+			args.put("lambda_q2", null);
+			args.put("lambda_k2", null);
 
 			PdslLoader loader = new PdslLoader();
 			return loader.buildLayer(loader.parseResource(DIFFERENTIAL_ATTENTION_ASSET), layer, inputShape, args);

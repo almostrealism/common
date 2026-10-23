@@ -8,6 +8,10 @@
  *   short_order()                permute(1, 0): names two axes of a four-axis input, rejected
  *   section(rows, width, index)  slice of the index-th [1, rows, 1, width] section of [1, rows, n, width]
  *   position_scale(factors)      scale(factors, 2): one factor per position of axis 2
+ *   weighted_position_scale(factors, w)
+ *                                scale(factors, 2, w): the same, with w registered as a weight
+ *   counted_position_scale(factors, n)
+ *                                scale(factors, 2, n): an integer where a weight belongs, rejected
  *   row_layernorm(w, b)          layernorm(w, b, 1e-6) over every run of len(w) features
  *   row_rmsnorm(w, b)            rmsnorm(w, b, 1e-6) over every run of len(w) features
  *   rotate(inv_freq)             sequence_rope(inv_freq) on [batch, heads, seq_len, head_dim]
@@ -31,6 +35,14 @@ layer section(rows: int, width: int, index: int) {
 
 layer position_scale(factors: weight) {
     scale(factors, 2)
+}
+
+layer weighted_position_scale(factors: weight, w: weight) {
+    scale(factors, 2, w)
+}
+
+layer counted_position_scale(factors: weight, n: int) {
+    scale(factors, 2, n)
 }
 
 layer row_layernorm(w: weight, b: weight) {
