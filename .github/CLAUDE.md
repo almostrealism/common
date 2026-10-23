@@ -466,10 +466,10 @@ coverage" above and `tools/ci/README.md`.
 
 ### What the `test` job covers
 
-Runs the main test matrix (7 groups) for engine/domain/compute/base layers:
+Runs the main test matrix (5 groups) for engine/domain/compute/base layers:
 `base/hardware`, `engine/utils`, `engine/ml`, plus `engine/render` and
 `base/io,engine/utils-http` on group 0 only. Skipped when none of those layers
-change. Uploads `coverage-group-{0..6}`.
+change. Uploads `coverage-group-{0..4}`.
 
 ### What the `test-media` job covers
 
@@ -633,8 +633,8 @@ retune them one variable at a time, as measured follow-ups, so a regression stay
 attributable.
 
 The self-hosted jobs split their suites across several groups, with group counts
-tuned per lane: `test-media-cl` uses eight; `test`, `test-media` and
-`test-media-cuda` seven; `test-mac`, `test-cl` and `test-cuda` six; and
+tuned per lane: `test-media-cl` uses eight; `test-media-cuda` seven;
+`test-cl` six; `test`, `test-media` and `test-mac` five; and `test-cuda` and
 `test-media-mac` four. The CL backend hits its
 memory ceiling under large per-group loads even at `AR_HARDWARE_MEMORY_SCALE=7`
 (the highest scale used anywhere — the scale is exponential, so raising it
@@ -648,7 +648,7 @@ never run; `tools/tests/test_accelerator_lane_admission.py` checks this for
 The CL and CUDA jobs each run up to three groups at a time (`max-parallel: 3`).
 
 `test-media-mac` is the exception: it uses **4 groups at `max-parallel: 2`**
-(up to two groups at a time), fewer groups than any other lane. As the second GPU-lane stage it
+(up to two groups at a time), tied with `test-cuda` for the fewest groups of any lane. As the second GPU-lane stage it
 already runs alone on the fleet (no other GPU-heavy stage runs concurrently), so
 running two of its four groups at once trades some GPU contention on the
 studio benchmark tick tails for shorter wall-clock time.
