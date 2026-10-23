@@ -348,7 +348,7 @@ class EnforcementRunner implements ConsoleFeatures {
 
         Path commitFile = job.resolveWorkingPath("commit.txt");
         if (commitFile == null) return false;
-        String fallback = buildFallbackCommitMessage(job);
+        String fallback = job.commitMessageBuilder().buildExhaustionFallback(job);
         try {
             Files.writeString(commitFile, fallback, StandardCharsets.UTF_8);
             log("commit-message rule: wrote fallback commit message to commit.txt");
@@ -357,29 +357,5 @@ class EnforcementRunner implements ConsoleFeatures {
             warn("Could not write fallback commit.txt: " + e.getMessage());
             return false;
         }
-    }
-
-    /**
-     * Builds the fallback commit message used when the commit-message rule exhausts
-     * its retries and needs to produce a usable message so the job can proceed.
-     * Uses, in order:
-     * <ol>
-     *   <li>The job prompt's first line, if non-empty and free of author
-     *       attribution (a prompt line that names an author would produce the
-     *       very message {@link CommitMessageBuilder} refuses to commit)</li>
-     *   <li>{@code "Job {jobId} commit"}</li>
-     * </ol>
-     */
-    private String buildFallbackCommitMessage(CodingAgentJob job) {
-        String prompt = job.getPrompt();
-        if (prompt != null && !prompt.trim().isEmpty()) {
-            String firstLine = prompt.trim().split("\n")[0].trim();
-            if (!firstLine.isEmpty() && !AuthorAttribution.containsAttribution(firstLine)) {
-                return firstLine.length() > 72
-                        ? firstLine.substring(0, 69) + "..."
-                        : firstLine;
-            }
-        }
-        return "Job " + job.getTaskId() + " commit";
     }
 }

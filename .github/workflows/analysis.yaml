@@ -1845,6 +1845,104 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
+  # ─── Agent end-to-end: proof the tests can fail ────────────────────
+  # `test-flowtree` runs AgentJobEndToEndTest and reports it green. This job
+  # answers the question that a green result does not: green for what reason?
+  #
+  # It installs each defect in tools/ci/agent-e2e/faults/ and requires the
+  # scenario named for that defect to fail. The need is not hypothetical —
+  # during the outage this tooling was built after, the end-to-end test named
+  # for the live defect passed, because the job it constructed never configured
+  # the credentials that make the failing policy reachable. The test was green
+  # and covered nothing, and the entire pipeline agreed with it.
+  #
+  # The defects are test-side doubles in AgentJobFaultCatalogue, not patches,
+  # so every fault runs in one Maven invocation against `build`'s shared
+  # artifacts. One catalogue entry is a control that must PASS, so a runner
+  # that reported "detected" unconditionally fails here rather than certifying
+  # everything forever. No coverage is produced, so this job is not in
+  # `analysis` needs.
+  agent-e2e-faults:
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
+
+      # Cheap, offline, and it runs here rather than only at deploy time: the
+      # post-deploy canary's verifier is the thing that decides whether a
+      # deploy broke the fleet, and a PR that breaks that verifier must not
+      # reach master and find out later.
+      - name: Prove the post-deploy canary verifier discriminates
+        run: ./tools/ci/agent-e2e/post-deploy-canary.sh selftest
+
+      - name: Prove the deployed-build check discriminates
+        run: ./tools/ci/agent-e2e/verify-deployed-build.sh selftest
+
+      - name: Prove the seam check discriminates
+        run: ./tools/ci/agent-e2e/check-seam.sh selftest
+
+      # The cheapest way to turn a red end-to-end test green is to stub one
+      # more thing, and in a diff that looks like a test being fixed. Every
+      # substitution has to be declared in seam.txt, so growing the seam
+      # shows up next to the test it excuses.
+      - name: Every substitution must be declared
+        run: ./tools/ci/agent-e2e/check-seam.sh
+
+      # Offline, no build: the verdict reader must tell a pass, a failure, an
+      # error and a missing method apart before its verdicts are trusted.
+      - name: Prove the fault-catalogue runner discriminates
+        run: ./tools/ci/agent-e2e/run-fault-catalogue.sh selftest
+
+      # One Maven invocation for the whole catalogue. Maven may reach the
+      # network: the restored artifacts cover this project's modules, not
+      # every third-party plugin and dependency.
+      - name: Every fault must break its scenario
+        env:
+          MVN_OFFLINE: ""
+        run: ./tools/ci/agent-e2e/run-fault-catalogue.sh
+
   test:
     needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # Layer gate: engine tests only run when engine-or-below layers are modified
@@ -1873,11 +1971,11 @@ jobs:
       # Cross-OS gating (don't run mac when linux fails) is handled by test-mac's
       # needs/if, not by fail-fast.
       fail-fast: false
-      # Cap concurrent groups so all eight completing doesn't overrun runner
+      # Cap concurrent groups so all five completing doesn't overrun runner
       # capacity; the remaining groups queue and run as slots free up.
       max-parallel: 4
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1947,7 +2045,7 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=5 \
            2>&1 | tee "${{ runner.temp }}/mvn-utils-test.log"
 
       - name: Upload Surefire Reports
@@ -1971,7 +2069,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=5 \
            2>&1 | tee "${{ runner.temp }}/mvn-ml-test.log"
 
       - name: Upload ML Surefire Reports
@@ -2087,16 +2185,16 @@ jobs:
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
     strategy:
-      # Split the (growing) media test set across eight groups: each group runs an eighth
-      # of every module's tests (AR_TEST_GROUPS=8 on the steps below). Self-hosted runners
-      # run one job at a time, so each group lands on its own runner with an eighth of the
+      # Split the (growing) media test set across five groups: each group runs a fifth
+      # of every module's tests (AR_TEST_GROUPS=5 on the steps below). Self-hosted runners
+      # run one job at a time, so each group lands on its own runner with a fifth of the
       # tests, cutting peak memory per runner and shrinking the retry unit — a flaky
       # failure re-runs only that group, not the whole suite. max-parallel bounds how many
-      # groups run at once on the fleet, so eight groups queue in ceil(8/max-parallel) waves.
+      # groups run at once on the fleet, so five groups queue in ceil(5/max-parallel) waves.
       fail-fast: false
       max-parallel: 2
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2145,7 +2243,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=5 \
            2>&1 | tee "${{ runner.temp }}/mvn-audio-test.log"
 
       - name: Run Music Tests
@@ -2158,7 +2256,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=5 \
            2>&1 | tee "${{ runner.temp }}/mvn-music-test.log"
 
       - name: Run Compose Tests
@@ -2171,7 +2269,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=5 \
            2>&1 | tee "${{ runner.temp }}/mvn-compose-test.log"
 
       - name: Run Spatial Tests
@@ -2184,7 +2282,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=5 \
            2>&1 | tee "${{ runner.temp }}/mvn-spatial-test.log"
 
       # extern/ml-onnx and studio/experiments had no CI job at all. Both are small, and both
@@ -2202,7 +2300,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=5 \
            2>&1 | tee "${{ runner.temp }}/mvn-extern-experiments-test.log"
 
       - name: Upload Surefire Reports
@@ -2280,7 +2378,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2349,7 +2447,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=5
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -2359,7 +2457,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=5
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -2567,9 +2665,10 @@ jobs:
   test-cuda:
     needs: [changes, build, test, test-media, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CUDA lane, first stage: the CUDA duplicate of test-cl, with AR_HARDWARE_DRIVER=native,cuda
-    # so GPU-eligible work routes through the CUDA backend. Every step mirrors test-cl; see
-    # there for the FP32 precision, memory scale and direct-memory settings, which carry over
-    # unchanged (CudaDataContext is FP32, so the native context must match it).
+    # so GPU-eligible work routes through the CUDA backend. Every step mirrors test-cl (except
+    # the group count: four groups here, six there); see there for the FP32 precision, memory
+    # scale and direct-memory settings, which carry over unchanged (CudaDataContext is FP32,
+    # so the native context must match it).
     #
     # Runs on the NVIDIA fleet (tools/ci/cuda) and runs in parallel with the CL lane: the
     # two lanes use different machines. It is admitted only once both stages of the CPU
@@ -2607,7 +2706,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2664,7 +2763,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=4
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -2675,7 +2774,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=4
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -3085,7 +3184,8 @@ jobs:
   test-media-cuda:
     needs: [changes, build, test, test-media, test-mac, test-media-mac, test-cuda, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CUDA lane, second (final) stage: the CUDA duplicate of test-media-cl, with
-    # AR_HARDWARE_DRIVER=native,cuda. Every step and setting mirrors test-media-cl; see there.
+    # AR_HARDWARE_DRIVER=native,cuda. Every step and setting mirrors test-media-cl (except the
+    # group count: seven groups here, eight there); see there.
     #
     # Runs on the NVIDIA fleet (tools/ci/cuda). Gates on test-cuda because the host has a
     # single GPU, and on the upstream lanes DIRECTLY for the reason test-media-cl does:
@@ -3126,7 +3226,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4, 5, 6]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -3192,7 +3292,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=7
 
       - name: Run Music Tests
         run: |
@@ -3203,7 +3303,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=7
 
       - name: Run Compose Tests
         run: |
@@ -3215,7 +3315,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=7
 
       - name: Run Spatial Tests
         run: |
@@ -3227,7 +3327,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=7
 
       # See the identical step in test-media for why these two modules share one invocation.
       - name: Run Extern and Experiments Tests
@@ -3240,7 +3340,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=7
 
       # CUDA media surefire reports so auto-resolve can parse CUDA-specific failures.
       - name: Upload Surefire Reports
@@ -4374,6 +4474,7 @@ jobs:
       - agent-volume-isolation
       - docker-build
       - test-flowtree
+      - agent-e2e-faults
       - test
       - test-media
       - test-mac
@@ -4403,6 +4504,7 @@ jobs:
           AGENT_VOLUME_ISOLATION_RESULT: ${{ needs.agent-volume-isolation.result }}
           DOCKER_BUILD_RESULT: ${{ needs.docker-build.result }}
           TEST_FLOWTREE_RESULT: ${{ needs.test-flowtree.result }}
+          AGENT_E2E_FAULTS_RESULT: ${{ needs.agent-e2e-faults.result }}
           TEST_RESULT: ${{ needs.test.result }}
           TEST_MEDIA_RESULT: ${{ needs.test-media.result }}
           TEST_MAC_RESULT: ${{ needs.test-mac.result }}
@@ -4444,6 +4546,7 @@ jobs:
           check_job "agent-volume-isolation"  "$AGENT_VOLUME_ISOLATION_RESULT"
           check_job "docker-build"            "$DOCKER_BUILD_RESULT"
           check_job "test-flowtree"           "$TEST_FLOWTREE_RESULT"
+          check_job "agent-e2e-faults"        "$AGENT_E2E_FAULTS_RESULT"
           check_job "test"                    "$TEST_RESULT"
           check_job "test-media"              "$TEST_MEDIA_RESULT"
           check_job "test-mac"                "$TEST_MAC_RESULT"
@@ -4485,6 +4588,7 @@ jobs:
           echo "| agent-volume-isolation | ${{ needs.agent-volume-isolation.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| docker-build | ${{ needs.docker-build.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-flowtree | ${{ needs.test-flowtree.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| agent-e2e-faults | ${{ needs.agent-e2e-faults.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test | ${{ needs.test.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media | ${{ needs.test-media.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-mac | ${{ needs.test-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"

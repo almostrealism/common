@@ -1,13 +1,17 @@
 name: "Verify Completion"
 
-# The manual "implement the plan" trigger. Dispatched by hand on a branch
-# (or through the project_verify_branch MCP tool) once a person has read the
+# The "implement the plan" trigger. Dispatched once a person has read the
 # branch's plan and approved it; it submits a coding agent that implements
 # every goal the plan sets and proves each one with tests.
 #
-# Nothing starts implementation automatically. On a docs-only branch, which is
-# what a plan branch is until this runs, auto-review in analysis.yaml sends a
-# review that improves the documents and never carries out the plan.
+# Approval is marking the plan's draft pull request ready for review: the Plan
+# Ready workflow (ready-plan.yaml) turns that transition into a dispatch of
+# this workflow on the branch. Dispatching it by hand, or through the
+# project_verify_branch MCP tool, does the same thing. Nothing else starts
+# implementation — a push or the pipeline does not. On a docs-only branch,
+# which is what a plan branch is until it is approved, auto-review in
+# analysis.yaml sends a review that improves the documents and never carries
+# out the plan.
 #
 # The work is done by the reusable Implement Plan workflow, the same one other
 # repositories call for their own plan branches, so this repository exercises

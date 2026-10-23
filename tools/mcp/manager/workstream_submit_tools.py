@@ -31,6 +31,7 @@ def workstream_submit_task(
     enforce_changes: bool = False,
     max_enforce_changes_retries: int = -1,
     auto_create_pr: bool = False,
+    create_pr_as_draft: bool = False,
     started_after: str = "",
     required_labels: str = "",
     deduplication_mode: str = "",
@@ -155,6 +156,12 @@ def workstream_submit_task(
             the job's commit message as the title and description — what the
             CI-submitted planning and QA rounds do. Leave it off for work that
             continues on a branch which already has a pull request.
+        create_pr_as_draft: If true, the pull request opened by
+            ``auto_create_pr`` is a draft — the convention that it carries only
+            a plan awaiting the owner's approval. Marking the PR ready for
+            review is what approves the plan and starts implementation. Has no
+            effect unless ``auto_create_pr`` is also set. Leave it off for a job
+            whose PR is real work meant to be merged as it stands.
         started_after: Epoch milliseconds timestamp. If a newer job already
             exists on the workstream, the submission is skipped and the
             response includes ``skipped: true``. Used by CI pipelines to
@@ -748,6 +755,8 @@ def workstream_submit_task(
         payload["maxEnforceChangesRetries"] = max_enforce_changes_retries
     if auto_create_pr:
         payload["autoCreatePr"] = True
+    if create_pr_as_draft:
+        payload["createPrAsDraft"] = True
     if started_after:
         payload["startedAfter"] = started_after
     if required_labels:
