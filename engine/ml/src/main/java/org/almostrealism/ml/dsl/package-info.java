@@ -24,12 +24,41 @@
  * {@link org.almostrealism.model.Block} and {@link org.almostrealism.model.Model}
  * objects, and then compiled for GPU/CPU execution via the AR hardware framework.</p>
  *
- * <h2>Key Components</h2>
+ * <p>The language reference — lexical structure, grammar, the meaning of every definition and
+ * statement, name resolution, imports, the built-in catalog with each built-in's gradient
+ * behavior, extension and known limits — is {@code docs/internals/pdsl-language.md} in the
+ * repository.</p>
+ *
+ * <h2>Public Components</h2>
  * <ul>
- *   <li>{@link org.almostrealism.ml.dsl.PdslParser} — tokenizes and parses PDSL source text</li>
- *   <li>{@link org.almostrealism.ml.dsl.PdslNode} — AST node hierarchy</li>
- *   <li>{@link org.almostrealism.ml.dsl.PdslInterpreter} — walks the AST and builds AR blocks</li>
- *   <li>{@link org.almostrealism.ml.dsl.PdslParseException} — parse-time error reporting</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslLexer} — turns source text into tokens and owns the
+ *       set of reserved words</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslToken} — a token: its type, text and source
+ *       position</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslParser} — recursive-descent parser from tokens to a
+ *       program</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslNode} — the syntax tree: the program, its imports and
+ *       definitions, statements and expressions</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslParseException} — every lexing, parsing, import and
+ *       interpretation error; carries only a message</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslInterpreter} — builds layers and models from a
+ *       program and evaluates its config, data and state blocks</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslLoader} — the entry point: parses sources and
+ *       classpath resources (resolving imports and caching parsed resources), and builds through
+ *       interpreters configured by a primitive registrar</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslPrimitive} — a function a domain module registers
+ *       with the interpreter</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslPrimitiveContext} — the per-call context handed to a
+ *       primitive: argument normalisation and the multi-channel environment</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslChannelBank} — the whole-bank argument of a
+ *       vectorized {@code for each channel} body</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslMultiChannelDispatcher} — builds the block behind
+ *       {@code for each channel}, supplied by a domain module</li>
  * </ul>
+ *
+ * <p>The built-in function library ({@code PdslBuiltins}) and the feature mixin it and the
+ * interpreter use ({@code PdslFeatures}) are package-private implementation details: programs
+ * reach the built-ins by name, and domains add functions through {@code PdslPrimitive} rather
+ * than by extending the library.</p>
  */
 package org.almostrealism.ml.dsl;

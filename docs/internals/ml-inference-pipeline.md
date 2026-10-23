@@ -54,7 +54,9 @@ The attention structure itself is not assembled in Java. It is described by the 
 asset `engine/ml/src/main/resources/pdsl/attention.pdsl`, whose `attention`,
 `attention_qk_norm` and `attention_mra` layers spell out every stage of one forward
 pass — normalization, projections, rotary embedding, the cache writes, scores, mask,
-softmax, weighted values and the output projection. The Java side,
+softmax, weighted values and the output projection. (The language these assets are written
+in, including what each built-in they call computes, is described in the
+[PDSL Language Reference](pdsl-language.md).) The Java side,
 `AttentionFeatures.attention(...)`, is a thin loader: `attentionArguments` allocates the
 caches and binds the arguments, `attentionLayer` parses the asset and builds the
 requested layer through `PdslLoader.buildLayer`. The caches are caller-owned state that

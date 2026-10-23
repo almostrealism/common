@@ -59,7 +59,7 @@ interpreter from `PdslInterpreter.java`.
      (`RESOURCE_CACHE`) and that cached programs are never mutated.
    - **Lexical structure:** comments (`//`, `/** */` asset headers), identifiers, literals
      (number, string, bool, `null`, shape literals `[a, b]`), the full keyword table read from
-     `PdslLexer.KEYWORDS`, operators and precedence read from `PdslParser`. The table must mark
+     `PdslToken.Type.keywords()`, operators and precedence read from `PdslParser`. The table must mark
      which keywords are reserved but unused: `if` and `else` have no parser production. It must
      also note the contextual words that are *not* keywords: `each` in `for each channel` is an
      identifier, which `PdslParser` matches by its text.
@@ -146,7 +146,7 @@ interpreter from `PdslInterpreter.java`.
 ## Success Criteria
 
 - `docs/internals/pdsl-language.md` exists and covers every section in Scope item 1; every
-  keyword in `PdslLexer.KEYWORDS`, every `PdslNode` subclass and every builtin name dispatched
+  keyword in `PdslToken.Type.keywords()`, every `PdslNode` subclass and every builtin name dispatched
   by `PdslBuiltins`/`PdslInterpreter` appears in it.
 - The builtin catalog has a gradient-behavior entry for every operand of every builtin, each
   backed by code or a test, or marked "not verified".

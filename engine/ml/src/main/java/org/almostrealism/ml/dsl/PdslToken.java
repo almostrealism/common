@@ -16,6 +16,11 @@
 
 package org.almostrealism.ml.dsl;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+
 /**
  * Token representation for the Producer DSL (.pdsl) language.
  * Each token carries its type, textual value, and source location.
@@ -25,73 +30,73 @@ public class PdslToken {
 	/** Token types for the Producer DSL lexer. */
 	public enum Type {
 		/** {@code layer} keyword introducing a layer definition. */
-		LAYER,
+		LAYER("layer"),
 		/** {@code model} keyword introducing a model definition. */
-		MODEL,
+		MODEL("model"),
 		/**
 		 * {@code import} keyword introducing an import statement. Followed by a string literal
 		 * naming the classpath resource of another {@code .pdsl} asset whose definitions this
 		 * file depends on.
 		 */
-		IMPORT,
+		IMPORT("import"),
 		/** {@code config} keyword introducing a configuration block. */
-		CONFIG,
+		CONFIG("config"),
 		/** {@code data} keyword introducing a data block definition. */
-		DATA,
+		DATA("data"),
 		/** {@code state} keyword introducing a state block definition. */
-		STATE,
+		STATE("state"),
 		/** {@code let} keyword for local variable binding. */
-		LET,
-		/** {@code return} keyword for returning a value. */
-		RETURN,
-		/** {@code if} keyword for conditional branching. */
-		IF,
-		/** {@code else} keyword for the alternative branch of a conditional. */
-		ELSE,
+		LET("let"),
+		/** {@code return} keyword; {@code return expr} appends {@code expr} as an expression statement does. */
+		RETURN("return"),
+		/** {@code if} keyword: reserved, but no parser production consumes it, so PDSL has no conditional. */
+		IF("if"),
+		/** {@code else} keyword: reserved, but no parser production consumes it. */
+		ELSE("else"),
 		/** {@code for} keyword for iteration. */
-		FOR,
+		FOR("for"),
 		/** {@code in} keyword in {@code for ... in ...} iteration syntax. */
-		IN,
+		IN("in"),
 		/**
 		 * {@code stack} keyword: {@code stack group as name { body }} repeats the body once for
 		 * each member of a weight group, in order, with no index the body can compute with.
 		 */
-		STACK,
+		STACK("stack"),
 		/** {@code as} keyword naming the member of a {@code stack} each repetition reads. */
-		AS,
-		/** {@code branch} keyword for multi-way conditional dispatch. */
-		BRANCH,
-		/** {@code accum} keyword for accumulation expressions. */
-		ACCUM,
-		/** {@code product} keyword for product expressions. */
-		PRODUCT,
-		/** {@code accum_blocks} keyword for element-wise accumulation of two blocks. */
-		ACCUM_BLOCKS,
+		AS("as"),
+		/** {@code branch} keyword: forks the current signal into a sub-block that runs alongside the main path. */
+		BRANCH("branch"),
+		/** {@code accum} keyword: a residual connection adding a sub-block's output to its input. */
+		ACCUM("accum"),
+		/** {@code product} keyword: the element-wise product of two sub-blocks applied to the same input. */
+		PRODUCT("product"),
+		/** {@code accum_blocks} keyword: the element-wise sum of N sub-blocks applied to the same input. */
+		ACCUM_BLOCKS("accum_blocks"),
 		/** {@code concat_blocks} keyword for concatenating outputs of N blocks applied to the same input. */
-		CONCAT_BLOCKS,
+		CONCAT_BLOCKS("concat_blocks"),
 		/** {@code weight} keyword marking a weight reference. */
-		WEIGHT,
+		WEIGHT("weight"),
 		/** {@code scalar} type annotation keyword. */
-		SCALAR,
+		SCALAR("scalar"),
 		/**
 		 * {@code producer} type annotation keyword. Followed by a shape literal in parentheses,
 		 * e.g. {@code producer([1])}, marks a parameter bound to a
 		 * {@link io.almostrealism.relation.Producer} of {@link org.almostrealism.collect.PackedCollection}
 		 * with the given shape.
 		 */
-		PRODUCER,
+		PRODUCER("producer"),
 		/** {@code int} type annotation keyword. */
-		INT_TYPE,
+		INT_TYPE("int"),
 		/** {@code float} type annotation keyword. */
-		FLOAT_TYPE,
+		FLOAT_TYPE("float"),
 		/** {@code bool} type annotation keyword. */
-		BOOL_TYPE,
+		BOOL_TYPE("bool"),
 		/** {@code true} boolean literal. */
-		TRUE,
+		TRUE("true"),
 		/** {@code false} boolean literal. */
-		FALSE,
+		FALSE("false"),
 		/** {@code null} literal. */
-		NULL_LITERAL,
+		NULL_LITERAL("null"),
 		/** An identifier token (variable name, function name, etc.). */
 		IDENTIFIER,
 		/** A numeric literal (integer or floating-point). */
@@ -118,7 +123,7 @@ public class PdslToken {
 		SEMICOLON,
 		/** Dot {@code .} for member access. */
 		DOT,
-		/** Arrow {@code ->} for return type annotations. */
+		/** Arrow {@code ->} introducing a layer's shape annotation, the input shape it is built for when called. */
 		ARROW,
 		/** Double dot {@code ..} for range expressions. */
 		DOTDOT,
@@ -132,20 +137,81 @@ public class PdslToken {
 		SLASH,
 		/** Assignment operator {@code =}. */
 		EQUALS,
-		/** Equality comparison {@code ==}. */
+		/** Equality comparison {@code ==}; lexed, but no parser production consumes it. */
 		EQ,
-		/** Inequality comparison {@code !=}. */
+		/** Inequality comparison {@code !=}; lexed, but no parser production consumes it. */
 		NEQ,
-		/** Less-than operator {@code <}. */
+		/** Less-than operator {@code <}; lexed, but no parser production consumes it. */
 		LT,
-		/** Greater-than operator {@code >}. */
+		/** Greater-than operator {@code >}; lexed, but no parser production consumes it. */
 		GT,
-		/** Less-than-or-equal operator {@code <=}. */
+		/** Less-than-or-equal operator {@code <=}; lexed, but no parser production consumes it. */
 		LTE,
-		/** Greater-than-or-equal operator {@code >=}. */
+		/** Greater-than-or-equal operator {@code >=}; lexed, but no parser production consumes it. */
 		GTE,
 		/** End-of-file sentinel token. */
-		EOF
+		EOF;
+
+		/** Mapping from each reserved word to the keyword type it lexes as, in declaration order. */
+		private static final Map<String, Type> KEYWORDS = new LinkedHashMap<>();
+
+		static {
+			for (Type type : values()) {
+				if (type.isKeyword()) KEYWORDS.put(type.keyword, type);
+			}
+		}
+
+		/** The reserved word this type is spelled as in source, or null if it is not a keyword. */
+		private final String keyword;
+
+		/** Constructs a type that is not a keyword. */
+		Type() {
+			this(null);
+		}
+
+		/**
+		 * Constructs a keyword type.
+		 *
+		 * @param keyword the reserved word this type is spelled as in source
+		 */
+		Type(String keyword) {
+			this.keyword = keyword;
+		}
+
+		/**
+		 * Returns the reserved word this type is spelled as in source.
+		 *
+		 * @return the keyword, or null if this type is not a keyword
+		 */
+		public String getKeyword() { return keyword; }
+
+		/**
+		 * Returns the type a word lexes as: its keyword type if it is reserved,
+		 * otherwise {@link #IDENTIFIER}.
+		 *
+		 * @param word the word to classify
+		 * @return the keyword type for {@code word}, or {@link #IDENTIFIER}
+		 */
+		public static Type forWord(String word) {
+			return KEYWORDS.getOrDefault(word, IDENTIFIER);
+		}
+
+		/**
+		 * Returns whether this type is a reserved word of the language.
+		 *
+		 * @return true if this type is spelled as a keyword in source
+		 */
+		public boolean isKeyword() { return keyword != null; }
+
+		/**
+		 * Returns every reserved word of the language, including {@code if} and {@code else}, which
+		 * are reserved but have no production in {@link PdslParser}.
+		 *
+		 * @return an unmodifiable view of the reserved words, in declaration order
+		 */
+		public static Set<String> keywords() {
+			return Collections.unmodifiableSet(KEYWORDS.keySet());
+		}
 	}
 
 	/** The type of this token. */
@@ -186,6 +252,17 @@ public class PdslToken {
 
 	/** Returns the 1-based source column number. */
 	public int getColumn() { return column; }
+
+	/**
+	 * Returns whether this token is spelled as a word: an identifier or a reserved word.
+	 * A field name after {@code .} may be any word, so {@code weights.model.layers} names
+	 * the checkpoint's {@code model.layers} group whatever words the language reserves.
+	 *
+	 * @return true if this token is an {@link Type#IDENTIFIER} or a keyword
+	 */
+	public boolean isWord() {
+		return type == Type.IDENTIFIER || type.isKeyword();
+	}
 
 	@Override
 	public String toString() {
