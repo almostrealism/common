@@ -16,15 +16,13 @@ source's latent features; the composer sums the scaled sources. A caller can
 steer the blend only indirectly, by moving the position vector through a latent
 field of weights it did not choose and cannot inspect.
 
-<!-- TODO(review): remove the private-product reference below; public repo docs must describe motivation in platform terms -->
-This is the framework capability behind the Rings 0.41 *"Audio sculpting becomes
-the real workflow"* goal — specifically *"media brushes … with fine-grained
-control over how the different sources are merged during diffusion."* Merging
-multiple media sources in latent space is a general generation capability that
-belongs in the framework; any application performing multi-source latent
-composition needs to be able to say, deterministically, how much each source
-contributes. This task adds that control while leaving the existing random-weight
-behaviour as the untouched default.
+This is the framework capability needed by interactive clients that sculpt audio
+from several media sources with fine-grained control over how the sources are
+merged during diffusion. Merging multiple media sources in latent space is a
+general generation capability that belongs in the framework; any application
+performing multi-source latent composition needs to be able to say,
+deterministically, how much each source contributes. This task adds that control
+while leaving the existing random-weight behaviour as the untouched default.
 
 ## Background: how blending works today
 
