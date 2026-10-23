@@ -181,6 +181,43 @@ public class SequenceAttentionPrimitivesTest extends TestSuiteBase implements At
 	 */
 	@Test(timeout = 120000)
 	public void axisScaleMultipliesEachPositionByItsFactor() {
+		assertScalesEachPosition("position_scale", args());
+	}
+
+	/**
+	 * {@code scale(factors, 2, w)} registers {@code w} as a weight of the stage without changing its
+	 * forward computation: every element is multiplied by its position's factor exactly as
+	 * {@code scale(factors, 2)} multiplies it, whether {@code w} is a bound tensor or left
+	 * {@code null} (a weight the caller left out, which is skipped).
+	 */
+	@Test(timeout = 120000)
+	public void axisScaleWithWeightsMultipliesEachPositionByItsFactor() {
+		assertScalesEachPosition("weighted_position_scale",
+				args("w", new PackedCollection(shape(2, 3)).randnFill()));
+		assertScalesEachPosition("weighted_position_scale", args("w", null));
+	}
+
+	/**
+	 * The arguments of the per-axis {@code scale} after the axis are the collections the factors are
+	 * built from; a value that is not a bound tensor, such as an integer, is rejected rather than
+	 * silently dropped.
+	 */
+	@Test(timeout = 60000)
+	public void axisScaleRejectsAWeightThatIsNotATensor() {
+		assertRejected("counted_position_scale", shape(1, 2, 4, 3),
+				args("factors", PackedCollection.of(1.0, 0.0, 0.5, -2.0).reshape(shape(1, 4)), "n", 3),
+				"scale(factors, axis, n) should reject an integer where a weight belongs");
+	}
+
+	/**
+	 * Runs a per-axis scale fixture over a {@code [1, 2, 4, 3]} input with the factors
+	 * {@code [1, 0, 0.5, -2]} along axis 2, and checks that every element is its input times the
+	 * factor of its position.
+	 *
+	 * @param layer the fixture layer
+	 * @param extra the fixture's arguments other than {@code factors}
+	 */
+	private void assertScalesEachPosition(String layer, Map<String, Object> extra) {
 		int heads = 2;
 		int positions = 4;
 		int width = 3;
@@ -189,14 +226,15 @@ public class SequenceAttentionPrimitivesTest extends TestSuiteBase implements At
 		double[] in = input.doubleStream().toArray();
 		double[] f = factors.doubleStream().toArray();
 
-		double[] actual = run("position_scale", shape(1, heads, positions, width),
-				args("factors", factors), input);
+		Map<String, Object> layerArgs = new HashMap<>(extra);
+		layerArgs.put("factors", factors);
+		double[] actual = run(layer, shape(1, heads, positions, width), layerArgs, input);
 		assertEquals(in.length, actual.length);
 		for (int h = 0; h < heads; h++) {
 			for (int n = 0; n < positions; n++) {
 				for (int d = 0; d < width; d++) {
 					int idx = (h * positions + n) * width + d;
-					assertEquals("element " + idx, in[idx] * f[n], actual[idx], 1e-6);
+					assertEquals(layer + " element " + idx, in[idx] * f[n], actual[idx], 1e-6);
 				}
 			}
 		}

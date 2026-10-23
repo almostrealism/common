@@ -37,7 +37,15 @@ Differential attention follows the same structure: `differentialSequenceAttentio
 the `differential_attention.pdsl` asset, in which the keys and values of each of its two attention
 maps are branches read by the products, and `accum_blocks` sums the two maps (the second
 lambda-weighted and negated), so all five sections of its fused projection receive gradients
-(`DifferentialAttentionAssetTest`). Cross-attention now trains its K/V projection the same way:
+(`DifferentialAttentionAssetTest`). The per-head lambda itself also trains: it is applied with
+`scale(lambda, 1, λq1, λk1, λq2, λk2)`, which registers the four vectors the re-parameterization
+`exp(λq1·λk1) − exp(λq2·λk2) + λinit` is built from (`differentialLambda`) as the scaling stage's
+weights, so the backward pass differentiates the lambda with respect to them. The overload of
+`differentialSequenceAttention` that takes the four vectors wires this; the one that takes a fixed
+lambda producer binds those weights null and applies the lambda without training it, exactly as
+before. A finite-difference check in `DifferentialAttentionAssetTest` confirms each vector receives
+its gradient — on an earlier revision the lambda was applied with a weightless scale, so its
+parameters were captured as a constant and received no gradient at all. Cross-attention now trains its K/V projection the same way:
 `sequenceCrossAttention` computes the keys and values on a `branch()` of its context input and feeds
 those branch blocks to the score and context products through the `Block`-valued
 `scaledDotProductAttention` overload (again `compose`), so the backward pass reaches both halves of
