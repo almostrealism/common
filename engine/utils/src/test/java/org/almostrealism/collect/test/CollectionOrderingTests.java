@@ -177,6 +177,29 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Every logical index of a repeat ordering has a position within the period, so its
+	 * membership test is the constant {@code true} even for a variable index, and reads of a
+	 * repeated collection carry no gate. A composition with a compact first ordering still
+	 * excludes the absent elements of that ordering.
+	 */
+	@Test(timeout = 10000)
+	public void repeatOrderingContainsEveryIndex() {
+		RepeatTraversalOrdering period3 = new RepeatTraversalOrdering(3);
+		Expression<Integer> index = new StaticReference<>(Integer.class, "i");
+
+		assertTrue(period3.containsIndex(index).booleanValue().orElseThrow());
+		assertTrue(period3.containsIndex(new IntegerConstant(7)).booleanValue().orElseThrow());
+		assertEquals(1, period3.indexOf(7));
+
+		DelegatedTraversalOrdering composed = new DelegatedTraversalOrdering(
+				new ExplicitIndexTraversalOrdering(pack(4, -1)), period3);
+		assertTrue(composed.containsIndex(new IntegerConstant(0)).booleanValue().orElseThrow());
+		assertFalse(composed.containsIndex(new IntegerConstant(1)).booleanValue().orElseThrow());
+		assertEquals(1, composed.indexOf(0));
+		assertEquals(-1, composed.indexOf(1));
+	}
+
+	/**
 	 * Binding a composition binds both of its orderings: each index table is requested from the
 	 * provider, and a composition whose orderings are unchanged by binding is returned as is.
 	 */
