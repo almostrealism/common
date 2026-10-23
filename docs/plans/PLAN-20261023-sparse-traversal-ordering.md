@@ -79,12 +79,16 @@ broken on the host path:
 - That the permutation passes while `compactOrdering` (the same host `ExplicitIndex` path, but with
   `-1` absent markers) and `maskOrdering` (constant indices, so the host `orElseThrow` scan is
   satisfiable) are `knownIssue` means the host failures are **not** explained by the
-  constant-collapse limitation in item 1 — that condition is met for all three. The remaining
+  constant-collapse limitation in item 1 — that condition is met for all three of these reads. The remaining
   difference is the absent-marker (`-1`) and compact-sizing handling, which points at the host
   absence gate in `toDouble` and/or the `getLength()` sizing below, not at symbolic `indexOf`. The
   implementer must root-cause each host failure against the code (these tests are filtered out of a
   normal run as `knownIssue`, so reproduce them explicitly) rather than assume the generated-code
   fixes below will turn them green — see Open Question 5 and the scope↔done-when note in Scope.
+- `repeatOrdering` fits neither explanation. `RepeatTraversalOrdering` has no absent markers, its
+  `indexOf` is `imod` (constant on the host), and its `getLength()` (the period, 3) equals the
+  3-element delegate it is built over. Its host failure therefore has a third, as yet unidentified
+  cause and needs its own reproduction.
 
 ## Scope
 
@@ -229,7 +233,7 @@ A reviewer can confirm the task is done when:
    ordered outputs here) is a materially larger change and risks overlapping [87b95b81].
 2. **What is the one correct default for `TraversableExpression.containsIndex`?** Membership against
    the shape size, delegation to a carried ordering, or the unique-non-zero-offset analysis the TODO
-   names — or a composition. This needs the implementer's judgement against the ~20 implementors;
+   names — or a composition. This needs the implementer's judgement against the more than 20 types that implement or extend it;
    the plan commits only to replacing the throw with a correct, interface-honouring default.
 3. **Index precision on FP32/Metal.** The ordered tests here use tiny shapes, so float indices are
    exact. A production sparse matrix needs integer-exact indices ([2c0793a7]). Confirm the new
@@ -242,13 +246,26 @@ A reviewer can confirm the task is done when:
    back to `getMemLength()` when the ordering declares no length), so the three `knownIssue` tests
    (which build delegated views) may already be exposed to this value — a reason to settle the
    `getLength()` fix before the host tests, not after.
-5. **Why exactly do `compactOrdering` and `maskOrdering` fail on the host today?** The sibling
+   The other two orderings support the "bug" reading. `TraversalOrdering.getLength()` is documented
+   only as "the number of elements covered", which could mean logical or physical elements, but both
+   consumers use it as a *physical* size. `getDelegatedLength()` feeds the
+   `offset + getDelegatedLength() > getMemLength()` bound check that `MemoryDataAdapter.setDelegate`
+   runs against the delegate, and `PackedCollection` uses `shape.getOrder().getLength()` to size the
+   memory it allocates. `RepeatTraversalOrdering` returns its period and `IndexMaskTraversalOrdering`
+   returns the mask length, and both are the number of physical slots the ordering addresses.
+   `ExplicitIndexTraversalOrdering` returns the maximum index, one slot short. For `compactOrdering`'s
+   `[0, -1, -1, 1]` that is 1 where 2 slots are addressed. So the fix should make the interface
+   Javadoc state the physical-slot meaning, as well as changing the one implementation that departs
+   from it.
+5. **Why exactly do `compactOrdering`, `maskOrdering` and `repeatOrdering` fail on the host today?** The sibling
    `explicitIndexOrderingAppliedOnce` reads a full permutation through the same host `ExplicitIndex`
    path and passes (confirmed 2026-10-23), and `maskOrdering` uses only constant indices, so the
    constant-collapse limitation (Current state item 1) is satisfied for all three — it does not
    explain the failures. The real cause is unconfirmed and is most likely the `-1` absent-marker
    handling on the host read path and/or the `getLength()` sizing (Open Question 4), *not* symbolic
-   `indexOf`. The implementer must reproduce each failure (the tests are filtered out of a normal run
+   `indexOf`. Neither cause applies to `repeatOrdering`: it has no absent markers, and its
+   `getLength()` matches its delegate. So at least one host failure has a cause the plan has not
+   identified. The implementer must reproduce each failure (the tests are filtered out of a normal run
    as `knownIssue`) and root-cause it against the code before assuming any scope item fixes it. This
    is the load-bearing question for success criterion 1: the plan's scope names generated-code
    surfaces, but the done-when is three host reads.
