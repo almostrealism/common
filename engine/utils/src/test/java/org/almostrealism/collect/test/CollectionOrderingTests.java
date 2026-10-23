@@ -16,9 +16,11 @@
 
 package org.almostrealism.collect.test;
 
+import io.almostrealism.collect.DelegatedTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.computations.CollectionProvider;
@@ -110,6 +112,28 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		assertEquals(0.0, compact.valueAt(0, 1));
 		assertEquals(0.0, compact.valueAt(1, 0));
 		assertEquals(3.0, compact.valueAt(1, 1));
+	}
+
+	/**
+	 * A composition whose first ordering is compact does not ask its second ordering to map the
+	 * negative position of an absent element: on the host that would read the second ordering's
+	 * index table out of bounds. The second index table here is a view preceded by a non-negative
+	 * entry, so a read at position -1 would report the absent element as present at position 5.
+	 */
+	@Test(timeout = 10000)
+	public void composedCompactOrderingKeepsAbsentElementsAbsent() {
+		ExplicitIndexTraversalOrdering compact = new ExplicitIndexTraversalOrdering(pack(0, -1, 1));
+		ExplicitIndexTraversalOrdering permutation =
+				new ExplicitIndexTraversalOrdering(pack(5, 1, 0).range(shape(2), 1));
+		DelegatedTraversalOrdering order = new DelegatedTraversalOrdering(compact, permutation);
+
+		assertEquals(1, order.indexOf(0));
+		assertEquals(-1, order.indexOf(1));
+		assertEquals(0, order.indexOf(2));
+
+		assertTrue(order.containsIndex(new IntegerConstant(0)).booleanValue().orElseThrow());
+		assertFalse(order.containsIndex(new IntegerConstant(1)).booleanValue().orElseThrow());
+		assertTrue(order.containsIndex(new IntegerConstant(2)).booleanValue().orElseThrow());
 	}
 
 	/**

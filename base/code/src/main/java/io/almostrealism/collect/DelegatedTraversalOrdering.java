@@ -17,6 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
 
@@ -60,23 +61,35 @@ public class DelegatedTraversalOrdering implements TraversalOrdering, Delegated<
 		return delegate;
 	}
 
-	/** {@inheritDoc} Returns {@code delegate.indexOf(order.indexOf(idx))}. */
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns {@code delegate.indexOf(order.indexOf(idx))}. When the first ordering maps the
+	 * index to a known negative position (an absent element), that position is returned and the
+	 * second ordering is not asked to map it, since doing so would read its index table out of
+	 * bounds.</p>
+	 */
 	@Override
 	public Expression<Integer> indexOf(Expression<Integer> idx) {
-		return getDelegate().indexOf(order.indexOf(idx));
+		Expression<Integer> position = order.indexOf(idx);
+		return position.upperBound(null).orElse(0) < 0 ? position : getDelegate().indexOf(position);
 	}
 
 	/**
 	 * {@inheritDoc}
 	 *
 	 * <p>A logical index is a member when the first ordering gives it a position and the
-	 * second ordering gives that position a position in turn. The first test guards the
-	 * second, so the second ordering is never asked to map an absent position.</p>
+	 * second ordering gives that position a position in turn. When the first position is
+	 * known to be negative, the index is not a member and the second ordering is never
+	 * asked about it. Otherwise both tests are combined with a short-circuiting conjunction,
+	 * so generated code evaluates the second test only for a position that exists.</p>
 	 */
 	@Override
 	public Expression<Boolean> containsIndex(Expression<Integer> index) {
-		// TODO(review): the delegate test is built eagerly, so a host index table may be read at -1
-		return order.containsIndex(index).and(getDelegate().containsIndex(order.indexOf(index)));
+		Expression<Integer> position = order.indexOf(index);
+		if (position.upperBound(null).orElse(0) < 0) return new BooleanConstant(false);
+
+		return order.containsIndex(index).and(getDelegate().containsIndex(position));
 	}
 
 	/** {@inheritDoc} Binds both of the composed orderings. */
