@@ -21,6 +21,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persist.assets.CollectionDataReference;
 import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.persist.assets.EncodedMessage;
+import org.almostrealism.persist.assets.ValueEncoding;
 import org.almostrealism.protobuf.Collections;
 import org.junit.Assert;
 import org.junit.Test;
@@ -89,13 +90,20 @@ public class CollectionDataReferenceTest {
 	 */
 	private double[] read(CollectionDataReference reference, byte[] encoded, long base) {
 		ByteBuffer buffer = ByteBuffer.wrap(encoded).order(ByteOrder.LITTLE_ENDIAN);
+		ValueEncoding encoding = reference.getEncoding();
 		double[] out = new double[reference.getCount()];
 
 		for (int i = 0; i < out.length; i++) {
-			int at = (int) (reference.getValueOffset() - base)
-					+ i * reference.getPrecision().bytes();
-			out[i] = reference.getPrecision() == Precision.FP64 ?
-					buffer.getDouble(at) : buffer.getFloat(at);
+			int at = (int) (reference.getValueOffset() - base) + i * encoding.getBytes();
+			if (encoding == ValueEncoding.F64) {
+				out[i] = buffer.getDouble(at);
+			} else if (encoding == ValueEncoding.F32) {
+				out[i] = buffer.getFloat(at);
+			} else if (encoding == ValueEncoding.I32) {
+				out[i] = buffer.getInt(at);
+			} else {
+				out[i] = buffer.getLong(at);
+			}
 		}
 
 		return out;
@@ -108,7 +116,7 @@ public class CollectionDataReferenceTest {
 		CollectionDataReference reference =
 				CollectionDataReference.of(message(encoded, 0));
 
-		Assert.assertEquals(Precision.FP64, reference.getPrecision());
+		Assert.assertEquals(ValueEncoding.F64, reference.getEncoding());
 		Assert.assertEquals(expected().length, reference.getCount());
 		Assert.assertArrayEquals(expected(), read(reference, encoded, 0), 0.0);
 	}
@@ -120,7 +128,7 @@ public class CollectionDataReferenceTest {
 		CollectionDataReference reference =
 				CollectionDataReference.of(message(encoded, 0));
 
-		Assert.assertEquals(Precision.FP32, reference.getPrecision());
+		Assert.assertEquals(ValueEncoding.F32, reference.getEncoding());
 		Assert.assertEquals(expected().length, reference.getCount());
 		Assert.assertArrayEquals(expected(), read(reference, encoded, 0), 1e-6);
 	}
@@ -291,6 +299,115 @@ public class CollectionDataReferenceTest {
 
 		for (int i = 0; i < located.length; i++) {
 			Assert.assertEquals(encoded.getData(i), located[i], 0.0);
+		}
+	}
+
+	/**
+	 * An {@code I32} payload reads back exactly through all three read paths — the located (mapped)
+	 * range, the parsed collection, and a decode into a destination buffer.
+	 */
+	@Test(timeout = 30000)
+	public void anI32PayloadReadsBackThroughEveryPath() {
+		assertIntegerPayloadReadsBack(
+				CollectionEncoder.encode(PackedCollection.of(-7, 0, 100, Integer.MAX_VALUE), ValueEncoding.I32),
+				ValueEncoding.I32, new double[] { -7, 0, 100, Integer.MAX_VALUE });
+	}
+
+	/**
+	 * An {@code I64} payload, including values past 2<sup>31</sup> and up to &plusmn;2<sup>53</sup>,
+	 * reads back exactly through all three read paths.
+	 */
+	@Test(timeout = 30000)
+	public void anI64PayloadReadsBackThroughEveryPath() {
+		assertIntegerPayloadReadsBack(
+				CollectionEncoder.encode(PackedCollection.of(-(1L << 40), 1L << 35, 1L << 53, -(1L << 53)), ValueEncoding.I64),
+				ValueEncoding.I64, new double[] { -(1L << 40), 1L << 35, 1L << 53, -(1L << 53) });
+	}
+
+	/**
+	 * Asserts that the given integer collection data reads back as {@code values} exactly through the
+	 * located (mapped) range, the parsed collection, and a decode into a destination buffer at an
+	 * offset.
+	 *
+	 * @param data     collection data already encoded as {@code encoding}'s integer payload
+	 * @param encoding the integer encoding the data is stored as
+	 * @param values   the whole-number values expected back
+	 */
+	private void assertIntegerPayloadReadsBack(Collections.CollectionData data,
+											   ValueEncoding encoding, double[] values) {
+		byte[] bytes = data.toByteArray();
+		CollectionDataReference reference = CollectionDataReference.of(message(bytes, 0));
+		Assert.assertEquals(encoding, reference.getEncoding());
+		Assert.assertEquals(values.length, reference.getCount());
+		Assert.assertArrayEquals(values, read(reference, bytes, 0), 0.0);
+
+		PackedCollection parsed = CollectionEncoder.decode(data, false);
+		Assert.assertArrayEquals(values, parsed.toArray(), 0.0);
+
+		PackedCollection destination = new PackedCollection(values.length + 2);
+		PackedCollection decoded = CollectionEncoder.decode(data, destination, 1);
+		Assert.assertNotNull(decoded);
+		for (int i = 0; i < values.length; i++) {
+			Assert.assertEquals(values[i], destination.toDouble(i + 1), 0.0);
+		}
+		destination.destroy();
+	}
+
+	/**
+	 * A {@link Collections.CollectionData} carrying two payloads is rejected on read, through both
+	 * the mapped path ({@link CollectionDataReference#of}) and the parsed path: exactly one payload
+	 * is expected.
+	 */
+	@Test(timeout = 30000)
+	public void aCollectionWithTwoPayloadsIsRejected() {
+		Collections.CollectionData twoPayloads = Collections.CollectionData.newBuilder()
+				.setTraversalPolicy(Collections.TraversalPolicyData.newBuilder()
+						.addDims(2).setTraversalAxis(0))
+				.addData32(1.0f).addData32(2.0f)
+				.addDataI32(1).addDataI32(2)
+				.build();
+
+		byte[] encoded = twoPayloads.toByteArray();
+		try {
+			CollectionDataReference.of(message(encoded, 0));
+			Assert.fail("A collection with two payloads should be rejected on the mapped path");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("exactly one"));
+		}
+
+		try {
+			CollectionEncoder.decode(twoPayloads, false);
+			Assert.fail("A collection with two payloads should be rejected on the parsed path");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("exactly one"));
+		}
+	}
+
+	/** Encoding a value that is not a whole number as an integer payload is rejected, naming the index. */
+	@Test(timeout = 30000)
+	public void encodingANonIntegralValueAsIntegerThrows() {
+		PackedCollection c = PackedCollection.of(1.0, 2.5, 3.0);
+		try {
+			CollectionEncoder.encode(c, ValueEncoding.I32);
+			Assert.fail("A non-integral value should not be stored as an integer payload");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("index 1"));
+		} finally {
+			c.destroy();
+		}
+	}
+
+	/** Encoding a value out of range for the integer width is rejected, naming the index. */
+	@Test(timeout = 30000)
+	public void encodingAnOutOfRangeValueAsIntegerThrows() {
+		PackedCollection c = PackedCollection.of(1.0, (double) Integer.MAX_VALUE + 1);
+		try {
+			CollectionEncoder.encode(c, ValueEncoding.I32);
+			Assert.fail("A value out of range for I32 should be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("outside the range"));
+		} finally {
+			c.destroy();
 		}
 	}
 }
