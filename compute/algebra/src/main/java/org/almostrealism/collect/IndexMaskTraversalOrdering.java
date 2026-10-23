@@ -16,9 +16,13 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
+import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import org.almostrealism.collect.computations.CollectionProviderProducer;
 
 import java.util.OptionalInt;
 
@@ -27,8 +31,9 @@ import java.util.OptionalInt;
  *
  * <p>
  * {@link IndexMaskTraversalOrdering} provides indirect access to collection elements by using
- * a mask that defines which elements should be accessed. The mask contains physical indices,
- * and when a logical index is requested, the mask is searched to find the corresponding position.
+ * a mask that defines which elements should be accessed. The mask contains logical indices,
+ * and when a logical index is requested, the mask is searched to find the corresponding
+ * physical position.
  * </p>
  *
  * <h2>Purpose</h2>
@@ -52,30 +57,54 @@ import java.util.OptionalInt;
  * // indexOf(7) returns -1 (element 7 not in mask)
  * }</pre>
  *
+ * <h2>Generated code</h2>
+ * <p>
+ * The search is expressed symbolically, as a chain of comparisons against the entries of the
+ * mask, so it can appear in generated code with the mask {@link #bind(ArgumentProvider)
+ * delivered to the kernel as an argument}. The search has no closed form, so each lookup costs
+ * one comparison per mask entry: this suits small masks, not a large sparse structure.
+ * </p>
+ *
  * @author  Michael Murray
  * @see ExplicitIndexTraversalOrdering
  * @see io.almostrealism.collect.TraversalOrdering
  */
 public class IndexMaskTraversalOrdering implements TraversalOrdering {
-	/** The collection of physical indices that defines this traversal ordering. */
+	/** The collection of logical indices that defines this traversal ordering. */
 	private final PackedCollection mask;
+
+	/** The expression through which the entries of the mask are read. */
+	private final TraversableExpression<?> entries;
 
 	/**
 	 * Creates a new index mask traversal ordering with the specified mask.
 	 *
-	 * @param mask  collection containing the physical indices to access
+	 * @param mask  collection containing the logical indices that are present
 	 */
 	public IndexMaskTraversalOrdering(PackedCollection mask) {
+		this(mask, mask);
+	}
+
+	/**
+	 * Creates an ordering that reads the entries of a mask through the given expression.
+	 *
+	 * @param mask     the mask collection
+	 * @param entries  the expression supplying the entries of the mask, either the mask
+	 *                 itself or the kernel argument it is delivered as
+	 */
+	private IndexMaskTraversalOrdering(PackedCollection mask, TraversableExpression<?> entries) {
 		this.mask = mask;
+		this.entries = entries;
 	}
 
 	/**
 	 * Finds the position in the mask where the specified logical index appears.
 	 *
 	 * <p>
-	 * This method searches through the mask to find which position contains the
-	 * requested logical index. If the index is found, its position in the mask
-	 * is returned. If not found, -1 is returned.
+	 * The search is a chain of conditionals, one per mask entry, that yields the position
+	 * of the first entry equal to the index, or -1 if there is none. When the index and
+	 * the entries are known constants, as they are on the host, the chain folds to the
+	 * constant position.
 	 * </p>
 	 *
 	 * @param idx  the logical index to find
@@ -83,16 +112,26 @@ public class IndexMaskTraversalOrdering implements TraversalOrdering {
 	 */
 	@Override
 	public Expression<Integer> indexOf(Expression<Integer> idx) {
-		int i = idx.intValue().orElseThrow();
-		double[] m = mask.toArray();
+		Expression<Integer> position = new IntegerConstant(-1);
 
-		for (int k = 0; k < m.length; k++) {
-			if (((int) m[k]) == i) {
-				return new IntegerConstant(k);
-			}
+		for (int k = mask.getMemLength() - 1; k >= 0; k--) {
+			Expression<Boolean> found = entries.getValueAt(new IntegerConstant(k)).toInt().eq(idx);
+			position = Conditional.of(found, new IntegerConstant(k), position);
 		}
 
-		return new IntegerConstant(-1);
+		return position;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns an ordering that searches the kernel argument the provider supplies for the
+	 * mask, whether or not this ordering was already bound to another kernel's arguments.</p>
+	 */
+	@Override
+	public TraversalOrdering bind(ArgumentProvider provider) {
+		TraversableExpression<?> bound = provider.traversableArgument(new CollectionProviderProducer<>(mask));
+		return bound == null ? this : new IndexMaskTraversalOrdering(mask, bound);
 	}
 
 	/**

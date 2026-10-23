@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
@@ -57,6 +58,9 @@ public interface ArgumentProvider {
 	 *
 	 * <p>The returned function returns {@code null} for {@code null} inputs and applies
 	 * output variable post-processing when {@link #enableArgumentPostProcessing} is {@code true}.
+	 * Every argument it returns has had the opportunity to
+	 * {@link ArrayVariable#prepareDependentArguments(ArgumentProvider) obtain the further
+	 * arguments} its reads depend on from this provider.</p>
 	 *
 	 * @param <T> the type of value produced by the inputs
 	 * @return a function from input supplier to array variable
@@ -68,9 +72,25 @@ public interface ArgumentProvider {
 			} else {
 				ArrayVariable<T> arg = getArgument(input, null, -1);
 				if (enableArgumentPostProcessing) processOutputVariableDelegation(arg);
+				if (arg != null) arg.prepareDependentArguments(this);
 				return arg;
 			}
 		};
+	}
+
+	/**
+	 * Returns the {@link TraversableExpression} through which generated code reads the
+	 * argument this provider supplies for the given input, so that a value derived by
+	 * indexing into that input renders as a read of the kernel argument.
+	 *
+	 * @param <T>   the type of value produced by the input
+	 * @param input the input to obtain an argument for
+	 * @return the traversable expression of the argument, or {@code null} if the input is
+	 *         {@code null} or its argument is not traversable
+	 */
+	default <T> TraversableExpression<?> traversableArgument(Supplier<Evaluable<? extends T>> input) {
+		ArrayVariable<T> argument = this.<T>argumentForInput().apply(input);
+		return argument == null ? null : argument.getTraversableExpression();
 	}
 
 	/**

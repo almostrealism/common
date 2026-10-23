@@ -18,11 +18,12 @@ package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -35,7 +36,6 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	 * Tests repeat ordering traversal.
 	 */
 	@Test(timeout = 10000)
-	@TestProperties(knownIssue = true)
 	public void repeatOrdering() {
 
 		PackedCollection root = pack(2.0, 3.0, 1.0);
@@ -77,7 +77,6 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	 * Tests compact ordering traversal.
 	 */
 	@Test(timeout = 10000)
-	@TestProperties(knownIssue = true)
 	public void compactOrdering() {
 
 		PackedCollection values = pack(2.0, 3.0);
@@ -97,7 +96,6 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	 * Tests mask ordering traversal.
 	 */
 	@Test(timeout = 10000)
-	@TestProperties(knownIssue = true)
 	public void maskOrdering() {
 
 		PackedCollection values = pack(2.0, 3.0);
@@ -112,6 +110,61 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		assertEquals(0.0, compact.valueAt(0, 1));
 		assertEquals(0.0, compact.valueAt(1, 0));
 		assertEquals(3.0, compact.valueAt(1, 1));
+	}
+
+	/**
+	 * The length of an {@link ExplicitIndexTraversalOrdering} is the number of physical positions
+	 * its indices address, one more than the largest index, since that is how much backing memory
+	 * the ordering reads.
+	 */
+	@Test(timeout = 10000)
+	public void explicitIndexLengthCountsPhysicalPositions() {
+		assertEquals(4, new ExplicitIndexTraversalOrdering(pack(2, 0, 3, 1)).getLength().getAsInt());
+		assertEquals(2, new ExplicitIndexTraversalOrdering(pack(0, -1, -1, 1)).getLength().getAsInt());
+		assertEquals(0, new ExplicitIndexTraversalOrdering(pack(-1, -1)).getLength().getAsInt());
+	}
+
+	/**
+	 * A range through an {@link ExplicitIndexTraversalOrdering} is bounds checked against every
+	 * position the ordering addresses: a range whose largest index would fall past the end of the
+	 * collection is refused rather than reading beyond it.
+	 */
+	@Test(timeout = 10000)
+	public void explicitIndexRangeChecksEveryPosition() {
+		PackedCollection values = pack(10.0, 20.0, 30.0, 40.0, 50.0);
+		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(pack(2, 0, 3, 1));
+
+		PackedCollection permuted = values.range(shape(4).withOrder(order), 1);
+		assertEquals(40.0, permuted.toDouble(0));
+		assertEquals(20.0, permuted.toDouble(1));
+		assertEquals(50.0, permuted.toDouble(2));
+		assertEquals(30.0, permuted.toDouble(3));
+
+		try {
+			values.range(shape(4).withOrder(order), 2);
+			throw new AssertionError("a range reading past the end of the collection was accepted");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage().contains("exceeds"));
+		}
+	}
+
+	/**
+	 * The search of an {@link IndexMaskTraversalOrdering} is symbolic: for an index that is not a
+	 * compile-time constant it builds an expression rather than scanning the mask on the host, and
+	 * for a constant index it folds to the position, or to {@code -1} for an absent index.
+	 */
+	@Test(timeout = 10000)
+	public void maskIndexOfIsSymbolic() {
+		IndexMaskTraversalOrdering order = new IndexMaskTraversalOrdering(pack(0, 3));
+
+		assertEquals(0, order.indexOf(0));
+		assertEquals(-1, order.indexOf(1));
+		assertEquals(-1, order.indexOf(2));
+		assertEquals(1, order.indexOf(3));
+
+		Expression<Integer> index = new StaticReference<>(Integer.class, "i");
+		Expression<Integer> position = order.indexOf(index);
+		assertFalse("a variable index should not fold to a constant", position.intValue().isPresent());
 	}
 
 	/**

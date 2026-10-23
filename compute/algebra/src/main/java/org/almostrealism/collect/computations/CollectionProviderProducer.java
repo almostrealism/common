@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
@@ -324,11 +325,21 @@ public class CollectionProviderProducer<T extends Shape>
 	 * must not share a compiled kernel. Encoding the root length scopes instruction reuse to
 	 * compatible aggregate layouts.</p>
 	 *
-	 * @return A signature string
+	 * <p>When the shape carries a {@link TraversalOrdering}, the signature includes the
+	 * {@link TraversalOrdering#signature() ordering's signature}, because the ordering is
+	 * compiled into every kernel that reads the value and shape equality does not compare it.
+	 * An ordering without a signature (one that reads a collection delivered to the kernel as an
+	 * argument) leaves this producer without one, so no kernel that reads it is reused.</p>
+	 *
+	 * @return A signature string, or {@code null} if kernels reading this value must not be reused
 	 */
 	@Override
 	public String signature() {
-		String shape = "|" + value.getShape().toStringDetail();
+		TraversalOrdering order = value.getShape().getOrder();
+		String ordering = order == null ? "" : order.signature();
+		if (ordering == null) return null;
+
+		String shape = "|" + value.getShape().toStringDetail() + (ordering.isEmpty() ? "" : "|order=" + ordering);
 
 		if (value instanceof MemoryData) {
 			MemoryData md = (MemoryData) value;

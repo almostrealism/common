@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -285,7 +286,9 @@ public class ReshapeProducer
 	 * Returns the traversal policy representing the shape of this reshaped collection.
 	 * The returned shape depends on the mode of operation:
 	 * <ul>
-	 *   <li>For explicit shape mode: returns the explicitly set shape</li>
+	 *   <li>For explicit shape mode: returns the explicitly set shape, carrying the
+	 *       {@link io.almostrealism.collect.TraversalOrdering} of the producer's shape when the
+	 *       explicit shape has none, since the elements are still read through it</li>
 	 *   <li>For traversal axis mode: returns the input shape with modified traversal axis</li>
 	 * </ul>
 	 * 
@@ -314,6 +317,11 @@ public class ReshapeProducer
 
 			TraversalPolicy inputShape = ((Shape) producer).getShape();
 			return inputShape.traverse(traversalAxis);
+		} else if (shape.getOrder() == null && producer instanceof Shape
+				&& ((Shape<?>) producer).getShape().getOrder() != null) {
+			// A reshape preserves the flat logical index, so the elements of the
+			// reshaped producer are still found through the producer's ordering
+			return shape.withOrder(((Shape<?>) producer).getShape().getOrder());
 		} else {
 			return shape;
 		}
@@ -496,15 +504,18 @@ public class ReshapeProducer
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A reshape reads the element at the same flat index of the reshaped producer (see
+	 * {@link #getValueAt(Expression)}), so membership is the producer's, including that of any
+	 * {@link io.almostrealism.collect.TraversalOrdering} the producer's shape carries. A producer
+	 * that cannot answer membership itself is treated as defining every non-negative index.</p>
+	 */
 	@Override
 	public Expression<Boolean> containsIndex(Expression<Integer> index) {
-		if (shape != null && shape.getOrder() != null) {
-			// TODO
-			throw new UnsupportedOperationException();
-		}
-
-		return producer instanceof TraversableExpression ?
-				((TraversableExpression) producer).getValueAt(index) :
+		return producer instanceof IndexSet ?
+				((IndexSet) producer).containsIndex(index) :
 				TraversableExpression.super.containsIndex(index);
 	}
 

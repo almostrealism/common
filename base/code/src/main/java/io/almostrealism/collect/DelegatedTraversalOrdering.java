@@ -16,6 +16,7 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
 
@@ -63,5 +64,39 @@ public class DelegatedTraversalOrdering implements TraversalOrdering, Delegated<
 	@Override
 	public Expression<Integer> indexOf(Expression<Integer> idx) {
 		return getDelegate().indexOf(order.indexOf(idx));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A logical index is a member when the first ordering gives it a position and the
+	 * second ordering gives that position a position in turn. The first test guards the
+	 * second, so the second ordering is never asked to map an absent position.</p>
+	 */
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		// TODO(review): the delegate test is built eagerly, so a host index table may be read at -1
+		return order.containsIndex(index).and(getDelegate().containsIndex(order.indexOf(index)));
+	}
+
+	/** {@inheritDoc} Binds both of the composed orderings. */
+	@Override
+	public TraversalOrdering bind(ArgumentProvider provider) {
+		TraversalOrdering first = order.bind(provider);
+		TraversalOrdering second = getDelegate().bind(provider);
+		return first == order && second == getDelegate() ? this : new DelegatedTraversalOrdering(first, second);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The composition is identified by the signatures of both orderings, and has none
+	 * unless both of them do.</p>
+	 */
+	@Override
+	public String signature() {
+		String first = order.signature();
+		String second = getDelegate().signature();
+		return first == null || second == null ? null : "(" + first + ")->(" + second + ")";
 	}
 }
