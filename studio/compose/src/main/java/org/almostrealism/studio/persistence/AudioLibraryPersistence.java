@@ -21,6 +21,7 @@ import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDetails;
+import org.almostrealism.audio.data.WaveFeatures;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
@@ -773,12 +774,15 @@ public class AudioLibraryPersistence {
 				.setFreqChannelCount(details.getFreqChannelCount())
 				.setFreqFrameCount(details.getFreqFrameCount())
 				.setFreqData(CollectionEncoder.encode(details.getFreqData(), Precision.FP32))
-				.setFeatureSampleRate(details.getFeatureSampleRate())
-				.setFeatureBinCount(details.getFeatureBinCount())
-				.setFeatureChannelCount(details.getFeatureChannelCount())
-				.setFeatureFrameCount(details.getFeatureFrameCount())
-				.setFeatureData(CollectionEncoder.encode(details.getFeatureData(), Precision.FP32))
-				.putAllSimilarities(details.getSimilarities());
+				.setFeatureSampleRate(details.getLegacyFeatureSampleRate())
+				.setFeatureBinCount(details.getLegacyFeatureBinCount())
+				.setFeatureChannelCount(details.getLegacyFeatureChannelCount())
+				.setFeatureFrameCount(details.getLegacyFeatureFrameCount())
+				.setFeatureData(CollectionEncoder.encode(details.getLegacyFeatureData(), Precision.FP32))
+				.putAllSimilarities(details.getLegacySimilarities());
+		for (String modelId : details.getFeatureModelIdentifiers()) {
+			data.addFeatureSets(encodeFeatureSet(details.getFeatures(modelId)));
+		}
 		if (details.getIdentifier() != null) data.setIdentifier(details.getIdentifier());
 		if (details.getRank() != null) data.setRank(details.getRank());
 		if (audioPrecision != null) {
@@ -786,6 +790,24 @@ public class AudioLibraryPersistence {
 		}
 
 		return data.build();
+	}
+
+	/**
+	 * Encodes a single {@link WaveFeatures} into a protobuf {@link Audio.FeatureSet}.
+	 *
+	 * @param features the feature set to encode
+	 * @return the encoded FeatureSet
+	 */
+	private static Audio.FeatureSet encodeFeatureSet(WaveFeatures features) {
+		return Audio.FeatureSet.newBuilder()
+				.setModelIdentifier(features.getModelIdentifier())
+				.setFeatureSampleRate(features.getFeatureSampleRate())
+				.setFeatureChannelCount(features.getFeatureChannelCount())
+				.setFeatureBinCount(features.getFeatureBinCount())
+				.setFeatureFrameCount(features.getFeatureFrameCount())
+				.setFeatureData(CollectionEncoder.encode(features.getFeatureData(), Precision.FP32))
+				.putAllSimilarities(features.getSimilarities())
+				.build();
 	}
 
 	/**
@@ -824,10 +846,34 @@ public class AudioLibraryPersistence {
 		details.setFeatureChannelCount(data.getFeatureChannelCount());
 		details.setFeatureFrameCount(data.getFeatureFrameCount());
 		if (data.hasFeatureData()) details.setFeatureData(CollectionEncoder.decode(data.getFeatureData()));
-		if (includeSimilarities) details.getSimilarities().putAll(data.getSimilaritiesMap());
+		if (includeSimilarities) details.getLegacySimilarities().putAll(data.getSimilaritiesMap());
+		for (Audio.FeatureSet featureSet : data.getFeatureSetsList()) {
+			details.putFeatures(decodeFeatureSet(featureSet, includeSimilarities));
+		}
 		if (data.hasRank()) details.setRank(data.getRank());
 		if (data.hasData()) details.setData(CollectionEncoder.decode(data.getData()));
 		return details;
+	}
+
+	/**
+	 * Decodes a protobuf {@link Audio.FeatureSet} into a {@link WaveFeatures}.
+	 *
+	 * @param featureSet          the protobuf feature set to decode
+	 * @param includeSimilarities whether to populate the similarity map
+	 * @return the decoded feature set
+	 */
+	private static WaveFeatures decodeFeatureSet(Audio.FeatureSet featureSet, boolean includeSimilarities) {
+		PackedCollection featureData = featureSet.hasFeatureData()
+				? CollectionEncoder.decode(featureSet.getFeatureData()) : null;
+		WaveFeatures features = new WaveFeatures(
+				featureSet.getModelIdentifier(),
+				featureSet.getFeatureSampleRate(),
+				featureSet.getFeatureChannelCount(),
+				featureSet.getFeatureBinCount(),
+				featureSet.getFeatureFrameCount(),
+				featureData);
+		if (includeSimilarities) features.getSimilarities().putAll(featureSet.getSimilaritiesMap());
+		return features;
 	}
 
 	/**

@@ -56,7 +56,21 @@ message WaveDetailData {
   // Absent when the item has not yet been ranked (sorts to the end).
   optional double rank = 20;
 
+  // Model-keyed feature analyses; additive, ignored by the previous release.
+  repeated FeatureSet feature_sets = 21;
+
   reserved 1;
+}
+
+// One model's feature analysis tagged with the producing model's identifier.
+message FeatureSet {
+  string model_identifier = 1;
+  double feature_sample_rate = 2;
+  int32 feature_channel_count = 3;
+  int32 feature_bin_count = 4;
+  int32 feature_frame_count = 5;
+  CollectionData feature_data = 6;
+  map<string, double> similarities = 7;
 }
 
 message PrototypeIndex {
