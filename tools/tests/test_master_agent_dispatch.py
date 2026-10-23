@@ -189,6 +189,25 @@ class MasterAgentDispatchTests(unittest.TestCase):
                 self.assertIsNotNone(grace, "PR_GRACE_HOURS is not set on the gate")
                 self.assertGreater(int(grace), 0)
 
+    def test_plan_next_task_opens_a_draft_pr_but_qa_rounds_do_not(self):
+        """A plan PR opens as a draft — it carries only a plan awaiting the
+        owner's approval, which marking it ready for review grants, starting
+        implementation. A QA round's PR is instead real documentation meant to
+        be merged as it stands, so it must not open as a draft, or marking it
+        ready would dispatch an implementation of a branch with nothing to
+        implement."""
+        plan_submit = next(s for s in self.jobs["plan-next-task"]["steps"]
+                           if "submit-agent-job.sh" in s.get("run", ""))
+        self.assertEqual("true", plan_submit["env"]["AUTO_CREATE_PR"])
+        self.assertEqual("true", plan_submit["env"]["PR_DRAFT"])
+
+        for name, job in self.qa_jobs.items():
+            submit = next(s for s in job["steps"]
+                          if "submit-agent-job.sh" in s.get("run", ""))
+            with self.subTest(job=name):
+                self.assertNotEqual("true", submit["env"].get("PR_DRAFT", "false"),
+                                    name + " must not open its PR as a draft")
+
     def test_every_step_after_the_gate_is_gated(self):
         """An ungated step would run on merges the cadence gate declined."""
         for name, job in self.qa_jobs.items():
@@ -489,6 +508,9 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertNotIn("TRACKER_CAPABILITIES", register["env"])
         submit = next(s for s in steps if "submit-agent-job.sh" in s.get("run", ""))
         self.assertEqual("true", submit["env"]["AUTO_CREATE_PR"])
+        # The plan PR opens as a draft: it carries only a plan awaiting the
+        # owner's approval, which marking it ready for review grants.
+        self.assertEqual("true", submit["env"]["PR_DRAFT"])
         # Workspace defaults decide the model; the round sets none.
         self.assertNotIn("PHASE_CONFIGS", submit["env"])
         prompt = next(s for s in steps if "build-task-planning-prompt.sh" in s.get("run", ""))

@@ -305,6 +305,9 @@ jobs:
           BASE_BRANCH: master
           DESCRIPTION: "Plan new work branch"
           AUTO_CREATE_PR: "true"
+          # The PR carries only a plan; it opens as a draft until the owner
+          # marks it ready for review, which starts implementation.
+          PR_DRAFT: "true"
           PROTECT_TEST_FILES: "false"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
