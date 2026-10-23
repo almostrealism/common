@@ -124,8 +124,8 @@ or recurrent-training parts.
   - an ordered collection cannot be the input to a kernel: any `ExplicitIndexTraversalOrdering`
     (even a full permutation) or `IndexMaskTraversalOrdering` input fails at compile time
     (reproduced 2026-10-23; see `PLAN-20261023-sparse-traversal-ordering.md`). The host-path tests
-    `CollectionOrderingTests.compactOrdering` and `maskOrdering` are still marked `knownIssue`,
-    but they now pass;
+    `CollectionOrderingTests.compactOrdering`, `maskOrdering` and `repeatOrdering` are still marked
+    `knownIssue`, but they now pass;
   - `ReshapeProducer.containsIndex` and `SlicingFeatures.pad` throw for an ordered shape;
   - `IndexMaskTraversalOrdering.indexOf` needs a constant index and scans the mask on the host, so
     it can never appear in generated code;
