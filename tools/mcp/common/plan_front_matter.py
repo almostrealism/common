@@ -72,7 +72,7 @@ class PlanFrontMatter:
         Returns the header (``None`` when there is no usable block) and the
         list of problems found; a header is valid when that list is empty.
         """
-        lines = text.splitlines()
+        lines = text.lstrip("\ufeff").splitlines()
         if not lines or lines[0].strip() != "---":
             return None, ["missing front-matter block (the plan must start with '---')"]
         try:
@@ -134,7 +134,7 @@ def with_header(text: str, today: datetime.date) -> Tuple[str, List[str]]:
     Text with no header gets a new ``proposed`` header dated today. Text that
     already has one is returned unchanged with whatever problems it has.
     """
-    if not text.lstrip("﻿").startswith("---"):
+    if not text.lstrip("\ufeff").startswith("---"):
         return PlanFrontMatter.new(today).render() + "\n" + text, []
     _, problems = PlanFrontMatter.parse(text)
     return text, problems

@@ -119,6 +119,19 @@ class WithHeaderTest(unittest.TestCase):
         _, problems = with_header(_header(status="completed"), TODAY)
         self.assertTrue(problems)
 
+    def test_byte_order_mark_before_header(self):
+        original = "\ufeff" + _header(tracker="[t1]")
+        self.assertEqual(with_header(original, TODAY), (original, []))
+        header, problems = PlanFrontMatter.parse(original)
+        self.assertEqual(problems, [])
+        self.assertEqual((header.status, header.tracker), ("in-progress", ["t1"]))
+
+    def test_byte_order_mark_without_header_gets_one(self):
+        text, problems = with_header("\ufeff# Plan\n", TODAY)
+        self.assertEqual(problems, [])
+        self.assertTrue(text.startswith(PlanFrontMatter.new(TODAY).render()))
+        self.assertEqual(PlanFrontMatter.parse(text)[1], [])
+
 
 if __name__ == "__main__":
     unittest.main()
