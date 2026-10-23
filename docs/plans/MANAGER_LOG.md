@@ -47,8 +47,8 @@ deferred to the cycle that first fine-tunes that autoencoder.
 
 - **Documentation — a real, flagship gap, and it decided the cycle.** Those three cycles all turned on
   PDSL: the attention family, the transformer layer, the Qwen model files, the Oobleck codec, the MIDI
-  decoders and the real-time mixdown are all PDSL assets (48 `.pdsl` files, ~6,200 lines of
-  interpreter), and the defects fixed were questions of what a PDSL builtin does with its operands
+  decoders and the real-time mixdown are all PDSL assets (19 shipped `.pdsl` assets in `engine/ml`
+  plus 29 test fixtures, ~6,200 lines of interpreter), and the defects fixed were questions of what a PDSL builtin does with its operands
   (`scale` reading λ as a constant; `scaled_dot_product` taking a branch as an auxiliary operand). But
   `consult` answers plainly: "There is no single complete language reference for PDSL." The only durable
   page is `pdsl-audio-dsp.md` (audio primitives, with the ML builtins in one parenthesized list); the

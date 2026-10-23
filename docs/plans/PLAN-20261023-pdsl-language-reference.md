@@ -11,8 +11,10 @@ platform *describes its own models*. Every attention variant (`attention.pdsl`,
 `sequence_attention.pdsl`, `differential_attention.pdsl`, `sdpa.pdsl`), the transformer layer,
 the feed-forward networks, the Qwen2/Qwen3 model files, the T5Gemma encoder, the Oobleck codec,
 the SkyTNT MIDI blocks, the GRU decoder and the whole `AudioScene` real-time mixdown are PDSL
-assets — 48 `.pdsl` files across `engine/ml` and `studio/compose`, interpreted by about 6,200
-lines of Java (`PdslLexer`, `PdslParser`, `PdslNode`, `PdslInterpreter`, `PdslBuiltins`,
+assets. There are 19 shipped assets, all under `engine/ml/src/main/resources/pdsl/`. Alongside them
+are 29 test fixtures: 24 in `engine/ml/src/test/resources/pdsl/` and 5 in
+`studio/compose/src/test/resources/pdsl/audio/`. That makes 48 `.pdsl` files, interpreted by about
+6,200 lines of Java (`PdslLexer`, `PdslParser`, `PdslNode`, `PdslInterpreter`, `PdslBuiltins`,
 `PdslLoader`, `PdslPrimitive`, `PdslPrimitiveContext`, ...).
 
 Yet there is **no language reference.** `consult` confirms it: "There is no single complete
@@ -31,8 +33,9 @@ asks first: What are the definition kinds (`layer`, `model`, `config`, `data`, `
 the parameter types (`weight`, `scalar`, `producer`, `int`, `float`, `bool`, shape literals,
 config/checkpoint types) mean, and which are compile-time versus graph operands? What do the
 composition statements (`accum`, `branch`, `product`, `accum_blocks`, `concat_blocks`, `stack ...
-as`, `for`, `for each channel`, `let`, `return`, `if`) build in terms of `Block` / `SequentialBlock`
-/ `BranchBlock`? How do `import` resolution, diamond de-duplication and cycle detection work? In
+as`, `for`, `for each channel`, `let`, `return`) build in terms of `Block` / `SequentialBlock`
+/ `BranchBlock`? (`if` and `else` are reserved by the lexer, but the parser has no production for
+them and there is no `PdslNode` for a conditional, so PDSL has no conditional statement today.) How do `import` resolution, diamond de-duplication and cycle detection work? In
 what order are names resolved (program layers → registered primitives → builtins), and what
 happens when a layer shadows a builtin? What does each of the 40 builtins compute, with what
 shapes — and which of them pass gradients to which operands (the question the last three
@@ -56,7 +59,10 @@ interpreter from `PdslInterpreter.java`.
      (`RESOURCE_CACHE`) and that cached programs are never mutated.
    - **Lexical structure:** comments (`//`, `/** */` asset headers), identifiers, literals
      (number, string, bool, `null`, shape literals `[a, b]`), the full keyword table read from
-     `PdslLexer.KEYWORDS`, operators and precedence read from `PdslParser`.
+     `PdslLexer.KEYWORDS`, operators and precedence read from `PdslParser`. The table must mark
+     which keywords are reserved but unused: `if` and `else` have no parser production. It must
+     also note the contextual words that are *not* keywords: `each` in `for each channel` is an
+     identifier, which `PdslParser` matches by its text.
    - **Grammar:** an EBNF-style grammar derived from `PdslParser`, covering every `PdslNode`
      subclass (`Import`, `ConfigDef`, `DataDef`, `StateDef`, `LayerDef`, `ModelDef`, `Parameter`,
      every `Statement` and `Expression` subclass including `Subscript`, `FieldAccess`,
@@ -85,7 +91,14 @@ interpreter from `PdslInterpreter.java`.
      normalisation, registering through `PdslLoader(Consumer<PdslInterpreter>)`, and the
      placement rule (domain-agnostic primitives belong in `PdslBuiltins`, domain ones in the
      domain module's registrar).
-   - **Errors and diagnostics:** what `PdslParseException` reports (line/column), common errors.
+   - **Errors and diagnostics:** what `PdslParseException` reports, and common errors.
+     `PdslParseException` is a `RuntimeException` that carries only a message; there are no
+     structured position fields. Where the position appears depends on where the error comes from:
+     parser errors (`PdslParser.error`) end in "at line L, column C"; lexer errors give "L:C";
+     interpreter errors such as an unknown function or a self-recursive layer give only
+     "at line L"; some build-time failures carry no position at all. The page must
+     describe this as it is. Positioned errors are Phase 2 work in
+     `PDSL_FOR_RESEARCH_AND_EDUCATION.md`, not this task.
    - **Known limits:** recorded honestly, each with evidence (for example, which builtins treat
      an operand as a constant; anything the grammar parses but the interpreter rejects). Defects
      found are recorded, not fixed, in this task.
@@ -93,10 +106,14 @@ interpreter from `PdslInterpreter.java`.
    parenthesized ML-builtin list point to the new catalog rather than maintaining a second,
    drifting copy (no duplication).
 3. **Javadoc pass on the `org.almostrealism.ml.dsl` public API.** Expand `package-info.java`
-   to name all components (including `PdslLoader`, `PdslBuiltins`, `PdslPrimitive`,
-   `PdslPrimitiveContext`, `PdslChannelBank`, `PdslMultiChannelDispatcher`, `PdslFeatures`) and
-   link the reference page by its stable path; fill any public class/method on those types that
-   lacks Javadoc.
+   to name all public components. Today it lists four. The public types are `PdslLexer`,
+   `PdslToken`, `PdslParser`, `PdslNode`, `PdslParseException`, `PdslInterpreter`, `PdslLoader`,
+   `PdslPrimitive`, `PdslPrimitiveContext`, `PdslChannelBank` and `PdslMultiChannelDispatcher`.
+   The expanded page should also link the reference page by its stable path, and the pass should
+   fill in Javadoc on any public class or method of those types that lacks it. `PdslBuiltins`
+   (a `final` class) and `PdslFeatures` are **package-private**. The package overview may describe
+   them in prose, but it must not `{@link}` them, because that link does not resolve in the
+   generated public Javadoc.
 4. **Executable examples.** Every grammar example in the reference that is a complete program
    must parse. Add a small `PdslLanguageReferenceExamplesTest` (extends `TestSuiteBase`, every
    `@Test` with a `timeout`) whose PDSL snippets are the exact examples shown in the doc, asserting
@@ -134,8 +151,9 @@ interpreter from `PdslInterpreter.java`.
 - The builtin catalog has a gradient-behavior entry for every operand of every builtin, each
   backed by code or a test, or marked "not verified".
 - `pdsl-audio-dsp.md` no longer duplicates the core-primitive table.
-- `package-info.java` names every public type in `org.almostrealism.ml.dsl`; public members of
-  those types carry Javadoc.
+- `package-info.java` names every public type in `org.almostrealism.ml.dsl` (the eleven listed in
+  Scope item 3); public members of those types carry Javadoc.
+- The keyword table says plainly that `if`/`else` are reserved but have no meaning.
 - `PdslLanguageReferenceExamplesTest` passes and parses every complete example on the page.
 - After the corpus rebuild, `consult` answers "How do I write a PDSL layer with a residual
   branch and register a new primitive?" from the new page.
@@ -143,8 +161,38 @@ interpreter from `PdslInterpreter.java`.
 
 ## Dependencies
 
-None. The import mechanism, `stack`, program scope and the attention/differential gradient
-fixes have all landed on `master`, so the language is in a stable state worth documenting.
+There are no blocking dependencies. The import mechanism, `stack`, program scope and the
+attention/differential gradient fixes have all landed on `master`.
+
+Related work that overlaps with this plan:
+
+- `PDSL_FOR_RESEARCH_AND_EDUCATION.md` ("Resume here") queues three language changes:
+  `embed(table, token)`, `transformer(block, position)` and stack slicing
+  (`stack weights.model.layers[..18]`). Its Phase 2 also includes positioned errors. Each of
+  these changes the surface this page documents. "Stable" means stable today, not frozen.
+- That plan's Phase 5 tutorial depends on this page. Note that the existing tutorials in
+  `docs/tutorials/` are numbered HTML pages (`01-...html` through `09-...html`), not Markdown.
+
+## Open questions
+
+- **Order relative to the language changes above.** Writing the reference first means it
+  must be revised when `embed`, `transformer(block, position)` and stack slicing land. The
+  examples test (Scope item 4) catches example drift only. It does not catch a catalog row or
+  grammar rule that goes missing or out of date. Should those language items land first? Or
+  should a check be added that compares the builtin-name list on the page with the dispatch in
+  `PdslBuiltins` and fails when they differ?
+- **Gradient column cost.** Most builtins have no direct gradient test. Writing "not verified"
+  is honest, but if most cells end up saying it, the column may not justify its effort. Should
+  the task instead add finite-difference checks for the builtins whose gradient matters to
+  training (`dense`, `scale`, `rmsnorm`, `layernorm`, `softmax`, `scaled_dot_product`,
+  `weighted_values`)? That would make it a larger, test-writing task.
+- **`if` / `else`.** Two keywords are reserved but have no grammar. Should the reference only
+  record this, or should a follow-up either implement conditionals or remove the keywords?
+  This task only records it (per "Known limits").
+- **Scope beyond `docs/`.** Scope items 3–5 change Java sources, a new test class,
+  `llms.txt` and `engine/ml/README.md`. The work is therefore a code change, not only a
+  documentation change, and it gets the corresponding review (build validator, code policy,
+  test-integrity checks).
 
 ## What this sets up
 
