@@ -29,13 +29,15 @@ import java.util.Comparator;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * Unit tests for the {@link CommitMessageBuilder} static helpers extracted from
+ * Unit tests for the {@link CommitMessageBuilder} collaborator extracted from
  * {@link CodingAgentJob#getCommitMessage()}. These tests exercise the helper
  * directly so that the source-tag side effects ({@code "agent"} vs
  * {@code "prompt_fallback"}) and the deterministic fallback formatting are
@@ -226,5 +228,82 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         String msg = job.commitMessageBuilder().buildFallbackMessage(job);
         assertTrue("No Session: line when sessionId is null",
                 !msg.contains("\nSession: "));
+    }
+
+    /** {@link CommitMessageBuilder#buildExhaustionFallback} uses the trimmed first line of the prompt. */
+    @Test(timeout = 30000)
+    public void exhaustionFallbackUsesFirstPromptLine() {
+        CodingAgentJob job = job("  Add the sliding window layer  \nMore detail on a second line.");
+        assertEquals("Add the sliding window layer",
+                job.commitMessageBuilder().buildExhaustionFallback(job));
+    }
+
+    /** A first line of exactly 72 characters is kept whole; one character more is truncated to 69 + "...". */
+    @Test(timeout = 30000)
+    public void exhaustionFallbackTruncatesOnlyPast72Characters() {
+        CodingAgentJob exact = job("b".repeat(72));
+        assertEquals("b".repeat(72), exact.commitMessageBuilder().buildExhaustionFallback(exact));
+
+        CodingAgentJob longer = job("c".repeat(73));
+        assertEquals("c".repeat(69) + "...", longer.commitMessageBuilder().buildExhaustionFallback(longer));
+    }
+
+    /** A first prompt line carrying author attribution is never used; the task-id message is used instead. */
+    @Test(timeout = 30000)
+    public void exhaustionFallbackRejectsAttributedFirstLine() {
+        CodingAgentJob job = job("Co-Authored-By: Claude <noreply@anthropic.com>\nFix the bug");
+        assertEquals("Job t1 commit", job.commitMessageBuilder().buildExhaustionFallback(job));
+    }
+
+    /** A blank or missing prompt falls back to the task-id message. */
+    @Test(timeout = 30000)
+    public void exhaustionFallbackUsesTaskIdForBlankOrNullPrompt() {
+        CodingAgentJob blank = job("  \n\t ");
+        assertEquals("Job t1 commit", blank.commitMessageBuilder().buildExhaustionFallback(blank));
+
+        CodingAgentJob none = job(null);
+        assertEquals("Job t1 commit", none.commitMessageBuilder().buildExhaustionFallback(none));
+    }
+
+    /** {@link CommitMessageBuilder#isAuthored} is {@code false} when there is no {@code commit.txt}. */
+    @Test(timeout = 30000)
+    public void isAuthoredFalseWhenCommitTxtMissing() {
+        CodingAgentJob job = job("do the work");
+        assertFalse(job.commitMessageBuilder().isAuthored(job));
+        assertFalse(job.hasAuthoredCommitMessage());
+    }
+
+    /** {@link CommitMessageBuilder#isAuthored} is {@code false} when {@code commit.txt} holds only whitespace. */
+    @Test(timeout = 30000)
+    public void isAuthoredFalseWhenCommitTxtBlank() throws IOException {
+        writeCommitTxt(" \n\t\n");
+        CodingAgentJob job = job("do the work");
+        assertFalse(job.commitMessageBuilder().isAuthored(job));
+    }
+
+    /** {@link CommitMessageBuilder#isAuthored} is {@code true} when {@code commit.txt} holds a message. */
+    @Test(timeout = 30000)
+    public void isAuthoredTrueWhenCommitTxtHoldsMessage() throws IOException {
+        writeCommitTxt("Fix bug Z");
+        CodingAgentJob job = job("do the work");
+        assertTrue(job.commitMessageBuilder().isAuthored(job));
+        assertTrue(job.hasAuthoredCommitMessage());
+    }
+
+    /**
+     * Each job owns its builder, so the source tag one job records is not seen
+     * by another: the tag used to live on the job and must stay per-job now
+     * that it lives on the builder.
+     */
+    @Test(timeout = 30000)
+    public void sourceTagIsPerJob() throws IOException {
+        CodingAgentJob first = job("do the work");
+        CodingAgentJob second = job("do other work");
+        assertNotSame(first.commitMessageBuilder(), second.commitMessageBuilder());
+
+        first.commitMessageBuilder().resolve(first);
+        assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, first.getCommitMessageSource());
+        assertNull("Another job's builder must not record a source it never resolved",
+                second.getCommitMessageSource());
     }
 }
