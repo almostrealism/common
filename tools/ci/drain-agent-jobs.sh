@@ -36,10 +36,24 @@ count_running() {
     fi
 
     # python3 reports 0 for any payload it cannot make sense of, so this
-    # emits exactly one integer on every path.
+    # emits exactly one integer on every path. The controller normally reports
+    # "total"; when it omits it but still breaks out the in-flight counts, the
+    # running total is their sum, so a missing "total" never reads as drained.
     printf '%s' "${body}" | python3 -c 'import json, sys
+# The in-flight count fields the controller breaks out: active (STARTED) and
+# pending (SUBMITTED) jobs. A new non-terminal status is folded into one of
+# these by the controller, so this set tracks the response shape, not a status
+# list that would go stale here.
+ACTIVE_FIELDS = ("active", "pending")
 try:
-    total = json.load(sys.stdin).get("total", 0)
+    data = json.load(sys.stdin)
+    total = data.get("total")
+    if not isinstance(total, int):
+        total = 0
+        for field in ACTIVE_FIELDS:
+            value = data.get(field)
+            if isinstance(value, int):
+                total += value
 except Exception:
     total = 0
 print(total if isinstance(total, int) and total > 0 else 0)'

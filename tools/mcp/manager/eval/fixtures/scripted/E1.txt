@@ -1,3 +1,3 @@
-Master Agent Dispatch runs seven QA rounds: `doc-qa`, `defect-hunt`, `coverage-qa`, `consolidation-qa`, `performance-qa`, `pdsl-qa` and `qa-retrospective` [D:.github/CLAUDE.md@886]. Their branch prefixes are `qa/docs-`, `qa/defect-`, `qa/coverage-`, `qa/consolidate-`, `qa/performance-`, `qa/pdsl-` and `qa/retro-` [D:.github/CLAUDE.md@886]. A planning round starts only while no more than `MAX_OPEN_PRS` (7) pull requests are open [D:.github/CLAUDE.md@915].
+Master Agent Dispatch runs seven QA rounds: `doc-qa`, `defect-hunt`, `coverage-qa`, `consolidation-qa`, `performance-qa`, `pdsl-qa` and `qa-retrospective` [D:.github/CLAUDE.md@897]. Their branch prefixes are `qa/docs-`, `qa/defect-`, `qa/coverage-`, `qa/consolidate-`, `qa/performance-`, `qa/pdsl-` and `qa/retro-` [D:.github/CLAUDE.md@897]. A planning round starts only while no more than `MAX_OPEN_PRS` (7) pull requests are open [D:.github/CLAUDE.md@926].
 BASIS: documentation
 CONFLICTS: none
