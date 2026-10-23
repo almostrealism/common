@@ -66,7 +66,25 @@ The pieces that refuse an ordered shape outright:
 
 The failing tests are `CollectionOrderingTests.compactOrdering`, `maskOrdering` and
 `repeatOrdering`, all `@TestProperties(knownIssue = true)`; they read through the host `valueAt`
-path. `repeatOrderingProduct` (a real computation over a repeat-ordered input) already passes.
+path (`PackedCollection.valueAt` → `toDouble`). `repeatOrderingProduct` (a real computation over a
+repeat-ordered input) already passes.
+
+A further passing test in the same class is **not** `knownIssue`, and it bounds what is actually
+broken on the host path:
+
+- `explicitIndexOrderingAppliedOnce` reads a four-element *permutation* (`ExplicitIndexTraversalOrdering`
+  over `pack(2, 0, 3, 1)`) through `toDouble` and asserts each element round-trips. Confirmed passing
+  (run 2026-10-23). So on the host, `ExplicitIndexTraversalOrdering.indexOf(int)` *does* collapse its
+  `indices.getValueAt(const)` read to a constant — a full permutation with no absent slots works today.
+- That the permutation passes while `compactOrdering` (the same host `ExplicitIndex` path, but with
+  `-1` absent markers) and `maskOrdering` (constant indices, so the host `orElseThrow` scan is
+  satisfiable) are `knownIssue` means the host failures are **not** explained by the
+  constant-collapse limitation in item 1 — that condition is met for all three. The remaining
+  difference is the absent-marker (`-1`) and compact-sizing handling, which points at the host
+  absence gate in `toDouble` and/or the `getLength()` sizing below, not at symbolic `indexOf`. The
+  implementer must root-cause each host failure against the code (these tests are filtered out of a
+  normal run as `knownIssue`, so reproduce them explicitly) rather than assume the generated-code
+  fixes below will turn them green — see Open Question 5 and the scope↔done-when note in Scope.
 
 ## Scope
 
@@ -100,6 +118,16 @@ In scope — everything needed for an ordered collection to be a correct *input*
 6. **Tests:** remove the three `knownIssue` flags once the tests pass, and add new tests for an
    ordered collection as the input to element-wise, reshape, subset, pad and matmul computations,
    each run on Metal and native.
+
+**scope↔done-when note.** Items 1–3 above are generated-code / kernel-argument work, but the three
+`knownIssue` tests in success criterion 1 are host reads (`PackedCollection.valueAt` → `toDouble`),
+and the host absence gate (`index < 0 → 0`) already exists in `MemoryData.toDouble`. So item 1 (the
+*generated-code* gate) does not by itself make those host tests pass. The implementer should expect
+the compact/mask host fixes to live on the host read path or in `getLength()` sizing (item 3's
+`max + 1`), and must confirm the exact cause first (Open Question 5). The done-when therefore
+needs a host-path fix wired to it explicitly; today the scope lists only the generated-code surfaces
+by name, so the approver should treat "the three `knownIssue` tests pass" and "`indexOf` renders
+symbolically in a kernel" as two distinct deliverables rather than one.
 
 Out of scope (named as dependencies / follow-ups, not widened into here):
 
@@ -209,7 +237,28 @@ A reviewer can confirm the task is done when:
    support; note the limitation where the ordering stores indices.
 4. **Is `getLength()` returning max (not max+1) genuinely a bug, or relied upon somewhere?** The
    plan treats it as a bug; the implementer must grep callers of `TraversalOrdering.getLength()` and
-   the `PackedCollection` allocation path before changing it, and store the finding.
+   the `PackedCollection` allocation path before changing it, and store the finding. Note
+   `MemoryData.getMemLength()` already consumes `getDelegateOrdering().getLength()` through its
+   delegate path, so the three `knownIssue` tests (which build delegated views) may already be
+   exposed to this value — a reason to settle the `getLength()` fix before the host tests, not after.
+5. **Why exactly do `compactOrdering` and `maskOrdering` fail on the host today?** The sibling
+   `explicitIndexOrderingAppliedOnce` reads a full permutation through the same host `ExplicitIndex`
+   path and passes (confirmed 2026-10-23), and `maskOrdering` uses only constant indices, so the
+   constant-collapse limitation (Current state item 1) is satisfied for all three — it does not
+   explain the failures. The real cause is unconfirmed and is most likely the `-1` absent-marker
+   handling on the host read path and/or the `getLength()` sizing (Open Question 4), *not* symbolic
+   `indexOf`. The implementer must reproduce each failure (the tests are filtered out of a normal run
+   as `knownIssue`) and root-cause it against the code before assuming any scope item fixes it. This
+   is the load-bearing question for success criterion 1: the plan's scope names generated-code
+   surfaces, but the done-when is three host reads.
+6. **How costly is a symbolic `IndexMaskTraversalOrdering.indexOf` in a kernel?** The inverse search
+   has no closed form: finding the physical slot for a logical index means scanning the mask, so a
+   symbolic version renders as an O(mask length) search per lookup inside the kernel. That is
+   acceptable for the small, filtered masks this task tests, but it does not scale to the large
+   sparse matrix of the connectome work — which the design in `docs/plans/CONNECTOME_MODEL_ORGANISM.md`
+   builds on the **direct-table** form (CSR / gather, i.e. `ExplicitIndexTraversalOrdering`), not on
+   a mask inverse search. The approver should treat the symbolic mask `indexOf` as a correctness
+   feature for small masks, and confirm that no large-scale consumer is expected to route through it.
 
 No new tracker tasks were filed: every out-of-scope item above is an already-filed Phase 1 task
 ([66b57639], [87b95b81], [2c0793a7]) named as a dependency, so there is nothing new to triage.
