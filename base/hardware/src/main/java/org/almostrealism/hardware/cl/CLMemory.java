@@ -47,13 +47,6 @@ import java.util.concurrent.atomic.AtomicLong;
  * @see RAM
  */
 public class CLMemory extends RAM {
-	/**
-	 * Monotonically increasing counter incremented once per OpenCL kernel dispatch (see
-	 * {@link #markDispatch()}). A host read cache captured at one value of this counter is
-	 * stale once the counter advances, because an intervening kernel may have written the buffer.
-	 */
-	private static final AtomicLong dispatchGeneration = new AtomicLong();
-
 	/** The underlying OpenCL memory object handle. */
 	private final cl_mem mem;
 
@@ -66,10 +59,18 @@ public class CLMemory extends RAM {
 	/** True once {@code clReleaseMemObject} has been invoked for the underlying handle. */
 	private volatile boolean released;
 
+	/**
+	 * Monotonically increasing counter advanced each time this buffer may have been written
+	 * (see {@link #invalidateHostCache()}). A host read cache captured at one value of this
+	 * counter is stale once the counter advances. The counter belongs to the buffer, so a kernel
+	 * that does not take this buffer as an argument leaves its cache intact.
+	 */
+	private final AtomicLong writeGeneration = new AtomicLong();
+
 	/** Whole-buffer host snapshot serving repeated element reads, or {@code null} when absent. */
 	private volatile double[] hostCache;
 
-	/** The {@link #dispatchGeneration} value the {@link #hostCache} snapshot is valid for. */
+	/** The {@link #writeGeneration} value the {@link #hostCache} snapshot is valid for. */
 	private volatile long hostCacheGeneration = -1L;
 
 	/** The most recent generation at which a host read of this buffer was seen (warm-up tracking). */
@@ -159,35 +160,23 @@ public class CLMemory extends RAM {
 	public CLMemoryProvider getProvider() { return provider; }
 
 	/**
-	 * Records that an OpenCL kernel has been dispatched, invalidating every host read cache
-	 * captured before now. Called once per dispatch from {@link CLOperator}.
-	 */
-	public static void markDispatch() {
-		dispatchGeneration.incrementAndGet();
-	}
-
-	/**
-	 * Returns the current dispatch generation. Host caches are valid only while this value
-	 * is unchanged from when they were captured.
-	 *
-	 * @return the current dispatch generation
-	 */
-	public static long currentGeneration() {
-		return dispatchGeneration.get();
-	}
-
-	/**
 	 * Serves a partial host read of {@code length} elements from a whole-buffer snapshot,
 	 * capturing and caching the snapshot when doing so is worthwhile.
 	 *
 	 * <p>A per-element read loop (millions of one-element reads, as validation code performs)
 	 * is catastrophic on OpenCL because each element is an individual blocking transfer. This
 	 * serves such reads from a single whole-buffer snapshot instead. The snapshot is captured
-	 * only on the second read at the current {@link #currentGeneration() dispatch generation} —
-	 * so a lone read never triggers a full transfer — and is discarded once a kernel dispatch or
-	 * a host write invalidates it. A read that already covers the whole buffer transfers directly
-	 * (through {@link #toArray(int, int)}) and is not retained, so bulk transfers do not pay for a
-	 * cached copy.</p>
+	 * only on the second read at the buffer's current write generation — so a lone read never
+	 * triggers a full transfer — and is discarded once a kernel dispatch that takes this buffer
+	 * as an argument, or a host write, invalidates it. A read that already covers the whole buffer
+	 * transfers directly (through {@link #toArray(int, int)}) and is not retained, so bulk
+	 * transfers do not pay for a cached copy.</p>
+	 *
+	 * <p>Invalidation is per buffer rather than per process: kernels dispatched against other
+	 * buffers, for instance by another thread, must not discard this snapshot. If they did, a
+	 * long read loop interleaved with unrelated dispatches would recapture the whole buffer on
+	 * every second read, which is far slower than the element-wise transfers the snapshot is
+	 * meant to replace.</p>
 	 *
 	 * @param length the number of elements requested by the read
 	 * @return a whole-buffer snapshot to read from, or {@code null} to transfer directly
@@ -196,7 +185,7 @@ public class CLMemory extends RAM {
 		int total = elementCount();
 		if (length >= total) return null;
 
-		long generation = currentGeneration();
+		long generation = writeGeneration.get();
 		double[] cache = getHostCache(generation);
 		if (cache != null) return cache;
 		if (!seenReadAt(generation)) return null;
@@ -207,10 +196,13 @@ public class CLMemory extends RAM {
 	}
 
 	/**
-	 * Discards any host read cache. Called when this buffer is written on the host so a
-	 * subsequent read does not observe stale contents.
+	 * Discards any host read cache. Called when this buffer is written on the host, and for
+	 * each argument of an OpenCL kernel dispatch (which may write it), so a subsequent read
+	 * does not observe stale contents. Advancing the write generation also rejects a snapshot
+	 * that a concurrent read was capturing when the write began.
 	 */
 	public void invalidateHostCache() {
+		writeGeneration.incrementAndGet();
 		this.hostCache = null;
 		this.hostCacheGeneration = -1L;
 		this.probeGeneration = -2L;

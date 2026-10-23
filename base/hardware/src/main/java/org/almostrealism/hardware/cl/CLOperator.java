@@ -241,14 +241,17 @@ public class CLOperator extends HardwareOperator {
 
 		long id = totalInvocations++;
 
-		// Invalidate any host read caches: this kernel may write its argument buffers.
-		CLMemory.markDispatch();
-
 		if (enableVerboseLog) {
 			log("CL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}
 
 		MemoryData data[] = prepareArguments(argCount, args);
+
+		// Invalidate the host read caches of the argument buffers: this kernel may write them.
+		// TODO(review): CLNativeComputeContext (ComputeRequirement.C) writes CL buffers from generated JNI code and never invalidates their host caches
+		for (int i = 0; i < argCount; i++) {
+			((CLMemory) data[i].getMem()).invalidateHostCache();
+		}
 
 		KernelMemoryGuard.Reservation guard = Hardware.getLocalHardware().getKernelMemoryGuard().acquire(data);
 		CLSemaphore semaphore[] = new CLSemaphore[1];
