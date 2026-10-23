@@ -257,8 +257,8 @@ pins that mapping. The early submit jobs set the flag themselves;
 `src/test/`, `src/it/` and the CI directories, so for the Python-failure job it
 adds nothing over `test-integrity-check`'s Python step; the Python suites under
 `tools/` are not in them. In `master-agent-dispatch.yaml` the
-performance, consolidation and PDSL-migration rounds keep it on, because their
-premise is that existing tests stay the reference.
+performance, consolidation, PDSL-migration and flaky-test-hunt rounds keep it
+on, because their premise is that existing tests stay the reference.
 
 **A required test job's `failure` result must never go unresolved on
 `auto-resolve`'s attempt.** The `Check for incomplete test execution` step
@@ -867,7 +867,7 @@ so that check is made from the agent's side with `lsof`.
 Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
 that fire on a merge to master: `plan-next-task` (Project Manager),
 `plan-release-task` (Task Planning), `doc-qa`
-(Quality Assurance), `defect-hunt`, `coverage-qa`, `consolidation-qa`,
+(Quality Assurance), `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
 `performance-qa`, `pdsl-qa` and `qa-retrospective`. The `plan-next-task`, `doc-qa` and `defect-hunt`
 jobs were separate workflows with byte-identical triggers; merging them keeps the
 Actions sidebar navigable without changing what any of them does, and each job
@@ -890,10 +890,10 @@ the window needs a controller-side reservation that the round takes before it
 creates its branch; until one exists, this check removes the common case (a
 round that starts while intake is already closed).
 
-The seven QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
+The eight QA-style jobs (`doc-qa`, `defect-hunt`, `flaky-qa`, `coverage-qa`,
 `consolidation-qa`, `performance-qa`, `pdsl-qa`, `qa-retrospective`) share a shape:
 `tools/ci/qa-cadence.sh` decides whether to run from the job's own
-`BRANCH_PREFIX` (`qa/docs-`, `qa/defect-`, `qa/coverage-`, `qa/consolidate-`,
+`BRANCH_PREFIX` (`qa/docs-`, `qa/defect-`, `qa/flaky-`, `qa/coverage-`, `qa/consolidate-`,
 `qa/performance-`, `qa/pdsl-`, `qa/retro-`), `tools/ci/archive-stale-workstreams.sh` retires
 the previous rounds, then a branch is created, a workstream registered, a prompt
 built from `tools/ci/prompts/`, and a coding-agent job submitted with
@@ -902,9 +902,9 @@ cadence logic.
 
 Each QA job's `MIN_INTERVAL_DAYS` is 2 (`defect-hunt`, `coverage-qa`,
 `consolidation-qa`, `performance-qa`), 5 (`doc-qa`, `pdsl-qa`) or 7
-(`qa-retrospective`). Every one of
+(`flaky-qa`, `qa-retrospective`). Every one of
 them also has its own boolean `workflow_dispatch` input,
-`ignore_interval_<job>` (`docs`, `defect_hunt`, `coverage`, `consolidation`,
+`ignore_interval_<job>` (`docs`, `defect_hunt`, `flaky`, `coverage`, `consolidation`,
 `performance`, `pdsl`, `retrospective`), passed to `qa-cadence.sh` as `IGNORE_INTERVAL`. It lifts
 only the interval: a round still in progress holds it off either way — a PR from
 the job's previous round is still open, or (via `PR_GRACE_HOURS`, set to 24 on
@@ -931,6 +931,20 @@ passes the same number as its `max-open-prs` input, since a called workflow
 cannot read the caller's `env`. No job sets a limit of its own;
 `tools/tests/test_master_agent_dispatch.py` checks that. The count covers open
 PRs only: a round whose agent has not opened its PR yet is not in it.
+
+`MAX_OPEN_PRS` is sized to the **full-cadence** QA rounds — one open PR each,
+seven of them (`doc-qa`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
+`performance-qa`, `pdsl-qa`, `qa-retrospective`) — so the value tracks that
+count and rose from 6 to 7 when `qa-retrospective` was added. `flaky-qa` is a
+**pilot** (RETRO-20261022 F6): it still participates in the backlog gate like
+every round (it will not start while the backlog is full, and its own PR counts
+toward the next round's check), but adding it deliberately did **not** raise
+`MAX_OPEN_PRS` — the eight QA jobs share the budget of seven until the pilot
+proves its yield and a person decides to promote it. Promoting the pilot to a
+full round, or adding an eighth full-cadence round, is what raises the limit;
+`test_the_flaky_pilot_does_not_raise_the_open_pr_limit` in
+`tools/tests/test_master_agent_dispatch.py` pins this so the decision is made on
+purpose rather than by surprise.
 
 `plan-next-task` keeps **exactly one** planning round open, because every round
 rewrites the single `docs/plans/MANAGER_LOG.md` and two open at once cannot both
@@ -1047,14 +1061,34 @@ was acted on. `ci/qa-…` is the branch convention for a pipeline-subject QA
 follow-up a person opens from an accepted proposal; it is one of the prefixes
 the survey covers (`QA_PREFIXES`), and a person — never a job — creates it.
 
+`flaky-qa` is the pilot nondeterministic-test hunt
+(`tools/ci/prompts/flaky-hunt.txt`, RETRO-20261022 F6). It takes one module and
+a small, named slice of its tests, runs that slice repeatedly on the current
+commit, and looks for a test whose pass/fail outcome varies with no change to
+the code under test; on a finding it fixes the source of the nondeterminism in
+production or test-helper code, or — when the cause is out of scope — files a
+follow-up with `tracker_create_task`, the same routing the general review uses.
+Three things set it apart. Its `MIN_INTERVAL_DAYS` is 7, tied with `qa-retrospective`
+for the longest of any round, because it is a pilot rather than a full cadence job — and for the same
+reason it does **not** raise `MAX_OPEN_PRS` (see "One open-PR limit" above). Its
+prompt keeps it inside the repository's test-execution limits: named, bounded
+selections through the MCP test runner only, each with an explicit timeout,
+repeating a small selection rather than widening it, never a module or full
+suite or `AR_TEST_GROUP`/`AR_TEST_GROUPS`. And `PROTECT_TEST_FILES` stays
+`"true"`: the test that reveals a flake is the specification, so the round fixes
+the production/helper cause or files a follow-up rather than weakening the test
+— it carries no `ENFORCE_CHANGES`, since an honestly empty-handed round is a
+valid outcome, and pins the primary phase to `claude/opus` like the defect hunt,
+telling a real flake from a deterministic failure being judgment, not mechanism.
+
 Each job carries its **own** `concurrency` group (`project-manager`,
-`task-planning`, `quality-assurance`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
+`task-planning`, `quality-assurance`, `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
 `performance-qa`, `pdsl-qa`, `qa-retrospective`, none cancelling in progress), so they serialize
 independently rather than queueing behind one another. Workflow-level
 concurrency would couple them — do not add one.
 
 A `workflow_dispatch` selects a single job via the `agent` input
-(`all` | `project-manager` | `quality-assurance` | `defect-hunt` | `coverage` |
+(`all` | `project-manager` | `quality-assurance` | `defect-hunt` | `flaky` | `coverage` |
 `consolidation` | `performance` | `pdsl` | `retrospective`); `force` is passed through to
 whichever job runs, and each `ignore_interval_*` input reaches only its own job. Each job's
 `if` is written as `github.event_name != 'workflow_dispatch' || ...` so a push

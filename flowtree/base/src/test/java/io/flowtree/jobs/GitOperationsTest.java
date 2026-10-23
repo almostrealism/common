@@ -626,4 +626,49 @@ public class GitOperationsTest extends TestSuiteBase {
         assertTrue("An unparseable URL still matches itself",
                 GitOperations.isSameRepository("not-a-url", "not-a-url"));
     }
+
+    /** A step that succeeds on the first attempt runs exactly once and returns 0. */
+    @Test(timeout = 10000)
+    public void retryTransientReturnsZeroWithoutRetryingOnSuccess() throws Exception {
+        int[] attempts = {0};
+        int result = GitOperations.retryTransient(3, 0L, () -> {
+            attempts[0]++;
+            return 0;
+        });
+        Assert.assertEquals(0, result);
+        Assert.assertEquals("a succeeding step must run once", 1, attempts[0]);
+    }
+
+    /** A step that fails then succeeds is retried until it clears, and returns 0. */
+    @Test(timeout = 10000)
+    public void retryTransientRetriesUntilTheStepClears() throws Exception {
+        int[] attempts = {0};
+        int result = GitOperations.retryTransient(5, 0L, () -> ++attempts[0] < 3 ? 1 : 0);
+        Assert.assertEquals(0, result);
+        Assert.assertEquals("must stop as soon as the step succeeds", 3, attempts[0]);
+    }
+
+    /** A step that never succeeds is attempted exactly maxAttempts times and returns its last non-zero code. */
+    @Test(timeout = 10000)
+    public void retryTransientExhaustsAttemptsAndReturnsLastExitCode() throws Exception {
+        int[] attempts = {0};
+        int result = GitOperations.retryTransient(3, 0L, () -> {
+            attempts[0]++;
+            return 42;
+        });
+        Assert.assertEquals("the final non-zero exit code is returned", 42, result);
+        Assert.assertEquals("every attempt is spent", 3, attempts[0]);
+    }
+
+    /** A non-positive attempt count still runs the step once rather than never. */
+    @Test(timeout = 10000)
+    public void retryTransientRunsAtLeastOnce() throws Exception {
+        int[] attempts = {0};
+        int result = GitOperations.retryTransient(0, 0L, () -> {
+            attempts[0]++;
+            return 7;
+        });
+        Assert.assertEquals(7, result);
+        Assert.assertEquals(1, attempts[0]);
+    }
 }

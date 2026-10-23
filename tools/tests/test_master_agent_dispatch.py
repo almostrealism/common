@@ -136,6 +136,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
         expected = {
             "doc-qa": 5,
             "defect-hunt": 2,
+            "flaky-qa": 7,
             "coverage-qa": 2,
             "consolidation-qa": 2,
             "performance-qa": 2,
@@ -716,6 +717,41 @@ class MasterAgentDispatchTests(unittest.TestCase):
         required.add("ci/qa-")
         self.assertLessEqual(required, prefixes,
                              "QA_PREFIXES misses: " + str(required - prefixes))
+
+    def test_the_flaky_hunt_is_a_test_locked_opus_pilot(self):
+        """The flaky-test hunt is a pilot that must never weaken the test that
+        revealed the flake: it fixes the production/helper cause or files a
+        follow-up, so it carries the per-job test lock. Like the defect hunt it
+        pins claude/opus (telling a real flake from a deterministic failure is
+        judgment), and an empty-handed round is valid so it sets no
+        ENFORCE_CHANGES. It reads tools and runs bounded test selections, so it
+        needs no Metal and carries no REQUIRED_LABELS."""
+        job = self.qa_jobs["flaky-qa"]
+        submit = next(s for s in job["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        env = submit["env"]
+        self.assertEqual("true", env["PROTECT_TEST_FILES"])
+        self.assertNotIn("ENFORCE_CHANGES", env)
+        self.assertNotIn("REQUIRED_LABELS", env)
+        primary = json.loads(env["PHASE_CONFIGS"])["primary"]
+        self.assertEqual("opus", primary["model"])
+        # Runner, model and provider must be set together; see the defect
+        # hunt's note in the workflow for why one alone misroutes the phase.
+        self.assertEqual({"runner", "model", "provider"}, set(primary))
+
+    def test_the_flaky_pilot_does_not_raise_the_open_pr_limit(self):
+        """MAX_OPEN_PRS is sized to the full-cadence QA rounds, one open PR per
+        round for the same reviewer. The flaky hunt is a pilot (RETRO-20261022
+        F6: "not a full cadence job"), so it deliberately does NOT raise that
+        limit until it proves its yield — the eight QA jobs share a budget of
+        seven. This pins that decision: a later session that promotes the pilot
+        to a full round, or adds an eighth full-cadence round, must raise
+        MAX_OPEN_PRS and update this test on purpose rather than by surprise."""
+        self.assertIn("flaky-qa", self.qa_jobs, "the flaky pilot must be a QA round")
+        self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
+        full_cadence = [name for name in self.qa_jobs if name != "flaky-qa"]
+        self.assertEqual(7, len(full_cadence),
+                         "MAX_OPEN_PRS tracks the full-cadence QA rounds, pilot excluded")
 
 
 if __name__ == "__main__":
