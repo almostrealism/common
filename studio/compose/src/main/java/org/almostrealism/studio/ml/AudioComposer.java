@@ -283,19 +283,22 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 
 	/**
 	 * Verifies that the given merge weight vector has the length this composer
-	 * interpolates over.
+	 * interpolates over, and flattens it to shape {@code (dim)}. Flattening ensures the
+	 * {@link ComposableAudioFeatures} broadcasts it to every feature cell, rather than
+	 * mistaking a vector shaped like {@code (1, 1, dim)} for a per-cell weight tensor.
 	 *
-	 * @param weights the weight vector
-	 * @return the same weight vector
+	 * @param weights the weight vector, of any shape with {@code dim} elements
+	 * @return the weight vector, shaped {@code (dim)}
 	 * @throws IllegalArgumentException if the weight vector is not of length {@code dim}
 	 */
 	protected Producer<PackedCollection> requireWeightVector(Producer<PackedCollection> weights) {
-		if (shape(weights).getTotalSize() != dim) {
+		TraversalPolicy weightShape = shape(weights);
+		if (weightShape.getTotalSize() != dim) {
 			throw new IllegalArgumentException("Merge weight vector must have length " + dim
-					+ " but has shape " + shape(weights));
+					+ " but has shape " + weightShape);
 		}
 
-		return weights;
+		return weightShape.getDimensions() == 1 ? weights : c(weights).reshape(shape(dim));
 	}
 
 	@Override

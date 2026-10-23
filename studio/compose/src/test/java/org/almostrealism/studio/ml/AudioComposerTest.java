@@ -110,6 +110,21 @@ public class AudioComposerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A weight vector shaped with one more axis than the features, but holding only
+	 * {@code dim} elements, is still broadcast to every cell rather than being taken as
+	 * a per-cell weight tensor, both when added and when overridden.
+	 */
+	@Test(timeout = 60000)
+	public void multiAxisWeightVectorIsBroadcast() {
+		AudioComposer composer = composer(15L);
+		composer.addSource(sourceA(), cp(pack(1.0, 0.0).reshape(shape(1, 1, DIM))));
+		composer.addSource(sourceB(), weightVector(1.0, 0.0));
+		composer.setWeights(1, cp(pack(0.0, 1.0).reshape(shape(1, 1, DIM))));
+
+		assertValues(expected(2.0, 0.5), latent(composer, 2.0, 0.5));
+	}
+
+	/**
 	 * Explicit weights that do not match the embedding dimension are rejected.
 	 */
 	@Test(timeout = 60000)
