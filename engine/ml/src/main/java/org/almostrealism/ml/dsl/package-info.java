@@ -31,10 +31,10 @@
  *
  * <h2>Public Components</h2>
  * <ul>
- *   <li>{@link org.almostrealism.ml.dsl.PdslLexer} — turns source text into tokens and owns the
- *       set of reserved words</li>
+ *   <li>{@link org.almostrealism.ml.dsl.PdslLexer} — turns source text into tokens</li>
  *   <li>{@link org.almostrealism.ml.dsl.PdslToken} — a token: its type, text and source
- *       position</li>
+ *       position; its {@link org.almostrealism.ml.dsl.PdslToken.Type} owns the set of reserved
+ *       words</li>
  *   <li>{@link org.almostrealism.ml.dsl.PdslParser} — recursive-descent parser from tokens to a
  *       program</li>
  *   <li>{@link org.almostrealism.ml.dsl.PdslNode} — the syntax tree: the program, its imports and
