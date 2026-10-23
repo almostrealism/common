@@ -2,7 +2,8 @@
 
 - **Tracker task:** `3e0043d3-c087-4e9b-b687-62931627b70e`, "Integer dtypes in
   SafetensorsReference and an integer payload in collections.proto"
-- **Release:** Common 0.76
+- **Release:** the release currently under development (the one whose name matches the version
+  in the root `pom.xml`).
 - **Module:** `engine/ml` (package `org.almostrealism.persist.assets`, plus `StateDictionary`)
 
 ## Motivation
