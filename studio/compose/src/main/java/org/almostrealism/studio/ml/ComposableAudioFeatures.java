@@ -98,6 +98,9 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 		CollectionProducer vector = c(weights);
 		if (weightShape.getDimensions() != 1)
 			vector = vector.reshape(shape(weightShape.getTotalSize()));
+		// TODO(review): repeat order is reversed from the original createWeights
+		// (repeat(length(0)).repeat(length(1))), transposing the (T, B) axes; harmless
+		// only because a single vector broadcasts uniformly to every cell.
 		return vector.repeat(featureShape.length(1)).repeat(featureShape.length(0));
 	}
 
