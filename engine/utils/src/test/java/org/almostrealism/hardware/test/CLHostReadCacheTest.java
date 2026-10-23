@@ -133,6 +133,39 @@ public class CLHostReadCacheTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Warms the whole-buffer snapshot and then reads every element one at a time through the
+	 * provider, as a per-element validation loop does, verifying each read returns the correct
+	 * value. This is the pattern the snapshot serves entirely from host memory once warm, with
+	 * no per-read OpenCL transfer and no per-read IO-timing bookkeeping.
+	 */
+	@Test(timeout = 120000)
+	public void longReadLoopServedFromSnapshot() {
+		CLMemoryProvider provider = clProvider();
+		if (provider == null) {
+			log("skipping, OpenCL memory provider unavailable");
+			return;
+		}
+
+		CLMemory mem = provider.allocate(SIZE);
+
+		try {
+			provider.setMem(mem, 0, sequence(SIZE), 0, SIZE);
+
+			// Warm the snapshot: the first read probes, the second captures the whole buffer.
+			provider.toArray(mem, 0, 1);
+			assertNotNull(mem.snapshotForRead(1));
+
+			double[] out = new double[1];
+			for (int i = 0; i < SIZE; i++) {
+				provider.getMem(mem, i, out, 0, 1);
+				assertEquals("index " + i, (double) i, out[0]);
+			}
+		} finally {
+			provider.deallocate(SIZE, mem);
+		}
+	}
+
 	/** Returns {@code n} values counting up from 0. */
 	private static double[] sequence(int n) {
 		double[] values = new double[n];
