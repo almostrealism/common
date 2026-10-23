@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# PreToolUse — Bash: block `git worktree add`.
-# All agent changes must live in the single working tree the developer can see
-# directly. Creating an additional worktree stores work out of the developer's
-# line of sight, which is not permitted. Read-only inspection
-# (`git worktree list`) is allowed.
+# PreToolUse — Bash: block `git worktree add` in a FlowTree job.
+# The harness stages, commits and pushes only the job's own working tree, so
+# work done in another worktree is lost while the job reports success. An
+# interactive session may create worktrees; the policy applies only when
+# lib/agent_session.py identifies the session as a job. Read-only inspection
+# (`git worktree list`) is always allowed. The other routes into a worktree
+# (EnterWorktree, isolated subagents, edits and commands there) are covered by
+# block-job-worktree.sh.
 #
 # This is a thin shell wrapper. The decision logic lives in
 # .claude/hooks/lib/git_command_check.py — the single source of
@@ -11,8 +14,8 @@
 # opencode (.opencode/plugins/block-git-worktree.ts).
 #
 # Behavior preserved bit-for-bit vs. the previous inline-grep version:
-#   - exit 2 with "BLOCKED: 'git worktree add' is not permitted for agents..."
-#     on stderr on a `git worktree add ...` invocation
+#   - exit 2 with "BLOCKED: 'git worktree add' is not permitted in a FlowTree job..."
+#     on stderr on a `git worktree add ...` invocation in a job session
 #   - exit 0 (no output) on other worktree subcommands
 #
 # Why exec: the wrapper has no business doing anything but forwarding

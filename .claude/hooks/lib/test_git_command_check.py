@@ -39,6 +39,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CORE_PATH = os.path.join(HERE, "git_command_check.py")
 
 
+def _session_env(job):
+    """The current environment as a FlowTree job session, or as an interactive one."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("AR_FLOWTREE_JOB", "AR_WORKSTREAM_URL")}
+    if job:
+        env["AR_FLOWTREE_JOB"] = "1"
+    return env
+
+
 def _load_core():
     spec = importlib.util.spec_from_file_location("git_command_check", CORE_PATH)
     m = importlib.util.module_from_spec(spec)
@@ -505,7 +514,7 @@ class UnknownPolicyTests(unittest.TestCase):
 class StdinModeTests(unittest.TestCase):
     """The .sh adapter contract: --stdin mode renders natively."""
 
-    def _run_stdin(self, policy, command):
+    def _run_stdin(self, policy, command, job=True):
         payload = json.dumps({"tool_input": {"command": command}})
         r = subprocess.run(
             ["python3", CORE_PATH, "--stdin", policy],
@@ -513,6 +522,7 @@ class StdinModeTests(unittest.TestCase):
             capture_output=True,
             text=True,
             timeout=5,
+            env=_session_env(job),
         )
         return r
 
@@ -540,6 +550,29 @@ class StdinModeTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertEqual(r.stdout, "")
         self.assertEqual(r.stderr, "")
+
+    def test_worktree_add_allowed_in_interactive_session(self):
+        # Only a FlowTree job loses work done in another worktree; a
+        # developer's session may create one.
+        r = self._run_stdin("block-git-worktree", "git worktree add /tmp/wt", job=False)
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stderr, "")
+
+    def test_legacy_workstream_url_marks_a_job(self):
+        # A node running a harness from before AR_FLOWTREE_JOB still sets
+        # AR_WORKSTREAM_URL, and must keep the block.
+        payload = json.dumps({"tool_input": {"command": "git worktree add /tmp/wt"}})
+        env = _session_env(False)
+        env["AR_WORKSTREAM_URL"] = "http://controller/api/workstreams/w1"
+        r = subprocess.run(
+            ["python3", CORE_PATH, "--stdin", "block-git-worktree"],
+            input=payload, capture_output=True, text=True, timeout=5, env=env)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("FlowTree job", r.stderr)
+
+    def test_other_policies_ignore_the_session(self):
+        r = self._run_stdin("block-git-commit", "git commit -m x", job=False)
+        self.assertEqual(r.returncode, 2)
 
     def test_warn_git_log_exits_0_with_banner(self):
         r = self._run_stdin("warn-git-log", "git log")
@@ -583,12 +616,13 @@ class StdinModeTests(unittest.TestCase):
 class ArgvModeTests(unittest.TestCase):
     """The .ts adapter contract: argv mode returns JSON, exit 0."""
 
-    def _run_argv(self, policy, command):
+    def _run_argv(self, policy, command, job=True):
         r = subprocess.run(
             ["python3", CORE_PATH, policy, command],
             capture_output=True,
             text=True,
             timeout=5,
+            env=_session_env(job),
         )
         return r
 
@@ -605,6 +639,10 @@ class ArgvModeTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         obj = json.loads(r.stdout)
         self.assertEqual(obj["action"], "block")
+
+    def test_worktree_add_returns_allow_json_in_interactive_session(self):
+        r = self._run_argv("block-git-worktree", "git worktree add /tmp/wt", job=False)
+        self.assertEqual(json.loads(r.stdout)["action"], "allow")
 
     def test_warn_git_log_returns_warn_json(self):
         r = self._run_argv("warn-git-log", "git log")
