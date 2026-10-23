@@ -204,6 +204,7 @@ See `SplitIndexTests.java`:
 - `gatherIsExactAboveSinglePrecision` - Split-index gather selects the exact element above 2^24
 - `gatherReadsEveryStoredPosition` - Split-index gather across the lane boundary (`BASE - 1`, `BASE`, `BASE + 1`)
 - `storageRoundTripsNegativeIndex` - Negative indices keep their sign in the high lane
+- `storageRoundTripsIntExtremes` - `Integer.MAX_VALUE` and `Integer.MIN_VALUE` round-trip with a high lane of magnitude at most 2^19
 - `gatherRejectsSingleLaneIndex` - Split-index gather refuses an index whose last dimension is not 2
 
 ## See Also

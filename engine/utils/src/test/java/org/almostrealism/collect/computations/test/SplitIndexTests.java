@@ -135,6 +135,26 @@ public class SplitIndexTests extends TestSuiteBase {
 	}
 
 	/**
+	 * The extremes of the {@code int} range survive the split layout: {@link Integer#MAX_VALUE}
+	 * and {@link Integer#MIN_VALUE} are stored with a high lane of magnitude at most {@code 2^19}
+	 * and a low lane in {@code [0, BASE)}, and reconstructing {@code hi * BASE + lo} from the
+	 * stored lanes recovers each value exactly.
+	 */
+	@Test(timeout = 60000)
+	public void storageRoundTripsIntExtremes() {
+		PackedCollection lanes = PackedCollection.ofSplitIndices(Integer.MAX_VALUE, Integer.MIN_VALUE);
+		Assert.assertEquals(524287.0, lanes.toDouble(0), 0.0);
+		Assert.assertEquals(SplitIndexTraversalOrdering.BASE - 1, lanes.toDouble(1), 0.0);
+		Assert.assertEquals(-524288.0, lanes.toDouble(2), 0.0);
+		Assert.assertEquals(0.0, lanes.toDouble(3), 0.0);
+
+		Assert.assertEquals(Integer.MAX_VALUE,
+				(long) lanes.toDouble(0) * SplitIndexTraversalOrdering.BASE + (long) lanes.toDouble(1));
+		Assert.assertEquals(Integer.MIN_VALUE,
+				(long) lanes.toDouble(2) * SplitIndexTraversalOrdering.BASE + (long) lanes.toDouble(3));
+	}
+
+	/**
 	 * End-to-end acceptance: gathering at {@code 2^24}, {@code 2^24 + 1} and {@code 2^24 + 5}
 	 * from a table whose payload is the exact address modulo 16 returns {@code {0, 1, 5}}. The
 	 * payload is computed from the integer kernel index, so it is exact and distinct between
