@@ -18,9 +18,14 @@ an ordering through to its output.
 
 Making an ordered (compact / sparse) collection behave correctly as the input to arbitrary
 computations is the prerequisite for using sparse `PackedCollection`s as ordinary collections. That
-capability is needed directly by the connectome model organism (the sparse weight matrix and its
-matrix–vector product, Phase 1) and by sparse Jacobians in automatic differentiation. The closely
-related task [87b95b81] "Sparse traversal support" depends on this integration landing first.
+capability matters to the connectome model organism and to sparse Jacobians in automatic
+differentiation. It is not, however, on the critical path of the connectome's sparse
+matrix–vector product. `CONNECTOME_MODEL_ORGANISM.md` ("Sparse connectivity") states that the
+product "does not need a compact ordering to work, so it is not blocked on fixing the ordering
+integration". The sparse-matrix task [66b57639] likewise says "the product must not wait on that
+integration", and leaves open whether its type is backed by a `TraversalOrdering` at all. The
+closely related task [87b95b81] "Sparse traversal support" wants the same `IndexSet` machinery.
+Neither task lists this one in its tracker `blocked_by`.
 
 ## Current state (what the code shows)
 
@@ -61,10 +66,10 @@ The pieces that refuse an ordered shape outright:
   exploit unique non-zero offset). Not every type reaches that default:
   - `CollectionExpression` overrides it with `Shape.super.containsIndex(index)`, and
     `Shape.containsIndex` is `getShape().getOrder().containsIndex(index)`. So `CollectionVariable`
-    (which implements `CollectionExpression`) **already delegates membership to its ordering**. That is the
-    delegation scope item 2 proposes. But it dereferences `getOrder()` without a null check, so it
-    throws a `NullPointerException` for an unordered shape. Today the generated-code membership
-    gate (scope item 1) could only call it when an ordering is present.
+    (which implements `CollectionExpression`) **already delegates membership to its ordering**.
+    That is the delegation scope item 2 proposes. But it dereferences `getOrder()` without a null
+    check, so it throws a `NullPointerException` for an unordered shape. Today the generated-code
+    membership gate (scope item 1) could only call it when an ordering is present.
   - `MemoryDataAdapter` (and so `PackedCollection`) overrides it only to call
     `MemoryData.super.containsIndex`, which is the throwing `TraversableExpression` default.
   - Other overrides (`TraversableExpressionComputation`, `CollectionProducerComputationBase`,
@@ -179,9 +184,10 @@ items 1–3 are what make them pass. Success criterion 1 below is written accord
 Out of scope (named as dependencies / follow-ups, not widened into here):
 
 - The sparse matrix type and the segmented-reduction sparse matrix–vector product
-  ([66b57639]) — it consumes this integration.
+  ([66b57639]). It may use this integration if it chooses an ordering-backed type, but it is
+  explicitly not waiting on it.
 - Avoiding computation/storage of values outside an index set for delta outputs — that is
-  [87b95b81] "Sparse traversal support", which this unblocks.
+  [87b95b81] "Sparse traversal support", which builds on the same machinery.
 - Integer-exact index storage on FP32 backends ([2c0793a7]): orderings store indices as floating
   point, and Metal is exact only to 2^24. For the small shapes in this task's tests that is not a
   problem, but a production sparse matrix needs [2c0793a7]. Flagged, not solved here.
@@ -272,8 +278,10 @@ A reviewer can confirm the task is done when:
 - **Metal hardware (macOS node).** The done-when explicitly requires the new tests to run on Metal
   as well as native. Only macOS FlowTree nodes provide Metal, so implementation must run on a macOS
   node. Recorded in `docs/plans/task-20261023-010642-workstream.yaml`.
-- No blocking tracker tasks (`blocked_by` is empty). This task is itself the blocker for the sparse
-  matrix work ([66b57639]) and for [87b95b81].
+- No blocking tracker tasks (`blocked_by` is empty). Nothing in the tracker is blocked by this task
+  either. [66b57639] is blocked only by [2c0793a7], and [87b95b81] has no blockers. Nothing
+  downstream is held up waiting on this plan, so scheduling it is the approver's call. Its value is
+  general: it makes ordered collections usable as kernel inputs.
 
 ## Open questions
 
@@ -330,13 +338,15 @@ A reviewer can confirm the task is done when:
    has no closed form: finding the physical slot for a logical index means scanning the mask, so a
    symbolic version renders as an O(mask length) search per lookup inside the kernel. That is
    acceptable for the small, filtered masks this task tests, but it does not scale to the large
-   sparse matrix of the connectome work — which the design in `docs/plans/CONNECTOME_MODEL_ORGANISM.md`
-   builds on the **direct-table** form (CSR / gather, i.e. `ExplicitIndexTraversalOrdering`), not on
-   a mask inverse search. The approver should treat the symbolic mask `indexOf` as a correctness
-   feature for small masks, and confirm that no large-scale consumer is expected to route through it.
+   sparse matrix of the connectome work. The design in `CONNECTOME_MODEL_ORGANISM.md` builds that
+   matrix in CSR form, as a gather by an index array followed by a segmented reduction. That design
+   has no mask inverse search. Whether the sparse type is backed by a `TraversalOrdering` at all
+   (and if so, by the direct-table `ExplicitIndexTraversalOrdering`) is left to [66b57639]. The
+   approver should treat the symbolic mask `indexOf` as a correctness feature for small masks, and
+   confirm that no large-scale consumer is expected to route through it.
 
 No new tracker tasks were filed: every out-of-scope item above is an already-filed Phase 1 task
-([66b57639], [87b95b81], [2c0793a7]) named as a dependency, so there is nothing new to triage.
+([66b57639], [87b95b81], [2c0793a7]) named as related work, so there is nothing new to triage.
 
 ## Estimated complexity
 
