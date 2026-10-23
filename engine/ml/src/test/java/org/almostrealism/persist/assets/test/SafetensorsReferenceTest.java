@@ -563,6 +563,47 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A {@link StateDictionary#group(String) group} carries the integer source encoding of the
+	 * entries it exposes, so saving the group keeps those entries integer payloads. The chosen value
+	 * 2<sup>24</sup>&nbsp;+&nbsp;1 is not representable in FP32, so a save that dropped the group's
+	 * encoding and fell back to the default precision would read back as 2<sup>24</sup> instead.
+	 */
+	@Test(timeout = 60000)
+	public void groupKeepsIntegerPayloadThroughSave() throws IOException {
+		int inexactInFloat = (1 << 24) + 1;
+		Path checkpoint = Files.createTempDirectory("safetensors");
+		Files.copy(writeFile("{\"model.ids\":{\"dtype\":\"I32\",\"shape\":[4],\"data_offsets\":[0,16]}}",
+						intBytes(-7, 0, 100, inexactInFloat)).toPath(),
+				checkpoint.resolve("model.safetensors"));
+
+		double[] expected;
+		Path saved = Files.createTempDirectory("protobuf").resolve("weights.pb");
+		StateDictionary loaded = new StateDictionary(checkpoint.toString());
+		try {
+			StateDictionary group = loaded.group("model");
+			expected = group.get("ids").toArray();
+			group.save(saved);
+		} finally {
+			loaded.destroy();
+		}
+
+		Collections.CollectionData data = Collections.CollectionLibraryData
+				.parseFrom(Files.readAllBytes(saved)).getCollections(0).getCollection();
+		Assert.assertEquals("the group preserves the integer source encoding",
+				4, data.getDataI32Count());
+		Assert.assertEquals(0, data.getData32Count());
+		Assert.assertEquals(0, data.getDataCount());
+
+		StateDictionary reloaded = new StateDictionary(saved.getParent().toString());
+		try {
+			Assert.assertArrayEquals(expected, reloaded.get("ids").toArray(), 0.0);
+			Assert.assertEquals(inexactInFloat, reloaded.get("ids").toDouble(3), 0.0);
+		} finally {
+			reloaded.destroy();
+		}
+	}
+
+	/**
 	 * Two tensors whose byte ranges overlap are rejected, so the same bytes are never exposed as
 	 * two different weights; this includes two names given the very same range.
 	 */
