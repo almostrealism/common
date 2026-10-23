@@ -78,7 +78,7 @@ untouched; only index data that a caller explicitly stores split is read back ex
 Within this task:
 
 1. **A split-index representation and its exact reconstruction** (`base/code`, with the storage
-   helper in `base/collect`). The concept — an integer index stored across two FP32 lanes — is a
+   helper in `compute/algebra`). The concept — an integer index stored across two FP32 lanes — is a
    genuine new type, not a utility: it owns the `BASE` constant, the host-side encode, and the
    in-kernel reconstruction expression. Sibling in spirit to `IndexExpressionTraversalOrdering`,
    whose `indexOf(idx)` is exactly the single-lane form `indices.getValueAt(idx).toInt()`.
@@ -100,7 +100,7 @@ Within this task:
 4. **A host-side store path** that encodes an `int[]`/`long[]` of indices into the split FP32 layout
    in one contiguous buffer and uploads it with a single bulk fill (no per-element `setMem`/JNI loop)
    — the legitimate top-of-stack ingest boundary, like weight loading. Placed on `PackedCollection`
-   (`base/collect`).
+   (`compute/algebra`; see the module note below).
 
 5. **Documentation** of the representation in `docs/internals/dynamic-indexing.md` (the page that
    already documents gather, `traverseEach`, and index producers), including the exactness guarantee,
@@ -135,7 +135,12 @@ New behaviour belongs:
 - The reconstruction expression and the `TraversalOrdering` in **`base/code`** — "it is a property of
   collections and expressions" (CONNECTOME plan placement table), reading index data symbolically.
 - The gather overload in **`compute/algebra`** (`CollectionFeatures`), beside the gather it mirrors.
-- The host encode on **`PackedCollection`** (`base/collect`).
+- The host encode on **`PackedCollection`**, which currently lives in **`compute/algebra`**
+  (`org.almostrealism.collect`). The `base/collect` (`ar-collect`) module named in the CONNECTOME
+  placement table holds no source today — it is a build-chain waypoint between `ar-code` and
+  `ar-hardware`, and `PackedCollection` and the collection-producer API live in `compute/algebra`,
+  per `base/collect/README.md`. Treat `base/collect` as the *conceptual* home of this behaviour and
+  `compute/algebra` as the module the code is actually added to.
 
 All reconstruction is Producer/Expression composition — no Java-side element math — so it compiles to
 the same single kernel the existing gather does and satisfies `CodePolicyViolationDetector`.
@@ -144,17 +149,33 @@ the same single kernel the existing gather does and satisfies `CodePolicyViolati
 
 A reviewer confirms the task is done when:
 
-1. **Reconstruction exactness.** A split-index collection holding values above 2^24 (e.g. `2^24`,
-   `2^24 + 1`, `2^24 + 5`, and a ~5×10^7 value) reconstructs to exactly those integers, verified by a
-   test whose output is the reconstructed index, on **native and Metal**. A control storing the same
-   values in a plain FP32 index collection rounds `2^24 + 1` to `2^24`, demonstrating the defect the
-   feature removes. (The control asserts the *known-bad* behaviour; it is not weakened.)
+1. **Storage exactness.** A split-index collection encodes values above 2^24 (e.g. `2^24`,
+   `2^24 + 1`, `2^24 + 5`, and a ~5×10^7 value) into two FP32 lanes, each of which stays below 2^24
+   and is therefore stored losslessly. The test reads the two lanes back and reconstructs
+   `hi * BASE + lo` on the host in integer arithmetic, asserting it equals each original value, on
+   **native and Metal**. A control storing the same values directly in a plain FP32 index collection
+   rounds `2^24 + 1` to `2^24`, demonstrating the defect the feature removes. (The control asserts
+   the *known-bad* behaviour; it is not weakened.) Note that the reconstructed index cannot be
+   observed by writing it to an FP32 output buffer and reading it back — such a buffer cannot
+   represent a value above 2^24 — so storage exactness is checked from the two lanes here, and the
+   *in-kernel* reconstruction is exercised through its effect on addressing in criterion 2.
 
-2. **End-to-end gather exactness.** With a data collection of `N = 2^24 + K` elements (`K` small),
-   built as `integers(0, N)` so `data[i] == i` — about 67 MB in FP32, which fits CI and the default
-   `AR_HARDWARE_MEMORY_SCALE` — a gather at split indices `{2^24, 2^24 + 1, 2^24 + 5}` returns exactly
-   those values on **native and Metal**, while the existing float-index gather returns the rounded
-   (wrong) element. This is the task's "Done when" acceptance test.
+2. **End-to-end gather exactness.** The gather is probed at the split indices
+   `{2^24, 2^24 + 1, 2^24 + 5}`, so the data collection must hold at least `2^24 + 6` elements: use
+   `N = 2^24 + K` with `K >= 6` (`K = 8` is a convenient choice) — about 67 MB in FP32, which fits CI
+   and the default `AR_HARDWARE_MEMORY_SCALE`. The returned *payload* must itself be exactly
+   representable in FP32 and must differ between adjacent addresses, or the test cannot tell a correct
+   gather from the buggy one. Building the data as `integers(0, N)` so `data[i] == i` fails this on
+   FP32: every payload above 2^24 is rounded to the same even integers the rounded indices land on,
+   so the correct address and the float-rounded address return the *same* value and the bug is
+   invisible (e.g. probing `2^24 + 1`, a correct gather reads `data[2^24 + 1]` which stored `2^24`,
+   and the float-index gather reads `data[2^24]` which is also `2^24`). Instead, build the data so
+   each slot holds a small, exactly-representable marker determined by its exact address — e.g.
+   `data[i] = i mod M` for a small `M` (say 16), computed with integer-expression arithmetic in the
+   kernel (the `imod` pattern `rows` already uses) — giving distinct exact payloads `{0, 1, 5}` at the
+   three probed addresses. The split-index gather then returns `{0, 1, 5}` on **native and Metal**,
+   while the existing float-index gather reads the rounded addresses `{2^24, 2^24, 2^24 + 4}` and
+   returns `{0, 0, 4}` — the wrong elements. This is the task's "Done when" acceptance test.
 
 3. Tests live in `engine/utils` `CollectionComputationTests` (or a dedicated sibling test class in
    the same package), extend `TestSuiteBase`, and each `@Test` carries a `timeout`. Run them with the
@@ -177,6 +198,15 @@ A reviewer confirms the task is done when:
   constant on the representation type.
 - **Reconstruction width.** `int` (exact to 2^31) covers the connectome and this task. Indices above
   2^31 would need a `long` reconstruction; noted as an extension, not built here.
+- **Observability on FP32 shapes the acceptance test.** An index above 2^24 cannot be read back from
+  an FP32 output buffer, and a `data[i] = i` table rounds its payload exactly as a float index does —
+  so the feature's effect is only observable as *which element a gather selects*, and only when the
+  data payload is itself exactly representable and distinct between adjacent addresses. The success
+  criteria above are written accordingly (host reconstruction from the two lanes for storage; a
+  small-modulus marker payload for the gather). The implementer should confirm the data producer
+  computes that marker from the exact integer index — the `imod` integer-expression path `rows` uses
+  — and not from a float index, which would re-introduce the very rounding the test is meant to
+  expose.
 - **Relationship to the symbolic sparse path.** The task names
   `IndexExpressionTraversalOrdering`; the split `TraversalOrdering` (scope item 2) is included so the
   representation is usable both through the direct gather and through the symbolic ordering path. The
@@ -193,6 +223,7 @@ filed.
 
 **Medium.** The representation, reconstruction, gather overload, host encode, and tests are each
 small and localized, and the reconstruction reuses the exact integer-expression pattern `rows`
-already establishes. The medium rating reflects the cross-module touch (`base/code`, `base/collect`,
-`compute/algebra`) and the requirement to verify exactness on a real FP32 (Metal) backend rather than
-only on native.
+already establishes. The medium rating reflects the cross-module touch (`base/code` for the
+reconstruction expression and ordering, `compute/algebra` for the gather overload and the
+`PackedCollection` host encode) and the requirement to verify exactness on a real FP32 (Metal)
+backend rather than only on native.
