@@ -29,6 +29,15 @@ Neither task lists this one in its tracker `blocked_by`.
 
 ## Current state (what the code shows)
 
+Key source files (by module):
+
+| Module | Files |
+|--------|-------|
+| `base/code` (`io.almostrealism.collect`) | `CollectionVariable`, `TraversalOrdering`, `IndexSet`, `IndexExpressionTraversalOrdering`, `RepeatTraversalOrdering`, `TraversableExpression`, `CollectionExpression`, `Shape` |
+| `base/hardware` (`org.almostrealism.hardware`) | `MemoryData`, `mem/MemoryDataAdapter` |
+| `compute/algebra` (`org.almostrealism.collect`) | `ExplicitIndexTraversalOrdering`, `IndexMaskTraversalOrdering`, `SlicingFeatures`, `computations/ReshapeProducer`, `computations/CollectionProducerComputationBase` |
+| `engine/utils` (tests) | `org.almostrealism.collect.test.CollectionOrderingTests` |
+
 An ordering is applied in exactly two places, and the generated-code place is incomplete:
 
 1. **Host read path** — `MemoryData.toDouble(int)` applies `getMemOrdering().indexOf(int)` and
@@ -101,19 +110,24 @@ Both paths were run on a macOS node (Metal + JNI) against freshly installed arti
   `repeatOrdering` are still flagged `@TestProperties(knownIssue = true)`, but **all three pass**
   when they are run. They read through the host `valueAt` path (`PackedCollection.valueAt` →
   `toDouble`), so absent `-1` markers, the mask's host scan and `imod` all give the right values on
-  the host. The flags were set in March 2026 (when `CollectionOrderingTests` first carried
-  `@TestProperties`), and nobody has re-evaluated them since. For example, they were left in place
-  after the September 2026 commit *Fix double application of delegate ordering in
-  MemoryData.toDouble()* changed the host method these tests exercise. Which change made each test
-  pass was not determined. That commit's message says the double application never affected
+  the host. The flags date from March 2026, when `CollectionOrderingTests` first carried
+  `@TestProperties`. Before that, each test opened with an inline `if (skipKnownIssues) return;`
+  guard, so the known-issue status is older than the flags. Nobody has re-evaluated it since.
+  For example, the flags were left in place after the September 2026 commit *Fix double
+  application of delegate ordering in MemoryData.toDouble()* changed the host method these tests
+  exercise. Which change made each test pass was not determined. That commit's message says the double application never affected
   `repeatOrdering`. The non-`knownIssue` siblings `repeatOrderingProduct` and
   `explicitIndexOrderingAppliedOnce` also pass.
-  To reproduce: a `knownIssue` test is skipped unless both long tests and known issues are
-  enabled. With the MCP test runner, pass
+  To reproduce: `TestUtils.getSkipKnownIssues()` skips a `knownIssue` test whenever long tests
+  are skipped. Outside the `pipeline` profile that is the case unless `AR_LONG_TESTS` is enabled
+  or `AR_TEST_DEPTH` is above 10 (the default depth is 9). `AR_KNOWN_ISSUES` itself defaults to
+  enabled, so setting it explicitly is harmless but not required. With the MCP test runner, pass
   `jvm_args: ["-DAR_LONG_TESTS=enabled", "-DAR_KNOWN_ISSUES=enabled"]`. The value must be
   `enabled`; `SystemUtils.isEnabled` rejects `true` with an `IllegalArgumentException`. Without
-  `AR_LONG_TESTS`, `TestUtils.getSkipKnownIssues()` returns true at the default depth, and the tests
-  are reported as *skipped*, not run.
+  `AR_LONG_TESTS`, the tests are reported as *skipped*, not run.
+  Under the CI `pipeline` profile, `getSkipKnownIssues()` returns true unconditionally, so CI
+  does not run these three tests. That is why their passing went unnoticed. It is also why
+  removing the flags makes a real difference: CI starts guarding the host path.
 - **The generated-code path fails for every index-table ordering, not only sparse ones.** A
   scratch reproduction ran `c(k).multiply(cp(ordered)).evaluate()` over each input, in its own
   JVM. All three inputs failed at kernel compilation with `HardwareException: Cannot compile
