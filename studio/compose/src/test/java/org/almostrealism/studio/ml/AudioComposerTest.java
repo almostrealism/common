@@ -125,6 +125,41 @@ public class AudioComposerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Overriding a source's weights with a vector of the wrong length is rejected and
+	 * leaves the source's previous weights in effect.
+	 */
+	@Test(timeout = 60000)
+	public void wrongOverrideLengthIsRejected() {
+		AudioComposer composer = composer(11L);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+
+		try {
+			composer.setWeights(1, cp(pack(1.0)));
+			Assert.fail("Expected a weight override of the wrong length to be rejected");
+		} catch (IllegalArgumentException e) {
+			assertValues(expected(2.0, 0.5), latent(composer, 2.0, 0.5));
+		}
+	}
+
+	/**
+	 * Overriding the weights of a source that does not exist is rejected.
+	 */
+	@Test(timeout = 60000)
+	public void overrideOfMissingSourceIsRejected() {
+		AudioComposer composer = composer(13L);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+
+		try {
+			composer.setWeights(1, weightVector(0.0, 1.0));
+			Assert.fail("Expected an override of a missing source to be rejected");
+		} catch (IndexOutOfBoundsException e) {
+			Assert.assertEquals(1, composer.getSourceCount());
+			assertValues(expected(2.0, 0.0), latent(composer, 2.0, 0.5));
+		}
+	}
+
+	/**
 	 * With no explicit weights or contributions, the composer reproduces the
 	 * random-weight composition for a given seed: Gaussian vectors drawn from a
 	 * {@link Random} with that seed, normalized, and broadcast over the features.
