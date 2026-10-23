@@ -49,7 +49,10 @@ else
 fi
 
 # Seeded with a header so the array is never empty under `set -u` on bash 3.2.
-CURL_ARGS=(-fsS -H "Accept: application/json")
+# The time cap keeps a stalled controller from holding the gate open until the
+# job's own timeout: a query that does not answer in time counts as idle, like
+# any other unreachable controller.
+CURL_ARGS=(-fsS --max-time 30 -H "Accept: application/json")
 if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
     CURL_ARGS+=(-H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}")
     CURL_ARGS+=(-H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")
