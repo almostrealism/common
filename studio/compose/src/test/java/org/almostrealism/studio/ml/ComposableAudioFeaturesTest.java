@@ -17,6 +17,7 @@
 package org.almostrealism.studio.ml;
 
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -69,6 +70,22 @@ public class ComposableAudioFeaturesTest extends TestSuiteBase {
 
 		features.setWeights(cp(pack(0, 1)));
 		assertValues(2.0, new double[] { 1, 2, 3, 4, 5, 6 }, resultant(features));
+	}
+
+	/**
+	 * A single weight vector broadcast over a non-square feature shape yields a resultant
+	 * of the feature shape, confirming the broadcast weight tensor's leading axes stay in
+	 * feature order {@code (T, B)} rather than being transposed to {@code (B, T)}.
+	 */
+	@Test(timeout = 60000)
+	public void broadcastMatchesFeatureShape() {
+		ComposableAudioFeatures features = new ComposableAudioFeatures(
+				cp(pack(1, 2, 3, 4, 5, 6).reshape(shape(2, 3))), cp(pack(1, 1)));
+
+		PackedCollection result = features.getResultant(cp(pack(1, 1))).get().evaluate();
+
+		Assert.assertArrayEquals(new int[] { 2, 3 }, result.getShape().extent());
+		assertValues(2.0, new double[] { 1, 2, 3, 4, 5, 6 }, result.toArray());
 	}
 
 	/** Creates features with the per-cell {@link #weights()}. */

@@ -84,6 +84,14 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 	 * A producer with one more dimension than the features is already a per-cell
 	 * {@code (T, B, L)} tensor and is returned unchanged; any other producer is a single
 	 * decision vector, which is flattened and repeated for every cell.
+	 * <p>
+	 * The decision vector is repeated once per feature axis, outer axis
+	 * ({@code length(0)}) first and inner axis ({@code length(1)}) second, so the
+	 * resulting weight tensor's leading axes are {@code (length(0), length(1))} in feature
+	 * order. This matches the feature shape that {@link #getResultant(Producer)} multiplies
+	 * the per-cell scale against; repeating in the opposite order would transpose those
+	 * axes, which is invisible only while the vector is broadcast uniformly to every cell.
+	 * </p>
 	 *
 	 * @param weights  the weights, {@code (T, B, L)} or a decision vector
 	 * @return  the per-cell weight tensor, {@code (T, B, L)}
@@ -98,10 +106,9 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 		CollectionProducer vector = c(weights);
 		if (weightShape.getDimensions() != 1)
 			vector = vector.reshape(shape(weightShape.getTotalSize()));
-		// TODO(review): repeat order is reversed from the original createWeights
-		// (repeat(length(0)).repeat(length(1))), transposing the (T, B) axes; harmless
-		// only because a single vector broadcasts uniformly to every cell.
-		return vector.repeat(featureShape.length(1)).repeat(featureShape.length(0));
+		// Repeat the outer feature axis first, then the inner, so the leading weight axes
+		// match the feature shape rather than its transpose
+		return vector.repeat(featureShape.length(0)).repeat(featureShape.length(1));
 	}
 
 	/** Returns the scalar multiplier applied to the resultant. */
