@@ -18,6 +18,7 @@ package org.almostrealism.collect.test;
 
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.collect.DelegatedTraversalOrdering;
 import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
@@ -171,6 +172,23 @@ public class OrderedCollectionInputTests extends TestSuiteBase {
 	public void elementwisePermutation() {
 		PackedCollection permutation = permutation();
 		assertEvaluatesTo(new double[] { 60.0, 20.0, 80.0, 40.0 }, () -> c(2).multiply(cp(permutation)));
+	}
+
+	/**
+	 * A composition of a compact ordering with a permutation is read correctly by an element-wise
+	 * kernel: both index tables are delivered to the kernel, present elements are found through
+	 * both of them, and an absent element reads as zero. The permutation table is a view preceded
+	 * by the entry {@code 5}, so a kernel that asked the permutation to map the negative position
+	 * of an absent element would read past the two stored values instead of producing zero.
+	 */
+	@Test(timeout = 60000)
+	public void elementwiseComposedOrdering() {
+		DelegatedTraversalOrdering order = new DelegatedTraversalOrdering(
+				new ExplicitIndexTraversalOrdering(pack(0, -1, 1)),
+				new ExplicitIndexTraversalOrdering(pack(5, 1, 0).range(shape(2), 1)));
+		PackedCollection composed = ordered(shape(3), pack(2.0, 3.0), order);
+
+		assertEvaluatesTo(new double[] { 6.0, 0.0, 4.0 }, () -> c(2).multiply(cp(composed)));
 	}
 
 	/** An ordered input combined element-wise with a plain input keeps its own ordering. */

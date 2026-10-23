@@ -21,6 +21,8 @@ import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
 
+import java.util.OptionalInt;
+
 /**
  * A {@link TraversalOrdering} that composes two orderings by applying one after the other.
  *
@@ -90,6 +92,17 @@ public class DelegatedTraversalOrdering implements TraversalOrdering, Delegated<
 		if (position.upperBound(null).orElse(0) < 0) return new BooleanConstant(false);
 
 		return order.containsIndex(index).and(getDelegate().containsIndex(position));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Every physical position of the composition is one the second ordering produces, so the
+	 * composition addresses the backing memory of the second ordering.</p>
+	 */
+	@Override
+	public OptionalInt getLength() {
+		return getDelegate().getLength();
 	}
 
 	/** {@inheritDoc} Binds both of the composed orderings. */

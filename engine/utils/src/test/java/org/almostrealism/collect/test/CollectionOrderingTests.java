@@ -144,6 +144,22 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	}
 
 	/**
+	 * The length of a composition is the number of physical positions its second ordering
+	 * addresses, whatever the extent of its first ordering, and is unbounded when the second
+	 * ordering is.
+	 */
+	@Test(timeout = 10000)
+	public void composedOrderingLengthIsSecondOrderingLength() {
+		ExplicitIndexTraversalOrdering compact = new ExplicitIndexTraversalOrdering(pack(0, -1, 4));
+		ExplicitIndexTraversalOrdering permutation = new ExplicitIndexTraversalOrdering(pack(1, 0));
+
+		assertEquals(2, new DelegatedTraversalOrdering(compact, permutation).getLength().getAsInt());
+		assertEquals(3, new DelegatedTraversalOrdering(permutation, new RepeatTraversalOrdering(3))
+				.getLength().getAsInt());
+		assertFalse(new DelegatedTraversalOrdering(compact, idx -> idx).getLength().isPresent());
+	}
+
+	/**
 	 * A composition has a signature only when both of its orderings do, so a kernel that reads
 	 * an index table through either half of a composition is never reused.
 	 */
