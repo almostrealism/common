@@ -525,10 +525,21 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * @param collection the collection to read values from
 	 * @param splitIndex the producer of indices in the split layout, of shape {@code (n, 2)}
 	 * @return a computation that gathers values at the specified indices
+	 * @throws IllegalArgumentException if {@code splitIndex} declares a shape whose last
+	 *         dimension is not {@link SplitIndexTraversalOrdering#LANES}, which indicates an
+	 *         ordinary index collection that would otherwise be misread as split lanes
 	 */
 	default CollectionProducerComputation gatherSplitIndex(TraversalPolicy shape,
 														   Producer<PackedCollection> collection,
 														   Producer<PackedCollection> splitIndex) {
+		if (splitIndex instanceof Shape) {
+			TraversalPolicy indexShape = ((Shape<?>) splitIndex).getShape();
+			if (indexShape.length(indexShape.getDimensions() - 1) != SplitIndexTraversalOrdering.LANES) {
+				throw new IllegalArgumentException("Split index shape " + indexShape
+						+ " must have a last dimension of " + SplitIndexTraversalOrdering.LANES);
+			}
+		}
+
 		return new DefaultTraversableExpressionComputation("valueAtSplitIndex", shape,
 				true,
 				args -> CollectionExpression.create(shape, idx ->

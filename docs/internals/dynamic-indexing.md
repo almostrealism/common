@@ -111,6 +111,8 @@ sparse row offsets, edge lists, and gathers over large flat tables. For small in
 plain gather `c(shape, collection, index)` is simpler and equivalent. The representation is
 opt-in — ordinary collections keep their precision. `ofSplitIndices` is a host ingest
 boundary (index data entering the system) and uploads all lanes in one transfer.
+`gatherSplitIndex` rejects an index producer whose declared shape does not end in a dimension
+of `LANES = 2`, so an ordinary single-lane index cannot be silently misread as split lanes.
 
 **Testing on FP32.** An index above `2^24` cannot be read back from an FP32 output buffer, and a
 table holding `data[i] = i` rounds its payload exactly as a float index rounds the address, so
@@ -202,6 +204,7 @@ See `SplitIndexTests.java`:
 - `gatherIsExactAboveSinglePrecision` - Split-index gather selects the exact element above 2^24
 - `gatherReadsEveryStoredPosition` - Split-index gather across the lane boundary (`BASE - 1`, `BASE`, `BASE + 1`)
 - `storageRoundTripsNegativeIndex` - Negative indices keep their sign in the high lane
+- `gatherRejectsSingleLaneIndex` - Split-index gather refuses an index whose last dimension is not 2
 
 ## See Also
 

@@ -59,7 +59,7 @@ public class SplitIndexTests extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void storageIsExactAboveSinglePrecision() {
 		int[] values = { 16777216, 16777217, 16777221, 50000003 };
-		PackedCollection lanes = PackedCollection.ofSplitIndices(16777216, 16777217, 16777221, 50000003);
+		PackedCollection lanes = PackedCollection.ofSplitIndices(values);
 
 		Assert.assertEquals(new TraversalPolicy(values.length, SplitIndexTraversalOrdering.LANES),
 				lanes.getShape());
@@ -97,6 +97,31 @@ public class SplitIndexTests extends TestSuiteBase {
 	}
 
 	/**
+	 * An ordinary single-lane index collection passed to the split-index gather is rejected
+	 * rather than silently misread as interleaved high and low lanes.
+	 */
+	@Test(timeout = 60000)
+	public void gatherRejectsSingleLaneIndex() {
+		PackedCollection data = integers(0, 16).get().evaluate();
+		PackedCollection plainIndex = PackedCollection.of(1, 2, 3);
+
+		try {
+			gatherSplitIndex(shape(3), p(data), p(plainIndex));
+			Assert.fail("Expected a single-lane index to be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage().contains(String.valueOf(SplitIndexTraversalOrdering.LANES)));
+		}
+
+		PackedCollection wideIndex = PackedCollection.of(1, 2, 3, 4, 5, 6).reshape(new TraversalPolicy(2, 3));
+		try {
+			gatherSplitIndex(shape(2), p(data), p(wideIndex));
+			Assert.fail("Expected an index with three lanes to be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage().contains(wideIndex.getShape().toString()));
+		}
+	}
+
+	/**
 	 * Negative positions (used by orderings to mark absent elements) survive the split layout:
 	 * the high lane carries the sign and the low lane stays non-negative.
 	 */
@@ -121,10 +146,20 @@ public class SplitIndexTests extends TestSuiteBase {
 	public void gatherIsExactAboveSinglePrecision() {
 		int size = SINGLE_PRECISION_LIMIT + 8;
 		TraversalPolicy tableShape = shape(size);
-		PackedCollection data = new DefaultTraversableExpressionComputation("addressMarker", tableShape,
+		try (PackedCollection data = new DefaultTraversableExpressionComputation("addressMarker", tableShape,
 				CollectionExpression.create(tableShape, idx -> idx.imod(MARKER_MODULUS)))
-				.get().evaluate();
+				.get().evaluate()) {
+			assertGatherIsExact(data);
+		}
+	}
 
+	/**
+	 * Gathers at {@code 2^24}, {@code 2^24 + 1} and {@code 2^24 + 5} from the marker table, both
+	 * through the split layout and through an ordinary index collection, and checks the payloads.
+	 *
+	 * @param data the marker table of {@code 2^24 + 8} elements whose payload is address mod 16
+	 */
+	private void assertGatherIsExact(PackedCollection data) {
 		assertEquals(0, data.toDouble(16777216));
 		assertEquals(1, data.toDouble(16777217));
 		assertEquals(5, data.toDouble(16777221));
