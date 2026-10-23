@@ -226,6 +226,11 @@ public class CLOperator extends HardwareOperator {
 	 * to skip unchanged arguments). The returned semaphore's {@link CLSemaphore#waitFor() waitFor}
 	 * performs the completion wait (and profiling), and releases the dispatch's memory guard.</p>
 	 *
+	 * <p>{@link #prepareArguments} reallocates every argument into {@link #getSupportedMemory()},
+	 * which for a {@link CLDataContext} is its {@link CLMemoryProvider} alone, so every argument's
+	 * memory is a {@link CLMemory}. Each is resolved once, has its host read cache invalidated
+	 * (the kernel may write it), and supplies the {@code cl_mem} handle bound to the kernel.</p>
+	 *
 	 * @param args      the arguments to pass to the kernel (MemoryData objects)
 	 * @param dependsOn an event this dispatch must be ordered after on the device, or null
 	 * @return the dispatch's completion semaphore
@@ -249,8 +254,10 @@ public class CLOperator extends HardwareOperator {
 
 		// Invalidate the host read caches of the argument buffers: this kernel may write them.
 		// TODO(review): CLNativeComputeContext (ComputeRequirement.C) writes CL buffers from generated JNI code and never invalidates their host caches
+		CLMemory mems[] = new CLMemory[argCount];
 		for (int i = 0; i < argCount; i++) {
-			((CLMemory) data[i].getMem()).invalidateHostCache();
+			mems[i] = (CLMemory) data[i].getMem();
+			mems[i].invalidateHostCache();
 		}
 
 		KernelMemoryGuard.Reservation guard = Hardware.getLocalHardware().getKernelMemoryGuard().acquire(data);
@@ -264,9 +271,8 @@ public class CLOperator extends HardwareOperator {
 				try {
 					for (int i = 0; i < argCount; i++) {
 						if (data[i] != argCache[i]) {
-							CLMemory mem = (CLMemory) data[i].getMem();
-							totalSize += mem.getSize();
-							CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) data[i].getMem()).getMem()));
+							totalSize += mems[i].getSize();
+							CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(mems[i].getMem()));
 						} else {
 							index++;
 						}

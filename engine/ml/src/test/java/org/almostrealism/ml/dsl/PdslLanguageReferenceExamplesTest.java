@@ -26,6 +26,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -214,9 +215,9 @@ public class PdslLanguageReferenceExamplesTest extends TestSuiteBase {
 	/** The parse-level known limits the page records still hold. */
 	@Test(timeout = 60000)
 	public void recordedParseLimitsStillHold() {
-		assertRejected("layer conditional(n: int) {\n    if n {\n        relu()\n    }\n}\n");
-		assertRejected("config compare {\n    flag = 1 == 1\n}\n");
-		assertRejected("config separated {\n    a = 1;\n    b = 2\n}\n");
+		assertRejected("/pdsl/rejected/if_statement.pdsl");
+		assertRejected("/pdsl/rejected/equality_operator.pdsl");
+		assertRejected("/pdsl/rejected/semicolon_separator.pdsl");
 	}
 
 	/**
@@ -233,11 +234,19 @@ public class PdslLanguageReferenceExamplesTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Asserts that the parser rejects {@code source}.
+	 * Asserts that the parser rejects the PDSL fixture at {@code resource}.
 	 *
-	 * @param source PDSL source using a construct the page records as unsupported
+	 * @param resource classpath path of a fixture using a construct the page records as unsupported
 	 */
-	private void assertRejected(String source) {
+	private void assertRejected(String resource) {
+		String source;
+		try (InputStream in = getClass().getResourceAsStream(resource)) {
+			Assert.assertNotNull("test resource not found: " + resource, in);
+			source = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			throw new AssertionError("cannot read " + resource, e);
+		}
+
 		try {
 			new PdslLoader().parse(source);
 			Assert.fail("the reference records this as a parse error, but it parsed:\n" + source);
