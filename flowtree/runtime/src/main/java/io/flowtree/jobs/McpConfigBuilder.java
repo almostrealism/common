@@ -434,7 +434,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * @throws IllegalStateException when an ar-manager URL is set but no token
      *         is available
      */
-    private boolean arManagerEnabled() {
+    boolean arManagerEnabled() {
         boolean hasUrl = arManagerUrl != null && !arManagerUrl.isEmpty();
         if (!hasUrl) {
             return false;
