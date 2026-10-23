@@ -33,9 +33,9 @@ Key source files (by module):
 
 | Module | Files |
 |--------|-------|
-| `base/code` (`io.almostrealism.collect`) | `CollectionVariable`, `TraversalOrdering`, `IndexSet`, `IndexExpressionTraversalOrdering`, `RepeatTraversalOrdering`, `TraversableExpression`, `CollectionExpression`, `Shape` |
+| `base/code` (`io.almostrealism.collect`) | `CollectionVariable`, `TraversalOrdering`, `IndexSet`, `IndexExpressionTraversalOrdering`, `RepeatTraversalOrdering`, `TraversableExpression`, `CollectionExpression`, `Shape`, `TraversalPolicy` |
 | `base/hardware` (`org.almostrealism.hardware`) | `MemoryData`, `mem/MemoryDataAdapter` |
-| `compute/algebra` (`org.almostrealism.collect`) | `ExplicitIndexTraversalOrdering`, `IndexMaskTraversalOrdering`, `SlicingFeatures`, `computations/ReshapeProducer`, `computations/CollectionProducerComputationBase` |
+| `compute/algebra` (`org.almostrealism.collect`) | `ExplicitIndexTraversalOrdering`, `IndexMaskTraversalOrdering`, `SlicingFeatures`, `computations/ReshapeProducer`, `computations/CollectionProducerComputationBase`, `computations/CollectionProvider`, `PackedCollection` |
 | `engine/utils` (tests) | `org.almostrealism.collect.test.CollectionOrderingTests` |
 
 An ordering is applied in exactly two places, and the generated-code place is incomplete:
@@ -99,6 +99,20 @@ The pieces that refuse an ordered shape outright:
   `shape.getOrder() != null`.
 - `CollectionProducerComputationBase`'s constructor sets `this.shape = outputShape.withOrder(null)`,
   stripping any ordering from the output, so no computation can produce an ordered result.
+- `CollectionProvider.into` (the flat memory-transfer copy) refuses any source or destination that
+  carries a `TraversalOrdering`, either on its shape or inherited through
+  `MemoryData.getMemOrdering()`. It refuses even when both sides share the identical ordering,
+  because the ordering can map onto a sparse backing index. Its message says to "apply the
+  reordering as a computation instead". That refusal is deliberate and already covered by
+  `CollectionOrderingTests` (`orderedSourceIntoPlainDestinationIsRefused` and its siblings), so this
+  plan does not change it. The computation path it points to is the one this plan makes work.
+
+Shape identity ignores the ordering. `TraversalPolicy.equals` compares dimensions, dimension order,
+rates and traversal axis, but not `getOrder()`, and `hashCode` hashes only the dimensions. An
+ordered shape and a plain shape of the same size therefore compare equal (asserted by
+`orderedSourceIntoPlainDestinationIsRefused`). `TraversalPolicy.isRegular()` does return `false`
+for an ordered shape, and `CollectionProvider` compares the orderings explicitly for that reason.
+See Open Question 7 for what this means once ordered inputs reach kernels.
 
 ### What actually fails today (reproduced 2026-10-23)
 
@@ -115,9 +129,9 @@ Both paths were run on a macOS node (Metal + JNI) against freshly installed arti
   guard, so the known-issue status is older than the flags. Nobody has re-evaluated it since.
   For example, the flags were left in place after the September 2026 commit *Fix double
   application of delegate ordering in MemoryData.toDouble()* changed the host method these tests
-  exercise. Which change made each test pass was not determined. That commit's message says the double application never affected
-  `repeatOrdering`. The non-`knownIssue` siblings `repeatOrderingProduct` and
-  `explicitIndexOrderingAppliedOnce` also pass.
+  exercise. Which change made each test pass was not determined. That commit's message says the
+  double application never affected `repeatOrdering`. The non-`knownIssue` siblings
+  `repeatOrderingProduct` and `explicitIndexOrderingAppliedOnce` also pass.
   To reproduce: `TestUtils.getSkipKnownIssues()` skips a `knownIssue` test whenever long tests
   are skipped. Outside the `pipeline` profile that is the case unless `AR_LONG_TESTS` is enabled
   or `AR_TEST_DEPTH` is above 10 (the default depth is 9). `AR_KNOWN_ISSUES` itself defaults to
@@ -195,7 +209,7 @@ this work. It can (and arguably should) be done independently of it. The real ev
 kernel-input tests in item 6. Today they fail at compile time for every index-table ordering, and
 items 1–3 are what make them pass. Success criterion 1 below is written accordingly.
 
-Out of scope (named as dependencies / follow-ups, not widened into here):
+Out of scope (related work and follow-ups, not widened into here):
 
 - The sparse matrix type and the segmented-reduction sparse matrix–vector product
   ([66b57639]). It may use this integration if it chooses an ordering-backed type, but it is
@@ -278,7 +292,9 @@ A reviewer can confirm the task is done when:
 3. New tests show an ordered collection giving correct results as the input to **element-wise,
    reshape, subset, pad and matmul** computations, each run on **Metal and native**. These are new
    tests, most naturally added to `CollectionOrderingTests` (engine/utils) or a sibling; each
-   `@Test` carries a `timeout`.
+   `@Test` carries a `timeout`. Each test asserts that the input it builds still carries its
+   ordering (`getShape().getOrder()` or `getMemOrdering()` is non-null), because shape equality
+   ignores the ordering and can silently drop it (Open Question 7).
 4. `ReshapeProducer.containsIndex` and `SlicingFeatures.pad(int[] axes, ...)` no longer throw for an
    ordered shape, and are covered by the new reshape/pad tests above.
 5. The ordered-output question is resolved: either computations can produce ordered outputs (with a
@@ -358,6 +374,22 @@ A reviewer can confirm the task is done when:
    (and if so, by the direct-table `ExplicitIndexTraversalOrdering`) is left to [66b57639]. The
    approver should treat the symbolic mask `indexOf` as a correctness feature for small masks, and
    confirm that no large-scale consumer is expected to route through it.
+7. **Should `TraversalPolicy.equals` compare the ordering?** It does not today (see Current
+   state), and several production shortcuts trust it to mean "same layout". The clearest cases are
+   in `PackedCollection`. `reshape(TraversalPolicy)` returns `this` when `getShape().equals(shape)`,
+   and `range(TraversalPolicy, int)` returns `this` when `start == 0` and the shapes are equal. So
+   reshaping or ranging a plain collection into an ordered shape of the same dimensions hands back
+   the plain collection, and the requested ordering is lost without an error.
+   `CollectionProducerComputationBase` reuses an existing output bank on shape equality, and
+   `ComputationScopeCompiler` and `CollectionProducerComputation` also compare shapes with
+   `equals`. These are harmless while ordered shapes stay on the host. They matter once scope item
+   4 lets ordered shapes pass through reshape and item 6 tests reshape and subset inputs: such a
+   test could pass against a collection that has silently lost its ordering. The options are (a)
+   make `equals` (and `hashCode`) include `getOrder()`, which changes identity for every caller,
+   or (b) leave `equals` alone and add explicit ordering checks at the shortcuts, as
+   `CollectionProvider` already does. The implementer should audit the `equals` call sites before
+   writing the reshape and subset tests, and each new test should assert that the ordering is
+   still present on the input it builds.
 
 No new tracker tasks were filed: every out-of-scope item above is an already-filed Phase 1 task
 ([66b57639], [87b95b81], [2c0793a7]) named as related work, so there is nothing new to triage.
