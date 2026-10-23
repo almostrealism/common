@@ -752,11 +752,25 @@ public class WaveDetails implements CodeFeatures, Node {
 	 * Removes every feature set belonging to a model other than the given one
 	 * and clears the legacy unkeyed slot, leaving only the kept model's data.
 	 *
+	 * <p>The discarded feature tensors are potentially GPU-resident, so their
+	 * native memory is {@linkplain WaveFeatures#destroy() released} immediately
+	 * rather than left for the garbage collector — the same deterministic release
+	 * {@link #releaseData()} performs for the raw samples. This is what makes the
+	 * bytes {@link org.almostrealism.audio.WaveFeatureCleanup} reports as reclaimed
+	 * actually free rather than merely unreferenced. Because this permanently
+	 * deletes the discarded data, do not call it while anything still reads the
+	 * other-model or legacy feature tensors.</p>
+	 *
 	 * @param keepModelIdentifier the identifier of the model to keep
 	 */
 	public void removeOtherModelFeatures(String keepModelIdentifier) {
-		featureSets.keySet().removeIf(id -> !id.equals(keepModelIdentifier));
+		featureSets.values().removeIf(features -> {
+			if (features.getModelIdentifier().equals(keepModelIdentifier)) return false;
+			features.destroy();
+			return true;
+		});
 
+		if (featureData != null) featureData.destroy();
 		featureData = null;
 		featureSampleRate = 0;
 		featureChannelCount = 0;

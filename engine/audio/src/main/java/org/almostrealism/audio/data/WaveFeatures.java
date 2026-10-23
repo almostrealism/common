@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.data;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.HashMap;
@@ -40,10 +41,16 @@ import java.util.Map;
  * similarities are computed; the remaining state is immutable for the lifetime of
  * the instance.</p>
  *
+ * <p>The feature {@link PackedCollection} is potentially GPU-resident native
+ * memory, so {@code WaveFeatures} is {@link Destroyable}: a holder that is
+ * discarding a feature set permanently — the other-model cleanup, for one —
+ * calls {@link #destroy()} to release that memory immediately rather than
+ * leaving it for the garbage collector.</p>
+ *
  * @see WaveDetails
  * @see WaveDataFeatureProvider#getModelIdentifier()
  */
-public class WaveFeatures {
+public class WaveFeatures implements Destroyable {
 	/** Identifier of the model that produced these features. */
 	private final String modelIdentifier;
 
@@ -163,5 +170,19 @@ public class WaveFeatures {
 	 */
 	public long byteLength() {
 		return featureData == null ? 0L : (long) featureData.getMemLength() * Double.BYTES;
+	}
+
+	/**
+	 * Releases the native memory backing this feature set's feature data. The
+	 * feature {@link PackedCollection} is potentially GPU-resident, and dropping
+	 * the Java reference alone leaves that memory held until the collector runs a
+	 * finalizer — the same reason {@link WaveDetails#releaseData()} destroys the
+	 * raw samples rather than nulling them. Call this only when the feature set is
+	 * being discarded permanently and is not shared with anything else; afterwards
+	 * {@link #getFeatureData()} must not be read.
+	 */
+	@Override
+	public void destroy() {
+		if (featureData != null) featureData.destroy();
 	}
 }

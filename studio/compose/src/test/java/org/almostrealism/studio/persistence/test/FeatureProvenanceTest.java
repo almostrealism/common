@@ -264,6 +264,46 @@ public class FeatureProvenanceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The cleanup releases the native memory of the feature tensors it discards
+	 * — both a non-current model's keyed set and the legacy unkeyed slot — rather
+	 * than merely dropping the Java reference, while leaving the kept model's
+	 * tensor intact. This exercises {@link WaveFeatures#destroy()}, the deterministic
+	 * release the reported bytes claim to reclaim.
+	 */
+	@Test(timeout = 120000)
+	public void cleanupReleasesDiscardedFeatureMemory() {
+		AudioLibrary library = new AudioLibrary(tempDir.toFile(), SAMPLE_RATE);
+		library.getWaveDetailsFactory().setFeatureProvider(
+				new LogSpectrumFeatureProvider(2, 3, SAMPLE_RATE, 1.0, "current-model"));
+
+		WaveDetails d = new WaveDetails("release-0", SAMPLE_RATE);
+		d.setFrameCount(SAMPLE_RATE);
+		d.setFreqData(new PackedCollection(1));
+
+		PackedCollection kept = pack(1, 2, 3, 4, 5, 6).reshape(shape(2, 3));
+		d.putFeatures(featureSet("current-model", 2, 3, kept));
+
+		PackedCollection other = pack(7, 8, 9, 10, 11, 12, 13, 14).reshape(shape(2, 4));
+		d.putFeatures(featureSet("old-model", 2, 4, other));
+
+		PackedCollection legacy = pack(20, 21, 22, 23, 24, 25).reshape(shape(2, 3));
+		d.setFeatureData(legacy);
+		d.setFeatureBinCount(3);
+		d.setFeatureFrameCount(2);
+
+		library.include(d);
+
+		int removed = library.otherModelFeatures().remove();
+		Assert.assertTrue("the single item is cleaned", removed == 1);
+
+		Assert.assertTrue("other-model feature memory released", other.isDestroyed());
+		Assert.assertTrue("legacy feature memory released", legacy.isDestroyed());
+		Assert.assertFalse("kept model feature memory retained", kept.isDestroyed());
+
+		library.stop();
+	}
+
+	/**
 	 * Criterion 4: a record written by the new encode is readable through only
 	 * the legacy proto fields (as the previous release reads it), and a
 	 * simulated old-release rebuild from only those fields drops the keyed
