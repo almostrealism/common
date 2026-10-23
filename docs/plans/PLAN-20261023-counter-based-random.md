@@ -122,7 +122,7 @@ investigation:
 `And` is also typed `Integer`-only (its constructor rejects any other operand
 type), so it cannot mask a `Long` intermediate down to 32 bits either.
 
-Two further gaps matter for *any* hash, including Route B below:
+Three further gaps matter for *any* hash, including Route B below:
 
 - **No unsigned type.** `Expression` values are `Integer`, `Long` or `Double`,
   and `Cast` knows only `int`, `long` and `double`. Counter-based hashes are
@@ -200,15 +200,28 @@ FP32 backend is exact only to 2^24 and would diverge. Two consequences:
 - Keep the hash in **32-bit** space (values `< 2^32`). This also keeps the
   host-side constant-fold / index-analysis path exact: `IndexRange.exact` throws
   `InexactValueException` beyond ~2^53, and staying in 32 bits avoids it.
-- The final `uint → float` division (`× 2^-32`) is the one step that is FP32 on
-  Metal and FP64 on native, so the uniform value agrees only to **float
-  epsilon** (~1e-7), not bit-for-bit. The Metal/native agreement test must
-  assert equality to a float-precision tolerance, not exact equality. (This is
-  worth confirming on hardware as an early spike — see open questions.)
+- The final `uint → [0,1)` conversion is the one step that runs in FP32 on
+  Metal and FP64 on native. Done naively, as the full 32-bit word `× 2^-32`, it
+  is **wrong on FP32**, not just imprecise: a `float` has a 24-bit significand,
+  so every word `≥ 2^32 − 2^7` rounds to `2^32` and the result is exactly
+  `1.0`, outside `[0, 1)`. About 1 key in 2^25 does this, which a
+  large-sample test will hit. FP64 keeps all 32 bits, so the two backends would
+  also disagree in the low bits.
+  **Use only the top 24 bits:** `u = (w >>> 8) × 2^-24`. Every such value is
+  exactly representable in both FP32 and FP64, and multiplying by a power of two
+  is exact, so the uniform is strictly below 1 and **bit-identical** across
+  backends. That drops the uniform to 2^24 distinct levels, which is the
+  resolution an FP32 backend has anyway. Under Route B, which has no shift, the
+  `>>> 8` is an integer `Quotient` by 256 on a non-negative value. With this
+  conversion the Metal/native agreement test can assert **exact** equality for
+  the uniform. Only the normal variant's transcendentals need a tolerance. (The
+  hardware spike in open question 4 should still confirm that the
+  integer-to-float cast renders exactly on Metal.)
 
 ### Uniform and normal variants
 
-- **Uniform:** final `uint → [0,1)` conversion of the hashed word.
+- **Uniform:** the top 24 bits of the hashed word, scaled by `2^-24` (see
+  "Cross-backend identity" for why not all 32 bits).
 - **Normal:** derive from two uniforms via **Box–Muller**
   (`sqrt(-2 ln u1) · cos(2π u2)`) using the existing `Logarithm`, `Exponent`
   (there is no dedicated square-root `Expression`, so the square root is an
@@ -225,8 +238,9 @@ FP32 backend is exact only to 2^24 and would diverge. Two consequences:
   is simplest and composes from expressions that already exist; it consumes two
   counter sub-streams (e.g. index `2k` and `2k+1`, or two
   distinct seed lanes) so each normal sample stays a pure function of the key.
-  `u1` must be mapped to `(0, 1]` (not `[0, 1)`), otherwise `ln(0)` yields
-  `-inf` and the sample is infinite for the one key that hashes to zero.
+  `u1` must be mapped to `(0, 1]` (not `[0, 1)`), for example
+  `((w >>> 8) + 1) × 2^-24`. Otherwise `ln(0)` yields `-inf` and the sample is
+  infinite for every key whose top 24 bits are zero.
 
 ### Reference files
 
@@ -263,9 +277,10 @@ A reviewer can confirm the task is done when:
    are uncorrelated — e.g. sample correlation near zero and no collisions — so
    advancing the counter yields a genuinely different stream.
 5. **Metal↔native agreement test:** the same `(seed, counter, shape)` evaluated
-   on the Metal backend and the native backend agree to the documented
-   tolerance (float epsilon for the uniform; a correspondingly looser bound for
-   the normal). This is the test that requires a macOS node. It can run in one
+   on the Metal backend and the native backend agree: exactly for the uniform
+   (given the 24-bit conversion in "Cross-backend identity"), and within a
+   documented tolerance for the normal. The uniform test should also assert
+   that every value is strictly below `1.0`. This is the test that requires a macOS node. It can run in one
    JVM by pinning each evaluation to a backend with `setComputeRequirements`
    (see the reference table), provided both drivers are enabled for the run
    (the multi-driver form other plans use, e.g. `AR_HARDWARE_DRIVER=mtl,native`
@@ -273,8 +288,8 @@ A reviewer can confirm the task is done when:
    should be checked when the test is written).
    Before comparing, the test should also assert that the hash's integer stage
    is bit-identical (e.g. by comparing the integer words, or the uniform output
-   scaled back by 2^32 and rounded), so a wraparound bug is not hidden inside
-   the float tolerance.
+   scaled back by 2^24, which is exact), so a wraparound bug is caught directly
+   and not inferred from the normal variant's tolerance.
 6. **Javadoc** on the new class explains how it differs from `Random`
    (stateless, in-kernel, pure function of `(seed, counter, index)`, no cache,
    no `refresh()`), and names the hash construction used.
@@ -320,9 +335,12 @@ three land to satisfy "done when", but they are reviewable in sequence):
    (folded into `signature()`); offer a producer-seed overload only if a
    consumer needs to change the seed without recompiling. Confirm whether the
    simulation needs the latter.
-4. **Exact vs tolerance for "identical across backends":** confirmed above that
-   the integer stage is bit-identical but the final float conversion is not
-   (FP32 vs FP64). The test asserts float-epsilon agreement. An early
+4. **Exact vs tolerance for "identical across backends":** the integer stage is
+   bit-identical when wraparound is well defined. A full 32-bit float conversion
+   would not be (FP32 vs FP64), and on FP32 it can return `1.0`. The plan
+   therefore uses a 24-bit conversion that is exact on both backends, so the
+   uniform is asserted exactly and only the normal uses a tolerance. The
+   approver should confirm that 2^24 uniform levels are enough. An early
    **hardware spike** on a macOS node should confirm the integer ops render and
    wrap identically on Metal before the full computation is built — this is the
    single highest-risk assumption.
