@@ -45,8 +45,10 @@ The orderings themselves:
 - `ExplicitIndexTraversalOrdering extends IndexExpressionTraversalOrdering`, whose
   `indexOf(Expression) = indices.getValueAt(idx).toInt()` is **already symbolic** — a direct
   logical→physical lookup table — *provided* the backing `indices` collection is delivered to the
-  kernel as an argument. `getLength()` returns the maximum index value rather than max+1 (the task
-  asks to verify; see Approach).
+  kernel as an argument. Today it is not: `indices` is a `PackedCollection`, so the call reaches
+  `MemoryData.getValueAt(Expression)`, which only accepts a constant position and throws
+  otherwise. `getLength()` returns the maximum index value rather than max+1 (the task asks to
+  verify; see Approach).
 - `IndexMaskTraversalOrdering.indexOf(Expression)` does `idx.intValue().orElseThrow()` and scans
   `mask.toArray()` on the host, so it throws for any non-constant kernel index and can never appear
   in generated code. Its mapping is an *inverse search*: the mask holds the logical positions that
@@ -64,31 +66,50 @@ The pieces that refuse an ordered shape outright:
 - `CollectionProducerComputationBase`'s constructor sets `this.shape = outputShape.withOrder(null)`,
   stripping any ordering from the output, so no computation can produce an ordered result.
 
-The failing tests are `CollectionOrderingTests.compactOrdering`, `maskOrdering` and
-`repeatOrdering`, all `@TestProperties(knownIssue = true)`; they read through the host `valueAt`
-path (`PackedCollection.valueAt` → `toDouble`). `repeatOrderingProduct` (a real computation over a
-repeat-ordered input) already passes.
+### What actually fails today (reproduced 2026-10-23)
 
-A further passing test in the same class is **not** `knownIssue`, and it bounds what is actually
-broken on the host path:
+Both paths were run on a macOS node (Metal + JNI) against freshly installed artifacts for
+`engine/utils` and everything upstream of it. The results contradict the task's premise that
+"three tests fail":
 
-- `explicitIndexOrderingAppliedOnce` reads a four-element *permutation* (`ExplicitIndexTraversalOrdering`
-  over `pack(2, 0, 3, 1)`) through `toDouble` and asserts each element round-trips. Confirmed passing
-  (run 2026-10-23). So on the host, `ExplicitIndexTraversalOrdering.indexOf(int)` *does* collapse its
-  `indices.getValueAt(const)` read to a constant — a full permutation with no absent slots works today.
-- That the permutation passes while `compactOrdering` (the same host `ExplicitIndex` path, but with
-  `-1` absent markers) and `maskOrdering` (constant indices, so the host `orElseThrow` scan is
-  satisfiable) are `knownIssue` means the host failures are **not** explained by the
-  constant-collapse limitation in item 1 — that condition is met for all three of these reads. The remaining
-  difference is the absent-marker (`-1`) and compact-sizing handling, which points at the host
-  absence gate in `toDouble` and/or the `getLength()` sizing below, not at symbolic `indexOf`. The
-  implementer must root-cause each host failure against the code (these tests are filtered out of a
-  normal run as `knownIssue`, so reproduce them explicitly) rather than assume the generated-code
-  fixes below will turn them green — see Open Question 5 and the scope↔done-when note in Scope.
-- `repeatOrdering` fits neither explanation. `RepeatTraversalOrdering` has no absent markers, its
-  `indexOf` is `imod` (constant on the host), and its `getLength()` (the period, 3) equals the
-  3-element delegate it is built over. Its host failure therefore has a third, as yet unidentified
-  cause and needs its own reproduction.
+- **The host path works.** `CollectionOrderingTests.compactOrdering`, `maskOrdering` and
+  `repeatOrdering` are still flagged `@TestProperties(knownIssue = true)`, but **all three pass**
+  when they are run. They read through the host `valueAt` path (`PackedCollection.valueAt` →
+  `toDouble`), so absent `-1` markers, the mask's host scan and `imod` all give the right values on
+  the host. The flags were set in March 2026 (when `CollectionOrderingTests` first carried
+  `@TestProperties`), and nobody has re-evaluated them since. For example, they were left in place
+  after the September 2026 commit *Fix double application of delegate ordering in
+  MemoryData.toDouble()* changed the host method these tests exercise. Which change made each test
+  pass was not determined. That commit's message says the double application never affected
+  `repeatOrdering`. The non-`knownIssue` siblings `repeatOrderingProduct` and
+  `explicitIndexOrderingAppliedOnce` also pass.
+  To reproduce: a `knownIssue` test is skipped unless both long tests and known issues are
+  enabled. With the MCP test runner, pass
+  `jvm_args: ["-DAR_LONG_TESTS=enabled", "-DAR_KNOWN_ISSUES=enabled"]`. The value must be
+  `enabled`; `SystemUtils.isEnabled` rejects `true` with an `IllegalArgumentException`. Without
+  `AR_LONG_TESTS`, `TestUtils.getSkipKnownIssues()` returns true at the default depth, and the tests
+  are reported as *skipped*, not run.
+- **The generated-code path fails for every index-table ordering, not only sparse ones.** A
+  scratch reproduction ran `c(k).multiply(cp(ordered)).evaluate()` over each input, in its own
+  JVM. All three inputs failed at kernel compilation with `HardwareException: Cannot compile
+  multiply`, raised from `CollectionVariable.getValueAt`:
+  - `ExplicitIndexTraversalOrdering` compact `pack(0, -1, -1, 1)`, **and the full permutation
+    `pack(2, 0, 3, 1)`**. The cause is an `UnsupportedOperationException` from
+    `MemoryData.getValueAt(Expression)` (`pos.intValue().orElseThrow(...)`), reached through
+    `IndexExpressionTraversalOrdering.indexOf`. The backing `indices` is a `PackedCollection`, and
+    its `getValueAt` can only read a constant position. This is the "backing collection is not a
+    kernel argument" gap described under Approach, observed directly.
+  - `IndexMaskTraversalOrdering` `pack(0, 3)`. The cause is a `NoSuchElementException` from
+    `idx.intValue().orElseThrow()` in `IndexMaskTraversalOrdering.indexOf`.
+
+  Of the orderings `CollectionOrderingTests` exercises, only `RepeatTraversalOrdering` survives a
+  kernel today: `repeatOrderingProduct` passes, because its `indexOf` is pure `imod`. (When
+  several of these probes share one JVM, the first compile failure is reported for all of them,
+  so isolate each case when reproducing.)
+
+So the broken surface is exactly the generated-code path (Current state item 2) and the ordering
+`indexOf` implementations behind it. The host path that the `knownIssue` tests exercise is not
+broken.
 
 ## Scope
 
@@ -119,19 +140,17 @@ In scope — everything needed for an ordered collection to be a correct *input*
    Javadoc on the stripping site. See Open Questions — the recommended decision is to **keep the
    strip and document why**, because producing a compact/sparse output is a scatter/segmented
    reduction, which is the separate Phase 1 task [87b95b81]/[66b57639], not this one.
-6. **Tests:** remove the three `knownIssue` flags once the tests pass, and add new tests for an
-   ordered collection as the input to element-wise, reshape, subset, pad and matmul computations,
-   each run on Metal and native.
+6. **Tests:** remove the three stale `knownIssue` flags (the tests already pass; see "What actually
+   fails today"). Add new tests for an ordered collection as the input to element-wise, reshape,
+   subset, pad and matmul computations, each run on Metal and native. Include kernel-input
+   counterparts of `compactOrdering` and `maskOrdering`, and a full-permutation
+   `ExplicitIndexTraversalOrdering` case, because those are the reads that fail today.
 
-**scope↔done-when note.** Items 1–3 above are generated-code / kernel-argument work, but the three
-`knownIssue` tests in success criterion 1 are host reads (`PackedCollection.valueAt` → `toDouble`),
-and the host absence gate (`index < 0 → 0`) already exists in `MemoryData.toDouble`. So item 1 (the
-*generated-code* gate) does not by itself make those host tests pass. The implementer should expect
-the compact/mask host fixes to live on the host read path or in `getLength()` sizing (item 3's
-`max + 1`), and must confirm the exact cause first (Open Question 5). The done-when therefore
-needs a host-path fix wired to it explicitly; today the scope lists only the generated-code surfaces
-by name, so the approver should treat "the three `knownIssue` tests pass" and "`indexOf` renders
-symbolically in a kernel" as two distinct deliverables rather than one.
+**scope↔done-when note.** The task's done-when names the three `knownIssue` tests as the evidence
+of success. Those tests already pass on the host path, so removing their flags proves nothing about
+this work. It can (and arguably should) be done independently of it. The real evidence is the new
+kernel-input tests in item 6. Today they fail at compile time for every index-table ordering, and
+items 1–3 are what make them pass. Success criterion 1 below is written accordingly.
 
 Out of scope (named as dependencies / follow-ups, not widened into here):
 
@@ -155,12 +174,16 @@ constant: there is no bound variable to reference in the generated source. The c
 making an ordering's backing index/mask collection a first-class kernel argument, so
 `order.indexOf(index)` renders as a memory read of that argument inside the kernel.
 
-Confirm the exact mechanism with `ar-profile-analyzer` before writing code: wire a small profiled
-reproduction (an ordered input into `c(2).multiply(...)`), run it under `AR_HARDWARE_DRIVER=mtl`,
-and read the generated kernel source and argument offsets with `get_source`. The compact/mask
-read bug is read directly off the generated source; it is not to be theorised about. The
-implementer must use `ar-profile-analyzer` first for every wrong-value/0.0 investigation per the
-project rule.
+The mechanism is already confirmed (see "What actually fails today"). For an
+`ExplicitIndexTraversalOrdering`, `IndexExpressionTraversalOrdering.indexOf` calls
+`indices.getValueAt(idx)` on the backing `PackedCollection`, and `MemoryData.getValueAt(Expression)`
+throws for any non-constant position. The kernel therefore fails to *compile*, and today there is no
+generated source to inspect. Once the argument binding exists and kernels compile, any remaining
+wrong-value / `0.0` problem (for example, a missing membership gate reading the wrong slot for a `-1`
+marker) must be investigated with `ar-profile-analyzer` before anything else, per the project rule:
+wire a small profiled reproduction (an ordered input into `c(2).multiply(...)`), run it under
+`AR_HARDWARE_DRIVER=mtl`, and read the generated kernel source and argument offsets with
+`get_source`.
 
 Likely home for the argument binding: the ordering (or a `TraversableExpression` adapter over it)
 must participate in `prepareScope`/argument provisioning the way a `CollectionVariable`'s producer
@@ -197,9 +220,13 @@ changing it.
 
 A reviewer can confirm the task is done when:
 
-1. `CollectionOrderingTests.compactOrdering`, `maskOrdering` and `repeatOrdering` pass with the
-   `@TestProperties(knownIssue = true)` flag removed. (Removing a `knownIssue` flag from a now-passing
-   test is a strengthening, not a weakening, and is allowed.)
+1. `CollectionOrderingTests.compactOrdering`, `maskOrdering` and `repeatOrdering` carry no
+   `@TestProperties(knownIssue = true)` flag and pass. (They already pass, so removing the stale
+   flags is a strengthening that is allowed.) **In addition**, `c(k).multiply(cp(x))` over `x`
+   ordered by the same compact `ExplicitIndexTraversalOrdering`, `IndexMaskTraversalOrdering` and a
+   full-permutation `ExplicitIndexTraversalOrdering` compiles and returns the expected values. Each
+   of these currently fails with `HardwareException: Cannot compile multiply`. This half of the
+   criterion is what this task's code changes actually satisfy.
 2. A compact sparse ordering is expressed symbolically — its `indexOf` renders as a read of a
    device-resident index/mask collection in the generated kernel source (verifiable via
    `ar-profile-analyzer get_source`), with no `orElseThrow`/host `toArray()` scan on the kernel
@@ -243,9 +270,10 @@ A reviewer can confirm the task is done when:
    plan treats it as a bug; the implementer must grep callers of `TraversalOrdering.getLength()` and
    the `PackedCollection` allocation path before changing it, and store the finding. Note
    `MemoryData.getDelegatedLength()` already consumes `getDelegateOrdering().getLength()` (falling
-   back to `getMemLength()` when the ordering declares no length), so the three `knownIssue` tests
-   (which build delegated views) may already be exposed to this value — a reason to settle the
-   `getLength()` fix before the host tests, not after.
+   back to `getMemLength()` when the ordering declares no length), so delegated views are exposed to
+   this value. The short length does not break the existing host tests. For `compactOrdering`, the
+   bound check `0 + 1 <= 2` passes, and the tests do pass. It does, however, under-report the
+   physical extent to every bound check that relies on it.
    The other two orderings support the "bug" reading. `TraversalOrdering.getLength()` is documented
    only as "the number of elements covered", which could mean logical or physical elements, but both
    consumers use it as a *physical* size. `getDelegatedLength()` feeds the
@@ -257,34 +285,15 @@ A reviewer can confirm the task is done when:
    `[0, -1, -1, 1]` that is 1 where 2 slots are addressed. So the fix should make the interface
    Javadoc state the physical-slot meaning, as well as changing the one implementation that departs
    from it.
-5. **Why exactly do `compactOrdering`, `maskOrdering` and `repeatOrdering` fail on the host today?** The sibling
-   `explicitIndexOrderingAppliedOnce` reads a full permutation through the same host `ExplicitIndex`
-   path and passes (confirmed 2026-10-23), and `maskOrdering` uses only constant indices, so the
-   constant-collapse limitation (Current state item 1) is satisfied for all three — it does not
-   explain the failures. The real cause is unconfirmed and is most likely the `-1` absent-marker
-   handling on the host read path and/or the `getLength()` sizing (Open Question 4), *not* symbolic
-   `indexOf`. Neither cause applies to `repeatOrdering`: it has no absent markers, and its
-   `getLength()` matches its delegate. So at least one host failure has a cause the plan has not
-   identified. The implementer must reproduce each failure (the tests are filtered out of a normal run
-   as `knownIssue`) and root-cause it against the code before assuming any scope item fixes it. This
-   is the load-bearing question for success criterion 1: the plan's scope names generated-code
-   surfaces, but the done-when is three host reads.
-   The `knownIssue` flags also predate the most relevant recent change to the host method these
-   tests exercise, so the premise "three failing tests" is itself unconfirmed on the current code.
-   The three flags were set in March 2026 (when `CollectionOrderingTests` first carried
-   `@TestProperties`), whereas `MemoryData.toDouble` was corrected in September 2026 by the commit
-   *Fix double application of delegate ordering in MemoryData.toDouble()* — now in `master` — which
-   stopped the delegate path applying `getDelegateOrdering().indexOf` a second time on the
-   already-mapped index. That commit's own message records that `RepeatTraversalOrdering`'s
-   `idx % length` is *idempotent* once reduced, so the double application never affected
-   `repeatOrdering`, and that it added `explicitIndexOrderingAppliedOnce` (the passing permutation
-   test cited above) as its regression guard. A static trace of `repeatOrdering` through the current
-   `toDouble` — delegate present, `getDelegateOrdering()` a `RepeatTraversalOrdering`, its
-   `indexOf(int)` folding `imod` of two constants to a concrete value via `Mod.intValue()` — reaches
-   the delegate read with a valid physical index, so it is not obvious `repeatOrdering` still fails
-   at all. The implementer must therefore re-confirm that each flag still reproduces a failure on
-   the target node before treating the three failures as given; any flag that no longer fails is
-   simply removed (a strengthening), and criterion 1 is then narrower than it looks.
+5. **Should the stale `knownIssue` flags be removed separately, ahead of this plan?** *(Resolved
+   on 2026-10-23: the host failures do not exist.)* Earlier review passes speculated about why
+   `compactOrdering`, `maskOrdering` and `repeatOrdering` fail on the host. When run with known
+   issues enabled (see "What actually fails today" for the flags), all three pass. The open part
+   is for the approver to decide. Removing the three flags is a small test-only strengthening that
+   does not depend on any of the generated-code work. It could land on its own, so that CI starts
+   guarding the host path now, rather than waiting for this Large task. If it is left in this
+   task's scope, the implementer should remove the flags first, so that a regression of the host
+   path during the generated-code work is caught.
 6. **How costly is a symbolic `IndexMaskTraversalOrdering.indexOf` in a kernel?** The inverse search
    has no closed form: finding the physical slot for a logical index means scanning the mask, so a
    symbolic version renders as an O(mask length) search per lookup inside the kernel. That is
@@ -305,6 +314,7 @@ the kernel argument graph so `indexOf`/`containsIndex` render symbolically — i
 how orderings integrate with code generation, not a set of local fixes. The symbolic inverse search
 for `IndexMaskTraversalOrdering` and the dual-backend (Metal + native) test matrix add further
 breadth. If the approver wants it split, the natural seam is: (a) the generated-code membership
-gate + symbolic `indexOf` + `containsIndex` default + the three `knownIssue` tests (the core), then
+gate + symbolic `indexOf` + `containsIndex` default + the kernel-input element-wise tests for
+compact, mask and permutation orderings (the core), then
 (b) the reshape/pad/matmul input coverage and the ordered-output decision as a follow-on, since (b)
 only becomes testable once (a) lands.

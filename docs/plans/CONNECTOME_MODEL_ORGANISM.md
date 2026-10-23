@@ -121,7 +121,11 @@ or recurrent-training parts.
   for 50–125 million edges.
 - **`PackedCollection` with a sparse `TraversalOrdering`** is the better design, but it is not
   reliably usable, because `TraversalOrdering` and `TraversableExpression` are poorly integrated:
-  - `CollectionOrderingTests.compactOrdering` and `maskOrdering` are marked `knownIssue`;
+  - an ordered collection cannot be the input to a kernel: any `ExplicitIndexTraversalOrdering`
+    (even a full permutation) or `IndexMaskTraversalOrdering` input fails at compile time
+    (reproduced 2026-10-23; see `PLAN-20261023-sparse-traversal-ordering.md`). The host-path tests
+    `CollectionOrderingTests.compactOrdering` and `maskOrdering` are still marked `knownIssue`,
+    but they now pass;
   - `ReshapeProducer.containsIndex` and `SlicingFeatures.pad` throw for an ordered shape;
   - `IndexMaskTraversalOrdering.indexOf` needs a constant index and scans the mask on the host, so
     it can never appear in generated code;
