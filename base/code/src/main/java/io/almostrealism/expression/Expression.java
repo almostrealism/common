@@ -193,6 +193,15 @@ public abstract class Expression<T> implements
 	/** The series provider that was used to simplify this expression, if any. */
 	private KernelSeriesProvider seriesProvider;
 
+	/** Context-free upper bound memoized by {@link #upperBound(KernelStructureContext)}, or {@code null}. */
+	private OptionalLong memoizedUpperBound;
+
+	/** Context-free lower bound memoized by {@link #lowerBound(KernelStructureContext)}, or {@code null}. */
+	private OptionalLong memoizedLowerBound;
+
+	/** Sign analysis memoized by {@link #isPossiblyNegative()}, or {@code null}. */
+	private Boolean memoizedPossiblyNegative;
+
 	/**
 	 * Creates a leaf expression with the specified result type and no children.
 	 *
@@ -497,22 +506,6 @@ public abstract class Expression<T> implements
 	}
 
 	/**
-	 * Returns the kernel structure context associated with this expression.
-	 *
-	 * <p>The context provides information about the kernel structure, including
-	 * maximum kernel size and series providers for optimization. This method
-	 * searches children to find a context, returning the first one found.</p>
-	 *
-	 * @return the kernel structure context, or {@code null} if none is associated
-	 */
-	public KernelStructureContext getStructureContext() {
-		return getChildren().stream()
-				.map(Expression::getStructureContext)
-				.filter(Objects::nonNull)
-				.findFirst().orElse(null);
-	}
-
-	/**
 	 * Checks if this expression or any descendant uses the {@link Long} type.
 	 *
 	 * <p>This is used to determine if 64-bit integer operations are needed,
@@ -546,14 +539,32 @@ public abstract class Expression<T> implements
 	/**
 	 * Returns an upper bound on the value this expression can produce.
 	 *
-	 * <p>For constant expressions, returns the constant value (ceiling for doubles).
-	 * Subclasses should override to provide tighter bounds when possible.</p>
+	 * <p>This method is {@code final}; subclasses define their bounds by overriding
+	 * {@link #computeUpperBound(KernelStructureContext)}. The context-free bound of a
+	 * composite node is memoized; see {@link #isBoundsMemoized(KernelStructureContext)}.</p>
 	 *
-	 * @param context the kernel structure context for bounds analysis
+	 * @param context the kernel structure context for bounds analysis, or {@code null}
 	 * @return an upper bound if determinable; empty otherwise
 	 */
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	public final OptionalLong upperBound(KernelStructureContext context) {
+		if (!isBoundsMemoized(context)) return computeUpperBound(context);
+		if (memoizedUpperBound == null) memoizedUpperBound = computeUpperBound(null);
+		return memoizedUpperBound;
+	}
+
+	/**
+	 * Computes an upper bound on the value this expression can produce.
+	 *
+	 * <p>For constant expressions, returns the constant value (ceiling for doubles).
+	 * Subclasses should override to provide tighter bounds when possible, obtaining the
+	 * bounds of their children through {@link #upperBound(KernelStructureContext)} and
+	 * {@link #lowerBound(KernelStructureContext)} so that those are memoized.</p>
+	 *
+	 * @param context the kernel structure context for bounds analysis, or {@code null}
+	 * @return an upper bound if determinable; empty otherwise
+	 */
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalInt i = intValue();
 		if (i.isPresent()) return OptionalLong.of(i.getAsInt());
 
@@ -566,14 +577,31 @@ public abstract class Expression<T> implements
 	/**
 	 * Returns a lower bound on the value this expression can produce.
 	 *
-	 * <p>For constant expressions, returns the constant value (floor for doubles).
-	 * Subclasses should override to provide tighter bounds when possible.</p>
+	 * <p>This method is {@code final}; subclasses define their bounds by overriding
+	 * {@link #computeLowerBound(KernelStructureContext)}. The context-free bound of a
+	 * composite node is memoized; see {@link #isBoundsMemoized(KernelStructureContext)}.</p>
 	 *
-	 * @param context the kernel structure context for bounds analysis
+	 * @param context the kernel structure context for bounds analysis, or {@code null}
 	 * @return a lower bound if determinable; empty otherwise
 	 */
 	@Override
-	public OptionalLong lowerBound(KernelStructureContext context) {
+	public final OptionalLong lowerBound(KernelStructureContext context) {
+		if (!isBoundsMemoized(context)) return computeLowerBound(context);
+		if (memoizedLowerBound == null) memoizedLowerBound = computeLowerBound(null);
+		return memoizedLowerBound;
+	}
+
+	/**
+	 * Computes a lower bound on the value this expression can produce.
+	 *
+	 * <p>For constant expressions, returns the constant value (floor for doubles).
+	 * Subclasses should override to provide tighter bounds when possible, obtaining the
+	 * bounds of their children as described for {@link #computeUpperBound(KernelStructureContext)}.</p>
+	 *
+	 * @param context the kernel structure context for bounds analysis, or {@code null}
+	 * @return a lower bound if determinable; empty otherwise
+	 */
+	protected OptionalLong computeLowerBound(KernelStructureContext context) {
 		OptionalInt i = intValue();
 		if (i.isPresent()) return OptionalLong.of(i.getAsInt());
 
@@ -586,13 +614,51 @@ public abstract class Expression<T> implements
 	/**
 	 * Checks if this expression could possibly produce a negative value.
 	 *
-	 * <p>Uses the lower bound to determine if negative values are possible.
-	 * Returns {@code true} if the lower bound is negative or cannot be determined.</p>
+	 * <p>This method is {@code final}; subclasses refine the answer by overriding
+	 * {@link #computePossiblyNegative()}. The answer for a composite node is memoized,
+	 * like its context-free bounds (see {@link #isBoundsMemoized(KernelStructureContext)}).</p>
 	 *
 	 * @return {@code true} if this expression might produce negative values
 	 */
-	public boolean isPossiblyNegative() {
+	public final boolean isPossiblyNegative() {
+		if (!isBoundsMemoized(null)) return computePossiblyNegative();
+		if (memoizedPossiblyNegative == null) memoizedPossiblyNegative = computePossiblyNegative();
+		return memoizedPossiblyNegative;
+	}
+
+	/**
+	 * Determines whether this expression could possibly produce a negative value from its
+	 * lower bound: {@code true} if the lower bound is negative or cannot be determined.
+	 *
+	 * @return {@code true} if this expression might produce negative values
+	 */
+	protected boolean computePossiblyNegative() {
 		return lowerBound(null).orElse(-1) < 0;
+	}
+
+	/**
+	 * Returns whether the bounds of this expression requested under the given context
+	 * are memoized on this node.
+	 *
+	 * <p>Bounds analysis recurses through the children, and the expression factories and
+	 * simplification ask for the bounds of the same shared sub-expressions over and over:
+	 * {@link io.almostrealism.collect.TraversalPolicy#position(Expression)} refers to each
+	 * level of its index decomposition twice in the next, and a {@link Product},
+	 * {@link Quotient} or {@link Mod} consults the bounds of a child more than once. Without
+	 * memoization the shared nodes are visited a number of times exponential in the depth of
+	 * the expression. An {@link Expression} is immutable, so the context-free bounds and sign
+	 * of a composite node cannot change once computed, and they are memoized when
+	 * {@link ScopeSettings#enableBoundsMemoization} is {@code true}. Leaves are cheap to
+	 * answer and are not memoized; the limit of a {@link io.almostrealism.sequence.DefaultIndex}
+	 * is fixed at construction, so the memoized bounds of an expression over it cannot go
+	 * stale. Bounds for a specific {@link KernelStructureContext} depend on that context
+	 * and are always computed.</p>
+	 *
+	 * @param context the kernel structure context the bounds are requested for, or {@code null}
+	 * @return {@code true} if the bounds are memoized
+	 */
+	private boolean isBoundsMemoized(KernelStructureContext context) {
+		return ScopeSettings.enableBoundsMemoization && context == null && !getChildren().isEmpty();
 	}
 
 	/**
@@ -600,22 +666,6 @@ public abstract class Expression<T> implements
 	 * so its value is only known at runtime and can be the destination of an assignment.
 	 */
 	public boolean isVariableReference() { return false; }
-
-	/**
-	 * Checks whether the bounds of this expression prove that it can never
-	 * produce the given value.
-	 *
-	 * @param value  the value to test against the bounds of this expression
-	 * @return {@code true} if the value lies outside the known bounds;
-	 *         {@code false} if the bounds are insufficient to rule it out
-	 */
-	public boolean excludesValue(long value) {
-		OptionalLong high = upperBound();
-		if (high.isPresent() && high.getAsLong() < value) return true;
-
-		OptionalLong low = lowerBound();
-		return low.isPresent() && low.getAsLong() > value;
-	}
 
 	/**
 	 * Returns a simplified form of the equality {@code this == other} that follows from
@@ -640,58 +690,6 @@ public abstract class Expression<T> implements
 	 */
 	public List<Expression<?>> getTerms() {
 		return List.of(this);
-	}
-
-	/**
-	 * Returns the type of a local variable that this expression can be hoisted into
-	 * without changing the arithmetic of the code that refers to the variable.
-	 *
-	 * <p>That is this expression's own type, except for an expression typed as
-	 * {@link Integer} that is promoted to {@link Long Long.class} when either</p>
-	 * <ul>
-	 *   <li>it refers to the {@link #isKernelIndex() kernel index}, which every generated
-	 *       language renders as a 64-bit integer, so the expression is evaluated in 64 bits
-	 *       wherever it appears inline. A variable of 32 bits would hold its value, but every
-	 *       product or sum that the variable then takes part in would be evaluated in 32 bits
-	 *       instead, and overflow where the inline expression did not &mdash; for example the
-	 *       row of a flattened Jacobian position multiplied by a stride of a million; or</li>
-	 *   <li>its bounds analysis indicates values that can exceed the 32-bit signed integer
-	 *       range, or cannot bound it at all.</li>
-	 * </ul>
-	 *
-	 * @return the type to declare a variable holding this expression with
-	 */
-	public Class<?> getDeclarationType() {
-		Class<?> type = getType();
-		if (type != Integer.class) return type;
-		if (containsKernelIndex()) return Long.class;
-
-		OptionalLong upper = upperBound(null);
-		OptionalLong lower = lowerBound(null);
-
-		if (upper.isEmpty() || lower.isEmpty()) return Long.class;
-		if (upper.getAsLong() > Integer.MAX_VALUE) return Long.class;
-		if (lower.getAsLong() < Integer.MIN_VALUE) return Long.class;
-
-		return type;
-	}
-
-	/**
-	 * Checks if this expression's value is a multiple of another expression's value.
-	 *
-	 * <p>This method only works for compile-time constant integer expressions.
-	 * Returns empty if either expression is not a constant.</p>
-	 *
-	 * @param e the expression to check divisibility against
-	 * @return {@link Optional} containing {@code true} if this value is evenly divisible
-	 *         by the other; empty if not determinable at compile time
-	 */
-	public Optional<Boolean> isMultiple(Expression<?> e) {
-		if (intValue().isPresent() && e.intValue().isPresent()) {
-			return Optional.of(intValue().getAsInt() % e.intValue().getAsInt() == 0);
-		}
-
-		return Optional.empty();
 	}
 
 	/**

@@ -38,6 +38,7 @@ import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toDouble;
 import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toInt;
 import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toInts;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -52,7 +53,7 @@ import java.util.function.Supplier;
  * slice, lerp, reshape, permute, identity,
  * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read, rope_rotation,
  * sequence_rope, mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
- * causal_mask, sequence_causal_mask, key_mask, weighted_values, scaled_dot_product, sqrt, attention,
+ * causal_mask, sequence_causal_mask, key_mask, weighted_values, scaled_dot_product, sqrt,
  * shape, range, zeros, rope_freqs). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List, Set)}; domain
  * libraries (e.g. audio DSP) register additional primitives through
@@ -121,7 +122,6 @@ final class PdslBuiltins {
 			case "weighted_values": return callWeightedValues(producerArg(args, 0, 1, "weighted_values"));
 			case "scaled_dot_product": return callScaledDotProduct(args, consumedBranchOperands);
 			case "sqrt": return callSqrt(args);
-			case "attention": return callAttention(args);
 			case "shape": return callShape(args);
 			case "range": return callRange(args);
 			case "zeros": return callZeros(args);
@@ -181,12 +181,13 @@ final class PdslBuiltins {
 	 * @return a factory that creates the scale layer for any input shape
 	 */
 	private static Function<TraversalPolicy, Block> callScale(List<Object> args) {
-		if (args.size() == 2) {
+		if (args.size() >= 2) {
 			return callScaleAlongAxis(args);
 		}
 		if (args.size() != 1) {
 			throw new PdslParseException(
-					"scale() expects 1 argument (factor) or 2 (factors, axis), got " + args.size());
+					"scale() expects 1 argument (factor), 2 (factors, axis) or more "
+							+ "(factors, axis, weights...), got " + args.size());
 		}
 
 		if (args.get(0) instanceof PdslChannelBank) {
@@ -225,9 +226,17 @@ final class PdslBuiltins {
 	 * across the other non-batch axes. A factor of zero masks its position out, which is how a
 	 * padding mask zeroes the values of padded sequence positions.
 	 *
-	 * @param args two arguments: the factors (a bound tensor or a producer) and the integer axis
+	 * <p>Any trailing arguments beyond the axis, {@code scale(factors, axis, w1..wN)}, are the
+	 * collections {@code factors} is built from; the non-null ones are registered as the layer's
+	 * learnable weights so a backward pass differentiates the factors with respect to them (this
+	 * is how the differential-attention lambda re-parameterization trains). A {@code null} weight
+	 * is one the caller left out and is skipped, so a call whose weights are all null is the plain
+	 * weightless per-position scale, unchanged.</p>
+	 *
+	 * @param args the factors (a bound tensor or a producer), the integer axis, and optionally the
+	 *             weight collections {@code factors} is built from
 	 * @return a factory that creates the per-position scale for any input shape with that axis
-	 * @see org.almostrealism.layers.LayerFeatures#scale(TraversalPolicy, int, Producer,
+	 * @see org.almostrealism.layers.LayerFeatures#scale(TraversalPolicy, int, Producer, java.util.List,
 	 *      io.almostrealism.compute.ComputeRequirement...)
 	 */
 	private static Function<TraversalPolicy, Block> callScaleAlongAxis(List<Object> args) {
@@ -235,6 +244,18 @@ final class PdslBuiltins {
 				"scale() factors");
 		int axis = toInt(args.get(1));
 		TraversalPolicy factorShape = FEATURES.shape(factors);
+		List<PackedCollection> weights = new ArrayList<>();
+		for (int i = 2; i < args.size(); i++) {
+			Object weight = args.get(i);
+			if (weight == null) {
+				continue;
+			}
+			if (!(weight instanceof PackedCollection)) {
+				throw new PdslParseException("scale() weight " + (i - 1)
+						+ " must be a bound tensor, got " + weight.getClass().getSimpleName());
+			}
+			weights.add((PackedCollection) weight);
+		}
 		return inputShape -> {
 			if (axis <= 0 || axis >= inputShape.getDimensions()) {
 				throw new PdslParseException("scale() axis " + axis
@@ -248,7 +269,7 @@ final class PdslBuiltins {
 						+ "] (one per batch entry and position of axis " + axis + " of "
 						+ inputShape + "), got " + factorShape);
 			}
-			return FEATURES.scale(inputShape, axis, factors);
+			return FEATURES.scale(inputShape, axis, factors, weights);
 		};
 	}
 
@@ -1243,73 +1264,6 @@ final class PdslBuiltins {
 			}
 			return FEATURES.applyRotaryPositionEmbedding(FEATURES.shape(inputShape.extent()), invFreq);
 		};
-	}
-
-	/**
-	 * Builds an attention block from 8, 14, or 15 evaluated arguments.
-	 *
-	 * <p>The structure is not assembled here: {@link org.almostrealism.ml.AttentionFeatures#attention}
-	 * allocates the key/value caches and builds the {@code attention} or
-	 * {@code attention_qk_norm} layer of {@code /pdsl/attention.pdsl}, where the stages are
-	 * written out. This built-in remains for assets that take the attention block as one
-	 * stage (the asset's own caches cannot be declared from their parameter lists).</p>
-	 *
-	 * @param args Evaluated arguments matching one of the supported
-	 *             {@link org.almostrealism.ml.AttentionFeatures#attention} overloads
-	 * @return An attention {@link Block}
-	 */
-	private static Block callAttention(List<Object> args) {
-		if (args.size() == 8) {
-			// attention(heads, rms_weight, wk, wv, wq, wo, freq_cis, position)
-			return FEATURES.attention(
-					toInt(args.get(0)),
-					(PackedCollection) args.get(1),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					(PackedCollection) args.get(4),
-					(PackedCollection) args.get(5),
-					toCollectionProducer(args.get(6)),
-					toProducer(args.get(7)));
-		} else if (args.size() == 14) {
-			// attention(heads, kv_heads, rms_weight, wk, wv, wq, wo,
-			//           bk, bv, bq, qk_norm_q, qk_norm_k, freq_cis, position)
-			return FEATURES.attention(
-					toInt(args.get(0)),
-					toInt(args.get(1)),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					(PackedCollection) args.get(4),
-					(PackedCollection) args.get(5),
-					(PackedCollection) args.get(6),
-					(PackedCollection) args.get(7),
-					(PackedCollection) args.get(8),
-					(PackedCollection) args.get(9),
-					(PackedCollection) args.get(10),
-					(PackedCollection) args.get(11),
-					toCollectionProducer(args.get(12)),
-					toProducer(args.get(13)));
-		} else if (args.size() == 15) {
-			// attention(heads, kv_heads, rms_weight, wk, wv, wq, wo,
-			//           bk, bv, bq, qk_norm_q, qk_norm_k, freq_cis, position, epsilon)
-			return FEATURES.attention(
-					toInt(args.get(0)),
-					toInt(args.get(1)),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					(PackedCollection) args.get(4),
-					(PackedCollection) args.get(5),
-					(PackedCollection) args.get(6),
-					(PackedCollection) args.get(7),
-					(PackedCollection) args.get(8),
-					(PackedCollection) args.get(9),
-					(PackedCollection) args.get(10),
-					(PackedCollection) args.get(11),
-					toCollectionProducer(args.get(12)),
-					toProducer(args.get(13)),
-					toDouble(args.get(14)));
-		}
-		throw new PdslParseException(
-				"attention() expects 8, 14, or 15 arguments, got " + args.size());
 	}
 
 	/**

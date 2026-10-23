@@ -14,9 +14,10 @@ if _DIR not in sys.path:
     sys.path.insert(0, _DIR)
 
 from citation_verifier import (  # noqa: E402
-    REASON_BRANCH_LOCAL, REASON_CONTRADICTED, REASON_FREE_TEXT, REASON_SUBJECT,
-    REASON_TIER, REASON_UNCITED, REASON_UNKNOWN, REASON_UNSUPPORTED_UNCITED,
-    REASON_VALUE, UNSUPPORTED_MARK, salient_tokens, split_sentences, verify,
+    REASON_BRANCH_LOCAL, REASON_CONTRADICTED, REASON_FREE_TEXT, REASON_POLARITY,
+    REASON_SUBJECT, REASON_TIER, REASON_UNCITED, REASON_UNKNOWN,
+    REASON_UNSUPPORTED_UNCITED, REASON_VALUE, UNSUPPORTED_MARK,
+    polarity_unsupported, salient_tokens, split_sentences, verify,
 )
 from consult_evidence import (  # noqa: E402
     TIER_BRANCH_LOCAL, TIER_CURRENT, TIER_HISTORICAL, EvidenceList,
@@ -147,6 +148,141 @@ class TestTiers(unittest.TestCase):
                         self._note(TIER_CURRENT), {"N1": {"2"}})
         self.assertEqual(_reasons(report), [REASON_CONTRADICTED])
         self.assertEqual(report.supporting_ids(), [])
+
+
+def _deploy_evidence():
+    ev = EvidenceList()
+    ev.add_doc({"file": ".github/CLAUDE.md", "start": 737, "end": 749,
+                "section": "What the Deploy Controller Stack workflow does",
+                "context": "Lives in its own file, triggered by workflow_run on "
+                           "a successful master run of \"Build and Test\", plus "
+                           "workflow_dispatch for manual deploys.\nNever move a "
+                           "deploy job into analysis.yaml."})
+    ev.add_doc({"file": ".github/CLAUDE.md", "start": 909, "end": 921,
+                "section": "Master Agent Dispatch",
+                "context": "A planning round checks the backlog: it starts a "
+                           "round unless more than MAX_OPEN_PRS are open. Files "
+                           "under tools/ci/ change only on a branch named ci/."})
+    ev.add_doc({"file": "flowtree/runtime/docs/coding-agent.md", "start": 204,
+                "end": 216, "section": "Object-Oriented Design Review",
+                "context": "ObjectOrientedDesignRule runs one dedicated session "
+                           "per added or modified production Java class."})
+    return ev
+
+
+class TestPolarityClaims(unittest.TestCase):
+    """The claim-level check: polarity and exclusivity claims carry no token
+    the subject and value checks can match, so they are checked as claims."""
+
+    def test_an_unechoed_negation_contradicting_its_citation_is_flagged(self):
+        # Observed 2026-10-20: right about the trigger, then a confident
+        # "does not ... only when" that nothing in the evidence says.
+        report = verify(
+            "The deploy is triggered by a successful master run of Build and "
+            "Test [D1]. It does not deploy automatically after every merge — "
+            "only when explicitly triggered [D1].", _deploy_evidence())
+        first, second = report.sentences
+        self.assertEqual(first.reasons, [])
+        self.assertEqual(second.reasons, [REASON_POLARITY])
+        self.assertEqual(second.missing,
+                         ["It does not deploy automatically after every merge",
+                          "only when explicitly triggered"])
+        self.assertTrue(report.annotated.endswith("[D1] " + UNSUPPORTED_MARK + "."))
+        self.assertEqual(report.warnings[0]["reason"], REASON_POLARITY)
+
+    def test_an_uncited_polarity_claim_is_held_to_all_evidence(self):
+        report = verify("It never deploys on its own.", _deploy_evidence())
+        self.assertEqual(_reasons(report), [REASON_POLARITY])
+        self.assertIn(UNSUPPORTED_MARK, report.annotated)
+
+    def test_an_echoed_exclusivity_claim_passes(self):
+        report = verify("Files under tools/ci/ may change only on a branch "
+                        "named ci/ [D2].", _deploy_evidence())
+        self.assertEqual(report.warnings, [])
+
+    def test_a_condition_echoes_an_exclusivity_claim(self):
+        # "only while no more than" restates "unless more than".
+        report = verify("A planning round starts only while no more than "
+                        "`MAX_OPEN_PRS` pull requests are open [D2].",
+                        _deploy_evidence())
+        self.assertEqual(report.warnings, [])
+
+    def test_a_negation_echoed_by_its_citation_passes(self):
+        self.assertEqual(polarity_unsupported(
+            "Never move a deploy job into analysis.yaml [D1].",
+            ["Never move a deploy job into analysis.yaml."]), [])
+
+    def test_a_sentence_wrapped_across_lines_still_echoes(self):
+        # Observed in a local run: a script header wraps its sentence, and a
+        # clause checked against half of it was wrongly flagged.
+        header = ("The tests on the base branch pass there. A change set whose "
+                  "only content is edits to those\ntests — no production change, "
+                  "no new test, nothing else — cannot fix\nanything.\n\n"
+                  "| Flag | Meaning |\n| only | a separate row |")
+        self.assertEqual(polarity_unsupported(
+            "validate-agent-commit.sh blocks change sets whose only content is "
+            "edits to test files that exist on the base branch [I1].", [header]),
+            [])
+
+    def test_polarity_wording_on_unrelated_content_does_not_echo(self):
+        # The passage is negative, but about something else.
+        self.assertEqual(polarity_unsupported(
+            "The deploy does not rebuild the agent images.",
+            ["Never move a deploy job into analysis.yaml."]),
+            ["The deploy does not rebuild the agent images"])
+
+    def test_a_cardinality_must_count_the_same_thing_per_the_same_unit(self):
+        # E12: "one class per job" paraphrases "one session per changed
+        # class" into a different claim; no token check can see that.
+        report = verify("`ObjectOrientedDesignRule` runs one class per job [D3].",
+                        _deploy_evidence())
+        self.assertEqual(_reasons(report), [REASON_POLARITY])
+        right = verify("`ObjectOrientedDesignRule` runs one session per "
+                       "modified class [D3].", _deploy_evidence())
+        self.assertEqual(right.warnings, [])
+
+    def test_a_cardinality_unit_may_be_paraphrased(self):
+        # Observed in a local run: "per changed production class" restates
+        # "per added or modified production Java class".
+        report = verify("The rule runs one dedicated session per changed "
+                        "production class [D3].", _deploy_evidence())
+        self.assertEqual(report.warnings, [])
+
+    def test_an_unbackticked_prefix_keeps_its_dash(self):
+        # Observed in a local run: "qa/docs-," was read as "qa/docs", which a
+        # note naming "qa/docs-" does not contain as a whole name.
+        subjects, _ = salient_tokens("Prefixes are qa/docs-, qa/defect- and tools/ci/.")
+        self.assertEqual(subjects, ["qa/docs-", "qa/defect-", "tools/ci/"])
+        report = verify("Prefixes are qa/docs-, qa/coverage- [D2].", _evidence())
+        self.assertEqual(report.warnings, [])
+
+    def test_polarity_words_inside_quoted_literals_are_not_the_claim(self):
+        # Observed in a local run: the script's own message, quoted, carries
+        # "only"; it is a literal the value check verifies, not a claim.
+        self.assertEqual(polarity_unsupported(
+            "It prints `BLOCKED: the change set only edits base-branch tests` "
+            "and \"never retried\" [I1].", []), [])
+
+    def test_a_clause_about_what_the_evidence_lacks_is_not_checked(self):
+        # Observed in local runs: statements about the evidence, not the code.
+        for sentence in (
+                "This is branch-local and not present in the master snapshot.",
+                "That branch is local and not reflected in the snapshot.",
+                "The branch is open, so it does not reflect the state of master.",
+                "The only evidence of streaming is a branch-local note [N1].",
+                "The legacy ClaudeCodeJob name is no longer present in the snapshot [N1].",
+                "The legacy ClaudeCodeJob name no longer appears in the snapshot [N1].",
+                "This is branch-local and not yet merged to master [N1].",
+                "Since this is not on master, it does not apply to the question."):
+            self.assertEqual(polarity_unsupported(sentence, []), [], sentence)
+
+    def test_an_abstention_is_not_a_polarity_claim(self):
+        report = verify("The deploy schedule is not documented.", _deploy_evidence())
+        self.assertEqual(report.sentences[0].reasons, [])
+
+    def test_a_plain_affirmative_sentence_is_not_checked(self):
+        self.assertEqual(polarity_unsupported(
+            "It deploys after every merge.", []), [])
 
 
 class TestSalientTokens(unittest.TestCase):

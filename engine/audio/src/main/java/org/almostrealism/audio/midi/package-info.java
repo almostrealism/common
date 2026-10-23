@@ -23,5 +23,8 @@
  * event listening via {@link org.almostrealism.audio.midi.MidiInputListener}.
  * These classes enable MIDI hardware to control audio synthesis parameters in
  * real time.</p>
+ *
+ * <p>{@link org.almostrealism.audio.midi.MidiTempo} represents the tempo carried by
+ * a MIDI Set Tempo meta event, converting between BPM and microseconds per beat.</p>
  */
 package org.almostrealism.audio.midi;

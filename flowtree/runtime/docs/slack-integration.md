@@ -85,7 +85,9 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | Method | Path | Body | Description |
 |--------|------|------|-------------|
 | GET | `/api/workstreams` | -- | List registered workstreams (see [Workstream listing filters](#workstream-listing-filters) below) |
-| GET | `/api/workstreams/{id}/jobs/active` | -- | List jobs still recorded as running for a workstream; each entry carries `jobId`, `workstreamId`, `startedAt`, `heartbeatAt`, `ageSeconds`, `sinceHeartbeatSeconds`, and `description` (see Javadoc on `FlowTreeApiEndpoint`) |
+| GET | `/api/workstreams/{id}/jobs/active` | -- | List jobs still recorded as running for a workstream; each entry carries `jobId`, `workstreamId`, `startedAt`, `heartbeatAt`, `ageSeconds`, `sinceHeartbeatSeconds`, `node` (when known), `state` (`RUNNING`, or `UNRESPONSIVE` once silent past the configured threshold), and `description` (see Javadoc on `FlowTreeApiEndpoint`) |
+| GET | `/api/workstreams/{id}/jobs/pending` | -- | List jobs the controller accepted but no worker has started; each entry carries `jobId`, `workstreamId`, `submittedAt`, `ageSeconds`, `submittedBy`, `requiredLabels`, `state` (`SUBMITTED`, or `LOST` once the wait passes the configured threshold), and `description`. Pending jobs are never auto-failed |
+| POST | `/api/jobs/{jobId}/heartbeat` | `{"node":"...","phase":"..."}` | Liveness heartbeat posted on a timer by the job's own harness (`HarnessHeartbeatSender`); records the heartbeat and worker node, and the phase when given |
 | POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
 | POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |
 | POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [CI Integration: Submit Endpoint](./ci-integration.md#submit-endpoint)) |
@@ -95,6 +97,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | POST | `/api/workstreams/{id}/jobs/{jobId}` | `{"jobId":"...","status":"..."}` | Receive a job status event |
 | GET | `/api/health` | -- | Health check |
 | GET | `/api/stats` | -- | Weekly job statistics (query params: `workstream`, `period`) |
+| GET | `/api/stats/daily` | -- | Agent wall-clock time per day across every workstream (query params: `from`, `to`, `tz`; see [CI Integration: Daily Agent Time Endpoint](./ci-integration.md#daily-agent-time-endpoint)) |
 | GET | `/api/tracker/claimable` | -- | How many tasks of a tracker release an agent could claim (query params: `project`, `release` — names). Returns the tracker's own `{"ok", "release_id", "count"}`; used by CI to decide whether to start a task-planning round. 503 when the tracker is unreachable |
 | POST | `/api/tracker/claim` | `{"project", "release", "workstreamId"}` | Claims the next ready task of a tracker release (names) for a registered workstream, linking the task to it. Returns `{"ok": true, "task": {...}}`, or `"task": null` when nothing is claimable. Used by CI after registering the workstream, to hand the claimed task to the agent. 400 when a field is missing or blank, 404 when `workstreamId` is not registered, 503 when no tracker is configured, 502 when the tracker call fails |
 | GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
@@ -175,8 +178,8 @@ HSQLDB-backed storage for job timing data and statistics. Records job start/comp
 - Database path: `~/.flowtree/stats` (HSQLDB file database)
 - Automatically cleans orphaned STARTED rows older than 7 days on initialization
 - Initialized and wired by `FlowTreeController` at startup
-- Tracks a `heartbeat_at` timestamp per job, written on every status event the controller already receives, so a job whose subprocess has died without posting a terminal status can still be distinguished from one that is running. `StuckJobScanner` consumes the heartbeat column to fail jobs silent for more than twice the workstream's wall-clock ceiling; the result flows through the same completion path as a real failure
-- `getActiveJobs(workstreamId)` returns the `ActiveJob` records (id, workstream, started-at, last heartbeat, description) the `GET /api/workstreams/{id}/jobs/active` endpoint exposes
+- Tracks a `heartbeat_at` timestamp per job, written on every status event the controller receives and on every `POST /api/jobs/{jobId}/heartbeat` the job's harness sends on its own timer, so a job whose subprocess has died without posting a terminal status can still be distinguished from one that is running. `StuckJobScanner` consumes the heartbeat column to fail jobs silent for more than twice the workstream's wall-clock ceiling; the result flows through the same completion path as a real failure
+- `getActiveJobs(workstreamId)` returns the `ActiveJob` records (id, workstream, started-at, last heartbeat, node, description) the `GET /api/workstreams/{id}/jobs/active` endpoint exposes; `getPendingJobs(workstreamId)` returns the `PendingJob` records behind `GET /api/workstreams/{id}/jobs/pending`
 
 ### SlackListener
 

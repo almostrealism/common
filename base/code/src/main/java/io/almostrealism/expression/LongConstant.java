@@ -81,7 +81,7 @@ public class LongConstant extends Constant<Long> {
 	public OptionalLong longValue() { return OptionalLong.of(value); }
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) { return OptionalLong.of(value); }
+	protected OptionalLong computeUpperBound(KernelStructureContext context) { return OptionalLong.of(value); }
 
 	@Override
 	public KernelSeries kernelSeries() { return KernelSeries.constant(value); }

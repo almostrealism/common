@@ -86,7 +86,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalLong l = getChildren().get(1).upperBound(context);
 		OptionalLong r = getChildren().get(2).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {

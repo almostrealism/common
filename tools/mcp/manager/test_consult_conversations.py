@@ -6,7 +6,9 @@ import unittest
 
 from manager_test_support import server  # noqa: F401 - sets up sys.path
 
-from consult_conversations import ConversationError, ConversationStore
+from consult_conversations import (
+    ConversationError, ConversationStore, caller_identity,
+)
 from consult_evidence import KIND_DOC, KIND_NOTE, EvidenceItem
 
 
@@ -14,6 +16,20 @@ def _item(kind, n):
     return EvidenceItem(id=f"{'D' if kind == KIND_DOC else 'N'}{n}", kind=kind,
                         text="t", file="a.md" if kind == KIND_DOC else "",
                         start=n, end=n, memory_id=str(n))
+
+
+class TestCallerIdentity(unittest.TestCase):
+
+    def test_a_job_token_is_identified_by_its_workstream_and_job(self):
+        self.assertEqual(caller_identity("ws", "job", "tmp:ws/job"), "job:ws/job")
+
+    def test_a_static_token_is_identified_by_its_label(self):
+        self.assertEqual(caller_identity("", "", "ops-slack"), "token:ops-slack")
+        self.assertEqual(caller_identity("", "", ""), "token:anonymous")
+
+    def test_a_label_spelled_like_a_job_is_another_identity(self):
+        self.assertNotEqual(caller_identity("", "", "ws/job"),
+                            caller_identity("ws", "job", "tmp:ws/job"))
 
 
 class TestConversationStore(unittest.TestCase):
@@ -103,6 +119,24 @@ class TestConversationStore(unittest.TestCase):
                         + [_item(KIND_NOTE, i) for i in range(1, 4)], {})
             carried = conv.carried()
         self.assertEqual([it.id for it in carried], ["D1", "D2", "N1", "N2"])
+
+    def test_carried_terms_merge_every_turns_keywords_and_last_subjects(self):
+        note = EvidenceItem(id="N1", kind=KIND_NOTE, text="t", memory_id="1",
+                            named_symbols={"present": ["Foo.java"], "absent": []})
+        with self.store.turn("", "ws/job", "r", "") as conv:
+            conv.record("q1", ["Deploy", "drain-agent-jobs"], "a1",
+                        [_item(KIND_DOC, 1)], {})
+            conv.record("q2", ["second-kw"], "a2", [note], {})
+            terms = conv.carried_terms()
+        # Keywords from every turn, deduplicated in order.
+        self.assertEqual(terms[:3], ["Deploy", "drain-agent-jobs", "second-kw"])
+        # Subjects only of the previous (last) turn's cited evidence.
+        self.assertIn("Foo.java", terms)
+        self.assertNotIn("a.md", terms)
+
+    def test_carried_terms_are_empty_before_any_turn(self):
+        with self.store.turn("", "ws/job", "r", "") as conv:
+            self.assertEqual(conv.carried_terms(), [])
 
     def test_history_is_held_to_its_budget(self):
         with self.store.turn("", "ws/job", "r", "") as conv:

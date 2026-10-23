@@ -91,6 +91,33 @@ memory is destroyed rather than left for the collector, since a decoded
 collection reads directly out of the parsed message and would otherwise
 keep the entire recording on the heap for the lifetime of the details.
 
+#### Feature data model provenance
+
+Feature data carries provenance: the identifier of the model that produced it.
+A `WaveDetails` holds a `WaveFeatures` per model, keyed by model identifier, so
+features from a new model sit beside features from an old one. The feature
+provider names its model through `WaveDataFeatureProvider.getModelIdentifier()`;
+`WaveDetailsFactory` stores each computed analysis under that identifier and
+marks it the *active* model. The no-argument `getFeatureData()` and
+`getSimilarities()` accessors return the active model's data (or, with no active
+model, the single keyed set if only one is present), so similarity graphs,
+prototype discovery and the mean-pooled embedding transparently use only the
+current model's features and a similarity is never computed across models.
+`AudioLibrary.isComplete` and the recompute guard test for the *current* model's
+features specifically, so switching to a different model recomputes beside the
+old data rather than being blocked by it.
+
+The `featureData`/`feature*`/`similarities` fields remain as the **legacy
+unkeyed slot** — the data an older application wrote with no provenance —
+reachable through the `getLegacyFeature*`/`getLegacySimilarities` accessors used
+by the persistence layer and the cleanup accounting.
+
+`AudioLibrary.otherModelFeatures()` reports how much feature data belongs to
+models other than the current one (an item count and byte total, including the
+legacy slot) and offers a `WaveFeatureCleanup.remove()` that deletes exactly
+that data and re-persists the kept model — modelled on
+`LegacyLibraryMigrator.Result`.
+
 ### AudioLibraryPersistence
 
 Handles saving/loading library data to Protocol Buffer format.
@@ -227,12 +254,38 @@ message WaveDetailData {
   int32 channel_count = 3;
   int32 frame_count = 4;
   CollectionData freq_data = 10;         // FFT results
-  CollectionData feature_data = 16;      // Feature vectors
-  map<string, double> similarities = 11; // Pre-computed similarities
+  CollectionData feature_data = 16;      // Legacy unkeyed feature vectors
+  map<string, double> similarities = 11; // Legacy unkeyed similarities
+  repeated FeatureSet feature_sets = 21; // Model-keyed feature analyses
+}
+
+message FeatureSet {
+  string model_identifier = 1;           // Provenance: the producing model
+  CollectionData feature_data = 6;
+  map<string, double> similarities = 7;
+  // (plus feature_sample_rate/channel_count/bin_count/frame_count)
 }
 ```
 
 **Note:** The protobuf does NOT store file paths. File paths are resolved at runtime by matching identifiers against the file tree.
+
+### Feature provenance and backward compatibility
+
+`feature_sets` (field 21) is additive. The legacy fields 11 and 12–16 are left
+exactly where they are and are preserved verbatim on every round-trip;
+`AudioLibraryPersistence.encode`/`decode` is the single serialization point (also
+used by `ProtobufWaveDetailsStore`), encoding each `WaveFeatures` into a
+`FeatureSet` while writing the legacy fields from the legacy slot unchanged.
+
+A previous release reads only fields 11 and 12–16; proto3 forward compatibility
+means it parses a `WaveDetailData` carrying `feature_sets` without error and
+ignores them, and because the new code never overwrites the legacy fields, an
+older application keeps reading its own features unchanged. `encode` builds a
+*fresh* `WaveDetailData` rather than merging the original message, so when a
+previous release re-saves an item it drops the `feature_sets` it never loaded.
+This is acceptable: the keyed data is derived, recomputable feature data (the
+cost of the loss is recomputation on the next launch of the newer application),
+while the legacy unkeyed slot the old release understands survives intact.
 
 ## File Organization
 

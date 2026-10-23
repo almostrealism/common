@@ -1,0 +1,233 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.flowtree.api;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.controller.DailyAgentTime;
+import io.flowtree.controller.JobStatsStore;
+import io.flowtree.slack.SlackNotifier;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.io.File;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.file.Files;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * End-to-end tests for {@code GET /api/stats/daily}: jobs recorded in a real
+ * {@link JobStatsStore}, read back over HTTP from a live
+ * {@link FlowTreeApiEndpoint}, across workstreams and in the requested zone.
+ */
+public class DailyStatsEndpointTest extends TestSuiteBase {
+
+    /** JSON parser for response bodies. */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /** One hour in milliseconds. */
+    private static final long HOUR = 3_600_000L;
+
+    /** Live API endpoint under test. */
+    private FlowTreeApiEndpoint endpoint;
+    /** The store behind it. */
+    private JobStatsStore store;
+    /** Listening port assigned by NanoHTTPD. */
+    private int port;
+
+    /** Starts the endpoint on an ephemeral port with a fresh store. */
+    @Before
+    public void setUp() throws Exception {
+        File dir = Files.createTempDirectory("daily-stats").toFile();
+        dir.deleteOnExit();
+        store = new JobStatsStore(new File(dir, "stats").getAbsolutePath());
+        store.initialize();
+        endpoint = new FlowTreeApiEndpoint(0, new SlackNotifier(null));
+        endpoint.setStatsStore(store);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+        port = endpoint.getListeningPort();
+    }
+
+    /** Stops the endpoint and closes the store. */
+    @After
+    public void tearDown() {
+        if (endpoint != null) endpoint.stop();
+        if (store != null) store.close();
+    }
+
+    /** Records a finished job between two instants. */
+    private void finishedJob(String id, String workstream, String start, String end, double cost) {
+        store.recordJobStarted(id, workstream, id, Instant.parse(start));
+        store.recordJobCompleted(id, workstream, "SUCCESS", Instant.parse(end), id,
+                0, 0, cost, 1, null, 0, "success", false, 0, null, null, null, null);
+    }
+
+    /** Jobs from every workstream are summed per local day, and submitted-only jobs are ignored. */
+    @Test(timeout = 30000)
+    public void sumsEveryWorkstreamPerLocalDay() throws Exception {
+        // Oct 1, 09:00-12:00 and 10:00-11:00 Pacific, in two workstreams.
+        finishedJob("a", "ws-1", "2026-10-01T16:00:00Z", "2026-10-01T19:00:00Z", 1.0);
+        finishedJob("b", "ws-2", "2026-10-01T17:00:00Z", "2026-10-01T18:00:00Z", 0.5);
+        store.recordJobSubmitted("never-ran", "ws-1", "queued", "someone", null,
+                Instant.parse("2026-10-01T17:00:00Z"));
+
+        JsonNode body = get("/api/stats/daily?from=2026-10-01&to=2026-10-02&tz=America/Los_Angeles");
+        assertEquals("America/Los_Angeles", body.get("tz").asText());
+        JsonNode days = body.get("days");
+        assertEquals(2, days.size());
+        assertEquals("2026-10-01", days.get(0).get("date").asText());
+        assertEquals(4 * HOUR, days.get(0).get("wallClockMs").asLong());
+        assertEquals(2, days.get(0).get("jobCount").asInt());
+        assertEquals(1.5, days.get(0).get("costUsd").asDouble(), 1e-9);
+        assertEquals(0, days.get(1).get("wallClockMs").asLong());
+    }
+
+    /** The zone decides the day: the same job lands on different dates in UTC and Pacific time. */
+    @Test(timeout = 30000)
+    public void theZoneDecidesTheDay() throws Exception {
+        // 18:00-20:00 Pacific on Oct 1 is 01:00-03:00 UTC on Oct 2.
+        finishedJob("late", "ws-1", "2026-10-02T01:00:00Z", "2026-10-02T03:00:00Z", 0);
+
+        JsonNode utc = get("/api/stats/daily?from=2026-10-01&to=2026-10-02").get("days");
+        assertEquals(0, utc.get(0).get("wallClockMs").asLong());
+        assertEquals(2 * HOUR, utc.get(1).get("wallClockMs").asLong());
+
+        JsonNode la = get("/api/stats/daily?from=2026-10-01&to=2026-10-02&tz=America/Los_Angeles").get("days");
+        assertEquals(2 * HOUR, la.get(0).get("wallClockMs").asLong());
+        assertEquals(0, la.get(1).get("wallClockMs").asLong());
+    }
+
+    /** Bad dates, an unknown zone, a reversed or oversized range are each a 400. */
+    @Test(timeout = 30000)
+    public void rejectsBadParameters() throws Exception {
+        assertEquals(400, status("/api/stats/daily?from=yesterday&to=2026-10-02"));
+        assertEquals(400, status("/api/stats/daily?from=2026-10-01&to=2026-10-02&tz=Mars/Olympus"));
+        assertEquals(400, status("/api/stats/daily?from=2026-10-02&to=2026-10-01"));
+        assertEquals(400, status("/api/stats/daily?from=2024-01-01&to=2026-10-01"));
+    }
+
+    /**
+     * The range limit is inclusive at {@link DailyAgentTime#MAX_DAYS}: a single day and
+     * exactly that many days are answered in full, one day more is a 400, and an empty
+     * {@code tz} falls back to UTC.
+     */
+    @Test(timeout = 30000)
+    public void rangeLimitBoundaries() throws Exception {
+        JsonNode single = get("/api/stats/daily?from=2026-10-02&to=2026-10-02&tz=");
+        assertEquals("UTC", single.get("tz").asText());
+        assertEquals(1, single.get("days").size());
+        assertEquals("2026-10-02", single.get("days").get(0).get("date").asText());
+
+        JsonNode full = get("/api/stats/daily?from=2025-10-02&to=2026-10-02").get("days");
+        assertEquals(DailyAgentTime.MAX_DAYS, full.size());
+        assertEquals("2025-10-02", full.get(0).get("date").asText());
+        assertEquals("2026-10-02", full.get(DailyAgentTime.MAX_DAYS - 1).get("date").asText());
+
+        assertEquals(400, status("/api/stats/daily?from=2025-10-01&to=2026-10-02"));
+    }
+
+    /** A job that finished before the range and a job that started after it are both left out. */
+    @Test(timeout = 30000)
+    public void jobsOutsideTheRangeAreExcluded() throws Exception {
+        finishedJob("before", "ws-1", "2026-09-30T10:00:00Z", "2026-09-30T12:00:00Z", 1.0);
+        finishedJob("after", "ws-1", "2026-10-03T10:00:00Z", "2026-10-03T12:00:00Z", 1.0);
+        finishedJob("inside", "ws-1", "2026-10-01T10:00:00Z", "2026-10-01T11:00:00Z", 0.25);
+
+        JsonNode days = get("/api/stats/daily?from=2026-10-01&to=2026-10-02").get("days");
+        assertEquals(HOUR, days.get(0).get("wallClockMs").asLong());
+        assertEquals(1, days.get(0).get("jobCount").asInt());
+        assertEquals(0.25, days.get(0).get("costUsd").asDouble(), 1e-9);
+        assertEquals(0, days.get(1).get("wallClockMs").asLong());
+        assertEquals(0, days.get(1).get("jobCount").asInt());
+    }
+
+    /** A job still running is read from the store and reported as running time up to now. */
+    @Test(timeout = 30000)
+    public void aRunningJobIsReportedAsRunningTime() throws Exception {
+        Instant now = Instant.now();
+        store.recordJobStarted("live", "ws-1", "live", now.minusMillis(HOUR));
+        store.recordHeartbeat("live", now);
+
+        LocalDate today = now.atZone(ZoneOffset.UTC).toLocalDate();
+        JsonNode days = get("/api/stats/daily?from=" + today.minusDays(1) + "&to=" + today).get("days");
+        long running = days.get(0).get("runningMs").asLong() + days.get(1).get("runningMs").asLong();
+        assertTrue("runningMs=" + running, running >= HOUR && running < HOUR + 60_000L);
+        assertEquals(0, days.get(0).get("wallClockMs").asLong() + days.get(1).get("wallClockMs").asLong());
+    }
+
+    /** Without a stats store the route answers with a JSON error object, as {@code /api/stats} does. */
+    @Test(timeout = 30000)
+    public void answersWithAnErrorWhenStatsAreNotConfigured() throws Exception {
+        FlowTreeApiEndpoint bare = new FlowTreeApiEndpoint(0, new SlackNotifier(null));
+        bare.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL("http://localhost:"
+                    + bare.getListeningPort() + "/api/stats/daily?from=2026-10-01&to=2026-10-02").openConnection();
+            assertEquals(200, conn.getResponseCode());
+            try (InputStream in = conn.getInputStream()) {
+                assertEquals("Stats not configured", MAPPER.readTree(in).get("error").asText());
+            }
+        } finally {
+            bare.stop();
+        }
+    }
+
+    /** A missing date parameter is a 400. */
+    @Test(timeout = 30000)
+    public void rejectsMissingDates() throws Exception {
+        assertEquals(400, status("/api/stats/daily?to=2026-10-02"));
+        assertEquals(400, status("/api/stats/daily?from=2026-10-02"));
+    }
+
+    /** The weekly route still answers with the weekly shape. */
+    @Test(timeout = 30000)
+    public void theWeeklyRouteIsUnchanged() throws Exception {
+        JsonNode weekly = get("/api/stats");
+        assertTrue(weekly.has("thisWeek"));
+        assertTrue(weekly.has("lastWeek"));
+    }
+
+    /** GETs {@code path} and parses the JSON body. */
+    private JsonNode get(String path) throws Exception {
+        HttpURLConnection conn = open(path);
+        assertEquals(200, conn.getResponseCode());
+        try (InputStream in = conn.getInputStream()) {
+            return MAPPER.readTree(in);
+        }
+    }
+
+    /** GETs {@code path} and returns only the HTTP status. */
+    private int status(String path) throws Exception {
+        return open(path).getResponseCode();
+    }
+
+    /** Opens a GET connection to the endpoint. */
+    private HttpURLConnection open(String path) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL("http://localhost:" + port + path).openConnection();
+        conn.setRequestMethod("GET");
+        return conn;
+    }
+}

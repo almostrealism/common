@@ -119,7 +119,7 @@ public class IndexChild extends Sum<Integer> implements Index {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalLong max = parent.upperBound(context);
 		if (!max.isPresent()) return OptionalLong.empty();
 

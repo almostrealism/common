@@ -20,26 +20,33 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.layers.NormalizationType;
-import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
- * A T5Gemma text encoder built from the framework's attention and feed-forward primitives:
- * token ids become embeddings scaled by the square root of the hidden width, each layer adds
- * {@code postNorm(attention(preNorm(x)))} and {@code postNorm(feedForward(preNorm(x)))} to the
- * residual stream, and a final RMS norm closes the stack. Attention is bidirectional over the
- * whole padded sequence; padded keys are removed from every softmax through the attention mask.
+ * A T5Gemma text encoder: token ids become embeddings scaled by the square root of the hidden
+ * width, each layer adds {@code postNorm(attention(preNorm(x)))} and
+ * {@code postNorm(feedForward(preNorm(x)))} to the residual stream, and a final RMS norm closes the
+ * stack. Attention is bidirectional over the whole padded sequence; padded keys are removed from
+ * every softmax through the attention mask.
+ *
+ * <p>The structure of a layer is not assembled here: it is the {@code t5gemma_encoder_layer} of
+ * {@link #ENCODER_ASSET}, where the two norm-wrapped sub-layers and their residual connections are
+ * written out. This class reads each layer's weights from the dictionary, binds them with the masks
+ * and builds that layer once per layer; the token embedding before the layers and the final norm
+ * after them are built here.</p>
  *
  * <p>The weights follow the released encoder's key layout under an {@code encoder.} prefix, as
  * prepared by the T5Gemma extraction script: the query, key and value projections are fused into
@@ -53,6 +60,9 @@ import java.util.Set;
  * @see T5GemmaConfig
  */
 public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
+
+	/** The asset whose layers define one encoder layer and its two sub-layers. */
+	private static final String ENCODER_ASSET = "/pdsl/t5gemma_encoder.pdsl";
 
 	/** Every encoder is compiled for one prompt at a time. */
 	private static final int BATCH = 1;
@@ -201,7 +211,9 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	}
 
 	/**
-	 * Assembles the encoder graph over the token id input.
+	 * Assembles the encoder graph over the token id input: the scaled token embedding, one
+	 * {@link #encoderLayer encoder layer} of {@link #ENCODER_ASSET} per configured layer, and the
+	 * final RMS norm.
 	 *
 	 * @return the encoder block
 	 */
@@ -215,9 +227,7 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 
 		PackedCollection invFreq = weight("encoder.rotary.inv_freq", config.getHeadDim() / 2);
 		for (int i = 0; i < config.getLayers(); i++) {
-			String prefix = "encoder.layers." + i;
-			main.add(residual(attentionBranch(blockShape, prefix, invFreq)));
-			main.add(residual(feedForwardBranch(blockShape, prefix)));
+			main.add(encoderLayer(blockShape, "encoder.layers." + i, invFreq));
 		}
 
 		main.add(rmsnorm(blockShape, weight("encoder.norm.weight", hidden), config.getNormEpsilon()));
@@ -246,7 +256,27 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	}
 
 	/**
-	 * The attention residual branch: RMS norm, masked soft-capped self-attention, RMS norm.
+	 * One encoder layer, {@code x + norm(attention(norm(x)))} then {@code x + norm(ffn(norm(x)))}: the
+	 * {@code t5gemma_encoder_layer} of {@link #ENCODER_ASSET}, in its soft-capped form when the
+	 * configuration soft-caps the attention logits, bound with the weights of the layer at
+	 * {@code prefix}.
+	 *
+	 * @param blockShape the hidden state shape
+	 * @param prefix     the layer's weight key prefix
+	 * @param invFreq    the rotary frequencies
+	 * @return the layer
+	 */
+	Block encoderLayer(TraversalPolicy blockShape, String prefix, PackedCollection invFreq) {
+		Map<String, Object> arguments = selfAttentionArguments(blockShape, prefix, invFreq);
+		arguments.putAll(feedForwardArguments(blockShape, prefix));
+		return buildLayer("t5gemma_encoder_layer" + attentionLogits(), blockShape, arguments);
+	}
+
+	/**
+	 * The attention residual branch — RMS norm, masked self-attention, RMS norm — on its own: the
+	 * {@code t5gemma_self_attention} sub-layer of {@link #ENCODER_ASSET}, in its soft-capped form when
+	 * the configuration soft-caps the attention logits, without the residual connection
+	 * {@link #encoderLayer} adds around it.
 	 *
 	 * @param blockShape the hidden state shape
 	 * @param prefix     the layer's weight key prefix
@@ -254,36 +284,107 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	 * @return the branch
 	 */
 	Block attentionBranch(TraversalPolicy blockShape, String prefix, PackedCollection invFreq) {
-		int hidden = config.getHiddenSize();
-		SequentialBlock branch = new SequentialBlock(blockShape);
-		branch.add(rmsnorm(blockShape, weight(prefix + ".pre_self_attn_layernorm.weight", hidden), config.getNormEpsilon()));
-		branch.add(sequenceAttention(BATCH, config.getMaxLength(), hidden, config.getHeads(),
-				weight(prefix + ".self_attn.to_qkv.weight", 3 * hidden, hidden),
-				weight(prefix + ".self_attn.o_proj.weight", hidden, hidden),
-				null, null, null, null, invFreq, ProjectionFactory.dense(),
-				NormalizationType.RMS, null, cp(attentionMask), config.getAttentionSoftcap()));
-		branch.add(rmsnorm(blockShape, weight(prefix + ".post_self_attn_layernorm.weight", hidden), config.getNormEpsilon()));
-		return branch;
+		return buildLayer("t5gemma_self_attention" + attentionLogits(), blockShape,
+				selfAttentionArguments(blockShape, prefix, invFreq));
 	}
 
 	/**
-	 * The feed-forward residual branch: RMS norm, GELU-gated feed-forward, RMS norm.
+	 * The feed-forward residual branch — RMS norm, GELU-gated feed-forward, RMS norm — on its own: the
+	 * {@code t5gemma_feed_forward} sub-layer of {@link #ENCODER_ASSET}, without the residual connection
+	 * {@link #encoderLayer} adds around it.
 	 *
 	 * @param blockShape the hidden state shape
 	 * @param prefix     the layer's weight key prefix
 	 * @return the branch
 	 */
 	Block feedForwardBranch(TraversalPolicy blockShape, String prefix) {
+		return buildLayer("t5gemma_feed_forward", blockShape, feedForwardArguments(blockShape, prefix));
+	}
+
+	/**
+	 * The arguments of the self-attention sub-layer of the layer at {@code prefix}: its two norms and
+	 * two projections, the head geometry, the rotary frequencies, the soft-cap, and the masks — the
+	 * prompt mask filled by {@link #loadPrompt(long[])} as the key mask, and an all-ones value mask,
+	 * because the encoder leaves the values of padded positions as they are.
+	 *
+	 * @param blockShape the hidden state shape
+	 * @param prefix     the layer's weight key prefix
+	 * @param invFreq    the rotary frequencies
+	 * @return the arguments
+	 */
+	private Map<String, Object> selfAttentionArguments(TraversalPolicy blockShape, String prefix,
+													   PackedCollection invFreq) {
+		int hidden = config.getHiddenSize();
+		Map<String, Object> arguments = layerArguments(blockShape);
+		arguments.put("heads", config.getHeads());
+		arguments.put("head_dim", config.getHeadDim());
+		arguments.put("pre_self_attn_layernorm", weight(prefix + ".pre_self_attn_layernorm.weight", hidden));
+		arguments.put("to_qkv", weight(prefix + ".self_attn.to_qkv.weight", 3 * hidden, hidden));
+		arguments.put("o_proj", weight(prefix + ".self_attn.o_proj.weight", hidden, hidden));
+		arguments.put("post_self_attn_layernorm", weight(prefix + ".post_self_attn_layernorm.weight", hidden));
+		arguments.put("inv_freq", invFreq);
+		arguments.put("padding_mask", everyPositionValid(BATCH, config.getMaxLength()));
+		arguments.put("key_mask", cp(attentionMask));
+		arguments.put("softcap", config.getAttentionSoftcap());
+		return arguments;
+	}
+
+	/**
+	 * The arguments of the feed-forward sub-layer of the layer at {@code prefix}: its two norms, the
+	 * fused linear and gate projection, the down projection and the inner width.
+	 *
+	 * @param blockShape the hidden state shape
+	 * @param prefix     the layer's weight key prefix
+	 * @return the arguments
+	 */
+	private Map<String, Object> feedForwardArguments(TraversalPolicy blockShape, String prefix) {
 		int hidden = config.getHiddenSize();
 		int inner = config.getIntermediateSize();
-		SequentialBlock branch = new SequentialBlock(blockShape);
-		branch.add(gatedLinearFeedForward(blockShape, NormalizationType.RMS,
-				weight(prefix + ".pre_feedforward_layernorm.weight", hidden), null,
-				weight(prefix + ".mlp.proj.weight", 2 * inner, hidden), null,
-				weight(prefix + ".mlp.down_proj.weight", hidden, inner), null,
-				null, null, gelu(), ProjectionFactory.dense()));
-		branch.add(rmsnorm(blockShape, weight(prefix + ".post_feedforward_layernorm.weight", hidden), config.getNormEpsilon()));
-		return branch;
+		Map<String, Object> arguments = layerArguments(blockShape);
+		arguments.put("inner_dim", inner);
+		arguments.put("pre_feedforward_layernorm", weight(prefix + ".pre_feedforward_layernorm.weight", hidden));
+		arguments.put("mlp_proj", weight(prefix + ".mlp.proj.weight", 2 * inner, hidden));
+		arguments.put("down_proj", weight(prefix + ".mlp.down_proj.weight", hidden, inner));
+		arguments.put("post_feedforward_layernorm", weight(prefix + ".post_feedforward_layernorm.weight", hidden));
+		return arguments;
+	}
+
+	/**
+	 * The arguments every layer of {@link #ENCODER_ASSET} takes: the batch and sequence extents of the
+	 * hidden states, and the epsilon of every RMS norm.
+	 *
+	 * @param blockShape the hidden state shape, {@code [batch, maxLength, hiddenSize]}
+	 * @return the arguments, to be completed with the layer's own
+	 */
+	private Map<String, Object> layerArguments(TraversalPolicy blockShape) {
+		Map<String, Object> arguments = new HashMap<>();
+		arguments.put("batch", blockShape.length(0));
+		arguments.put("seq_len", blockShape.length(1));
+		arguments.put("epsilon", config.getNormEpsilon());
+		return arguments;
+	}
+
+	/**
+	 * Names the attention logits of this configuration in the layer names of {@link #ENCODER_ASSET}:
+	 * {@code _softcapped} when the configuration soft-caps them, nothing when it does not.
+	 *
+	 * @return the layer name suffix
+	 */
+	private String attentionLogits() {
+		return config.hasAttentionSoftcap() ? "_softcapped" : "";
+	}
+
+	/**
+	 * Builds a layer of {@link #ENCODER_ASSET} for the hidden state shape.
+	 *
+	 * @param layer      the layer name
+	 * @param blockShape the hidden state shape
+	 * @param arguments  the layer's arguments
+	 * @return the layer
+	 */
+	private Block buildLayer(String layer, TraversalPolicy blockShape, Map<String, Object> arguments) {
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(ENCODER_ASSET), layer, blockShape, arguments);
 	}
 
 	/**

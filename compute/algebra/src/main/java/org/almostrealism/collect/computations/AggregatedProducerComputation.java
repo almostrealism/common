@@ -26,7 +26,6 @@ import io.almostrealism.compute.ParallelProcessContext;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.StaticReference;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelIndex;
@@ -145,7 +144,7 @@ import java.util.function.BiFunction;
  *
  * @author Michael Murray
  */
-public class AggregatedProducerComputation extends TraversableRepeatedProducerComputation {
+public abstract class AggregatedProducerComputation extends TraversableRepeatedProducerComputation {
 	/**
 	 * Enables efficient gradient computation for aggregations using transitive delta propagation.
 	 * When true, {@link #delta(Producer)} computes gradients by distributing them through
@@ -236,7 +235,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	 * @see CollectionSumComputation
 	 * @see CollectionMaxComputation
 	 */
-	public AggregatedProducerComputation(String name, TraversalPolicy shape, int count,
+	protected AggregatedProducerComputation(String name, TraversalPolicy shape, int count,
 										 BiFunction<TraversableExpression[], Expression, Expression> initial,
 										 BiFunction<Expression, Expression, Expression> expression,
 										 Producer<PackedCollection>... arguments) {
@@ -257,7 +256,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	 *                    a direct memory access pattern when applicable
 	 * @param arguments The input {@link Producer}s providing data to aggregate
 	 */
-	public AggregatedProducerComputation(String name, TraversalPolicy shape, int count,
+	protected AggregatedProducerComputation(String name, TraversalPolicy shape, int count,
 										 BiFunction<TraversableExpression[], Expression, Expression> initial,
 										 BiFunction<Expression, Expression, Expression> expression,
 										 boolean replaceLoop,
@@ -299,28 +298,23 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	 *
 	 * @param replaceLoop {@code true} to enable loop replacement, {@code false} to use standard iteration
 	 * @return This computation when the setting already matches, otherwise a new
-	 *         aggregation over the same functions and inputs
+	 *         aggregation of the same concrete type over the same inputs
 	 *
 	 * @see #prepareScope(ArgumentProvider, KernelStructureContext)
 	 */
-	public AggregatedProducerComputation withReplaceLoop(boolean replaceLoop) {
-		if (this.replaceLoop == replaceLoop) return this;
-
-		return new AggregatedProducerComputation(getName(), getShape(), count,
-				initial, expression, replaceLoop,
-				getInputs().stream().skip(1).toArray(Producer[]::new));
-	}
+	public abstract AggregatedProducerComputation withReplaceLoop(boolean replaceLoop);
 
 	/**
 	 * Indicates whether signature generation is supported for this aggregation.
 	 * Signatures are used for caching and deduplication of computations.
 	 *
 	 * <p>The signature produced by {@link #signature()} captures the aggregation
-	 * state that determines the generated kernel: the iteration count, the loop
-	 * replacement setting, and the structure of the initial and combining
-	 * functions (rendered against placeholder references).</p>
+	 * state that determines the generated kernel: the iteration count and the loop
+	 * replacement setting, together with the concrete class (appended by
+	 * {@link RepeatedProducerComputation#signature()}) that fixes the initial and
+	 * combining behaviour.</p>
 	 *
-	 * @return Always {@code true} for base aggregated computations
+	 * @return Always {@code true} for aggregated computations
 	 */
 	protected boolean isSignatureSupported() { return true; }
 
@@ -350,11 +344,8 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 			inputArg = getCollectionArgumentVariable(1);
 			if (inputArg == null) return;
 
-			row = new DefaultIndex(getVariablePrefix() + "_g");
-			row.setLimit(getShape().getCountLong());
-
-			ref = new DefaultIndex(getVariablePrefix() + "_i");
-			getIndexLimit().ifPresent(ref::setLimit);
+			row = new DefaultIndex(getVariablePrefix() + "_g", getShape().getCountLong());
+			ref = new DefaultIndex(getVariablePrefix() + "_i", getIndexLimit().getAsInt());
 
 			Expression index = Index.child(row, ref);
 			uniqueOffset = inputArg.uniqueNonZeroOffset(row, ref, index);
@@ -497,6 +488,22 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		return ComputableProcessContext.of(ctx, this, count);
 	}
 
+	/**
+	 * Computes the derivative of this aggregation with respect to the target.
+	 *
+	 * <p>When transitive-delta propagation applies, the enumerated Jacobian groups are
+	 * reduced by a named {@link CollectionSumComputation} rather than a self-constructed
+	 * aggregation. This is correct for every aggregation that reaches this branch because
+	 * they are all additive: {@link CollectionSumComputation} and
+	 * {@link org.almostrealism.algebra.computations.LoopedWeightedSumComputation} combine
+	 * with addition, while {@link CollectionMaxComputation} overrides {@code deltaDependent}
+	 * and routes through its selection, so it never reaches here. The sum reproduces the
+	 * output shape ({@code shape(delta).replace(shape(1))}) and iteration count (the delta's
+	 * per-group size, which equals {@code count}) that a raw aggregation would have had.</p>
+	 *
+	 * @param target the {@link Producer} to differentiate with respect to
+	 * @return a {@link CollectionProducer} computing the derivative
+	 */
 	@Override
 	protected CollectionProducer deltaMatrix(Producer<?> target) {
 		CollectionProducer delta;
@@ -515,8 +522,9 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 			}
 
 			delta = delta.enumerate(1, count).traverse(2);
-			return new AggregatedProducerComputation(getName(), shape(delta).replace(shape(1)),
-						count, initial, expression, replaceLoop, delta)
+
+			// Every aggregation reaching this branch is additive, so the reduction is a named sum
+			return new CollectionSumComputation(shape(delta), delta)
 					.reshape(getShape().append(shape(target)));
 		} else {
 			delta = super.deltaMatrix(target);
@@ -533,45 +541,17 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	}
 
 	@Override
-	public AggregatedProducerComputation generate(List<Process<?, ?>> children) {
-		return new AggregatedProducerComputation(getName(), getShape(),
-				count, initial, expression, replaceLoop,
-				children.stream().skip(1).toArray(Producer[]::new));
-	}
-
-	/**
-	 * Renders the structural identity of the aggregation functions. The
-	 * combining function is applied to opaque placeholder references, and the
-	 * initial function to placeholder argument expressions, so two aggregations
-	 * whose functions build the same expression tree render identically, while
-	 * different combining functions (for example sum and product) render
-	 * differently even when they share a name and shape.
-	 *
-	 * @return The rendered expression structure
-	 */
-	protected String expressionSignature() {
-		Expression left = new StaticReference(Double.class, "signatureLeft");
-		Expression right = new StaticReference(Double.class, "signatureRight");
-		String combined = expression.apply(left, right)
-				.getExpression(Expression.defaultLanguage());
-
-		TraversableExpression args[] = new TraversableExpression[getInputs().size()];
-		for (int i = 0; i < args.length; i++) {
-			String name = "signatureArgument" + i;
-			args[i] = CollectionExpression.create(getShape(),
-					index -> new StaticReference(Double.class, name));
-		}
-
-		String start = initial.apply(args, e(0))
-				.getExpression(Expression.defaultLanguage());
-		return start + ";" + combined;
-	}
+	public abstract AggregatedProducerComputation generate(List<Process<?, ?>> children);
 
 	/**
 	 * Extends the standard computation signature with the aggregation state
-	 * that determines the generated kernel: the iteration count, the loop
-	 * replacement setting, and the structural identity of the initial and
-	 * combining functions.
+	 * that determines the generated kernel: the iteration count and the loop
+	 * replacement setting. The concrete class — which fixes the initial and
+	 * combining behaviour, since the base is abstract and every subclass defines
+	 * its own loop body — is already appended by
+	 * {@link RepeatedProducerComputation#signature()}, so two aggregations that
+	 * share a name and shape but combine values differently (a different class)
+	 * never collide.
 	 *
 	 * @return The signature string, or null when the base signature is
 	 *         unavailable or the aggregation state has not been assigned yet
@@ -588,7 +568,6 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		if (signature == null) return null;
 
 		return signature + "{count:" + count +
-				",replaceLoop:" + replaceLoop +
-				",functions:" + expressionSignature() + "}";
+				",replaceLoop:" + replaceLoop + "}";
 	}
 }

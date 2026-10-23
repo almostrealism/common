@@ -28,7 +28,8 @@ import io.flowtree.jobs.agent.PhaseConfigBundle;
  * {@link CodingAgentJob} itself is not weighed down by encode/decode
  * boilerplate. State held by the job's collaborators is encoded by the
  * collaborator that owns it: {@link RestartGovernor} carries the job-wide
- * ceilings, {@link PostCompletionConfig} the post-completion command, and
+ * ceilings, {@link PostCompletionConfig} the post-completion command,
+ * {@link EnforceChangesConfig} the change requirement and its re-run cap, and
  * {@link PhaseRunnerConfig} the runner identity and
  * {@link PhaseConfigBundle}. Inherited fields from {@link GitManagedJob} are
  * encoded/decoded by the parent.</p>
@@ -40,7 +41,7 @@ import io.flowtree.jobs.agent.PhaseConfigBundle;
  */
 final class CodingAgentJobCodec {
 
-    /** Prevents instantiation; this class only exposes static helpers. */
+    /** Prevents instantiation; this class only exposes its static encode and decode entry points. */
     private CodingAgentJobCodec() {
     }
 
@@ -74,7 +75,6 @@ final class CodingAgentJobCodec {
             sb.append("::planDoc:=").append(GitManagedJob.base64Encode(job.getPlanningDocument()));
         }
         sb.append("::protectTests:=").append(job.isProtectTestFiles());
-        sb.append("::enforceChanges:=").append(job.isEnforceChanges());
         // dispatchCapable defaults to false; emit only when set so the wire
         // stays minimal. Without this key the flag is dropped on any
         // encode/decode round-trip (e.g. dispatch to a remote agent node),
@@ -100,8 +100,10 @@ final class CodingAgentJobCodec {
         if (job.isEnforceOrganizationalPlacement()) {
             sb.append("::enforceOrgPlacement:=true");
         }
-        if (job.isObjectOrientedReviewEnabled()) {
-            sb.append("::objectOrientedReviewEnabled:=true");
+        // objectOrientedReviewEnabled defaults to TRUE; emit only when false so a
+        // job that switched it off survives the wire instead of decoding to the default.
+        if (!job.isObjectOrientedReviewEnabled()) {
+            sb.append("::objectOrientedReviewEnabled:=false");
         }
         if (job.isUseTmux()) {
             sb.append("::useTmux:=true");
@@ -174,9 +176,6 @@ final class CodingAgentJobCodec {
             case "protectTests":
                 job.setProtectTestFiles(Boolean.parseBoolean(value));
                 return true;
-            case "enforceChanges":
-                job.setEnforceChanges(Boolean.parseBoolean(value));
-                return true;
             case "dispatchCapable":
                 job.setDispatchCapable(Boolean.parseBoolean(value));
                 return true;
@@ -187,7 +186,7 @@ final class CodingAgentJobCodec {
                 job.setDeduplicationMode(value);
                 return true;
             case "maxDedupPasses":
-                job.setMaxDeduplicationPasses(parsePositiveOrDefault(value, CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES));
+                job.setMaxDeduplicationPasses(WireConfig.parsePositiveOrDefault(value, CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES));
                 return true;
             case "enforceMavenDeps":
                 job.setEnforceMavenDependencies(Boolean.parseBoolean(value));
@@ -220,7 +219,7 @@ final class CodingAgentJobCodec {
                 job.setSensitiveFileBypassSignature(GitManagedJob.base64Decode(value));
                 return true;
             case "maxReviewPasses":
-                job.setMaxReviewPasses(parsePositiveOrDefault(value, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES));
+                job.setMaxReviewPasses(WireConfig.parsePositiveOrDefault(value, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES));
                 return true;
             case "runner":
                 // Legacy single-runner key. Honored when no defaultRunner/runners
@@ -244,26 +243,6 @@ final class CodingAgentJobCodec {
                 return true;
             default:
                 return false;
-        }
-    }
-
-    /**
-     * Parses {@code value} as a positive {@code int}; returns {@code fallback}
-     * when the value is {@code null}, empty, unparseable, or not positive. Used
-     * by capped-pass settings whose wire representations must round-trip through
-     * legacy encodings that may contain absent or invalid integers.
-     *
-     * @param value    the wire-format value (may be {@code null} or empty)
-     * @param fallback the default returned on parse failure or non-positive input
-     * @return the parsed positive int, or {@code fallback}
-     */
-    static int parsePositiveOrDefault(String value, int fallback) {
-        if (value == null || value.isEmpty()) return fallback;
-        try {
-            int parsed = Integer.parseInt(value);
-            return parsed > 0 ? parsed : fallback;
-        } catch (NumberFormatException e) {
-            return fallback;
         }
     }
 }

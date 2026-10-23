@@ -54,37 +54,31 @@ import java.util.function.Supplier;
  *       perform in each iteration step</li>
  * </ul>
  * 
- * <p><strong>Usage Examples:</strong>
- * 
- * <p>Basic repeated computation with fixed iteration count:
+ * <p>This class is {@code abstract}: a concrete subclass supplies the initial, condition
+ * and expression behaviour through the protected constructors (or the {@code setInitial}/
+ * {@code setCondition} hooks) so that the behaviour of every instance is fixed by its class,
+ * which, together with its name and inputs, is what its {@link #signature()} identifies.
+ *
+ * <p><strong>Subclass Implementation Pattern:</strong>
  * <pre>{@code
- * // Create a computation that accumulates values
- * RepeatedProducerComputation<PackedCollection> accumulator = 
- *     new RepeatedProducerComputation<>(
- *         "accumulate",
- *         shape(10),  // Process 10 elements
- *         (args, index) -> e(0.0),  // Initialize to zero
- *         (args, index) -> index.lessThan(e(5)),  // Continue for 5 iterations
- *         (args, index) -> args[0].valueAt(index).add(e(1.0)),  // Add 1 each iteration
- *         inputProducer
- *     );
+ * // A concrete repeated computation that accumulates values
+ * public class AccumulateComputation extends RepeatedProducerComputation {
+ *     public AccumulateComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
+ *         super("accumulate", shape,
+ *             (args, index) -> e(0.0),                      // Initialize to zero
+ *             (args, index) -> index.lessThan(e(5)),        // Continue for 5 iterations
+ *             (args, index) -> args[0].valueAt(index).add(e(1.0)),  // Add 1 each iteration
+ *             input);
+ *     }
+ *
+ *     @Override
+ *     public AccumulateComputation generate(List<Process<?, ?>> children) {
+ *         return new AccumulateComputation(getShape(),
+ *             (Producer<PackedCollection>) children.get(1));
+ *     }
+ * }
  * }</pre>
- * 
- * <p>Using with memory optimization:
- * <pre>{@code
- * // Create a computation with specific memory length for optimization
- * RepeatedProducerComputation<PackedCollection> optimized = 
- *     new RepeatedProducerComputation<>(
- *         "optimizedSum",
- *         shape(100),
- *         4,  // Process 4 elements per kernel thread
- *         (args, index) -> args[0].valueAt(index),  // Initialize with input
- *         (args, index) -> index.lessThan(e(25)),   // 25 iterations
- *         (args, index) -> args[0].valueAt(index).multiply(e(2.0)),  // Double each iteration
- *         dataProducer
- *     );
- * }</pre>
- * 
+ *
  * <p><strong>Memory Management:</strong>
  * The {@code memLength} parameter controls how many elements are processed by each kernel thread,
  * which can significantly impact performance. A higher value reduces the number of kernel launches
@@ -102,7 +96,7 @@ import java.util.function.Supplier;
  *
  * @author Michael Murray
  */
-public class RepeatedProducerComputation extends CollectionProducerComputationBase {
+public abstract class RepeatedProducerComputation extends CollectionProducerComputationBase {
 
 	/** Function that defines how to initialize values at the start of computation. */
 	protected BiFunction<TraversableExpression[], Expression, Expression> initial;
@@ -137,7 +131,7 @@ public class RepeatedProducerComputation extends CollectionProducerComputationBa
 	 * @see #RepeatedProducerComputation(String, TraversalPolicy, int, BiFunction, BiFunction, BiFunction, Producer[])
 	 */
 	@SafeVarargs
-	public RepeatedProducerComputation(String name, TraversalPolicy shape,
+	protected RepeatedProducerComputation(String name, TraversalPolicy shape,
 									   BiFunction<TraversableExpression[], Expression, Expression> initial,
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
@@ -166,7 +160,7 @@ public class RepeatedProducerComputation extends CollectionProducerComputationBa
 	 * @param args Variable number of input {@link Supplier}s providing evaluable collections
 	 */
 	@SafeVarargs
-	public RepeatedProducerComputation(String name, TraversalPolicy shape, int size,
+	protected RepeatedProducerComputation(String name, TraversalPolicy shape, int size,
 									   BiFunction<TraversableExpression[], Expression, Expression> initial,
 									   BiFunction<TraversableExpression[], Expression, Expression> condition,
 									   BiFunction<TraversableExpression[], Expression, Expression> expression,
@@ -274,8 +268,8 @@ public class RepeatedProducerComputation extends CollectionProducerComputationBa
 		String i = getVariablePrefix() + "_i";
 		scope.setIndex(new Variable<>(i));
 
-		DefaultIndex ref = new DefaultIndex(i);
-		getIndexLimit().ifPresent(ref::setLimit);
+		OptionalInt limit = getIndexLimit();
+		DefaultIndex ref = limit.isPresent() ? new DefaultIndex(i, limit.getAsInt()) : new DefaultIndex(i);
 		scope.setCondition(condition.apply(getTraversableArguments(ref), ref));
 
 		Expression index = new KernelIndex(context).divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
@@ -363,14 +357,30 @@ public class RepeatedProducerComputation extends CollectionProducerComputationBa
 	 * but uses the provided child processes as inputs.
 	 * 
 	 * @param children List of {@link Process} instances to use as inputs for the new computation
-	 * @return A new {@link RepeatedProducerComputation} instance with the same configuration
-	 *         but updated inputs
+	 * @return A new {@link RepeatedProducerComputation} instance of the same class with the
+	 *         same configuration but updated inputs
 	 */
 	@Override
-	public RepeatedProducerComputation generate(List<Process<?, ?>> children) {
-		return new RepeatedProducerComputation(
-				null, getShape(), getMemLength(),
-				initial, condition, expression,
-				children.stream().skip(1).toArray(Producer[]::new));
+	public abstract RepeatedProducerComputation generate(List<Process<?, ?>> children);
+
+	/**
+	 * Extends the standard computation signature with the concrete class of this
+	 * computation. The behaviour of every instance is fixed by its class, but the parent
+	 * signature captures only the name, inputs, and shape. Appending the class ensures that
+	 * two repeated computations which share a name, shape, and inputs but are different
+	 * classes — and therefore generate different loop bodies — produce different signatures
+	 * rather than sharing a cached kernel through the signature-keyed instruction cache.
+	 * {@code getClass().getName()} is dynamic, so every concrete subclass contributes its own
+	 * name. Subclasses whose behaviour is further parameterised (for example by a configuration
+	 * flag) extend this with that state.
+	 *
+	 * @return the signature including the concrete class, or null when the parent signature
+	 *         is unavailable
+	 */
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+		return signature + "{" + getClass().getName() + "}";
 	}
 }

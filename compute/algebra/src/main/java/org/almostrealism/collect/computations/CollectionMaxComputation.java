@@ -154,6 +154,21 @@ public class CollectionMaxComputation extends AggregatedProducerComputation {
 	}
 
 	/**
+	 * Returns this computation unchanged when the setting already matches. A max reduction
+	 * is constructed without loop replacement and has no reason to toggle it, so a change to
+	 * the setting is not supported here (matching the weighted-sum precedent).
+	 *
+	 * @param replaceLoop the requested loop replacement setting
+	 * @return this computation
+	 * @throws UnsupportedOperationException if the setting differs from the current one
+	 */
+	@Override
+	public CollectionMaxComputation withReplaceLoop(boolean replaceLoop) {
+		if (isReplaceLoop() == replaceLoop) return this;
+		throw new UnsupportedOperationException();
+	}
+
+	/**
 	 * Selects, from each group of {@code values}, the element at the position of the
 	 * maximum of the same group of this computation's input. Applied to the input itself
 	 * this is equal in value to this computation; applied to the derivative of the input it

@@ -126,8 +126,8 @@ public class CodingAgentJob extends GitManagedJob {
     private Map<String, String> agentEnv;
     /** Optional planning document text injected into the Claude Code system prompt. */
     private String planningDocument;
-    /** Whether the job must produce at least one staged file change to succeed. */
-    private boolean enforceChanges;
+    /** Whether the job must produce a change, and the whole-job cap on re-runs when it does not. */
+    private final EnforceChangesConfig enforceChanges = new EnforceChangesConfig();
     /** Number of times enforcement has been re-attempted after an empty commit. */
     private int enforcementAttempt;
     /** Enforcement rule name for the current correction session; {@code null} during primary runs. */
@@ -167,8 +167,8 @@ public class CodingAgentJob extends GitManagedJob {
      * {@link #setEnforceOrganizationalPlacement(boolean)}.
      */
     private boolean enforceOrganizationalPlacement = false;
-    /** When {@code true} (and review is enabled), {@link ObjectOrientedDesignRule} runs; default {@code false}. */
-    private boolean objectOrientedReviewEnabled = false;
+    /** When {@code true} (the default, and review is enabled), {@link ObjectOrientedDesignRule} runs. */
+    private boolean objectOrientedReviewEnabled = true;
 
     /** When {@code true} (the default), a second-pass review session runs after primary work. */
     private boolean reviewEnabled = true;
@@ -495,26 +495,26 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Returns whether this job enforces that code changes must be produced.
-     *
-     * <p>When enabled, the instruction prompt replaces the permissive
-     * "non-code requests" and "justifying no code changes" sections with
-     * a strict message requiring code changes. Used by the enforcement
-     * loop in {@link #doWork()} to prevent agents from dismissing test
-     * failures without investigation.</p>
+     * Returns whether this job must produce a change. When on, the instruction
+     * prompt carries a strict "changes are required" section in place of the
+     * permissive no-change sections, {@link EnforceChangesRule} re-runs a run that
+     * left none (up to {@link #getMaxEnforceChangesRetries()}), and a job that still
+     * commits nothing is reported {@link JobCompletionEvent.Status#DEGRADED}.
      */
-    public boolean isEnforceChanges() {
-        return enforceChanges;
-    }
+    public boolean isEnforceChanges() { return enforceChanges.isEnabled(); }
+    /** Sets whether this job must produce a change; {@code true} to require one. */
+    public void setEnforceChanges(boolean enforceChanges) { this.enforceChanges.setEnabled(enforceChanges); }
+
+    /** Returns the whole-job cap on enforce-changes re-runs; defaults to {@link #DEFAULT_MAX_RULE_RETRIES}. */
+    public int getMaxEnforceChangesRetries() { return enforceChanges.getMaxRetries(); }
+    /** Sets the whole-job cap on enforce-changes re-runs; 0 means report an empty result without re-running. */
+    public void setMaxEnforceChangesRetries(int maxRetries) { enforceChanges.setMaxRetries(maxRetries); }
 
     /**
-     * Sets whether this job enforces code changes.
-     *
-     * @param enforceChanges true to require code changes for completion
+     * Returns this job's {@link EnforceChangesConfig}, populated by
+     * {@link CodingAgentJobFactory} and read by {@link EnforcementRunner}.
      */
-    public void setEnforceChanges(boolean enforceChanges) {
-        this.enforceChanges = enforceChanges;
-    }
+    EnforceChangesConfig enforceChanges() { return enforceChanges; }
 
     /**
      * Returns the current enforcement attempt counter.
@@ -941,8 +941,9 @@ public class CodingAgentJob extends GitManagedJob {
                 .setPrompt(prompt)
                 .setWorkstreamUrl(getWorkstreamUrl())
                 .setProtectTestFiles(isProtectTestFiles())
-                .setEnforceChanges(enforceChanges)
+                .setEnforceChanges(enforceChanges.isEnabled())
                 .setEnforcementAttempt(enforcementAttempt)
+                .setMaxEnforceChangesRetries(enforceChanges.getMaxRetries())
                 .setCorrectionSession(inRuleCorrection)
                 .setBaseBranch(getBaseBranch())
                 .setTargetBranch(getTargetBranch())
@@ -1546,6 +1547,7 @@ public class CodingAgentJob extends GitManagedJob {
         CodingAgentJobCodec.appendEncoded(sb, this);
         restartGovernor.appendEncoded(sb);
         postCompletion.appendEncoded(sb);
+        enforceChanges.appendEncoded(sb);
         phaseRunnerConfig.appendEncoded(sb);
         return sb.toString();
     }
@@ -1554,6 +1556,7 @@ public class CodingAgentJob extends GitManagedJob {
     public void set(String key, String value) {
         if (!restartGovernor.applySetting(key, value)
                 && !postCompletion.applySetting(key, value)
+                && !enforceChanges.applySetting(key, value)
                 && !CodingAgentJobCodec.applySetting(this, key, value)) {
             super.set(key, value);
         }

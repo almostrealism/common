@@ -55,7 +55,7 @@ public class Exp extends Expression<Double> {
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalLong v = getChildren().get(0).upperBound(context);
 		if (v.isPresent()) {
 			return OptionalLong.of((long) Math.ceil(Math.exp(v.getAsLong())));

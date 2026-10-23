@@ -28,7 +28,7 @@
  *     accum_blocks:
  *       attention_map(Q1 = 0, K1 = 1, V = 3)          [batch, heads, seq_len, head_dim]
  *       attention_map(Q2 = 4, K2 = 2, V = 3)          [batch, heads, seq_len, head_dim]
- *         scale(lambda, 1)                            each head's map times its own λ
+ *         scale(lambda, 1, λq1, λk1, λq2, λk2)        each head's map times its own λ (its vectors its weights)
  *         scale(-1)                                   negated, so that summing it subtracts it
  *     merge_heads                                     map1 − λ ⊙ map2, heads joined [batch, seq_len, dim]
  *     out_projection                                  [batch, seq_len, dim]
@@ -51,9 +51,13 @@
  * masking). A caller without padding binds all-ones masks, which leave every value and score unchanged.
  *
  * lambda holds one weight per head, [batch, heads]: how much of each head's second map is subtracted.
- * It is applied with scale(lambda, 1), which reads lambda as a constant factor; when lambda is a learned
- * re-parameterization its parameters therefore receive no gradient (a TODO(review) marks the stage in
- * each of the three layers).
+ * It is applied with scale(lambda, 1, lambda_q1, lambda_k1, lambda_q2, lambda_k2): lambda is the forward
+ * factor, and the four vectors it is built from (lambda = exp(lambda_q1 · lambda_k1) −
+ * exp(lambda_q2 · lambda_k2) + lambda_init, as DifferentialAttentionFeatures.differentialLambda computes
+ * it) are registered as the stage's weights, so a backward pass differentiates lambda with respect to
+ * them and a learned re-parameterization trains. A caller that applies a fixed lambda binds the four
+ * weight arguments null; the stage then scales by lambda without registering any weight, exactly as
+ * before, so the forward pass is unchanged either way.
  *
  * The three forms. The query/key normalization is optional and comes in two families; each form is its
  * own pair of layers, so a reader sees exactly the stages a model runs:
@@ -171,7 +175,7 @@ layer attention_map_qk_rmsnorm(batch: int, seq_len: int, heads: int, head_dim: i
  *   accum_blocks:
  *     attention_map(0, 1, 3)       Q1 over K1 and the values                 [batch, heads, seq_len, head_dim]
  *     attention_map(4, 2, 3)       Q2 over K2 and the values                 [batch, heads, seq_len, head_dim]
- *       scale(lambda, 1)           each head's map times its λ (axis 1 is the head)
+ *       scale(lambda, 1, ...)      each head's map times its λ (axis 1 is the head; its vectors its weights)
  *       scale(-1)                  negated
  *   merge_heads                    the first map minus λ times the second,   [batch, seq_len, dim]
  *                                  the heads of each position joined
@@ -180,16 +184,17 @@ layer attention_map_qk_rmsnorm(batch: int, seq_len: int, heads: int, head_dim: i
 layer differential_attention(batch: int, seq_len: int, heads: int, head_dim: int,
                              qkv_projection: projection, out_projection: projection,
                              inv_freq: weight, padding_mask: weight, key_mask: weight,
-                             lambda: producer([batch, heads])) {
+                             lambda: producer([batch, heads]),
+                             lambda_q1: weight, lambda_k1: weight,
+                             lambda_q2: weight, lambda_k2: weight) {
     qkv_projection
     reshape([batch, seq_len, 5, heads * head_dim])
 
-    // TODO(review): scale(lambda, 1) reads lambda as a constant, so a learned lambda's parameters receive no gradient
     accum_blocks(
         { attention_map(batch, seq_len, heads, head_dim, 0, 1, 3, inv_freq, padding_mask, key_mask) },
         {
             attention_map(batch, seq_len, heads, head_dim, 4, 2, 3, inv_freq, padding_mask, key_mask)
-            scale(lambda, 1)
+            scale(lambda, 1, lambda_q1, lambda_k1, lambda_q2, lambda_k2)
             scale(-1)
         }
     )
@@ -208,11 +213,12 @@ layer differential_attention_qk_layernorm(batch: int, seq_len: int, heads: int, 
                                           q_norm_weight: weight, q_norm_bias: weight,
                                           k_norm_weight: weight, k_norm_bias: weight,
                                           inv_freq: weight, padding_mask: weight, key_mask: weight,
-                                          lambda: producer([batch, heads])) {
+                                          lambda: producer([batch, heads]),
+                                          lambda_q1: weight, lambda_k1: weight,
+                                          lambda_q2: weight, lambda_k2: weight) {
     qkv_projection
     reshape([batch, seq_len, 5, heads * head_dim])
 
-    // TODO(review): scale(lambda, 1) reads lambda as a constant, so a learned lambda's parameters receive no gradient
     accum_blocks(
         {
             attention_map_qk_layernorm(batch, seq_len, heads, head_dim, 0, 1, 3,
@@ -223,7 +229,7 @@ layer differential_attention_qk_layernorm(batch: int, seq_len: int, heads: int, 
             attention_map_qk_layernorm(batch, seq_len, heads, head_dim, 4, 2, 3,
                                        q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
                                        inv_freq, padding_mask, key_mask)
-            scale(lambda, 1)
+            scale(lambda, 1, lambda_q1, lambda_k1, lambda_q2, lambda_k2)
             scale(-1)
         }
     )
@@ -241,11 +247,12 @@ layer differential_attention_qk_rmsnorm(batch: int, seq_len: int, heads: int, he
                                         q_norm_weight: weight, q_norm_bias: weight,
                                         k_norm_weight: weight, k_norm_bias: weight,
                                         inv_freq: weight, padding_mask: weight, key_mask: weight,
-                                        lambda: producer([batch, heads])) {
+                                        lambda: producer([batch, heads]),
+                                        lambda_q1: weight, lambda_k1: weight,
+                                        lambda_q2: weight, lambda_k2: weight) {
     qkv_projection
     reshape([batch, seq_len, 5, heads * head_dim])
 
-    // TODO(review): scale(lambda, 1) reads lambda as a constant, so a learned lambda's parameters receive no gradient
     accum_blocks(
         {
             attention_map_qk_rmsnorm(batch, seq_len, heads, head_dim, 0, 1, 3,
@@ -256,7 +263,7 @@ layer differential_attention_qk_rmsnorm(batch: int, seq_len: int, heads: int, he
             attention_map_qk_rmsnorm(batch, seq_len, heads, head_dim, 4, 2, 3,
                                      q_norm_weight, q_norm_bias, k_norm_weight, k_norm_bias,
                                      inv_freq, padding_mask, key_mask)
-            scale(lambda, 1)
+            scale(lambda, 1, lambda_q1, lambda_k1, lambda_q2, lambda_k2)
             scale(-1)
         }
     )

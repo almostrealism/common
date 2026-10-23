@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.concurrent.ConfinedExecutor;
+import io.almostrealism.concurrent.HandOffWindow;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
@@ -24,9 +25,11 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -68,9 +71,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * runs it only after the buffer the dispatch was encoded into has completed.</p>
  *
  * <p>Objective-C memory: every executor task runs inside its own autorelease pool (see
- * {@link #runInPool}) so transient autoreleased Metal objects (encoders, the command buffer's own
- * autorelease reference) are drained per task and do not accumulate in the driver. The open command
- * buffer outlives its creating task, so it is retained explicitly when created
+ * {@link MTLAutoreleasePool#run}) so transient autoreleased Metal objects (encoders, the command
+ * buffer's own autorelease reference) are drained per task and do not accumulate in the driver. The
+ * open command buffer outlives its creating task, so it is retained explicitly when created
  * ({@link MTL#commandBuffer(long)}) and released ({@link MTLCommandBuffer#release()}) once it has
  * completed.</p>
  */
@@ -126,10 +129,29 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	public static boolean enableHostSignaledBridges = true;
 
 	/**
-	 * Confines all command-buffer operations to one thread, running each inside its own
-	 * autorelease pool (see {@link #runInPool}).
+	 * How long, in microseconds, the runner's thread and a thread waiting on it poll for each other
+	 * before parking (the {@link HandOffWindow} of {@link #executor}). Every dispatch is encoded on
+	 * the runner's thread while the dispatching thread waits, and a workload of small kernels issues
+	 * dispatches back to back, each encoded in a few microseconds &mdash; less than the scheduler
+	 * takes to wake a parked thread. Polling across that gap lets consecutive dispatches pass between
+	 * the threads without either being descheduled; a longer pause still parks both. Zero disables
+	 * polling. Read when a runner is created. Controlled by {@code AR_HARDWARE_METAL_HANDOFF_SPIN}.
 	 */
-	private final ConfinedExecutor executor = new ConfinedExecutor(this::runInPool);
+	public static int handOffSpinMicros = SystemUtils.getInt("AR_HARDWARE_METAL_HANDOFF_SPIN").orElse(50);
+
+	/**
+	 * Confines all command-buffer operations to one thread, running each inside its own
+	 * autorelease pool ({@link MTLAutoreleasePool#run}), so transient autoreleased Metal objects
+	 * (compute command encoders, and the command buffer's own autorelease reference) are drained
+	 * when the task ends rather than accumulating in the driver until it stalls. The open command
+	 * buffer survives across tasks because it is retained explicitly when created (see
+	 * {@link MTL#commandBuffer(long)}) and released by {@link #drainOldestCommitted} once it has
+	 * completed. A pool scoped to each task (rather than one spanning a buffer's whole open
+	 * lifetime across several tasks) is required: spanning a pool across the executor's task
+	 * boundaries wedged command-buffer completion.
+	 */
+	private final ConfinedExecutor executor = new ConfinedExecutor(MTLAutoreleasePool::run,
+			new HandOffWindow(handOffSpinMicros, TimeUnit.MICROSECONDS));
 
 	/**
 	 * Held while a dispatch is encoded, and by {@link #destroy()} while it decides the runner is
@@ -451,36 +473,14 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			}
 
 			for (CommittedBuffer c : committed) {
-				if (c.buffer == commandBuffer) {
-					c.onComplete.add(callback);
+				if (c.getBuffer() == commandBuffer) {
+					c.whenComplete(callback);
 					return;
 				}
 			}
 
 			callback.run();
 		});
-	}
-
-	/**
-	 * Runs {@code task} on the executor's thread inside a per-task Objective-C autorelease pool, so
-	 * transient autoreleased Metal objects (compute command encoders, and the command buffer's own
-	 * autorelease reference) are drained when the task ends rather than accumulating in the driver
-	 * until it stalls. The open command buffer survives across tasks because it is retained
-	 * explicitly when created (see {@link MTL#commandBuffer(long)}) and released by
-	 * {@link #drainOldestCommitted} once it has completed. A pool scoped to each task (rather than one
-	 * spanning a buffer's whole open lifetime across several tasks) is required: spanning a pool
-	 * across the executor's task boundaries wedged command-buffer completion.
-	 *
-	 * @param task the work to run inside a fresh autorelease pool
-	 */
-	private void runInPool(Runnable task) {
-		long pool = MTL.autoreleasePoolPush();
-
-		try {
-			task.run();
-		} finally {
-			MTL.autoreleasePoolPop(pool);
-		}
 	}
 
 	/** Opens a fresh command buffer if none is currently open. */
@@ -598,7 +598,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		}
 
 		for (CommittedBuffer c : committed) {
-			if (c.buffer == target) {
+			if (c.getBuffer() == target) {
 				return new Waiter(c);
 			}
 		}
@@ -622,7 +622,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * @param requester metadata of the operation that waited, or {@code null}
 	 */
 	private void drainThrough(Waiter waiter, OperationMetadata requester) {
-		int count = committed.indexOf(waiter.committed) + 1;
+		int count = committed.indexOf(waiter.getCommitted()) + 1;
 		List<Runnable> drains = new ArrayList<>(count);
 		for (int i = 0; i < count; i++) {
 			drains.add(() -> drainOldestCommitted(requester));
@@ -645,17 +645,18 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 */
 	private void drainOldestCommitted(OperationMetadata requester) {
 		CommittedBuffer c = committed.remove(0);
-		c.buffer.waitUntilCompleted();
+		MTLCommandBuffer buffer = c.getBuffer();
+		buffer.waitUntilCompleted();
 
-		if (c.buffer.isError()) {
+		if (buffer.isError()) {
 			errorCompletions.incrementAndGet();
-			warn("commandBufferError=\"" + c.buffer.getError() + "\" requester=" +
+			warn("commandBufferError=\"" + buffer.getError() + "\" requester=" +
 					(requester == null ? "unknown" : requester.getDisplayName()) +
 					" commitCount=" + commitCount +
 					" errorCompletions=" + errorCompletions.get());
 		}
 
-		Destroyable.releaseAll(c.onComplete, c::drained);
+		c.drain();
 	}
 
 	/**
@@ -813,6 +814,32 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			this.onComplete = onComplete;
 		}
 
+		/**
+		 * Returns the committed command buffer.
+		 *
+		 * @return the command buffer this record tracks
+		 */
+		private MTLCommandBuffer getBuffer() { return buffer; }
+
+		/**
+		 * Adds a released-memory callback to run once the buffer completes. Executor-thread only.
+		 *
+		 * @param callback the callback to run when the buffer is drained
+		 */
+		private void whenComplete(Runnable callback) {
+			onComplete.add(callback);
+		}
+
+		/**
+		 * Runs the released-memory callbacks of the completed buffer, then records it as drained,
+		 * releasing it unless a thread still waits on it. Every callback runs and the buffer is
+		 * released even if a callback fails; the first failure is rethrown afterwards (see
+		 * {@link Destroyable#releaseAll}). Executor-thread only.
+		 */
+		private void drain() {
+			Destroyable.releaseAll(onComplete, this::drained);
+		}
+
 		/** Records that the buffer has been drained, releasing it unless a thread still waits on it. */
 		private synchronized void drained() {
 			drained = true;
@@ -860,11 +887,18 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		}
 
 		/**
+		 * Returns the committed buffer this waiter is registered on.
+		 *
+		 * @return the committed-buffer record being waited on
+		 */
+		private CommittedBuffer getCommitted() { return committed; }
+
+		/**
 		 * Returns the command buffer being waited on.
 		 *
 		 * @return the committed command buffer
 		 */
-		private MTLCommandBuffer getBuffer() { return committed.buffer; }
+		private MTLCommandBuffer getBuffer() { return committed.getBuffer(); }
 
 		/** Withdraws this registration, unless it has already been withdrawn. */
 		private void withdraw() {

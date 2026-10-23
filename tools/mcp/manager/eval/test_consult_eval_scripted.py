@@ -18,7 +18,7 @@ if _EVAL_DIR not in sys.path:
 import run_consult_eval  # noqa: E402
 from graders import grade, resolve_expect, validate_case  # noqa: E402
 from run_consult_eval import (  # noqa: E402
-    FixtureMemoryClient, ScriptedModel, build_report, load_cases,
+    FixtureMemoryClient, ScriptedModel, build_report, case_turns, load_cases,
     observed_response,
 )
 
@@ -84,6 +84,22 @@ class TestNewGraderKeys(unittest.TestCase):
         self.assertFalse(grade({"ok": True, "answer": "for other runners"},
                                expect).passed)
 
+    def test_must_not_mark_unsupported_guards_a_correct_sentence(self):
+        expect = {"must_mark_unsupported": ["does not deploy"],
+                  "must_not_mark_unsupported": ["successful master run"]}
+        right = {"ok": True, "answer": "Triggered by a successful master run "
+                 "[D1]. It does not deploy on merge [D1] [unsupported]."}
+        self.assertTrue(grade(right, expect).passed)
+        # A verifier that flags everything fails the case.
+        everything = {"ok": True, "answer": "Triggered by a successful master "
+                      "run [D1] [unsupported]. It does not deploy on merge [D1] "
+                      "[unsupported]."}
+        result = grade(everything, expect)
+        self.assertFalse(result.passed)
+        self.assertEqual(result.failures,
+                         ["must_not_mark_unsupported: flagged but correct: "
+                          "'successful master run'"])
+
     def test_new_keys_are_type_checked(self):
         bad = {"id": "X", "question": "q",
                "expect": {"min_conflicts": -1, "must_mark_unsupported": "x",
@@ -125,6 +141,54 @@ class TestScriptedModel(unittest.TestCase):
         model.consult("q", evidence=self._evidence())
         self.assertIn("[D1]", model.prompts[0])
 
+    def test_a_multi_turn_model_returns_each_turns_answer_in_order(self):
+        model = ScriptedModel(["turn one", "turn two"])
+        ev = self._evidence()
+        self.assertEqual(model.consult("q1", evidence=ev).text, "turn one")
+        self.assertEqual(model.consult("q2", evidence=ev).text, "turn two")
+        # Once exhausted the last answer stands rather than raising.
+        self.assertEqual(model.consult("q3", evidence=ev).text, "turn two")
+
+
+class TestCaseTurns(unittest.TestCase):
+
+    def test_a_single_turn_case_is_one_turn_from_its_top_level_fields(self):
+        turns = case_turns({"id": "X", "question": "q", "keywords": ["k"],
+                            "scripted": "s.txt"})
+        self.assertEqual(turns, [{"question": "q", "keywords": ["k"],
+                                  "scripted": "s.txt"}])
+
+    def test_a_multi_turn_case_runs_its_turns_list(self):
+        case = {"id": "X", "question": "last", "turns": [
+            {"question": "q1"}, {"question": "q2"}]}
+        self.assertEqual([t["question"] for t in case_turns(case)], ["q1", "q2"])
+
+
+class TestFollowUpConversationCase(unittest.TestCase):
+    """E14 replays the 2026-10-21 two-turn conversation: the follow-up must
+    retrieve the drain script's behavior and must not lead with a confident
+    yes resting on an unsupported note."""
+
+    @classmethod
+    def setUpClass(cls):
+        case = _case("E14")
+        responses = run_consult_eval._run_scripted([case])
+        cls.turn2 = responses["E14"][0]
+
+    def test_the_followup_retrieved_the_drain_scripts_behavior(self):
+        drain = [e for e in self.turn2["evidence"]
+                 if e.get("file", "").endswith("drain-agent-jobs.sh")]
+        self.assertTrue(drain, "drain script facts not carried into the follow-up")
+        self.assertTrue(any(e.get("label") == "behavior"
+                            and "ACTIVE" in (e.get("value") or "") for e in drain))
+
+    def test_the_followup_does_not_lead_with_a_confident_yes(self):
+        answer = self.turn2["answer"]
+        self.assertFalse(answer.lower().lstrip().startswith("yes"))
+        self.assertIn("unclear", answer.lower())
+        self.assertEqual(self.turn2["answer_basis"], "notes")
+        self.assertIn("[unsupported]", answer)
+
 
 class TestFixtureMemoryClient(unittest.TestCase):
 
@@ -161,10 +225,21 @@ class TestScriptedRun(unittest.TestCase):
                                    "step12")
 
     def test_every_case_but_the_paraphrase_gap_passes(self):
+        # The paraphrase gap is closed: E12's "one class per job" and E13's
+        # unechoed negation name nothing a token can match, and the
+        # claim-level polarity check flags them, so every case passes.
         failing = {c["id"]: c["failures"] for c in self.summary["cases"]
                    if not c["passed"]}
-        self.assertEqual(failing, {"E12": [
-            "must_mark_unsupported: not flagged: 'one class per job'"]})
+        self.assertEqual(failing, {})
+
+    def test_the_claim_level_cases_are_flagged_for_polarity(self):
+        responses = run_consult_eval._run_scripted(
+            [c for c in self.cases if c["id"] in ("E12", "E13")])
+        for cid in ("E12", "E13"):
+            response = responses[cid]
+            response = response[0] if isinstance(response, list) else response
+            reasons = [w["reason"] for w in response["citation_warnings"]]
+            self.assertIn("polarity", reasons, cid)
 
     def test_no_false_abstentions(self):
         self.assertEqual(self.summary["false_abstention"], 0)

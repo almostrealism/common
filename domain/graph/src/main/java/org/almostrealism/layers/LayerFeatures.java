@@ -1161,8 +1161,36 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 */
 	default CellularLayer scale(TraversalPolicy shape, int axis, Producer<PackedCollection> factors,
 								ComputeRequirement... requirements) {
+		return scale(shape, axis, factors, Collections.emptyList(), requirements);
+	}
+
+	/**
+	 * Creates a scaling layer that multiplies the input by one factor per position along the
+	 * given axis, as {@link #scale(TraversalPolicy, int, Producer, ComputeRequirement...)}, and
+	 * registers {@code weights} as the layer's learnable parameters so that a backward pass
+	 * differentiates the factors with respect to them.
+	 *
+	 * <p>The forward computation is identical to the weightless overload — the factors multiply
+	 * the input the same way whether or not any weights are registered. The difference is only in
+	 * the backward pass: when {@code factors} is a re-parameterization built from {@code weights}
+	 * (for example the per-head differential-attention lambda, {@code exp(q1·k1) − exp(q2·k2) +
+	 * λinit}, built from four learned vectors), registering those vectors as the layer's weights is
+	 * what lets {@link DefaultGradientPropagation} compute a gradient with respect to them; without
+	 * it the factors are captured as a constant and the re-parameterization never trains. Passing an
+	 * empty list reproduces the weightless overload exactly.</p>
+	 *
+	 * @param shape        the input and output shape, whose first axis is the batch
+	 * @param axis         the axis the factors index (never the batch axis)
+	 * @param factors      the factors, shape {@code (batch, shape.length(axis))}
+	 * @param weights      the collections {@code factors} is built from, registered as the layer's
+	 *                     learnable parameters (empty for the weightless behaviour)
+	 * @param requirements optional compute requirements
+	 * @return the constructed scaling {@link CellularLayer}
+	 */
+	default CellularLayer scale(TraversalPolicy shape, int axis, Producer<PackedCollection> factors,
+								List<PackedCollection> weights, ComputeRequirement... requirements) {
 		return layer("scaleAlongAxis", shape, shape,
-				input -> c(input).multiply(broadcast(shape, axis, factors)), requirements);
+				input -> c(input).multiply(broadcast(shape, axis, factors)), weights, requirements);
 	}
 
 	/**

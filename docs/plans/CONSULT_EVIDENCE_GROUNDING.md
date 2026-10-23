@@ -3,9 +3,14 @@
 Status: **FIRST STEPS IMPLEMENTED (1–12), ONE HALF-STEP OUTSTANDING.** Steps 1
 and 2 landed earlier. Steps 3–12 landed together on 2026-10-19 (section 6.1),
 except the `.github/workflows/analysis.yaml` half of step 3, which needs a
-`ci/...` branch and is recorded as a follow-up. Section 6.2 holds the current
-evaluation report. The "later refinements" of every section remain plans.
-Author: planning session, 2026-10-17.
+`ci/...` branch and is recorded as a follow-up. The follow-ups from the
+2026-10-20 live test — conversations for every caller, the claim-level polarity
+check, fewer false-stale tiers — landed the same day (section 6.3). The
+2026-10-21 live test produced two more — follow-up-turn retrieval that carries
+the conversation's context, and a hedged lead when a notes-only answer's
+support is gone — landed with the drain-script behaviour now indexed (section
+6.4, which also holds the current evaluation report). The other "later
+refinements" remain plans. Author: planning session, 2026-10-17.
 
 > **Locate code by symbol, not by line.** References below name functions and
 > constants (`consult`, `build_consult_prompt`, `format_memory_context`,
@@ -510,10 +515,20 @@ First version (cheap, high value):
 
 Later versions, in rough order of value:
 
-1. **Script and workflow header comments and exit codes.** For example, the
-   leading comment block of each `tools/ci/**/*.sh` plus its literal
-   `exit N` lines. These scripts *are* the documentation of their own
-   behaviour (see seed case E2).
+1. **Script and workflow header comments, exit codes, and behaviour
+   signals.** For example, the leading comment block of each
+   `tools/ci/**/*.sh` plus its literal `exit N` lines. These scripts *are* the
+   documentation of their own behaviour (see seed case E2). Added 2026-10-21
+   (6.4): a script's `signals` — the named `UPPER_SNAKE` collection constants
+   it defines (a status set, an allowlist) and the `/api/...` paths it calls,
+   emitted as a tier-A `[Ik]` fact labelled `behavior`. A header comment only
+   *paraphrases* the logic ("an unrecognised status is not counted"); the
+   signals state it literally (`ACTIVE = {"running", "in_progress", …}`,
+   `/api/jobs`), which is exactly what the 2026-10-21 live test's follow-up
+   needed and the header did not carry. A keyword that names a script by its
+   stem (`drain-agent-jobs`) now resolves to its path
+   (`SnapshotIndex.script_paths`), so a carried keyword reaches the script's
+   facts.
 2. **`static final String` constants, regardless of visibility**
    (`VERDICT_PATH = ".flowtree/oop-review.md"`). Seed case E3 is answerable
    from nothing else, and `ObjectOrientedDesignRule.VERDICT_PATH` is
@@ -633,11 +648,19 @@ is labelled `documentation`, not `documentation+notes`; nothing valid cited →
 `none`. That computed value feeds `answer_basis` and the post-processing. An
 unresolved marker is recorded as a citation warning
 (`format_warning: "unknown citation"`) and otherwise ignored, so it can
-neither raise nor lower the basis. The written `BASIS:` line is kept only as
-a cross-check: a disagreement between the stated and the computed basis sets
-`format_warning: "basis mismatch"`. If the trailer is missing entirely, the
-computed basis stands, `CONFLICTS` is treated as empty, and
-`format_warning: "trailer missing"` is set.
+neither raise nor lower the basis. The written `BASIS:` line was first kept as
+a cross-check that set `format_warning: "basis mismatch"` on disagreement.
+That warning was **dropped on 2026-10-20**: the computed basis is
+authoritative, and the model cannot predict it — it depends on each note's
+tier and on which sentences the verifier keeps — so a disagreement is the
+normal case rather than a format fault. Measured against a real model (6.3),
+14 of 35 stated bases disagreed, nearly all of them `documentation+notes` for
+an answer whose notes were merely shown. A warning on a third of all answers
+tells the caller nothing; the computed `answer_basis` is what to read. The
+line is still requested, because writing it makes the model look at what it
+cites. If the trailer is missing entirely, the computed basis stands,
+`CONFLICTS` is treated as empty, and `format_warning: "trailer missing"` is
+set.
 
 `build_consult_prompt` backs `consult` (through `llm.consult`) and the
 retired consultant code path. `memory_recall`'s grounding does **not** go
@@ -661,6 +684,22 @@ replaces "Not documented" with a note. Proposed contract:
   snapshot does not cover this. The following rests on agent notes:"*. Each
   claim cites its `[Nk]`, and the response's evidence list shows that note's
   date, branch and merge state.
+- **Hedge when the support is gone (added 2026-10-21, 6.4).** The sentence
+  above is for a notes answer the verifier *can* support. When the basis is
+  `notes` *and* the lead claim (the first cited sentence, history aside) is
+  marked unsupported — or every claim is — the notes do not actually establish
+  what the model asserted, so a confident lead would misrepresent the evidence.
+  The 2026-10-21 live test produced exactly this: a follow-up answered "Yes,
+  the drain step does see jobs still in the SUBMITTED state …", resting only on
+  a note whose central claim the verifier flagged. In that case
+  `consult_engine._support_gone` is true and `_hedge_lead` replaces the lead:
+  it strips a leading "Yes"/"No" and opens with a fixed hedge instead — *"This
+  is unclear from the available evidence, and the notes below are unverified —
+  treat the following as unconfirmed:"* — leaving the already-marked sentences
+  to follow. This is the "verifier-driven regeneration" refinement from 2.9,
+  taken as a **deterministic rewrite** rather than a second model call: scoped
+  narrowly to the one case where support is wholly absent, it needs no extra
+  inference and cannot introduce a new unsupported claim.
 - **B′** can answer only questions about that branch, or be reported as
   "on unmerged branch X, …".
 - **C/C✗** never produce `answer_basis: "notes"` for present-tense facts.
@@ -705,7 +744,9 @@ Conflict sources, from cheapest to most expensive:
    path, exit code or prefix list), compare the values across items in code.
    This would have flagged E2 if the corpus had contained the script.
 4. **Judge-based (later, offline).** The `judge_answers.py` harness from
-   `CONSULTANT_QUALITY.md`, run over the evaluation set, not live.
+   `CONSULTANT_QUALITY.md`, run over the evaluation set, not live. A
+   deterministic, live claim-level check for polarity and exclusivity claims
+   landed first (2.9, "claim-level check"); a model judge stays offline.
 
 Response field:
 `conflicts: [{items: ["N1","D2"], kind: "structural|reported|value", summary}]`.
@@ -766,6 +807,46 @@ Later refinements:
 - dropping sentences that fail twice;
 - tracking the verifier's false-positive rate on the evaluation set before
   making either of those the default.
+
+**Claim-level check (landed 2026-10-20).** Token matching cannot see a
+claim that carries no identifier, path or number. The live test of
+2026-10-20 produced one: an answer that correctly cited `.github/CLAUDE.md`
+for "triggered by a successful Build and Test on master" then stated "it does
+not deploy automatically after every merge — only when explicitly
+triggered", contradicting both its own first sentence and `deploy.yaml`, and
+passed. The verifier now checks **polarity and exclusivity** claims as
+claims (reason `polarity`, `citation_verifier.polarity_unsupported`):
+
+1. A sentence is split into clauses (at `;`, `:`, dashes, parentheses,
+   ", ", "but", "while", "however"). A clause is a polarity claim when it says
+   what does not happen or that something happens only, always or never
+   (`not`, `n't`, `never`, `cannot`, `no longer`, `only`, `solely`,
+   `exclusively`, `always`).
+2. It must be **echoed** by an evidence passage — a sentence of a cited item,
+   or of any item when the sentence cites nothing — that itself carries
+   polarity wording (the claim words, plus `no`, `unless`, `except`,
+   `without`, `rather than`, `rejects`, `refuses`, `blocks`, `forbids`,
+   `fails`, `must`, …) **and** shares the clause's content: two content-word
+   stems, or half of them for a longer clause, at most four. Stems are the
+   first five letters of a non-function word, so `deploys`/`deployment`
+   agree.
+3. A **cardinality** ("one X per Y") is checked structurally: some passage
+   must state one of the same thing (the last content word before "per") per
+   a unit sharing a content word with the claim's. "One class per job" is not
+   echoed by "one design-review session per changed production class" — the
+   E12 paraphrase, now caught.
+4. Not checked: abstentions; quoted and backticked literals (the value check
+   verifies those verbatim); and sentences about the evidence rather than the
+   code ("not present in the snapshot", "the only evidence is a branch-local
+   note", "not yet merged").
+
+Evidence passages are sentences after wrapped prose is rejoined (a script
+header wraps its sentences; a table row stays its own block). The check errs
+towards flagging, like the token checks: a limit the evidence states only in
+other words ("cannot produce" for "cannot generate") is flagged. Against a
+real model it flagged 3 sentences in 39 answers, each a negative or exclusive
+claim no evidence states (6.3). A model judge for the claims this check
+cannot read stays a later, offline refinement.
 
 **Trade-off.** Token matching misses paraphrase ("the commit validator" in
 place of `validate-agent-commit.sh`). It errs towards flagging, which is the
@@ -1017,14 +1098,9 @@ point at evidence from the previous answer ("N2 — is that branch merged?").
 ### 4.2 API
 
 - `consult` gains `conversation_id: str = ""`. If it is empty, a new
-  conversation starts. The response returns `conversation_id` and `turn` for
-  every *stateful* call — that is, every call made with a job temp token.
-  The one exception is a static-token caller, which is always stateless
-  (4.5): such a call returns neither field, and a non-empty
-  `conversation_id` passed on a static token is rejected. So the two fields
-  are present whenever the caller is capable of a conversation and absent
-  otherwise, and the parameter/response tests assert exactly that split
-  rather than treating the fields as unconditionally mandatory.
+  conversation starts. Every successful call returns `conversation_id` and
+  `turn`, whatever token it was made with (4.5, as revised on 2026-10-20; the
+  first implementation refused static tokens).
 - No new tool in the first step. Expiry ends conversations. A later
   `consult_transcript(conversation_id)` read tool may be added for the exit
   interview (4.6). It would follow the full new-tool checklist in
@@ -1032,8 +1108,18 @@ point at evidence from the previous answer ("N2 — is that branch merged?").
 
 ### 4.3 What a follow-up turn does
 
-1. **Retrieves fresh evidence** for the new question (with keywords, as
-   today).
+1. **Retrieves fresh evidence** for the new question — but **with the
+   conversation's context, not only the new question's words** (added
+   2026-10-21, 6.4). A follow-up often names its subject only through the
+   conversation ("does the drain step see SUBMITTED jobs?" after a turn about
+   the deploy workflow). `Conversation.carried_terms()` returns every earlier
+   turn's keywords plus the subjects (file names, identifiers) the previous
+   turn's cited evidence resolved to; `ConsultTurn._retrieval_terms()` merges
+   those with the caller's keywords — or, when a follow-up gives none, with the
+   new question's own extracted terms — and the merged set drives documentation
+   retrieval, snapshot-index lookup (the keywords are offered as mentions too,
+   so a script named by its stem resolves, 2.5) and the note query. The first
+   turn has nothing to carry, so it retrieves exactly as before.
 2. **Carries forward** evidence the previous turn cited: up to 2 doc chunks
    and 2 notes, keeping their IDs. IDs are stable within a conversation
    (`D1` stays `D1`), so the caller and the model can refer back to them.
@@ -1049,8 +1135,10 @@ point at evidence from the previous answer ("N2 — is that branch merged?").
 State per conversation:
 
 - id;
-- caller identity — the workstream and job resolved from the HMAC temp
-  token (`auth.py` labels these `tmp:<workstream>/<job>`);
+- caller identity — `job:<workstream>/<job>` resolved from an HMAC temp
+  token, or `token:<label>` for a static token's configured label
+  (`consult_conversations.caller_identity`; the prefixes keep a static label
+  spelled like a job pair from passing for that job);
 - repo and branch scope, fixed by the first turn. A follow-up turn's
   `repo_url`, `branch` and `workstream_id` must either be omitted or resolve
   to the same scope; a mismatch is rejected with an error naming the
@@ -1132,18 +1220,23 @@ caller's repo and branch. It is then retrievable by branch and recency, like
 ### 4.5 Isolation and safety
 
 - A conversation can be continued or read only by the identity that started
-  it. A job's temp token cannot read another job's conversations.
-- **Static tokens get no conversations in the first step.** The auth
-  middleware records only a static token's scopes and its configured
-  `label`; there is no per-caller subject, and one static token can be
-  shared by several callers (an operator's Slack flow and a script, say).
-  Binding a conversation to the label would let any holder of the token
-  continue or read another holder's conversation. So a static-token call
-  that passes `conversation_id` is rejected with
-  `{ok: false, error: "conversations require a job token"}`, and a
-  static-token call without one stays stateless (no `conversation_id` is
-  returned). Opening conversations to static tokens needs a real per-caller
-  credential binding first (open question Q10).
+  it. A job's temp token cannot read another job's conversations, and an id
+  presented by another identity is answered exactly like an unknown or
+  expired one, so ids cannot be probed.
+- **Every caller holds conversations (owner decision, 2026-10-20; resolves
+  Q10).** The first step refused static tokens, because the auth middleware
+  records only a static token's scopes and `label` — no per-caller subject —
+  and one static token can be shared by several callers. The revision binds a
+  conversation to the token identity (a static token's label) **together
+  with** a long, random `conversation_id` (`cv-` plus 32 random bytes,
+  URL-safe): possession of the id is the capability. Two holders of one
+  static token keep separate conversations because neither learns the
+  other's id; an id presented by a different token identity is rejected.
+  The exposure this adds is small: every holder of a static token can already
+  read the memories, workstreams and documentation a conversation is built
+  from, so a conversation discloses little beyond what that token holder
+  pasted into it. The TTLs, the LRU and size limits, the redaction rules below
+  and "raw `context` is never persisted" are unchanged.
 - `context` (code snippets, error output) is held in state. Transcripts that
   are persisted must go through the same secret-redaction expectations as
   logs (`tools/mcp/CLAUDE.md`, "Security Rules for Workspace Secrets").
@@ -1337,6 +1430,14 @@ added with the step that needs them:
   only in a C note. The rationale belongs in `history`, not as
   present-tense fact.
 
+- **E13 (claim-level, 2026-10-20):** "Why does the controller stack
+  sometimes deploy automatically?" The scripted answer reproduces the live
+  test: a correct first sentence (`workflow_run` on a successful master
+  "Build and Test") and an unechoed "it does not deploy automatically after
+  every merge — only when explicitly triggered". Expectation: the second
+  sentence is flagged and the first is not (`must_not_mark_unsupported`, a
+  grader key added with it, so a check that flags everything cannot pass).
+
 Future exit-interview feedback (4.6) is a natural source of further cases.
 
 ---
@@ -1425,7 +1526,7 @@ be honoured; the per-step record below is the substitute.
 | 8 | done | `BASIS:`/`CONFLICTS:` trailer parsed, basis recomputed from resolved, non-failing citations (`format_warnings: basis mismatch / trailer missing`), code-generated notes-basis sentence, `history` field for sentences resting only on C/C✗ notes, abstention with `searched`, `abstained_with_evidence`, partial-abstention closing sentence, reported and structural conflicts. E8 added. | `consult_engine.ConsultTurn._post_process` |
 | 9 | done | `snapshot_index.py` built in the `docs` stage before the prune, written to `/snapshot` (outside the pruned tree), `COPY scripts/` added, `AR_SNAPSHOT_INDEX` in the runtime image; packaging tests. Mention extraction, C✗ tier, `nonexistent` abstention (answered without the model). Slash-bearing mentions count as paths only when rooted in a top-level directory of the tree — branch names (`qa/docs-`, `origin/master`) otherwise made correct notes stale. | `common/snapshot_index.py`, `common/consult_tiers.py` |
 | 10 | done | `INDEX_EXCLUSIONS` + corpus walk replace the allowlist (`STANDALONE_*_ROOTS` kept as must-resolve roots); packaging test that every `*.md`/`*.html` is indexed or excluded, and that every exclusion matches something. Plain `search()` takes markdown before HTML and caps hits per file. Precision re-measured: pass/fail unchanged; E1 gained one more README chunk. | `common/docs_retriever.py`, `test_dockerfile_packaging.py` |
-| 11 | done | `conversation_id` (signature + `McpToolDiscoveryTest` assertion); `ConversationStore` component with idle/absolute TTL, 12 turns, LRU cap, store lock plus per-conversation turn lock; job-token identity, static tokens refused; first-turn scope fixed; carry-forward (2 docs + 2 notes) with stable IDs via a shared `IdPool`; 1500-char history. | `consult_conversations.py`, `memory_tools.consult` |
+| 11 | done | `conversation_id` (signature + `McpToolDiscoveryTest` assertion); `ConversationStore` component with idle/absolute TTL, 12 turns, LRU cap, store lock plus per-conversation turn lock; job-token identity, static tokens refused (revised 2026-10-20, 6.3: every token identity); first-turn scope fixed; carry-forward (2 docs + 2 notes) with stable IDs via a shared `IdPool`; 1500-char history. | `consult_conversations.py`, `memory_tools.consult` |
 | 12 | done | Script header comments and literal exit codes, `static final` String **and numeric** literal constants of any visibility, as tier-A `[Ik]` items. Narrow value-level conflict (pulled forward from the refinements): a note's "exits N" against the script's literal exit codes. | `common/snapshot_index.py`, `consult_engine.value_conflicts` |
 
 **Measurement without a model.** No model was reachable from the job's host
@@ -1458,7 +1559,10 @@ and `tools/ci/README.md` name only `.github/workflows/` and `tools/ci/`. E10
 therefore does not penalise naming `.github/actions/`; the documentation drift
 is the follow-up.
 
-### 6.2 Evaluation report (current)
+### 6.2 Evaluation report (2026-10-19, step 12)
+
+This is the step-12 report; 6.4 holds the current one (6.3 is the
+2026-10-20 report it superseded).
 
 Replay (frozen deployed responses; `eval/baselines/baseline-observed.md`):
 2/12 pass, 1 false abstention, 5 false answers. The seed set (E1–E4, observed
@@ -1487,7 +1591,8 @@ pass, 0 false abstentions, 1 false answer.**
 **E12 is a real gap, kept failing on purpose:** "one class per job" names no
 identifier, path or number, so token matching cannot see that it contradicts
 "one session per changed class". Catching paraphrase needs the judge or a
-claim-level check (later refinements).
+claim-level check (later refinements). *Closed on 2026-10-20 by the
+claim-level check (6.3).*
 
 Ablations (scripted, step 12, one mechanism disabled at a time) confirm the
 attribution above:
@@ -1502,16 +1607,132 @@ attribution above:
 | index facts only (12) | 8/12 | E2, E3, E11 |
 
 Follow-ups: the `analysis.yaml` `--build-arg` (step 3, `ci/` branch); a
-`--mode local` run against a real model; the `check-ci-file-lock.sh` header and
-`tools/ci/README.md` naming `.github/actions/`; the `ar-secrets` placeholder
-pattern; paraphrase detection (E12).
+`--mode local` run against a real model (done 2026-10-20, 6.3); the
+`check-ci-file-lock.sh` header and `tools/ci/README.md` naming
+`.github/actions/`; the `ar-secrets` placeholder pattern; paraphrase detection
+(E12, done 2026-10-20 for cardinality and polarity claims, 6.3).
+
+### 6.3 Follow-ups from the 2026-10-20 live test, and the current report
+
+A live test against the deployed snapshot `aa6dea4` produced three changes,
+landed together:
+
+| Change | What landed | Where |
+|---|---|---|
+| Conversations for every caller | Owner identity `job:<ws>/<job>` or `token:<label>`; ids `cv-` + 32 random bytes; static tokens no longer refused; a foreign identity's id is answered `conversation expired`. 4.2, 4.4, 4.5 revised; Q10 resolved. | `consult_conversations.caller_identity`, `memory_tools.consult` |
+| Claim-level check | Reason `polarity` for unechoed polarity/exclusivity clauses and cardinalities (2.9). E13 added; grader key `must_not_mark_unsupported`. | `citation_verifier.polarity_unsupported` |
+| Fewer false-stale tiers | Placeholder and glob tokens (`build-<x>-prompt.sh`, `{module}/pom.xml`, `docs/*.md`, `doc-*`) are dropped whole by mention extraction instead of being cut into bogus names (`tools/ci/prompts/build`, `-prompt.sh`); a prefix or pattern (`.github/actions/`, a lock pattern; anything ending `/` or `-`) is present when the snapshot has something under it and otherwise unchecked, never absent. Trailing `/` and `-` are kept on extraction. | `consult_tiers.extract_mentions`, `classify_mentions` |
+| `basis mismatch` | No longer surfaced (2.6). | `consult_engine.ConsultTurn._post_process` |
+
+Measuring against a real model exposed three false-flag sources, fixed in the
+same change: evidence sentences wrapped across lines (a script header) were
+checked as fragments; polarity words inside quoted literals were read as the
+sentence's claim; and the citation verifier read an unbackticked prefix
+`qa/docs-,` as `qa/docs`, which a note naming `qa/docs-` does not contain as a
+whole name (a false `subject` flag on a correct E1 answer).
+
+**Scripted** (`eval/baselines/scripted-claim-check.md`, milestone `step12`):
+**13/13 pass, 0 false abstentions, 0 false answers.** E12 moved from fail to
+pass (`one class per job` flagged `polarity`); E13 passes (the "does not
+deploy … only when explicitly triggered" sentence flagged, the correct first
+sentence left alone). With the polarity check disabled the run is 11/13 and
+exactly E12 and E13 fail, so the movement is the check's.
+
+**Replay** (`eval/baselines/baseline-observed.md`): unchanged at 2 passing;
+the set is now 13 cases, and E12 and E13 have no captured deployed response.
+
+**Local, against a real model** (`eval/baselines/local-claim-check.md`;
+Qwen3-Coder-Next through llama.cpp on the job's host, k=3): the first
+`--mode local` run of this plan. Two caveats govern how to read it. First,
+E7 and E9–E13 are reproductions of observed wrong answers whose expectation
+is that the pipeline *flags* the mistake; when the model does not make the
+mistake (it answered E12 and E13 correctly every time) those cases fail by
+construction, so local mode is read for what it says about correct answers.
+Second, E1/E2/E8 fail on expectations written before notes could answer and
+before index facts existed (E1 answers from the fixture's current notes, so
+its basis is `notes`; E2 writes "exits with code `3`", which the `exits?\s+3`
+regex misses; E8 answers the "why" from current documentation instead of
+abstaining). What the run measures:
+
+- **Polarity false flags.** 3 sentences in 39 answers, each a negative or
+  exclusive claim no evidence states ("on master, consult does not support
+  streaming", inferred from absence; "`\w` matches only `[a-zA-Z0-9_]`",
+  general knowledge). The first local run, before the three fixes above
+  (k=1), flagged 5 sentences in 13 answers, 3 of them correct sentences
+  checked against a wrapped script header.
+- **Basis trailer.** 14 of 35 stated `BASIS:` lines disagreed with the
+  computed basis and one answer omitted the line — the measurement behind
+  dropping the warning (2.6).
+
+Follow-ups: the E1/E2/E8 local-mode expectations (a grader regex and two
+milestone bars that predate notes answering and index facts); a model judge
+for the claims the polarity check cannot read.
+
+### 6.4 Follow-ups from the 2026-10-21 live test, and the current report
+
+A live test against the deployed snapshot `69748d4` ran a two-turn
+conversation. Turn 1 ("why does the controller stack sometimes deploy
+automatically?", keywords including `drain-agent-jobs`) was answered correctly.
+Turn 2, on the same `conversation_id` with no keywords ("does the drain step
+see jobs still in the SUBMITTED state?"), retrieved only on the new question's
+words: it pulled in unrelated docs, never reached `tools/ci/drain-agent-jobs.sh`,
+and answered a confident "Yes … they appear in the `/api/jobs/pending`
+endpoint" resting only on a note whose central claim the verifier flagged
+(`subject`, `polarity`, `[unsupported]`, basis `notes`). Both halves are wrong:
+the script reads `/api/jobs` and counts only
+`running/in_progress/started/pending/queued`, so SUBMITTED is not counted.
+Two changes, landed together:
+
+| Change | What landed | Where |
+|---|---|---|
+| Follow-up-turn retrieval carries the conversation's context | `Conversation.carried_terms()` returns every earlier turn's keywords plus the subjects (file names, identifiers) the previous turn's cited evidence resolved to; `ConsultTurn._retrieval_terms()` merges those with the caller's keywords — or, when a follow-up gives none, the new question's own terms — and the merged set drives documentation retrieval, snapshot-index lookup and the note query (the keywords are offered as index mentions too). First-turn retrieval is unchanged. 4.3 revised. | `consult_conversations.carried_terms`, `consult_engine.ConsultTurn._retrieval_terms`, `consult_evidence.EvidenceItem.subjects` |
+| Drain-script behaviour indexed; scripts reachable by stem | `script_signals` extracts a script's named `UPPER_SNAKE` collection constants (the `ACTIVE` status set) and `/api/…` paths into `script_facts[path]["signals"]`, surfaced by `facts_for` as a tier-A `[Ik]` fact labelled `behavior`; `script_paths` resolves a bare stem (`drain-agent-jobs`) to its file. `INDEX_VERSION` 2→3. 2.5 revised. | `common/snapshot_index.py` |
+| Hedge a notes-only answer when its support is gone | When the basis is `notes` and the lead cited claim (history aside) is marked unsupported — or every claim is — `_hedge_lead` strips a leading "Yes"/"No" and opens with a fixed hedge instead of asserting the note's unestablished claim. The deterministic form of verifier-driven regeneration, scoped narrowly (2.7). | `consult_engine._support_gone`, `_hedge_lead`, `_post_process` |
+
+**New case.** E14 replays the two-turn conversation — the first multi-turn
+case; the eval runner now runs a case's `turns` in order on one conversation
+and grades the last turn. Its scripted turn 2 reproduces the confident-yes
+wrong answer, and the case passes only if (a) the follow-up carries the
+conversation's context so the drain script's `behavior` fact reaches turn 2's
+evidence (`must_cite_any: tools/ci/drain-agent-jobs.sh`, which the grader reads
+from the evidence list), and (b) the notes-only unsupported lead is hedged
+rather than a confident yes (`must_include: unclear`, `must_not_include:
+^yes`, `must_mark_unsupported: drain step does see`). Both gate on the two
+changes: without carry-forward the drain fact is absent from turn 2, and
+without the hedge the lead stays "Yes".
+
+**Scripted** (`eval/baselines/scripted-followup-hedge.md`, milestone `step12`):
+**14/14 pass, 0 false abstentions, 0 false answers.** E1–E13 unchanged; E14
+new.
+
+**Replay** (`eval/baselines/baseline-observed.md`): unchanged at 2 passing; the
+set is now 14 cases and E14 has no captured deployed response (`no-response`).
+
+**Local, against a real model** (`eval/baselines/local-followup-hedge.md`;
+Qwen3-Coder through llama.cpp at `host.docker.internal:8084`, k=3): 3/14 pass,
+read as 6.3 prescribes — the cases that reproduce an observed wrong answer
+(E7, E9–E13) fail by construction when the model does not make the mistake,
+and E1/E2/E8 fail on pre-notes/pre-index expectations. **E14 is the signal
+that matters here:** with carry-forward, turn 2 retrieved the drain script's
+`behavior` fact (the `ACTIVE` set and `/api/jobs`) into its evidence even
+though the turn named no keyword, and the model answered *from the index fact*
+(`answer_basis: documentation`, citing `[I3]`/`[I2]`), once stating outright
+that "SUBMITTED is not in that set … jobs in SUBMITTED state are not considered
+active and do not block the drain step." That is the correct answer the live
+test could not reach, produced by a real model — so E14 "fails" the scripted
+reproduce-and-flag expectations precisely because the model no longer makes the
+mistake, which is the outcome the fix is for. The hedge path is exercised
+deterministically by the scripted E14 and by the `consult_engine` unit tests
+instead.
 
 Later refinements, not yet scheduled:
 
 - per-path last-modified dates and the change-since-note recency signal;
 - durable `consultations` transcripts and `consult_transcript`;
 - value-level conflict detection;
-- verifier-driven regeneration;
+- verifier-driven regeneration — *partly landed 2026-10-21 (6.4) as the
+  deterministic notes-only hedge (2.7); a full regenerate-and-retry against the
+  model remains unscheduled*;
 - feeding conflicts consult finds into `verification_status` once the
   memory schema migration lands;
 - a decision on indexing `docs/plans/`;
@@ -1557,7 +1778,10 @@ Later refinements, not yet scheduled:
    enough to warrant that, or should consult be allowed to derive it for
    every caller (and document that it does) so tiering is the same for
    everyone?
-10. **Conversations for static-token callers.** Static tokens carry no
-    per-caller subject, so the plan refuses conversations for them (4.5).
-    Is that acceptable for the operator-facing clients that use static
-    tokens, or does the auth layer need per-caller credentials first?
+10. **Conversations for static-token callers.** *Resolved 2026-10-20
+    (owner decision).* Static tokens carry no per-caller subject, so the
+    first step refused them conversations. They now hold conversations bound
+    to the token's label plus a long random id, possession of which is the
+    capability (4.5): every holder of a static token can already read what a
+    conversation is built from, so per-caller credentials are not needed for
+    this.

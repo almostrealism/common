@@ -16,7 +16,6 @@
 
 package io.flowtree.controller;
 
-import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Truncation;
@@ -31,13 +30,10 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import io.flowtree.api.FlowTreeApiEndpoint;
@@ -151,6 +147,13 @@ public class JobStatsStore implements ConsoleFeatures {
     /** Active JDBC connection to the backing HSQLDB database. */
     private Connection connection;
     /**
+     * Computes the weekly-statistics rollups. Recreated whenever
+     * {@link #connection} is opened and discarded when it is closed, so it
+     * always reads through the live connection. {@code null} until
+     * {@link #initialize()} has run.
+     */
+    private WeeklyStatsAggregator weeklyStatsAggregator;
+    /**
      * Trigger reasons registered before the job_timing row exists, applied
      * on the next {@link #recordJobStarted} call. The completion-listener
      * fan-out calls {@link #setTriggerReason(String, String)} immediately
@@ -205,6 +208,8 @@ public class JobStatsStore implements ConsoleFeatures {
                 }
             }
 
+            weeklyStatsAggregator = new WeeklyStatsAggregator(connection);
+
             log("JobStatsStore initialized: " + dbPath);
         } catch (SQLException e) {
             warn("Failed to initialize JobStatsStore: " + e.getMessage());
@@ -226,6 +231,7 @@ public class JobStatsStore implements ConsoleFeatures {
                 warn("Error closing JobStatsStore: " + e.getMessage());
             }
             connection = null;
+            weeklyStatsAggregator = null;
         }
     }
 
@@ -333,6 +339,13 @@ public class JobStatsStore implements ConsoleFeatures {
      * arrives with no prior submission record) a fresh {@code STARTED} row is
      * inserted. A second {@code STARTED} for an already-started job is a no-op, so
      * a re-reported start never moves {@code started_at}.</p>
+     *
+     * <p>This remains the path that carries worker node identity for a job that
+     * does post a {@code status=STARTED} event. It is no longer the only way a
+     * row reaches {@code STARTED}: a heartbeat or phase update promotes a still-
+     * {@code SUBMITTED} row through {@link #promoteToStarted}, so the transition
+     * no longer hangs on that single event arriving. The two paths are mutually
+     * idempotent — whichever fires first wins and the other is a no-op.</p>
      *
      * @param jobId         the job identifier
      * @param workstreamId  the workstream this job belongs to
@@ -636,6 +649,48 @@ public class JobStatsStore implements ConsoleFeatures {
     }
 
     /**
+     * Promotes a row still in {@code SUBMITTED} to {@code STARTED} on the
+     * strength of a liveness signal — a heartbeat or a phase update — that
+     * proves the job is running.
+     *
+     * <p>The controller's {@code STARTED} row otherwise hangs on a single
+     * {@code status=STARTED} event reaching the status-event handler; when that
+     * event is lost or never arrives, a job that heartbeats and records phases
+     * stays {@code SUBMITTED} and is indistinguishable from one that never
+     * started. Making a running-proof signal perform the same transition as
+     * {@link #recordJobStarted}'s {@code WHEN MATCHED AND status='SUBMITTED'}
+     * branch makes {@code STARTED} derivable from evidence the job is alive.</p>
+     *
+     * <p>Idempotent: the {@code WHERE status='SUBMITTED' AND completed_at IS
+     * NULL} guard means a row already {@code STARTED} or terminal is left
+     * untouched, so a later genuine {@code STARTED} event (or a subsequent
+     * heartbeat) is a no-op and a terminal row is never resurrected. The
+     * placeholder {@code started_at} seeded at submission is overwritten with
+     * the signal's instant, exactly as a real start would overwrite it. A
+     * {@code null} {@code node} preserves any identity a prior heartbeat
+     * recorded (a phase update names no node), matching {@code recordJobStarted}.</p>
+     *
+     * @param jobId the job identifier
+     * @param at    the instant the liveness signal arrived, seeded as {@code started_at}
+     * @param node  the worker identity when the signal carried one, else {@code null}
+     */
+    private void promoteToStarted(String jobId, Instant at, String node) {
+        if (connection == null || jobId == null || jobId.isEmpty() || at == null) return;
+
+        String sql = "UPDATE job_timing SET status = 'STARTED', started_at = ?, "
+            + "node = COALESCE(?, node) "
+            + "WHERE job_id = ? AND status = 'SUBMITTED' AND completed_at IS NULL";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(at));
+            ps.setString(2, (node != null && !node.isEmpty()) ? truncate(node, 255) : null);
+            ps.setString(3, jobId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to promote job to STARTED: " + e.getMessage());
+        }
+    }
+
+    /**
      * Records a liveness heartbeat for a running job.
      *
      * <p>Distinct from the inactivity watchdog, which watches the agent
@@ -677,6 +732,9 @@ public class JobStatsStore implements ConsoleFeatures {
         if (jobId == null || jobId.isEmpty() || connection == null) return;
         if (heartbeatAt == null) return;
 
+        // A heartbeat proves liveness, so it promotes a SUBMITTED row first.
+        promoteToStarted(jobId, heartbeatAt, node);
+
         boolean withNode = node != null && !node.isEmpty();
         String sql = withNode
             ? "UPDATE job_timing SET heartbeat_at = ?, node = ? WHERE job_id = ?"
@@ -699,12 +757,17 @@ public class JobStatsStore implements ConsoleFeatures {
      * Records the lifecycle phase a running job has reached, as the job's own
      * harness reports it.
      *
-     * <p>The job row's {@code status} stays {@code STARTED} from submission
-     * until the terminal event, so without this a poller cannot tell a job
-     * still in its primary session from one whose primary work is done and
-     * whose review phase is running. The phase is the harness's word for
-     * where it is — a phase wire name on entry, and the same name marked
-     * complete on exit.</p>
+     * <p>A phase update is itself proof the job is running, so — like a
+     * heartbeat — it promotes a row still {@code SUBMITTED} to {@code STARTED}
+     * before recording the phase (see {@link #promoteToStarted}). A row's
+     * {@code status} therefore reaches {@code STARTED} on the first liveness
+     * signal and stays there until the terminal event; without the promotion a
+     * job that recorded phases but whose single {@code STARTED} event was lost
+     * would remain {@code SUBMITTED} and be misreported as never-started. The
+     * phase itself is the harness's word for where it is — a phase wire name on
+     * entry, and the same name marked complete on exit — which is what lets a
+     * poller tell a job still in its primary session from one whose review
+     * phase is running.</p>
      *
      * @param jobId the job identifier
      * @param phase the phase description; {@code null} or empty is ignored
@@ -712,6 +775,9 @@ public class JobStatsStore implements ConsoleFeatures {
     public synchronized void recordPhase(String jobId, String phase) {
         if (jobId == null || jobId.isEmpty() || connection == null) return;
         if (phase == null || phase.isEmpty()) return;
+
+        // A phase update proves liveness; it names no node, promote on arrival.
+        promoteToStarted(jobId, Instant.now(), null);
 
         String sql = "UPDATE job_timing SET phase = ? WHERE job_id = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -783,6 +849,44 @@ public class JobStatsStore implements ConsoleFeatures {
             }
         } catch (SQLException e) {
             warn("Failed to query active jobs: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Returns every job, in every workstream, that started before {@code to}
+     * and was still running at or after {@code from}. Jobs that were only
+     * submitted are excluded; they have occupied no agent. The rows feed
+     * {@link DailyAgentTime}, which does the per-day arithmetic.
+     *
+     * @param from the start of the range
+     * @param to   the end of the range, exclusive
+     * @return the jobs overlapping the range, or an empty list when none or
+     *         the store is unavailable
+     */
+    public synchronized List<JobInterval> getJobIntervals(Instant from, Instant to) {
+        if (connection == null) return Collections.emptyList();
+
+        String sql = "SELECT job_id, workstream_id, status, started_at, completed_at, heartbeat_at, cost_usd "
+            + "FROM job_timing WHERE status <> 'SUBMITTED' AND started_at < ? "
+            + "AND (completed_at IS NULL OR completed_at >= ?)";
+
+        List<JobInterval> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(to));
+            ps.setTimestamp(2, Timestamp.from(from));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Timestamp completed = rs.getTimestamp("completed_at");
+                    Timestamp beat = rs.getTimestamp("heartbeat_at");
+                    result.add(new JobInterval(rs.getString("job_id"), rs.getString("workstream_id"),
+                            rs.getString("status"), rs.getTimestamp("started_at").toInstant(),
+                            completed == null ? null : completed.toInstant(),
+                            beat == null ? null : beat.toInstant(), rs.getDouble("cost_usd")));
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query job intervals: " + e.getMessage());
         }
         return result;
     }
@@ -997,184 +1101,7 @@ public class JobStatsStore implements ConsoleFeatures {
      */
     public synchronized WeeklyStats getWeeklyStats(String workstreamId, LocalDate weekStart) {
         if (connection == null) return new WeeklyStats();
-
-        LocalDate weekEnd = weekStart.plusDays(7);
-        Instant startInstant = weekStart.atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant endInstant = weekEnd.atStartOfDay(ZoneOffset.UTC).toInstant();
-
-        String sql = "SELECT "
-            + "COUNT(*) AS job_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END), 0) AS success_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_count, "
-            + "COALESCE(SUM(wall_clock_ms), 0) AS total_wall_clock_ms, "
-            + "COALESCE(SUM(duration_ms), 0) AS total_duration_ms, "
-            + "COALESCE(SUM(cost_usd), 0) AS total_cost_usd, "
-            + "COALESCE(SUM(num_turns), 0) AS total_turns "
-            + "FROM job_timing "
-            + "WHERE started_at >= ? AND started_at < ? AND status NOT IN ('STARTED', 'SUBMITTED')";
-
-        if (workstreamId != null) {
-            sql += " AND workstream_id = ?";
-        }
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setTimestamp(1, Timestamp.from(startInstant));
-            ps.setTimestamp(2, Timestamp.from(endInstant));
-            if (workstreamId != null) {
-                ps.setString(3, workstreamId);
-            }
-
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    WeeklyStats stats = new WeeklyStats();
-                    stats.jobCount = rs.getInt("job_count");
-                    stats.successCount = rs.getInt("success_count");
-                    stats.failedCount = rs.getInt("failed_count");
-                    stats.cancelledCount = rs.getInt("cancelled_count");
-                    stats.totalWallClockMs = rs.getLong("total_wall_clock_ms");
-                    stats.totalDurationMs = rs.getLong("total_duration_ms");
-                    stats.totalCostUsd = rs.getDouble("total_cost_usd");
-                    stats.totalTurns = rs.getInt("total_turns");
-                    stats.costByRunner = queryCostByRunner(workstreamId, startInstant, endInstant);
-                    stats.costByModel = queryCostByModel(workstreamId, startInstant, endInstant);
-                    return stats;
-                }
-            }
-        } catch (SQLException e) {
-            warn("Failed to query weekly stats: " + e.getMessage());
-        }
-
-        return new WeeklyStats();
-    }
-
-    /**
-     * Sums per-runner cost over the given window, optionally filtered to a
-     * single workstream.
-     *
-     * @param workstreamId the workstream to filter by, or {@code null} for all
-     * @param startInstant inclusive window start
-     * @param endInstant   exclusive window end
-     * @return map of runner name to summed USD cost, ordered by cost descending
-     */
-    private Map<String, Double> queryCostByRunner(String workstreamId,
-                                                  Instant startInstant, Instant endInstant) {
-        return queryCostFromTable(workstreamId, startInstant, endInstant,
-                "job_runner_cost", "rc", "runner", "runner_cost");
-    }
-
-    /**
-     * Sums per-runner cost grouped by workstream over the given window.
-     *
-     * @param startInstant inclusive window start
-     * @param endInstant   exclusive window end
-     * @return map of workstream ID to (runner → summed USD cost), ordered by cost descending within each workstream
-     */
-    private Map<String, Map<String, Double>> queryCostByRunnerPerWorkstream(
-            Instant startInstant, Instant endInstant) {
-        return queryCostPerWorkstreamFromTable(startInstant, endInstant,
-                "job_runner_cost", "rc", "runner", "runner_cost");
-    }
-
-    /**
-     * Sums per-model cost over the given window, optionally filtered to a
-     * single workstream.
-     *
-     * @param workstreamId the workstream to filter by, or {@code null} for all
-     * @param startInstant inclusive window start
-     * @param endInstant   exclusive window end
-     * @return map of provider/model identifier to summed USD cost, ordered by cost descending
-     */
-    private Map<String, Double> queryCostByModel(String workstreamId,
-                                                 Instant startInstant, Instant endInstant) {
-        return queryCostFromTable(workstreamId, startInstant, endInstant,
-                "job_model_cost", "mc", "model", "model_cost");
-    }
-
-    /**
-     * Sums per-model cost grouped by workstream over the given window.
-     *
-     * @param startInstant inclusive window start
-     * @param endInstant   exclusive window end
-     * @return map of workstream ID to (model → summed USD cost), ordered by cost descending within each workstream
-     */
-    private Map<String, Map<String, Double>> queryCostByModelPerWorkstream(
-            Instant startInstant, Instant endInstant) {
-        return queryCostPerWorkstreamFromTable(startInstant, endInstant,
-                "job_model_cost", "mc", "model", "model_cost");
-    }
-
-    /**
-     * Shared implementation for {@link #queryCostByRunner} and {@link #queryCostByModel}.
-     * Joins {@code table} to {@code job_timing} and sums {@code cost_usd} per key,
-     * using the same time-window and status filters as aggregate queries.
-     */
-    private Map<String, Double> queryCostFromTable(String workstreamId,
-                                                   Instant startInstant, Instant endInstant,
-                                                   String table, String tableAlias,
-                                                   String keyColumn, String costAlias) {
-        Map<String, Double> result = new LinkedHashMap<>();
-        if (connection == null) return result;
-
-        String sql = "SELECT " + tableAlias + "." + keyColumn + " AS " + keyColumn + ", "
-            + "COALESCE(SUM(" + tableAlias + ".cost_usd), 0) AS " + costAlias + " "
-            + "FROM " + table + " " + tableAlias + " JOIN job_timing t ON "
-            + tableAlias + ".job_id = t.job_id "
-            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status NOT IN ('STARTED', 'SUBMITTED')"
-            + (workstreamId != null ? " AND t.workstream_id = ?" : "")
-            + " GROUP BY " + tableAlias + "." + keyColumn + " ORDER BY " + costAlias + " DESC";
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setTimestamp(1, Timestamp.from(startInstant));
-            ps.setTimestamp(2, Timestamp.from(endInstant));
-            if (workstreamId != null) {
-                ps.setString(3, workstreamId);
-            }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.put(rs.getString(keyColumn), rs.getDouble(costAlias));
-                }
-            }
-        } catch (SQLException e) {
-            warn("Failed to query cost from " + table + ": " + e.getMessage());
-        }
-        return result;
-    }
-
-    /**
-     * Shared implementation for {@link #queryCostByRunnerPerWorkstream} and
-     * {@link #queryCostByModelPerWorkstream}. Returns a map of workstream ID to
-     * (key → summed cost), grouped and ordered by workstream then cost descending.
-     */
-    private Map<String, Map<String, Double>> queryCostPerWorkstreamFromTable(
-            Instant startInstant, Instant endInstant,
-            String table, String tableAlias,
-            String keyColumn, String costAlias) {
-        Map<String, Map<String, Double>> result = new LinkedHashMap<>();
-        if (connection == null) return result;
-
-        String sql = "SELECT t.workstream_id, " + tableAlias + "." + keyColumn + ", "
-            + "COALESCE(SUM(" + tableAlias + ".cost_usd), 0) AS " + costAlias + " "
-            + "FROM " + table + " " + tableAlias + " JOIN job_timing t ON "
-            + tableAlias + ".job_id = t.job_id "
-            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status NOT IN ('STARTED', 'SUBMITTED') "
-            + "GROUP BY t.workstream_id, " + tableAlias + "." + keyColumn + " "
-            + "ORDER BY t.workstream_id, " + costAlias + " DESC";
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setTimestamp(1, Timestamp.from(startInstant));
-            ps.setTimestamp(2, Timestamp.from(endInstant));
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String wsId = rs.getString("workstream_id");
-                    result.computeIfAbsent(wsId, k -> new LinkedHashMap<>())
-                          .put(rs.getString(keyColumn), rs.getDouble(costAlias));
-                }
-            }
-        } catch (SQLException e) {
-            warn("Failed to query cost per workstream from " + table + ": " + e.getMessage());
-        }
-        return result;
+        return weeklyStatsAggregator.forWeek(workstreamId, weekStart);
     }
 
     /**
@@ -1236,69 +1163,8 @@ public class JobStatsStore implements ConsoleFeatures {
      * @return map of workstream ID to stats
      */
     public synchronized Map<String, WeeklyStats> getWeeklyStatsByWorkstream(LocalDate weekStart) {
-        Map<String, WeeklyStats> result = new LinkedHashMap<>();
-        if (connection == null) return result;
-
-        LocalDate weekEnd = weekStart.plusDays(7);
-        Instant startInstant = weekStart.atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant endInstant = weekEnd.atStartOfDay(ZoneOffset.UTC).toInstant();
-
-        String sql = "SELECT workstream_id, "
-            + "COUNT(*) AS job_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END), 0) AS success_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_count, "
-            + "COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_count, "
-            + "COALESCE(SUM(wall_clock_ms), 0) AS total_wall_clock_ms, "
-            + "COALESCE(SUM(duration_ms), 0) AS total_duration_ms, "
-            + "COALESCE(SUM(cost_usd), 0) AS total_cost_usd, "
-            + "COALESCE(SUM(num_turns), 0) AS total_turns "
-            + "FROM job_timing "
-            + "WHERE started_at >= ? AND started_at < ? AND status NOT IN ('STARTED', 'SUBMITTED') "
-            + "GROUP BY workstream_id";
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setTimestamp(1, Timestamp.from(startInstant));
-            ps.setTimestamp(2, Timestamp.from(endInstant));
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    WeeklyStats stats = new WeeklyStats();
-                    stats.jobCount = rs.getInt("job_count");
-                    stats.successCount = rs.getInt("success_count");
-                    stats.failedCount = rs.getInt("failed_count");
-                    stats.cancelledCount = rs.getInt("cancelled_count");
-                    stats.totalWallClockMs = rs.getLong("total_wall_clock_ms");
-                    stats.totalDurationMs = rs.getLong("total_duration_ms");
-                    stats.totalCostUsd = rs.getDouble("total_cost_usd");
-                    stats.totalTurns = rs.getInt("total_turns");
-                    result.put(rs.getString("workstream_id"), stats);
-                }
-            }
-        } catch (SQLException e) {
-            warn("Failed to query weekly stats by workstream: " + e.getMessage());
-        }
-
-        // Populate per-runner cost for every workstream in one grouped query
-        Map<String, Map<String, Double>> runnerCosts =
-                queryCostByRunnerPerWorkstream(startInstant, endInstant);
-        for (Map.Entry<String, WeeklyStats> entry : result.entrySet()) {
-            Map<String, Double> runners = runnerCosts.get(entry.getKey());
-            if (runners != null && !runners.isEmpty()) {
-                entry.getValue().costByRunner = runners;
-            }
-        }
-
-        // Populate per-model cost for every workstream in one grouped query
-        Map<String, Map<String, Double>> modelCosts =
-                queryCostByModelPerWorkstream(startInstant, endInstant);
-        for (Map.Entry<String, WeeklyStats> entry : result.entrySet()) {
-            Map<String, Double> models = modelCosts.get(entry.getKey());
-            if (models != null && !models.isEmpty()) {
-                entry.getValue().costByModel = models;
-            }
-        }
-
-        return result;
+        if (connection == null) return new LinkedHashMap<>();
+        return weeklyStatsAggregator.byWorkstream(weekStart);
     }
 
     /**
@@ -1468,69 +1334,5 @@ public class JobStatsStore implements ConsoleFeatures {
          * Only jobs with a stored Slack message timestamp are included.
          */
         public List<String[]> recentJobs = new ArrayList<>();
-    }
-
-    /**
-     * Aggregated weekly job statistics.
-     */
-    public static class WeeklyStats {
-        /** Total number of completed jobs. */
-        public int jobCount;
-        /** Number of successful jobs. */
-        public int successCount;
-        /** Number of failed jobs. */
-        public int failedCount;
-        /** Number of cancelled jobs. */
-        public int cancelledCount;
-        /** Total wall-clock time across all jobs in milliseconds. */
-        public long totalWallClockMs;
-        /** Total Claude Code duration across all jobs in milliseconds. */
-        public long totalDurationMs;
-        /** Total cost in USD across all jobs. */
-        public double totalCostUsd;
-        /** Total number of agentic turns across all jobs. */
-        public int totalTurns;
-        /**
-         * Per-runner USD cost breakdown for the window, keyed by runner name and
-         * ordered by cost descending. Empty when no per-runner data is recorded.
-         */
-        public Map<String, Double> costByRunner = Collections.emptyMap();
-        /**
-         * Per-model USD cost breakdown for the window, keyed by provider/model
-         * identifier and ordered by cost descending. Empty when no per-model
-         * data is recorded.
-         */
-        public Map<String, Double> costByModel = Collections.emptyMap();
-
-        /**
-         * Formats this week's statistics as a Slack mrkdwn block for display.
-         *
-         * <p>Outputs a header line with the label and date range, followed by
-         * total wall-clock time, job counts by status, total USD cost (with
-         * per-runner and per-model breakdowns), and total agent turns.</p>
-         *
-         * @param label     display label for the block (e.g., "This Week")
-         * @param weekStart the Monday that begins this week
-         * @return a formatted mrkdwn string ready for posting to Slack
-         */
-        public String toSlackMrkdwn(String label, LocalDate weekStart) {
-            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US);
-            LocalDate weekEnd = weekStart.plusDays(6);
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("*").append(label).append("* (");
-            sb.append(weekStart.format(fmt)).append(" — ").append(weekEnd.format(fmt)).append(")\n");
-            sb.append("  :clock1: Total time: ").append(HarnessStatusReporter.formatDuration(totalWallClockMs)).append("\n");
-            sb.append("  :hammer: Jobs: ").append(jobCount);
-            sb.append(" (:white_check_mark: ").append(successCount);
-            sb.append("  :x: ").append(failedCount);
-            sb.append("  :no_entry_sign: ").append(cancelledCount).append(")\n");
-            sb.append("  :moneybag: Cost: $").append(String.format("%.2f", totalCostUsd));
-            sb.append(formatCostBreakdown(costByRunner));
-            sb.append(formatCostBreakdown(costByModel));
-            sb.append("\n");
-            sb.append("  :speech_balloon: Turns: ").append(String.format("%,d", totalTurns)).append("\n");
-            return sb.toString();
-        }
     }
 }

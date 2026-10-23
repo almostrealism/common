@@ -34,9 +34,13 @@
 #   BRANCH, BASE_BRANCH - the branch the request is for, from the event
 #
 # Optional environment (from the caller, never overridden by the request):
-#   PROTECT_TEST_FILES, ENFORCE_CHANGES, STARTED_AFTER, REQUIRED_LABELS
-#   (REQUIRED_LABELS passes straight through to submit-agent-job.sh; a
-#   request that names it is ignored like any other unexpected key)
+#   PROTECT_TEST_FILES, ENFORCE_CHANGES, STARTED_AFTER, REQUIRED_LABELS,
+#   OBJECT_ORIENTED_REVIEW_ENABLED
+#   (REQUIRED_LABELS and OBJECT_ORIENTED_REVIEW_ENABLED pass straight through
+#   to submit-agent-job.sh; a request that names either is ignored like any
+#   other unexpected key. The remediation submitters set
+#   OBJECT_ORIENTED_REVIEW_ENABLED=false so the object-oriented design review
+#   does not ride along on the follow-up jobs CI runs in a loop.)
 #
 # Environment:
 #   Everything submit-agent-job.sh reads for reaching the controller

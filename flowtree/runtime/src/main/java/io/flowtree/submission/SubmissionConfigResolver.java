@@ -16,6 +16,7 @@
 
 package io.flowtree.submission;
 
+import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 
@@ -129,5 +130,48 @@ public final class SubmissionConfigResolver {
      */
     public PhaseConfigResolver phaseConfigResolver() {
         return phaseConfigResolver;
+    }
+
+    /**
+     * Appends the factory's resolved optional-phase configuration to {@code json}
+     * as a sequence of {@code ,"name":value} members, for a submission response
+     * that echoes the configuration a job will actually run with.
+     *
+     * <p>The read-back counterpart to {@link #applyTo(CodingAgentJobFactory)}:
+     * that method writes the resolved runner and phase configuration onto the
+     * factory, and this one reports the resulting optional-phase flags so a
+     * caller can confirm the effective job configuration without inspecting the
+     * phase bundle. Static, mirroring {@link PhaseConfigResolver#appendBundleJson};
+     * the caller is expected to have already resolved and applied configuration
+     * to {@code factory}. The leading comma on each member means the caller must
+     * have written at least one preceding JSON member.</p>
+     *
+     * @param json    the buffer to append to; must already contain an open
+     *                object with at least one member
+     * @param factory the factory whose resolved configuration to echo
+     */
+    public static void appendResolvedJobConfigJson(StringBuilder json, CodingAgentJobFactory factory) {
+        String effectiveDedupMode = factory.getDeduplicationMode();
+        boolean dedupEnabled = effectiveDedupMode != null
+                && !effectiveDedupMode.isEmpty()
+                && !CodingAgentJob.DEDUP_NONE.equals(effectiveDedupMode);
+        json.append(",\"deduplicationEnabled\":").append(dedupEnabled);
+        json.append(",\"organizationalPlacementEnabled\":")
+                .append(factory.isEnforceOrganizationalPlacement());
+        json.append(",\"objectOrientedReviewEnabled\":")
+                .append(factory.isObjectOrientedReviewEnabled());
+        json.append(",\"retrospectiveEnabled\":")
+                .append(factory.isRetrospectiveEnabled());
+        json.append(",\"falsificationEnabled\":")
+                .append(factory.isFalsificationEnabled());
+        json.append(",\"autoCreatePr\":").append(factory.isAutoCreatePr());
+        json.append(",\"enforceChanges\":").append(factory.isEnforceChanges());
+        json.append(",\"maxEnforceChangesRetries\":")
+                .append(factory.getMaxEnforceChangesRetries());
+        json.append(",\"collaborative\":").append(factory.isCollaborative());
+        json.append(",\"sensitiveFileProtectionEnabled\":")
+                .append(factory.isSensitiveFileProtectionEnabled());
+        json.append(",\"bypassAgentPermissionPrompts\":")
+                .append(factory.isBypassAgentPermissionPrompts());
     }
 }

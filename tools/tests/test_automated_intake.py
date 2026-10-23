@@ -21,6 +21,7 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from test_master_agent_dispatch import called_job, controller_url  # noqa: E402
 from test_task_planning_gates import _CI, _ControllerStub, _run  # noqa: E402
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -107,11 +108,15 @@ class AutomatedIntakeScriptTests(unittest.TestCase):
 
 
 class AutomatedIntakeWiringTests(unittest.TestCase):
-    """Every dispatch job asks about intake before its round can start."""
+    """Every dispatch job asks about intake before its round can start.
+
+    A job that calls a reusable workflow is checked through the job it calls.
+    """
 
     def setUp(self):
         with open(_WORKFLOW) as f:
-            self.jobs = yaml.safe_load(f)["jobs"]
+            self.callers = yaml.safe_load(f)["jobs"]
+        self.jobs = {name: called_job(job) for name, job in self.callers.items()}
 
     def test_every_job_checks_intake_before_its_cadence_gate(self):
         for name, job in self.jobs.items():
@@ -155,7 +160,8 @@ class AutomatedIntakeWiringTests(unittest.TestCase):
             step = next(s for s in job["steps"] if s.get("id") == "intake")
             env = step.get("env", {})
             with self.subTest(job=name):
-                self.assertIn("FLOWTREE_CONTROLLER_URL", env.get("CONTROLLER_URL", ""))
+                self.assertIn("FLOWTREE_CONTROLLER_URL",
+                              controller_url(self.callers[name], env))
                 self.assertIn("CF_ACCESS_CLIENT_ID", env)
                 self.assertIn("secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET",
                               env.get("CF_ACCESS_CLIENT_SECRET", ""))

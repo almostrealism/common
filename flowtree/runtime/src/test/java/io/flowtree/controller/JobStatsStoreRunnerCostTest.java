@@ -74,7 +74,7 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
             perRunner.put("opencode", 0.03);
             store.recordRunnerCosts("job-1", perRunner);
 
-            JobStatsStore.WeeklyStats stats = store.getWeeklyStats("ws-mixed", monday);
+            WeeklyStats stats = store.getWeeklyStats("ws-mixed", monday);
             assertEquals(0.42, stats.costByRunner.get("claude"), 1e-9);
             assertEquals(0.03, stats.costByRunner.get("opencode"), 1e-9);
         } finally {
@@ -105,7 +105,7 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
             b.put("claude", 0.30);
             store.recordRunnerCosts("job-b", b);
 
-            JobStatsStore.WeeklyStats stats = store.getWeeklyStats("ws-sum", monday);
+            WeeklyStats stats = store.getWeeklyStats("ws-sum", monday);
             assertEquals("claude cost sums across both jobs",
                     0.80, stats.costByRunner.get("claude"), 1e-9);
             assertEquals("opencode appears only from job-a",
@@ -136,7 +136,7 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
             second.put("claude", 0.25);
             store.recordRunnerCosts("job-x", second);
 
-            JobStatsStore.WeeklyStats stats = store.getWeeklyStats("ws-idem", monday);
+            WeeklyStats stats = store.getWeeklyStats("ws-idem", monday);
             assertEquals(0.25, stats.costByRunner.get("claude"), 1e-9);
         } finally {
             store.close();
@@ -227,7 +227,7 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
             runners2.put("claude", 0.30);
             store.recordRunnerCosts("job-ws2", runners2);
 
-            Map<String, JobStatsStore.WeeklyStats> byWs = store.getWeeklyStatsByWorkstream(monday);
+            Map<String, WeeklyStats> byWs = store.getWeeklyStatsByWorkstream(monday);
             assertTrue("ws-one present", byWs.containsKey("ws-one"));
             assertTrue("ws-two present", byWs.containsKey("ws-two"));
 
@@ -256,7 +256,7 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
             store.recordRunnerCosts("job-clear", costs);
             store.recordRunnerCosts("job-clear", new LinkedHashMap<>());
 
-            JobStatsStore.WeeklyStats stats = store.getWeeklyStats("ws-clear", monday);
+            WeeklyStats stats = store.getWeeklyStats("ws-clear", monday);
             assertFalse("an empty re-record clears prior rows",
                     stats.costByRunner.containsKey("claude"));
         } finally {

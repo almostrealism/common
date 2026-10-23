@@ -51,7 +51,7 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | `pushedToolsConfig` | `null` | JSON mapping pushed tool server names to download URLs and tool names |
 | `deduplicationMode` | `"none"` | Post-work duplicate-method check. Disabled by default. `"local"` runs an inline session before committing (recommended for pre-merge cleanup); `"spawn"` posts a follow-up job to the workstream. |
 | `enforceOrganizationalPlacement` | `false` | When `true`, activates the organizational placement rule after primary work. Disabled by default; opt in for pre-merge cleanup jobs. |
-| `objectOrientedReviewEnabled` | `false` | When `true` and review is enabled, activates `ObjectOrientedDesignRule`: one review session per changed production class. Disabled by default; a job decoded without the field runs without it. |
+| `objectOrientedReviewEnabled` | `true` | When `true` and review is enabled, activates `ObjectOrientedDesignRule`: a single design-review session over the changed production classes a deterministic risk gate flags. Enabled by default (the gate keeps it cheap); a job decoded without the field runs with it on. Send `false` to switch it off. |
 
 **Results:**
 
@@ -203,17 +203,51 @@ factory.setEnforceOrganizationalPlacement(true);  // default is false
 
 ## Object-Oriented Design Review
 
-`ObjectOrientedDesignRule` runs one dedicated session per added or modified
-production Java class, asking the agent to fix violations of the object-oriented
-design rules in that class. Each class costs a full agent session, so the rule is
-disabled by default and must be explicitly enabled per job. It is job-level only.
+`ObjectOrientedDesignRule` runs a single design-review session over the
+production Java classes a branch changed, asking the agent to fix violations of
+the object-oriented design rules in each one. It is enabled by default and
+job-level only; a job may switch it off.
+
+Two mechanisms keep it cheap, so that on-by-default is affordable where one
+session per class was not:
+
+- **Risk gate.** Before any session, `ObjectOrientedRiskGate` reads each changed
+  class's name and the lines the branch added and reports the design signals it
+  sees — a new class, a new static member, an added `instanceof` or cast, a name
+  asserting a type (`*Util`/`*Helper`/`*Model`/`*Block`/`*Config`), a lambda or
+  method reference wired as a call argument, or a public method taking a
+  collaborator the class already holds as a field. Only a class that fires a
+  signal is reviewed; the signals that fired are logged and named in the prompt.
+- **Verdict ledger.** `ObjectOrientedReviewLedger` records each settled verdict
+  per branch, keyed by class path and the git blob id of the reviewed content,
+  in a file beside the workspace lock (outside the working tree, so it survives
+  the between-job stash). A class whose current content already carries a
+  `CLEAN` or `FIXED` verdict is skipped, so a class is reviewed again only when
+  its content changed since it was last judged.
+
+All flagged, unsettled classes are reviewed together in one session (up to
+`ObjectOrientedDesignRule.MAX_CLASSES`), which records a verdict line per class
+in `.flowtree/oop-review.md` — scratch space that is never committed. The
+primary session's `commit.txt` is preserved across the review, so the commit
+message describes the job's work, not the review verdict.
 
 The rule is assembled only when **both** review is enabled (`reviewEnabled`, on by
-default) **and** `objectOrientedReviewEnabled` is `true`. It keeps its place in the
-rule order: after the content-protection rules and custom rules, before the
-staging and commit-message checks. Jobs decoded without the field — older
-submissions, and CI auto-resolve/auto-review jobs, which never send it — run
-without it.
+default) **and** `objectOrientedReviewEnabled` is `true` (also on by default). It
+keeps its place in the rule order: after the content-protection rules and custom
+rules, before the staging and commit-message checks. A job decoded without the
+field — an older submission, or any hand-submitted job — runs with it on.
+
+**On for initial work, off for CI follow-ups.** The review belongs to the job
+that creates a branch's work — QA rounds, planning and task jobs, and jobs
+submitted by hand — which all leave the field unset and get the on-by-default.
+The follow-up jobs CI submits in a loop turn it off: `auto-review` (and its
+code-policy and quality-gate routes), `auto-resolve-python` and `auto-resolve`
+can each fire many times on one branch, so each sends
+`objectOrientedReviewEnabled: false` and the review does not ride along on every
+pass. Those submitters set `OBJECT_ORIENTED_REVIEW_ENABLED=false` on the trusted
+"Submit agent job" step (`tools/ci/submit-agent-job.sh` sends the field only when
+that knob is set); `tools/tests/test_oop_review_follow_up_disabled.py` pins the
+wiring.
 
 ### Via ar-manager MCP
 
@@ -221,7 +255,7 @@ without it.
 workstream_submit_task(
     prompt="...",
     workstream_id="ws-common",
-    object_oriented_review_enabled=True,   # opt in to per-class design review
+    object_oriented_review_enabled=False,  # on by default; send False to switch it off
 )
 ```
 
@@ -231,7 +265,7 @@ The submit response echoes `objectOrientedReviewEnabled` alongside
 ### Java API
 
 ```java
-factory.setObjectOrientedReviewEnabled(true);  // default is false; requires review
+factory.setObjectOrientedReviewEnabled(false);  // default is true; requires review
 ```
 
 ## MCP Tools

@@ -411,7 +411,7 @@ All setters support chaining. The `build()` method assembles sections in this fi
 
 **Message deduplication.** `WorkstreamMailbox.appendIfNew(text, sender, jobId, activity, messageId)` atomically checks the mailbox for a message carrying the same caller-supplied `messageId` and appends only if none is found, returning a `Dedupe(message, appended)` record. `recent(messageId)` matches only within `DEDUPE_WINDOW_MILLIS` (15 minutes) of the earlier message's timestamp, so a sender's prompt retry after a timeout is treated as the same message, while a repeat sent long after is a new one. `MessageEndpointHandler` uses this so a client that retries a timed-out POST does not duplicate its message in the mailbox.
 
-0e. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0` and the session is not a correction session (`correctionSession` false). Heading: `## !! SESSION RESTARTED -- RETRY N !!`. Used when the previous run produced no code changes and the enforcement loop is asking for another attempt. Tells the agent to investigate CI status with the test runner (using the exact CI command) and produce real production-code changes rather than re-running the prompt verbatim.
+0e. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0` and the session is not a correction session (`correctionSession` false). Heading: `## !! SESSION RESTARTED -- RETRY N !!`. Used when the previous run produced no change and `EnforceChangesRule` is re-running the primary phase. Tells the agent the job requires changes and, when the task is to fix failing CI, to run the exact failing CI command with the test runner and fix the production code. The wording is generic because `enforceChanges` is also set by rounds whose required change is not a CI fix (a coverage round, the QA retrospective's report).
 
 0f. **Falsification Refutation Warning** -- Present when `falsificationFindings` is non-empty. Heading: `## !! SESSION RESTARTED -- A LOAD-BEARING CLAIM DID NOT PASS FALSIFICATION !!`. Used when the falsification phase bounced the job back to primary because a load-bearing behavioural claim the prior attempt relied on was not confirmed by the evidence captured during that attempt. Includes the claim, the dependent code, and the captured evidence.
 
@@ -493,6 +493,7 @@ post-completion command that tries to violate it anyway.
 | `setInvalidFilesViolation(String)` | `String` | Non-null/non-empty enables section 0b. Comma-separated list of `.bin` litter paths from `InvalidFileDetector`. |
 | `setInactivityRestartAttempt(int)` | `int` | `> 0` enables section 0c. The value is the count of prior inactivity-triggered restarts (1 = first relaunch, 2 = second, ...). |
 | `setConversationCatchUp(String)` | `String` | Non-null/non-empty enables section 0d. Rendered by `ConversationCatchUp#render()`. |
+| `setMaxEnforceChangesRetries(int)` | `int` | The whole-job enforce-changes re-run cap. While `enforcementAttempt` is below it, the strict `enforce_changes` block says an empty exit restarts the session; once it is reached (immediately, for a cap of 0) it says the job will end DEGRADED instead. |
 | `setCorrectionSession(boolean)` | `boolean` | `true` suppresses section 0e (enforcement retry warning) and the outer `enforce_changes` pressure, since a rule-specific correction prompt may legitimately accept "no changes needed". |
 | `setFalsificationFindings(String)` | `String` | Non-null/non-empty enables section 0f. |
 
@@ -884,7 +885,8 @@ The first token is the fully qualified class name (used by the deserialization f
 | `wsEnv` | `workstreamEnv` | JSON then Base64 | Non-null, non-empty |
 | `planDoc` | `planningDocument` | Base64 | Non-null |
 | `protectTests` | `protectTestFiles` | Plain boolean | Always |
-| `enforceChanges` | `enforceChanges` | Plain boolean | Always |
+| `enforceChanges` | `enforceChanges.enabled` (`EnforceChangesConfig`) | Plain boolean | Always |
+| `maxEnforceRetries` | `enforceChanges.maxRetries` (`EnforceChangesConfig`) | Plain int (0 is meaningful) | Non-default |
 | `dedupMode` | `deduplicationMode` | Plain string | Non-null |
 | `bypassAgentPermissionPrompts` | `bypassAgentPermissionPrompts` | Plain boolean (`true`) | Only when true |
 
@@ -934,6 +936,7 @@ The `set(String key, String value)` method handles incoming key-value pairs duri
 - `planDoc`: Base64-decoded to `this.planningDocument`
 - `protectTests`: Parsed as boolean
 - `enforceChanges`: Parsed as boolean
+- `maxEnforceRetries`: Parsed as a non-negative int; an absent, invalid or negative value leaves the default (`DEFAULT_MAX_RULE_RETRIES`)
 - `dedupMode`: Stored directly as `this.deduplicationMode` (plain string; `"local"` or `"spawn"`)
 - `bypassAgentPermissionPrompts`: Parsed as boolean into `this.bypassAgentPermissionPrompts` (present only when the grant was made)
 - `maxWallClockHours`: Parsed as `Integer`; an empty value leaves the field `null` so the job inherits the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`
@@ -941,7 +944,7 @@ The `set(String key, String value)` method handles incoming key-value pairs duri
 
 ### Factory Serialization
 
-The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`, `bypassAgentPermissionPrompts`). Unlike the job encoding, the factory stores `bypassAgentPermissionPrompts` as `"true"` or `"false"` whenever its setter is called; `isBypassAgentPermissionPrompts()` treats anything other than `"true"` (including an absent key) as false. The factory also stores `factoryTaskId` for task ID persistence.
+The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `maxEnforceRetries`, `dedupMode`, `bypassAgentPermissionPrompts`). Unlike the job encoding, the factory stores `bypassAgentPermissionPrompts` as `"true"` or `"false"` whenever its setter is called; `isBypassAgentPermissionPrompts()` treats anything other than `"true"` (including an absent key) as false. The factory also stores `factoryTaskId` for task ID persistence.
 
 Prompts are stored via `setPrompts(String... prompts)`, which joins them with `PROMPT_SEPARATOR` (`;;PROMPT;;`), Base64-encodes the result, and stores it under the key `prompts`. Retrieval via `getPrompts()` reverses this process.
 
@@ -997,7 +1000,7 @@ This means the `set()` method must handle all keys that `encode()` produces. The
 The Claude Code command is constructed in `doWork()` as a `List<String>`. The final command has this structure:
 
 ```
-claude -p <instruction-prompt> --output-format stream-json --verbose --allowedTools <tools> --max-turns <N> [--max-budget-usd <N.NN>] --mcp-config <json>
+claude -p <instruction-prompt> --output-format stream-json --verbose --setting-sources project,local --allowedTools <tools> --max-turns <N> [--max-budget-usd <N.NN>] --mcp-config <json>
 ```
 
 ### Arguments in Detail
@@ -1011,6 +1014,10 @@ The `-p` flag invokes Claude Code in non-interactive (headless) mode. The argume
 Requests the event stream: one JSON object per line as the session runs — `system`/`init`, each `assistant` turn (including its `tool_use` blocks), each `user` turn carrying `tool_result` blocks, and a final `result` object with the session metrics. The CLI requires `--verbose` alongside `stream-json` in print mode.
 
 The single-object `json` form is deliberately not used: it writes nothing until the session ends, which leaves the inactivity watchdog with no output to observe and turns it into a hard per-session wall clock. The event stream is also what `ClaudeCodeRunner.classifyActivity` reads to tell the watchdog when the agent is waiting on an MCP tool rather than hung (see `AgentActivityTracker`).
+
+#### `--setting-sources project,local`
+
+Loads the repository's `.claude/settings.json` and `.claude/settings.local.json`, and leaves out the user-level settings of the account the node runs under (`ClaudeCodeRunner.SETTING_SOURCES`). Anything installed in that account for interactive use — hooks, plugins, MCP servers — would otherwise run inside every job. A hook written for a person at a terminal can stop a headless session: a `PreToolUse` hook that defers a tool call ends a `-p` session at its first tool use, with exit code 0 and no work done. What a job runs with comes from the repository and from this command line, which passes the model, effort and MCP servers explicitly.
 
 #### `--allowedTools <tools>`
 
@@ -1072,14 +1079,16 @@ The command-line arguments are added to the `List<String>` in a specific order, 
 4. `--output-format`
 5. `stream-json`
 6. `--verbose`
-7. `--allowedTools`
-8. The comma-separated tools string
-9. `--max-turns`
-10. The turn limit as a string
-11. `--max-budget-usd` (conditional)
-12. The budget as a formatted string (conditional)
-13. `--mcp-config`
-14. The JSON config string
+7. `--setting-sources`
+8. `project,local`
+9. `--allowedTools`
+10. The comma-separated tools string
+11. `--max-turns`
+12. The turn limit as a string
+13. `--max-budget-usd` (conditional)
+14. The budget as a formatted string (conditional)
+15. `--mcp-config`
+16. The JSON config string
 
 ### Complete Example Command
 
@@ -1091,6 +1100,7 @@ claude -p "You are working autonomously as a coding agent...
 Fix the memory leak in CacheManager
 --- END USER REQUEST ---" \
 --output-format stream-json --verbose \
+--setting-sources project,local \
 --allowedTools Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop,mcp__ar-manager__send_message,mcp__ar-manager__memory_recall,mcp__ar-manager__github_pr_find,mcp__ar-manager__github_pr_review_comments,mcp__ar-manager__github_pr_conversation,mcp__ar-manager__github_pr_reply,mcp__ar-manager__memory_store,mcp__ar-manager__memory_namespaces,mcp__ar-manager__workstream_context,mcp__ar-manager__consult \
 --max-turns 50 \
 --max-budget-usd 10.00 \

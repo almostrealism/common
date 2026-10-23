@@ -1,0 +1,3 @@
+The `Deploy Controller Stack` workflow runs on `workflow_run` after a successful "Build and Test" on master, and can also be dispatched manually [D:.github/CLAUDE.md].
+BASIS: documentation
+CONFLICTS: none

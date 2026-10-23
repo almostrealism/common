@@ -40,7 +40,7 @@ has been shown to work.
 |---|---|---|
 | Tracker: projects, releases, tasks | `tools/tracker`, `tracker_*` tools in `tools/mcp/manager/tracker_tools.py` | Where tasks live. Releases are named `<Project> <version>`. |
 | Planning round | `plan-next-task` in `.github/workflows/master-agent-dispatch.yaml`, prompt `tools/ci/prompts/project-planning.txt` | Opens one plan branch at a time; today it invents its own task. |
-| One round open at a time; open-PR ceiling | `tools/ci/qa-cadence.sh` with `PR_GRACE_HOURS`; `MAX_OPEN_PRS` | Throttling that already works. |
+| Rounds open at once; open-PR ceiling | `tools/ci/qa-cadence.sh` with `PR_GRACE_HOURS` and `MAX_ROUNDS`; one `MAX_OPEN_PRS` for every round | Throttling that already works. |
 | Docs-only review | `auto-review` → `tools/ci/prompts/docs-review.txt` in `analysis.yaml` | Reviews a plan; never implements it. |
 | Approval gate | `.github/workflows/verify-completion.yaml` (dispatched by hand or via `project_verify_branch`) | The only thing that starts an implementation. |
 | Workstream ↔ task link | `workstream_id` on a task | Can already record which branch is working on a task. |
@@ -198,7 +198,8 @@ This is a new job in `master-agent-dispatch.yaml`, alongside the free-form
 It keeps the same controls:
 - a grace window for a branch that has no PR yet (`qa-cadence.sh` with
   `PR_GRACE_HOURS`);
-- one task round open at a time to begin with (see Parallel planning);
+- a bounded number of task rounds open at once: one to begin with, now four
+  (`max-rounds`; see Parallel planning);
 - the same open-PR ceiling (`MAX_OPEN_PRS`), because both kinds of plan compete
   for the same reviewer's attention.
 
@@ -326,9 +327,14 @@ As built (`TaskCloseOutReconciler`, tracker `/v1/close-out`):
 Task rounds never write the manager log, so nothing forces them to one at a time
 beyond the claim itself. Since the claim (now made by CI through the
 controller) is atomic, the
-task round can open up to a configured number of branches at once. Start at
-one, and raise it once the pipeline has proven itself. The open-PR ceiling still
-applies across everything.
+task round can open up to a configured number of branches at once. Started at
+one; now four (`max-rounds` of `task-planning.yaml`, `MAX_ROUNDS` of
+`qa-cadence.sh`). A round holds its slot until its PR is merged or closed. The
+open-PR ceiling still applies across everything: every round in Master Agent
+Dispatch, QA included, now checks the one `MAX_OPEN_PRS`.
+
+Each merge to master starts at most one round, so the slots fill one merge at a
+time rather than all at once.
 
 ### 7. Adoption by other repositories
 
@@ -381,10 +387,14 @@ The rules that make this work:
   each round is extracted and this repository's own triggers are pointed at the
   reusable workflow, `master-agent-dispatch.yaml` (or a sibling caller) calls it
   the way any consumer does, so this repository's pipeline exercises the same
-  code every consumer runs. This is not yet true of the first reusable workflow:
-  `goal-decomposition.yaml` has no caller in this repository today, so the
-  decomposition round is exercised only by its tests and by a consumer's caller
-  until this repository's self-caller is wired up.
+  code every consumer runs. `plan-release-task` in `master-agent-dispatch.yaml`
+  calls `task-planning.yaml`, and `verify-completion.yaml` calls
+  `implement-plan.yaml`. Two exceptions remain: `goal-decomposition.yaml` has no
+  caller in this repository yet, so the decomposition round is exercised only by
+  its tests and by a consumer's caller; and `plan-review.yaml` is for consumers
+  only, because here the same review is a route of `auto-review` in
+  `analysis.yaml`, which chooses it ahead of the reviews that need the build and
+  the quality gates.
 - **Callers pin `@master` to begin with.** A fix here then reaches every
   consumer immediately; so does a breakage. A release tag can replace it once
   the workflows settle.
@@ -393,12 +403,12 @@ The rules that make this work:
 
 1. `goal-decomposition.yaml`: the decomposition round (section 4). Built first,
    because it is the stage no consumer can run today.
-2. The task planning round (section 3), extracted from
+2. `task-planning.yaml`: the task planning round (section 3), extracted from
    `master-agent-dispatch.yaml` and parameterised by tracker project and version
-   source.
-3. The docs-only plan review and the Verify Completion approval workflow, so a
-   consumer's plan branches get the same review and the same manual
-   implementation trigger.
+   file.
+3. `plan-review.yaml` and `implement-plan.yaml`: the docs-only plan review and
+   the Verify Completion approval workflow, so a consumer's plan branches get the
+   same review and the same manual implementation trigger.
 
 **The decomposition round as a reusable workflow:**
 
@@ -428,7 +438,9 @@ The rules that make this work:
 
 **Consumer checklist** (per consuming repository, planned in that repository):
 
-- the caller workflows, one per reusable workflow;
+- the caller workflows, one per reusable workflow: decomposition and task
+  planning on pushes to the default branch, plan review on pull requests against
+  it, and implementation on a manual dispatch;
 - `FLOWTREE_CF_ACCESS_CLIENT_SECRET` as a secret and `FLOWTREE_CONTROLLER_URL` /
   `FLOWTREE_CF_ACCESS_CLIENT_ID` as variables (or at organisation level);
 - the tracker project, and its goals and release-plan documents;

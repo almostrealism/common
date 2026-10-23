@@ -274,7 +274,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 `TransformerBlockFeatures` (extends `AttentionFeatures`) assembles complete pre-norm
 transformer blocks — self-attention, optional cross-attention, and a gated feed-forward,
 each in a residual branch — for the sequence-based (non-KV-cached) models such as
-`DiffusionTransformer` and `T5GemmaEncoder`. Every overload delegates to one fully
+`DiffusionTransformer` and `CausalLanguageModel`. Every overload delegates to one fully
 specified `transformerBlock(...)` that accepts an `AttentionVariant`, optional adaLN
 modulation, optional per-position additive conditioning, and a `NormalizationType`, so
 all callers share one block assembly:
@@ -668,7 +668,12 @@ ConditionerOutput conditioning = conditioner.runConditioners(tokenIds, durationS
 
 The prompt itself is encoded by `T5GemmaEncoder` (package `org.almostrealism.ml.t5gemma`), a
 T5Gemma text encoder configured by `T5GemmaConfig` and loaded from a `StateDictionary` the same
-way as the other model weights in this module.
+way as the other model weights in this module. The structure of each of its layers is the
+`t5gemma_encoder_layer` of `engine/ml/src/main/resources/pdsl/t5gemma_encoder.pdsl`: the
+self-attention and the GELU-gated feed-forward of `sequence_attention.pdsl` and `feed_forward.pdsl`,
+each between two RMS norms and added back to the residual stream. `T5GemmaEncoder` binds each
+layer's weights and the prompt mask and builds that layer once per layer; the token embedding
+before the layers and the final norm after them are built in Java.
 
 `StableAudio3` (package `org.almostrealism.ml.audio`) is the end-to-end text-to-audio generator
 that wires these pieces together: the conditioner, a `DiffusionSampler` driving the
@@ -718,6 +723,8 @@ Other Stable Audio 3 building blocks:
   autoencoders that compress waveforms to and from the diffusion model's latent space.
 - **`PatchedPretransform`** — a parameter-free pretransform, used by `SAMEAutoEncoder`, that folds
   runs of consecutive samples into the channel axis before encoding and unfolds them after decoding.
+  The fold and unfold are the `patch_encode` and `patch_decode` layers of the PDSL asset
+  `pdsl/audio/patch_transform.pdsl`.
 
 ## Integration with Other Modules
 

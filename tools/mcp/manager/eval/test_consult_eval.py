@@ -40,7 +40,7 @@ class TestCaseSchema(unittest.TestCase):
         cases = load_cases()
         self.assertEqual([c["id"] for c in cases],
                          ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8",
-                          "E9", "E10", "E11", "E12"])
+                          "E9", "E10", "E11", "E12", "E13", "E14"])
 
     def test_every_expect_outcome_is_known(self):
         for case in load_cases():

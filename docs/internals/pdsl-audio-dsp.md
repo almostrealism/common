@@ -48,6 +48,7 @@ These files live in `engine/ml/src/main/resources/pdsl/audio/`.
 |------|-----------------|
 | `oobleck_residual_block.pdsl` | The Oobleck codec's residual unit — `oobleck_residual_block`: `accum` around Snake → `conv1d` (kernel 7) → Snake → `conv1d` (kernel 1). Loaded by `OobleckCodec.buildResidualBlock`. |
 | `oobleck_codec.pdsl` | The Oobleck codec's stages, which call the residual unit: `oobleck_input_projection`, `oobleck_encoder_block` (three residual units → Snake → strided `conv1d`), `oobleck_encoder_output`, `oobleck_decoder_block` (Snake → `conv_transpose1d` → three residual units) and `oobleck_decoder_output`. `OobleckEncoder` and `OobleckDecoder` build one layer per stage through the `OobleckCodec` stage builders. Because `oobleck_codec.pdsl` imports `oobleck_residual_block.pdsl`, parsing it alone (via `PdslLoader.parseResource`) resolves the residual unit into the same program. |
+| `patch_transform.pdsl` | The parameter-free patched pretransform — `patch_encode` (fold runs of `patch_size` samples into the channel axis: `reshape` → `permute` → `reshape`) and its exact inverse `patch_decode`. Uses only core primitives, so `PatchedPretransform.encode`/`decode` build these layers with a plain `PdslLoader`. |
 | `efx_channel.pdsl` | EFX channel layers — `efx_wet_chain`, `efx_lowpass_wet`, `efx_highpass_wet`, `efx_dry_path`, `efx_delay`, `efx_wet_dry_mix`, the composite `efx_channel` (dry + filtered/scaled/delayed wet via `accum_blocks`), and the `feedback_comb` closed-loop comb. States: `efx_delay_state`, `feedback_comb_state`. |
 | `mixdown_channel.pdsl` | Single-channel mixdown — `mixdown_main` (HP → `scale` → LP) and `mixdown_channel` (full path with wet/delay). State: `mixdown_delay_state`. |
 | `delay_feedback_bank.pdsl` | Multi-channel delay bank — `delay_feedback_bank`: `repeat` → per-channel `delay` → `route` → `sum_channels`. State: `delay_bank_state`. |
@@ -97,7 +98,7 @@ audio-domain assumption:
 `lerp`, `capture`, `repeat_each`, `cache_write`,
 `cache_read`, `split_half_rope`, `merge_half_rope`, `rope_rotation`, `sequence_rope`,
 `mra_rope_rotation`, `attention_scores`, `causal_mask`, `sequence_causal_mask`, `key_mask`,
-`weighted_values`, `scaled_dot_product`, `sqrt`, `attention`, `shape`, `zeros`, `rope_freqs`
+`weighted_values`, `scaled_dot_product`, `sqrt`, `shape`, `zeros`, `rope_freqs`
 — usable in the same layer bodies. `shape(dim1, dim2, ...)` builds a `TraversalPolicy` from a
 variadic list of integer dimensions (each argument is an integer, as in `shape(channels, signal_size)` —
 not the `[dim1, dim2]` shape literal that `zeros` and `reshape` take); `zeros([rows, size])`
@@ -105,7 +106,7 @@ allocates a fresh zero-filled state collection (the per-layer
 storage a stateful layer writes on one forward pass and reads on later ones, such as the KV
 caches of autoregressive attention); and `rope_freqs(theta, head_size, seq_len)` builds the
 RoPE `freq_cis` table (shape `[seq_len, head_size / 2, 2]`) that `rope_rotation` reads. `engine/ml/src/main/resources/pdsl/attention.pdsl`
-composes the KV-cached attention block from these and `attention()` loads that asset;
+composes the KV-cached attention block from these and the `AttentionFeatures.attention(...)` methods load that asset;
 `engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` composes full-sequence self-attention,
 bidirectional or causal, and `sequenceAttention()` loads it — its keys and values are branches of
 the layer that the score and context products read as operands (`scaled_dot_product` accepts a
@@ -120,6 +121,11 @@ pre-norm transformer layer from the layers of `attention.pdsl` and `feed_forward
 layer, then `accum` around `swiglu_ffn` — and declares its dependency on them with `import`
 statements (see [Imports](#imports)), so `transformer()` builds it from
 `PdslLoader.parseResource(TRANSFORMER_ASSET)` alone.
+`engine/ml/src/main/resources/pdsl/t5gemma_encoder.pdsl` composes the T5Gemma encoder layer the
+same way from `sequence_attention.pdsl` and `feed_forward.pdsl` — `accum` around
+`sequence_attention_softcapped` with its projections written as `dense(...)` arguments, then
+`accum` around `glu_feed_forward` with a `gelu()` gate, each sub-layer between two `rmsnorm`
+stages — and `T5GemmaEncoder` loads it once per layer.
 `engine/ml/src/main/resources/pdsl/sdpa.pdsl` is the full-sequence (non-autoregressive)
 counterpart of the `attend` layer inside `attention.pdsl` — the score/context core only, not
 the whole attention block, whose normalization, projections, RoPE, cache writes and output

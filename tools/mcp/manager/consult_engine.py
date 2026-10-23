@@ -61,6 +61,14 @@ MAX_INDEX_FACTS = 4
 NOTES_BASIS_SENTENCE = ("The documentation snapshot does not cover this. "
                         "The following rests on agent notes:")
 
+# The sentence that opens a notes-only answer whose central claim the verifier
+# could not support. Generated here, never by the model, so a weak model's
+# confident "Yes"/"No" lead is replaced rather than passed through.
+HEDGE_SENTENCE = ("This is unclear from the available evidence, and the notes "
+                  "below are unverified — treat the following as unconfirmed:")
+_LEADING_YES_NO = re.compile(r"^\s*(?:yes|no)\b[\s,.:;!—–-]*",
+                             re.IGNORECASE)
+
 BASIS_VALUES = ("documentation", "documentation+notes", "notes", "none")
 
 _BASIS_LINE = re.compile(r"^\s*BASIS\s*:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
@@ -429,6 +437,34 @@ class ConsultTurn:
         self.evidence = EvidenceList(
             self.corpus, conversation.pool if conversation else None)
         self.namespaces: list = []
+        # The terms this turn actually retrieves on, set in run(): the request's
+        # keywords merged with those carried from earlier conversation turns.
+        self.retrieval_keywords: list = []
+
+    def _retrieval_terms(self) -> list:
+        """The terms this turn retrieves on.
+
+        The caller's keywords (or, on a follow-up that supplies none, the new
+        question's own terms), merged with the keywords and resolved subjects
+        carried from earlier turns, so a follow-up retrieves with the
+        conversation's context rather than the new question's words alone. On
+        the first turn there is nothing to carry, so this returns the caller's
+        keywords unchanged — empty when none were given, which keeps the
+        whole-question retrieval path for a plain first question.
+        """
+        from docs_retriever import _extract_keywords
+
+        own = [k for k in (self.keywords or []) if isinstance(k, str) and k.strip()]
+        carried = self.conversation.carried_terms() if self.conversation else []
+        if not carried:
+            return own
+        if not own:
+            own = _extract_keywords(self.question)
+        merged: list = []
+        for term in own + carried:
+            if term not in merged:
+                merged.append(term)
+        return merged
 
     def run(self, docs, client, llm) -> dict:
         """Run the turn and return the tool response."""
@@ -438,8 +474,10 @@ class ConsultTurn:
         if missing:
             return self._nonexistent(missing, keyword_guidance(self.keywords))
 
+        self.retrieval_keywords = self._retrieval_terms()
         try:
-            retrieval = (docs.get_context_for_keywords(self.keywords) if self.keywords
+            retrieval = (docs.get_context_for_keywords(self.retrieval_keywords)
+                         if self.retrieval_keywords
                          else docs.get_context_for_query(self.question))
         except OSError as e:
             return {"ok": False, "error": f"Documentation search failed: {e}"}
@@ -452,8 +490,14 @@ class ConsultTurn:
         for r in doc_results:
             self.evidence.add_doc(r)
         if self.index is not None:
-            mentions = extract_mentions(" ".join(
-                [self.question] + [k for k in (self.keywords or []) if isinstance(k, str)]))
+            mentions = extract_mentions(
+                " ".join([self.question] + self.retrieval_keywords))
+            # A keyword can name a script by its stem (``drain-agent-jobs``),
+            # which extract_mentions does not surface; offer the terms
+            # themselves so the index can resolve such a stem to its script.
+            for term in self.retrieval_keywords:
+                if term not in mentions:
+                    mentions.append(term)
             for fact in self.index.facts_for(mentions, MAX_INDEX_FACTS):
                 self.evidence.add_index(fact)
         presented = self._notes(client)
@@ -497,8 +541,7 @@ class ConsultTurn:
         if self.scope_error:
             self.degraded_reasons.append("memory_scope")
             return []
-        query = " ".join([self.question] + [k for k in (self.keywords or [])
-                                            if isinstance(k, str)])
+        query = " ".join([self.question] + self.retrieval_keywords)
         memories, self.namespaces, reasons = search_memories(
             client, query, self.repo, self.branch)
         self.degraded_reasons.extend(reasons)
@@ -547,7 +590,12 @@ class ConsultTurn:
     def _post_process(self, text: str, result: dict, keyword_guidance) -> list:
         """Turn the model's output into the answer fields. Returns the cited
         evidence items."""
-        body, stated, conflict_lines, trailer_present = parse_trailer(text)
+        # The stated basis is parsed only so the line leaves the answer. The
+        # computed basis is authoritative, and the model cannot predict it:
+        # it rests on note tiers and on which sentences the verifier keeps,
+        # so a disagreement is the expected case, not a format fault worth
+        # reporting to the caller.
+        body, _, conflict_lines, trailer_present = parse_trailer(text)
         warnings = []
         if not trailer_present:
             warnings.append("trailer missing")
@@ -559,13 +607,12 @@ class ConsultTurn:
         found_value_conflicts, contradicted = value_conflicts(self.evidence)
         report = verify(body, self.evidence, contradicted)
         basis = compute_basis(report.supporting_ids(), self.evidence)
-        if stated is not None and stated != basis:
-            warnings.append("basis mismatch")
 
         # Sentences resting only on historical or stale notes are history,
         # whatever their tense: those notes never supply present fact.
         history_sentences = [s for s in report.sentences_resting_on(HISTORY_ONLY_TIERS)
                              if REASON_TIER not in s.reasons]
+        support_gone = _support_gone(basis, report, history_sentences)
         answer = report.annotated
         for s in sorted(history_sentences, key=lambda s: s.start, reverse=True):
             answer = _remove_span(answer, s)
@@ -595,7 +642,8 @@ class ConsultTurn:
 
         answer = self.evidence.expand(answer)
         if basis == "notes":
-            answer = f"{NOTES_BASIS_SENTENCE} {answer}"
+            answer = (_hedge_lead(answer) if support_gone
+                      else f"{NOTES_BASIS_SENTENCE} {answer}")
         uncovered = _uncovered_terms(self.question, answer, cited)
         if uncovered and cited:
             answer += " Not covered by the evidence: " + ", ".join(
@@ -641,7 +689,7 @@ class ConsultTurn:
         for item in self.evidence.items():
             by_tier[item.tier] = by_tier.get(item.tier, 0) + 1
         return {
-            "keywords": list(self.keywords or []) or
+            "keywords": list(self.retrieval_keywords) or
             [w for w in re.findall(r"[\w./\-]{3,}", self.question)][:8],
             "corpus": self.corpus, "namespaces": list(self.namespaces),
             "evidence_by_tier": by_tier,
@@ -657,6 +705,39 @@ class ConsultTurn:
                 {k: result.get(k) for k in ("answer_basis", "abstained")})
             result["conversation_id"] = self.conversation.id
             result["turn"] = len(self.conversation.turns)
+
+
+def _support_gone(basis: str, report, history_sentences: list) -> bool:
+    """Whether an answer rests only on notes and its central claim is
+    unsupported — the case where a confident lead misrepresents the evidence.
+
+    True when the basis is notes and the lead claim sentence (the first that
+    cites, history aside) is flagged unsupported, or every claim sentence is.
+    A notes answer whose claim the verifier *can* support is not hedged; only
+    one whose support the verifier could not find.
+    """
+    if basis != "notes":
+        return False
+    history_ids = {id(s) for s in history_sentences}
+    claims = [s for s in report.sentences if s.cited and id(s) not in history_ids]
+    if not claims:
+        return False
+    return claims[0].marked or all(s.marked for s in claims)
+
+
+def _hedge_lead(answer: str) -> str:
+    """Open a notes-only answer whose central claim is unsupported with the
+    fixed hedge instead of the model's lead.
+
+    A leading "Yes"/"No" is dropped so the response does not open by asserting
+    what the notes do not establish, and :data:`HEDGE_SENTENCE` states the
+    standing in its place; the rest of the answer (its unsupported sentences
+    already marked) follows unchanged.
+    """
+    stripped = _LEADING_YES_NO.sub("", answer, count=1).lstrip()
+    if stripped and stripped[0].islower():
+        stripped = stripped[0].upper() + stripped[1:]
+    return f"{HEDGE_SENTENCE} {stripped}".strip()
 
 
 def _remove_span(answer: str, sentence) -> str:

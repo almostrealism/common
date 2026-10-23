@@ -98,15 +98,24 @@ final class FlowtreeArtifacts {
     }
 
     /**
-     * Returns whether {@code repoRelativePath} lies within {@link #DIRECTORY}
-     * (either the directory itself or any path beneath it).
+     * Returns whether {@code repoRelativePath} lies within a {@link #DIRECTORY}
+     * scratch directory, whether that directory sits at the working-tree root or
+     * nested inside any module. A session run from a module subdirectory writes its
+     * artifacts to {@code <module>/.flowtree/...} rather than the root, so both the
+     * root directory ({@code .flowtree/...}) and a nested one
+     * ({@code engine/ml/.flowtree/...}) are recognized. A path that merely contains
+     * {@code flowtree} in a name (for example a source file under the {@code flowtree}
+     * module, or the {@code .flowtree.lock} file) is not under the scratch directory.
      *
      * @param repoRelativePath the candidate path, relative to the working tree
-     * @return {@code true} if the path is the artifact directory or contained in it
+     * @return {@code true} if the path is a scratch directory or contained in one
      */
     static boolean isUnderDirectory(String repoRelativePath) {
         String p = normalize(repoRelativePath);
-        return p.equals(DIRECTORY) || p.startsWith(DIRECTORY + "/");
+        return p.equals(DIRECTORY)
+                || p.startsWith(DIRECTORY + "/")
+                || p.contains("/" + DIRECTORY + "/")
+                || p.endsWith("/" + DIRECTORY);
     }
 
     /**

@@ -113,8 +113,20 @@ class TestAnswerPostProcessing(_Pipeline):
         result = self.consult("Some claim [D999].\nBASIS: documentation\nCONFLICTS: none",
                               [_doc()])
         self.assertEqual(result["answer_basis"], "none")
-        self.assertIn("basis mismatch", result["format_warnings"])
+        # The computed basis is authoritative; a stated basis that disagrees
+        # with it is not reported as a format fault.
+        self.assertNotIn("format_warnings", result)
         self.assertEqual(result["citation_warnings"][0]["reason"], "unknown citation")
+
+    def test_a_disagreeing_stated_basis_is_not_a_format_warning(self):
+        # The model cannot know which of its notes may supply fact, so it
+        # routinely says "documentation" for an answer resting on notes.
+        memories = [{"id": "m1", "content": "The cap is 7.", "branch": "qa/merged",
+                     "created_at": "2026-10-15T00:00:00Z"}]
+        result = self.consult("The cap is 7 [N1].\nBASIS: documentation\n"
+                              "CONFLICTS: none", [], memories)
+        self.assertEqual(result["answer_basis"], "notes")
+        self.assertNotIn("format_warnings", result)
 
     def test_a_missing_trailer_is_reported(self):
         result = self.consult("Plain answer.", [_doc()])
@@ -312,15 +324,72 @@ class TestConversations(_Pipeline):
         return [patch.object(server, "_get_token_workstream_id", return_value="ws"),
                 patch.object(server, "_get_token_job_id", return_value="job")]
 
-    def test_a_static_token_is_refused_a_conversation(self):
-        result = self.consult("A.", [_doc()], conversation_id="cv-x")
-        self.assertFalse(result["ok"])
-        self.assertEqual(result["error"], "conversations require a job token")
+    def _label(self, label):
+        p = patch.object(server, "_get_token_label", return_value=label)
+        p.start()
+        self.addCleanup(p.stop)
+        return p
+
+    def test_a_static_token_holds_a_conversation(self):
+        self._label("ops-slack")
+        first = self.consult("A [D1].", [_doc("a.md")])
+        self.assertTrue(first["ok"])
+        self.assertEqual(first["turn"], 1)
+        self.assertTrue(first["conversation_id"].startswith("cv-"))
+        second = self.consult("B [D1].", [_doc("b.md")],
+                              conversation_id=first["conversation_id"])
+        self.assertEqual(second["turn"], 2)
+        self.assertEqual(second["conversation_id"], first["conversation_id"])
+
+    def test_conversation_ids_are_long_and_random(self):
+        self._label("ops-slack")
+        ids = {self.consult("A.", [_doc()])["conversation_id"] for _ in range(3)}
+        self.assertEqual(len(ids), 3)
+        # 32 random bytes, URL-safe base64: the id is a bearer capability.
+        self.assertTrue(all(len(i) >= 3 + 43 for i in ids))
 
     def test_a_static_token_call_is_stateless(self):
-        result = self.consult("A.", [_doc()])
-        self.assertNotIn("conversation_id", result)
-        self.assertNotIn("turn", result)
+        # Without a conversation_id a static-token call carries no state
+        # over: each one opens its own conversation at turn 1, so two clients
+        # sharing the token never see each other's turns.
+        self._label("ops-slack")
+        first = self.consult("A [D1].", [_doc("a.md")])
+        second = self.consult("B.", [_doc("b.md")])
+        self.assertEqual((first["turn"], second["turn"]), (1, 1))
+        self.assertNotEqual(first["conversation_id"], second["conversation_id"])
+        self.assertEqual([e["file"] for e in second["evidence"]], ["b.md"])
+
+    def test_a_static_token_is_refused_a_conversation(self):
+        # ...that it does not hold: an unknown id gets the expiry answer.
+        self._label("ops-slack")
+        result = self.consult("A.", [_doc()], conversation_id="cv-x")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "conversation expired")
+
+    def test_an_id_presented_by_another_static_token_is_rejected(self):
+        label = self._label("ops-slack")
+        first = self.consult("A.", [_doc()])
+        label.stop()
+        self._label("nightly-script")
+        result = self.consult("B.", [_doc()],
+                              conversation_id=first["conversation_id"])
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "conversation expired")
+
+    def test_a_static_label_cannot_continue_a_job_conversation(self):
+        patches = self._job()
+        for p in patches:
+            p.start()
+        first = self.consult("A.", [_doc()])
+        for p in patches:
+            p.stop()
+        # A static label spelled like the job's workstream/job pair is still
+        # another identity.
+        self._label("ws/job")
+        result = self.consult("B.", [_doc()],
+                              conversation_id=first["conversation_id"])
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "conversation expired")
 
     def test_a_follow_up_keeps_evidence_ids(self):
         patches = self._job()
@@ -344,6 +413,68 @@ class TestConversations(_Pipeline):
             self.addCleanup(p.stop)
         result = self.consult("A.", [_doc()], conversation_id="cv-unknown")
         self.assertEqual(result["error"], "conversation expired")
+
+    def test_a_follow_up_retrieves_with_the_carried_context(self):
+        # Turn 1 supplies keywords; turn 2 supplies none. The follow-up must
+        # still retrieve with turn 1's keywords, so a script the conversation
+        # was about (named only by a carried keyword) reaches turn 2's evidence.
+        for p in self._job():
+            p.start()
+            self.addCleanup(p.stop)
+        docs = _docs([_doc("a.md")])
+        llm = MagicMock()
+        llm.consult.return_value = Synthesis("A [D1].", "fake")
+        with patch.object(server, "_get_docs", return_value=docs), \
+                patch.object(server, "_get_llm", return_value=llm), \
+                patch.object(server, "_get_memory_client", return_value=None):
+            first = server.consult(question="q1",
+                                   keywords=["validate-agent-commit"],
+                                   repo_url="git@github.com:org/repo.git")
+            docs.get_context_for_keywords.reset_mock()
+            second = server.consult(question="what exit code does it use?",
+                                    repo_url="git@github.com:org/repo.git",
+                                    conversation_id=first["conversation_id"])
+        carried = docs.get_context_for_keywords.call_args[0][0]
+        self.assertIn("validate-agent-commit", carried)
+        # The carried keyword resolves the script's index facts into turn 2,
+        # even though turn 2 named no keyword and no file.
+        self.assertTrue(any(e.get("kind") == "index"
+                            and e.get("file", "").endswith("validate-agent-commit.sh")
+                            for e in second["evidence"]))
+
+
+class TestHedgeWhenSupportIsGone(_Pipeline):
+    """A notes-only answer whose central claim the verifier cannot support
+    must not lead with a confident yes/no."""
+
+    def _note(self, content):
+        return {"id": "m1", "content": content, "branch": "qa/merged",
+                "created_at": "2026-10-18T00:00:00Z", "namespace": "default"}
+
+    def test_a_notes_only_unsupported_lead_is_hedged(self):
+        note = self._note("The drain loop waits for jobs to finish.")
+        result = self.consult(
+            "Yes, the drain step sees SUBMITTED jobs via `/api/jobs/pending` [N1].\n"
+            "BASIS: notes\nCONFLICTS: none",
+            results=[], memories=[note])
+        self.assertEqual(result["answer_basis"], "notes")
+        answer = result["answer"]
+        self.assertFalse(answer.lower().lstrip().startswith("yes"))
+        self.assertIn("unclear", answer.lower())
+        self.assertIn(consult_engine.HEDGE_SENTENCE, answer)
+        self.assertIn("[unsupported]", answer)
+
+    def test_a_supported_notes_answer_is_not_hedged(self):
+        # The note states the claim's subject, so the verifier supports it and
+        # the standard notes-basis lead stands — the hedge must not fire.
+        note = self._note("The validate step runs validate-agent-commit.sh.")
+        result = self.consult(
+            "The validate step runs `validate-agent-commit.sh` [N1].\n"
+            "BASIS: notes\nCONFLICTS: none",
+            results=[], memories=[note])
+        self.assertEqual(result["answer_basis"], "notes")
+        self.assertIn(consult_engine.NOTES_BASIS_SENTENCE, result["answer"])
+        self.assertNotIn(consult_engine.HEDGE_SENTENCE, result["answer"])
 
 
 if __name__ == "__main__":

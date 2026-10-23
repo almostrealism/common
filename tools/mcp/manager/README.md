@@ -123,19 +123,30 @@ for the full contract.
 
 ## Optional Enforcement Phases
 
-Some post-primary enforcement phases are off by default and are enabled per job
-through a `workstream_submit_task` flag. Each flag is forwarded to the controller
-only when it is `True`, so an omitted (or `False`) flag leaves the phase off. The
-submit response echoes the effective setting so the caller can confirm it.
+Some post-primary enforcement phases are controlled per job through a
+`workstream_submit_task` flag. The submit response echoes the effective setting
+so the caller can confirm it.
 
-| Flag | Controller field | Response echo | Phase it enables |
-|------|------------------|---------------|------------------|
-| `organizational_placement_enabled=True` | `enforceOrganizationalPlacement` | `organizationalPlacementEnabled` | Organizational placement review of new files |
-| `object_oriented_review_enabled=True` | `objectOrientedReviewEnabled` | `objectOrientedReviewEnabled` | `ObjectOrientedDesignRule`: one design-review session per changed production class. Takes effect only while `review_enabled` is also `True` |
+| Flag | Default | Controller field | Response echo | Phase it controls |
+|------|---------|------------------|---------------|-------------------|
+| `organizational_placement_enabled` | off | `enforceOrganizationalPlacement` | `organizationalPlacementEnabled` | Organizational placement review of new files. Forwarded only when `True`; an omitted or `False` flag leaves it off |
+| `object_oriented_review_enabled` | **on** | `objectOrientedReviewEnabled` | `objectOrientedReviewEnabled` | `ObjectOrientedDesignRule`: a single design-review session over the changed production classes a deterministic risk gate flags. Always forwarded, so `False` switches it off for a job. Takes effect only while `review_enabled` is also `True` |
 
 Both are job-level settings; there is no workstream or workspace default for them.
-CI auto-resolve and auto-review submissions (`tools/ci/submit-agent-job.sh`) do not
-send either field, so those jobs run with both phases off.
+Organizational placement stays off unless a submission requests it. The
+object-oriented design review is on by default, and the risk gate keeps its cost
+low by spending a session only on classes whose design it flags; a submission can
+send `object_oriented_review_enabled=False` to switch it off.
+
+**On for initial work, off for CI follow-ups.** The review belongs to the job that
+creates a branch's work — QA rounds, planning and task jobs, and jobs submitted by
+hand — which leave the field unset and get the on-by-default. The follow-up jobs CI
+submits in a loop turn it off: `auto-review` (with its code-policy and quality-gate
+routes), `auto-resolve-python` and `auto-resolve` can each fire many times on one
+branch, so each sends `objectOrientedReviewEnabled: false` and the review does not
+ride along on every pass. Those submitters set `OBJECT_ORIENTED_REVIEW_ENABLED=false`
+on the trusted submit step; `tools/ci/submit-agent-job.sh` sends the field only when
+that knob is set, so every other path inherits the default.
 
 ## Test Execution Limits
 
@@ -266,8 +277,12 @@ checks each sentence against what it cites — every identifier and path must
 appear in a cited item, every number and literal verbatim, a present-tense
 claim may not rest only on historical notes, and a branch-local claim must name
 its branch. An uncited specific found in no evidence item at all is flagged
-too. Failing sentences are marked `[unsupported]` in the answer and listed in
-`citation_warnings`. A question naming a file the snapshot does not contain is
+too. A sentence making a polarity or exclusivity claim ("only", "never",
+"does not", "always", "one X per Y") must be echoed by a cited passage that
+makes a claim of the same kind about the same things; one that is not — the
+shape of a confident "it does not do X, only Y" that no evidence says — is
+flagged `polarity`. Failing sentences are marked `[unsupported]` in the answer
+and listed in `citation_warnings`. A question naming a file the snapshot does not contain is
 answered directly with `nonexistent: true`.
 
 The snapshot index is built in the Dockerfile's `docs` stage before the prune
@@ -275,11 +290,15 @@ The snapshot index is built in the Dockerfile's `docs` stage before the prune
 passed as the `CORPUS_COMMIT` build argument (`rebuild.sh` exports it; a build
 that omits it records `unknown`). `consult` returns it as `corpus`.
 
-Callers holding a job token can continue a consult with `conversation_id`: a
-follow-up keeps the evidence IDs of earlier turns and sees their questions and
-condensed answers. Conversations are in-process, bound to the job that started
-them and to the first turn's repository, expire after 30 idle minutes or four
-hours, and allow 12 turns. Static tokens are always stateless.
+Every consult returns a `conversation_id`, and passing it back continues the
+consult: a follow-up keeps the evidence IDs of earlier turns and sees their
+questions and condensed answers. A conversation is bound to the token identity
+that started it — a job token's workstream and job, a static token's label —
+and to the first turn's repository. Its id is long and random, and holding it is
+the capability to continue it, so several clients sharing one static token keep
+separate conversations; an id presented by another identity is refused exactly
+like an unknown one. Conversations are in-process, expire after 30 idle minutes
+or four hours, allow 12 turns, and persist nothing.
 
 `eval/run_consult_eval.py` measures all of this against a version-controlled
 case set (`eval/consult_cases.json`): `replay` grades frozen deployed

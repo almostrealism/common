@@ -45,8 +45,13 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	/** Counter shared across all temporary indices to keep their names unique. */
 	private static final AtomicLong temporaryCount = new AtomicLong();
 
-	/** The exclusive upper bound of this index, or empty if unbounded. */
-	private OptionalLong limit;
+	/**
+	 * The exclusive upper bound of this index, or empty if unbounded. It is fixed at
+	 * construction because a composite {@link Expression} memoizes its bounds (see
+	 * {@link Expression#upperBound(KernelStructureContext)}): a limit that changed after an
+	 * expression containing this index had been bounded would leave those bounds stale.
+	 */
+	private final OptionalLong limit;
 
 	/**
 	 * Creates an unbounded index with the given name.
@@ -99,20 +104,6 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	}
 
 	/**
-	 * Sets the limit (exclusive upper bound) for this index.
-	 *
-	 * @param limit the new limit as an {@code int}
-	 */
-	public void setLimit(int limit) { this.limit = OptionalLong.of(limit); }
-
-	/**
-	 * Sets the limit (exclusive upper bound) for this index.
-	 *
-	 * @param limit the new limit as a {@code long}
-	 */
-	public void setLimit(long limit) { this.limit = OptionalLong.of(limit); }
-
-	/**
 	 * {@inheritDoc}
 	 *
 	 * <p>Returns the configured limit if present; otherwise falls back to computing it from
@@ -133,12 +124,12 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return limit.stream().map(i -> i - 1).findFirst();
 	}
 
 	@Override
-	public boolean isPossiblyNegative() { return false; }
+	protected boolean computePossiblyNegative() { return false; }
 
 	/**
 	 * {@inheritDoc}

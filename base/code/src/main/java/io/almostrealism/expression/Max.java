@@ -50,7 +50,7 @@ public class Max extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalLong l = getChildren().get(0).upperBound(context);
 		OptionalLong r = getChildren().get(1).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {

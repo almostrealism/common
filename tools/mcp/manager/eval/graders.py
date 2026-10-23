@@ -43,12 +43,12 @@ EXPECT_KEYS = frozenset({
     "outcome", "must_include", "must_not_include", "must_include_any",
     "must_cite_any", "must_not_cite", "must_flag_stale", "basis_in",
     "max_citation_warnings", "min_citation_warnings", "must_mark_unsupported",
-    "history_must_include", "min_conflicts",
+    "must_not_mark_unsupported", "history_must_include", "min_conflicts",
 })
 
 # Expectation keys whose value is a list of case-insensitive regexes.
 _REGEX_LIST_KEYS = ("must_include", "must_not_include", "must_mark_unsupported",
-                    "history_must_include")
+                    "must_not_mark_unsupported", "history_must_include")
 
 # Expectation keys whose value is a non-negative integer bound.
 _COUNT_KEYS = ("max_citation_warnings", "min_citation_warnings", "min_conflicts")
@@ -355,6 +355,12 @@ def grade(response: dict, expect: dict) -> GradeResult:
     for pat in expect.get("must_mark_unsupported", []):
         ok = any(re.search(pat, s, re.IGNORECASE) for s in flagged)
         result.record("must_mark_unsupported", ok, f"not flagged: {pat!r}")
+    # The other direction: a correct sentence the verifier must leave alone,
+    # so a check that flags everything cannot pass a case by flagging.
+    for pat in expect.get("must_not_mark_unsupported", []):
+        ok = not any(re.search(pat, s, re.IGNORECASE) for s in flagged)
+        result.record("must_not_mark_unsupported", ok,
+                      f"flagged but correct: {pat!r}")
 
     return result
 
@@ -531,6 +537,26 @@ def validate_case(case: dict) -> list[str]:
             _check_expect(f"milestones.{name}", override)
         else:
             errors.append(f"{cid}: milestones.{name} must be an object")
+
+    if "turns" in case:
+        turns = case["turns"]
+        if not isinstance(turns, list) or not turns:
+            errors.append(f"{cid}: 'turns' must be a non-empty list")
+        else:
+            for i, turn in enumerate(turns):
+                if not isinstance(turn, dict):
+                    errors.append(f"{cid}: turns[{i}] must be an object")
+                    continue
+                if not isinstance(turn.get("question"), str) or not turn["question"]:
+                    errors.append(f"{cid}: turns[{i}] needs a non-empty 'question'")
+                if "keywords" in turn and turn["keywords"] is not None \
+                        and not _is_string_list(turn["keywords"]):
+                    errors.append(
+                        f"{cid}: turns[{i}] 'keywords' must be a list of strings")
+                if "scripted" in turn and (not isinstance(turn["scripted"], str)
+                                           or not turn["scripted"]):
+                    errors.append(
+                        f"{cid}: turns[{i}] 'scripted' must be a non-empty string")
 
     if "answerable" in case and not isinstance(case["answerable"], bool):
         errors.append(f"{cid}: 'answerable' must be a boolean")

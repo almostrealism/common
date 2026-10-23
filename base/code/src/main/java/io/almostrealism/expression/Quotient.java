@@ -139,7 +139,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 
@@ -173,7 +173,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalLong lowerBound(KernelStructureContext context) {
+	protected OptionalLong computeLowerBound(KernelStructureContext context) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 

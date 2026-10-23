@@ -73,7 +73,7 @@ public class CameraPositioner {
     private void calculatePosition() {
         // Scene bounding sphere.
         BoundingSolid sceneBounds = scene.calculateBoundingSolid();
-        Vector sceneMidpoint = (Vector) sceneBounds.center;
+        Vector sceneMidpoint = sceneBounds.center;
         double sceneBoundingRadius = Math.sqrt(Math.pow(sceneBounds.dx/2, 2) + Math.pow(sceneBounds.dy/2, 2) + Math.pow(sceneBounds.dz/2, 2));
 
         // FOVs.

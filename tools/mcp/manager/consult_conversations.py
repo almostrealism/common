@@ -10,11 +10,17 @@ its own turn policy on the same machinery.
 
 Safety properties, each enforced here rather than by callers:
 
-- **Identity.** A conversation belongs to the job temp token that started it
-  (its workstream and job). Static tokens carry no per-caller subject — one
-  can be shared by several clients — so they get no conversations at all.
-  Another identity asking for a conversation id gets the same answer as for
-  an unknown id, so ids cannot be probed.
+- **Identity.** A conversation belongs to the token identity that started
+  it (:func:`caller_identity`): the workstream and job of a job temp token,
+  or the configured label of a static token. Its id is long and random, and
+  possessing it is the capability to continue the conversation — several
+  clients sharing one static token can each hold their own conversations
+  without seeing one another's, because none of them learns another's id.
+  An id presented by a different identity gets the same answer as an unknown
+  id, so ids cannot be probed. Every holder of a static token can already
+  read the memories, workstreams and documentation a conversation is built
+  from, so a conversation exposes little beyond what its own caller pasted
+  into it.
 - **Scope.** The repository and branch are fixed by the first turn; a
   follow-up that resolves to another scope is refused, so one conversation
   never mixes evidence or IDs from two repositories.
@@ -54,6 +60,10 @@ CARRY_NOTES = 2
 # How long a follow-up waits for an in-flight turn on the same conversation.
 TURN_LOCK_TIMEOUT_SECONDS = 180
 
+# Random bytes in a conversation id. The id is the capability to continue a
+# conversation, so it carries as much entropy as a bearer token.
+ID_ENTROPY_BYTES = 32
+
 
 class ConversationError(Exception):
     """A conversation request that cannot be served, as a tool response."""
@@ -66,6 +76,19 @@ class ConversationError(Exception):
 
 EXPIRED = ("conversation expired",
            ["start a new consult without conversation_id"])
+
+
+def caller_identity(workstream_id: str, job_id: str, token_label: str) -> str:
+    """The identity a conversation is bound to.
+
+    A job temp token is identified by its workstream and job; any other
+    token by its configured label. The two forms are prefixed differently so
+    a static token whose label happens to look like a job pair can never be
+    taken for that job.
+    """
+    if workstream_id and job_id:
+        return f"job:{workstream_id}/{job_id}"
+    return f"token:{token_label or 'anonymous'}"
 
 
 @dataclass
@@ -112,6 +135,32 @@ class Conversation:
         docs = [it for it in cited if it.kind in (KIND_DOC, KIND_INDEX)]
         notes = [it for it in cited if it.kind == KIND_NOTE]
         return docs[:CARRY_DOCS] + notes[:CARRY_NOTES]
+
+    def carried_terms(self) -> list[str]:
+        """Retrieval terms to seed a follow-up turn with, deduplicated in
+        first-seen order: every earlier turn's keywords, and the subjects (file
+        names and identifiers) of the evidence the previous turn cited.
+
+        A follow-up ("does the drain step see SUBMITTED jobs?") often names its
+        subject only through the conversation, not in its own words. Retrieving
+        on the new question's words alone then misses what the conversation is
+        about; these terms carry that context forward so the follow-up retrieves
+        with it."""
+        terms: list[str] = []
+
+        def _add(token) -> None:
+            if isinstance(token, str):
+                token = token.strip()
+                if token and token not in terms:
+                    terms.append(token)
+
+        for turn in self.turns:
+            for keyword in turn.get("keywords", []):
+                _add(keyword)
+        for item in self.carried():
+            for subject in item.subjects():
+                _add(subject)
+        return terms
 
     def record(self, question: str, keywords, answer: str,
                cited_items: list, flags: dict) -> None:
@@ -161,7 +210,7 @@ class ConversationStore:
         now = self._clock()
         with self._lock:
             self._evict(now)
-            conv = Conversation(id="cv-" + secrets.token_urlsafe(12),
+            conv = Conversation(id="cv-" + secrets.token_urlsafe(ID_ENTROPY_BYTES),
                                 owner=owner, repo_url=repo_url, branch=branch,
                                 created=now, last_used=now)
             self._table[conv.id] = conv

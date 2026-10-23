@@ -66,7 +66,7 @@ public class IntegerConstant extends Constant<Integer> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) { return OptionalLong.of(value); }
+	protected OptionalLong computeUpperBound(KernelStructureContext context) { return OptionalLong.of(value); }
 
 	@Override
 	public KernelSeries kernelSeries() { return KernelSeries.constant(value); }

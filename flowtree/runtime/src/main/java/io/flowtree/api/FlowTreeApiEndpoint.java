@@ -39,6 +39,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,6 +55,7 @@ import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.tracker.TaskCloseOutReconciler;
 import io.flowtree.tracker.TrackerService;
 import io.flowtree.controller.JobStatsStore;
+import io.flowtree.controller.PendingJob;
 import io.flowtree.submission.SubmissionConfigResolver;
 import io.flowtree.workstream.MailboxRegistry;
 import io.flowtree.workstream.Workstream;
@@ -108,9 +110,15 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs/active</td><td>--</td><td>List jobs still recorded as running for a workstream, newest first. Each entry is a JSON
  *       object carrying {@code jobId}, {@code workstreamId}, {@code startedAt}, {@code heartbeatAt} (ISO-8601 instants,
  *       omitted when absent), {@code ageSeconds} (elapsed since {@code STARTED}), {@code sinceHeartbeatSeconds} (elapsed
- *       since the last status event; falls back to {@code ageSeconds} for jobs that have not yet posted a heartbeat),
- *       and {@code description}. An empty array is returned when nothing is running or the controller is configured
- *       without job stats.</td></tr>
+ *       since the last status event or heartbeat; falls back to {@code ageSeconds} for jobs that have not yet posted
+ *       one), {@code node} (when known), {@code state} ({@code RUNNING} or {@code UNRESPONSIVE}) and {@code description}.
+ *       An empty array is returned when nothing is running or the controller is configured without job stats.</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs/pending</td><td>--</td><td>List jobs submitted but not yet started, each with a
+ *       derived {@code state} of {@code SUBMITTED} or {@code LOST} — see {@link io.flowtree.controller.PendingJob}</td></tr>
+ *   <tr><td>POST</td><td>/api/jobs/{jobId}/heartbeat</td><td>{@code {"node":"...","phase":"..."}}</td><td>Record a job's timed
+ *       liveness heartbeat — see {@link StatsQueryHandler}</td></tr>
+ *   <tr><td>GET</td><td>/api/tracker/claimable</td><td>--</td><td>Count the claimable tasks of a tracker release — see {@link TrackerQueryHandler}</td></tr>
+ *   <tr><td>POST</td><td>/api/tracker/claim</td><td>{@code {"project","release","workstreamId"}}</td><td>Claim the next ready task of a release for a workstream</td></tr>
  *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td><td>Look up a specific job event by ID</td></tr>
  *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td><td>Check whether automated job submissions are accepted</td></tr>
  *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td><td>{@code {"accept":true}}</td><td>Enable or disable automated job submissions</td></tr>
@@ -118,6 +126,8 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>GET</td><td>/api/agents</td><td>--</td><td>Enumerate available runners, phases, model names, and the built-in default runner</td></tr>
  *   <tr><td>GET</td><td>/api/stats</td><td>--</td><td>Weekly job statistics ({@code thisWeek}/{@code lastWeek}, computed in UTC) from the configured
  *       {@link io.flowtree.controller.JobStatsStore} — see {@link StatsQueryHandler}</td></tr>
+ *   <tr><td>GET</td><td>/api/stats/daily</td><td>--</td><td>Agent wall-clock time per day across every workstream, for
+ *       {@code from}..{@code to} in time zone {@code tz} — see {@link io.flowtree.controller.DailyAgentTime}</td></tr>
  *   <tr><td>POST</td><td>/api/alerts</td><td>{@code {"text":"...","recipients":["..."],"severity":"INFO"}}</td><td>Deliver free-form text to named
  *       recipients, subject to a per-caller rate limit — see {@link AlertRequestHandler}</td></tr>
  * </table>
@@ -255,7 +265,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Holds the per-workstream conversations that {@code /messages} appends to
      * and {@code /mailbox} reads from. Memory-only until
-     * {@link #setMailboxDirectory(File)} roots it in the controller's data
+     * {@link #setDataDirectory(File)} roots it in the controller's data
      * directory.
      */
     private MailboxRegistry mailboxes = new MailboxRegistry();
@@ -277,6 +287,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * {@code null} until {@link #setServer(Server)} is called.
      */
     private DelayedJobQueue delayedJobs;
+
+    /**
+     * Durable store of serialized factories for accepted-but-unfinished jobs,
+     * so a {@code SUBMITTED} job survives a controller restart. {@code null}
+     * until {@link #setDataDirectory(File)} roots it in the data directory.
+     */
+    private PendingJobRecovery pendingJobRecovery;
 
     /**
      * Creates a new API endpoint on the specified port, using a single
@@ -445,6 +462,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 taskCloseOut.stop();
                 taskCloseOut = null;
             }
+            if (pendingJobRecovery != null) {
+                pendingJobRecovery.close();
+                pendingJobRecovery = null;
+            }
         }
         super.stop();
     }
@@ -471,16 +492,55 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Persists workstream conversations under the controller's data directory,
-     * replacing the memory-only default so a conversation survives a restart.
+     * Roots the endpoint's durable state in the controller's data directory, so
+     * it survives a restart: workstream conversations replace their memory-only
+     * default, and the serialized factory of every accepted job is persisted for
+     * {@link #recoverPendingJobs()}. A recovery store opened by an earlier call
+     * is closed before it is replaced.
      *
      * @param dataDirectory the controller's data directory; conversations are
      *                      written to its
      *                      {@value MailboxRegistry#DIRECTORY_NAME} subdirectory
+     *                      and recoverable factories to its
+     *                      {@value PendingJobRecovery#DATABASE_NAME} database
      */
-    public void setMailboxDirectory(File dataDirectory) {
+    public synchronized void setDataDirectory(File dataDirectory) {
         this.mailboxes = new MailboxRegistry(
                 new File(dataDirectory, MailboxRegistry.DIRECTORY_NAME));
+        if (pendingJobRecovery != null) pendingJobRecovery.close();
+        this.pendingJobRecovery = new PendingJobRecovery(
+                new File(dataDirectory, PendingJobRecovery.DATABASE_NAME).getAbsolutePath());
+        this.pendingJobRecovery.initialize();
+    }
+
+    /**
+     * Re-dispatches every job the stats store still reports as {@code SUBMITTED}
+     * for which a serialized factory was persisted, so work the controller
+     * accepted but had not yet started survives a restart.
+     *
+     * <p>Called once at controller startup, after the endpoint and its dispatch
+     * queue are wired. Each recovered factory is handed to the same dispatch
+     * path a fresh submission uses. Re-dispatch is idempotent: only jobs still
+     * {@code SUBMITTED} are re-run (a job that already started has been promoted
+     * to {@code STARTED} and is skipped), a job this process already dispatched
+     * (submitted after {@link #start} but before this sweep) is skipped, and
+     * the existing {@code job_timing} row is reused rather than duplicated. A
+     * no-op when no recovery store or dispatch queue is configured.</p>
+     */
+    public void recoverPendingJobs() {
+        if (pendingJobRecovery == null || delayedJobs == null) return;
+        JobStatsStore store = statsQueryHandler.store();
+        if (store == null) return;
+
+        Set<String> pendingIds = new HashSet<>();
+        for (PendingJob job : store.getPendingJobs(null)) {
+            pendingIds.add(job.jobId());
+        }
+        int recovered = pendingJobRecovery.recover(pendingIds,
+                factory -> delayedJobs.submit(factory, 0));
+        if (recovered > 0) {
+            log("Re-dispatched " + recovered + " pending job(s) after restart");
+        }
     }
 
     /**
@@ -643,6 +703,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return jobQueryHandler.listJobs(workstreamId, limit);
         }
 
+        // Must precede the /api/jobs/{id} branch, which would else shadow it.
+        if (Method.GET.equals(method) && "/api/jobs/in-flight".equals(uri)) {
+            return statsQueryHandler.handleInFlight();
+        }
+
         if (Method.GET.equals(method) && uri.startsWith("/api/jobs/")) {
             String jobId = uri.substring("/api/jobs/".length());
             return jobQueryHandler.getJob(jobId);
@@ -770,7 +835,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * having been registered by hand first. Supports optional per-job
      * overrides for {@code model}, {@code effort}, {@code maxTurns}, {@code maxBudgetUsd},
      * {@code postCompletionCommand}, {@code postCompletionWorkingDir},
-     * {@code postCompletionTimeoutSeconds}, {@code maxDeduplicationPasses}, and {@code maxPostCompletionPasses}.</p>
+     * {@code postCompletionTimeoutSeconds}, {@code maxDeduplicationPasses}, {@code maxEnforceChangesRetries},
+     * and {@code maxPostCompletionPasses}.</p>
      *
      * <p>{@code bypassAgentPermissionPrompts=true} grants this job alone the agent runtime's
      * permission-prompt bypass (see {@link CodingAgentJobFactory#setBypassAgentPermissionPrompts}),
@@ -952,6 +1018,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setEnforceChanges(true);
         }
 
+        // Cap on enforce-changes re-runs; 0 is meaningful (report an empty
+        // result DEGRADED without re-running), so presence decides, not value.
+        if (JsonFieldExtractor.hasField(body, "maxEnforceChangesRetries")) {
+            int maxEnforceChangesRetries = JsonFieldExtractor.extractInt(body, "maxEnforceChangesRetries");
+            if (maxEnforceChangesRetries < 0) {
+                return errorResponse("maxEnforceChangesRetries must not be negative");
+            }
+            factory.setMaxEnforceChangesRetries(maxEnforceChangesRetries);
+        }
+
         // Deduplication mode (local inline session or spawn follow-up job)
         if (deduplicationMode != null && !deduplicationMode.isEmpty()) {
             factory.setDeduplicationMode(deduplicationMode);
@@ -1087,6 +1163,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.getDisplaySummary(),
                 JsonFieldExtractor.extractString(body, "submittedBy"),
                 requiredLabels, Instant.now());
+        // Persist for restart recovery; cleared at the terminal choke point.
+        if (pendingJobRecovery != null) {
+            pendingJobRecovery.persist(factory.getTaskId(), factory.encode());
+        }
 
         // Notify that the job has been submitted (not yet executing)
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), factory.getDisplaySummary());
@@ -1111,25 +1191,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         PhaseConfigResolver.appendBundleJson(json, configResolver.phaseConfigResolver().resolvedBundle());
         // Report which optional phases are active so callers can confirm
         // the effective job configuration without inspecting phase bundles.
-        String effectiveDedupMode = factory.getDeduplicationMode();
-        boolean dedupEnabled = effectiveDedupMode != null
-                && !effectiveDedupMode.isEmpty()
-                && !CodingAgentJob.DEDUP_NONE.equals(effectiveDedupMode);
-        json.append(",\"deduplicationEnabled\":").append(dedupEnabled);
-        json.append(",\"organizationalPlacementEnabled\":")
-                .append(factory.isEnforceOrganizationalPlacement());
-        json.append(",\"objectOrientedReviewEnabled\":")
-                .append(factory.isObjectOrientedReviewEnabled());
-        json.append(",\"retrospectiveEnabled\":")
-                .append(factory.isRetrospectiveEnabled());
-        json.append(",\"falsificationEnabled\":")
-                .append(factory.isFalsificationEnabled());
-        json.append(",\"autoCreatePr\":").append(factory.isAutoCreatePr());
-        json.append(",\"collaborative\":").append(factory.isCollaborative());
-        json.append(",\"sensitiveFileProtectionEnabled\":")
-                .append(factory.isSensitiveFileProtectionEnabled());
-        json.append(",\"bypassAgentPermissionPrompts\":")
-                .append(factory.isBypassAgentPermissionPrompts());
+        SubmissionConfigResolver.appendResolvedJobConfigJson(json, factory);
         // Report an auto-created workstream so a caller that submitted with
         // createWorkstreamIfMissing can tell a first run on a new branch from
         // a run on a workstream someone had already registered.
@@ -1328,6 +1390,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     public void completeJob(String workstreamId, JobCompletionEvent event) {
         // Controller-owned terminal persistence, independent of any notifier.
         jobLifecycleRecorder.recordTerminal(workstreamId, event);
+        // A terminal job never needs re-dispatch.
+        if (pendingJobRecovery != null && event != null) {
+            pendingJobRecovery.clear(event.getJobId());
+        }
         notifiers.completionListener(workstreamId).onJobCompleted(workstreamId, event);
         if (completionListenerFanout == null) return;
         // Clearing the debounce keeps a fast-completing wake-up from
@@ -1501,6 +1567,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     // TODO(review): javadoc here was compressed to dodge the file-length limit; see memory.
     /** Handles {@code GET /api/stats}. Delegates to {@link StatsQueryHandler}. */
     private Response handleStatsQuery(IHTTPSession session) {
+        if ("/api/stats/daily".equals(session.getUri())) {
+            return statsQueryHandler.handleDaily(session, this::errorResponse);
+        }
         return statsQueryHandler.handle(session, this::errorResponse);
     }
 

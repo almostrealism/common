@@ -259,13 +259,18 @@ public class WaveDetailsFactory implements CodeFeatures {
 			}
 		}
 
-		if (featureProvider != null && existing.getFeatureData() == null) {
-			PackedCollection features = featureProvider.computeFeatures(data);
-			existing.setFeatureSampleRate(featureProvider.getFeatureSampleRate());
-			existing.setFeatureChannelCount(1);
-			existing.setFeatureBinCount(features.getShape().length(1));
-			existing.setFeatureFrameCount(features.getShape().length(0));
-			existing.setFeatureData(features);
+		if (featureProvider != null) {
+			String modelId = featureProvider.getModelIdentifier();
+
+			if (existing.getFeatures(modelId) == null) {
+				PackedCollection features = featureProvider.computeFeatures(data);
+				existing.putFeatures(new WaveFeatures(modelId,
+						featureProvider.getFeatureSampleRate(), 1,
+						features.getShape().length(1),
+						features.getShape().length(0), features));
+			}
+
+			existing.setActiveModelIdentifier(modelId);
 		}
 
 		return existing;

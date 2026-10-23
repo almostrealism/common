@@ -22,6 +22,7 @@ import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.ContentIndex;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
+import org.almostrealism.audio.data.WaveDataFeatureProvider;
 import org.almostrealism.audio.data.WaveDataProvider;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
@@ -29,8 +30,6 @@ import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.audio.data.WaveDetailsJob;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.audio.similarity.IncrementalSimilarityComputation;
-import org.almostrealism.Ops;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.concurrent.SuspendableThreadPoolExecutor;
@@ -469,21 +468,43 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	private WaveDetails resolveDetails(String identifier) {
 		if (store != null) {
-			return store.get(identifier);
+			return activate(store.get(identifier));
 		}
 
 		WaveDetails cached = detailsCache.get(identifier);
-		if (cached != null) return cached;
+		if (cached != null) return activate(cached);
 
 		if (detailsLoader != null) {
 			WaveDetails loaded = detailsLoader.apply(identifier);
 			if (loaded != null) {
 				detailsCache.put(identifier, loaded);
-				return loaded;
+				return activate(loaded);
 			}
 		}
 
 		return null;
+	}
+
+	/**
+	 * Returns the identifier of the model the configured feature provider
+	 * produces, or {@code null} if no feature provider is configured.
+	 */
+	private String currentModelId() {
+		WaveDataFeatureProvider provider = factory.getFeatureProvider();
+		return provider == null ? null : provider.getModelIdentifier();
+	}
+
+	/**
+	 * Marks the given details' active model as the current provider's model, so
+	 * the no-argument feature accessors read that model's features. A no-op when
+	 * no provider is configured or the details are {@code null}.
+	 */
+	private WaveDetails activate(WaveDetails details) {
+		String modelId = currentModelId();
+		if (details != null && modelId != null) {
+			details.setActiveModelIdentifier(modelId);
+		}
+		return details;
 	}
 
 	/**
@@ -500,19 +521,6 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * the graph. That method is incremental: it only computes missing pairs,
 	 * so it is safe and cheap to call even when most similarities are already
 	 * present.</p>
-	 *
-	 * <h3>Example (assuming similarities are pre-computed)</h3>
-	 * <pre>{@code
-	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
-	 * double[] ranks = pageRank(graph, 0.85, 50);
-	 * int[] communities = louvain(graph, 1.0);
-	 * }</pre>
-	 *
-	 * <h3>Example (ensuring similarities are computed first)</h3>
-	 * <pre>{@code
-	 * library.allDetails().forEach(library::computeSimilarities);
-	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
-	 * }</pre>
 	 *
 	 * @return a new AudioSimilarityGraph containing all details from this library
 	 * @see AudioSimilarityGraph
@@ -973,20 +981,13 @@ public class AudioLibrary implements ConsoleFeatures {
 
 			if (details == null) {
 				details = computeDetails(provider, null, persistent);
-				if (store != null) {
-					storeWithEmbedding(id, details);
-				} else {
-					detailsCache.put(id, details);
-				}
+				persist(details);
 			}
 
-			if (getWaveDetailsFactory().getFeatureProvider() != null && details.getFeatureData() == null) {
+			String modelId = currentModelId();
+			if (modelId != null && details.getFeatures(modelId) == null) {
 				details = computeDetails(provider, details, persistent);
-				if (store != null) {
-					storeWithEmbedding(id, details);
-				} else {
-					detailsCache.put(id, details);
-				}
+				persist(details);
 			}
 
 			if (isComplete(details)) {
@@ -1013,15 +1014,23 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
-	 * Returns true if the given WaveDetails has both frequency data and feature data populated.
+	 * Returns true if the given WaveDetails has both frequency data and feature
+	 * data for the current model populated.
+	 *
+	 * <p>With a feature provider configured, completeness requires that
+	 * provider's model specifically, so an item whose only features belong to a
+	 * different model is incomplete and recomputed beside them. With no provider,
+	 * this falls back to testing for any feature data at all.</p>
 	 *
 	 * @param details the WaveDetails to check
-	 * @return true if complete (both freqData and featureData are non-null)
+	 * @return true if complete
 	 */
 	public boolean isComplete(WaveDetails details) {
-		return details != null &&
-				details.getFreqData() != null &&
-				details.getFeatureData() != null;
+		if (details == null || details.getFreqData() == null) return false;
+
+		String modelId = currentModelId();
+		return modelId == null ? details.getFeatureData() != null
+				: details.getFeatures(modelId) != null;
 	}
 
 	/**
@@ -1035,11 +1044,21 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
-	 * Stores details with a mean-pooled embedding vector computed from
-	 * the feature data. The embedding enables HNSW-based nearest neighbor
-	 * search in the backing store.
+	 * Re-persists a details item, keyed by its identifier: store-backed, written
+	 * to the store with a mean-pooled embedding vector (enabling HNSW
+	 * nearest-neighbour search); otherwise returned to the in-memory cache. Used
+	 * by the analysis path and by {@link WaveFeatureCleanup}, which mutates an
+	 * item in place and needs the change to survive a reload.
+	 *
+	 * @param details the details to persist
 	 */
-	private void storeWithEmbedding(String id, WaveDetails details) {
+	public void persist(WaveDetails details) {
+		String id = details.getIdentifier();
+		if (store == null) {
+			detailsCache.put(id, details);
+			return;
+		}
+
 		PackedCollection embedding = computeEmbeddingVector(details);
 		if (embedding != null) {
 			store.put(id, details, embedding);
@@ -1049,36 +1068,35 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
-	 * Computes a mean-pooled embedding vector from the feature data of
-	 * the given {@link WaveDetails}. Returns {@code null} if the details
-	 * have no feature data.
+	 * Computes a mean-pooled embedding vector from the current model's feature
+	 * data of the given {@link WaveDetails}. Returns {@code null} if the details
+	 * are {@code null} or have no feature data.
 	 *
 	 * @param details the details to compute an embedding for
 	 * @return the embedding vector, or {@code null}
+	 * @see WaveDetails#meanPooledEmbedding()
 	 */
 	public static PackedCollection computeEmbeddingVector(WaveDetails details) {
-		if (details == null || details.getFeatureData() == null) return null;
+		return details == null ? null : details.meanPooledEmbedding();
+	}
 
-		PackedCollection featureData = details.getFeatureData();
-		int frames = featureData.getShape().length(0);
-		int bins = featureData.getShape().length(1);
-		if (frames == 0 || bins == 0) return null;
-
-		// Mean over frames: accumulate the rows and scale, rather than reading every
-		// element back to add it on the host.
-		CollectionProducer sum = null;
-
-		for (int f = 0; f < frames; f++) {
-			if ((f + 1) * bins > featureData.getMemLength()) break;
-
-			CollectionProducer row = Ops.o().cp(
-					featureData.range(Ops.o().shape(bins), f * bins));
-			sum = sum == null ? row : sum.add(row);
+	/**
+	 * Reports the feature data this library holds for models other than the
+	 * current provider's model — a count of items and a byte total, including
+	 * each item's legacy unkeyed slot — and offers a cleanup that deletes exactly
+	 * that data. Requires a feature provider, since the current model is kept.
+	 *
+	 * @return the cleanup report for non-current-model feature data
+	 * @throws IllegalStateException if no feature provider is configured
+	 * @see WaveFeatureCleanup
+	 */
+	public WaveFeatureCleanup otherModelFeatures() {
+		String keep = currentModelId();
+		if (keep == null) {
+			throw new IllegalStateException(
+					"A feature provider must be configured to identify the current model");
 		}
-
-		if (sum == null) return null;
-
-		return sum.multiply(1.0 / frames).evaluate();
+		return WaveFeatureCleanup.report(this, keep);
 	}
 
 	/**
@@ -1348,12 +1366,9 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * also partially fills in the maps of other details, reducing work for subsequent
 	 * calls.</p>
 	 *
-	 * <h3>Typical usage before prototype discovery</h3>
-	 * <pre>{@code
-	 * // Ensure all pairwise similarities exist before graph construction
-	 * library.allDetails().forEach(library::computeSimilarities);
-	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
-	 * }</pre>
+	 * <p>Similarity is only ever computed between two items' features for the same
+	 * model: the no-argument {@link WaveDetails#getSimilarities()} map it is
+	 * stored in resolves to the current model's similarities.</p>
 	 *
 	 * @param details the WaveDetails to compute similarities for, or null (returns null)
 	 * @return the same WaveDetails instance with its similarity map updated

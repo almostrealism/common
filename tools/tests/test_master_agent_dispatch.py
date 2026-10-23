@@ -10,6 +10,11 @@ job that inherits another's ``BRANCH_PREFIX`` reads that job's branches as its
 own history and silently follows its schedule instead.
 
 None of that is visible in a passing workflow run, so it is checked here.
+
+A job that calls a reusable workflow in this repository (the task-planning
+round calls ``task-planning.yaml``) has no steps of its own; its checks are
+made against the called workflow's job, with the caller's inputs in place of
+the called workflow's.
 """
 
 import json
@@ -43,6 +48,29 @@ def _workflow():
         return yaml.safe_load(f)
 
 
+def called_job(job):
+    """Returns the job that runs for ``job``: the only job of the reusable
+    workflow it calls from this repository, or ``job`` itself."""
+    uses = job.get("uses", "")
+    if not uses.startswith("./.github/workflows/"):
+        return job
+    with open(os.path.join(_REPO_ROOT, uses[2:])) as f:
+        jobs = yaml.safe_load(f)["jobs"]
+    if len(jobs) != 1:
+        raise AssertionError("%s should hold exactly one job" % uses)
+    return next(iter(jobs.values()))
+
+
+def controller_url(caller, env):
+    """Returns the controller URL a step runs with. In a called workflow the
+    step reads its ``controller-url`` input, so the caller's value is the one
+    that reaches it."""
+    url = env.get("CONTROLLER_URL", "")
+    if "inputs.controller-url" in url:
+        return str(caller.get("with", {}).get("controller-url", ""))
+    return url
+
+
 def _run_steps(job):
     """Returns the shell of every step that runs one."""
     return [step["run"] for step in job["steps"] if "run" in step]
@@ -61,6 +89,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.workflow = _workflow()
         self.jobs = self.workflow["jobs"]
         self.qa_jobs = _qa_jobs(self.workflow)
+        self.task_planning = called_job(self.jobs["plan-release-task"])
 
     def test_the_qa_jobs_are_found(self):
         """A discovery bug would make the per-job checks vacuously pass."""
@@ -262,16 +291,25 @@ class MasterAgentDispatchTests(unittest.TestCase):
         run on a GitHub-hosted runner.
         """
         controller_scripts = _QA_SCRIPTS[1:]
-        for name, job in self.jobs.items():
+        for name, caller in self.jobs.items():
+            job = called_job(caller)
             with self.subTest(job=name):
                 self.assertNotIn("self-hosted", str(job["runs-on"]))
+            if job is not caller:
+                # The called workflow receives the service token only as the
+                # caller passes it.
+                with self.subTest(job=name, caller=True):
+                    self.assertIn("FLOWTREE_CF_ACCESS_CLIENT_ID",
+                                  str(caller["with"].get("cf-access-client-id", "")))
+                    self.assertEqual("${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}",
+                                     caller["secrets"]["FLOWTREE_CF_ACCESS_CLIENT_SECRET"])
             for step in job["steps"]:
                 if not any(s in step.get("run", "") for s in controller_scripts):
                     continue
                 with self.subTest(job=name, step=step["name"]):
                     env = step.get("env", {})
                     self.assertNotIn("CONTROLLER_HOST", env)
-                    self.assertIn("FLOWTREE_CONTROLLER_URL", env.get("CONTROLLER_URL", ""))
+                    self.assertIn("FLOWTREE_CONTROLLER_URL", controller_url(caller, env))
                     self.assertIn("CF_ACCESS_CLIENT_ID", env)
                     self.assertIn("secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET",
                                   env.get("CF_ACCESS_CLIENT_SECRET", ""))
@@ -353,6 +391,18 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertEqual("true", env["PROTECT_TEST_FILES"])
         self.assertNotIn("ENFORCE_CHANGES", env)
 
+    def test_the_retrospective_round_reports_an_empty_result_without_a_rerun(self):
+        """The retrospective's contract is a report on disk. A run that
+        committed nothing used to exit SUCCESS; enforceChanges makes that
+        DEGRADED once its re-run cap is spent, and the cap of 0 reports it at
+        once rather than paying for a second full opus/max survey."""
+        job = self.qa_jobs["qa-retrospective"]
+        submit = next(s for s in job["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        env = submit["env"]
+        self.assertEqual("true", env["ENFORCE_CHANGES"])
+        self.assertEqual("0", env["MAX_ENFORCE_CHANGES_RETRIES"])
+
     def test_the_planning_job_keeps_one_round_open_at_a_time(self):
         """Every planning round rewrites the one docs/plans/MANAGER_LOG.md,
         so two open at once cannot both merge. The job used to gate on the
@@ -372,7 +422,10 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertEqual("project/plan-", env["BRANCH_PREFIX"])
         self.assertEqual("0", env["MIN_INTERVAL_DAYS"])
         self.assertGreater(int(env["PR_GRACE_HOURS"]), 0)
-        self.assertEqual("7", job["env"]["MAX_OPEN_PRS"])
+        self.assertEqual("1", env.get("MAX_ROUNDS", "1"))
+        self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
+        self.assertNotIn("MAX_OPEN_PRS", job.get("env", {}),
+                         "the job must apply the workflow's shared limit")
 
         # The backlog limit is applied by the script both planning jobs share.
         backlog = next(i for i, s in enumerate(steps)
@@ -395,7 +448,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
         plan no branch, workstream or agent job is created. `force` may skip
         the first two checks but never the third: without a task there is
         nothing to plan."""
-        job = self.jobs["plan-release-task"]
+        job = self.task_planning
         self.assertNotIn("BRANCH_PREFIX", job.get("env", {}),
                          "a job-level prefix would enrol this job in the QA checks")
         steps = job["steps"]
@@ -431,7 +484,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
         task to the workstream, and that link is all the agent needs to
         edit its own task. The planner role would let a planning agent edit
         every task in the workspace, which no planning round needs."""
-        steps = self.jobs["plan-release-task"]["steps"]
+        steps = self.task_planning["steps"]
         register = next(s for s in steps if "register-workstream.sh" in s.get("run", ""))
         self.assertNotIn("TRACKER_CAPABILITIES", register["env"])
         submit = next(s for s in steps if "submit-agent-job.sh" in s.get("run", ""))
@@ -443,7 +496,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
 
     def _task_planning_step(self, script):
         """Returns (index, step) of the task-planning step that runs ``script``."""
-        steps = self.jobs["plan-release-task"]["steps"]
+        steps = self.task_planning["steps"]
         return next((i, s) for i, s in enumerate(steps) if script in s.get("run", ""))
 
     def test_the_task_is_claimed_between_registration_and_the_prompt(self):
@@ -461,13 +514,13 @@ class MasterAgentDispatchTests(unittest.TestCase):
         env = claim_step["env"]
         self.assertEqual("${{ steps.register.outputs.workstream_id }}", env["WORKSTREAM_ID"])
         self.assertIn("steps.release.outputs.release", env["TRACKER_RELEASE"])
-        self.assertIn("TRACKER_PROJECT", self.jobs["plan-release-task"]["env"])
+        self.assertIn("TRACKER_PROJECT", self.task_planning["env"])
 
     def test_the_claim_carries_the_secret_only_through_its_environment(self):
         _, claim_step = self._task_planning_step("tracker-claim.sh")
         self.assertEqual("${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}",
                          claim_step["env"]["CF_ACCESS_CLIENT_SECRET"])
-        for step in self.jobs["plan-release-task"]["steps"]:
+        for step in self.task_planning["steps"]:
             with self.subTest(step=step.get("name")):
                 self.assertNotIn("secrets.", step.get("run", ""))
 
@@ -510,7 +563,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
         env = dict(os.environ)
         env.update({"BRANCH": "project/task-1", "BASE_BRANCH": "master",
                     "TRACKER_PROJECT": "Common", "TRACKER_RELEASE": "Common 1.2",
-                    "TASK_ID": "7", "TASK_FILE": task_file})
+                    "TASK_ID": "7", "TASK_FILE": task_file, "FRAMEWORK": _REPO_ROOT})
         result = subprocess.run(["bash", "-e", "-c", script], cwd=_REPO_ROOT, env=env,
                                 capture_output=True, text=True, timeout=60)
         self.assertEqual(0, result.returncode, result.stderr)
@@ -531,7 +584,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
         next round's branch."""
         for name, prefix in (("plan-next-task", "project/plan-"),
                              ("plan-release-task", "project/task-")):
-            steps = self.jobs[name]["steps"]
+            steps = called_job(self.jobs[name])["steps"]
             with self.subTest(job=name):
                 gate = next(i for i, s in enumerate(steps)
                             if "qa-cadence.sh" in s.get("run", ""))
@@ -550,14 +603,53 @@ class MasterAgentDispatchTests(unittest.TestCase):
 
     def test_both_planning_rounds_share_one_backlog_limit(self):
         """Free-form plans and task plans compete for the same reviewer, so
-        both rounds apply the same open-PR limit through the same script."""
+        both rounds apply the same open-PR limit through the same script:
+        the workflow's, which a called workflow receives as an input."""
         limits = set()
         for name in ("plan-next-task", "plan-release-task"):
-            job = self.jobs[name]
+            caller = self.jobs[name]
+            job = called_job(caller)
             with self.subTest(job=name):
                 self.assertIn("open-pr-backlog.sh", "\n".join(_run_steps(job)))
-                limits.add(job["env"]["MAX_OPEN_PRS"])
-        self.assertEqual({"7"}, limits)
+                limit = job.get("env", {}).get("MAX_OPEN_PRS",
+                                               self.workflow["env"]["MAX_OPEN_PRS"])
+                if job is not caller:
+                    self.assertEqual("${{ inputs.max-open-prs }}", limit)
+                    limit = str(caller["with"]["max-open-prs"])
+                limits.add(limit)
+        self.assertEqual({self.workflow["env"]["MAX_OPEN_PRS"]}, limits)
+
+    def test_every_qa_round_applies_the_shared_backlog_limit(self):
+        """Every round ends in a pull request for the same reviewer, so the
+        QA rounds stop at the same open-PR limit as the planning rounds. Their
+        cadence gate checks it (CHECK_BACKLOG) against the workflow's
+        MAX_OPEN_PRS, which no job may override with a limit of its own."""
+        self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
+        for name, job in self.qa_jobs.items():
+            gate = next(s for s in job["steps"] if "qa-cadence.sh" in s.get("run", ""))
+            with self.subTest(job=name):
+                self.assertEqual("true", gate["env"].get("CHECK_BACKLOG"))
+                self.assertNotIn("MAX_OPEN_PRS", job["env"])
+                self.assertNotIn("MAX_OPEN_PRS", gate["env"])
+                self.assertIn("GITHUB_TOKEN", gate["env"])
+                summary = next(s for s in job["steps"] if s["name"] == "Summary")
+                self.assertIn("backlog-full)", summary["run"])
+
+    def test_several_task_rounds_may_be_open_at_once(self):
+        """Each task round plans a different task on its own branch and
+        writes no shared file, so up to max-rounds of them run at once; the
+        Project Manager keeps one. With several open, "a round may start"
+        no longer means "every earlier round is over": the archive step
+        must keep the rounds the gate counted as in progress."""
+        caller = self.jobs["plan-release-task"]
+        steps = self.task_planning["steps"]
+        gate = next(s for s in steps if "qa-cadence.sh" in s.get("run", ""))
+        archive = next(s for s in steps if "archive-stale-workstreams.sh" in s.get("run", ""))
+        self.assertEqual("${{ inputs.max-rounds }}", gate["env"]["MAX_ROUNDS"])
+        self.assertEqual(4, caller["with"]["max-rounds"])
+        self.assertEqual("${{ steps.decide.outputs.live }}", archive["env"]["KEEP_BRANCHES"])
+        self.assertNotIn("CHECK_BACKLOG", gate["env"],
+                         "the round checks the backlog in its own step")
 
     def test_the_planning_dispatch_the_mcp_tool_uses_still_exists(self):
         """project_tools.py dispatches this file by name with this selector."""

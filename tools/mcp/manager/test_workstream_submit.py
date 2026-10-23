@@ -74,6 +74,7 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
             max_budget_usd=5.0,
             protect_test_files=True,
             enforce_changes=True,
+            max_enforce_changes_retries=0,
             started_after="1710000000000",
         )
         payload = mock_post.call_args[0][1]
@@ -83,6 +84,7 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertEqual(payload["maxBudgetUsd"], 5.0)
         self.assertTrue(payload["protectTestFiles"])
         self.assertTrue(payload["enforceChanges"])
+        self.assertEqual(payload["maxEnforceChangesRetries"], 0)
         self.assertEqual(payload["startedAfter"], "1710000000000")
 
     @patch.object(server, "_controller_post")
@@ -110,6 +112,7 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("maxBudgetUsd", payload)
         self.assertNotIn("protectTestFiles", payload)
         self.assertNotIn("enforceChanges", payload)
+        self.assertNotIn("maxEnforceChangesRetries", payload)
         self.assertNotIn("startedAfter", payload)
 
     @patch.object(server, "_controller_post")
@@ -390,14 +393,14 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
 
     @patch.object(server, "_controller_post")
     def test_submit_object_oriented_review_omitted_by_default(self, mock_post):
-        """object_oriented_review_enabled is opt-in (default false), so the
-        wire payload must omit objectOrientedReviewEnabled when the caller did
-        not pass it -- including when review itself stays enabled."""
+        """object_oriented_review_enabled now defaults to True, and the value is
+        always sent so an explicit False can switch it off per job; the wire
+        payload therefore carries objectOrientedReviewEnabled=True by default."""
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-oo1"}
         server.workstream_submit_task(prompt="Task", review_enabled=True)
         payload = mock_post.call_args[0][1]
-        self.assertNotIn("objectOrientedReviewEnabled", payload)
+        self.assertIs(payload["objectOrientedReviewEnabled"], True)
 
     @patch.object(server, "_controller_post")
     def test_submit_object_oriented_review_true_forwarded(self, mock_post):
@@ -409,6 +412,18 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
                                       object_oriented_review_enabled=True)
         payload = mock_post.call_args[0][1]
         self.assertIs(payload["objectOrientedReviewEnabled"], True)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_object_oriented_review_false_forwarded(self, mock_post):
+        """object_oriented_review_enabled=False must reach the controller as
+        objectOrientedReviewEnabled=False so the on-by-default review can be
+        switched off for a job."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-oo3"}
+        server.workstream_submit_task(prompt="Task",
+                                      object_oriented_review_enabled=False)
+        payload = mock_post.call_args[0][1]
+        self.assertIs(payload["objectOrientedReviewEnabled"], False)
 
     @patch.object(server, "_controller_post")
     def test_submit_falsification_enabled_omitted_by_default(self, mock_post):

@@ -159,6 +159,20 @@ class EvidenceItem:
             loc += f" ({self.label})"
         return loc
 
+    def subjects(self) -> list[str]:
+        """The checkable names this item is *about*, for seeding a follow-up
+        turn's retrieval with the subjects earlier turns resolved to.
+
+        A documentation or index item contributes its file's name (with its
+        extension, so it re-reaches a snapshot script or doc); a note
+        contributes the symbols it uses that the snapshot still contains.
+        """
+        if self.kind == KIND_NOTE:
+            return list(self.named_symbols.get("present", []))
+        if self.file:
+            return [self.file.rsplit("/", 1)[-1]]
+        return []
+
     def haystack(self) -> str:
         """Everything a claim citing this item may be checked against: its
         text, location, heading trail and label."""

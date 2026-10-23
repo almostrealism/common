@@ -20,10 +20,10 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 
 | Script | Purpose |
 |---|---|
-| `archive-stale-workstreams.sh` | Archive the workstreams of a recurring QA job's previous rounds |
+| `archive-stale-workstreams.sh` | Archive the workstreams of a recurring job's previous rounds, keeping the ones still in progress (`KEEP_BRANCHES`) |
 | `parse-surefire-failures.sh` | Extract failing tests from Surefire XML reports |
-| `qa-cadence.sh` | Decide whether a recurring QA round (`BRANCH_PREFIX`) is due |
-| `open-pr-backlog.sh` | Decide whether the open-PR backlog leaves room for a planning round (`MAX_OPEN_PRS`); shared by both planning jobs |
+| `qa-cadence.sh` | Decide whether a recurring round (`BRANCH_PREFIX`) is due: fewer than `MAX_ROUNDS` in progress (reported as `live`), the interval passed, and with `CHECK_BACKLOG` room in the open-PR backlog |
+| `open-pr-backlog.sh` | Decide whether the open-PR backlog leaves room for a round (`MAX_OPEN_PRS`); run by both planning jobs, and by `qa-cadence.sh` for the QA rounds |
 | `plan_workstream_config.py` | Resolve the `docs/plans/<prefix>-workstream.yaml` settings a `project/` branch declares (longest matching prefix; strict schema) |
 | `tracker-claimable.sh` | Ask the controller whether a tracker release has a claimable task; fails closed |
 | `tracker-claim.sh` | Claim the next task of a tracker release for a workstream through the controller (`POST /api/tracker/claim`); writes the task to a file and emits `claimed`, `task_id` and `task_file`; fails closed |
@@ -33,7 +33,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
 | `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests failed |
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
-| `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check` |
+| `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check`. `ENFORCE_CHANGES` (default `"false"`) requires the job to produce a change. A run that leaves none is re-run up to `MAX_ENFORCE_CHANGES_RETRIES` times over the whole job (omitted: the controller default; `"0"`: never re-run), and a job that still commits nothing once that cap is spent is reported DEGRADED rather than SUCCESS |
 | `submit-staged-request.sh` | Submit a staged request directory from a trusted (default-branch) checkout, exporting only the documented `submit.env` keys |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
 
@@ -47,6 +47,9 @@ repository (input `framework-ref`), never from the caller's tree.
 | Workflow | Purpose |
 |---|---|
 | `goal-decomposition.yaml` | Decomposition round of goal-driven release automation: on the caller's default branch, resolve its next release and release plan (`resolve-release-scope.sh`), register a standing `orchestration/goal-decomposition` workstream with the tracker `planner` role and this repository as a dependent repository, and submit an agent job that creates or updates the release's tracker tasks |
+| `task-planning.yaml` | Task-planning round: on the caller's default branch, gate on intake, a round in progress (`qa-cadence.sh`), the open-PR backlog (`open-pr-backlog.sh`) and a claimable task (`tracker-claimable.sh`) in `<project> <version>`, then create a `project/task-*` branch, register its workstream, claim the task (`tracker-claim.sh`) and submit an agent that plans it and opens the PR. This repository's `plan-release-task` calls it |
+| `implement-plan.yaml` | The manual "implement the plan" trigger, dispatched by the caller on a plan branch: detect the plan, resolve its workstream settings (`plan_workstream_config.py`), register the workstream, and submit the implementation through a token-free prompt build and `submit-staged-request.sh`. This repository's `verify-completion.yaml` calls it |
+| `plan-review.yaml` | Docs-only review for a repository without this pipeline: when every change on the branch is under `docs/`, submit the `docs-review.txt` agent, which improves the documents and never implements the plan |
 
 ## Coverage (`coverage/`)
 
@@ -102,7 +105,7 @@ every test had passed.
 The required set is `analysis.needs` minus `build` (kept in lockstep with
 `all-checks` by design — see `.github/CLAUDE.md`, "What the `analysis` job
 does"), and it covers every test lane, the CL lanes (`test-cl`,
-`test-media-cl`) included. `tools/tests/test_auto_resolve_test_job_coverage.py` asserts every
+`test-media-cl`) and the CUDA lanes (`test-cuda`, `test-media-cuda`) included. `tools/tests/test_auto_resolve_test_job_coverage.py` asserts every
 job in that set is wired into both the failure-detection step and the
 Surefire allowlist — add a new test-execution job to `analysis.needs` and
 this test fails until it is wired into both places.
@@ -154,16 +157,16 @@ it knowingly does not cover are in
 | `build-resolve-prompt.sh` | Build prompt for agent when tests fail |
 | `build-review-prompt.sh` | Build prompt for general code review |
 | `build-retrospective-prompt.sh` | Build prompt for the recurring QA retrospective: survey recent automated work and propose how the process should improve |
-| `build-verify-prompt.sh` | Build prompt for the verify-completion workflow, the manual "implement the plan" trigger |
+| `build-verify-prompt.sh` | Build prompt for the implement-plan workflow (called by verify-completion), the manual "implement the plan" trigger |
 | `consolidation.txt` | Template for the consolidation round: find one duplicated behavior, share it, pin it with tests |
 | `coverage.txt` | Template for the test-coverage round |
 | `defect-hunt.txt` | Template for the defect hunt |
 | `docs-review.txt` | Template for the docs-only review prompt |
 | `doc-qa.txt` | Template for the documentation-staleness review |
 | `goal-decomposition.txt` | Template for the goal-decomposition round: reconcile a release's tracker tasks with its plan, touching only the goal-derived tasks of the repository being reconciled |
-| `general-review.txt` | Template for general code review prompt |
+| `general-review.txt` | Template for general code review prompt: review and fix within what the branch set out to do, routing out-of-scope work to `tracker_create_task` rather than widening the branch |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
-| `retrospective.txt` | Template for the QA retrospective: study recent automated work and propose, with evidence, how the agent harness and the QA jobs should improve — proposes, never implements |
+| `retrospective.txt` | Template for the QA retrospective: study recent automated work and propose, with evidence, how the agent harness and the QA jobs should improve — proposes, never implements. Writes a skeleton report and ledger row to disk first, before the survey, so a stalled run still leaves a reviewable artifact; the round is submitted with `ENFORCE_CHANGES` and a re-run cap of 0, so an empty-tree exit is reported DEGRADED without a re-run |
 | `pdsl-migration.txt` | Template for the PDSL migration round: move one piece of pipeline structure from Java into a `.pdsl` asset, delete the Java assembly, pin parity with tests, and report language gaps rather than aliasing around them |
 | `plan-workstream-settings.txt` | Shared fragment: when a plan needs particular hardware, declare it in `docs/plans/<branch>-workstream.yaml` — included by both planning prompts |
 | `plan-pr-framing.txt` | Shared fragment: write the commit message (and so the pull request) for the planned work, not the plan — included by both planning prompts |
