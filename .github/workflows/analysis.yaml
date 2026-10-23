@@ -3085,7 +3085,8 @@ jobs:
   test-media-cuda:
     needs: [changes, build, test, test-media, test-mac, test-media-mac, test-cuda, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CUDA lane, second (final) stage: the CUDA duplicate of test-media-cl, with
-    # AR_HARDWARE_DRIVER=native,cuda. Every step and setting mirrors test-media-cl; see there.
+    # AR_HARDWARE_DRIVER=native,cuda. Every step and setting mirrors test-media-cl (except the
+    # group count: seven groups here, eight there); see there.
     #
     # Runs on the NVIDIA fleet (tools/ci/cuda). Gates on test-cuda because the host has a
     # single GPU, and on the upstream lanes DIRECTLY for the reason test-media-cl does:

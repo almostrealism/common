@@ -644,7 +644,7 @@ never run; `tools/tests/test_accelerator_lane_admission.py` checks this for
 The CL and CUDA jobs each run up to three groups at a time (`max-parallel: 3`).
 
 `test-media-mac` is the exception: it uses **4 groups at `max-parallel: 2`**
-(up to two groups at a time) rather than eight. As the second GPU-lane stage it
+(up to two groups at a time), fewer groups than any other lane. As the second GPU-lane stage it
 already runs alone on the fleet (no other GPU-heavy stage runs concurrently), so
 running two of its four groups at once trades some GPU contention on the
 studio benchmark tick tails for shorter wall-clock time.
@@ -671,7 +671,8 @@ until all of them are in place.
 ### What the `test-cuda` and `test-media-cuda` jobs cover
 
 CUDA-backend duplicates of `test-cl` and `test-media-cl`: the same modules,
-groups, memory settings and `AR_HARDWARE_PRECISION=FP32`, with
+memory settings and `AR_HARDWARE_PRECISION=FP32` (group counts are tuned per
+lane; see above), with
 `AR_HARDWARE_DRIVER=native,cuda` where the CL jobs use `native,cl`. They are the
 two stages of the CUDA lane (`test-media-cuda` after `test-cuda`, because the
 host has one GPU), on `[self-hosted, linux, ar-ci-cuda]`: an NVIDIA DGX Spark set
