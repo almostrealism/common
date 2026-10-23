@@ -1229,6 +1229,9 @@ class TestWorkstreamRegisterPlanFollowup(unittest.TestCase):
         self.assertEqual("w-1", submit_kwargs["workstream_id"])
         self.assertIn("docs/plans/foo.md", submit_kwargs["prompt"])
         self.assertIn("refactor the foo subsystem", submit_kwargs["prompt"])
+        # The plan PR opens as a draft awaiting the owner's approval.
+        self.assertTrue(submit_kwargs["auto_create_pr"])
+        self.assertTrue(submit_kwargs["create_pr_as_draft"])
 
     @patch.object(server, "workstream_submit_task")
     @patch.object(server, "_controller_post")

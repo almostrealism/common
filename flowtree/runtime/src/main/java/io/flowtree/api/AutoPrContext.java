@@ -29,6 +29,8 @@ final class AutoPrContext {
     final String githubOrg;
     /** Human-readable description of the job, used as the PR title/body. */
     final String description;
+    /** Whether the pull request should be opened as a draft awaiting approval. */
+    final boolean draft;
 
     /**
      * Constructs a new {@link AutoPrContext}.
@@ -37,11 +39,14 @@ final class AutoPrContext {
      * @param baseBranch  base branch for the pull request
      * @param githubOrg   GitHub organisation name
      * @param description human-readable job description
+     * @param draft       whether to open the pull request as a draft
      */
-    AutoPrContext(String repoUrl, String baseBranch, String githubOrg, String description) {
+    AutoPrContext(String repoUrl, String baseBranch, String githubOrg, String description,
+            boolean draft) {
         this.repoUrl = repoUrl;
         this.baseBranch = baseBranch;
         this.githubOrg = githubOrg;
         this.description = description;
+        this.draft = draft;
     }
 }

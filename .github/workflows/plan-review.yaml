@@ -5,8 +5,9 @@ name: "Plan Review"
 # When every change on a branch is documentation — which is what a plan
 # branch is until its plan is approved — it submits an agent that reviews the
 # documents and improves them, and never implements the plan. Implementation
-# starts by hand, with the Implement Plan workflow, once a person has
-# approved it. A branch that changes anything else is left to the calling
+# starts when the owner approves the plan — by marking the plan's draft pull
+# request ready for review, or by dispatching the Implement Plan workflow by
+# hand. A branch that changes anything else is left to the calling
 # repository's own review.
 #
 # In this repository the same review is a route of auto-review in

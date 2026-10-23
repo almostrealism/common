@@ -120,4 +120,40 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         assertEquals("https://api.github.com/repos/almostrealism/common/commits/8b6d8e8a6",
                 GitHubProxyHandler.commitApiUrl("almostrealism/common", "8b6d8e8a6"));
     }
+
+    /**
+     * A draft pull request carries {@code "draft":true} so GitHub opens it as a
+     * plan awaiting approval rather than ready for review.
+     */
+    @Test(timeout = 10000)
+    public void draftPayloadRequestsADraft() {
+        assertEquals(
+                "{\"title\":\"Plan the next task\",\"head\":\"project/task-1\","
+                    + "\"base\":\"master\",\"body\":\"Details.\",\"draft\":true}",
+                GitHubProxyHandler.pullRequestPayload(
+                        "Plan the next task", "project/task-1", "master", "Details.", true));
+    }
+
+    /**
+     * A non-draft pull request omits the {@code draft} member entirely, keeping
+     * the body byte-identical to what callers sent before the flag existed.
+     */
+    @Test(timeout = 10000)
+    public void nonDraftPayloadOmitsTheDraftMember() {
+        assertEquals(
+                "{\"title\":\"Plan the next task\",\"head\":\"project/task-1\","
+                    + "\"base\":\"master\",\"body\":\"Details.\"}",
+                GitHubProxyHandler.pullRequestPayload(
+                        "Plan the next task", "project/task-1", "master", "Details.", false));
+    }
+
+    /** Title and body are JSON-escaped so a quote in either cannot break the body. */
+    @Test(timeout = 10000)
+    public void payloadEscapesTitleAndBody() {
+        assertEquals(
+                "{\"title\":\"a \\\"quoted\\\" title\",\"head\":\"h\",\"base\":\"master\","
+                    + "\"body\":\"line\\nbreak\"}",
+                GitHubProxyHandler.pullRequestPayload(
+                        "a \"quoted\" title", "h", "master", "line\nbreak", false));
+    }
 }

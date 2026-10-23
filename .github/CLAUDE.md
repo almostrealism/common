@@ -143,8 +143,12 @@ The docs-only review (`docs-review.txt`) reviews and improves documents and
 stays on that route. A plan branch's first commit is always docs-only, so this
 route reaches every plan as soon as it is proposed; it once sent the
 implementation prompt (`verify-completion.txt`) and so carried out every plan
-before anyone had read it. Implementation starts only when someone dispatches
-`verify-completion.yaml` on the branch.
+before anyone had read it. Implementation starts only when the owner approves
+the plan — by marking its draft pull request ready for review, which the
+`Plan Ready` workflow turns into a `verify-completion.yaml` dispatch (see below),
+or by dispatching that workflow by hand. The docs-only review runs on a draft
+plan PR exactly as on any other PR (GitHub fires `pull_request` for drafts), and
+that is wanted: it is what improves the plan before approval.
 `tools/tests/test_remediation_job_exclusivity.py` pins that `auto-review`
 cannot reach the implementation prompt.
 
@@ -1136,6 +1140,14 @@ client secret as a declared secret), and describes its caller in its header.
   its name and `plan_file` input for the `project_verify_branch` MCP tool.
   Because the prompt templates now come from `framework-ref`, a branch that
   edits `verify-completion.txt` is implemented with master's copy of it.
+  Its `register-workstream` job asks the controller's in-flight view
+  (`tools/ci/workstream-idle.sh`, `GET /api/workstreams/{id}/jobs/active` and
+  `/pending`) whether the branch's workstream already has a job pending or
+  running, and `build-prompt` gates on the answer, so no second implementation
+  is dispatched beside one in flight — the guard that holds across the
+  ready-for-review trigger, a manual dispatch and `project_verify_branch`, and
+  across separate runs that the per-branch concurrency group does not cover. It
+  fails open: an unreachable controller is read as idle.
 - **`plan-review.yaml`** sends the docs-only review (`docs-review.txt`) to a
   branch whose every change is under `docs/`, for a repository that does not run
   this pipeline. This repository does not call it: here the same review is the
@@ -1149,6 +1161,82 @@ runs the release, plan-detection and docs-only steps for real. `test_master_agen
 `test_automated_intake.py` and `test_verify_completion_workflow.py` follow a
 caller job into the workflow it calls, so their checks still apply to the steps
 that run.
+
+### What the `Plan Ready` workflow does
+
+Lives in `.github/workflows/ready-plan.yaml`. It starts implementation when the
+owner approves a plan by marking its pull request **ready for review**.
+
+**The draft convention.** A plan PR is opened as a **draft** (the planning jobs
+set `PR_DRAFT`/`createPrAsDraft`; see "Draft plan pull requests" below). A draft
+means the branch carries only a plan awaiting approval — almost no CI ran on a
+docs-only branch, so a green check on it says nothing about work that does not
+exist yet. Marking the PR **ready for review** is the owner's approval, and this
+workflow turns that transition into the same `verify-completion.yaml` dispatch a
+manual approval makes. For a PR that is real work rather than a plan, "ready"
+keeps its ordinary meaning (work under review); such a PR is not a draft and not
+docs-only, so this workflow does nothing with it.
+
+**It must stay in its own file, for the same reason `Cancel Merged PR Runs`
+does.** It is triggered by `pull_request_target` (`types: [ready_for_review]`,
+base `master`), which grants a writable token in the base-repository context, so
+GitHub runs *master's* copy of the file — the PR's branch cannot change what it
+does. It is safe only because it checks out nothing and runs nothing from the
+PR: every value it uses is event metadata or comes from the GitHub API. Never
+add a checkout of PR code to it, and never move it into a file beside jobs that
+build PR code.
+
+It dispatches `verify-completion.yaml` on the PR's head branch through the API
+(`workflow_dispatch`, which `GITHUB_TOKEN` is allowed to trigger, needing
+`actions: write`), so the implementation path is exactly the one a manual
+dispatch or `project_verify_branch` takes. It dispatches only when all of:
+
+- the PR's head is a branch in **this** repository, not a fork
+  (`github.event.pull_request.head.repo.full_name == github.repository`); a fork
+  cannot be given a `workflow_dispatch` here and must not be able to start one;
+- the person who marked it ready (`github.event.sender.login`) is in the
+  `PLAN_APPROVERS` repository variable (see below). With the variable unset
+  nothing is dispatched, so an agent or bot can never approve a plan by marking
+  it ready;
+- the PR is **still docs-only** by the same rule `analysis.yaml` uses (every
+  changed file under `docs/`, read from the PR files API). Once implementation
+  commits land the PR is no longer docs-only, so re-toggling draft afterwards
+  dispatches nothing — this is the main guard against a second implementation,
+  alongside `implement-plan.yaml`'s own in-flight-job refusal.
+
+`analysis.yaml` does **not** re-run on the `ready_for_review` transition: its
+`pull_request` trigger uses the default types (`opened`, `synchronize`,
+`reopened`), which do not include `ready_for_review`. Keep it that way — the
+plan's pipeline already ran on the push that opened it.
+
+### Draft plan pull requests
+
+A plan PR is opened as a draft so its status reads honestly: draft = a plan
+awaiting the owner's approval, ready-for-review = approved for implementation (or,
+for a non-plan PR, real work under review). The flag travels as
+`createPrAsDraft` from the submitter to the controller, which sends
+`"draft": true` to GitHub when it opens the auto-created PR
+(`GitHubProxyHandler.pullRequestPayload`); `autoCreatePr` must also be set or
+there is no PR to draft. The submitters expose it as `PR_DRAFT`
+(`tools/ci/submit-agent-job.sh`) and `create_pr_as_draft`
+(`workstream_submit_task`). The plan-writing jobs set it: `task-planning.yaml`,
+`master-agent-dispatch.yaml`'s `plan-next-task`, and the job
+`workstream_register`'s `plan_instructions` submits. The docs-QA and other
+docs-only QA rounds deliberately do **not** — their PRs are documentation meant
+to be merged as they stand, and marking one ready must not dispatch an
+implementation of a branch with nothing to implement.
+`tools/tests/test_master_agent_dispatch.py` pins which jobs draft and which do
+not.
+
+### The `PLAN_APPROVERS` repository variable
+
+A space-, comma- or newline-separated list of GitHub logins allowed to approve a
+plan by marking its draft PR ready for review. `Plan Ready` reads it and
+dispatches `verify-completion.yaml` only for a sender in the list. It is a
+repository **variable**, not a workflow value, so the allowlist changes without a
+commit and is never present on a fork. **Unset means no one can approve this
+way** — the transition then dispatches nothing, which is the intended
+fail-closed default, not a misconfiguration to "fix" by dropping the check.
 
 ### What the `Cancel Merged PR Runs` workflow does
 
