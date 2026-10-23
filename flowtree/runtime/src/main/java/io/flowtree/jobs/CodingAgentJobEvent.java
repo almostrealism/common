@@ -620,7 +620,7 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
                     + job.getMaxPostCompletionPasses()
                     + " pass(es) — gate abandoned, work may be incomplete");
         }
-        if (job.hasAllChangesDropped()) {
+        if (job.workOutcome().allChangesDropped()) {
             return degraded(job.getTaskId(), job.getTaskString(),
                     "All changes were dropped by staging guardrails: "
                     + String.join("; ", job.getSkippedFiles()));

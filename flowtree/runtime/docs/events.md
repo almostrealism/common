@@ -216,7 +216,7 @@ Events are created by `GitManagedJob.fireJobCompleted(Exception error)`, which d
 // GitManagedJob.createEvent()
 if (error != null) {
     return JobCompletionEvent.failed(taskId, getTaskString(), error.getMessage(), error);
-} else if (hasAllChangesDropped()) {
+} else if (workOutcome.allChangesDropped()) {
     return JobCompletionEvent.degraded(taskId, getTaskString(),
         "All changes were dropped by staging guardrails: " + ...);
 }
