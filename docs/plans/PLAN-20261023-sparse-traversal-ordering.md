@@ -269,6 +269,22 @@ A reviewer can confirm the task is done when:
    as `knownIssue`) and root-cause it against the code before assuming any scope item fixes it. This
    is the load-bearing question for success criterion 1: the plan's scope names generated-code
    surfaces, but the done-when is three host reads.
+   The `knownIssue` flags also predate the most relevant recent change to the host method these
+   tests exercise, so the premise "three failing tests" is itself unconfirmed on the current code.
+   The three flags were set in March 2026 (when `CollectionOrderingTests` first carried
+   `@TestProperties`), whereas `MemoryData.toDouble` was corrected in September 2026 by the commit
+   *Fix double application of delegate ordering in MemoryData.toDouble()* — now in `master` — which
+   stopped the delegate path applying `getDelegateOrdering().indexOf` a second time on the
+   already-mapped index. That commit's own message records that `RepeatTraversalOrdering`'s
+   `idx % length` is *idempotent* once reduced, so the double application never affected
+   `repeatOrdering`, and that it added `explicitIndexOrderingAppliedOnce` (the passing permutation
+   test cited above) as its regression guard. A static trace of `repeatOrdering` through the current
+   `toDouble` — delegate present, `getDelegateOrdering()` a `RepeatTraversalOrdering`, its
+   `indexOf(int)` folding `imod` of two constants to a concrete value via `Mod.intValue()` — reaches
+   the delegate read with a valid physical index, so it is not obvious `repeatOrdering` still fails
+   at all. The implementer must therefore re-confirm that each flag still reproduces a failure on
+   the target node before treating the three failures as given; any flag that no longer fails is
+   simply removed (a strengthening), and criterion 1 is then narrower than it looks.
 6. **How costly is a symbolic `IndexMaskTraversalOrdering.indexOf` in a kernel?** The inverse search
    has no closed form: finding the physical slot for a logical index means scanning the mask, so a
    symbolic version renders as an O(mask length) search per lookup inside the kernel. That is
