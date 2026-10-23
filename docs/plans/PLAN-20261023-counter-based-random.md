@@ -13,9 +13,10 @@ called. Any graph built over a `Random` producer therefore reads data that was
 computed on the CPU and copied to the device; fresh noise every step means host
 work inside the step loop.
 
-<!-- TODO(review): verify the "Phase 1 task 5" citation. Per CONNECTOME_MODEL_ORGANISM.md's task list, task 5 [18c76a7a] IS this task; the Poisson/LIF consumer is task 6 [04470395] (as line 59 states). The motivating consumer citation here likely should be task 6, not 5. -->
-The connectome simulation (`docs/plans/CONNECTOME_MODEL_ORGANISM.md`, Phase 1
-task 5) needs Poisson drive on stimulated neurons at every 0.1 ms step — up to
+The connectome simulation ([CONNECTOME_MODEL_ORGANISM.md](CONNECTOME_MODEL_ORGANISM.md),
+where this work is Phase 1 task 5 [18c76a7a]) needs Poisson drive on stimulated
+neurons in its spiking dynamics (Phase 1 task 6 [04470395], which is filed
+`after 5`) at every 0.1 ms step — up to
 10,000 steps per simulated second — so a per-step host round-trip is exactly the
 overhead the simulation cannot afford. The same capability is useful for dropout
 masks and diffusion noise without host round-trips.
@@ -34,7 +35,7 @@ The step counter is a producer (a device-resident counter like
    the compiled kernel as a function of `(seed, counter, element index)`, with a
    **uniform** variant (values in `[0, 1)`) and a **normal** variant (standard
    Gaussian). Placement: `compute/algebra`, next to `Random`, in package
-   `org.almostrealism.collect.computations` (the placement decided in
+   `org.almostrealism.collect.computations` (the placement table in
    `CONNECTOME_MODEL_ORGANISM.md` — "Counter-based device random →
    `compute/algebra` (next to `Random`) or `compute/stats`; General"). See the
    open question on algebra-vs-stats placement.
@@ -90,6 +91,13 @@ into here):**
   single-element producer the caller advances (the simulation loop owner, task
   `6d8bbb62`, will own the advance). The counter value enters the hash as a
   second key alongside the element index.
+  **Precision limit:** a `PackedCollection` holds floating-point values, which
+  are FP32 on Metal, so the counter is exact only up to 2^24 (≈16.7M steps —
+  about 28 simulated minutes at 0.1 ms per step) before consecutive counters
+  round to the same value and the streams repeat. The computation reads the
+  counter with a `Cast` to `int`; the Javadoc must state this ceiling, and a
+  longer-running consumer needs a wider counter (e.g. a two-word counter, or
+  task 2's integer-exact storage [2c0793a7]) — see open question 6.
 - **The seed** is a compile-time constant key (folded into the hash and into
   `signature()`), or optionally a producer if a caller needs to vary it without
   recompiling; the default and simplest form is a constant seed.
@@ -107,6 +115,35 @@ investigation:
 > and renders real `int`/`long`/`double` types in generated code — **but it has
 > no XOR, no left/right bit-shift, no bitwise OR, and no bitwise NOT**. The only
 > bitwise expression is `And` (added for `Mod`'s power-of-two optimization).
+
+`And` is also typed `Integer`-only (its constructor rejects any other operand
+type), so it cannot mask a `Long` intermediate down to 32 bits either.
+
+Two further gaps matter for *any* hash, including Route B below:
+
+- **No unsigned type.** `Expression` values are `Integer`, `Long` or `Double`,
+  and `Cast` knows only `int`, `long` and `double`. Counter-based hashes are
+  specified over `uint32` with modulo-2^32 wraparound. Signed `int` overflow is
+  undefined behaviour in C and OpenCL C (the native compiler is free to
+  optimise on the assumption it never happens), so a multiply that is meant to
+  wrap cannot simply be emitted as `int * int`. The implementation must either
+  add an unsigned 32-bit type/cast to the expression layer and every
+  `LanguageOperations`, or do the arithmetic in `long` and reduce modulo 2^32
+  explicitly (which needs a `Long`-capable mask or `Mod`).
+- **The host fold does not wrap.** `Product.computeValue` and `Sum.computeValue`
+  accumulate `Integer` children in `long` and return a `long` when the result
+  leaves the `int` range; they never truncate to 32 bits. Any partially
+  constant-folded hash term (for example `seed * MULTIPLIER` with a constant
+  seed) would therefore fold on the host to a different value than the kernel
+  computes. Wraparound semantics must be explicit in the expression tree, not
+  left to the rendered C type.
+- **32×32-bit products are 64-bit.** Multiplying two values below 2^32 gives a
+  result up to 2^64: beyond `IndexRange.MAX_EXACT` (2^53, where
+  `IndexRange.exact` throws `InexactValueException`) and, as signed `long`,
+  beyond `Long.MAX_VALUE`. "Stay in 32 bits" therefore holds only for values
+  *between* operations; each multiply must be truncated (or computed as a
+  `mulhi`/`mullo` pair, as Philox does) and the bound/sequence analysis must not
+  try to enumerate these intermediates exactly.
 
 So the hash cannot be expressed today. Two routes:
 
@@ -130,7 +167,13 @@ So the hash cannot be expressed today. Two routes:
   drive but is harder to defend against the "distribution moments" and
   "independence across counters" tests, and tends to show structure in low
   bits. If chosen, the moment/independence tolerances must be set with that in
-  mind.
+  mind. Route B does **not** escape the wraparound/host-fold gaps above: an LCG
+  multiply overflows 32 bits just as a Philox round does, so it still needs
+  either explicit `Mod` by 2^32 on `Long` intermediates (and those
+  intermediates still exceed 2^53) or a small multiplier chosen so that no
+  intermediate exceeds the exact range — which weakens it further. "Avoiding
+  any new `Expression` class" is therefore only true for a deliberately weak
+  generator.
 
 The plan recommends **Route A** and treats the bitwise-primitive additions as a
 sub-deliverable of this task (see the split proposal). The hash should be a
@@ -138,10 +181,13 @@ named, citable construction (reference in the Javadoc), not an ad-hoc mix.
 
 ### Cross-backend identity
 
-"Identical across backends" is achievable for the **integer** stage: `int`/
-`uint` arithmetic (including multiply with 2's-complement wraparound, XOR, and
-shifts) produces the same bits on Metal (an FP32 backend, but with real integer
-registers) and on native/CUDA (FP64). The design must therefore keep the entire
+"Identical across backends" is achievable for the **integer** stage: unsigned
+32-bit arithmetic (multiply and add modulo 2^32, XOR, shifts) produces the same
+bits on Metal (an FP32 backend, but with real integer registers) and on the
+native C and CUDA backends (whose floating-point `Precision` may be FP64) — *provided*
+the wraparound is well defined in the emitted code, which, per the gaps listed
+under "The hash", means unsigned types or explicit modulo-2^32 reduction rather
+than signed `int` overflow. The design must therefore keep the entire
 hash in integer registers and convert to floating point **only at the very end**
 (`uint → [0,1)`), never routing an intermediate through `float`, because an
 FP32 backend is exact only to 2^24 and would diverge. Two consequences:
@@ -159,11 +205,14 @@ FP32 backend is exact only to 2^24 and would diverge. Two consequences:
 
 - **Uniform:** final `uint → [0,1)` conversion of the hashed word.
 - **Normal:** derive from two uniforms via **Box–Muller**
-  (`sqrt(-2 ln u1) · cos(2π u2)`) using the existing `Logarithm`, `Exponent`/
-  `sqrt`, `Cosine`/`Sine` expressions, or via a **Moro inverse-CDF**
+  (`sqrt(-2 ln u1) · cos(2π u2)`) using the existing `Logarithm` (`log()`),
+  `Exponent` (`pow(0.5)` — there is no dedicated square-root expression) and
+  `Cosine`/`Sine` expressions, or via a **Moro inverse-CDF**
   polynomial. Box–Muller is simplest and composes from primitives that already
   exist; it consumes two counter sub-streams (e.g. index `2k` and `2k+1`, or two
   distinct seed lanes) so each normal sample stays a pure function of the key.
+  `u1` must be mapped to `(0, 1]` (not `[0, 1)`), otherwise `ln(0)` yields
+  `-inf` and the sample is infinite for the one key that hashes to zero.
 
 ### Reference files
 
@@ -174,7 +223,9 @@ FP32 backend is exact only to 2^24 and would diverge. Two consequences:
 | Computation shape to model on | `compute/algebra/.../collect/computations/ArithmeticSequenceComputation.java`; `TraversableExpressionComputation`, `DefaultTraversableExpressionComputation` |
 | Symbolic per-index value | `io.almostrealism.collect.TraversableExpression#getValueAt`, `io.almostrealism.collect.ArithmeticSequenceExpression` |
 | Kernel element index | `io.almostrealism.kernel.KernelIndex` |
-| Existing integer/bitwise expressions (and the gap) | `base/code/.../expression/{Product,Sum,Mod,Quotient,And,Cast}.java` (no `BitXor`/shift today) |
+| Existing integer/bitwise expressions (and the gap) | `base/code/.../expression/{Product,Sum,Mod,Quotient,And,Cast}.java` (no `BitXor`/shift/unsigned type today; `Product`/`Sum` `computeValue` widen to `long` rather than wrap) |
+| Exact-range guard for host index analysis | `base/code/.../sequence/IndexRange.java` (`MAX_EXACT`, `exact(long)`, `InexactValueException`) |
+| Pinning a computation to one backend in a test | `setComputeRequirements(List.of(ComputeRequirement.MTL))`, as in `engine/utils/.../hardware/test/MemoryDataCopyChainingTest.java` |
 | Device-resident counter pattern | `engine/ml/.../ml/AutoregressiveModel.java` (`position`, `advancePosition`) |
 | Distribution helpers (possible stats home) | `compute/stats/.../stats/DistributionFeatures.java` |
 
@@ -199,7 +250,13 @@ A reviewer can confirm the task is done when:
 5. **Metal↔native agreement test:** the same `(seed, counter, shape)` evaluated
    on the Metal backend and the native backend agree to the documented
    tolerance (float epsilon for the uniform; a correspondingly looser bound for
-   the normal). This is the test that requires a macOS node.
+   the normal). This is the test that requires a macOS node. It can run in one
+   JVM by pinning each evaluation to a backend with `setComputeRequirements`
+   (see the reference table), provided both drivers are enabled for the run.
+   Before comparing, the test should also assert that the hash's integer stage
+   is bit-identical (e.g. by comparing the integer words, or the uniform output
+   scaled back by 2^32 and rounded), so a wraparound bug is not hidden inside
+   the float tolerance.
 6. **Javadoc** on the new class explains how it differs from `Random`
    (stateless, in-kernel, pure function of `(seed, counter, index)`, no cache,
    no `refresh()`), and names the hash construction used.
@@ -213,10 +270,13 @@ A reviewer can confirm the task is done when:
 three land to satisfy "done when", but they are reviewable in sequence):
 
 - **(a) Bitwise `Expression` primitives** in `base/code` (`BitXor`, bit-shift,
-  and any `or`/`not` the chosen hash needs), with host-fold/codegen parity and
+  and any `or`/`not` the chosen hash needs, plus well-defined 32-bit
+  wraparound — an unsigned type/cast or explicit modulo-2^32 reduction — for
+  multiply and add), with host-fold/codegen parity and
   sound bound/kernel-series behaviour, plus their own unit tests. *If the
   reviewer prefers, this can be filed as a separate foundation task that this
-  one is `blocked_by`.* (Route B avoids this entirely at a quality cost.)
+  one is `blocked_by`.* (Route B avoids the bitwise classes at a quality cost,
+  but not the wraparound work — see "The hash".)
 - **(b) The counter-based computation + factory methods + Javadoc** in
   `compute/algebra`.
 - **(c) The test suite**, including the Metal↔native agreement test.
@@ -230,7 +290,10 @@ three land to satisfy "done when", but they are reviewable in sequence):
 2. **Home module — `compute/algebra` vs `compute/stats`:** the CONNECTOME plan
    allows either. `Random` and the `rand`/`randn` factories are in
    `compute/algebra`, which argues for co-location; `DistributionFeatures` is in
-   `compute/stats`, which argues the normal/Box–Muller logic belongs there.
+   `compute/stats`, which argues the normal/Box–Muller logic belongs there —
+   although today `DistributionFeatures` holds only discrete sampling
+   (`sample`, evaluated on the host) and `softmax`, not any continuous
+   distribution, so it is not yet an established home for Gaussian code.
    Proposed: the raw uniform generator and its factory next to `Random` in
    `compute/algebra`; distribution shaping (normal) may live in `compute/stats`
    if that keeps `DistributionFeatures` the single home for distribution code.
@@ -247,6 +310,17 @@ three land to satisfy "done when", but they are reviewable in sequence):
    single highest-risk assumption.
 5. **Normal method:** Box–Muller (simple, uses existing primitives) vs Moro
    inverse-CDF (single uniform per sample, no trig). Recommendation: Box–Muller.
+6. **Counter width:** a single FP32-backed counter repeats after 2^24 steps
+   (≈28 simulated minutes at 0.1 ms per step). `CONNECTOME_MODEL_ORGANISM.md`
+   does not state the simulated durations of the Phase 1 runs; the approver
+   should confirm they stay well under this, or require a wider counter in the
+   first version.
+7. **Unsigned arithmetic in the expression layer:** adding a `uint32` type is a
+   cross-cutting change to `base/code` and to every `LanguageOperations`
+   (C, OpenCL, Metal, CUDA); emulating wraparound with `long` + explicit
+   reduction is local but produces intermediates above 2^53 that the index
+   analysis cannot treat exactly. The approver should choose before (a) starts,
+   because it decides (a)'s size.
 
 **Follow-up filed:** none required beyond the existing Phase 1 tasks; the
 consumer (spiking dynamics, `04470395`) is already filed and lists this task as
