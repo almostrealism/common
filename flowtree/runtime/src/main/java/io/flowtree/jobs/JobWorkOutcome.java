@@ -127,15 +127,8 @@ class JobWorkOutcome {
      * guardrails that passed no file, a phase that threw after the work was
      * already made. Reporting success is what keeps those paths invisible.</p>
      *
-     * <p>A tampering revert is checked first, and against the primary commit
-     * hash alone rather than {@link GitManagedJob#hasPublishedCommit()}. The
-     * revert destroyed primary-tree work, and only a primary commit from the
-     * restart replaces it; a dependent-repository commit is different work and
-     * would otherwise mask the loss. The reported reason speaks of the agent's
-     * changes rather than its commits, because
-     * {@link GitTamperingDetector#revert()} also runs for a branch switch,
-     * where the reset discarded uncommitted state and no commit ever
-     * existed.</p>
+     * <p>A tampering revert is checked first; see
+     * {@link #describeRevertedWork()}.</p>
      *
      * @return the failure description, or {@code null} when nothing was orphaned
      */
@@ -189,13 +182,8 @@ class JobWorkOutcome {
     private String computeUnpublishedWork() {
         if (!publishes()) return null;
 
-        String primaryCommit = job.getCommitHash();
-        boolean primaryCommitted = primaryCommit != null && !primaryCommit.isEmpty();
-        if (job.hasRevertedAgentWork() && !primaryCommitted) {
-            return "Nothing was committed to the primary repository, and the agent's own changes"
-                    + " to it were reverted as git tampering. Whatever they held was destroyed"
-                    + " and no restart replaced it.";
-        }
+        String reverted = describeRevertedWork();
+        if (reverted != null) return reverted;
 
         GitCommitHandler handler = job.commitHandler();
         List<String> abandoned = handler != null
@@ -225,6 +213,37 @@ class JobWorkOutcome {
         }
         return "Nothing was committed or pushed, but the job produced work: " + produced
                 + ". The work is still in the working directory on the agent host, unpublished.";
+    }
+
+    /**
+     * Returns a description of primary-tree work the tampering revert
+     * destroyed and no restart replaced, or {@code null} when there is none.
+     *
+     * <p>This is the one path where the harness itself destroys the session's
+     * output, and unlike every other drop nothing is left behind afterwards —
+     * no working tree holding the changes, no commit. Without this report the
+     * job looks exactly like a session that deliberately did nothing.</p>
+     *
+     * <p>Checked against the primary commit hash alone rather than
+     * {@link GitManagedJob#hasPublishedCommit()}. The revert destroyed
+     * primary-tree work, and only a primary commit from the restart replaces
+     * it; a dependent-repository commit is different work and would otherwise
+     * mask the loss. The reported reason speaks of the agent's changes rather
+     * than its commits, because {@link GitTamperingDetector#revert()} also
+     * runs for a branch switch, where the reset discarded uncommitted state
+     * and no commit ever existed.</p>
+     *
+     * @return the failure description, or {@code null} when nothing was reverted unreplaced
+     */
+    String describeRevertedWork() {
+        String primaryCommit = job.getCommitHash();
+        boolean primaryCommitted = primaryCommit != null && !primaryCommit.isEmpty();
+        if (job.hasRevertedAgentWork() && !primaryCommitted) {
+            return "Nothing was committed to the primary repository, and the agent's own changes"
+                    + " to it were reverted as git tampering. Whatever they held was destroyed"
+                    + " and no restart replaced it.";
+        }
+        return null;
     }
 
     /**

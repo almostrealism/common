@@ -590,6 +590,13 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * Creates the event carrying the terminal status of {@code job}, before
      * its execution state is populated.
      *
+     * <p>A job that terminated with a {@link TransientGitException} — a sync
+     * race, a lock held by a concurrent process, or a commit that could not be
+     * written despite staged changes, each after its bounded retries were spent
+     * — is reported {@link Status#DEGRADED} with an infrastructure-labelled
+     * message rather than {@link Status#FAILED}, so a harness git hiccup is not
+     * conflated with an agent failure.</p>
+     *
      * <p>A job with {@link CodingAgentJob#isEnforceChanges()} on that exited
      * cleanly with nothing committed is reported {@link Status#DEGRADED}. It
      * had to produce a change, and {@link EnforceChangesRule} has spent its
@@ -604,6 +611,10 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     private static CodingAgentJobEvent statusFor(CodingAgentJob job, Exception error) {
         JobSessionAccumulator acc = job.sessionAccumulator();
         if (error != null) {
+            if (TransientGitException.isTransient(error)) {
+                return degraded(job.getTaskId(), job.getTaskString(),
+                        TransientGitException.describe(error));
+            }
             return failed(job.getTaskId(), job.getTaskString(), error.getMessage(), error);
         }
         if (job.isPrimaryPhaseHardFailed() && acc.getExitCode() == 0) {
@@ -620,7 +631,7 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
                     + job.getMaxPostCompletionPasses()
                     + " pass(es) — gate abandoned, work may be incomplete");
         }
-        if (job.hasAllChangesDropped()) {
+        if (job.workOutcome().allChangesDropped()) {
             return degraded(job.getTaskId(), job.getTaskString(),
                     "All changes were dropped by staging guardrails: "
                     + String.join("; ", job.getSkippedFiles()));

@@ -250,6 +250,7 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
         assertEquals(CodingAgentJob.DEFAULT_MAX_RULE_RETRIES,
                 node.get("maxEnforceChangesRetries").asInt());
         assertEquals(f.isAutoCreatePr(), node.get("autoCreatePr").asBoolean());
+        assertEquals(f.isCreatePrAsDraft(), node.get("createPrAsDraft").asBoolean());
         assertEquals(f.isCollaborative(), node.get("collaborative").asBoolean());
         assertEquals(f.isFalsificationEnabled(), node.get("falsificationEnabled").asBoolean());
         assertEquals(f.isRetrospectiveEnabled(), node.get("retrospectiveEnabled").asBoolean());
@@ -261,7 +262,7 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
                 node.get("sensitiveFileProtectionEnabled").asBoolean());
         assertEquals(f.isBypassAgentPermissionPrompts(),
                 node.get("bypassAgentPermissionPrompts").asBoolean());
-        assertEquals("ok plus eleven configuration members", 12, node.size());
+        assertEquals("ok plus twelve configuration members", 13, node.size());
     }
 
     /**
@@ -277,12 +278,14 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
         f.setCollaborative(true);
         f.setFalsificationEnabled(true);
         f.setAutoCreatePr(true);
+        f.setCreatePrAsDraft(true);
         JsonNode node = resolvedJobConfig(f);
         assertTrue(node.get("enforceChanges").asBoolean());
         assertEquals(0, node.get("maxEnforceChangesRetries").asInt());
         assertTrue(node.get("collaborative").asBoolean());
         assertTrue(node.get("falsificationEnabled").asBoolean());
         assertTrue(node.get("autoCreatePr").asBoolean());
+        assertTrue(node.get("createPrAsDraft").asBoolean());
     }
 
     /**

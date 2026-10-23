@@ -304,17 +304,15 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @param base       the base (target) branch name
      * @param title      the pull request title
      * @param body       the pull request body text
+     * @param draft      whether to open the pull request as a draft
      * @param token      the GitHub API bearer token
      * @return the HTML URL of the created pull request, or {@code null} on failure
      */
     public String createGitHubPullRequest(String ownerRepo, String head, String base,
-                                   String title, String body, String token) {
+                                   String title, String body, boolean draft, String token) {
         try {
             String apiUrl = "https://api.github.com/repos/" + ownerRepo + "/pulls";
-            String payload = "{\"title\":\"" + JsonFieldExtractor.escapeJson(title)
-                    + "\",\"head\":\"" + JsonFieldExtractor.escapeJson(head)
-                    + "\",\"base\":\"" + JsonFieldExtractor.escapeJson(base)
-                    + "\",\"body\":\"" + JsonFieldExtractor.escapeJson(body) + "\"}";
+            String payload = pullRequestPayload(title, head, base, body, draft);
 
             URL url = URI.create(apiUrl).toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -354,6 +352,31 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     }
 
     /**
+     * Builds the JSON body of a create-pull-request request.
+     *
+     * <p>The {@code draft} member is emitted only when the pull request is
+     * opened as a draft: GitHub defaults a pull request to ready-for-review,
+     * so a {@code false} is the same as omitting it, and omitting it keeps the
+     * body byte-identical to what every non-draft caller sent before.</p>
+     *
+     * @param title the pull request title
+     * @param head  the head (source) branch name
+     * @param base  the base (target) branch name
+     * @param body  the pull request body text
+     * @param draft whether the pull request should be opened as a draft
+     * @return the request body as a JSON object string
+     */
+    static String pullRequestPayload(String title, String head, String base,
+                                   String body, boolean draft) {
+        return "{\"title\":\"" + JsonFieldExtractor.escapeJson(title)
+                + "\",\"head\":\"" + JsonFieldExtractor.escapeJson(head)
+                + "\",\"base\":\"" + JsonFieldExtractor.escapeJson(base)
+                + "\",\"body\":\"" + JsonFieldExtractor.escapeJson(body) + "\""
+                + (draft ? ",\"draft\":true" : "")
+                + "}";
+    }
+
+    /**
      * Maximum length GitHub accepts for a pull request title.
      */
     private static final int MAX_TITLE_LENGTH = 256;
@@ -383,16 +406,17 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @param base                the base (target) branch name
      * @param commitRef           commit SHA, or a branch name for its head commit
      * @param fallbackDescription description to use when no commit message is available
+     * @param draft               whether to open the pull request as a draft
      * @param token               the GitHub API bearer token
      * @return the HTML URL of the created pull request, or {@code null} on failure
      */
     public String createPullRequestFromCommit(String ownerRepo, String head, String base,
-                                   String commitRef, String fallbackDescription, String token) {
+                                   String commitRef, String fallbackDescription, boolean draft, String token) {
         String commitMessage = commitRef == null ? null
                 : fetchCommitMessage(ownerRepo, commitRef, token);
         return createGitHubPullRequest(ownerRepo, head, base,
                 pullRequestTitle(commitMessage, fallbackDescription),
-                pullRequestBody(commitMessage, fallbackDescription), token);
+                pullRequestBody(commitMessage, fallbackDescription), draft, token);
     }
 
     /**

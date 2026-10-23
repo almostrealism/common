@@ -173,7 +173,7 @@ class CommitMessageRule implements EnforcementRule {
         // If the violation is now resolved, mark the job's commit message source
         // so the telemetry can distinguish recovered messages from primary-session ones.
         if (!isViolated(job)) {
-            job.setCommitMessageSource(SOURCE_RECOVERED);
+            job.commitMessageBuilder().setSource(SOURCE_RECOVERED);
         }
     }
 

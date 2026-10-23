@@ -65,6 +65,16 @@ import java.util.Set;
  */
 class GitCommitHandler implements ConsoleFeatures {
 
+    /**
+     * Attempts for a commit that fails transiently — most often an
+     * {@code index.lock} held by a concurrent git process — before it is
+     * reported as an infrastructure failure rather than an agent failure.
+     */
+    private static final int COMMIT_ATTEMPTS = 3;
+
+    /** Backoff unit between commit retries; the wait grows linearly per attempt. */
+    private static final long COMMIT_BACKOFF_MILLIS = 500L;
+
     /** The job that owns this handler. */
     private final GitManagedJob job;
 
@@ -566,9 +576,14 @@ class GitCommitHandler implements ConsoleFeatures {
                 + (gitUserName != null ? gitUserName : "(default)") + " <"
                 + (gitUserEmail != null ? gitUserEmail : "(default)") + ">");
 
-        int result = job.executeGit(args.toArray(new String[0]));
+        // Retry a transient commit (e.g. an index.lock race with a concurrent
+        // git process) with bounded backoff; staging already found non-empty
+        // changes, so an exhausted failure here is infrastructure, not the agent.
+        String[] commitArgs = args.toArray(new String[0]);
+        int result = GitOperations.retryTransient(COMMIT_ATTEMPTS, COMMIT_BACKOFF_MILLIS,
+                () -> job.executeGit(commitArgs));
         if (result != 0) {
-            throw new RuntimeException(
+            throw new TransientGitException(
                     "Git commit failed after staging " + stagedFiles.size() + " files");
         }
 
