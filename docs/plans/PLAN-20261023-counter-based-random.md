@@ -11,7 +11,10 @@
 `java.util.Random` and caches them in a `PackedCollection` until `refresh()` is
 called. Any graph built over a `Random` producer therefore reads data that was
 computed on the CPU and copied to the device; fresh noise every step means host
-work inside the step loop.
+work inside the step loop. Kernel caching is *not* the problem: `Random.signature()`
+already covers only shape and distribution, so a graph over `rand(...)` compiles
+once and is reused. What remains is the per-step `refresh()` — host generation of
+every value plus the transfer — which only an in-kernel generator removes.
 
 The connectome simulation ([CONNECTOME_MODEL_ORGANISM.md](CONNECTOME_MODEL_ORGANISM.md),
 where this work is Phase 1 task 5 [18c76a7a]) needs Poisson drive on stimulated
@@ -157,9 +160,11 @@ So the hash cannot be expressed today. Two routes:
   follows (`Math.floorMod` vs `%`), and must return conservative
   `upperBound`/`lowerBound`/`kernelSeries`/`arithmeticSequence` so they do not
   mislead the kernel optimizer. This route yields a statistically strong,
-  well-understood hash (e.g. a 32-bit Philox round or a squares-style hash) and
-  the primitives are generally useful (the connectome ingest and integer-exact
-  indexing tasks also want integer bit manipulation).
+  well-understood hash (e.g. a 32-bit Philox round or a squares-style hash), and
+  the primitives are general integer operations rather than RNG-specific ones.
+  (No other filed task depends on them today: `CONNECTOME_MODEL_ORGANISM.md`
+  does not ask for bit manipulation in the ingest or integer-exact indexing
+  tasks, so this task bears the whole cost of adding them.)
 - **Route B (fallback): a multiply/add/mod-only hash** (an LCG combined with a
   Weyl sequence, or a multiplicative finalizer using only `Product`, `Sum`,
   `Mod`), avoiding any new `Expression` class. This keeps the change inside
@@ -262,7 +267,10 @@ A reviewer can confirm the task is done when:
    tolerance (float epsilon for the uniform; a correspondingly looser bound for
    the normal). This is the test that requires a macOS node. It can run in one
    JVM by pinning each evaluation to a backend with `setComputeRequirements`
-   (see the reference table), provided both drivers are enabled for the run.
+   (see the reference table), provided both drivers are enabled for the run
+   (the multi-driver form other plans use, e.g. `AR_HARDWARE_DRIVER=mtl,native`
+   in the test's JVM arguments; whether the macOS default already enables both
+   should be checked when the test is written).
    Before comparing, the test should also assert that the hash's integer stage
    is bit-identical (e.g. by comparing the integer words, or the uniform output
    scaled back by 2^32 and rounded), so a wraparound bug is not hidden inside
@@ -310,7 +318,7 @@ three land to satisfy "done when", but they are reviewable in sequence):
    Approver to confirm.
 3. **Seed as constant vs producer:** default to a compile-time constant seed
    (folded into `signature()`); offer a producer-seed overload only if a
-   consumer needs to rejig the seed without recompiling. Confirm whether the
+   consumer needs to change the seed without recompiling. Confirm whether the
    simulation needs the latter.
 4. **Exact vs tolerance for "identical across backends":** confirmed above that
    the integer stage is bit-identical but the final float conversion is not
