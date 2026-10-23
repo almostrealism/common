@@ -199,6 +199,30 @@ public class BitwiseExpressionTests extends TestSuiteBase implements ExpressionF
 		Assert.assertFalse(negative.upperBound(null).isPresent());
 	}
 
+	/**
+	 * When both operands of an AND may be negative, neither operand's upper bound limits the
+	 * result ({@code 0x7FFF & -1 == 0x7FFF}, above the right operand's bound of 3), so no
+	 * bound is reported. A non-negative right operand still bounds the result when the left
+	 * may be negative.
+	 */
+	@Test(timeout = 10000)
+	public void andBoundWithSignedOperands() {
+		KernelIndex index = kernel();
+		Expression<?> signedLeft = index.toLong(true).multiply(-1).add(new LongConstant(0x7FFF));
+		Expression<?> signedRight = index.toLong(true).multiply(-1).add(new LongConstant(3));
+		Assert.assertTrue(signedLeft.isPossiblyNegative());
+		Assert.assertTrue(signedRight.isPossiblyNegative());
+
+		Expression<?> both = And.of(signedLeft, signedRight);
+		Assert.assertTrue(both.isPossiblyNegative());
+		Assert.assertFalse(both.upperBound(null).isPresent());
+		Assert.assertEquals(0x7FFBL, both.value(new IndexValues().put(index, 4)).longValue());
+
+		Expression<?> masked = And.of(signedLeft, new LongConstant(0xFF));
+		Assert.assertFalse(masked.isPossiblyNegative());
+		Assert.assertEquals(0xFF, masked.upperBound(null).getAsLong());
+	}
+
 	/** A 32-bit operation truncates each operand to its low 32 bits, as {@code int} code does. */
 	@Test(timeout = 10000)
 	public void integerWidthTruncates() {

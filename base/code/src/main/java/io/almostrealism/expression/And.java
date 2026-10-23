@@ -85,9 +85,9 @@ public class And<T extends Number> extends BitwiseExpression<T> {
 	 * Computes the upper bound of this expression's possible values.
 	 * <p>
 	 * For a bitwise AND of non-negative operands, the result cannot exceed the smaller of
-	 * the two operands' upper bounds. Otherwise, since the mask (right operand) typically
-	 * defines the maximum possible result, this implementation returns the upper bound of
-	 * the right operand.
+	 * the two operands' upper bounds. When exactly one operand is non-negative, the result
+	 * cannot exceed that operand. When both may be negative, a set bit of either operand can
+	 * survive, so no bound is reported.
 	 * </p>
 	 *
 	 * @param context the kernel structure context for bound computation
@@ -105,9 +105,10 @@ public class And<T extends Number> extends BitwiseExpression<T> {
 			return OptionalLong.of(Math.min(left.getAsLong(), right.getAsLong()));
 		} else if (leftNonNegative && !rightNonNegative) {
 			return left;
+		} else if (!leftNonNegative && !rightNonNegative) {
+			return OptionalLong.empty();
 		}
 
-		// TODO(review): when both operands may be negative (or right spans both signs), right's bound is not conservative
 		return right;
 	}
 
