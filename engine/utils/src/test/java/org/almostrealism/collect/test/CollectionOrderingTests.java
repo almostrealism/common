@@ -16,18 +16,25 @@
 
 package org.almostrealism.collect.test;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.collect.DelegatedTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Tests for collection traversal ordering implementations.
@@ -134,6 +141,51 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		assertTrue(order.containsIndex(new IntegerConstant(0)).booleanValue().orElseThrow());
 		assertFalse(order.containsIndex(new IntegerConstant(1)).booleanValue().orElseThrow());
 		assertTrue(order.containsIndex(new IntegerConstant(2)).booleanValue().orElseThrow());
+	}
+
+	/**
+	 * A composition has a signature only when both of its orderings do, so a kernel that reads
+	 * an index table through either half of a composition is never reused.
+	 */
+	@Test(timeout = 10000)
+	public void composedOrderingSignature() {
+		RepeatTraversalOrdering period3 = new RepeatTraversalOrdering(3);
+		RepeatTraversalOrdering period2 = new RepeatTraversalOrdering(2);
+		ExplicitIndexTraversalOrdering table = new ExplicitIndexTraversalOrdering(pack(1, 0));
+
+		assertEquals("(repeat:3)->(repeat:2)", new DelegatedTraversalOrdering(period3, period2).signature());
+		assertNotEquals(new DelegatedTraversalOrdering(period3, period2).signature(),
+				new DelegatedTraversalOrdering(period2, period3).signature());
+		assertTrue(new DelegatedTraversalOrdering(period3, table).signature() == null);
+		assertTrue(new DelegatedTraversalOrdering(table, period3).signature() == null);
+	}
+
+	/**
+	 * Binding a composition binds both of its orderings: each index table is requested from the
+	 * provider, and a composition whose orderings are unchanged by binding is returned as is.
+	 */
+	@Test(timeout = 10000)
+	public void composedOrderingBindsBothOrderings() {
+		List<Supplier<?>> requested = new ArrayList<>();
+		ArgumentProvider provider = new ArgumentProvider() {
+			@Override
+			public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
+													ArrayVariable<T> delegate, int delegateOffset) {
+				requested.add(input);
+				return null;
+			}
+		};
+
+		DelegatedTraversalOrdering closedForm = new DelegatedTraversalOrdering(
+				new RepeatTraversalOrdering(3), new RepeatTraversalOrdering(2));
+		assertTrue(closedForm.bind(provider) == closedForm);
+		assertEquals(0, requested.size());
+
+		DelegatedTraversalOrdering tables = new DelegatedTraversalOrdering(
+				new ExplicitIndexTraversalOrdering(pack(1, 0)),
+				new IndexMaskTraversalOrdering(pack(0, 3)));
+		assertTrue(tables.bind(provider) == tables);
+		assertEquals(2, requested.size());
 	}
 
 	/**
