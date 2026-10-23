@@ -55,6 +55,29 @@ Before surveying anything, read where you left off:
    acted on, rejected, or still open. A proposal still open after two runs is
    escalated in your new report, not merely restated.
 
+## Write your report skeleton first, before you survey anything
+
+The survey below is long and expensive, and the harness commits whatever is in
+the working tree when you stop. A run that surveys for an hour and then stalls
+or exhausts its budget before writing its report leaves nothing a person can
+review — which is exactly the failure this round exists to catch in others. So
+your FIRST action, before surveying, is to put both deliverables on disk as
+stubs:
+
+1. Create docs/qa/retrospectives/RETRO-<YYYYMMDD>.md (today's UTC date) with the
+   section headings listed under "What to produce" and, under each, a short
+   "survey in progress" note. This is a real file on disk, not a plan you hold
+   in your head.
+2. Append the ledger row (described under "What to produce") to
+   docs/qa/retrospectives/ledger.tsv now, filling in what you already know
+   (run_utc, branch, window_since, report_path) and leaving the survey counts
+   as 0 or "tbd"; correct them as the last thing you do.
+
+Then survey, and fill the skeleton in as you go — replace each "survey in
+progress" note with findings the moment you have them, rather than holding the
+whole report until the end. Whatever happens to the run after this point, the
+branch already carries a reviewable artifact.
+
 ## Survey the QA rounds
 
 Survey every workstream of ${REPO_URL} since the window whose branch starts with
@@ -112,7 +135,10 @@ against the effort and risk of making it.
 
 ## What to produce
 
-Create exactly two things and nothing else.
+These are the two things you created as stubs in "Write your report skeleton
+first" and have been filling in ever since. Finish them now and create nothing
+else; the survey-in-progress notes must all be replaced, and the ledger counts
+corrected to their final values.
 
 1. docs/qa/retrospectives/RETRO-<YYYYMMDD>.md, using today's UTC date. Sections:
    - Window and sources: what you surveyed, and how many workstreams, jobs and PRs.

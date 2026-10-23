@@ -50,18 +50,17 @@ import java.util.function.Consumer;
  *
  * <p>A factory additionally has to keep the serialized property store in step
  * with this state, because its configuration travels to a worker over the
- * wire. That is what the optional <em>property sink</em> is for: a mutation
- * publishes the wire keys it changed, and an owner that does not serialize
- * simply supplies no sink. The decode direction is the {@code apply*} methods,
- * which assign without publishing, so that reading a property back off the
- * wire does not re-emit it.</p>
+ * wire; {@link WireConfig} describes the optional property sink that does so.
+ * The decode direction is the {@code apply*} methods, which assign without
+ * publishing, so that reading a property back off the wire does not re-emit
+ * it.</p>
  *
  * @author Michael Murray
  * @see CodingAgentJob
  * @see CodingAgentJobFactory
  * @see PhaseConfigBundle
  */
-class PhaseRunnerConfig {
+class PhaseRunnerConfig extends WireConfig {
 
     /** Wire key carrying {@link #defaultRunner}. */
     static final String DEFAULT_RUNNER_KEY = "defaultRunner";
@@ -71,12 +70,6 @@ class PhaseRunnerConfig {
 
     /** Wire key carrying the encoded {@link #phaseConfigBundle}. */
     static final String PHASE_CONFIG_BUNDLE_KEY = "phaseConfigBundle";
-
-    /**
-     * Receives {@code (key, value)} for each wire property a mutation changed,
-     * or {@code null} when this configuration is not serialized.
-     */
-    private final BiConsumer<String, String> propertySink;
 
     /**
      * Legacy single-runner field retained for backwards source compatibility.
@@ -115,7 +108,7 @@ class PhaseRunnerConfig {
      *                     configuration is not serialized
      */
     PhaseRunnerConfig(BiConsumer<String, String> propertySink) {
-        this.propertySink = propertySink;
+        super(propertySink);
     }
 
     /**
@@ -236,7 +229,7 @@ class PhaseRunnerConfig {
      */
     void setPhaseConfigBundle(PhaseConfigBundle bundle) {
         applyPhaseConfigBundle(bundle);
-        writeWireProperties(this::publish);
+        publishWireProperties();
     }
 
     /**
@@ -359,30 +352,17 @@ class PhaseRunnerConfig {
     }
 
     /**
-     * Appends this configuration's wire keys ({@link #DEFAULT_RUNNER_KEY},
-     * {@link #RUNNER_MAP_KEY}, {@link #PHASE_CONFIG_BUNDLE_KEY}) to {@code sb}
-     * in the {@code ::key:=value} format of {@link CodingAgentJob#encode()},
-     * omitting each key whose value is at its default — the same values the
-     * property sink receives.
+     * Hands this configuration's wire keys ({@link #DEFAULT_RUNNER_KEY},
+     * {@link #RUNNER_MAP_KEY}, {@link #PHASE_CONFIG_BUNDLE_KEY}) to
+     * {@code sink}, with a {@code null} value for each key at its default.
      *
      * <p>The bundle is the sole carrier of model, effort, and provider; the
      * runner keys carry only runner identity for runner-resolution callers.</p>
      *
-     * @param sb buffer the owner's encoded form is being built in
-     */
-    void appendEncoded(StringBuilder sb) {
-        writeWireProperties((key, value) -> {
-            if (value != null) sb.append("::").append(key).append(":=").append(value);
-        });
-    }
-
-    /**
-     * Hands every wire property of this configuration to {@code sink}, with a
-     * {@code null} value for each key that is at its default.
-     *
      * @param sink receives {@code (key, value)} for each wire property
      */
-    private void writeWireProperties(BiConsumer<String, String> sink) {
+    @Override
+    protected void writeWireProperties(BiConsumer<String, String> sink) {
         sink.accept(DEFAULT_RUNNER_KEY, defaultRunnerWireValue());
         sink.accept(RUNNER_MAP_KEY, encodeRunnerMap());
         sink.accept(PHASE_CONFIG_BUNDLE_KEY, phaseConfigBundle.toWire());
@@ -446,15 +426,5 @@ class PhaseRunnerConfig {
     /** Publishes {@link #runnerByPhase}, omitting it when there are no overrides. */
     private void publishRunnerMap() {
         publish(RUNNER_MAP_KEY, encodeRunnerMap());
-    }
-
-    /**
-     * Publishes one wire property, when there is anywhere to publish it to.
-     *
-     * @param key   the wire key
-     * @param value the value, or {@code null} to clear the key
-     */
-    private void publish(String key, String value) {
-        if (propertySink != null) propertySink.accept(key, value);
     }
 }

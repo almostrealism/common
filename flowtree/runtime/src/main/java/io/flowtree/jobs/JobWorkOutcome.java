@@ -82,6 +82,33 @@ class JobWorkOutcome {
     }
 
     /**
+     * Returns whether a job that publishes its work (it has a target branch,
+     * performs git operations, and is not a dry run) ended with nothing
+     * committed in any repository.
+     *
+     * <p>That is the legitimate outcome of a session that deliberately changed
+     * nothing. It is a failure to deliver only for a job that had to produce a
+     * change, and deciding which applies is up to the caller.</p>
+     *
+     * @return {@code true} when the job would have published a commit and
+     *         committed nothing
+     */
+    boolean publishedNothing() {
+        return publishes() && !job.hasPublishedCommit() && !job.hasAgentCommitted();
+    }
+
+    /**
+     * Returns whether the job publishes its work at all: it has a target
+     * branch, performs git operations, and is not a dry run.
+     *
+     * @return {@code true} when the job's work is meant to reach a branch
+     */
+    private boolean publishes() {
+        return job.getTargetBranch() != null && !job.getTargetBranch().isEmpty()
+                && job.performsGitOperations() && !job.isDryRun();
+    }
+
+    /**
      * Returns a description of work the job produced but never published, or
      * {@code null} when its output and its commit agree.
      *
@@ -160,9 +187,7 @@ class JobWorkOutcome {
      * @return the failure description, or {@code null} when nothing was orphaned
      */
     private String computeUnpublishedWork() {
-        if (job.getTargetBranch() == null || job.getTargetBranch().isEmpty()) return null;
-        if (!job.performsGitOperations()) return null;
-        if (job.isDryRun()) return null;
+        if (!publishes()) return null;
 
         String primaryCommit = job.getCommitHash();
         boolean primaryCommitted = primaryCommit != null && !primaryCommit.isEmpty();

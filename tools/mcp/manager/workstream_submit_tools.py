@@ -29,6 +29,7 @@ def workstream_submit_task(
     max_budget_usd: float = 0.0,
     protect_test_files: bool = False,
     enforce_changes: bool = False,
+    max_enforce_changes_retries: int = -1,
     auto_create_pr: bool = False,
     started_after: str = "",
     required_labels: str = "",
@@ -140,7 +141,15 @@ def workstream_submit_task(
             tests pass; every branch is otherwise held to
             test-integrity-check, which allows editing a test but not
             weakening it.
-        enforce_changes: If true, require the agent to produce code changes.
+        enforce_changes: If true, the job must produce a change. A run that
+            leaves none is re-run (up to ``max_enforce_changes_retries``), and
+            a job that still commits nothing once that cap is spent ends
+            DEGRADED rather than SUCCESS.
+        max_enforce_changes_retries: Cap on how many times an
+            ``enforce_changes`` job is re-run, over the whole job, when a run
+            left no change. 0 means never re-run: an empty result is reported
+            DEGRADED at once. Negative (the default) leaves the controller's
+            default in place.
         auto_create_pr: If true, the controller opens a pull request for the
             job's branch against its base branch when the job succeeds, using
             the job's commit message as the title and description — what the
@@ -735,6 +744,8 @@ def workstream_submit_task(
         payload["protectTestFiles"] = True
     if enforce_changes:
         payload["enforceChanges"] = True
+    if max_enforce_changes_retries >= 0:
+        payload["maxEnforceChangesRetries"] = max_enforce_changes_retries
     if auto_create_pr:
         payload["autoCreatePr"] = True
     if started_after:
