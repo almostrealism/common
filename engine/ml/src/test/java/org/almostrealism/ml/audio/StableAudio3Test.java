@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml.audio;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.ml.DiffusionTransformerWeightFixture;
@@ -57,6 +58,12 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 
 	/** Transformer width of the small pipeline. */
 	private static final int DIM = 16;
+
+	/**
+	 * Gain on the small decoder's output for the blending tests, keeping the decoded audio inside
+	 * the generator's clamp so that a difference in latent shows as a difference in audio.
+	 */
+	private static final double DECODER_GAIN = 0.03;
 
 	/** Builder of the small autoencoder. */
 	private final SAMEAutoEncoderFixture autoencoders = new SAMEAutoEncoderFixture();
@@ -368,6 +375,172 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	}
 
 	/**
+	 * Blending at strength zero runs no diffusion: two clips are encoded with the model's own
+	 * autoencoder, their latents are composed by averaging, and the generated audio is the decoder's
+	 * reconstruction of that composed latent, clamped and truncated to the requested duration. The
+	 * composed latent the caller supplied is neither modified nor released by the generation.
+	 */
+	@Test(timeout = 240000)
+	public void blendAtStrengthZeroDecodesTheStartLatent() {
+		SAMEAutoEncoder autoencoder = autoencoders.autoencoder(autoencoders.weights(DECODER_GAIN));
+		StableAudio3 model = smallModel(MAX_SECONDS, SAMPLE_RATE, autoencoder).setSteps(2).setVerbose(false);
+		try {
+			PackedCollection start = composedLatent(model, autoencoder);
+			double[] before = start.toArray();
+
+			PackedCollection decoded = evalBlock(autoencoder.decoder(1, model.getLatentLength()), start);
+			int samples = model.getAudioLength();
+
+			try (PackedCollection audio = model.generateFrom(7, new long[]{5, 7, 9}, 0.15, 0.0, start).evaluate()) {
+				assertEquals(SAMEAutoEncoderFixture.CHANNELS, audio.getShape().length(0));
+				assertEquals(15, audio.getShape().length(1));
+
+				for (int c = 0; c < SAMEAutoEncoderFixture.CHANNELS; c++) {
+					for (int i = 0; i < 15; i++) {
+						double expected = decoded.toDouble(c * samples + i);
+						assertTrue("decoded sample " + i + " saturates the clamp: " + expected, Math.abs(expected) < 1.0);
+						assertEquals("channel " + c + " sample " + i, expected, audio.toDouble(c * 15 + i), 1e-5);
+					}
+				}
+			}
+
+			Assert.assertArrayEquals(before, start.toArray(), 0.0);
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * Blending at strength one starts from the top of the schedule, where the start latent is
+	 * replaced entirely by noise, so it produces the same audio as plain text-to-audio generation
+	 * from the same seed and prompt. An intermediate strength keeps part of the start latent and so
+	 * differs from both.
+	 */
+	@Test(timeout = 240000)
+	public void blendAtStrengthOneMatchesTextToAudio() {
+		SAMEAutoEncoder autoencoder = autoencoders.autoencoder(autoencoders.weights(DECODER_GAIN));
+		StableAudio3 model = smallModel(MAX_SECONDS, SAMPLE_RATE, autoencoder).setSteps(2).setVerbose(false);
+		long[] prompt = {5, 7, 9};
+		try {
+			PackedCollection start = composedLatent(model, autoencoder);
+
+			try (PackedCollection plain = model.generate(11, prompt, 0.15).evaluate();
+				 PackedCollection full = model.generateFrom(11, prompt, 0.15, 1.0, start).evaluate();
+				 PackedCollection partial = model.generateFrom(11, prompt, 0.15, 0.5, start).evaluate()) {
+				assertEquals(plain.getShape().getTotalSize(), full.getShape().getTotalSize());
+
+				double partialDifference = 0.0;
+				for (int i = 0; i < plain.getShape().getTotalSize(); i++) {
+					assertTrue("sample " + i + " saturates the clamp: " + plain.toDouble(i), Math.abs(plain.toDouble(i)) < 1.0);
+					assertEquals("sample " + i, plain.toDouble(i), full.toDouble(i), 1e-6);
+					assertTrue("sample " + i + " is " + partial.toDouble(i), Double.isFinite(partial.toDouble(i)));
+					partialDifference += Math.abs(partial.toDouble(i) - plain.toDouble(i));
+				}
+
+				assertTrue("an intermediate strength must keep part of the start latent", partialDifference > 1e-3);
+			}
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * A start latent of a length other than the one the model is compiled for is rejected rather
+	 * than reshaped, and a missing one is rejected rather than treated as a request for noise.
+	 */
+	@Test(timeout = 240000)
+	public void blendRejectsMismatchedStartLatent() {
+		StableAudio3 model = smallModel().setSteps(2).setVerbose(false);
+		try (PackedCollection shortLatent = new PackedCollection(
+				shape(1, SAMEAutoEncoderFixture.LATENT, model.getLatentLength() - 1))) {
+			try {
+				model.generateFrom(7, new long[]{5}, 0.15, 0.5, shortLatent);
+				throw new AssertionError("a start latent of the wrong length must be rejected");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains("shape"));
+			}
+
+			try {
+				model.generateFrom(7, new long[]{5}, 0.15, 0.5, null);
+				throw new AssertionError("a missing start latent must be rejected");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains("generate"));
+			}
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * A strength outside {@code [0, 1]} — including a non-finite one, which would otherwise fall
+	 * through both bounds and run as full strength — is rejected rather than clamped.
+	 */
+	@Test(timeout = 240000)
+	public void blendRejectsStrengthOutsideUnitInterval() {
+		StableAudio3 model = smallModel().setSteps(2).setVerbose(false);
+		try (PackedCollection start = new PackedCollection(
+				shape(1, SAMEAutoEncoderFixture.LATENT, model.getLatentLength()))) {
+			for (double strength : new double[] {-0.1, 1.1, Double.NaN}) {
+				try {
+					model.generateFrom(7, new long[]{5}, 0.15, strength, start);
+					throw new AssertionError("strength " + strength + " must be rejected");
+				} catch (IllegalArgumentException expected) {
+					assertTrue(expected.getMessage().contains("Strength"));
+				}
+			}
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * The text blend entry point forwards to {@link StableAudio3#generateFrom(long, long[], double,
+	 * double, PackedCollection)} with the tokenized prompt and the same seed, duration, strength and
+	 * start latent, so an empty prompt — which tokenizes to no tokens and needs no tokenizer —
+	 * produces the same audio either way. This pins the argument order: a text overload that swapped
+	 * {@code seconds} and {@code strength} would diffuse from a different point of the schedule and
+	 * truncate to a different length, so the two would differ.
+	 */
+	@Test(timeout = 240000)
+	public void textBlendForwardsToTokenBlend() {
+		SAMEAutoEncoder autoencoder = autoencoders.autoencoder(autoencoders.weights(DECODER_GAIN));
+		StableAudio3 model = smallModel(MAX_SECONDS, SAMPLE_RATE, autoencoder).setSteps(2).setVerbose(false);
+		try {
+			PackedCollection start = composedLatent(model, autoencoder);
+
+			try (PackedCollection viaText = model.generateFromText(13, "", 0.15, 0.5, start).evaluate();
+				 PackedCollection viaTokens = model.generateFrom(13, new long[0], 0.15, 0.5, start).evaluate()) {
+				assertEquals(viaTokens.getShape().getTotalSize(), viaText.getShape().getTotalSize());
+				for (int i = 0; i < viaTokens.getShape().getTotalSize(); i++) {
+					assertEquals("sample " + i, viaTokens.toDouble(i), viaText.toDouble(i), 1e-6);
+				}
+			}
+		} finally {
+			model.destroy();
+		}
+	}
+
+	/**
+	 * Encodes two synthetic clips of the model's compiled audio length with the given autoencoder
+	 * and composes their latents by averaging, in the batched latent shape the model accepts.
+	 *
+	 * @param model       the model whose compiled lengths the clips are encoded for
+	 * @param autoencoder the autoencoder the model was built with
+	 * @return the composed latent, shape {@code [1, LATENT, latentLength]}
+	 */
+	private PackedCollection composedLatent(StableAudio3 model, SAMEAutoEncoder autoencoder) {
+		int samples = model.getAudioLength();
+		TraversalPolicy latentShape = shape(1, SAMEAutoEncoderFixture.LATENT, model.getLatentLength());
+		TraversalPolicy audioShape = shape(1, SAMEAutoEncoderFixture.CHANNELS, samples);
+
+		PackedCollection first = evalBlock(autoencoder.encoder(1, samples),
+				new PackedCollection(audioShape).randnFill(new Random(31)));
+		PackedCollection second = evalBlock(autoencoder.encoder(1, samples),
+				new PackedCollection(audioShape).randnFill(new Random(37)));
+		return cp(first.reshape(latentShape)).add(cp(second.reshape(latentShape))).multiply(0.5).evaluate();
+	}
+
+	/**
 	 * The small pipeline compiled for clips of up to {@link #MAX_SECONDS}.
 	 *
 	 * @return the model
@@ -396,6 +569,19 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 	 * @return the model
 	 */
 	private StableAudio3 smallModel(double maxSeconds, double sampleRate) {
+		return smallModel(maxSeconds, sampleRate, autoencoders.autoencoder());
+	}
+
+	/**
+	 * The small pipeline over the given autoencoder, so a test can encode clips with the same
+	 * weights the model decodes with.
+	 *
+	 * @param maxSeconds  the longest duration the model is compiled for
+	 * @param sampleRate  the audio sample rate the model is compiled for
+	 * @param autoencoder the autoencoder whose decoder the model compiles
+	 * @return the model
+	 */
+	private StableAudio3 smallModel(double maxSeconds, double sampleRate, SAMEAutoEncoder autoencoder) {
 		T5GemmaWeightFixture prompts = new T5GemmaWeightFixture();
 		T5GemmaConfig encoderConfig = prompts.smallConfig(PROMPT_LENGTH);
 		Random random = new Random(21);
@@ -415,7 +601,7 @@ public class StableAudio3Test extends TransformerResamplingShapeTest {
 				.withPaddingMask(true);
 		StateDictionary transformerWeights = new StateDictionary(new DiffusionTransformerWeightFixture().weights(config));
 
-		return new StableAudio3(config, transformerWeights, conditioner, autoencoders.autoencoder(),
+		return new StableAudio3(config, transformerWeights, conditioner, autoencoder,
 				sampleRate, maxSeconds, HEADROOM);
 	}
 }
