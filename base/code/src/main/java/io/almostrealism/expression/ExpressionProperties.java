@@ -58,6 +58,20 @@ public interface ExpressionProperties<T> {
 	public default boolean isInt() { return self().getType() == Integer.class; }
 
 	/**
+	 * Checks if this expression produces a 64-bit integer result.
+	 *
+	 * @return {@code true} if the result type is {@link Long}
+	 */
+	public default boolean isLong() { return self().getType() == Long.class; }
+
+	/**
+	 * Checks if this expression produces an integer result of either width.
+	 *
+	 * @return {@code true} if the result type is {@link Integer} or {@link Long}
+	 */
+	public default boolean isIntegral() { return isInt() || isLong(); }
+
+	/**
 	 * Checks if this expression produces a floating-point result.
 	 *
 	 * @return {@code true} if the result type is {@link Double}

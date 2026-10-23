@@ -276,6 +276,87 @@ public interface ExpressionArithmetic<T> {
 	}
 
 	/**
+	 * Returns the bitwise AND of this integer expression and the operand.
+	 *
+	 * @param operand the integer mask
+	 * @return an expression representing {@code this & operand}
+	 * @see And
+	 */
+	public default Expression<?> bitwiseAnd(Expression<?> operand) { return And.of(self(), operand); }
+
+	/**
+	 * Returns the bitwise exclusive OR of this integer expression and the operand.
+	 *
+	 * @param operand the other integer operand
+	 * @return an expression representing {@code this ^ operand}
+	 * @see Xor
+	 */
+	public default Expression<?> xor(Expression<?> operand) { return Xor.of(self(), operand); }
+
+	/**
+	 * Returns this integer expression shifted right by a constant number of bits.
+	 *
+	 * @param bits the shift amount
+	 * @return an expression representing {@code this >> bits}
+	 * @see ShiftRight
+	 */
+	public default Expression<?> shiftRight(int bits) { return shiftRight(new IntegerConstant(bits)); }
+
+	/**
+	 * Returns this integer expression shifted right by the given number of bits.
+	 *
+	 * @param bits the shift amount
+	 * @return an expression representing {@code this >> bits}
+	 * @see ShiftRight
+	 */
+	public default Expression<?> shiftRight(Expression<?> bits) { return ShiftRight.of(self(), bits); }
+
+	/**
+	 * Returns this integer expression widened to 64 bits and reduced modulo 2^32, which is how
+	 * unsigned 32-bit arithmetic is represented in the expression tree. The expression layer
+	 * has no unsigned type, and signed 32-bit overflow is undefined in the generated C code, so
+	 * 32-bit wraparound is carried out in {@code long} and made explicit with the mask
+	 * {@code 0xFFFFFFFF}; the result lies in {@code [0, 2^32)}.
+	 *
+	 * @return an expression representing {@code ((long) this) & 0xFFFFFFFF}
+	 * @throws UnsupportedOperationException if this expression is not integer typed
+	 */
+	public default Expression<?> toUnsigned32() {
+		// TODO(review): @throws is inaccurate for FP input; toLong(true) casts FP to long, so FP is truncated, not rejected (pcgHash inherits this)
+		return self().toLong(true).bitwiseAnd(new LongConstant(0xFFFFFFFFL));
+	}
+
+	/**
+	 * Returns the PCG hash of this integer expression: a 32-bit to 32-bit integer hash with
+	 * the output permutation of the PCG random number generator, as recommended for GPU
+	 * random number generation by Jarzynski and Olano, "Hash Functions for GPU Rendering",
+	 * Journal of Computer Graphics Techniques, 2020. For {@code v = this mod 2^32}, with all
+	 * arithmetic modulo 2^32:
+	 * <pre>
+	 * state = v * 747796405 + 2891336453
+	 * word  = ((state &gt;&gt; ((state &gt;&gt; 28) + 4)) ^ state) * 277803737
+	 * hash  = (word &gt;&gt; 22) ^ word
+	 * </pre>
+	 *
+	 * <p>The arithmetic is carried out on {@code long} values reduced with
+	 * {@link #toUnsigned32()}. Both multipliers are below 2^31, so no product of a 32-bit value
+	 * exceeds 2^63 and no intermediate overflows the signed 64-bit range, which keeps the
+	 * generated code free of undefined behaviour and identical, bit for bit, on every backend
+	 * and in host-side evaluation of the expression.</p>
+	 *
+	 * @return a {@code Long} typed expression for the hash, in {@code [0, 2^32)}
+	 * @throws UnsupportedOperationException if this expression is not integer typed
+	 */
+	public default Expression<?> pcgHash() {
+		Expression<?> state = self().toUnsigned32().multiply(747796405L)
+				.add(new LongConstant(2891336453L)).toUnsigned32();
+		Expression<?> shift = state.shiftRight(28).add(4);
+		Expression<?> word = state.shiftRight(shift).xor(state)
+				.multiply(277803737L).toUnsigned32();
+		return word.shiftRight(22).xor(word);
+	}
+
+	/**
 	 * Returns the sine of this expression.
 	 *
 	 * @return an expression representing {@code sin(this)}

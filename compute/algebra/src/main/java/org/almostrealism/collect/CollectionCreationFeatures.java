@@ -28,6 +28,7 @@ import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
+import org.almostrealism.collect.computations.CounterRandom;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.Random;
@@ -786,6 +787,38 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		} else {
 			return c(mean).add(c(std).multiply(randn(shape, source)));
 		}
+	}
+
+	/**
+	 * Creates a producer of uniformly-distributed random values in [0, 1) that are generated
+	 * inside the compiled kernel as a pure function of {@code (seed, counter, element index)}.
+	 * Unlike {@link #rand(TraversalPolicy)}, there is no host-side cache to refresh: advancing
+	 * the counter selects a new stream without recompiling.
+	 *
+	 * @param shape   the shape of the random collection
+	 * @param seed    the seed, compiled into the kernel as a constant
+	 * @param counter a producer of a single value whose integer part selects the stream
+	 * @return a {@link CounterRandom} producer with uniform distribution
+	 * @see CounterRandom
+	 */
+	default CounterRandom counterRand(TraversalPolicy shape, long seed, Producer<PackedCollection> counter) {
+		return new CounterRandom(shape, false, seed, counter);
+	}
+
+	/**
+	 * Creates a producer of standard normal (mean=0, std=1) random values that are generated
+	 * inside the compiled kernel as a pure function of {@code (seed, counter, element index)}.
+	 * Unlike {@link #randn(TraversalPolicy)}, there is no host-side cache to refresh: advancing
+	 * the counter selects a new stream without recompiling.
+	 *
+	 * @param shape   the shape of the random collection
+	 * @param seed    the seed, compiled into the kernel as a constant
+	 * @param counter a producer of a single value whose integer part selects the stream
+	 * @return a {@link CounterRandom} producer with standard normal distribution
+	 * @see CounterRandom
+	 */
+	default CounterRandom counterRandn(TraversalPolicy shape, long seed, Producer<PackedCollection> counter) {
+		return new CounterRandom(shape, true, seed, counter);
 	}
 
 	/**
