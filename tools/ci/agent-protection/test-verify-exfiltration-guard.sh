@@ -33,6 +33,7 @@ GUARD_FILES=(
     ".claude/hooks/lib/test_exfiltration_guard_check.py"
     ".claude/hooks/lib/test_exfiltration_guard_transport.py"
     ".claude/hooks/lib/test_exfiltration_guard_interpreter.py"
+    ".claude/hooks/lib/test_exfiltration_guard_worktree.py"
     ".claude/hooks/exfil-allowlist.txt"
     "tools/ci/agent-protection/verify-exfiltration-guard.sh"
     "tools/ci/agent-protection/test-verify-exfiltration-guard.sh"

@@ -7,9 +7,9 @@ Self-hosted GitHub Actions runners for the **CUDA lane**: jobs labelled
 NVIDIA GPU. The lane runs in parallel with the OpenCL lane (`tools/ci/rocm`) on
 its own machine.
 
-The lane is currently **informational**: it is not in `analysis.needs`,
-`all-checks` or `auto-resolve`, so a failure does not block a merge. It joins
-the gate once it has a passing baseline.
+The lane is **required**: it is in `analysis.needs`, `all-checks` and
+`auto-resolve`, so a failure blocks a merge and is routed to an agent like any
+other lane's.
 
 ## Labels: CUDA Is a Capability, the CPU Lane Is Optional
 
@@ -114,7 +114,7 @@ $EDITOR .env                  # set GITHUB_PAT
 ```
 
 Start with **one** runner. This host has a single GPU whose memory is unified with
-system RAM, and the workflow's own `max-parallel` (3 for `test-cuda`, 2 for
+system RAM, and the workflow's own `max-parallel` (3 for both `test-cuda` and
 `test-media-cuda`) bounds what a single pipeline can use. Raise the count with
 `./fleet.sh up 2` only after measuring, and keep `RUNNER_MEMORY_LIMIT` times the
 runner count well below the host's memory: the limit applies to every runner,
@@ -168,8 +168,8 @@ The directory must exist before `fleet.sh up`. The mount is declared with
 `create_host_path: false` precisely so that Docker never creates directories on
 the host behind your back. Stage it with `tools/ci/sync-music-samples.sh` (see
 the ROCm README's *Test Data*). Until it is staged, the tests that call
-`AudioSceneTestBase.requireCuratedLibrary()` fail. That is expected while the
-lane is informational.
+`AudioSceneTestBase.requireCuratedLibrary()` fail, and because the lane is
+required, so does the merge gate.
 
 `sync-music-samples.sh` makes the tree readable by its `--group` only, and the
 image's `runner` user belongs to no host group. So `fleet.sh up` reads the

@@ -20,7 +20,8 @@ wired into ``auto-resolve`` fails this test until it is.
 
 The CL lanes (``test-cl``, ``test-media-cl``) were once the documented
 exclusion from this set: informational jobs outside the merge gate that
-uploaded no surefire. They are now required like every other lane, so the
+uploaded no surefire. The CUDA lanes (``test-cuda``, ``test-media-cuda``)
+followed the same path. Both are now required like every other lane, so the
 pipeline covers every accelerator backend it tests, and this test pins their
 presence so they cannot quietly drop back out of the gate.
 """
@@ -37,6 +38,14 @@ _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
 
 # The OpenCL lanes, required like every other test lane.
 _CL_LANES = {"test-cl", "test-media-cl"}
+
+# The CUDA lanes, required like every other test lane.
+_CUDA_LANES = {"test-cuda", "test-media-cuda"}
+
+# Artifact names a future lane, not yet required, would upload. The allowlist
+# must drop them; a glob broad enough to keep them (`surefire-media-*` once kept
+# an informational lane's media artifact) fails the informational-jobs test.
+_UNREQUIRED_LANE_ARTIFACTS = ["surefire-npu-group-0", "surefire-media-npu-group-0"]
 
 # Matches a `${{ ... }}` GitHub Actions expression anywhere in a string.
 _EXPRESSION = re.compile(r"\$\{\{[^}]*\}\}")
@@ -97,6 +106,14 @@ def _allowlist_case_patterns():
     return match.group(1)
 
 
+def _media_arm(patterns):
+    """test-media's own alternative from the allowlist pattern."""
+    for arm in patterns.split("|"):
+        if arm.startswith("surefire-media-["):
+            return arm
+    raise AssertionError("could not find test-media's arm in %s" % patterns)
+
+
 def _matches_allowlist(name, patterns):
     """Whether bash's own `case` would keep `name` under the allowlist."""
     script = (
@@ -116,6 +133,14 @@ class AutoResolveTestJobCoverageTest(unittest.TestCase):
         required = _required_test_jobs(workflow)
         self.assertEqual(_CL_LANES, required & _CL_LANES,
                           "CL lanes must be in analysis.needs, and through it in the "
+                          "merge gate and auto-resolve's failure routing")
+
+    def test_cuda_lanes_are_required(self):
+        """The CUDA lanes are required test jobs."""
+        workflow = _workflow()
+        required = _required_test_jobs(workflow)
+        self.assertEqual(_CUDA_LANES, required & _CUDA_LANES,
+                          "CUDA lanes must be in analysis.needs, and through it in the "
                           "merge gate and auto-resolve's failure routing")
 
     def test_required_jobs_are_in_auto_resolve_needs(self):
@@ -181,24 +206,29 @@ class AutoResolveTestJobCoverageTest(unittest.TestCase):
     def test_informational_jobs_are_dropped_by_the_surefire_allowlist(self):
         """A job outside the required set must not have its surefire kept.
 
-        An informational lane (the CUDA lane today) is deliberately absent
-        from `analysis.needs`, so its failures must never reach an agent. A
-        broad allowlist glob can still match its artifact name — the
-        test-media arm was once `surefire-media-*`, which also kept
-        `surefire-media-cuda-group-*` — and hand its XML to the parser.
+        An informational lane is deliberately absent from `analysis.needs`,
+        so its failures must never reach an agent. A broad allowlist glob can
+        still match its artifact name — the test-media arm was once
+        `surefire-media-*`, which kept the then-informational CUDA lane's
+        `surefire-media-cuda-group-*` — and hand its XML to the parser. Every
+        lane is required today, so the check also runs against the artifact
+        names a future, not-yet-required lane would upload.
         """
         workflow = _workflow()
         required = _required_test_jobs(workflow)
         patterns = _allowlist_case_patterns()
 
-        kept = []
-        checked = 0
+        examples = [("(future lane)", name) for name in _UNREQUIRED_LANE_ARTIFACTS]
         for job_name in sorted(set(workflow["jobs"]) - required):
             for name in _surefire_artifact_names(workflow["jobs"][job_name]):
-                example = _concrete_example(name)
-                checked += 1
-                if _matches_allowlist(example, patterns):
-                    kept.append((job_name, example))
+                examples.append((job_name, _concrete_example(name)))
+
+        kept = []
+        checked = 0
+        for job_name, example in examples:
+            checked += 1
+            if _matches_allowlist(example, patterns):
+                kept.append((job_name, example))
 
         self.assertGreater(checked, 0, "expected at least one informational surefire upload")
         self.assertEqual([], kept,
@@ -206,13 +236,17 @@ class AutoResolveTestJobCoverageTest(unittest.TestCase):
                           "keeps their surefire artifacts: %s (allowlist: %s)" % (kept, patterns))
 
     def test_media_arm_does_not_match_other_lanes(self):
-        """test-media's arm keeps only its own numbered groups."""
-        patterns = _allowlist_case_patterns()
-        self.assertTrue(_matches_allowlist("surefire-media-0", patterns))
-        self.assertTrue(_matches_allowlist("surefire-media-7", patterns))
-        self.assertFalse(_matches_allowlist("surefire-media-cuda-group-0", patterns))
-        self.assertFalse(_matches_allowlist("surefire-cuda-group-0", patterns))
-        self.assertFalse(_matches_allowlist("surefire-media-", patterns))
+        """test-media's arm keeps only its own numbered groups.
+
+        Checked on the arm alone: the other lanes' media artifacts are kept by
+        their own arms, and this arm must not be what keeps them.
+        """
+        arm = _media_arm(_allowlist_case_patterns())
+        self.assertTrue(_matches_allowlist("surefire-media-0", arm))
+        self.assertTrue(_matches_allowlist("surefire-media-7", arm))
+        self.assertFalse(_matches_allowlist("surefire-media-cuda-group-0", arm))
+        self.assertFalse(_matches_allowlist("surefire-media-cl-group-0", arm))
+        self.assertFalse(_matches_allowlist("surefire-media-", arm))
 
 
 if __name__ == "__main__":

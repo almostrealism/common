@@ -153,10 +153,12 @@ INDEX_EXCLUSIONS = (
     "tools/mcp/manager/eval/",
 )
 
-# Directory names the walk never enters: build output, caches, VCS state.
+# Directory names the walk never enters: build output, caches, VCS state,
+# and gitignored runtime artifacts (``.flowtree`` holds per-job agent state
+# such as oop-review.md).
 _SKIP_DIRS = frozenset({
     ".git", "target", "node_modules", "__pycache__", ".pytest_cache",
-    ".mypy_cache", "results", "runs", ".idea", ".vscode",
+    ".mypy_cache", "results", "runs", ".idea", ".vscode", ".flowtree",
 })
 
 _DOC_SUFFIXES = (".md", ".html")

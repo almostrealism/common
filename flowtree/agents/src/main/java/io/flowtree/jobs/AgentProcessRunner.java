@@ -360,7 +360,8 @@ public final class AgentProcessRunner {
     /**
      * Applies the runner-agnostic portions of {@code request} to {@code pb}:
      * working directory, supplied environment overrides, the
-     * {@code AR_AGENT_ACTIVITY} env var, the augmented {@code PATH}, merged
+     * {@code AR_AGENT_ACTIVITY} env var, the job marker
+     * ({@link AgentRunRequest#ENV_FLOWTREE_JOB}), the augmented {@code PATH}, merged
      * stderr-into-stdout, and {@code /dev/null} stdin.
      *
      * <p>This boilerplate is identical for every subprocess-backed runner;
@@ -393,6 +394,7 @@ public final class AgentProcessRunner {
         } else {
             pb.environment().remove("AR_AGENT_ACTIVITY");
         }
+        pb.environment().put(AgentRunRequest.ENV_FLOWTREE_JOB, "1");
         GitOperations.augmentPath(pb);
 
         pb.redirectErrorStream(true);
