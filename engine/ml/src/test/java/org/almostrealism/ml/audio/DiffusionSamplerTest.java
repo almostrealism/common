@@ -78,6 +78,33 @@ public class DiffusionSamplerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link DiffusionSampler#sampleFrom} at full strength starts at the top of the schedule, where
+	 * the start latent's coefficient is zero and the noise's is one, so it must follow exactly the
+	 * trajectory {@link DiffusionSampler#sample} follows from the same seed. The noising computation
+	 * at {@code t = 1} can simplify to the noise collection itself; the sampler must then keep that
+	 * collection as the loop's latent rather than releasing it, which previously failed the first
+	 * step with released memory.
+	 */
+	@Test(timeout = 60000)
+	public void sampleFromAtFullStrengthMatchesSample() {
+		TraversalPolicy latentShape = shape(BATCH, CHANNELS, SEQ_LEN);
+		DiffusionSampler sampler = new DiffusionSampler(
+				new ConditioningSensitiveModel(latentShape), new PingPongSamplingStrategy(new LogSNRShift()),
+				1000, latentShape)
+				.setNumInferenceSteps(4)
+				.setVerbose(false);
+
+		PackedCollection positive = new PackedCollection(shape(1, 1)).fill(1.0);
+		PackedCollection startLatent = new PackedCollection(latentShape).randnFill(new Random(7));
+		PackedCollection plain = sampler.sample(42L, null, positive);
+		PackedCollection full = sampler.sampleFrom(startLatent, 1.0, 42L, null, positive);
+
+		for (int i = 0; i < latentShape.getTotalSize(); i++) {
+			assertEquals("element " + i, plain.toDouble(i), full.toDouble(i), 1e-6);
+		}
+	}
+
+	/**
 	 * With guidance enabled the sampler runs the model twice per step, once with the sampling
 	 * conditioning and once with the negative conditioning, and feeds the guided prediction into
 	 * the sampling step. A model predicting one under conditioning and zero without it, guided

@@ -516,6 +516,7 @@ jobs:
             ".claude/hooks/lib/test_exfiltration_guard_check.py"
             ".claude/hooks/lib/test_exfiltration_guard_transport.py"
             ".claude/hooks/lib/test_exfiltration_guard_interpreter.py"
+            ".claude/hooks/lib/test_exfiltration_guard_worktree.py"
             ".claude/hooks/exfil-allowlist.txt"
           )
 
@@ -1597,6 +1598,15 @@ jobs:
       - name: Run interface bypass hook tests
         run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_block_interface_bypass.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
+      # Worktrees are allowed in interactive sessions and refused in FlowTree
+      # jobs, whose harness captures only the job's own working tree. These
+      # cover both git policy adapters and the job-only worktree hook, which
+      # builds scratch repositories with a real linked worktree.
+      - name: Run worktree policy hook tests
+        run: |
+          python3 -m unittest discover -v -s .claude/hooks/lib -p "test_git_command_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s .claude/hooks/lib -p "test_job_worktree_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
       - name: Run exfiltration guard CI-verifier tests
         run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
@@ -1876,11 +1886,11 @@ jobs:
       # Cross-OS gating (don't run mac when linux fails) is handled by test-mac's
       # needs/if, not by fail-fast.
       fail-fast: false
-      # Cap concurrent groups so all eight completing doesn't overrun runner
+      # Cap concurrent groups so all seven completing doesn't overrun runner
       # capacity; the remaining groups queue and run as slots free up.
       max-parallel: 4
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4, 5, 6]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1950,7 +1960,7 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=7 \
            2>&1 | tee "${{ runner.temp }}/mvn-utils-test.log"
 
       - name: Upload Surefire Reports
@@ -1974,7 +1984,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=7 \
            2>&1 | tee "${{ runner.temp }}/mvn-ml-test.log"
 
       - name: Upload ML Surefire Reports
@@ -2090,16 +2100,16 @@ jobs:
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
     strategy:
-      # Split the (growing) media test set across eight groups: each group runs an eighth
-      # of every module's tests (AR_TEST_GROUPS=8 on the steps below). Self-hosted runners
-      # run one job at a time, so each group lands on its own runner with an eighth of the
+      # Split the (growing) media test set across seven groups: each group runs a seventh
+      # of every module's tests (AR_TEST_GROUPS=7 on the steps below). Self-hosted runners
+      # run one job at a time, so each group lands on its own runner with a seventh of the
       # tests, cutting peak memory per runner and shrinking the retry unit — a flaky
       # failure re-runs only that group, not the whole suite. max-parallel bounds how many
-      # groups run at once on the fleet, so eight groups queue in ceil(8/max-parallel) waves.
+      # groups run at once on the fleet, so seven groups queue in ceil(7/max-parallel) waves.
       fail-fast: false
       max-parallel: 2
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4, 5, 6]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2148,7 +2158,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=7 \
            2>&1 | tee "${{ runner.temp }}/mvn-audio-test.log"
 
       - name: Run Music Tests
@@ -2161,7 +2171,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=7 \
            2>&1 | tee "${{ runner.temp }}/mvn-music-test.log"
 
       - name: Run Compose Tests
@@ -2174,7 +2184,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=7 \
            2>&1 | tee "${{ runner.temp }}/mvn-compose-test.log"
 
       - name: Run Spatial Tests
@@ -2187,7 +2197,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=7 \
            2>&1 | tee "${{ runner.temp }}/mvn-spatial-test.log"
 
       # extern/ml-onnx and studio/experiments had no CI job at all. Both are small, and both
@@ -2205,7 +2215,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
+           -DAR_TEST_GROUPS=7 \
            2>&1 | tee "${{ runner.temp }}/mvn-extern-experiments-test.log"
 
       - name: Upload Surefire Reports
@@ -2283,7 +2293,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4, 5]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2352,7 +2362,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=6
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -2362,7 +2372,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=6
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -2610,7 +2620,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4, 5]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2667,7 +2677,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=6
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -2678,7 +2688,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=6
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -3088,7 +3098,8 @@ jobs:
   test-media-cuda:
     needs: [changes, build, test, test-media, test-mac, test-media-mac, test-cuda, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CUDA lane, second (final) stage: the CUDA duplicate of test-media-cl, with
-    # AR_HARDWARE_DRIVER=native,cuda. Every step and setting mirrors test-media-cl; see there.
+    # AR_HARDWARE_DRIVER=native,cuda. Every step and setting mirrors test-media-cl (except the
+    # group count: seven groups here, eight there); see there.
     #
     # Runs on the NVIDIA fleet (tools/ci/cuda). Gates on test-cuda because the host has a
     # single GPU, and on the upstream lanes DIRECTLY for the reason test-media-cl does:
@@ -3129,7 +3140,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4, 5, 6]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -3195,7 +3206,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=7
 
       - name: Run Music Tests
         run: |
@@ -3206,7 +3217,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=7
 
       - name: Run Compose Tests
         run: |
@@ -3218,7 +3229,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=7
 
       - name: Run Spatial Tests
         run: |
@@ -3230,7 +3241,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=7
 
       # See the identical step in test-media for why these two modules share one invocation.
       - name: Run Extern and Experiments Tests
@@ -3243,7 +3254,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=7
 
       # CUDA media surefire reports so auto-resolve can parse CUDA-specific failures.
       - name: Upload Surefire Reports

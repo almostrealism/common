@@ -43,6 +43,9 @@ import org.almostrealism.collect.PackedCollection;
  * against rather than as a second implementation for callers to choose between.</p>
  */
 public class HarmonicEnergyFeatureProvider implements WaveDataFeatureProvider, CodeFeatures {
+	/** Default model identifier used when a test does not supply one. */
+	public static final String DEFAULT_MODEL_IDENTIFIER = "harmonic-energy";
+
 	/** Number of windows the signal is divided into. */
 	private final int frames;
 
@@ -55,8 +58,12 @@ public class HarmonicEnergyFeatureProvider implements WaveDataFeatureProvider, C
 	/** Duration in seconds the {@code frames} windows are expected to span. */
 	private final double duration;
 
+	/** Identifier of the model these features are attributed to. */
+	private final String modelIdentifier;
+
 	/**
-	 * Creates a provider producing {@code frames x bins} features.
+	 * Creates a provider producing {@code frames x bins} features, attributed to
+	 * the {@value #DEFAULT_MODEL_IDENTIFIER} model.
 	 *
 	 * @param frames      number of windows
 	 * @param bins        cosine bins per window
@@ -64,11 +71,30 @@ public class HarmonicEnergyFeatureProvider implements WaveDataFeatureProvider, C
 	 * @param duration    seconds the windows are expected to span
 	 */
 	public HarmonicEnergyFeatureProvider(int frames, int bins, int sampleRate, double duration) {
+		this(frames, bins, sampleRate, duration, DEFAULT_MODEL_IDENTIFIER);
+	}
+
+	/**
+	 * Creates a provider producing {@code frames x bins} features attributed to
+	 * the given model.
+	 *
+	 * @param frames          number of windows
+	 * @param bins            cosine bins per window
+	 * @param sampleRate      sample rate of the audio
+	 * @param duration        seconds the windows are expected to span
+	 * @param modelIdentifier the identifier recorded as the features' provenance
+	 */
+	public HarmonicEnergyFeatureProvider(int frames, int bins, int sampleRate,
+										 double duration, String modelIdentifier) {
 		this.frames = frames;
 		this.bins = bins;
 		this.sampleRate = sampleRate;
 		this.duration = duration;
+		this.modelIdentifier = modelIdentifier;
 	}
+
+	@Override
+	public String getModelIdentifier() { return modelIdentifier; }
 
 	@Override
 	public int getAudioSampleRate() { return sampleRate; }

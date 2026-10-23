@@ -61,4 +61,22 @@ public interface WaveDataFeatureProvider {
 	 * @return feature sample rate in frames per second
 	 */
 	double getFeatureSampleRate();
+
+	/**
+	 * Returns the identifier of the model that produces this provider's features.
+	 *
+	 * <p>This is the provenance recorded alongside every feature set a provider
+	 * computes: the string the application supplies for the model it loaded (for
+	 * example the model asset name). It is the key under which features and the
+	 * similarities derived from them are stored on a {@link WaveDetails}, so that
+	 * features produced by one model can sit beside features produced by another
+	 * without being mistaken for each other.</p>
+	 *
+	 * <p>This is a required part of the contract rather than a default: a provider
+	 * that cannot name its model has no provenance to record.</p>
+	 *
+	 * @return the model identifier; never {@code null}
+	 * @see WaveFeatures
+	 */
+	String getModelIdentifier();
 }

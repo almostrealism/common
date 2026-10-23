@@ -96,11 +96,6 @@
           },
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-worktree.sh",
-            "description": "Block 'git worktree add' \u2014 all changes must stay in the single working tree the developer can see (read-only 'git worktree list' allowed)"
-          },
-          {
-            "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/mvn-artifact-staleness.py\"",
             "description": "Warn when an artifact-producing mvn command (compile/install/etc.) is run, since it will not rebuild dependent modules; report ~/.m2 artifact staleness"
           },
@@ -143,6 +138,16 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-branch-track-master.sh",
             "description": "Block creating/tracking/pushing a non-master branch against remote master/main (the 'branch tracks origin/master' footgun) \u2014 use --no-track or branch off local master"
+          }
+        ]
+      },
+      {
+        "matcher": "EnterWorktree|Agent|Task|Edit|MultiEdit|Write|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-job-worktree.sh",
+            "description": "In a FlowTree job, block EnterWorktree, worktree-isolated subagents, edits in another worktree and commands run from one \u2014 the harness captures only the job's own working tree; interactive sessions are unaffected"
           }
         ]
       },

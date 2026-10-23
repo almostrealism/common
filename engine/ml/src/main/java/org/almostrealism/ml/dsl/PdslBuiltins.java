@@ -38,6 +38,7 @@ import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toDouble;
 import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toInt;
 import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toInts;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -180,12 +181,13 @@ final class PdslBuiltins {
 	 * @return a factory that creates the scale layer for any input shape
 	 */
 	private static Function<TraversalPolicy, Block> callScale(List<Object> args) {
-		if (args.size() == 2) {
+		if (args.size() >= 2) {
 			return callScaleAlongAxis(args);
 		}
 		if (args.size() != 1) {
 			throw new PdslParseException(
-					"scale() expects 1 argument (factor) or 2 (factors, axis), got " + args.size());
+					"scale() expects 1 argument (factor), 2 (factors, axis) or more "
+							+ "(factors, axis, weights...), got " + args.size());
 		}
 
 		if (args.get(0) instanceof PdslChannelBank) {
@@ -224,9 +226,17 @@ final class PdslBuiltins {
 	 * across the other non-batch axes. A factor of zero masks its position out, which is how a
 	 * padding mask zeroes the values of padded sequence positions.
 	 *
-	 * @param args two arguments: the factors (a bound tensor or a producer) and the integer axis
+	 * <p>Any trailing arguments beyond the axis, {@code scale(factors, axis, w1..wN)}, are the
+	 * collections {@code factors} is built from; the non-null ones are registered as the layer's
+	 * learnable weights so a backward pass differentiates the factors with respect to them (this
+	 * is how the differential-attention lambda re-parameterization trains). A {@code null} weight
+	 * is one the caller left out and is skipped, so a call whose weights are all null is the plain
+	 * weightless per-position scale, unchanged.</p>
+	 *
+	 * @param args the factors (a bound tensor or a producer), the integer axis, and optionally the
+	 *             weight collections {@code factors} is built from
 	 * @return a factory that creates the per-position scale for any input shape with that axis
-	 * @see org.almostrealism.layers.LayerFeatures#scale(TraversalPolicy, int, Producer,
+	 * @see org.almostrealism.layers.LayerFeatures#scale(TraversalPolicy, int, Producer, java.util.List,
 	 *      io.almostrealism.compute.ComputeRequirement...)
 	 */
 	private static Function<TraversalPolicy, Block> callScaleAlongAxis(List<Object> args) {
@@ -234,6 +244,18 @@ final class PdslBuiltins {
 				"scale() factors");
 		int axis = toInt(args.get(1));
 		TraversalPolicy factorShape = FEATURES.shape(factors);
+		List<PackedCollection> weights = new ArrayList<>();
+		for (int i = 2; i < args.size(); i++) {
+			Object weight = args.get(i);
+			if (weight == null) {
+				continue;
+			}
+			if (!(weight instanceof PackedCollection)) {
+				throw new PdslParseException("scale() weight " + (i - 1)
+						+ " must be a bound tensor, got " + weight.getClass().getSimpleName());
+			}
+			weights.add((PackedCollection) weight);
+		}
 		return inputShape -> {
 			if (axis <= 0 || axis >= inputShape.getDimensions()) {
 				throw new PdslParseException("scale() axis " + axis
@@ -247,7 +269,7 @@ final class PdslBuiltins {
 						+ "] (one per batch entry and position of axis " + axis + " of "
 						+ inputShape + "), got " + factorShape);
 			}
-			return FEATURES.scale(inputShape, axis, factors);
+			return FEATURES.scale(inputShape, axis, factors, weights);
 		};
 	}
 

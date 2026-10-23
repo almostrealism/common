@@ -26,8 +26,14 @@ function expect(cond, msg) {
   }
 }
 
-function callCore(command) {
-  const r = spawnSync("python3", [CORE, "block-git-worktree", command], { encoding: "utf-8", timeout: 5000 })
+// The policy holds only in a FlowTree job session, so every call runs as one
+// unless it asks for an interactive session.
+function callCore(command, job = true) {
+  const env = { ...process.env }
+  delete env.AR_WORKSTREAM_URL
+  if (job) env.AR_FLOWTREE_JOB = "1"
+  else delete env.AR_FLOWTREE_JOB
+  const r = spawnSync("python3", [CORE, "block-git-worktree", command], { encoding: "utf-8", timeout: 5000, env })
   if (r.status !== 0) {
     return { action: "allow", reason: "", context: "", stderr: `core exit ${r.status}` }
   }
@@ -44,6 +50,12 @@ console.log("== tool.execute.before: block path ==")
   expect(d.action === "block", "git worktree add /tmp/wt → block")
   expect(d.reason.includes("BLOCKED"), "block reason says BLOCKED")
   expect(d.reason.includes("working tree"), "block reason mentions the working tree rule")
+}
+
+console.log("== interactive session: worktrees allowed ==")
+{
+  const d = callCore("git worktree add /tmp/wt", false)
+  expect(d.action === "allow", "git worktree add outside a FlowTree job → allow")
 }
 
 console.log("== tool.execute.before: allow path ==")

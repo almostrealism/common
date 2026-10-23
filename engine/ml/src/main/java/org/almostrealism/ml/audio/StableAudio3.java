@@ -35,6 +35,10 @@ import org.almostrealism.model.Model;
  * {@link DiffusionTransformer} with the ping-pong schedule of the released models, and the latent
  * is decoded by a {@link SAMEAutoEncoder}.
  *
+ * <p>Besides sampling from noise, a clip can be generated from a supplied latent at a chosen
+ * strength with {@link #generateFrom(long, long[], double, double, PackedCollection)}: a caller
+ * encodes audio with the same autoencoder, adjusts or composes the latent, and diffuses from it.</p>
+ *
  * <p>The transformer and the decoder are compiled once, for the longest clip the instance
  * generates: the requested duration plus the headroom the released pipeline adds, aligned to
  * whole latent frames and capped at the model's maximum clip. A shorter request is generated at
@@ -367,6 +371,14 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	public int getLatentLength() { return latentLen; }
 
 	/**
+	 * Returns the audio length the models are compiled for: the length a clip must be encoded at
+	 * for its latent to be accepted by {@link #generateFrom(long, long[], double, double, PackedCollection)}.
+	 *
+	 * @return the audio length in samples
+	 */
+	public int getAudioLength() { return samples; }
+
+	/**
 	 * Returns the transformer's padding mask, shape {@code [1, latentLength]}; after a generation it
 	 * holds the mask that generation used.
 	 *
@@ -437,6 +449,80 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
 	 */
 	public CollectionProducer generate(long seed, long[] prompt, double seconds) {
+		return diffuse(seed, prompt, seconds, 1.0, null);
+	}
+
+	/**
+	 * Generates a clip from prompt text, starting the diffusion from a supplied latent rather than
+	 * from noise, tokenizing the prompt with the tokenizer supplied to {@link #setTokenizer(Tokenizer)}.
+	 * See {@link #generateFrom(long, long[], double, double, PackedCollection)} for the meaning of
+	 * {@code strength} and the shape {@code startLatent} must have.
+	 *
+	 * @param seed        seed of the noise added to the start latent and the ping-pong noise injections
+	 * @param prompt      the prompt; empty or {@code null} for the unconditional prompt
+	 * @param seconds     the duration in seconds, at most the duration this instance was built for
+	 * @param strength    how far into the schedule the diffusion starts, in {@code [0, 1]}
+	 * @param startLatent the latent to start from, shape {@code [1, latentDim, getLatentLength()]}
+	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
+	 * @throws IllegalStateException if {@code prompt} is non-null and non-empty and no tokenizer has
+	 *                               been supplied
+	 */
+	public CollectionProducer generateFromText(long seed, String prompt, double seconds,
+											   double strength, PackedCollection startLatent) {
+		return generateFrom(seed, encodePrompt(prompt), seconds, strength, startLatent);
+	}
+
+	/**
+	 * Generates a clip by running the diffusion from a supplied latent — for example the encoding
+	 * of a clip, or a composition of several encodings — instead of from pure noise. Noise is added
+	 * to the start latent at the point of the ping-pong schedule selected by {@code strength}, and
+	 * the remaining steps run with the prompt's conditioning, exactly as in
+	 * {@link #generate(long, long[], double)}.
+	 *
+	 * <p>A strength of zero runs no diffusion and decodes {@code startLatent} as it is, so the
+	 * result is the decoder's reconstruction of the start latent. A strength of one starts from
+	 * the top of the schedule, where the start latent is replaced entirely by noise, so the result
+	 * equals {@link #generate(long, long[], double)} for the same seed, prompt and duration.</p>
+	 *
+	 * <p>The start latent must have been encoded for the audio length this instance is compiled
+	 * for, {@link #getAudioLength()} samples, so that its length is {@link #getLatentLength()}
+	 * frames; a latent of any other shape is rejected. It is not modified or released here, and
+	 * the producer reads the decoder's output buffer, which the next call overwrites, so it must be
+	 * evaluated before the next generation.</p>
+	 *
+	 * @param seed        seed of the noise added to the start latent and the ping-pong noise injections
+	 * @param prompt      token ids of the prompt; {@code null} or empty selects the unconditional prompt
+	 * @param seconds     the duration in seconds, at most the duration this instance was built for and
+	 *                    spanning at least one sample at {@link #getSampleRate()}
+	 * @param strength    how far into the schedule the diffusion starts, in {@code [0, 1]}
+	 * @param startLatent the latent to start from, shape {@code [1, latentDim, getLatentLength()]}
+	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
+	 * @throws IllegalArgumentException if {@code strength} is outside {@code [0, 1]} or
+	 *                                  {@code startLatent} does not have the model's latent shape
+	 */
+	public CollectionProducer generateFrom(long seed, long[] prompt, double seconds,
+										   double strength, PackedCollection startLatent) {
+		if (startLatent == null) {
+			throw new IllegalArgumentException("A start latent is required; use generate to sample from noise");
+		}
+
+		return diffuse(seed, prompt, seconds, strength, startLatent);
+	}
+
+	/**
+	 * Runs the conditioning, the sampling loop and the decoder for one clip. The latent is sampled
+	 * from noise when {@code startLatent} is {@code null} and from {@code startLatent} at the given
+	 * strength otherwise; only latents the sampler allocated are released here, never the caller's.
+	 *
+	 * @param seed        seed of the initial noise and the ping-pong noise injections
+	 * @param prompt      token ids of the prompt; {@code null} or empty selects the unconditional prompt
+	 * @param seconds     the duration in seconds
+	 * @param strength    the strength of the diffusion from {@code startLatent}; unused without one
+	 * @param startLatent the latent to start from, or {@code null} to start from noise
+	 * @return the audio, shape {@code [channels, samples]}, with values in {@code [-1, 1]}
+	 */
+	private CollectionProducer diffuse(long seed, long[] prompt, double seconds,
+									   double strength, PackedCollection startLatent) {
 		if (!Double.isFinite(seconds) || seconds <= 0.0 || seconds > maxSeconds) {
 			throw new IllegalArgumentException("Duration " + seconds + " is outside (0, " + maxSeconds + "]");
 		}
@@ -480,10 +566,11 @@ public class StableAudio3 implements CodeFeatures, ConsoleFeatures, Destroyable 
 				sampler.setGuidance(new ClassifierFreeGuidance(guidanceScale), negativeContext, negativeGlobal);
 			}
 
-			latent = sampler.sample(seed, context, global);
+			latent = startLatent == null ? sampler.sample(seed, context, global)
+					: sampler.sampleFrom(startLatent, strength, seed, context, global);
 			audio = decoder.forward(latent);
 		} finally {
-			if (latent != null) latent.destroy();
+			if (latent != null && latent != startLatent) latent.destroy();
 			if (context != null) context.destroy();
 			if (global != null) global.destroy();
 			if (negativeContext != null) negativeContext.destroy();

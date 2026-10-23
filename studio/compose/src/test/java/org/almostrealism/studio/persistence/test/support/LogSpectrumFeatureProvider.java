@@ -45,6 +45,9 @@ public class LogSpectrumFeatureProvider implements WaveDataFeatureProvider, Code
 	/** Lowest bin frequency, in Hz. */
 	public static final double MIN_FREQUENCY = 20.0;
 
+	/** Default model identifier used when a test does not supply one. */
+	public static final String DEFAULT_MODEL_IDENTIFIER = "log-spectrum";
+
 	/** Number of windows the signal is divided into. */
 	private final int frames;
 
@@ -57,8 +60,12 @@ public class LogSpectrumFeatureProvider implements WaveDataFeatureProvider, Code
 	/** Duration in seconds the {@code frames} windows are expected to span. */
 	private final double duration;
 
+	/** Identifier of the model these features are attributed to. */
+	private final String modelIdentifier;
+
 	/**
-	 * Creates a provider producing {@code frames x bins} features.
+	 * Creates a provider producing {@code frames x bins} features, attributed to
+	 * the {@value #DEFAULT_MODEL_IDENTIFIER} model.
 	 *
 	 * @param frames      number of windows
 	 * @param bins        frequency bins per window
@@ -66,11 +73,30 @@ public class LogSpectrumFeatureProvider implements WaveDataFeatureProvider, Code
 	 * @param duration    seconds the windows are expected to span
 	 */
 	public LogSpectrumFeatureProvider(int frames, int bins, int sampleRate, double duration) {
+		this(frames, bins, sampleRate, duration, DEFAULT_MODEL_IDENTIFIER);
+	}
+
+	/**
+	 * Creates a provider producing {@code frames x bins} features attributed to
+	 * the given model.
+	 *
+	 * @param frames          number of windows
+	 * @param bins            frequency bins per window
+	 * @param sampleRate      sample rate of the audio
+	 * @param duration        seconds the windows are expected to span
+	 * @param modelIdentifier the identifier recorded as the features' provenance
+	 */
+	public LogSpectrumFeatureProvider(int frames, int bins, int sampleRate,
+									  double duration, String modelIdentifier) {
 		this.frames = frames;
 		this.bins = bins;
 		this.sampleRate = sampleRate;
 		this.duration = duration;
+		this.modelIdentifier = modelIdentifier;
 	}
+
+	@Override
+	public String getModelIdentifier() { return modelIdentifier; }
 
 	@Override
 	public int getAudioSampleRate() { return sampleRate; }
