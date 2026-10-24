@@ -759,12 +759,17 @@ public class OperationProfileNode extends OperationProfile
 	/**
 	 * Saves this profile tree to the specified file in JavaBeans XML format.
 	 * The resulting XML can be loaded with {@link #load(File)} and analyzed
-	 * by the profile analyzer tools.
+	 * by the profile analyzer tools. Missing parent directories are created.
 	 *
 	 * @param file the file to write to
-	 * @throws IOException if an I/O error occurs
+	 * @throws IOException if an I/O error occurs or a parent directory cannot be created
 	 */
 	public void save(File file) throws IOException {
+		File parent = file.getAbsoluteFile().getParentFile();
+		if (parent != null && !parent.mkdirs() && !parent.isDirectory()) {
+			throw new IOException("Unable to create directory " + parent);
+		}
+
 		try (XMLEncoder encoder = new XMLEncoder(new FileOutputStream(file))) {
 			encoder.writeObject(this);
 		}

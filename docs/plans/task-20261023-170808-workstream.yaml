@@ -1,0 +1,7 @@
+# Implementation of task 18c76a7a ("Counter-based random numbers generated
+# inside kernels") must verify that the in-kernel hash produces matching results
+# on the Metal and native backends (a "done when" requirement). Metal is only
+# available on macOS FlowTree nodes, so the implementation workstream is pinned
+# to a macOS machine.
+requiredLabels:
+  platform: macos
