@@ -95,7 +95,7 @@ public enum ValueEncoding {
 	 * checks them: exactly one of these may be present in a {@link Collections.CollectionData}. The
 	 * two that have no protobuf payload ({@link #BF16}, {@link #F16}) are left out.
 	 */
-	public static final ValueEncoding[] PAYLOADS = { F64, F32, I32, I64 };
+	private static final ValueEncoding[] PAYLOADS = { F64, F32, I32, I64 };
 
 	/**
 	 * The largest magnitude integer a {@code double} represents exactly (2<sup>53</sup>). An
