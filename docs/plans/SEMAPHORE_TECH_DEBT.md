@@ -111,7 +111,7 @@ but should be re-shaped by this plan.
 | `MetalOperator.accept` (`MetalOperator.java:229-231`) | Same-runner `MetalSemaphore` → GPU-ordered via event wait; foreign semaphore → host `waitFor()` before encode | ⚠️ best-in-class today; foreign bridge can become non-blocking (§4.6) |
 | `CLOperator.accept` (`CLOperator.java:221, 273-289, 307`) | **Blocks on `dependsOn` unconditionally** (making its own `cl_event` wait-list branch dead); `processEvent` calls `clWaitForEvents` inline (`CLComputeContext.java:414`), so every dispatch is synchronous; **returns `null`** — the `CLSemaphore` return is commented out as a TODO | ❌ the worst offender: CL neither consumes nor produces semaphores |
 | `NativeExecution.accept` (`NativeExecution.java:228, 279`) | Blocks on `dependsOn` (has a TODO admitting it), then dispatches to a pool but **blocks on its own latch before returning** — the returned semaphore is always already-fired | ❌ doubly synchronous; the returned latch is theater |
-| `ExternalInstructionSet.apply` (`ExternalInstructionSet.java:103`) | Blocks on `dependsOn`, runs a subprocess synchronously | ⚠️ subprocess is inherently synchronous; acceptable if it *returns* a fired semaphore honestly and stops pretending otherwise |
+| `ExternalExecution.accept` (`ExternalExecution.java`) | Blocks on `dependsOn`, runs a subprocess synchronously | ⚠️ subprocess is inherently synchronous; acceptable if it *returns* a fired semaphore honestly and stops pretending otherwise |
 
 ### 2.2 The async argument pipeline (the source of this branch's bugs)
 

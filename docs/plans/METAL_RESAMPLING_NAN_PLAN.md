@@ -104,7 +104,7 @@ above.
    not be re-asserted without evidence.** `HardwareOperator.globalWorkSize`
    (`base/hardware/src/main/java/org/almostrealism/hardware/HardwareOperator.java:233,255,270`)
    is a mutable instance field on the (possibly shared, reused) operator, but
-   `AcceleratedOperation.setupOperator` calls `((KernelWork) operator).setGlobalWorkSize(process.getKernelSize())`
+   `AcceleratedOperation.setupOperator` calls `operator.setGlobalWorkSize(process.getKernelSize())`
    on **every** `apply()` (`base/hardware/src/main/java/org/almostrealism/hardware/AcceleratedOperation.java:732-751`),
    and `process.getKernelSize()` traces to `ProcessDetailsFactory` computing
    `output.getCountLong()` from the *calling* operation's own destination

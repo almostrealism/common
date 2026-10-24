@@ -571,8 +571,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 					getFunctionName() + " was compiled; reuse cannot be verified against it");
 		}
 
-		MemoryDataArgumentMap perOperation = MemoryDataArgumentMap.create(getComputeContext(),
-				isArgumentAggregationSupported() ? length -> createAggregatedInput(length, length) : null);
+		MemoryDataArgumentMap perOperation = createArgumentMap();
 		getCompiler().prepareScope(perOperation,
 				manager.getKernelStructureContext(getComputation()));
 

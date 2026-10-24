@@ -30,20 +30,14 @@ import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
-import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.instructions.InstructionSetManager;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.jni.NativeExecution;
-import org.almostrealism.hardware.kernel.KernelWork;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.MemoryReplacementManager;
-import org.almostrealism.hardware.metal.MTLBuffer;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 
@@ -74,8 +68,8 @@ import java.util.List;
  * <pre>{@code
  * // When scope is prepared:
  * prepareScope() {
- *     // Creates MemoryDataArgumentMap bound to this operation's ComputeContext
- *     argumentMap = MemoryDataArgumentMap.create(getComputeContext(), aggregateGenerator);
+ *     // Creates a MemoryDataArgumentMap bound to this operation's ComputeContext
+ *     argumentMap = createArgumentMap();
  * }
  * }</pre>
  *
@@ -180,8 +174,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	/** Timing metric for operator retrieval from instruction set managers. */
 	public static TimingMetric retrieveOperatorMetric = console.timing("retrieveOperator");
-	/** Timing metric for wrapped evaluation. */
-	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
 	/** The {@link ComputeContext} this operation executes within (OpenCL, Metal, JNI, etc.). */
 	private ComputeContext<MemoryData> context;
@@ -224,7 +216,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @throws IllegalStateException if the context, or its data context, is destroyed
 	 */
 	protected void requireLiveContext() {
-		if (context.isDestroyed() || context.getDataContext().isDestroyed()) {
+		if (!context.isLive()) {
 			throw new IllegalStateException("The compute context for " + getName() +
 					" has been destroyed");
 		}
@@ -305,9 +297,29 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	protected abstract int getOutputArgumentIndex();
 
 	/**
+	 * Creates a {@link MemoryDataArgumentMap} bound to this operation's {@link ComputeContext}.
+	 *
+	 * <p>When this operation {@link #isArgumentAggregationSupported() supports argument
+	 * aggregation}, the map is given an aggregate-buffer factory ({@link #createAggregatedInput})
+	 * so that small input arguments can be folded into a single kernel argument, keeping the
+	 * kernel's argument count under the compute context's limit; eligibility is decided per
+	 * argument by size inside the map. An operation that opts out gets a map that folds
+	 * nothing.</p>
+	 *
+	 * <p>Every map this operation folds its arguments through comes from here, so a fold replayed
+	 * against an already compiled scope lays its aggregate out exactly as the compilation did.</p>
+	 *
+	 * @return a new argument map for this operation
+	 */
+	protected MemoryDataArgumentMap createArgumentMap() {
+		return MemoryDataArgumentMap.create(getComputeContext(),
+				isArgumentAggregationSupported() ? memLength -> createAggregatedInput(memLength, memLength) : null);
+	}
+
+	/**
 	 * Prepares the scope for compilation by creating argument mappings and input managers.
 	 *
-	 * <p>This method initializes the {@link MemoryDataArgumentMap} if argument mapping is enabled,
+	 * <p>This method initializes the {@link MemoryDataArgumentMap} (see {@link #createArgumentMap()})
 	 * and delegates to {@link #prepareScope(ArgumentProvider)} for scope-specific setup.</p>
 	 *
 	 * @throws UnsupportedOperationException if prepareScope has already been called
@@ -319,13 +331,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		resetArguments();
 
-		// Provide an aggregate-buffer factory so that small input arguments can be folded into
-		// a single kernel argument (keeping the kernel's argument count under the compute
-		// context's limit). Eligibility is decided per argument by size inside the map. Operations
-		// that opt out (see isArgumentAggregationSupported) get a map with no aggregation.
-		argumentMap = MemoryDataArgumentMap.create(getComputeContext(),
-				isArgumentAggregationSupported() ? i -> createAggregatedInput(i, i) : null);
-
+		argumentMap = createArgumentMap();
 		prepareScope(argumentMap);
 	}
 
@@ -664,10 +670,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * result reads as zero.</p>
 	 *
 	 * <p><strong>Thread-local propagation.</strong> The dispatch below is registered as a
-	 * {@link AcceleratedProcessDetails#whenReady(Runnable) whenReady} listener, which runs
-	 * on the calling thread only when every argument is already available; when an argument's
-	 * completion is delivered asynchronously, the listener runs on the {@code ComputeContext}
-	 * executor thread that delivered it instead. The active {@link ComputeRequirement}s and
+	 * {@link AcceleratedProcessDetails#whenReady(Runnable) whenReady} listener. Once every
+	 * argument is available it runs on whichever thread takes it first: the thread waiting for
+	 * it in {@link AcceleratedProcessDetails#awaitReady() awaitReady} (ordinarily the one that
+	 * called this method), or the thread it is handed to &mdash; a {@code ComputeContext}
+	 * executor thread when hardware is asynchronous, otherwise the thread that delivered the
+	 * last argument. The active {@link ComputeRequirement}s and
 	 * the active {@link Heap} are both thread-local, so both are captured on the calling
 	 * thread and re-established inside the listener. Skipping the {@link Heap} half of this
 	 * would make {@link Heap#addPendingKernel(Semaphore)} a silent no-op whenever the listener
@@ -757,9 +765,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 
 				if (aggregateCopyOut) {
-					Semaphore copyOut = Submittable.submit(output == null ?
-							argumentMap.getPostprocessOperations(null) :
-							argumentMap.getPostprocessOperations((MemoryData) output), completion);
+					Semaphore copyOut = Submittable.submit(argumentMap.getPostprocessOperations(output), completion);
 					if (copyOut != null) {
 						completion = inflight = copyOut;
 					}
@@ -804,27 +810,25 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/**
 	 * Prepares the {@link Execution} operator for running the kernel with the specified process details.
 	 *
-	 * <p>This method loads the compiled kernel/native code and configures execution parameters such as
-	 * global work size based on the process details. For kernel operations, it sets up the {@link KernelWork}
-	 * interface with appropriate work dimensions.</p>
+	 * <p>This method loads the compiled kernel/native code and sets the work range it is dispatched
+	 * over (see {@link io.almostrealism.kernel.KernelWork}) to the process details' kernel size,
+	 * starting from the first work item.</p>
 	 *
 	 * @param process The process details containing kernel size and execution metadata
 	 * @return The configured {@link Execution} operator ready to accept arguments
-	 * @throws UnsupportedOperationException if the operator is not a {@link KernelWork}
-	 * @throws HardwareException if the operator has been destroyed
+	 * @throws HardwareException if the operator has been destroyed, or cannot be dispatched over
+	 *                           the kernel size
 	 */
 	protected Execution setupOperator(AcceleratedProcessDetails process) {
 		try {
 			Execution operator = load();
 
-			if (!(operator instanceof KernelWork)) {
-				throw new UnsupportedOperationException();
-			} else if (operator.isDestroyed()) {
+			if (operator.isDestroyed()) {
 				throw new HardwareException("Operator has already been destroyed");
 			}
 
-			((KernelWork) operator).setGlobalWorkOffset(0);
-			((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
+			operator.setGlobalWorkOffset(0);
+			operator.setGlobalWorkSize(process.getKernelSize());
 
 			return operator;
 		} catch (HardwareException e) {
@@ -849,31 +853,4 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/** Returns the console for logging operations. */
 	@Override
 	public Console console() { return console; }
-
-
-	/** Prints timing statistics. */
-	public static void printTimes() {
-		// Memory access
-		if (!NativeMemoryProvider.ioTime.getEntries().isEmpty()) {
-			NativeMemoryProvider.ioTime.print();
-		}
-
-		if (!MTLBuffer.ioTime.getEntries().isEmpty()) {
-			MTLBuffer.ioTime.print();
-		}
-
-		// Compilation
-		console.println("AcceleratedOperation: Retrieve operator total - " +
-				((long) AcceleratedOperation.retrieveOperatorMetric.getTotal()) + "sec");
-		console.println("AcceleratedOperation: JNI Compile - " +
-				((long) NativeCompiler.compileTime.getTotal()) + "sec");
-		console.println("AcceleratedOperation: MTL Compile - " +
-				((long) MetalProgram.compileTime.getTotal()) + "sec");
-
-		HardwareOperator.prepareArgumentsMetric.print();
-		HardwareOperator.computeDimMasksMetric.print();
-		NativeExecution.dimMaskMetric.print();
-
-		AcceleratedOperation.wrappedEvalMetric.print();
-	}
 }
