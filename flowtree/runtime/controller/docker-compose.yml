@@ -14,7 +14,7 @@
 #                        the controller, GitHub, and ar-memory.
 #
 #   fleet-db             Postgres store for runner-fleet monitoring
-#   fleet-grafana        (docs/plans/RUNNER_FLEET_MONITORING.md); both
+#   fleet-grafana        (tools/fleet/README.md); both
 #                        bound to the tailnet address only — see the
 #                        section at the end of this file.
 #
@@ -191,7 +191,7 @@ services:
 
   # ─── Runner fleet monitoring ───────────────────────────────────────
   #
-  # The central store and dashboard for docs/plans/RUNNER_FLEET_MONITORING.md.
+  # The central store and dashboard for runner-fleet monitoring (tools/fleet/README.md).
   # Collectors on every runner host and the GitHub poller write to fleet-db
   # over the tailnet; Grafana reads it over the compose network.
   #

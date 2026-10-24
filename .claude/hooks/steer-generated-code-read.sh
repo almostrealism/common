@@ -22,6 +22,6 @@
 # Exit 2  → BLOCK (the multi-line BLOCKED message is on stderr,
 #           shown to the model as the block reason)
 #
-# See docs/plans/OPENCODE_HOOKS.md for the architecture.
+# See docs/internals/agent-hooks.md for the architecture.
 set -euo pipefail
 exec python3 "$(cd "$(dirname "$0")" && pwd)/lib/steer_generated_code_check.py" --stdin

@@ -109,6 +109,18 @@ An unknown runner or phase key returns a 400 from
 response from `workstream_submit_task`. Jobs are never dispatched with an
 invalid runner choice.
 
+Capability mismatches are handled differently from unknown names, because a
+phase's model and effort may be inherited from a level that never knew which
+runner the phase would land on:
+
+- **Effort on a runner that doesn't support it** (`AgentCapabilities.supportsEffortLevel`
+  is false): passed through and ignored by the runner. The capability is metadata,
+  not a gate.
+- **Model outside a runner's `supportedModels`**: an empty set means "accept any
+  model" (e.g. opencode against an arbitrary OpenAI-compatible endpoint). A
+  non-empty set is checked when the phase runs, not at submission, so a bad
+  per-phase model currently fails mid-job.
+
 ---
 
 ## Wire serialization
@@ -245,6 +257,71 @@ in the runner map. To skip review, set the boolean:
 This keeps the runner-map vocabulary uncluttered and lets the workspace
 or workstream still configure a review runner for the (uncommon) case
 where review is re-enabled later.
+
+---
+
+## `FALSIFICATION`: gating load-bearing behavioural claims
+
+The falsification phase targets one recurring failure mode. An agent states a plausible
+claim about runtime behaviour, never runs the experiment that would falsify it, and later,
+at a decision point far from where the claim was made, treats it as established fact. The
+problem is not missing information; it is that load-bearing claims go unfalsified.
+
+`FalsificationPhase` runs after the primary session and before the enforcement rules. It
+is the only post-primary phase that can **bounce** the job back to a fresh primary run,
+using the same primitive as `onGitTampering()`. Review only files follow-ups, and
+retrospective only writes memories.
+
+**Division of labour.** The analysis session only *extracts* structured claims and tags
+captured artifacts. `FalsificationGate`, a pure Java function of its inputs, then computes
+each claim's verdict, so an agent cannot talk its way to `CONFIRMED`.
+
+**The gating predicate.** A claim *C* is gated iff:
+
+- **P1**: *C* is a contingent-empirical claim about system behaviour (runtime behaviour,
+  representational capacity, or causal explanation); **and**
+- **P2**: some named diff hunk is correct only if *C* is true; **and**
+- **P3**: either
+  - **P3a**: no captured artifact entails *C* on the relevant configuration (an evidence
+    gap); **or**
+  - **P3b**: a captured artifact entails ¬*C*, yet the decision proceeds anyway (a
+    contradiction).
+
+P3 must be a disjunction. Checked against three real incidents, a gate that only looks
+for missing evidence (P3a) catches two of the three. It misses the case where the agent had
+contradicting instrumentation in front of it and overrode it.
+
+**Verdicts, in order:**
+
+1. `NOT_GATED`: fails P1 or P2.
+2. `REFUTED`: a configuration-relevant artifact contradicts the claim.
+3. `CONFIRMED`: a configuration-matched artifact mechanically entails the claim under a
+   truth condition stated in advance.
+4. `UNSETTLED`: otherwise.
+
+Entailment means "the output shows X, and X is false unless *C*". "A command was run" is
+not entailment. `UNSETTLED` is the honest outcome and is never upgraded to `CONFIRMED`.
+
+**Bounded bounce.** A `REFUTED` or `UNSETTLED` load-bearing claim bounces the job to
+primary, with the finding presented next to the decision being redone. Corrections placed
+at the decision site are followed far more reliably than distant standing rules. Bounces
+are capped (`FalsificationPhase.DEFAULT_MAX_BOUNCES`). After the cap the phase passes
+through with the unsettled findings annotated, rather than looping or failing the job.
+
+**Current scope.** Claims are settled only from artifacts already captured in the job and
+from cross-codebase source. The phase does not yet emit probes: commands run to settle a
+claim the captured evidence cannot. Probes would need a sandbox or allow-list, and routing
+to a node whose configuration matches the claim, for example a host with two backends for
+a claim about backend behaviour. Until then, such claims stay `UNSETTLED`.
+
+## `RETROSPECTIVE`: outside the enforcement loop
+
+`RetrospectivePhase` runs after all enforcement rules have finished. It analyses the
+primary session's transcript and records its findings as memories, never as code changes.
+That is deliberate: a phase that produced no code changes inside the enforcement loop would
+leave rules re-running forever, and a phase that produced code changes would re-enter
+enforcement. Enable it per submission with `retrospective_enabled` on
+`workstream_submit_task`.
 
 ---
 
