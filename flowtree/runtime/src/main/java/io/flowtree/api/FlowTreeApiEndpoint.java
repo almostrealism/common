@@ -966,6 +966,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String deduplicationMode = JsonFieldExtractor.extractString(body, "deduplicationMode");
         int maxDeduplicationPasses = JsonFieldExtractor.extractInt(body, "maxDeduplicationPasses");
         boolean autoCreatePr = JsonFieldExtractor.extractBoolean(body, "autoCreatePr");
+        boolean createPrAsDraft = JsonFieldExtractor.extractBoolean(body, "createPrAsDraft");
         String postCompletionCommand = JsonFieldExtractor.extractString(body, "postCompletionCommand");
         String postCompletionWorkingDir = JsonFieldExtractor.extractString(body, "postCompletionWorkingDir");
         int postCompletionTimeoutSeconds = JsonFieldExtractor.extractInt(body, "postCompletionTimeoutSeconds");
@@ -1130,9 +1131,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Auto-create PR on successful completion
         if (autoCreatePr) {
             factory.setAutoCreatePr(true);
+            factory.setCreatePrAsDraft(createPrAsDraft);
             autoCreatePrJobs.put(factory.getTaskId(), new AutoPrContext(
                 factory.getRepoUrl(), factory.getBaseBranch(), workstream.getGithubOrg(),
-                factory.getDisplaySummary()));
+                factory.getDisplaySummary(), createPrAsDraft));
         }
 
         // Build workstream URL for status reporting
@@ -1328,7 +1330,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                                 ? event.getCommitHash() : event.getTargetBranch();
                         String prUrl = githubProxyHandler.createPullRequestFromCommit(
                             ownerRepo, event.getTargetBranch(), base,
-                            commitRef, prCtx.description, token);
+                            commitRef, prCtx.description, prCtx.draft, token);
                         if (prUrl != null) {
                             event.withPullRequestUrl(prUrl);
                         }

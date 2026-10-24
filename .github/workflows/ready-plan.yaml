@@ -1,0 +1,164 @@
+name: "Plan Ready"
+
+# Starts implementation when the owner approves a plan by marking its pull
+# request ready for review.
+#
+# A plan PR is opened as a draft (see PR_DRAFT / createPrAsDraft, set by the
+# planning jobs): a draft means the branch carries only a plan awaiting the
+# owner's approval. Marking it ready for review is that approval, and this
+# workflow turns it into the implementation that used to start only from a
+# manual Verify Completion dispatch — it dispatches that very workflow, so the
+# implementation path is unchanged.
+#
+# Trigger and trust. It runs on pull_request_target, so GitHub runs *master's*
+# copy of this file; the PR's branch cannot change what it does. It checks out
+# nothing and runs nothing from the PR — every value it uses is event metadata
+# or comes from the GitHub API. It dispatches Verify Completion through the API
+# (workflow_dispatch, which GITHUB_TOKEN is allowed to trigger), on the PR's
+# head branch, so the branch's own verify-completion.yaml runs exactly as it
+# does for a manual dispatch today. It needs `actions: write` for that.
+#
+# It dispatches only when every one of these holds:
+#   * the PR's head is a branch in this repository, not a fork (a fork cannot
+#     be given a workflow_dispatch here, and must not be able to start one);
+#   * the person who marked it ready is listed in the PLAN_APPROVERS repository
+#     variable (a space/comma/newline-separated list of GitHub logins). With
+#     the variable unset nothing is dispatched, so an agent or bot can never
+#     approve a plan by marking it ready;
+#   * the PR is still docs-only by the same rule analysis.yaml uses (every
+#     changed file under docs/). Once implementation commits land the PR is no
+#     longer docs-only, so re-toggling draft afterwards dispatches nothing —
+#     this is the main guard against a second implementation, alongside Implement
+#     Plan's own in-flight-job refusal.
+
+on:
+  pull_request_target:
+    types: [ready_for_review]
+    branches: [master]
+
+# Serialise per head branch so a rapid draft/ready toggle cannot dispatch twice.
+concurrency:
+  group: ready-plan-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    # A fork's head branch is not in this repository, so it can be neither
+    # dispatched nor trusted to start one. Everything below assumes a same-repo
+    # head branch.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      pull-requests: read
+      contents: read
+
+    steps:
+      # The approver allowlist lives in a repository variable, not in this file,
+      # so it is changed without a commit and is never set on a fork. An unset
+      # variable approves no one.
+      - name: Check the approver allowlist
+        id: approver
+        env:
+          APPROVERS: ${{ vars.PLAN_APPROVERS }}
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          # Normalise the list: commas, tabs and newlines become spaces, and
+          # everything is lower-cased (GitHub logins are case-insensitive), so a
+          # list written in any of those styles is matched the same way.
+          APPROVERS_NORM=$(printf '%s' "$APPROVERS" | tr ',\t\n' '   ' | tr '[:upper:]' '[:lower:]')
+          if [ -z "$(printf '%s' "$APPROVERS_NORM" | tr -d ' ')" ]; then
+            echo "::notice::PLAN_APPROVERS is unset — no one may approve a plan this way; nothing dispatched"
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SENDER_NORM=$(printf '%s' "$SENDER" | tr '[:upper:]' '[:lower:]')
+          APPROVED=false
+          for a in $APPROVERS_NORM; do
+            if [ "$a" = "$SENDER_NORM" ]; then
+              APPROVED=true
+              break
+            fi
+          done
+          echo "approved=$APPROVED" >> "$GITHUB_OUTPUT"
+          if [ "$APPROVED" = "true" ]; then
+            echo "::notice::$SENDER is an approver"
+          else
+            echo "::notice::$SENDER is not in PLAN_APPROVERS — nothing dispatched"
+          fi
+
+      # The same rule analysis.yaml uses: a PR is docs-only when every changed
+      # file is under docs/. Read from the PR files API, not a checkout, so
+      # nothing from the branch runs. Once implementation commits land the PR
+      # is no longer docs-only, so this is what stops a second implementation
+      # from a re-toggle.
+      - name: Check the PR is still docs-only
+        id: docs
+        if: steps.approver.outputs.approved == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          FILES=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+          if [ -z "$FILES" ]; then
+            echo "::notice::The PR changes no files — not docs-only; nothing dispatched"
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          NON_DOCS=$(printf '%s\n' "$FILES" | grep -v '^docs/' || true)
+          if [ -n "$NON_DOCS" ]; then
+            echo "::notice::The PR changes files outside docs/ — no longer a plan-only PR; nothing dispatched"
+            printf '%s\n' "$NON_DOCS" | sed 's/^/  non-docs: /'
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Dispatch Verify Completion on the PR's head branch. workflow_dispatch
+      # runs the branch's own copy of verify-completion.yaml, exactly as a
+      # manual dispatch or project_verify_branch does, so the implementation
+      # path is unchanged. The branch name is event metadata, passed through the
+      # environment and handed to the API as data, never interpolated into a
+      # shell command.
+      - name: Dispatch Verify Completion
+        id: dispatch
+        if: steps.approver.outputs.approved == 'true' && steps.docs.outputs.docs_only == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          gh api -X POST "repos/${REPO}/actions/workflows/verify-completion.yaml/dispatches" \
+            -f ref="$HEAD_BRANCH"
+          echo "dispatched=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Dispatched Verify Completion on $HEAD_BRANCH"
+
+      - name: Summary
+        if: always()
+        env:
+          SENDER: ${{ github.event.sender.login }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          APPROVED: ${{ steps.approver.outputs.approved }}
+          DOCS_ONLY: ${{ steps.docs.outputs.docs_only }}
+          DISPATCHED: ${{ steps.dispatch.outputs.dispatched }}
+        run: |
+          {
+            echo "## Plan Ready"
+            echo ""
+            echo "**Branch:** \`$HEAD_BRANCH\`"
+            echo "**Marked ready by:** $SENDER"
+            if [ "$DISPATCHED" = "true" ]; then
+              echo ""
+              echo "Approved — dispatched Verify Completion to implement the plan."
+            elif [ "$APPROVED" != "true" ]; then
+              echo ""
+              echo "Not dispatched: the person who marked it ready is not in \`PLAN_APPROVERS\` (or it is unset)."
+            elif [ "$DOCS_ONLY" != "true" ]; then
+              echo ""
+              echo "Not dispatched: the PR is no longer docs-only, so it is past the plan stage."
+            else
+              echo ""
+              echo "Not dispatched."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

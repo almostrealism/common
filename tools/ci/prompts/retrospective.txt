@@ -52,8 +52,35 @@ Before surveying anything, read where you left off:
    and the short slugs of the proposals it made (proposal_ids).
 2. Read the newest previous docs/qa/retrospectives/RETRO-*.md report, if any.
    For each proposal it recorded, decide its current status from the evidence:
-   acted on, rejected, or still open. A proposal still open after two runs is
-   escalated in your new report, not merely restated.
+   acted on, in progress, rejected, or still open. A proposal still open after
+   two runs is escalated in your new report, not merely restated.
+
+### Check for in-flight implementations before reporting a proposal "still open"
+
+A proposal is acted on the moment someone opens a pull request for it — not
+when that PR merges. A status check that reads only master (git log) reports
+such a proposal "still open", which wastes a person's attention or causes a
+second implementation of work already in flight. The previous run made exactly
+this mistake: it reported two proposals as open while a PR was already
+implementing them, because it noticed that PR only by its branch name.
+
+So before you classify ANY prior proposal "still open", look for an open PR, a
+recently merged one, or an open branch that implements it:
+
+- List every open PR with github_list_open_prs, filtered to ${REPO_URL}, and
+  read each title and branch. A PR whose title, branch or commits name or carry
+  out a proposal means that proposal is in progress, not open.
+- List in-window branches with workstream_list (include_archived=true). Pay
+  attention to the ci/qa- prefix: a pipeline-subject follow-up a person opens
+  from an accepted proposal uses it, and its branch name usually echoes the
+  proposal's slug.
+- For any candidate branch, resolve its PR with github_pr_find(state="all"),
+  which finds the PR whether it is open, merged or closed — and whether or not
+  the branch is one you already knew about.
+
+Report such a proposal as "in progress (PR #N)", not "still open", and do not
+re-propose work a PR is already doing. Only a proposal with no implementing PR
+and no implementing branch is genuinely still open.
 
 ## Write your report skeleton first, before you survey anything
 

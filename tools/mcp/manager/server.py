@@ -658,10 +658,15 @@ def _attempt_plan_writing_job(workstream_id: str, instructions: str,
         "any other code changes in this session."
     )
     try:
+        # The plan's pull request opens as a draft: it carries only a plan
+        # awaiting the owner's approval, which marking it ready for review
+        # grants, starting implementation.
         submit_result = workstream_submit_task(
             workstream_id=workstream_id,
             prompt=prompt,
             description="Write planning document",
+            auto_create_pr=True,
+            create_pr_as_draft=True,
         )
     except PermissionError as e:
         return _plan_failed("insufficient_scope", str(e),

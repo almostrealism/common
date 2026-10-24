@@ -477,6 +477,61 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
+     * A git operation that returns a process exit code, for use with
+     * {@link #retryTransient(int, long, GitStep)}.
+     */
+    @FunctionalInterface
+    public interface GitStep {
+        /**
+         * Runs the git operation once.
+         *
+         * @return the process exit code (0 indicates success)
+         * @throws IOException          if the process cannot be started
+         * @throws InterruptedException if the current thread is interrupted
+         */
+        int run() throws IOException, InterruptedException;
+    }
+
+    /**
+     * Runs a git step that returns an exit code, retrying a non-zero result
+     * with bounded backoff. A non-fast-forward sync, a lock held by a
+     * concurrent process, or a brief network failure clears on its own far
+     * more often than not, so the step is attempted up to {@code maxAttempts}
+     * times, sleeping {@code baseBackoffMillis * attempt} between tries.
+     *
+     * <p>Returns {@code 0} as soon as any attempt succeeds, or the last
+     * attempt's non-zero exit code when every attempt is spent. The caller
+     * decides what an exhausted failure means — typically a
+     * {@link TransientGitException} — so this method stays a pure policy with
+     * no opinion about how the failure is reported.</p>
+     *
+     * @param maxAttempts      the most times to run the step (at least 1)
+     * @param baseBackoffMillis the backoff unit; the wait before attempt
+     *                          {@code n+1} is {@code baseBackoffMillis * n}
+     *                          (pass 0 to disable the wait, as tests do)
+     * @param step             the git operation to run
+     * @return 0 on the first success, else the final non-zero exit code
+     * @throws IOException          if the step cannot be started
+     * @throws InterruptedException if the thread is interrupted while running
+     *                              or waiting between attempts
+     */
+    public static int retryTransient(int maxAttempts, long baseBackoffMillis, GitStep step)
+            throws IOException, InterruptedException {
+        int attempts = Math.max(1, maxAttempts);
+        int exitCode = 0;
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            exitCode = step.run();
+            if (exitCode == 0) {
+                return 0;
+            }
+            if (attempt < attempts && baseBackoffMillis > 0) {
+                Thread.sleep(baseBackoffMillis * attempt);
+            }
+        }
+        return exitCode;
+    }
+
+    /**
      * Executes a git command and returns the standard output.
      *
      * <p>The command is constructed as {@code git <args>}. Standard error

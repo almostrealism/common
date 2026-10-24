@@ -293,24 +293,24 @@ Moving flowtree tests into `build` — which runs on every `code_changed=true` �
 
 **Condition**: `base_changed OR compute_changed OR domain_changed OR engine_changed`
 
-**Runner**: `ubuntu-latest` (matrix strategy — 7 parallel groups)
+**Runner**: `ubuntu-latest` (matrix strategy — 5 parallel groups)
 
 ### Steps
 
 1. **Checkout** — full clone
 2. **Set up Java** — Temurin distribution
-3. **Run test matrix** — 7 groups (labeled 0 through 6), each covering a subset of modules
+3. **Run test matrix** — 5 groups (labeled 0 through 4), each covering a subset of modules
    - Groups are chosen to balance test duration across parallel runners
    - Each group runs `mvn test -pl <modules>` for its subset
-4. **Upload coverage per group** — `coverage-group-{0..6}`
+4. **Upload coverage per group** — `coverage-group-{0..4}`
    - Each group uploads its own `coverage-group-N` artifact
    - `retention-days: 1`, `if-no-files-found: ignore`
 
 ### Coverage artifacts produced
 
-`coverage-group-0`, `coverage-group-1`, `coverage-group-2`, `coverage-group-3`, `coverage-group-4`, `coverage-group-5`, `coverage-group-6`
+`coverage-group-0`, `coverage-group-1`, `coverage-group-2`, `coverage-group-3`, `coverage-group-4`
 
-All 7 must appear in `analysis.needs` (they are listed via the `test` job dependency, since `analysis` depends on the `test` job completing).
+All 5 must appear in `analysis.needs` (they are listed via the `test` job dependency, since `analysis` depends on the `test` job completing).
 
 ### When skipped
 
@@ -447,7 +447,7 @@ This job does not upload coverage artifacts. It does not appear in `analysis.nee
 1. **Checkout** — full clone
 2. **Download all `coverage-*` artifacts** into `all-coverage/`
    - Downloads every artifact whose name starts with `coverage-`
-   - This includes: `coverage-flowtree`, `coverage-group-0` through `coverage-group-6`, `coverage-media`
+   - This includes: `coverage-flowtree`, `coverage-group-0` through `coverage-group-4`, `coverage-media`
    - **`mkdir -p all-coverage` MUST come before `find`** — see critical invariant below
 3. **Merge JaCoCo `.exec` files** — uses JaCoCo CLI to merge all `.exec` files into a single combined file
 4. **Generate XML coverage report** — produces the XML report consumed by Qodana
@@ -485,7 +485,7 @@ needs: [build, test, test-media]
 
 This covers:
 - `build` → produces `coverage-flowtree`
-- `test` → produces `coverage-group-0` through `coverage-group-6`
+- `test` → produces `coverage-group-0` through `coverage-group-4`
 - `test-media` → produces `coverage-media`
 
 If you add a new job that uploads `coverage-*`, you MUST add it to `analysis.needs`.
@@ -508,8 +508,6 @@ All coverage artifacts follow the naming pattern `coverage-<descriptor>`. The `r
 | `coverage-group-2` | `test`       | JaCoCo `.exec` from test group 2      |
 | `coverage-group-3` | `test`       | JaCoCo `.exec` from test group 3      |
 | `coverage-group-4` | `test`       | JaCoCo `.exec` from test group 4      |
-| `coverage-group-5` | `test`       | JaCoCo `.exec` from test group 5      |
-| `coverage-group-6` | `test`       | JaCoCo `.exec` from test group 6      |
 | `coverage-media`   | `test-media` | JaCoCo `.exec` from media/studio tests |
 
 All artifacts use:
@@ -633,7 +631,7 @@ Follow these steps exactly when adding a new CI test job:
 
 5. **If it belongs to studio/**: The `studio_changed` flag already covers it. No CI changes needed.
 
-6. Consider whether the new module should be added to one of the 7 test groups in the `test` job. This may require rebalancing test group assignments to keep parallel execution times even.
+6. Consider whether the new module should be added to one of the 5 test groups in the `test` job. This may require rebalancing test group assignments to keep parallel execution times even.
 
 7. **Document the module** in `.github/CLAUDE.md` and in this document's dependency graph section.
 

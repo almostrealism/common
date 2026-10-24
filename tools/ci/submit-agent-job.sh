@@ -77,6 +77,9 @@
 #                       review pass only adds time and failure modes that are
 #                       not the ones it measures.
 #   AUTO_CREATE_PR    - auto-create a GitHub PR on success (default: false)
+#   PR_DRAFT          - open the auto-created PR as a draft, the convention for
+#                       a PR carrying only a plan awaiting approval (default:
+#                       false). No effect unless AUTO_CREATE_PR is true.
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
 #   DELAY_SECONDS     - delay execution by this many seconds (default: unset → run immediately)
 #   DESCRIPTION       - short label for notifications (e.g., "Resolve test failures")
@@ -162,6 +165,7 @@ PAYLOAD=$(jq -n \
     --argjson protect "${PROTECT_TEST_FILES:-false}" \
     --argjson enforce "${ENFORCE_CHANGES:-false}" \
     --argjson autopr "${AUTO_CREATE_PR:-false}" \
+    --argjson prdraft "${PR_DRAFT:-false}" \
     --argjson automated true \
     --argjson createws "$CREATE_WORKSTREAM" \
     '{
@@ -171,6 +175,7 @@ PAYLOAD=$(jq -n \
         protectTestFiles: $protect,
         enforceChanges: $enforce,
         autoCreatePr: $autopr,
+        createPrAsDraft: $prdraft,
         automated: $automated,
         createWorkstreamIfMissing: $createws
     }')

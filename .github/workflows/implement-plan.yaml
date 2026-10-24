@@ -28,9 +28,19 @@ name: "Implement Plan"
 #       secrets:
 #         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
 #
-# Nothing starts implementation automatically. Before this runs, a plan
-# branch only gets a review that improves its documents and never carries out
-# the plan.
+# Implementation starts when the plan is approved, not from a push or the
+# pipeline. In this repository approval is marking the plan's draft pull
+# request ready for review, which the Plan Ready workflow (ready-plan.yaml)
+# turns into a dispatch of this workflow's caller; a consumer without that
+# workflow dispatches the caller by hand. Before approval a plan branch only
+# gets a review that improves its documents and never carries out the plan.
+#
+# It refuses to submit a second implementation while the branch's workstream
+# already has a job pending or running — the register-workstream job's
+# in-flight check against the controller, which gates build-prompt and so the
+# submission. That holds across every dispatch path (the ready-for-review
+# trigger, a manual dispatch, project_verify_branch) and across separate
+# workflow runs, which the per-branch concurrency group alone does not.
 #
 # Every run registers (or updates) the branch's FlowTree workstream, and
 # applies the workstream settings the plan declares for itself: a
@@ -236,6 +246,13 @@ jobs:
     permissions:
       contents: read
 
+    outputs:
+      # Whether the branch's workstream already has a job pending or running.
+      # build-prompt gates on it so a second implementation is never dispatched
+      # beside one already in flight — from this trigger, a manual dispatch, or
+      # project_verify_branch.
+      inflight: ${{ steps.inflight.outputs.inflight }}
+
     steps:
       # register-workstream.sh takes its target from the environment
       # (BRANCH/BASE_BRANCH/PLAN_FILE), so this job needs nothing from the
@@ -248,6 +265,7 @@ jobs:
           persist-credentials: false
 
       - name: Register workstream
+        id: register
         env:
           CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
@@ -259,6 +277,22 @@ jobs:
           REQUIRED_LABELS_JSON: ${{ needs.resolve-plan-settings.outputs.required_labels }}
         run: bash ./tools/ci/register-workstream.sh
 
+      # The controller's in-flight view for this workstream: if a job is already
+      # pending or running on it, the implementation is not dispatched again.
+      # This is the one guard that holds across all three dispatch paths (this
+      # trigger, a manual Verify Completion, project_verify_branch) and across
+      # separate workflow runs, which the per-branch concurrency group alone
+      # does not — concurrency serialises runs of this workflow, not the agent
+      # job a finished run left running.
+      - name: Check for an in-flight job
+        id: inflight
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          WORKSTREAM_ID: ${{ steps.register.outputs.workstream_id }}
+        run: bash ./tools/ci/workstream-idle.sh
+
       # plan_file derives from the dispatch input, so it and the ref name reach
       # the summary through the environment rather than interpolated into the
       # script, where either could execute.
@@ -269,6 +303,8 @@ jobs:
           PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
           SETTINGS_FILE: ${{ needs.resolve-plan-settings.outputs.settings_file }}
           REQUIRED_LABELS: ${{ needs.resolve-plan-settings.outputs.required_labels }}
+          INFLIGHT: ${{ steps.inflight.outputs.inflight }}
+          INFLIGHT_COUNT: ${{ steps.inflight.outputs.inflight_count }}
           JOB_STATUS: ${{ job.status }}
         run: |
           echo "## Register Workstream" >> "$GITHUB_STEP_SUMMARY"
@@ -285,6 +321,14 @@ jobs:
           if [ -n "$SETTINGS_FILE" ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "Applied \`$SETTINGS_FILE\`: required labels \`$REQUIRED_LABELS\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          # When the workstream already has work in flight, build-prompt and
+          # verify are skipped; say so here so the refusal is not read as a
+          # silent success.
+          if [ "$INFLIGHT" = "true" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**No implementation was dispatched:** the workstream already has ${INFLIGHT_COUNT:-a} job(s) pending or running." >> "$GITHUB_STEP_SUMMARY"
+            echo "Wait for that work to finish before approving the plan again." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ── Phase 3: Build the implementation prompt (token-free) ─────────
@@ -304,12 +348,19 @@ jobs:
     # register-workstream job that needs it is *skipped*, not failed, and the
     # skipped-registration allowance above would otherwise submit the
     # implementation without the labels the plan declared.
+    #
+    # The `inflight` guard refuses to build (and so to submit) when the
+    # workstream already has a job pending or running: a second implementation
+    # beside one in flight is exactly the double dispatch this prevents. An
+    # empty value — register-workstream skipped — is not 'true', so the
+    # skipped-registration path still proceeds.
     if: |
       !cancelled()
       && needs.detect-plan.result == 'success'
       && needs.resolve-plan-settings.result == 'success'
       && (needs.register-workstream.result == 'success'
           || needs.register-workstream.result == 'skipped')
+      && needs.register-workstream.outputs.inflight != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
