@@ -58,9 +58,6 @@ public interface ArgumentProvider {
 	 *
 	 * <p>The returned function returns {@code null} for {@code null} inputs and applies
 	 * output variable post-processing when {@link #enableArgumentPostProcessing} is {@code true}.
-	 * Every argument it returns has had the opportunity to
-	 * {@link ArrayVariable#prepareDependentArguments(ArgumentProvider) obtain the further
-	 * arguments} its reads depend on from this provider.</p>
 	 *
 	 * @param <T> the type of value produced by the inputs
 	 * @return a function from input supplier to array variable
@@ -72,7 +69,6 @@ public interface ArgumentProvider {
 			} else {
 				ArrayVariable<T> arg = getArgument(input, null, -1);
 				if (enableArgumentPostProcessing) processOutputVariableDelegation(arg);
-				if (arg != null) arg.prepareDependentArguments(this);
 				return arg;
 			}
 		};

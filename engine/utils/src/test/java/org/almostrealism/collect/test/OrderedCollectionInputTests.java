@@ -27,6 +27,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionProducer;
@@ -268,6 +269,27 @@ public class OrderedCollectionInputTests extends TestSuiteBase {
 		assertEvaluatesTo(new double[] { 4.0, 0.0, 0.0, 6.0 }, () -> c(2).multiply(cp(diagonal)));
 		assertEvaluatesTo(new double[] { 0.0, 4.0, 6.0, 0.0 }, () -> c(2).multiply(cp(antiDiagonal)));
 		assertEvaluatesTo(new double[] { 4.0, 0.0, 0.0, 6.0 }, () -> c(2).multiply(cp(diagonal)));
+	}
+
+	/**
+	 * One provider of an ordered collection, shared by two computations that are both compiled
+	 * before either is evaluated, is read through each kernel's own index table argument. The
+	 * provider binds its ordering to the arguments of whichever kernel prepared it last, so each
+	 * argument variable must keep the ordering it was created with.
+	 */
+	@Test(timeout = 60000)
+	public void sharedOrderedProviderAcrossKernels() {
+		CollectionProducer input = cp(compact());
+
+		Evaluable<PackedCollection> product = c(2).multiply(input).get();
+		Evaluable<PackedCollection> sum = c(3).add(input).get();
+
+		assertEquals(4.0, product.evaluate().toDouble(0));
+		assertEquals(0.0, product.evaluate().toDouble(1));
+		assertEquals(6.0, product.evaluate().toDouble(3));
+		assertEquals(5.0, sum.evaluate().toDouble(0));
+		assertEquals(3.0, sum.evaluate().toDouble(1));
+		assertEquals(6.0, sum.evaluate().toDouble(3));
 	}
 
 	/**

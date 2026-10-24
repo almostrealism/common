@@ -22,6 +22,7 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
@@ -325,6 +326,26 @@ public class ReshapeProducer
 		} else {
 			return shape;
 		}
+	}
+
+	/**
+	 * Returns the ordering through which generated code reads the elements of this reshape.
+	 * When the {@link #getShape() shape} carries the ordering of the reshaped producer, the
+	 * elements are read through that producer, so the producer's
+	 * {@link Shape#getOrdering() ordering} is returned, including any binding of it to the
+	 * kernel's arguments. An ordering of the explicit shape itself is returned as it is.
+	 *
+	 * @return the ordering applied to reads of this reshape, or {@code null} if it has none
+	 */
+	@Override
+	public TraversalOrdering getOrdering() {
+		TraversalOrdering order = getShape().getOrder();
+		if (order != null && producer instanceof Shape
+				&& order == ((Shape<?>) producer).getShape().getOrder()) {
+			return ((Shape<?>) producer).getOrdering();
+		}
+
+		return order;
 	}
 
 	/**

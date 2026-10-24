@@ -16,7 +16,6 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Array;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.compute.PhysicalScope;
@@ -275,17 +274,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		if (getDelegate() == null || getDelegate() == this) return null;
 		return getDelegate().getTraversableExpression();
 	}
-
-	/**
-	 * Obtains, from the given {@link ArgumentProvider}, any further kernel arguments that
-	 * reads of this variable depend on. This is called by
-	 * {@link ArgumentProvider#argumentForInput()} for every argument it supplies, with the
-	 * provider that supplied it, before the variable is used to generate code. A plain array
-	 * variable reads only its own memory, so the default does nothing.
-	 *
-	 * @param provider the provider of the kernel's arguments
-	 */
-	public void prepareDependentArguments(ArgumentProvider provider) { }
 
 	/**
 	 * Sets the offset expression used when accessing the delegate array.

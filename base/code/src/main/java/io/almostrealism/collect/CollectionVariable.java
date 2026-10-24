@@ -16,7 +16,6 @@
 
 package io.almostrealism.collect;
 
-import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Mask;
@@ -75,14 +74,13 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	private TraversalPolicy shape;
 
 	/**
-	 * The ordering of the shape as it is read in generated code, once it has been
-	 * {@link TraversalOrdering#bind(ArgumentProvider) bound} to the kernel's arguments by
-	 * {@link #prepareDependentArguments(ArgumentProvider)}, or {@code null} before then.
+	 * The ordering through which the elements of this variable are read in generated code.
 	 */
-	private TraversalOrdering boundOrder;
+	private TraversalOrdering ordering;
 
 	/**
-	 * Constructs a new {@code CollectionVariable} with global physical scope and Double type.
+	 * Constructs a new {@code CollectionVariable} with global physical scope and Double type,
+	 * read through the ordering of its shape.
 	 *
 	 * @param name     the name identifier for this variable
 	 * @param shape    the {@link TraversalPolicy} defining the shape of this collection
@@ -91,6 +89,23 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	public CollectionVariable(String name, TraversalPolicy shape,
 							  Supplier<Evaluable<? extends Multiple<T>>> producer) {
 		this(name, shape, PhysicalScope.GLOBAL, Double.class, producer);
+	}
+
+	/**
+	 * Constructs a new {@code CollectionVariable} with global physical scope and Double type
+	 * for a producer whose values have the given {@link Shape}. The variable takes that shape,
+	 * and is read through its {@link Shape#getOrdering() ordering} as it is when the variable
+	 * is created, which is the ordering the producer has bound to the arguments of the kernel
+	 * being compiled if its scope has been prepared.
+	 *
+	 * @param name     the name identifier for this variable
+	 * @param source   the shape of the values supplied by the producer
+	 * @param producer the supplier that produces evaluable instances of this collection
+	 */
+	public CollectionVariable(String name, Shape<?> source,
+							  Supplier<Evaluable<? extends Multiple<T>>> producer) {
+		this(name, source.getShape(), producer);
+		this.ordering = source.getOrdering();
 	}
 
 	/**
@@ -107,6 +122,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 							  Supplier<Evaluable<? extends Multiple<T>>> p) {
 		super(name, scope, type, p);
 		this.shape = shape;
+		this.ordering = shape.getOrder();
 	}
 
 	/**
@@ -131,28 +147,16 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Returns the {@link TraversalOrdering} through which the elements of this variable are
-	 * read in generated code: the ordering of its {@link #getShape() shape}, bound to the
-	 * kernel's arguments if {@link #prepareDependentArguments(ArgumentProvider)} has bound it.
+	 * read in generated code. For a variable created for a producer with a {@link Shape}, this
+	 * is the {@link Shape#getOrdering() ordering} of that producer when the variable was created,
+	 * so that an ordering the producer bound to the kernel's arguments while its scope was
+	 * prepared is the one read, even if the producer is later prepared for another kernel.
+	 * Otherwise it is the ordering of the {@link #getShape() shape}.
 	 *
 	 * @return the ordering applied to reads of this variable, or {@code null} if it has none
 	 */
-	public TraversalOrdering getOrdering() {
-		return boundOrder == null ? getShape().getOrder() : boundOrder;
-	}
-
-	/**
-	 * Binds the ordering of this variable's shape to the kernel's arguments, so that any
-	 * collection the ordering reads in order to map an index is delivered to the kernel by
-	 * the given provider. A variable whose shape has no ordering depends on no other
-	 * argument.
-	 *
-	 * @param provider the provider of the kernel's arguments
-	 */
 	@Override
-	public void prepareDependentArguments(ArgumentProvider provider) {
-		if (boundOrder != null || getShape().getOrder() == null) return;
-		boundOrder = getShape().getOrder().bind(provider);
-	}
+	public TraversalOrdering getOrdering() { return ordering; }
 
 	/**
 	 * Returns the {@link #getProducerDelegate() producer delegate} as a
@@ -274,8 +278,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 * {@inheritDoc}
 	 *
 	 * <p>Membership is decided by the {@link #getOrdering() ordering} through which this
-	 * variable is read, so it agrees with {@link #getValueAt(Expression)} once the ordering
-	 * has been bound to the kernel's arguments.</p>
+	 * variable is read, so it agrees with {@link #getValueAt(Expression)}.</p>
 	 */
 	@Override
 	public Expression<Boolean> containsIndex(Expression<Integer> index) {
@@ -382,7 +385,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 											  Supplier<Evaluable<? extends Multiple<T>>> p) {
 		Object shaped = p instanceof Delegated && !(p instanceof Shape) ? ((Delegated<?>) p).getDelegate() : p;
 		return shaped instanceof Shape
-				? new CollectionVariable(name, ((Shape<?>) shaped).getShape(), p)
+				? new CollectionVariable(name, (Shape<?>) shaped, p)
 				: new ArrayVariable<>(name, p);
 	}
 }

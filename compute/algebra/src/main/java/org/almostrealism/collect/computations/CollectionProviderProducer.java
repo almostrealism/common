@@ -16,11 +16,14 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Computable;
@@ -34,6 +37,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
+import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -74,6 +78,18 @@ import java.util.List;
  *   <li><strong>Aggregation Targets:</strong> {@code null} (signature depends on computation context)</li>
  *   <li><strong>Other Shapes:</strong> {@code |shape} (shape only)</li>
  * </ul>
+ *
+ * <h2>Ordered Values</h2>
+ * <p>When the value's shape carries a {@link TraversalOrdering} that reads a collection in
+ * order to map an index (a lookup table or a mask), that collection must be delivered to any
+ * kernel that reads the value. As a {@link ScopeLifecycle} participant, this producer
+ * {@link TraversalOrdering#bind(ArgumentProvider) binds} the ordering to the kernel's arguments
+ * in {@link #prepareScope(ArgumentProvider, KernelStructureContext)}, before the argument
+ * variable for its value is created, and exposes the bound ordering through
+ * {@link #getOrdering()} until {@link #resetArguments()}. The argument variable captures the
+ * bound ordering when it is created, so a kernel keeps reading through its own arguments even
+ * if this producer is later prepared for another kernel. The {@link #getShape() shape} is
+ * unaffected, so the value reads the same way on the host.</p>
  *
  * <h2>Equality and Hashing</h2>
  * <p>Two {@code CollectionProviderProducer} instances are considered equal if they provide
@@ -156,7 +172,7 @@ public class CollectionProviderProducer<T extends Shape>
 		implements CollectionProducerBase<T, Producer<T>>,
 				Process<Process<?, ?>, Evaluable<? extends T>>,
 				OperationInfo, Signature, DescribableParent<Process<?, ?>>,
-				CollectionFeatures {
+				ScopeLifecycle, CollectionFeatures {
 	/**
 	 * Metadata for profiling and operation tracking, including the operation name
 	 * and shape details.
@@ -168,6 +184,19 @@ public class CollectionProviderProducer<T extends Shape>
 	 * producer provides.
 	 */
 	private final Shape value;
+
+	/**
+	 * The ordering of the value's shape, {@link TraversalOrdering#bind(ArgumentProvider) bound}
+	 * to the arguments of the kernel being compiled, or {@code null} if the scope has not been
+	 * prepared since the arguments were last reset.
+	 */
+	private TraversalOrdering boundOrder;
+
+	/**
+	 * The {@link ArgumentProvider} that {@link #boundOrder} was bound to, held weakly so that
+	 * it does not pin the argument map of a previous compilation in memory.
+	 */
+	private WeakReference<ArgumentProvider> boundProvider;
 
 	/**
 	 * Constructs a provider producer for the specified {@link Shape} value.
@@ -228,6 +257,50 @@ public class CollectionProviderProducer<T extends Shape>
 
 	@Override
 	public boolean isProvider() { return true; }
+
+	/**
+	 * Returns the ordering through which generated code reads the provided value: the ordering
+	 * of its shape, {@link TraversalOrdering#bind(ArgumentProvider) bound} to the kernel's
+	 * arguments if {@link #prepareScope(ArgumentProvider, KernelStructureContext)} has bound it.
+	 *
+	 * @return the ordering applied to reads of the value, or {@code null} if it has none
+	 */
+	@Override
+	public TraversalOrdering getOrdering() {
+		return boundOrder == null ? getShape().getOrder() : boundOrder;
+	}
+
+	/**
+	 * Binds the ordering of the value's shape to the arguments supplied by the given manager,
+	 * so that any collection the ordering reads in order to map an index is delivered to the
+	 * kernel. A value whose shape has no ordering depends on no other argument. Preparing again
+	 * with the same manager keeps the existing binding, while a different manager (a new
+	 * compilation) rebinds, so that no variable of a previous argument map is reused.
+	 *
+	 * @param manager the provider of the kernel's arguments
+	 * @param context the kernel structure context for the compilation
+	 */
+	@Override
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
+		TraversalOrdering order = getShape().getOrder();
+		if (order == null) return;
+
+		ArgumentProvider previous = boundProvider == null ? null : boundProvider.get();
+		if (boundOrder != null && previous == manager) return;
+
+		boundOrder = order.bind(manager);
+		boundProvider = new WeakReference<>(manager);
+	}
+
+	/**
+	 * Discards the ordering bound by {@link #prepareScope(ArgumentProvider, KernelStructureContext)},
+	 * since it refers to the arguments of the compilation that prepared it.
+	 */
+	@Override
+	public void resetArguments() {
+		boundOrder = null;
+		boundProvider = null;
+	}
 
 	/**
 	 * Creates a traversal view of this producer along the specified axis.
