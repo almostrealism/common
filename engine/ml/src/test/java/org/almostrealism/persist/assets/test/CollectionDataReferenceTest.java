@@ -116,7 +116,7 @@ public class CollectionDataReferenceTest {
 		CollectionDataReference reference =
 				CollectionDataReference.of(message(encoded, 0));
 
-		Assert.assertEquals(ValueEncoding.F64, reference.getEncoding());
+		Assert.assertEquals(Precision.FP64, reference.getPrecision());
 		Assert.assertEquals(expected().length, reference.getCount());
 		Assert.assertArrayEquals(expected(), read(reference, encoded, 0), 0.0);
 	}
@@ -128,7 +128,7 @@ public class CollectionDataReferenceTest {
 		CollectionDataReference reference =
 				CollectionDataReference.of(message(encoded, 0));
 
-		Assert.assertEquals(ValueEncoding.F32, reference.getEncoding());
+		Assert.assertEquals(Precision.FP32, reference.getPrecision());
 		Assert.assertEquals(expected().length, reference.getCount());
 		Assert.assertArrayEquals(expected(), read(reference, encoded, 0), 1e-6);
 	}
@@ -304,13 +304,14 @@ public class CollectionDataReferenceTest {
 
 	/**
 	 * An {@code I32} payload reads back exactly through all three read paths — the located (mapped)
-	 * range, the parsed collection, and a decode into a destination buffer.
+	 * range, the parsed collection, and a decode into a destination buffer. The extreme values are
+	 * powers of two so they are held exactly by FP32 collection memory as well as FP64.
 	 */
 	@Test(timeout = 30000)
 	public void anI32PayloadReadsBackThroughEveryPath() {
 		assertIntegerPayloadReadsBack(
-				CollectionEncoder.encode(PackedCollection.of(-7, 0, 100, Integer.MAX_VALUE), ValueEncoding.I32),
-				ValueEncoding.I32, new double[] { -7, 0, 100, Integer.MAX_VALUE });
+				CollectionEncoder.encode(PackedCollection.of(-7, 0, 100, 1 << 30, Integer.MIN_VALUE), ValueEncoding.I32),
+				ValueEncoding.I32, new double[] { -7, 0, 100, 1 << 30, Integer.MIN_VALUE });
 	}
 
 	/**
@@ -406,6 +407,41 @@ public class CollectionDataReferenceTest {
 			Assert.fail("A value out of range for I32 should be rejected");
 		} catch (IllegalArgumentException e) {
 			Assert.assertTrue(e.getMessage(), e.getMessage().contains("outside the range"));
+		} finally {
+			c.destroy();
+		}
+	}
+
+	/** An integer payload reports FP64 as its precision, since FP32 cannot hold every integer value exactly. */
+	@Test(timeout = 30000)
+	public void anIntegerPayloadNeedsDoublePrecision() {
+		byte[] bytes = CollectionEncoder.encode(PackedCollection.of(1, 2, 3), ValueEncoding.I32).toByteArray();
+		CollectionDataReference reference = CollectionDataReference.of(message(bytes, 0));
+		Assert.assertEquals(ValueEncoding.I32, reference.getEncoding());
+		Assert.assertEquals(Precision.FP64, reference.getPrecision());
+	}
+
+	/**
+	 * {@code Integer.MAX_VALUE} is stored exactly by eight-byte collection memory and so encodes as
+	 * {@code I32}; narrower memory rounds it to 2<sup>31</sup>, and the rejection then says the value
+	 * may have been rounded out of range by the memory rather than only that it is out of range.
+	 */
+	@Test(timeout = 30000)
+	public void theLargestI32ValueIsRejectedOnlyWhenMemoryRoundsIt() {
+		PackedCollection c = PackedCollection.of(Integer.MAX_VALUE);
+		try {
+			if (c.getMem().getProvider().getNumberSize() >= Long.BYTES) {
+				assertIntegerPayloadReadsBack(CollectionEncoder.encode(c, ValueEncoding.I32),
+						ValueEncoding.I32, new double[] { Integer.MAX_VALUE });
+			} else {
+				try {
+					CollectionEncoder.encode(c, ValueEncoding.I32);
+					Assert.fail("A value rounded past the I32 range by narrow memory should be rejected");
+				} catch (IllegalArgumentException e) {
+					Assert.assertTrue(e.getMessage(), e.getMessage().contains("outside the range"));
+					Assert.assertTrue(e.getMessage(), e.getMessage().contains("rounded"));
+				}
+			}
 		} finally {
 			c.destroy();
 		}

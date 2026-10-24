@@ -139,6 +139,28 @@ public enum ValueEncoding {
 	public boolean isInteger() { return integer; }
 
 	/**
+	 * Returns the narrowest {@link Precision} that holds every value of this encoding exactly.
+	 *
+	 * <p>This is the precision memory must have for the values to survive being read into it:
+	 * {@link #BF16} needs {@link Precision#FP32} because its exponent range exceeds FP16's, and
+	 * both integer encodings need {@link Precision#FP64}, since an FP32 value is exact only up to
+	 * 2<sup>24</sup>.</p>
+	 *
+	 * @return the precision
+	 */
+	public Precision getPrecision() {
+		switch (this) {
+			case F16:
+				return Precision.FP16;
+			case BF16:
+			case F32:
+				return Precision.FP32;
+			default:
+				return Precision.FP64;
+		}
+	}
+
+	/**
 	 * Decodes the value stored at a byte position.
 	 *
 	 * @param buffer the file's bytes, in little-endian order
@@ -171,13 +193,20 @@ public enum ValueEncoding {
 	 * written out as an integer payload: a value that is not integral, or that would not survive the
 	 * round trip, is rejected rather than truncated.
 	 *
-	 * @param value the value
-	 * @param index the value's position, for the failure message
+	 * <p>The values come from collection memory, which may hold them at less than double precision.
+	 * Memory narrower than eight bytes per value cannot hold every {@code I32} or {@code I64} value
+	 * exactly ({@code Integer.MAX_VALUE} in FP32 memory reads back as 2<sup>31</sup>), so when it
+	 * is, the out-of-range message says so: the value was most likely rounded out of range before it
+	 * reached this check, and the remedy is wider memory, not a different value.</p>
+	 *
+	 * @param value       the value
+	 * @param index       the value's position, for the failure message
+	 * @param memoryBytes the number of bytes per value in the memory the value was read from
 	 * @return the value as a {@code long}
 	 * @throws IllegalArgumentException if this encoding is not an integer encoding, or the value is
 	 *         not a whole number, or it is out of range for this encoding's width
 	 */
-	long toExactLong(double value, int index) {
+	long toExactLong(double value, int index, int memoryBytes) {
 		if (!integer) {
 			throw new IllegalArgumentException(this + " is not an integer encoding");
 		} else if (Double.isNaN(value) || Double.isInfinite(value) || value != Math.rint(value)) {
@@ -189,7 +218,10 @@ public enum ValueEncoding {
 		long floor = this == I32 ? Integer.MIN_VALUE : -MAX_EXACT_INTEGER;
 		if (value < floor || value > bound) {
 			throw new IllegalArgumentException("the value " + value + " at index " + index
-					+ " is outside the range of " + this + " (" + floor + " to " + bound + ")");
+					+ " is outside the range of " + this + " (" + floor + " to " + bound + ")"
+					+ (memoryBytes < Long.BYTES ? "; the collection holds " + memoryBytes
+						+ "-byte values, which cannot represent every " + this + " value exactly, so it"
+						+ " may have been rounded out of range when it was stored" : ""));
 		}
 
 		return (long) value;
@@ -326,8 +358,9 @@ public enum ValueEncoding {
 			c.doubleStream().forEach(d -> data.addData32((float) d));
 		} else if (integer) {
 			double[] values = c.doubleStream().toArray();
+			int memoryBytes = values.length == 0 ? Long.BYTES : c.getMem().getProvider().getNumberSize();
 			for (int i = 0; i < values.length; i++) {
-				long value = toExactLong(values[i], i);
+				long value = toExactLong(values[i], i, memoryBytes);
 				if (this == I32) {
 					data.addDataI32((int) value);
 				} else {

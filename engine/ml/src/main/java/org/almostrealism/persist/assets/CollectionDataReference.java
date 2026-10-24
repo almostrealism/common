@@ -16,6 +16,7 @@
 
 package org.almostrealism.persist.assets;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.protobuf.Collections;
@@ -94,6 +95,13 @@ public class CollectionDataReference {
 
 	/** Returns how the values are stored and decoded. */
 	public ValueEncoding getEncoding() { return encoding; }
+
+	/**
+	 * Returns the narrowest precision that holds every value exactly.
+	 *
+	 * @see ValueEncoding#getPrecision()
+	 */
+	public Precision getPrecision() { return encoding.getPrecision(); }
 
 	/** Returns the byte position of the first value within the file. */
 	public long getValueOffset() { return valueOffset; }
