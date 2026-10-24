@@ -16,8 +16,10 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
@@ -73,6 +75,13 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	private TraversalPolicy shape;
 
 	/**
+	 * The ordering of the shape as it is read in generated code, once it has been
+	 * {@link TraversalOrdering#bind(ArgumentProvider) bound} to the kernel's arguments by
+	 * {@link #prepareDependentArguments(ArgumentProvider)}, or {@code null} before then.
+	 */
+	private TraversalOrdering boundOrder;
+
+	/**
 	 * Constructs a new {@code CollectionVariable} with global physical scope and Double type.
 	 *
 	 * @param name     the name identifier for this variable
@@ -118,6 +127,31 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	public boolean isFixedCount() {
 		return Countable.isFixedCount(getProducerDelegate());
+	}
+
+	/**
+	 * Returns the {@link TraversalOrdering} through which the elements of this variable are
+	 * read in generated code: the ordering of its {@link #getShape() shape}, bound to the
+	 * kernel's arguments if {@link #prepareDependentArguments(ArgumentProvider)} has bound it.
+	 *
+	 * @return the ordering applied to reads of this variable, or {@code null} if it has none
+	 */
+	public TraversalOrdering getOrdering() {
+		return boundOrder == null ? getShape().getOrder() : boundOrder;
+	}
+
+	/**
+	 * Binds the ordering of this variable's shape to the kernel's arguments, so that any
+	 * collection the ordering reads in order to map an index is delivered to the kernel by
+	 * the given provider. A variable whose shape has no ordering depends on no other
+	 * argument.
+	 *
+	 * @param provider the provider of the kernel's arguments
+	 */
+	@Override
+	public void prepareDependentArguments(ArgumentProvider provider) {
+		if (boundOrder != null || getShape().getOrder() == null) return;
+		boundOrder = getShape().getOrder().bind(provider);
 	}
 
 	/**
@@ -199,7 +233,9 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 *   <li>Delegating to the underlying {@link TraversableExpression} if the producer supports it</li>
 	 *   <li>Handling single-element shapes specially</li>
 	 *   <li>Applying modular arithmetic for fixed-count collections</li>
-	 *   <li>Transforming indices according to the shape's traversal order</li>
+	 *   <li>Transforming indices according to the shape's traversal order, reading zero for
+	 *       an index the {@link #getOrdering() ordering} does not contain (an absent element
+	 *       of a compact or sparse ordering), as the host read path does</li>
 	 * </ul>
 	 *
 	 * <p>Falling back to this variable's own references when the
@@ -225,12 +261,26 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 				index = index.toInt().imod(getShape().getTotalSize());
 			}
 
-			if (getShape().getOrder() != null) {
-				index = getShape().getOrder().indexOf(index);
+			TraversalOrdering order = getOrdering();
+			if (order == null) {
+				return (Expression) reference(index);
 			}
 
-			return (Expression) reference(index);
+			return Mask.of(order.containsIndex(index), (Expression) reference(order.indexOf(index)));
 		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Membership is decided by the {@link #getOrdering() ordering} through which this
+	 * variable is read, so it agrees with {@link #getValueAt(Expression)} once the ordering
+	 * has been bound to the kernel's arguments.</p>
+	 */
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		TraversalOrdering order = getOrdering();
+		return order == null ? CollectionExpression.super.containsIndex(index) : order.containsIndex(index);
 	}
 
 	/**

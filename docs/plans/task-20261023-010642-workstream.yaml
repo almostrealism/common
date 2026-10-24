@@ -1,0 +1,5 @@
+# Implementation of this plan must verify ordered-collection inputs on Metal as
+# well as native (see PLAN-20261023-sparse-traversal-ordering.md, "Success criteria").
+# Metal is provided only by macOS FlowTree nodes.
+requiredLabels:
+  platform: macos

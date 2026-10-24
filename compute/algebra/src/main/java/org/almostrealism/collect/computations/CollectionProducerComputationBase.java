@@ -173,7 +173,15 @@ public abstract class CollectionProducerComputationBase
 	 * <p>The output shape must have a positive total size, and all arguments must be non-null.
 	 * The first argument position is reserved for the destination buffer, which is automatically
 	 * managed by this base class.</p>
-	 * 
+	 *
+	 * <p>Any {@link io.almostrealism.collect.TraversalOrdering} on the output shape is removed:
+	 * a computation produces a dense output, with one element per logical index. An ordered
+	 * collection is a correct <em>input</em> to a computation, which reads it through its
+	 * ordering, but producing an ordered (compact or sparse) output would mean writing only the
+	 * elements the ordering gives a position, which is a scatter or segmented reduction rather
+	 * than the element-wise evaluation every computation performs. Such outputs belong to
+	 * dedicated sparse computations, not to this base class.</p>
+	 *
 	 * @param name A human-readable name for this computation, used in debugging and profiling.
 	 *             May be null, in which case a default name will be generated.
 	 * @param outputShape The {@link TraversalPolicy} defining the multi-dimensional shape of the output.
