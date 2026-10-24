@@ -20,6 +20,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.Collection;
 import io.almostrealism.collect.RepeatTraversalOrdering;
+import io.almostrealism.collect.SplitIndexTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -1237,6 +1238,25 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	public static PackedCollection of(long... values) {
 		return of(doubles(values));
+	}
+
+	/**
+	 * Creates a collection of shape {@code (n, 2)} holding the given integer indices in the
+	 * split layout read by {@link SplitIndexTraversalOrdering}, as encoded by
+	 * {@link SplitIndexTraversalOrdering#encode(int...)}: for each index {@code v}, the high
+	 * lane {@code floorDiv(v, BASE)} followed by the low lane {@code floorMod(v, BASE)}.
+	 *
+	 * <p>Unlike {@link #of(int...)}, whose values above {@code 2^24} are rounded when stored in
+	 * single precision memory, every lane of this layout is exactly representable in FP32, so
+	 * the indices are recovered exactly by {@link SplitIndexTraversalOrdering#indexOf} and by the
+	 * split-index gather in {@code CollectionFeatures}. The lanes are uploaded in one transfer.</p>
+	 *
+	 * @param values the integer indices to store
+	 * @return a new {@link PackedCollection} of shape {@code (values.length, 2)}
+	 */
+	public static PackedCollection ofSplitIndices(int... values) {
+		return of(SplitIndexTraversalOrdering.encode(values))
+				.reshape(new TraversalPolicy(values.length, SplitIndexTraversalOrdering.LANES));
 	}
 
 	/**
