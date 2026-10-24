@@ -127,6 +127,10 @@ import java.util.stream.Stream;
  * // -> Listeners run on executor thread pool
  * }</pre>
  *
+ * <p>A thread that reaches {@link #awaitReady()} before an executor thread has taken the
+ * listeners runs them itself instead of parking until one does; whichever thread takes them
+ * first runs them, exactly once.</p>
+ *
  * <h2>Two-stage synchronization: readiness latch vs. completion semaphore</h2>
  *
  * <p>Because {@code apply} returns this process <em>before</em> its {@link #whenReady(Runnable)}
@@ -313,10 +317,15 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * completion, letting a caller chain or wait on work that has not been issued. The
 	 * interrupt status is restored once the dispatch has been issued.</p>
 	 *
+	 * <p>A listener that is ready to run but has not yet been taken by the {@link #executor} is
+	 * run here, on the waiting thread (see {@link #runPendingListeners()}), so the wait does not
+	 * depend on an executor thread being scheduled.</p>
+	 *
 	 * @throws HardwareException if a {@link #whenReady(Runnable)} listener failed, with that
 	 *                           failure as its cause
 	 */
 	public void awaitReady() {
+		runPendingListeners();
 		if (readyLatch != null) readyLatch.waitForUninterruptibly();
 
 		Throwable failure = listenerFailure;
@@ -516,13 +525,67 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * across listener execution.</p>
 	 */
 	private void notifyListeners() {
+		runListeners(takeListeners());
+	}
+
+	/**
+	 * Runs, on the calling thread, the listeners that are ready to run but have not yet been
+	 * taken by the {@link #executor}. Called by {@link #awaitReady()}.
+	 *
+	 * <p>With asynchronous hardware, {@link #checkReady()} hands the listeners to the
+	 * {@link #executor} as soon as the arguments are processed, and every caller of
+	 * {@code AcceleratedOperation.apply} then waits in {@link #awaitReady()} for them to have run.
+	 * The waiting thread would do nothing but wait, while an executor thread is woken to issue the
+	 * dispatch and then wakes the waiter in turn &mdash; two cross-thread hand-offs, each costing
+	 * far more than issuing a small kernel. Whichever of the two threads takes the listeners first
+	 * runs them; the other finds none left. Listeners taken here run exactly as on the executor,
+	 * outside this instance's monitor, recording a failure for {@link #awaitReady()} to report and
+	 * counting down the {@link #readyLatch readiness latch}.</p>
+	 *
+	 * <p>Nothing is run before the arguments have been processed, since a listener must never see
+	 * them otherwise (they are then still being delivered, and the delivering thread hands the
+	 * listeners to the executor once the last arrives). Nothing is run when no readiness latch is
+	 * set, since {@link #awaitReady()} then does not wait for the listeners at all, nor on an
+	 * interrupted thread, which waits for the executor exactly as before.</p>
+	 */
+	private void runPendingListeners() {
+		if (readyLatch == null || Thread.currentThread().isInterrupted()) return;
+
 		List<Runnable> pending;
 
 		synchronized (this) {
-			pending = new ArrayList<>(listeners);
-			listeners.clear();
+			if (arguments == null) return;
+			pending = takeListeners();
 		}
 
+		try {
+			runListeners(pending);
+		} catch (RuntimeException | Error e) {
+			// Recorded by runListeners; awaitReady reports it as it reports an executor's failure
+		}
+	}
+
+	/**
+	 * Captures and clears the pending listeners under the instance monitor, so each listener is
+	 * taken by exactly one thread.
+	 *
+	 * @return the listeners that were pending, possibly none
+	 */
+	private synchronized List<Runnable> takeListeners() {
+		List<Runnable> pending = new ArrayList<>(listeners);
+		listeners.clear();
+		return pending;
+	}
+
+	/**
+	 * Runs the given listeners in order on the calling thread, which must not hold the instance
+	 * monitor (see {@link #notifyListeners()}). The {@link #readyLatch readiness latch} is counted
+	 * down once for each listener that runs, whether or not it completes normally. A failure is
+	 * recorded for {@link #awaitReady()} to rethrow and is then rethrown here, ending the run.
+	 *
+	 * @param pending the listeners to run
+	 */
+	private void runListeners(List<Runnable> pending) {
 		pending.forEach(r -> {
 			try {
 				r.run();
@@ -546,12 +609,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * @param failure the failure that prevents the listeners from running
 	 */
 	private void failListeners(Throwable failure) {
-		List<Runnable> pending;
-
-		synchronized (this) {
-			pending = new ArrayList<>(listeners);
-			listeners.clear();
-		}
+		List<Runnable> pending = takeListeners();
 
 		listenerFailure = failure;
 		if (readyLatch == null) return;

@@ -22,20 +22,17 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 /**
  * {@link MemoryProvider} for file-based memory storage used by external process execution.
  *
  * <p>Provides {@link LocalExternalMemory} instances backed by disk files instead of RAM.
- * Data is lazily loaded from files when needed and written back on demand. Used by
- * {@link ExternalInstructionSet} to transfer data to/from external processes.</p>
+ * Data is lazily loaded from files when needed and written back on demand. An
+ * {@link ExternalDataDirectory} reads the results an external process leaves in its files
+ * back through {@link #read(File, MemoryData)}.</p>
  *
  * <h2>Memory Model</h2>
  *
@@ -74,21 +71,28 @@ import java.util.stream.Stream;
  * <h2>Configuration</h2>
  *
  * <ul>
- *   <li><strong>enableLazyReading:</strong> If true, delay file reads until data accessed (default: true)</li>
+ *   <li><strong>enableLazyReading:</strong> If true, {@link #read(File, MemoryData)} maps the
+ *       file instead of copying it, so values are read when accessed (default: true)</li>
  * </ul>
  *
  * @see LocalExternalMemory
- * @see ExternalInstructionSet
+ * @see ExternalDataDirectory
  */
 public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 	/** If true, file reads are deferred until the data is first accessed. */
 	public static boolean enableLazyReading = true;
 
-	/** Shared provider instance with a null location, used for lazy-read reassignment. */
-	private static LocalExternalMemoryProvider local = new LocalExternalMemoryProvider(null);
+	/** Supplier of file paths for new memory allocations, or null if this provider has none. */
+	private final Supplier<File> location;
 
-	/** Supplier of file paths for new memory allocations. */
-	private Supplier<File> location;
+	/**
+	 * Creates a provider of memory mapping only the files it is given, through
+	 * {@link #allocate(File, int)} or {@link #read(File, MemoryData)}. Having no location of its
+	 * own, it cannot {@link #allocate(int) allocate} empty memory.
+	 */
+	public LocalExternalMemoryProvider() {
+		this(null);
+	}
 
 	/**
 	 * Creates a file-based memory provider.
@@ -123,9 +127,11 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 	 *
 	 * @param size Number of doubles to allocate
 	 * @return {@link LocalExternalMemory} backed by a file
+	 * @throws UnsupportedOperationException if this provider maps only the files it is given
 	 */
 	@Override
 	public Memory allocate(int size) {
+		if (location == null) return MemoryProvider.super.allocate(size);
 		return allocate(location.get(), size);
 	}
 
@@ -182,149 +188,36 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 	}
 
 	/**
-	 * Reads binary data from numbered files in a directory into the corresponding memory data arguments.
+	 * Returns whether {@link #read(File, MemoryData)} makes the file the memory it reads into,
+	 * rather than copying the values out of it. A file read that way must outlive the read,
+	 * since it is deleted only when that memory is deallocated.
 	 *
-	 * @param dest Directory containing numbered argument files
-	 * @param args Memory data arguments to populate
-	 * @throws IOException If any file cannot be read
+	 * @return {@link #enableLazyReading}
 	 */
-	protected static void readData(File dest, MemoryData[] args) throws IOException {
-		for (int i = 0; i < args.length; i++) {
-			readBinary(new File(dest, String.valueOf(i)), args[i]);
-		}
+	public boolean isLazyReading() {
+		return enableLazyReading;
 	}
 
 	/**
-	 * Writes memory data arguments to numbered binary files in a directory.
+	 * Reads the memory image in the given file into the given memory data.
 	 *
-	 * @param dest Directory to write argument files into
-	 * @param args Memory data arguments to write
-	 * @throws IOException If any file cannot be written
-	 */
-	protected static void writeData(File dest, MemoryData[] args) throws IOException {
-		for (int i = 0; i < args.length; i++) {
-			writeBinary(new File(dest, String.valueOf(i)), args[i]);
-		}
-	}
-
-	/**
-	 * Writes a binary file containing the memory lengths of the given arguments.
+	 * <p>When this provider {@link #isLazyReading() reads lazily}, nothing is copied: the root of
+	 * the memory data is reassigned to memory of this provider mapping the file, which is then
+	 * deleted when that memory is deallocated rather than when it is read. Otherwise the values
+	 * are copied into the memory data, and the file is no longer needed once this returns.</p>
 	 *
-	 * @param dest Directory to write the sizes file into
-	 * @param args Memory data arguments whose lengths to record
-	 * @throws IOException If the file cannot be written
+	 * @param src  the file holding the image, big-endian FP64
+	 * @param dest the memory data to read it into
+	 * @throws IOException if the file cannot be read
 	 */
-	protected static void writeSizes(File dest, MemoryData[] args) throws IOException {
-		writeBinary(new File(dest, "sizes"), Stream.of(args).mapToInt(MemoryData::getMemLength).toArray());
-	}
-
-	/**
-	 * Writes a binary file containing the memory offsets of the given arguments.
-	 *
-	 * @param dest Directory to write the offsets file into
-	 * @param args Memory data arguments whose offsets to record
-	 * @throws IOException If the file cannot be written
-	 */
-	protected static void writeOffsets(File dest, MemoryData[] args) throws IOException {
-		writeBinary(new File(dest, "offsets"), Stream.of(args).mapToInt(MemoryData::getOffset).toArray());
-	}
-
-	/**
-	 * Writes a binary file containing the given count value.
-	 *
-	 * @param dest Directory to write the count file into
-	 * @param count Count value to write
-	 * @throws IOException If the file cannot be written
-	 */
-	protected static void writeCount(File dest, int count) throws IOException {
-		writeBinary(new File(dest, "count"), new int[]{count});
-	}
-
-	/**
-	 * Reads binary data from a file into the given memory data instance.
-	 *
-	 * @param src Source file to read from
-	 * @param mem Memory data instance to populate
-	 * @throws IOException If the file cannot be read
-	 */
-	protected static void readBinary(File src, MemoryData mem) throws IOException {
-		if (enableLazyReading) {
-			mem.getRootDelegate().reassign(local.allocate(src, mem.getRootDelegate().getMemLength()));
+	public void read(File src, MemoryData dest) throws IOException {
+		if (isLazyReading()) {
+			MemoryData root = dest.getRootDelegate();
+			root.reassign(allocate(src, root.getMemLength()));
 		} else {
 			try (InputStream in = new FileInputStream(src)) {
-				mem.read(in);
+				dest.read(in);
 			}
-		}
-	}
-
-	/**
-	 * Writes the raw bytes of the given memory data to a binary file.
-	 *
-	 * @param dest Destination file to write to
-	 * @param mem  Memory data to write
-	 * @throws IOException If the file cannot be written
-	 */
-	protected static void writeBinary(File dest, MemoryData mem) throws IOException {
-		writeBinary(dest, mem.getMem(), mem.getMemLength());
-	}
-
-	/**
-	 * Writes the first {@code length} elements of raw memory to a binary file.
-	 *
-	 * @param dest   Destination file to write to
-	 * @param mem    Raw memory to read from
-	 * @param length Number of elements to write
-	 * @throws IOException If the file cannot be written
-	 */
-	protected static void writeBinary(File dest, Memory mem, int length) throws IOException {
-		writeBinary(dest, mem.getBytes(length).array());
-	}
-
-	/**
-	 * Writes an array of integers to a binary file as 32-bit values.
-	 *
-	 * @param dest Destination file to write to
-	 * @param data Integer data to write
-	 * @throws IOException If the file cannot be written
-	 */
-	protected static void writeBinary(File dest, int data[]) throws IOException {
-		ByteBuffer buf = ByteBuffer.allocate(data.length * 8);
-		for (int i : data) buf.putInt(i);
-		writeBinary(dest, buf.array());
-	}
-
-	/**
-	 * Reads double values from a binary file into the given array.
-	 *
-	 * @param src  Source file to read from
-	 * @param data Array to populate with double values
-	 * @throws IOException If the file cannot be read
-	 */
-	protected static void readBinary(File src, double data[]) throws IOException {
-		ByteBuffer buf = ByteBuffer.allocate(8 * data.length);
-		try (InputStream in = new FileInputStream(src)) {
-			for (int i = 0; i < data.length; i++) {
-				buf.put(in.readNBytes(8));
-			}
-		}
-
-		buf.position(0);
-
-		for (int i = 0; i < data.length; i++) {
-			data[i] = buf.getDouble();
-		}
-	}
-
-	/**
-	 * Writes raw bytes to a file.
-	 *
-	 * @param dest Destination file to write to
-	 * @param data Byte data to write
-	 * @throws IOException If the file cannot be written
-	 */
-	protected static void writeBinary(File dest, byte data[]) throws IOException {
-		try (OutputStream out = new FileOutputStream(dest)) {
-			out.write(data);
 		}
 	}
 }
