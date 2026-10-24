@@ -21,8 +21,11 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.DelegatedTraversalOrdering;
 import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.RepeatTraversalOrdering;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Signature;
@@ -311,5 +314,24 @@ public class OrderedCollectionInputTests extends TestSuiteBase {
 		assertTrue(cp(plain).containsIndex(3).orElseThrow());
 		assertFalse(cp(plain).containsIndex(4).orElseThrow());
 		assertFalse(cp(compact).containsIndex(2).orElseThrow());
+	}
+
+	/**
+	 * A traversable expression that knows nothing of its extent defines a value at every
+	 * non-negative index, so membership no longer throws: a negative index (the position of an
+	 * absent element) is not a member, and every non-negative index is, however large.
+	 */
+	@Test(timeout = 10000)
+	public void traversableExpressionMembershipIsNonNegative() {
+		TraversableExpression<Double> unbounded = new TraversableExpression<>() {
+			@Override
+			public Expression<Double> getValueAt(Expression<?> index) {
+				return new DoubleConstant(1.0);
+			}
+		};
+
+		assertFalse(unbounded.containsIndex(-1).orElseThrow());
+		assertTrue(unbounded.containsIndex(0).orElseThrow());
+		assertTrue(unbounded.containsIndex(Integer.MAX_VALUE).orElseThrow());
 	}
 }
