@@ -550,20 +550,21 @@ heavy suites do not contend on their fleet:
 - **CL lane (linux/ROCm, `ar-ci-cl`):** `test-cl` → `test-media-cl`.
   Serialised for the same reason: the ROCm host has a single GPU.
 
-The CPU and GPU lanes run in parallel. The CL lane starts once the **CPU lane**
-has finished, and runs alongside the GPU lane: `test-cl` beside `test-mac`,
-`test-media-cl` beside `test-media-mac`. `test-cl` gates on `test` and
-`test-media` (each success-or-skipped), and `test-media-cl` gates on `test-cl`
-**and on those same two jobs directly**. The second part is not redundant:
+The CPU and GPU lanes run in parallel. `test-cl` starts once the Linux **test**
+stage is green — it no longer waits for the whole CPU lane — and runs alongside
+the GPU lane: `test-cl` beside `test-mac`, `test-media-cl` beside
+`test-media-mac`. `test-cl` gates on `test` (success-or-skipped), since it is the
+OpenCL duplicate of the same modules; `test-media-cl` gates on `test-cl` **and on
+`test` and `test-media` directly**. That second part is not redundant:
 `test-cl` is skipped either by its own layer gate or by an upstream failure, and
 its `skipped` result cannot tell the two apart — gating `test-media-cl` on
 `test-cl` alone let it run after a Linux suite had failed. A downstream job must
 never infer "upstream was fine" from a `skipped` that has more than one cause;
 it gates on the upstream lanes itself. This is admission control, not GPU
-serialisation — the fleets are different machines. The CL lane is eleven
+serialisation — the fleets are different machines. The CL lane is nine
 matrix jobs on a single host, and it is "Linux plus an accelerator": a branch
-that cannot pass the Linux CPU suites will not pass their OpenCL duplicates
-either, so the ROCm runners are spent only on branches that have cleared them.
+that cannot pass the Linux CPU suite will not pass its OpenCL duplicate
+either, so the ROCm runners are spent only on branches that have cleared it.
 
 The CL lane does **not** wait for the Metal suites. It once did, so that a
 branch failing on Metal would not spend the ROCm fleet, but that held a healthy
@@ -633,8 +634,8 @@ retune them one variable at a time, as measured follow-ups, so a regression stay
 attributable.
 
 The self-hosted jobs split their suites across several groups, with group counts
-tuned per lane: `test-media-cuda` uses seven; `test-cl` six; `test-media-cl`
-five; `test-cuda` four; and `test`, `test-media`, `test-mac` and
+tuned per lane: `test-media-cuda` uses seven; `test-media-cl` five; `test-cl`
+and `test-cuda` four; and `test`, `test-media`, `test-mac` and
 `test-media-mac` three. The CL backend hits its
 memory ceiling under large per-group loads even at `AR_HARDWARE_MEMORY_SCALE=7`
 (the highest scale used anywhere — the scale is exponential, so raising it
