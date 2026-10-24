@@ -422,6 +422,21 @@ public class CollectionDataReferenceTest {
 	}
 
 	/**
+	 * Each encoding reports the narrowest precision that holds its values exactly: FP16 for
+	 * {@code F16}, FP32 for {@code BF16} (whose exponent range exceeds FP16's) and {@code F32}, and
+	 * FP64 for {@code F64} and both integer encodings.
+	 */
+	@Test(timeout = 30000)
+	public void everyEncodingReportsTheNarrowestExactPrecision() {
+		Assert.assertEquals(Precision.FP16, ValueEncoding.F16.getPrecision());
+		Assert.assertEquals(Precision.FP32, ValueEncoding.BF16.getPrecision());
+		Assert.assertEquals(Precision.FP32, ValueEncoding.F32.getPrecision());
+		Assert.assertEquals(Precision.FP64, ValueEncoding.F64.getPrecision());
+		Assert.assertEquals(Precision.FP64, ValueEncoding.I32.getPrecision());
+		Assert.assertEquals(Precision.FP64, ValueEncoding.I64.getPrecision());
+	}
+
+	/**
 	 * {@code Integer.MAX_VALUE} is stored exactly by eight-byte collection memory and so encodes as
 	 * {@code I32}; narrower memory rounds it to 2<sup>31</sup>, and the rejection then says the value
 	 * may have been rounded out of range by the memory rather than only that it is out of range.
