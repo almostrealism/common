@@ -73,7 +73,18 @@ public class ExplicitIndexTraversalOrdering extends IndexExpressionTraversalOrde
 	 * @param indices  collection containing the explicit index values defining the traversal order
 	 */
 	public ExplicitIndexTraversalOrdering(PackedCollection indices) {
-		super(indices);
+		this(indices, indices);
+	}
+
+	/**
+	 * Creates an ordering that looks logical indices up through the given expression.
+	 *
+	 * @param indices  the index collection
+	 * @param lookup   the expression supplying the entries of the index collection, either
+	 *                 the collection itself or the kernel argument it is delivered as
+	 */
+	private ExplicitIndexTraversalOrdering(PackedCollection indices, TraversableExpression<?> lookup) {
+		super(lookup);
 		this.indices = indices;
 	}
 
@@ -98,11 +109,13 @@ public class ExplicitIndexTraversalOrdering extends IndexExpressionTraversalOrde
 	 * {@inheritDoc}
 	 *
 	 * <p>Returns an ordering that looks each logical index up in the kernel argument the
-	 * provider supplies for the index collection.</p>
+	 * provider supplies for the index collection, whether or not this ordering was already
+	 * bound to another kernel's arguments. The bound ordering reports the same
+	 * {@link #getLength() length}.</p>
 	 */
 	@Override
 	public TraversalOrdering bind(ArgumentProvider provider) {
 		TraversableExpression<?> lookup = provider.traversableArgument(new CollectionProviderProducer<>(indices));
-		return lookup == null ? this : new IndexExpressionTraversalOrdering(lookup);
+		return lookup == null ? this : new ExplicitIndexTraversalOrdering(indices, lookup);
 	}
 }

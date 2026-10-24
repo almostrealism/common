@@ -19,6 +19,8 @@ package org.almostrealism.collect.test;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.collect.DelegatedTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
@@ -224,6 +226,39 @@ public class CollectionOrderingTests extends TestSuiteBase {
 				new ExplicitIndexTraversalOrdering(pack(1, 0)),
 				new IndexMaskTraversalOrdering(pack(0, 3)));
 		assertTrue(tables.bind(provider) == tables);
+		assertEquals(2, requested.size());
+	}
+
+	/**
+	 * A bound {@link ExplicitIndexTraversalOrdering} is still an explicit index ordering: it
+	 * reads the argument the provider supplies, reports the length of the original index
+	 * collection, and binding it again requests the index collection from the new provider.
+	 */
+	@Test(timeout = 10000)
+	public void explicitIndexBindingKeepsOrdering() {
+		List<Supplier<?>> requested = new ArrayList<>();
+		PackedCollection argument = pack(1, 0, 0);
+		ArgumentProvider provider = new ArgumentProvider() {
+			@Override
+			public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
+													ArrayVariable<T> delegate, int delegateOffset) {
+				return null;
+			}
+
+			@Override
+			public <T> TraversableExpression<?> traversableArgument(Supplier<Evaluable<? extends T>> input) {
+				requested.add(input);
+				return argument;
+			}
+		};
+
+		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(pack(2, 0, -1));
+		TraversalOrdering bound = order.bind(provider);
+		assertEquals(3, bound.getLength().getAsInt());
+		assertEquals(1, bound.indexOf(0));
+		assertEquals(0, bound.indexOf(2));
+
+		bound.bind(provider);
 		assertEquals(2, requested.size());
 	}
 
