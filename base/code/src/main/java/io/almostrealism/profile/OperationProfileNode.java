@@ -766,7 +766,7 @@ public class OperationProfileNode extends OperationProfile
 	 */
 	public void save(File file) throws IOException {
 		File parent = file.getAbsoluteFile().getParentFile();
-		if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+		if (parent != null && !parent.mkdirs() && !parent.isDirectory()) {
 			throw new IOException("Unable to create directory " + parent);
 		}
 
