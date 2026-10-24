@@ -88,12 +88,12 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
                          sorted(self.jobs["test-cuda"]["needs"]))
 
     def test_cl_matrix_matches_its_test_groups(self):
-        for name in ("test-cl", "test-cuda"):
-            job = self.jobs[name]
-            groups = job["strategy"]["matrix"]["group"]
-            self.assertEqual(4, len(groups), name)
-            self.assertEqual(list(range(len(groups))), groups, name)
-            self.assertEqual({len(groups)}, _test_group_counts(job), name)
+        name = "test-cl"
+        job = self.jobs[name]
+        groups = job["strategy"]["matrix"]["group"]
+        self.assertEqual(4, len(groups), name)
+        self.assertEqual(list(range(len(groups))), groups, name)
+        self.assertEqual({len(groups)}, _test_group_counts(job), name)
 
     def test_every_matrix_job_matches_its_test_groups(self):
         """Every job that both shards a matrix over ``group`` and passes

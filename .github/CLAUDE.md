@@ -635,9 +635,9 @@ retune them one variable at a time, as measured follow-ups, so a regression stay
 attributable.
 
 The self-hosted jobs split their suites across several groups, with group counts
-tuned per lane: `test-media-cuda` uses seven; `test-media-cl` five; `test-cl`
-and `test-cuda` four; and `test`, `test-media`, `test-mac` and
-`test-media-mac` three. The CL backend hits its
+tuned per lane: `test-media-cl` and `test-media-cuda` use five; `test-cl` four;
+and `test-cuda`, `test`, `test-media`, `test-mac` and `test-media-mac` three.
+The CL backend hits its
 memory ceiling under large per-group loads even at `AR_HARDWARE_MEMORY_SCALE=7`
 (the highest scale used anywhere — the scale is exponential, so raising it
 further is not an option), so spreading the tests across several JVMs keeps each
@@ -651,7 +651,7 @@ The CL and CUDA jobs each run up to three groups at a time (`max-parallel: 3`).
 
 `test-media-mac` is the exception: it uses **3 groups at `max-parallel: 2`**
 (up to two groups at a time), among the fewest groups of any lane alongside the
-CPU and Metal lanes (`test`, `test-media`, `test-mac`). As the second GPU-lane stage it
+CPU and Metal lanes (`test`, `test-media`, `test-mac`) and `test-cuda`. As the second GPU-lane stage it
 already runs alone on the fleet (no other GPU-heavy stage runs concurrently), so
 running two of its three groups at once trades some GPU contention on the
 studio benchmark tick tails for shorter wall-clock time.

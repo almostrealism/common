@@ -2667,8 +2667,8 @@ jobs:
   test-cuda:
     needs: [changes, build, test, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CUDA lane, first stage: the CUDA duplicate of test-cl, with AR_HARDWARE_DRIVER=native,cuda
-    # so GPU-eligible work routes through the CUDA backend. Every step mirrors test-cl,
-    # including the four-group split; see there for the FP32 precision, memory scale and
+    # so GPU-eligible work routes through the CUDA backend. Every step mirrors test-cl except
+    # the group count (three here, four there); see there for the FP32 precision, memory scale and
     # direct-memory settings, which carry over unchanged (CudaDataContext is FP32, so the
     # native context must match it).
     #
@@ -2707,7 +2707,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        group: [0, 1, 2, 3]
+        group: [0, 1, 2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2764,7 +2764,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=3
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -2775,7 +2775,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=3
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -3186,8 +3186,8 @@ jobs:
   test-media-cuda:
     needs: [changes, build, test, test-media, test-mac, test-media-mac, test-cuda, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CUDA lane, second (final) stage: the CUDA duplicate of test-media-cl, with
-    # AR_HARDWARE_DRIVER=native,cuda. Every step and setting mirrors test-media-cl (except the
-    # group count: seven groups here, five there); see there.
+    # AR_HARDWARE_DRIVER=native,cuda. Every step and setting mirrors test-media-cl, including the
+    # five-group split; see there.
     #
     # Runs on the NVIDIA fleet (tools/ci/cuda). Gates on test-cuda because the host has a
     # single GPU, and on the upstream lanes DIRECTLY for the reason test-media-cl does:
@@ -3228,7 +3228,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6]
+        group: [0, 1, 2, 3, 4]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -3294,7 +3294,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7
+           -DAR_TEST_GROUPS=5
 
       - name: Run Music Tests
         run: |
@@ -3305,7 +3305,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7
+           -DAR_TEST_GROUPS=5
 
       - name: Run Compose Tests
         run: |
@@ -3317,7 +3317,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7
+           -DAR_TEST_GROUPS=5
 
       - name: Run Spatial Tests
         run: |
@@ -3329,7 +3329,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7
+           -DAR_TEST_GROUPS=5
 
       # See the identical step in test-media for why these two modules share one invocation.
       - name: Run Extern and Experiments Tests
@@ -3342,7 +3342,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7
+           -DAR_TEST_GROUPS=5
 
       # CUDA media surefire reports so auto-resolve can parse CUDA-specific failures.
       - name: Upload Surefire Reports
