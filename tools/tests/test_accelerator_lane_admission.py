@@ -1,12 +1,14 @@
 """Guard: how the accelerator lanes in analysis.yaml are admitted and sized.
 
-The CL lane (``test-cl`` -> ``test-media-cl``) is admitted once the Linux CPU
-lane (``test``, ``test-media``) is green, and runs alongside the macOS GPU
+The CL lane (``test-cl`` -> ``test-media-cl``) runs alongside the macOS GPU
 lane rather than after it: ``test-cl`` beside ``test-mac``, ``test-media-cl``
-beside ``test-media-mac``. The CUDA lane is still admitted only after both the
-CPU and the macOS lanes. A matrix whose size disagrees with the
-``AR_TEST_GROUPS`` its steps pass silently drops the groups that have no
-matrix entry, so the two are checked together.
+beside ``test-media-mac``. ``test-cl`` is admitted as soon as the Linux
+``test`` stage is green (it no longer waits for ``test-media``), since it is
+the OpenCL duplicate of the same modules; ``test-media-cl`` still gates on both
+``test`` and ``test-media`` directly, as the duplicate of ``test-media``. The
+CUDA lane is still admitted only after both the CPU and the macOS lanes. A
+matrix whose size disagrees with the ``AR_TEST_GROUPS`` its steps pass silently
+drops the groups that have no matrix entry, so the two are checked together.
 """
 
 import os
@@ -50,10 +52,16 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
         self.jobs = _jobs()
 
     def test_cl_lane_gates_on_the_cpu_lane(self):
-        for name in _CL_LANE:
-            for upstream in _CPU_LANE:
-                self.assertTrue(_gates_on(self.jobs[name], upstream),
-                                "%s must gate on %s" % (name, upstream))
+        # test-cl is admitted as soon as `test` is green; it must not wait for
+        # test-media. test-media-cl, the duplicate of test-media, still gates on
+        # the whole CPU lane directly.
+        self.assertTrue(_gates_on(self.jobs["test-cl"], "test"),
+                        "test-cl must gate on test")
+        self.assertNotIn("test-media", self.jobs["test-cl"]["needs"],
+                         "test-cl must not wait for test-media")
+        for upstream in _CPU_LANE:
+            self.assertTrue(_gates_on(self.jobs["test-media-cl"], upstream),
+                            "test-media-cl must gate on %s" % upstream)
 
     def test_cl_lane_runs_alongside_the_mac_lane(self):
         for name in _CL_LANE:
@@ -70,7 +78,7 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
     def test_cl_matrix_matches_its_test_groups(self):
         job = self.jobs["test-cl"]
         groups = job["strategy"]["matrix"]["group"]
-        self.assertEqual(6, len(groups))
+        self.assertEqual(4, len(groups))
         self.assertEqual(list(range(len(groups))), groups)
         self.assertEqual({len(groups)}, _test_group_counts(job))
 
