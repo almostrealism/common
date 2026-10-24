@@ -296,6 +296,34 @@ public class CounterRandomTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Each implementation creates its own generator class with the requested distribution,
+	 * whatever the {@code AR_RANDOM} setting is, with and without a seeding source, and a
+	 * seeded counter generator takes the seed the source yields.
+	 */
+	@Test(timeout = 10000)
+	public void implementationsCreateTheirGenerators() {
+		for (java.util.Random source : new java.util.Random[] { null, new java.util.Random(7) }) {
+			RandomProducer java = RandomProducer.Implementation.JAVA.create(shape(8), true, source);
+			Assert.assertEquals(Random.class, java.getClass());
+			Assert.assertTrue(java.isNormal());
+
+			RandomProducer counter = RandomProducer.Implementation.COUNTER.create(shape(8), false, source);
+			Assert.assertEquals(CounterRandom.class, counter.getClass());
+			Assert.assertFalse(counter.isNormal());
+			counter.destroy();
+		}
+
+		CounterRandom seeded = (CounterRandom) RandomProducer.Implementation.COUNTER
+				.create(shape(8), false, new java.util.Random(7));
+		Assert.assertEquals(new java.util.Random(7).nextInt(CounterRandom.SEED_LIMIT),
+				seeded.getSeed().toDouble(0), 0.0);
+		Assert.assertEquals(0.0, seeded.getCounter().toDouble(0), 0.0);
+		seeded.destroy();
+
+		Assert.assertEquals(RandomProducer.Implementation.COUNTER, RandomProducer.Implementation.of(" COUNTER "));
+	}
+
+	/**
 	 * {@code rand} and {@code randn} produce the implementation selected by the
 	 * {@code AR_RANDOM} setting, with the requested distribution.
 	 */

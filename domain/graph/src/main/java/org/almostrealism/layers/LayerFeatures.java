@@ -1201,8 +1201,10 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 *
 	 * <p>Returning a seeded {@link Random} makes weight initialization
 	 * reproducible: layers built in the same order draw the same weights on every run.
-	 * Values are drawn when a layer's setup runs, so the source is consumed in the order
-	 * the layers are initialized.</p>
+	 * With the default {@code java} random implementation values are drawn when a layer's
+	 * setup runs, so the source is consumed in the order the layers are initialized; with
+	 * the {@code counter} implementation a seed is drawn when the layer is built, so it is
+	 * consumed in the order the layers are constructed.</p>
 	 *
 	 * @return the random source for weight initialization, or {@code null}
 	 */
