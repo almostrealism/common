@@ -20,7 +20,9 @@ import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionSlotUpdateComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -149,6 +151,13 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	 * <p>This simulates what the pattern rendering should do: place audio
 	 * at exact frame positions.</p>
 	 *
+	 * <p>The frame position is supplied to the kernel as a runtime argument
+	 * rather than as the offset of a view of the destination. A view's offset
+	 * is part of the kernel signature, so placing notes through views at
+	 * hundreds of distinct offsets compiled hundreds of distinct kernels; with
+	 * the position as an argument, every placement of the same length shares
+	 * one compiled kernel.</p>
+	 *
 	 * @param destination the destination buffer
 	 * @param source the source audio to write
 	 * @param startFrame the frame position to start writing
@@ -160,9 +169,14 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		int len = Math.min(sourceLen, destLen - startFrame);
 		if (len <= 0) return;
 
-		a(cp(destination.range(shape(len), startFrame)),
-				cp(destination.range(shape(len), startFrame))
-						.add(cp(source.range(shape(len), 0)))).get().run();
+		try (PackedCollection position = new PackedCollection(1)) {
+			position.fill(startFrame);
+
+			CollectionProducer mixed = subset(shape(len), cp(destination), cp(position))
+					.add(cp(source.range(shape(len), 0)));
+			a(cp(destination), new CollectionSlotUpdateComputation(shape(destLen),
+					1, destLen, len, cp(destination), mixed, cp(position))).get().run();
+		}
 	}
 
 	/**
