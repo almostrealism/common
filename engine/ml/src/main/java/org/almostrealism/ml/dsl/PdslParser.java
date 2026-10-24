@@ -26,29 +26,36 @@ import java.util.Map;
  * Converts a stream of {@link PdslToken} instances into an AST
  * rooted at {@link PdslNode.Program}.
  *
- * <p>Grammar overview:
+ * <p>Grammar overview (the complete grammar, with the meaning of each construct, is in the
+ * language reference, {@code docs/internals/pdsl-language.md}):
  * <pre>
  * program      = import* definition*
  * import       = 'import' STRING
- * definition   = config_def | layer_def | model_def
+ * definition   = config_def | data_def | state_def | layer_def | model_def
  * config_def   = 'config' IDENT '{' (IDENT '=' expr)* '}'
+ * data_def     = 'data' IDENT '{' (IDENT ':' type | IDENT '=' expr)* '}'
+ * state_def    = 'state' IDENT '{' (IDENT ':' type | IDENT '=' expr)* '}'
  * layer_def    = 'layer' IDENT '(' params ')' ('->' shape)? '{' body '}'
  * model_def    = 'model' IDENT '(' params ')' '{' body '}'
  * params       = param (',' param)*
  * param        = IDENT ':' type
- * type         = 'weight' shape? | 'scalar' | 'int' | 'float' | IDENT
+ * type         = 'weight' shape? | 'scalar' | 'producer' '(' shape ')'
+ *              | 'int' | 'float' | 'bool' | shape | IDENT
  * shape        = '[' expr (',' expr)* ']'
  * body         = statement*
- * statement    = let_stmt | return_stmt | branch_stmt | accum_stmt
- *              | product_stmt | for_stmt | expr_stmt
+ * statement    = let_stmt | return_stmt | branch_stmt | accum_stmt | product_stmt
+ *              | accum_blocks_stmt | concat_blocks_stmt | for_stmt | stack_stmt | expr_stmt
  * expr         = addition
  * addition     = multiplication (('+' | '-') multiplication)*
  * multiplication = unary (('*' | '/') unary)*
  * unary        = ('-') unary | postfix
- * postfix      = primary ('(' args ')' | '.' IDENT)*
+ * postfix      = primary ('(' args ')' | '.' FIELD ('(' args ')')? | '[' expr ']')*
  * primary      = NUMBER | STRING | 'true' | 'false' | 'null'
- *              | IDENT | shape | '(' expr ')'
+ *              | 'weight' ('(' expr ')')? | IDENT | shape | '(' expr ')'
  * </pre>
+ *
+ * <p>The keywords {@code if} and {@code else}, and the comparison operators the lexer produces,
+ * have no production here, so a program that uses them does not parse.</p>
  */
 public class PdslParser {
 
@@ -679,11 +686,8 @@ public class PdslParser {
 						expr.getLine(), expr.getColumn());
 			} else if (check(PdslToken.Type.DOT)) {
 				consume(PdslToken.Type.DOT);
-				// A field may be spelled like a keyword: weights.model.layers names the
-				// checkpoint's "model.layers" group, whatever words the language reserves.
 				PdslToken fieldToken = peek();
-				if (fieldToken.getType() != PdslToken.Type.IDENTIFIER
-						&& !PdslLexer.isKeyword(fieldToken.getValue())) {
+				if (!fieldToken.isWord()) {
 					throw error("Expected a field name after '.' but found " + fieldToken);
 				}
 				String field = advance().getValue();

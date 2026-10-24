@@ -103,8 +103,14 @@ import java.util.function.Function;
  *   <li>{@code branch name { ... }} - parallel path</li>
  *   <li>{@code accum { ... }} - residual connection</li>
  *   <li>{@code product(blockA, blockB)} - element-wise multiply</li>
- *   <li>{@code accum_blocks(blockA, blockB)} - element-wise addition</li>
+ *   <li>{@code accum_blocks(blockA, blockB, ...)} - element-wise addition of N blocks</li>
+ *   <li>{@code concat_blocks(blockA, blockB, ...)} - concatenation of N blocks' outputs</li>
+ *   <li>{@code for i in a..b { ... }}, {@code stack group as name { ... }},
+ *       {@code for each channel { ... }} - build-time repetition</li>
  * </ul>
+ *
+ * <p>Function calls resolve to a layer the program defines, then a registered primitive, then a
+ * built-in. The language as a whole is described in {@code docs/internals/pdsl-language.md}.</p>
  */
 public class PdslInterpreter {
 

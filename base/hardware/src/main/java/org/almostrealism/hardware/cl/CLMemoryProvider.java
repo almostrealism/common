@@ -401,15 +401,16 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	/** {@inheritDoc} */
 	@Override
 	public void getMem(CLMemory mem, int sOffset, float out[], int oOffset, int length) {
+		double[] cache = mem.snapshotForRead(length);
+		if (cache != null) {
+			// Cache hit: an in-memory copy, not a timed OpenCL transfer.
+			for (int i = 0; i < length; i++) out[oOffset + i] = (float) cache[sOffset + i];
+			return;
+		}
+
 		long start = System.nanoTime();
 
 		try {
-			double[] cache = mem.snapshotForRead(length);
-			if (cache != null) {
-				for (int i = 0; i < length; i++) out[oOffset + i] = (float) cache[sOffset + i];
-				return;
-			}
-
 			if (getNumberSize() == 8) {
 				double d[] = new double[length];
 				Pointer dst = Pointer.to(d).withByteOffset(0);
@@ -441,15 +442,16 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	/** {@inheritDoc} */
 	@Override
 	public void getMem(CLMemory mem, int sOffset, double out[], int oOffset, int length) {
+		double[] cache = mem.snapshotForRead(length);
+		if (cache != null) {
+			// Cache hit: an in-memory copy, not a timed OpenCL transfer.
+			for (int i = 0; i < length; i++) out[oOffset + i] = cache[sOffset + i];
+			return;
+		}
+
 		long start = System.nanoTime();
 
 		try {
-			double[] cache = mem.snapshotForRead(length);
-			if (cache != null) {
-				for (int i = 0; i < length; i++) out[oOffset + i] = cache[sOffset + i];
-				return;
-			}
-
 			if (getNumberSize() == 8) {
 				Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * getNumberSize());
 				cl_event event = new cl_event();
