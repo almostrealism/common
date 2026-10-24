@@ -16,6 +16,7 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
@@ -62,6 +63,9 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 
 	/** Results directory for test output. */
 	private static final String RESULTS_DIR = "results/fixed-pattern";
+
+	/** Element-wise sum of two equal-length arguments, compiled once and reused by {@link #writeAudioAt}. */
+	private Evaluable<PackedCollection> mixInto;
 
 	/**
 	 * Generates a synthetic sine wave audio buffer.
@@ -149,6 +153,11 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	 * <p>This simulates what the pattern rendering should do: place audio
 	 * at exact frame positions.</p>
 	 *
+	 * <p>The destination and source views are passed as kernel arguments to a single
+	 * variable-length sum, so every placement reuses one compiled kernel. Embedding each
+	 * view as a constant would bake its frame offset into the kernel signature and
+	 * compile a new kernel for every note.</p>
+	 *
 	 * @param destination the destination buffer
 	 * @param source the source audio to write
 	 * @param startFrame the frame position to start writing
@@ -160,9 +169,12 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		int len = Math.min(sourceLen, destLen - startFrame);
 		if (len <= 0) return;
 
-		a(cp(destination.range(shape(len), startFrame)),
-				cp(destination.range(shape(len), startFrame))
-						.add(cp(source.range(shape(len), 0)))).get().run();
+		if (mixInto == null) {
+			mixInto = add(v(shape(-1), 0), v(shape(-1), 1)).get();
+		}
+
+		PackedCollection target = destination.range(shape(len), startFrame).traverse(1);
+		mixInto.into(target).evaluate(target, source.range(shape(len), 0).traverse(1));
 	}
 
 	/**
