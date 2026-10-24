@@ -28,6 +28,79 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-23 — Document the PDSL language
+
+**Category:** Documentation
+**Branch:** `project/plan-20261023-025021`
+**Plan:** [`PLAN-20261023-pdsl-language-reference.md`](PLAN-20261023-pdsl-language-reference.md)
+
+#### What changed since last cycle
+
+The differential-lambda plan landed (PR #716): the four `differentialLambda` vectors now train, the
+three `TODO(review)` markers in `differential_attention.pdsl` are gone, and
+`DifferentialAttentionAssetTest` checks them by finite difference. With PR #697 before it, every
+learnable operand of every attention variant the platform ships now receives its gradient — the
+correctness arc of the last three cycles is closed, apart from the SAME resampling site deliberately
+deferred to the cycle that first fine-tunes that autoencoder.
+
+#### Category assessment (priority order)
+
+- **Documentation — a real, flagship gap, and it decided the cycle.** Those three cycles all turned on
+  PDSL: the attention family, the transformer layer, the Qwen model files, the Oobleck codec, the MIDI
+  decoders and the real-time mixdown are all PDSL assets (19 shipped `.pdsl` assets in `engine/ml`
+  plus 29 test fixtures, ~6,200 lines of interpreter), and the defects fixed were questions of what a PDSL builtin does with its operands
+  (`scale` reading λ as a constant; `scaled_dot_product` taking a branch as an auxiliary operand). But
+  `consult` answers plainly: "There is no single complete language reference for PDSL." The only durable
+  page is `pdsl-audio-dsp.md` (audio primitives, with the ML builtins in one parenthesized list); the
+  grammar, the definition kinds, parameter types, composition statements, imports, name resolution and
+  the builtins' gradient behavior are documented nowhere outside the interpreter source. No tutorial
+  mentions PDSL. No tracker task covers it. Smaller doc items seen and left to continuous QA: four
+  small `flowtree/*` submodules have no README (the parent `flowtree/README.md` and `runtime/docs/`
+  cover them), and the ONNX-pressure note.
+- Code quality, performance and proof of value all keep live candidates (below); none was chosen,
+  because documentation comes first and this gap is genuine.
+
+#### Why this task
+
+PDSL is the form in which the platform states *what its models compute* — compact, readable,
+declarative. That makes its reference the most generative page we can add to the corpus the
+self-hosted LM trains on: a model that can read the language can read the model files, and later
+propose edits to them — a concrete step toward software that understands its own architecture. It is
+also the page every future PDSL conversion and the PDSL-for-research track (whose teaching phase has
+nothing to build on) need first. The language is stable enough to document: imports, `stack`,
+program scope and the attention gradient fixes have all landed.
+
+The plan asks for a reference derived from source, not memory: the keyword table from `PdslLexer`,
+an EBNF grammar from `PdslParser`, every `PdslNode` subclass, the block structure each composition
+statement builds, resolution and shadowing rules, the import semantics pinned to the
+`pdsl/imports/*.pdsl` fixtures, and a catalog of all 40 builtins with shapes, lowering and a
+**per-operand gradient column** backed by code or tests (or marked "not verified"). It removes the
+duplicated core-primitive table from `pdsl-audio-dsp.md`, completes the `org.almostrealism.ml.dsl`
+Javadoc, and adds a small parse-only test whose snippets are the page's own examples, so the
+reference cannot silently drift from the parser. Defects found are recorded, not fixed.
+
+#### Balance across categories
+
+The last four cycles were correctness (three) and proof of value (one); the last documentation cycle
+was 2026-10-17. Returning to the foundation now is not rote: the correctness work showed that the
+semantics of PDSL builtins are where gradients get lost, and that knowledge exists only in the code
+and in session notes. It is a medium task that **runs on any node** — no macOS requirement, no
+workstream settings file.
+
+#### What comes next
+
+1. This plan: `docs/internals/pdsl-language.md`, the examples test, the Javadoc pass and cross-links.
+2. **Proof of value**, now on a fully honest attention backward pass: top-p through the sliding-window
+   generator (`SlidingWindowAutoregressiveModel` calls `sampleToken` with a top-p of `1.0`), a
+   single-position KV-cache decode, and conditional diffusion training. Adding the new PDSL page (and
+   the model files it explains) to the LM's training corpus is a natural, cheap follow-on.
+3. Whatever the reference's "known limits" section records about builtin operand handling becomes the
+   next PDSL consistency item.
+4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
+5. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2 (with the SAME fine-tune); the
+   `io.almostrealism.collect` package split; a PDSL tutorial in `docs/tutorials/`; letting a trained
+   model read the platform's own *source*.
+
 ### 2026-10-22 — Train the learned lambda of differential attention
 
 **Category:** Code Quality (correctness — a silent zero-gradient defect in the attention backward pass)
@@ -372,235 +445,43 @@ step, and it keeps the platform honest about its own learning machinery.
 4. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
    trained model read the platform's own *source*.
 
-### 2026-10-17 — Document automatic differentiation from `delta` to the backward pass
+### 2026-10-17 — Document automatic differentiation from `delta` to the backward pass (condensed)
 
-**Category:** Documentation
-**Branch:** `project/plan-20261018-013621`
+**Category:** Documentation · **Branch:** `project/plan-20261018-013621` ·
 **Plan:** `PLAN-20261018-automatic-differentiation-internals.md` (since removed; see git history)
 
-#### What changed since last cycle
+After the derivative API was consolidated (PRs #661, #666 — `CollectionProducer.delta(target, axis,
+weight)` as the only public derivative method, customized through `deltaDependent`, `deltaElement`,
+`deltaPartial` and `deltaMatrix`), `consult` confirmed there was no internals page for the backward
+half of the execution story. The cycle wrote `docs/internals/automatic-differentiation.md` (PR #670):
+extension points and their order, `ExpressionMatrix`, `DefaultGradientPropagation` and the backward
+cells, and a "known limits" section naming the silent full-Jacobian fallback. That page was the
+explicit prerequisite for the 2026-10-18 correctness cycle.
 
-The matrix-multiply plan landed (PR #628) and paid off: a training step is about ten times cheaper
-(3.6 s → 0.35 s), and `trainOnDocumentation` now **beats its unigram baseline, 4.194 against 4.912
-bits per byte** over all 83 held-out windows. Two findings along the way: `matmul` and the dense
-bias paired axes by size when sizes coincided (fixed), and the full-Jacobian weight gradient is
-itself wrong for the 256×64 output projection on Metal (recorded, undiagnosed). Greedy generation
-is still a single repeated byte, so the test's generation assertion still fails. Then the
-maintainer consolidated the derivative API (PRs #661, #666): the matmul-specific
-`VectorJacobianProduct` became a general reduced delta, `CollectionProducer.delta(target, axis,
-weight)` is the only public derivative method, and computations customize it through four protected
-extension points (`deltaDependent`, `deltaElement`, `deltaPartial`, `deltaMatrix`). Small tracked
-tasks (projection factories, `NumberConditioner`) and the QA retrospective round also landed.
+### 2026-10-09 — Compute matrix-multiply weight gradients without materializing the Jacobian (condensed)
 
-#### Category assessment (priority order)
-
-- **Documentation — a real gap, and it decided the cycle.** The forward story is fully documented;
-  the backward story is not. `consult` confirms there is no internals page for automatic
-  differentiation. What exists is a `package-info` paragraph, a three-line README example, and the
-  dense-layer section of the training page. Nothing covers the extension points and their order,
-  the expression-level rules and `ExpressionMatrix`, or how `DefaultGradientPropagation` and the
-  backward cells turn deltas into a training step. The API has just been redesigned, so this is the
-  moment when the knowledge exists and the page is cheapest to write.
-- Code quality, performance and proof of value all have candidates (below). I did not choose any
-  of them, because documentation comes first and this gap is genuine.
-
-#### Why this task
-
-Autodiff is how the platform learns, and it is the mechanism a model trained on this corpus should
-be able to explain about itself. It is also where the costliest silent failures live. A new
-operator without a reduced form falls back to a full Jacobian without any warning (the
-17-billion-term output projection and `convDeltaMedium` were both that fallback). A wrong sparse
-Jacobian trained the LM's output projection with partly wrong gradients for weeks. A documented
-contract ("which extension point, in what order, how to verify it, where the fallback still
-happens") protects every later LM step from both. The plan requires every claim to be read from
-source or pinned by a test. Defects found along the way are recorded, not fixed.
-
-#### Balance across categories
-
-The last four cycles went to performance and proof of value, and they produced real results. This
-cycle goes back to the foundation, and not by rote: the subsystem those cycles rebuilt now needs
-its own page. It is a medium-sized task that runs on any node.
-
-#### What comes next
-
-1. This plan: `docs/internals/automatic-differentiation.md`, cross-links, a Javadoc pass for names
-   the consolidation removed, and a "known limits" section.
-2. **Correctness:** diagnose the `jacobianGradient` disagreement for the 256×64 output projection
-   (a 2^32 index-overflow hypothesis is on record). The new page is the prerequisite.
-3. **Proof of value:** non-degenerate generation from the trained LM. The baseline is beaten, but
-   greedy decoding still repeats one byte. Next come recipe and scale: batch > 1 in
-   `scaledDotProductAttention`, more steps, a larger context or depth. Then temperature/top-p in
-   the sliding-window generator, and a KV-cache decode.
-4. **Performance:** a reduced form for the weighted-sum `matmul` lowering (outputs wider than
-   1000), the last Jacobian-contracting path on a dense layer.
-5. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
-   trained model read the platform's own *source*.
-
-### 2026-10-09 — Compute matrix-multiply weight gradients without materializing the Jacobian
-
-**Category:** Performance (directly unblocking Proof of Value)
-**Branch:** `project/plan-20261009-171224`
+**Category:** Performance (unblocking Proof of Value) · **Branch:** `project/plan-20261009-171224` ·
 **Plan:** `PLAN-20261009-matmul-weight-gradient-vjp.md` (since removed; see git history)
 
-#### What changed since last cycle
+The training doc itself named the lever: the generic backward pass formed each weight gradient from
+the operator's full Jacobian (~17 billion terms for the 256×64 output projection). The plan replaced
+that with a structure-aware vector-Jacobian product for the matrix-multiply family only, behind a
+capability check with a byte-identical fallback (the `feature/lora-gradients` history made a narrow
+scope mandatory). It landed as PR #628: a training step went from 3.6 s to 0.35 s and
+`trainOnDocumentation` beat its unigram baseline for the first time (4.194 vs 4.912 bits/byte). It
+also surfaced the full-Jacobian output-projection defect fixed on 2026-10-18.
 
-The last cycle's plan landed (PR #620). The self-hosted LM infrastructure is now real and correct:
-`CausalLanguageModel` is a `Model`, `SlidingWindowAutoregressiveModel` generates from it and is
-verified against a full forward pass, `CausalLanguageModelTest.gradientsMatchFiniteDifferences`
-shows every weight's gradient matching finite differences at the FP32 noise floor, and weights
-round-trip through `StateDictionary`. PR #620 also carried the `ObjectOrientedDesignRule`
-enforcement backstop. But the two headline acceptance criteria are still *unmet, and recorded
-honestly in the tree*: `trainOnDocumentation` scores **4.957 bits/byte against a 4.912 unigram
-baseline** (above it, so the assertion fails) and greedy generation emits **96 spaces**. The CUDA
-async-runner track (PR #623) and continuous QA (today's `qa/docs`, `qa/defect`, `qa/consolidate`,
-`qa/pdsl`, `qa/performance` branches) have been landing in parallel.
+### 2026-10-05 — Make the self-hosted LM beat its unigram baseline and generate text (condensed)
 
-#### Category assessment (priority order)
-
-- **Documentation — excellent.** The internals corpus tells the whole story, and
-  `training-a-language-model.md` is a model of honest, measured writing: it documents the failing
-  run, the recipe sweep, the coverage lever, the per-step cost breakdown, and names the fix itself.
-  No flagship gap. Moved on.
-- **Code quality — strong and owned.** The continuous QA pipeline merges fixes daily and
-  enforcement is mechanical; PR #620 added `ObjectOrientedDesignRule` as a per-class design
-  backstop. The one standing minor item (`io.almostrealism.collect` split) is unchanged and not a
-  flagship. Moved on.
-- **Performance — the category, and the lever is named by the platform's own documentation.**
-  `training-a-language-model.md` states it outright: the generic backward pass forms each weight
-  gradient from the operator's *full Jacobian* (about 17 billion terms for the 256×64 output
-  projection) then contracts it, a step takes ~3.6 s of which the backward pass is ~3.2–4.2 s of
-  GPU work, and "a weight gradient that uses the structure of the matrix multiply (the output
-  gradient times the transposed input) would make each step orders of magnitude cheaper and is the
-  change that would let this run train for long enough to approach its headroom."
-
-#### Why this task
-
-It is the honest next step named by the platform itself, and it is the highest-leverage performance
-work available. The step cost — not the model, not the recipe, both of which the finite-difference
-test and the recipe sweep have cleared — is what keeps the LM at the unigram rate: 550 batch-1 steps
-score only ~35 kB of a corpus whose bigram headroom is 3.78 bits/byte. Make the matrix-multiply
-weight gradient a structure-aware vector-Jacobian product (`g ⊗ x` instead of a materialized
-`[outSize, weightSize]` Jacobian — exactly Approach 2 in `SPARSE_GRADIENTS.md`) and, with the
-training budget (`EPOCHS`/`TRAIN_WINDOWS`) raised to spend the freed time, the same 38-minute budget
-buys many more steps. This is a Performance task whose payoff is the Proof-of-Value
-milestone two cycles have been reaching for: a model that finally beats its baseline and writes a
-readable byte about itself.
-
-The scope is deliberately narrow, because the history here is unforgiving. The `feature/lora-gradients`
-branch's broad sparse-Jacobian and masked-`Sum` reordering work repeatedly triggered the
-`convDeltaMedium` blow-up and the add/revert loop this log exists to prevent. This plan touches
-*only* the matrix-multiply family, behind a precise capability check with a byte-identical fallback
-for every other operator, so convolution and the rest of the backward pass are provably unchanged.
-Correctness is gated by A/B equality against the existing full-Jacobian result, not by "it looks
-trained." Turning the acceptance test green is allowed only by a genuinely better model measured
-apples-to-apples; a measured speedup with a documented remaining gap is an acceptable, honest
-outcome that hands the recipe/scale question to the next plan.
-
-#### Balance across categories
-
-Foundations stay covered by continuous QA. The last several cycles alternated foundation work with
-proof-of-value milestones; this cycle spends a focused performance investment to cash the milestone
-the LM track has been one step short of since September. It is the "whichever per-step backward cost
-the training-run profile names" item that the 2026-09-30 and 2026-10-05 "what comes next" lists both
-deferred — now promoted to its own plan, with the profile in hand to name it.
-
-#### What comes next
-
-1. This plan, if approved: the VJP weight/input gradient for matrix multiply, its two call-site
-   integrations with exact fallback, the A/B equality gate, a measured step-time speedup, and a
-   re-run of `trainOnDocumentation` whose outcome is recorded honestly in the training doc.
-2. If the baseline is beaten: **sampling quality and longer generation** (temperature/top-p already
-   exist in `AutoregressiveModel`; expose top-p through the sliding-window generator), and a proper
-   single-position **KV-cache decode** (needs the fused `qkv` split into Q/K/V views and the rotary
-   inputs derived from `rope_inv_freq`).
-3. **Scale:** batch > 1 in `scaledDotProductAttention`, larger context/depth, and the K/V gradient
-   wiring still missing in `sequenceCrossAttention`, `TransformerResamplingFeatures` and
-   `DifferentialAttentionFeatures`.
-4. A later cycle: let a trained model read the platform's own *source*, the deeper self-understanding
-   aim. Still open from prior cycles: the ONNX-pressure doc note; the `io.almostrealism.collect`
-   package split.
-
-### 2026-10-05 — Make the self-hosted LM beat its unigram baseline and generate text
-
-**Category:** Proof of Value
-**Branch:** `project/plan-20261005-185050`
+**Category:** Proof of Value · **Branch:** `project/plan-20261005-185050` ·
 **Plan:** `PLAN-20261005-self-hosted-lm-beat-baseline-and-generate.md` (since removed; see git history)
 
-#### What changed since last cycle
-
-Two proof-of-value tracks landed. The from-scratch self-hosted LM merged (PR #596): the platform
-trained a decoder-only transformer on its own docs, end to end, every gradient through the normal
-graph machinery, weights round-tripped through `StateDictionary`. Separately, the
-PDSL-for-research / Qwen interpretability track merged most recently (PR #615) — a different track
-(reading a real Qwen checkpoint on one readable page), not a continuation of the from-scratch LM.
-
-But the self-hosted LM stopped one step short of its own promise, and it stopped before producing a
-single byte of text. Both gaps are recorded honestly in the tree:
-- `CausalLanguageModelTest.trainOnDocumentation` asserts held-out `finalBits < unigramBits` and
-  **fails**: 4.691 bits/byte held-out against a 4.600 unigram baseline
-  (`NextTokenDataset.scoredTargetEntropyBits()` over 12 scored windows). It is long-running and
-  excluded from the CI pipeline profile, so it does not break CI — but the last cycle's headline
-  success criterion is unmet. The earlier "0.22 below baseline" figure was a measurement error
-  (12 windows vs whole-region entropy), corrected to this honest number last cycle.
-- The model has **never generated text**. The general `AutoregressiveModel` sampling infrastructure
-  exists and is sound, but `CausalLanguageModel` only builds the full-sequence training model; there
-  is no path from the trained weights to text.
-
-#### Category assessment (priority order)
-
-- **Documentation — excellent.** Internals corpus tells the whole story and now includes
-  `training-a-language-model.md`; the one standing gap (ONNX-induced pressure) is low-priority and
-  out of scope. The only doc this task touches is the training page, updated as its own deliverable.
-- **Code quality — strong and owned** by the continuous QA pipeline; enforcement is mechanical. No
-  neglected flagship.
-- **Performance — one deferred lever** (13 small reductions compiled as native kernels, ~250 ms
-  each). The log has deliberately deferred it to *follow* a real training run. This task produces
-  exactly such a run and is the right place to re-check, via `ar-profile-analyzer`, whether it
-  matters in practice — as reporting only.
-- **Proof of value — the category.** A known-failing acceptance test and a model that has never
-  spoken are precisely the concrete, falsifiable gaps this category exists to close.
-
-#### Why this task
-
-It is the honest completion of last cycle's milestone and the direct next step named by the training
-doc itself ("scoring every held-out window (82 at this stride), or training further, are the next
-steps"). The headroom is evidenced: a training-fitted unigram scores 4.78 on the scored targets (the
-model beats that), while an interpolated bigram scores ~3.85 on the held-out region — so a byte-level
-transformer that models local structure should clear the unigram bar with margin. The task pairs the
-quality fix with the first generation path, so the outcome is not just a green test but the platform
-writing text about itself for the first time — the first readable artifact of the self-understanding
-goal.
-
-Because this sits on top of a known-failing acceptance test, the plan is explicit that the only
-acceptable way to turn it green is a genuinely better model measured apples-to-apples; weakening the
-assertion, the baseline, the dimensions, `@TestDepth` or the timeout is out of bounds and would fail
-`test-integrity-check`. If honest effort within the memory/time budget cannot clear the bar, the
-correct outcome is an evidenced finding for a revised plan, not a green test.
-
-#### Balance across categories
-
-Foundations stay covered by continuous QA. The last several cycles alternated foundation work with
-proof-of-value measurement; this cycle cashes the training milestone it set up — closing the loop
-rather than opening a new front. The deferred compile-time lever is revisited only as a measurement
-by-product, keeping the cycle focused.
-
-#### What comes next
-
-1. This plan, if approved: representative all-window held-out measurement, a tuned training recipe
-   that clears the baseline with margin, a generation path on `CausalLanguageModel` with a
-   deterministic generation test, and a rewritten training doc with a generation section. The plan's
-   "Open questions" record the risks a reviewer added: the run is ~34 min against a 38-min test
-   timeout, scoring all 82 held-out windows every epoch could exceed it, and the margin needed to
-   call the result "comfortable" is not yet fixed.
-2. **Sampling quality and longer generation** once the first path works (temperature sampling exists
-   in `AutoregressiveModel`; top-p exists in its static `sampleToken` but is not exposed by the
-   `of(...)` factory); a proper KV-cache decode if the first path was sliding-window (that needs the
-   fused `qkv` weight split into Q/K/V views and the rotary inputs derived from `rope_inv_freq`).
-3. **Scale:** batch > 1 in `scaledDotProductAttention`, larger context/depth, and whichever per-step
-   backward cost the training-run profile names (the standing small-reduction native-compile lever).
-4. A later cycle: let a trained model read the platform's own *source*, the deeper self-understanding
-   aim. Still open from prior cycles: the ONNX-pressure doc note; the `io.almostrealism.collect`
-   package split.
+After the from-scratch LM merged (PR #596) it still scored above its unigram baseline and had never
+produced a byte of text. This cycle built the generation path (`SlidingWindowAutoregressiveModel`,
+verified against a full forward pass) and all-window held-out scoring, and established that per-step
+backward cost — not the model or recipe — was what held the run at the unigram rate. That finding
+became the 2026-10-09 performance plan; the baseline and readable-generation milestones were cashed
+by PRs #628 and #685.
 
 ### 2026-09-30 — Train a tiny byte-level causal transformer on the platform's own docs (condensed)
 

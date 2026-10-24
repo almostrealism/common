@@ -45,7 +45,9 @@ weights, so the backward pass differentiates the lambda with respect to them. Th
 lambda producer binds those weights null and applies the lambda without training it, exactly as
 before. A finite-difference check in `DifferentialAttentionAssetTest` confirms each vector receives
 its gradient — on an earlier revision the lambda was applied with a weightless scale, so its
-parameters were captured as a constant and received no gradient at all. Cross-attention now trains its K/V projection the same way:
+parameters were captured as a constant and received no gradient at all. Which operand of each
+PDSL built-in trains, which is a constant and which has no backward path is tabulated in the
+[PDSL Language Reference](pdsl-language.md#builtin-catalog). Cross-attention now trains its K/V projection the same way:
 `sequenceCrossAttention` computes the keys and values on a `branch()` of its context input and feeds
 those branch blocks to the score and context products through the `Block`-valued
 `scaledDotProductAttention` overload (again `compose`), so the backward pass reaches both halves of
