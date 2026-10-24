@@ -46,7 +46,8 @@ class SubmitAgentJobEnforceChangesTest(unittest.TestCase):
 
     def submit(self, **knobs):
         env = {k: v for k, v in os.environ.items()
-               if k not in ("ENFORCE_CHANGES", "MAX_ENFORCE_CHANGES_RETRIES")}
+               if k not in ("ENFORCE_CHANGES", "MAX_ENFORCE_CHANGES_RETRIES",
+                            "AUTO_CREATE_PR", "PR_DRAFT")}
         env.update(PATH=self.dir.name + os.pathsep + env.get("PATH", ""),
                    PAYLOAD_OUT=self.out, BRANCH="qa/retro-x", BASE_BRANCH="master",
                    CONTROLLER_URL="http://controller.invalid", **knobs)
@@ -81,6 +82,18 @@ class SubmitAgentJobEnforceChangesTest(unittest.TestCase):
                 self.assertIn("MAX_ENFORCE_CHANGES_RETRIES must be a non-negative integer",
                               result.stderr)
                 self.assertFalse(os.path.exists(self.out))
+
+    def test_pr_draft_asks_for_the_auto_created_pr_as_a_draft(self):
+        result = self.submit(AUTO_CREATE_PR="true", PR_DRAFT="true")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIs(True, self.body()["autoCreatePr"])
+        self.assertIs(True, self.body()["createPrAsDraft"])
+
+    def test_an_unset_pr_draft_opens_the_pr_ready_for_review(self):
+        result = self.submit(AUTO_CREATE_PR="true")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIs(True, self.body()["autoCreatePr"])
+        self.assertIs(False, self.body()["createPrAsDraft"])
 
 
 if __name__ == "__main__":

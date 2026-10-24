@@ -4,8 +4,11 @@ name: "Task Planning"
 # workflow. It plans the next ready tracker task of the release the calling
 # repository's default branch is building: claims the task, creates a
 # project/task-<timestamp> branch, and submits an agent that writes a plan for
-# it and opens the pull request. It never implements anything; that starts by
-# hand, with the Implement Plan workflow, once a person has approved the plan.
+# it and opens the pull request as a draft. A draft pull request is the
+# convention for a branch that carries only a plan awaiting approval; this
+# round never implements anything. Implementation starts when the owner
+# approves the plan — by marking the pull request ready for review, or by
+# dispatching the Implement Plan workflow by hand.
 #
 # This repository calls it from Master Agent Dispatch on every merge to
 # master; another repository calls it the same way from its own workflow, so
@@ -299,6 +302,9 @@ jobs:
           REPO_URL: git@github.com:${{ github.repository }}.git
           DESCRIPTION: "Plan the next release task"
           AUTO_CREATE_PR: "true"
+          # The PR carries only a plan; it opens as a draft until the owner
+          # marks it ready for review, which starts implementation.
+          PR_DRAFT: "true"
           PROTECT_TEST_FILES: "false"
         run: bash "$FRAMEWORK/tools/ci/submit-agent-job.sh" "${{ runner.temp }}/agent-prompt.txt"
 
