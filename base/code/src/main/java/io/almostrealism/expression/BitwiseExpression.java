@@ -30,9 +30,9 @@ import java.util.OptionalLong;
  * {@link ShiftRight}) over integer operands.
  *
  * <p>The result type follows the operands: when either operand is {@code Long} the operation
- * is performed on 64-bit values, otherwise on 32-bit values. Floating-point or boolean
- * operands are rejected. Every host-side evaluation path ({@link #intValue()},
- * {@link #longValue()}, {@link #computeValue(IndexValues)}, {@link #evaluate(Number...)} and
+ * is performed on 64-bit values, otherwise on 32-bit values. Floating-point operands are
+ * rejected; a {@code Boolean} operand is an integer, as in the generated C code. Every
+ * host-side evaluation path ({@link #intValue()}, {@link #longValue()}, {@link #computeValue(IndexValues)}, {@link #evaluate(Number...)} and
  * {@link #computeValues(IndexRange)}) applies the same Java operator, {@link #apply(long, long)},
  * so that constant folding and index analysis agree with the operator rendered into generated
  * code. A 32-bit operation truncates each operand to its low 32 bits first, exactly as the
@@ -209,10 +209,10 @@ public abstract class BitwiseExpression<T extends Number> extends BinaryExpressi
 	 * @param left  the left operand
 	 * @param right the right operand
 	 * @return {@code Long} if either operand is {@code Long}, otherwise {@code Integer}
-	 * @throws UnsupportedOperationException if either operand is not integer typed
+	 * @throws UnsupportedOperationException if either operand is floating point
 	 */
 	protected static Class<? extends Number> integralType(Expression<?> left, Expression<?> right) {
-		if (!left.isIntegral() || !right.isIntegral()) {
+		if (left.isFP() || right.isFP()) {
 			throw new UnsupportedOperationException(
 					"Bitwise operations require integer operands, not " +
 							left.getType().getSimpleName() + " and " + right.getType().getSimpleName());

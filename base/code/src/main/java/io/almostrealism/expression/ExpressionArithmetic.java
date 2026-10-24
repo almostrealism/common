@@ -18,6 +18,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.Precision;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
@@ -312,25 +313,36 @@ public interface ExpressionArithmetic<T> {
 	public default Expression<?> shiftRight(Expression<?> bits) { return ShiftRight.of(self(), bits); }
 
 	/**
-	 * Returns this integer expression widened to 64 bits and reduced modulo 2^32, which is how
-	 * unsigned 32-bit arithmetic is represented in the expression tree. The expression layer
-	 * has no unsigned type, and signed 32-bit overflow is undefined in the generated C code, so
-	 * 32-bit wraparound is carried out in {@code long} and made explicit with the mask
-	 * {@code 0xFFFFFFFF}; the result lies in {@code [0, 2^32)}. A floating-point expression
-	 * must be converted explicitly (for example with {@link Expression#toLong()}) first, so
-	 * that truncation is never applied silently.
+	 * Returns this integer expression reinterpreted as an unsigned integer of the width of the
+	 * given precision, which is how unsigned arithmetic is represented in the expression tree.
+	 * The expression layer has no unsigned type, and signed overflow is undefined in the
+	 * generated C code, so wraparound at that width is carried out in {@code long} and made
+	 * explicit with a mask of {@code 8 * precision.bytes()} ones; the result lies in
+	 * {@code [0, 2^(8 * precision.bytes()))}. A floating-point expression must be converted
+	 * explicitly (for example with {@link Expression#toLong()}) first, so that truncation is
+	 * never applied silently.
 	 *
-	 * @return an expression representing {@code ((long) this) & 0xFFFFFFFF}
-	 * @throws UnsupportedOperationException if this expression is not integer typed
+	 * @param precision the precision whose width the unsigned value takes; {@link Precision#FP64}
+	 *                  is not supported, since an unsigned 64-bit value cannot be held in a
+	 *                  {@code long}
+	 * @return an expression representing {@code ((long) this) & mask}
+	 * @throws UnsupportedOperationException if this expression is floating point, or if the
+	 *                                       precision is {@link Precision#FP64}
 	 */
-	public default Expression<?> toUnsigned32() {
-		if (!self().isIntegral()) {
+	public default Expression<?> toUnsigned(Precision precision) {
+		if (self().isFP()) {
 			throw new UnsupportedOperationException(
-					"Unsigned 32-bit wraparound requires an integer operand, not " +
+					"Unsigned wraparound requires an integer operand, not " +
 							self().getType().getSimpleName());
 		}
 
-		return self().toLong(true).bitwiseAnd(new LongConstant(0xFFFFFFFFL));
+		int bits = 8 * precision.bytes();
+		if (bits >= Long.SIZE) {
+			throw new UnsupportedOperationException(
+					"Unsigned wraparound is not supported at " + precision);
+		}
+
+		return self().toLong(true).bitwiseAnd(new LongConstant((1L << bits) - 1));
 	}
 
 	/**
@@ -346,20 +358,21 @@ public interface ExpressionArithmetic<T> {
 	 * </pre>
 	 *
 	 * <p>The arithmetic is carried out on {@code long} values reduced with
-	 * {@link #toUnsigned32()}. Both multipliers are below 2^31, so no product of a 32-bit value
-	 * exceeds 2^63 and no intermediate overflows the signed 64-bit range, which keeps the
-	 * generated code free of undefined behaviour and identical, bit for bit, on every backend
-	 * and in host-side evaluation of the expression.</p>
+	 * {@link #toUnsigned(Precision)} at {@link Precision#FP32}. Both multipliers are below
+	 * 2^31, so no product of a 32-bit value exceeds 2^63 and no intermediate overflows the
+	 * signed 64-bit range, which keeps the generated code free of undefined behaviour and
+	 * identical, bit for bit, on every backend and in host-side evaluation of the
+	 * expression.</p>
 	 *
 	 * @return a {@code Long} typed expression for the hash, in {@code [0, 2^32)}
-	 * @throws UnsupportedOperationException if this expression is not integer typed
+	 * @throws UnsupportedOperationException if this expression is floating point
 	 */
 	public default Expression<?> pcgHash() {
-		Expression<?> state = self().toUnsigned32().multiply(747796405L)
-				.add(new LongConstant(2891336453L)).toUnsigned32();
+		Expression<?> state = self().toUnsigned(Precision.FP32).multiply(747796405L)
+				.add(new LongConstant(2891336453L)).toUnsigned(Precision.FP32);
 		Expression<?> shift = state.shiftRight(28).add(4);
 		Expression<?> word = state.shiftRight(shift).xor(state)
-				.multiply(277803737L).toUnsigned32();
+				.multiply(277803737L).toUnsigned(Precision.FP32);
 		return word.shiftRight(22).xor(word);
 	}
 

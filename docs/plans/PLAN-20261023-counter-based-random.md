@@ -42,10 +42,14 @@ The step counter is a producer (a device-resident counter like
    `CONNECTOME_MODEL_ORGANISM.md` — "Counter-based device random →
    `compute/algebra` (next to `Random`) or `compute/stats`; General"). See the
    open question on algebra-vs-stats placement.
-2. Convenience factory methods alongside `rand`/`randn` in
-   `CollectionCreationFeatures` (e.g. `counterRand(shape, seed, counter)` /
-   `counterRandn(...)`), so the new generator is reachable through the same
-   `Features` mixin, taking the seed and the counter **as producers**.
+2. Reachability through the existing `rand`/`randn` in
+   `CollectionCreationFeatures`. *Revised in review:* random generation is one
+   concept, so there are no separate `counterRand`/`counterRandn` methods.
+   `rand`/`randn` return the `RandomProducer` interface, implemented by both the
+   host generator (`Random`) and `CounterRandom`; the `AR_RANDOM` setting
+   (`java` or `counter`) selects which one every caller gets. The seed and the
+   counter are kernel arguments, and `refresh()` advances the counter on the
+   device.
 3. The integer/bitwise `Expression` primitives the hash needs that do not exist
    yet in `base/code` (`io.almostrealism.expression`) — see the Approach. This
    is the part that turns a "new computation" into foundation work, and is the

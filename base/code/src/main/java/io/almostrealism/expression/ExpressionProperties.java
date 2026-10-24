@@ -65,14 +65,10 @@ public interface ExpressionProperties<T> {
 	public default boolean isLong() { return self().getType() == Long.class; }
 
 	/**
-	 * Checks if this expression produces an integer result of either width.
-	 *
-	 * @return {@code true} if the result type is {@link Integer} or {@link Long}
-	 */
-	public default boolean isIntegral() { return isInt() || isLong(); }
-
-	/**
-	 * Checks if this expression produces a floating-point result.
+	 * Checks if this expression produces a floating-point result. Every other result type
+	 * is integral: {@link Integer}, {@link Long} and {@link Boolean}, which, as in the
+	 * generated C code, is an integer taking the values 0 and 1. There is therefore no
+	 * separate test for an integral result; it is {@code !isFP()}.
 	 *
 	 * @return {@code true} if the result type is {@link Double}
 	 */

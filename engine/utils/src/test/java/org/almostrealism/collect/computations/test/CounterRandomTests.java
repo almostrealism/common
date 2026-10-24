@@ -24,6 +24,8 @@ import io.almostrealism.profile.OperationSource;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CounterRandom;
+import org.almostrealism.collect.computations.Random;
+import org.almostrealism.collect.computations.RandomProducer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.jni.NativeComputeContext;
 import org.almostrealism.hardware.metal.MetalComputeContext;
@@ -36,8 +38,8 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * Tests for {@link CounterRandom}, the stateless counter-based generator whose values are
- * computed inside the compiled kernel.
+ * Tests for {@link CounterRandom}, the {@link RandomProducer} implementation whose values are
+ * computed inside the compiled kernel by a counter-based hash.
  *
  * <p>Tolerances for the moment tests are five standard errors for the sample size used,
  * {@value #SAMPLES} values: for a uniform the standard error of the mean is
@@ -110,12 +112,14 @@ public class CounterRandomTests extends TestSuiteBase {
 	 * @return the generated values
 	 */
 	private double[] generate(boolean normal, long seed, double counter, int size) {
+		PackedCollection s = PackedCollection.of(seed);
 		PackedCollection c = PackedCollection.of(counter);
 
-		CounterRandom random = normal ? counterRandn(shape(size), seed, p(c)) : counterRand(shape(size), seed, p(c));
+		CounterRandom random = new CounterRandom(shape(size), normal, s, c);
 		PackedCollection out = random.get().evaluate();
 		double[] values = out.toArray();
 		out.destroy();
+		s.destroy();
 		c.destroy();
 		return values;
 	}
@@ -140,14 +144,15 @@ public class CounterRandomTests extends TestSuiteBase {
 	/**
 	 * The random values are computed in the generated kernel from the index and the
 	 * counter: the compiled source contains the hash constants and integer operators, and
-	 * the operation reads no input other than the counter. The profile is saved to
+	 * the operation reads no input other than the seed and the counter. The profile is saved to
 	 * {@code target/test-profiles/counterRandom.xml} for inspection.
 	 */
 	@Test(timeout = 120000)
 	public void generatedInKernel() {
+		PackedCollection seed = PackedCollection.of(SEED);
 		PackedCollection counter = new PackedCollection(1);
-		CounterRandom random = counterRandn(shape(256), SEED, p(counter));
-		Assert.assertEquals(2, random.getInputs().size());
+		CounterRandom random = new CounterRandom(shape(256), true, seed, counter);
+		Assert.assertEquals(3, random.getInputs().size());
 
 		OperationProfileNode profile = new OperationProfileNode("counterRandom");
 		Hardware.getLocalHardware().assignProfile(profile);
@@ -175,28 +180,136 @@ public class CounterRandomTests extends TestSuiteBase {
 			throw new RuntimeException(e);
 		}
 
+		seed.destroy();
 		counter.destroy();
 	}
 
 	/**
-	 * The signature, which keys the kernel cache, distinguishes the seed (compiled into the
-	 * kernel as a constant) and the variant, and is shared by computations that differ only
-	 * in the counter producer, since the counter is a kernel argument.
+	 * The signature, which keys the kernel cache, distinguishes the distribution and the
+	 * shape, and is shared by generators that differ only in their seed or counter, since
+	 * both are kernel arguments: unseeded generators created one after another do not each
+	 * compile a new kernel.
 	 */
 	@Test(timeout = 10000)
-	public void signatureDistinguishesSeedAndVariant() {
+	public void signatureSharedAcrossSeeds() {
+		PackedCollection seed = PackedCollection.of(SEED);
+		PackedCollection otherSeed = PackedCollection.of(SEED + 1);
 		PackedCollection a = new PackedCollection(1);
 		PackedCollection b = new PackedCollection(1);
 
-		String uniform = counterRand(shape(64), SEED, p(a)).signature();
+		String uniform = new CounterRandom(shape(64), false, seed, a).signature();
 		Assert.assertNotNull(uniform);
-		Assert.assertEquals(uniform, counterRand(shape(64), SEED, p(b)).signature());
-		Assert.assertNotEquals(uniform, counterRand(shape(64), SEED + 1, p(a)).signature());
-		Assert.assertNotEquals(uniform, counterRandn(shape(64), SEED, p(a)).signature());
-		Assert.assertNotEquals(uniform, counterRand(shape(128), SEED, p(a)).signature());
+		Assert.assertEquals(uniform, new CounterRandom(shape(64), false, seed, b).signature());
+		Assert.assertEquals(uniform, new CounterRandom(shape(64), false, otherSeed, a).signature());
+		Assert.assertEquals(uniform, new CounterRandom(shape(64), false, (java.util.Random) null).signature());
+		Assert.assertNotEquals(uniform, new CounterRandom(shape(64), true, seed, a).signature());
+		Assert.assertNotEquals(uniform, new CounterRandom(shape(128), false, seed, a).signature());
 
+		seed.destroy();
+		otherSeed.destroy();
 		a.destroy();
 		b.destroy();
+	}
+
+	/**
+	 * A generator seeded from a {@link java.util.Random} source reproduces the values of
+	 * another seeded from an identical source, and {@link CounterRandom#refresh()} moves it
+	 * on to the next stream, exactly as the reference does for the next counter.
+	 */
+	@Test(timeout = 120000)
+	public void seededSourceAndRefresh() {
+		int size = 1024;
+		CounterRandom first = new CounterRandom(shape(size), false, new java.util.Random(11));
+		CounterRandom second = new CounterRandom(shape(size), false, new java.util.Random(11));
+		long seed = (long) first.getSeed().toDouble(0);
+		Assert.assertEquals(new java.util.Random(11).nextInt(CounterRandom.SEED_LIMIT), seed);
+
+		double[] a = first.get().evaluate().toArray();
+		Assert.assertArrayEquals(a, second.get().evaluate().toArray(), 0.0);
+
+		first.refresh();
+		Assert.assertEquals(1.0, first.getCounter().toDouble(0), 0.0);
+		double[] b = first.get().evaluate().toArray();
+
+		for (int i = 0; i < size; i++) {
+			Assert.assertEquals(uniform(seed, 0, i), a[i], 0.0);
+			Assert.assertEquals(uniform(seed, 1, i), b[i], 0.0);
+		}
+	}
+
+	/**
+	 * A generator destroys the seed and counter collections it created, together with its
+	 * compiled counter increment, and leaves collections supplied by the caller alone.
+	 */
+	@Test(timeout = 60000)
+	public void destroyReleasesOwnedState() {
+		CounterRandom owning = new CounterRandom(shape(16), false, 5);
+		owning.refresh();
+		owning.destroy();
+		Assert.assertTrue(owning.getSeed().isDestroyed());
+		Assert.assertTrue(owning.getCounter().isDestroyed());
+
+		PackedCollection seed = PackedCollection.of(SEED);
+		PackedCollection counter = new PackedCollection(1);
+		CounterRandom borrowing = new CounterRandom(shape(16), false, seed, counter);
+		borrowing.refresh();
+		borrowing.destroy();
+		Assert.assertFalse(seed.isDestroyed());
+		Assert.assertFalse(counter.isDestroyed());
+		Assert.assertEquals(1.0, counter.toDouble(0), 0.0);
+
+		seed.destroy();
+		counter.destroy();
+	}
+
+	/**
+	 * A seed that single-precision memory cannot hold exactly is rejected rather than
+	 * silently rounded onto a neighbouring seed's stream.
+	 */
+	@Test(timeout = 10000)
+	public void seedOutsideRangeRejected() {
+		for (int seed : new int[] { CounterRandom.SEED_LIMIT, -1 }) {
+			try {
+				new CounterRandom(shape(16), false, seed);
+				Assert.fail("Seed " + seed + " was accepted");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage().contains(String.valueOf(seed)));
+			}
+		}
+	}
+
+	/**
+	 * The {@code AR_RANDOM} setting names an implementation regardless of case, and an
+	 * unknown name is reported with the accepted values.
+	 */
+	@Test(timeout = 10000)
+	public void implementationNamedBySetting() {
+		Assert.assertEquals(RandomProducer.Implementation.JAVA, RandomProducer.Implementation.of("java"));
+		Assert.assertEquals(RandomProducer.Implementation.COUNTER, RandomProducer.Implementation.of("Counter"));
+
+		try {
+			RandomProducer.Implementation.of("philox");
+			Assert.fail("An unknown implementation name was accepted");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("counter"));
+		}
+	}
+
+	/**
+	 * {@code rand} and {@code randn} produce the implementation selected by the
+	 * {@code AR_RANDOM} setting, with the requested distribution.
+	 */
+	@Test(timeout = 10000)
+	public void featuresUseSelectedImplementation() {
+		Class<?> expected = RandomProducer.IMPLEMENTATION == RandomProducer.Implementation.COUNTER ?
+				CounterRandom.class : Random.class;
+
+		RandomProducer uniform = rand(shape(8));
+		RandomProducer normal = randn(shape(8), new java.util.Random(3));
+		Assert.assertEquals(expected, uniform.getClass());
+		Assert.assertEquals(expected, normal.getClass());
+		Assert.assertFalse(uniform.isNormal());
+		Assert.assertTrue(normal.isNormal());
 	}
 
 	/**
@@ -256,21 +369,22 @@ public class CounterRandomTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Advancing the counter with a compiled device-side assignment changes the output of the
-	 * same compiled evaluable, so a new stream needs no recompilation, and returning to an
-	 * earlier counter reproduces its stream.
+	 * Advancing the counter with {@link CounterRandom#refresh()}, a compiled device-side
+	 * assignment, changes the output of the same compiled evaluable, so a new stream needs no
+	 * recompilation, and returning to an earlier counter reproduces its stream.
 	 */
 	@Test(timeout = 120000)
 	public void counterAdvancesWithoutRecompile() {
 		int size = 1024;
+		PackedCollection seed = PackedCollection.of(SEED);
 		PackedCollection counter = new PackedCollection(1);
-		Evaluable<PackedCollection> ev = counterRand(shape(size), SEED, p(counter)).get();
-		Runnable advance = a(cp(counter), cp(counter).add(c(1.0))).get();
+		CounterRandom random = new CounterRandom(shape(size), false, seed, counter);
+		Evaluable<PackedCollection> ev = random.get();
 
 		double[][] streams = new double[3][];
 
 		for (int c = 0; c < streams.length; c++) {
-			if (c > 0) advance.run();
+			if (c > 0) random.refresh();
 			Assert.assertEquals(c, counter.toDouble(0), 0.0);
 			streams[c] = ev.evaluate().toArray();
 
@@ -284,6 +398,7 @@ public class CounterRandomTests extends TestSuiteBase {
 
 		counter.setMem(0, 0.0);
 		Assert.assertArrayEquals(streams[0], ev.evaluate().toArray(), 0.0);
+		seed.destroy();
 		counter.destroy();
 	}
 
@@ -327,12 +442,13 @@ public class CounterRandomTests extends TestSuiteBase {
 				context(ComputeRequirement.JNI, NativeComputeContext.class));
 
 		int size = 65536;
+		PackedCollection seed = PackedCollection.of(SEED);
 		PackedCollection counter = new PackedCollection(1);
 		counter.setMem(0, 5);
 
 		for (boolean normal : new boolean[] { false, true }) {
-			double[] metal = evaluate(normal, counter, size, ComputeRequirement.MTL);
-			double[] cpu = evaluate(normal, counter, size, ComputeRequirement.JNI);
+			double[] metal = evaluate(normal, seed, counter, size, ComputeRequirement.MTL);
+			double[] cpu = evaluate(normal, seed, counter, size, ComputeRequirement.JNI);
 
 			for (int i = 0; i < size; i++) {
 				if (normal) {
@@ -346,6 +462,7 @@ public class CounterRandomTests extends TestSuiteBase {
 			}
 		}
 
+		seed.destroy();
 		counter.destroy();
 	}
 
@@ -353,14 +470,15 @@ public class CounterRandomTests extends TestSuiteBase {
 	 * Evaluates the generator pinned to one backend.
 	 *
 	 * @param normal      whether to produce normal values
+	 * @param seed        the seed collection
 	 * @param counter     the counter collection
 	 * @param size        the number of values
 	 * @param requirement the backend to evaluate on
 	 * @return the generated values
 	 */
-	private double[] evaluate(boolean normal, PackedCollection counter, int size, ComputeRequirement requirement) {
-		CounterRandom random = normal ? counterRandn(shape(size), SEED, p(counter)) :
-				counterRand(shape(size), SEED, p(counter));
+	private double[] evaluate(boolean normal, PackedCollection seed, PackedCollection counter,
+							  int size, ComputeRequirement requirement) {
+		CounterRandom random = new CounterRandom(shape(size), normal, seed, counter);
 		random.setComputeRequirements(List.of(requirement));
 		return random.get().evaluate().toArray();
 	}

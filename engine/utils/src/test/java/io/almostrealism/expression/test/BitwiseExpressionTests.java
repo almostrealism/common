@@ -17,7 +17,9 @@
 package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.And;
+import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
@@ -86,6 +88,18 @@ public class BitwiseExpressionTests extends TestSuiteBase implements ExpressionF
 		Assert.assertTrue(s.getExpression(lang), s.getExpression(lang).contains(" >> 3"));
 	}
 
+	/**
+	 * A boolean operand is integral, as in the generated C code, so bitwise operators and
+	 * unsigned wraparound accept it and produce an integer result.
+	 */
+	@Test(timeout = 10000)
+	public void acceptsBoolean() {
+		Expression<?> flag = new BooleanConstant(true);
+		Assert.assertFalse(flag.isFP());
+		Assert.assertEquals(Integer.class, Xor.of(flag, e(3)).getType());
+		Assert.assertEquals(Long.class, flag.toUnsigned(Precision.FP32).getType());
+	}
+
 	/** Bitwise operators reject floating-point operands. */
 	@Test(timeout = 10000)
 	public void rejectsFloatingPoint() {
@@ -105,15 +119,18 @@ public class BitwiseExpressionTests extends TestSuiteBase implements ExpressionF
 	}
 
 	/**
-	 * Wrapping to 32 bits is explicit: a negative value maps to its two's complement
-	 * residue and a value above 2^32 to its low 32 bits, with conservative bounds.
+	 * Wrapping to the width of a precision is explicit: a negative value maps to its two's
+	 * complement residue and a value above 2^32 to its low 32 bits at {@link Precision#FP32}
+	 * (or its low 16 bits at {@link Precision#FP16}), with conservative bounds.
 	 */
 	@Test(timeout = 10000)
-	public void unsigned32() {
-		Assert.assertEquals(MASK, e(-1).toUnsigned32().longValue().getAsLong());
-		Assert.assertEquals(5L, new LongConstant((1L << 32) + 5).toUnsigned32().longValue().getAsLong());
+	public void unsigned() {
+		Assert.assertEquals(MASK, e(-1).toUnsigned(Precision.FP32).longValue().getAsLong());
+		Assert.assertEquals(5L, new LongConstant((1L << 32) + 5).toUnsigned(Precision.FP32).longValue().getAsLong());
+		Assert.assertEquals(0xFFFFL, e(-1).toUnsigned(Precision.FP16).longValue().getAsLong());
+		Assert.assertEquals(5L, e(0x10005).toUnsigned(Precision.FP16).longValue().getAsLong());
 
-		Expression<?> wrapped = kernel().toUnsigned32();
+		Expression<?> wrapped = kernel().toUnsigned(Precision.FP32);
 		Assert.assertFalse(wrapped.isPossiblyNegative());
 		Assert.assertEquals(0L, wrapped.lowerBound(null).getAsLong());
 		Assert.assertTrue(wrapped.upperBound(null).getAsLong() <= MASK);
@@ -175,7 +192,7 @@ public class BitwiseExpressionTests extends TestSuiteBase implements ExpressionF
 	 */
 	@Test(timeout = 10000)
 	public void bounds() {
-		Expression<?> wide = kernel().toUnsigned32();
+		Expression<?> wide = kernel().toUnsigned(Precision.FP32);
 		Expression<?> byte8 = kernel().bitwiseAnd(e(0xFF));
 
 		Expression<?> and = And.of(wide, e(0x0F));
@@ -241,10 +258,10 @@ public class BitwiseExpressionTests extends TestSuiteBase implements ExpressionF
 	 * truncating it; the caller converts explicitly.
 	 */
 	@Test(timeout = 10000)
-	public void unsigned32RejectsFloatingPoint() {
+	public void unsignedRejectsFloatingPoint() {
 		try {
-			new DoubleConstant(1.5).toUnsigned32();
-			Assert.fail("toUnsigned32 accepted a floating-point operand");
+			new DoubleConstant(1.5).toUnsigned(Precision.FP32);
+			Assert.fail("toUnsigned accepted a floating-point operand");
 		} catch (UnsupportedOperationException expected) {
 			Assert.assertTrue(expected.getMessage().contains("Double"));
 		}
@@ -257,6 +274,20 @@ public class BitwiseExpressionTests extends TestSuiteBase implements ExpressionF
 		}
 
 		Assert.assertEquals(pcg(1), new DoubleConstant(1.5).toLong().pcgHash().longValue().getAsLong());
+	}
+
+	/**
+	 * An unsigned 64-bit value cannot be held in a {@code long}, so wraparound at
+	 * {@link Precision#FP64} is refused rather than producing a value that reads as negative.
+	 */
+	@Test(timeout = 10000)
+	public void unsignedRejectsFP64() {
+		try {
+			e(-1).toUnsigned(Precision.FP64);
+			Assert.fail("toUnsigned accepted FP64");
+		} catch (UnsupportedOperationException expected) {
+			Assert.assertTrue(expected.getMessage().contains("FP64"));
+		}
 	}
 
 	/** The PCG hash of a constant folds on the host to the reference value. */
