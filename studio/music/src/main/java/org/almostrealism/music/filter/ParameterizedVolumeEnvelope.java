@@ -69,6 +69,7 @@ public class ParameterizedVolumeEnvelope extends ParameterizedEnvelopeAdapter {
 	}
 
 	/** Returns the operating mode for this envelope. */
+	@Override
 	public Mode getMode() {
 		return mode;
 	}
@@ -79,7 +80,7 @@ public class ParameterizedVolumeEnvelope extends ParameterizedEnvelopeAdapter {
 	}
 
 	@Override
-	public NoteAudioFilter createFilter(ParameterSet params, ChannelInfo.Voicing voicing) {
+	public ParameterizedEnvelopeFilter createFilter(ParameterSet params, ChannelInfo.Voicing voicing) {
 		return new Filter(params, voicing);
 	}
 
@@ -92,7 +93,7 @@ public class ParameterizedVolumeEnvelope extends ParameterizedEnvelopeAdapter {
 	/**
 	 * A concrete {@link NoteAudioFilter} that applies a volume envelope to audio.
 	 */
-	public class Filter implements NoteAudioFilter {
+	public class Filter implements ParameterizedEnvelopeFilter {
 		/** The parameter set controlling envelope values. */
 		private final ParameterSet params;
 
@@ -110,7 +111,18 @@ public class ParameterizedVolumeEnvelope extends ParameterizedEnvelopeAdapter {
 			this.voicing = voicing;
 		}
 
+		@Override
+		public ParameterizedVolumeEnvelope getEnvelope() {
+			return ParameterizedVolumeEnvelope.this;
+		}
+
+		@Override
+		public ParameterSet getParameters() {
+			return params;
+		}
+
 		/** Returns the signal path voicing used by this filter. */
+		@Override
 		public ChannelInfo.Voicing getVoicing() {
 			return voicing;
 		}

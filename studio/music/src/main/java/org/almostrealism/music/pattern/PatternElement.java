@@ -33,6 +33,7 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.DoubleFunction;
 import java.util.function.DoubleUnaryOperator;
 import java.util.stream.Collectors;
@@ -398,5 +399,36 @@ public class PatternElement implements CodeFeatures {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Returns whether the given element has the same properties as this one: equal
+	 * notes per voicing, position, duration and scale traversal strategies, note
+	 * duration selection, scale positions, direction, repeat count and duration,
+	 * and automation parameters compared by content.
+	 *
+	 * <p>This is deliberately not {@link #equals(Object)}: render caches such as
+	 * {@link RenderedNoteAudio.Identity} key on the element instance, which must
+	 * stay distinct from another element that merely has equal properties.</p>
+	 *
+	 * @param other the element to compare with; may be null
+	 * @return true if every property of {@code other} equals the corresponding property of this element
+	 */
+	public boolean contentEquals(PatternElement other) {
+		if (this == other) return true;
+		if (other == null) return false;
+
+		return Double.compare(position, other.position) == 0
+				&& Double.compare(noteDuration, other.noteDuration) == 0
+				&& repeatCount == other.repeatCount
+				&& Double.compare(repeatDuration, other.repeatDuration) == 0
+				&& durationStrategy == other.durationStrategy
+				&& scaleTraversalStrategy == other.scaleTraversalStrategy
+				&& direction == other.direction
+				&& Objects.equals(notes, other.notes)
+				&& Objects.equals(scalePositions, other.scalePositions)
+				&& (automationParameters == null
+						? other.automationParameters == null
+						: automationParameters.contentEquals(other.automationParameters));
 	}
 }
