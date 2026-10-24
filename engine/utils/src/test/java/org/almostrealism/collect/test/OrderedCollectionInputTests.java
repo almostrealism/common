@@ -16,11 +16,14 @@
 
 package org.almostrealism.collect.test;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.DelegatedTraversalOrdering;
 import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.RepeatTraversalOrdering;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
@@ -29,16 +32,19 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -290,6 +296,83 @@ public class OrderedCollectionInputTests extends TestSuiteBase {
 		assertEquals(5.0, sum.evaluate().toDouble(0));
 		assertEquals(3.0, sum.evaluate().toDouble(1));
 		assertEquals(6.0, sum.evaluate().toDouble(3));
+	}
+
+	/**
+	 * Returns an {@link ArgumentProvider} that supplies the given collection as the kernel
+	 * argument of every traversable input, recording each input it is asked for.
+	 *
+	 * @param argument  the collection to supply as the argument
+	 * @param requested the list each requested input is added to
+	 * @return the provider
+	 */
+	protected ArgumentProvider recordingProvider(PackedCollection argument, List<Supplier<?>> requested) {
+		return new ArgumentProvider() {
+			@Override
+			public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
+													ArrayVariable<T> delegate, int delegateOffset) {
+				return null;
+			}
+
+			@Override
+			public <T> TraversableExpression<?> traversableArgument(Supplier<Evaluable<? extends T>> input) {
+				requested.add(input);
+				return argument;
+			}
+		};
+	}
+
+	/**
+	 * A provider of an ordered collection binds the ordering to the arguments of the scope that
+	 * prepares it, keeps that binding while the same manager prepares it again, rebinds for a
+	 * different manager, and discards the binding when its arguments are reset. A reshape of the
+	 * provider reads through the provider's current binding, while an argument variable created
+	 * for the provider keeps the binding it was created with. A provider of an unordered
+	 * collection binds nothing.
+	 */
+	@Test(timeout = 10000)
+	public void providerBindsOrderingForItsScope() {
+		List<Supplier<?>> requested = new ArrayList<>();
+		ArgumentProvider first = recordingProvider(pack(1, -1, -1, 0), requested);
+		ArgumentProvider second = recordingProvider(pack(-1, 1, 0, -1), requested);
+
+		PackedCollection compact = compact();
+		TraversalOrdering original = compact.getShape().getOrder();
+		CollectionProviderProducer<PackedCollection> input = new CollectionProviderProducer<>(compact);
+		Shape<?> reshaped = (Shape<?>) reshape(shape(4), input);
+		assertTrue(input.getOrdering() == original);
+		assertTrue(reshaped.getOrdering() == original);
+
+		input.prepareScope(first, null);
+		TraversalOrdering bound = input.getOrdering();
+		assertTrue(bound instanceof ExplicitIndexTraversalOrdering);
+		assertFalse(bound == original);
+		assertEquals(1, bound.indexOf(0));
+		assertEquals(0, bound.indexOf(3));
+		assertEquals(2, bound.getLength().getAsInt());
+		assertTrue(reshaped.getOrdering() == bound);
+		assertTrue("the host shape should keep the unbound ordering", input.getShape().getOrder() == original);
+
+		input.prepareScope(first, null);
+		assertTrue("the same manager should keep the binding", input.getOrdering() == bound);
+		assertEquals(1, requested.size());
+
+		CollectionVariable variable = new CollectionVariable("v", input, input);
+		input.prepareScope(second, null);
+		assertEquals(2, requested.size());
+		assertFalse("a different manager should rebind", input.getOrdering() == bound);
+		assertEquals(-1, input.getOrdering().indexOf(0));
+		assertEquals(1, input.getOrdering().indexOf(1));
+		assertTrue("the variable should keep the ordering it was created with", variable.getOrdering() == bound);
+
+		input.resetArguments();
+		assertTrue(input.getOrdering() == original);
+		assertTrue(reshaped.getOrdering() == original);
+
+		CollectionProviderProducer<PackedCollection> plain = new CollectionProviderProducer<>(pack(1.0, 2.0));
+		plain.prepareScope(first, null);
+		assertTrue("an unordered value should have no ordering", plain.getOrdering() == null);
+		assertEquals(2, requested.size());
 	}
 
 	/**
