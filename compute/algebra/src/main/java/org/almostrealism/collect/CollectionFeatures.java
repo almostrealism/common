@@ -704,7 +704,8 @@ public interface CollectionFeatures extends GradientFeatures {
 				BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor,
 				Function<List<String>, String> description,
 				Producer<PackedCollection>... arguments) {
-		Producer<PackedCollection> c = alignTraversalAxes(List.of(arguments), processor);
+		List<Producer<PackedCollection>> args = List.of(arguments);
+		Producer<PackedCollection> c = alignTraversalAxes(args, processor);
 
 		if (c instanceof CollectionProducerComputationBase) {
 			((CollectionProducerComputationBase) c).setDescription(description);
@@ -712,7 +713,7 @@ public interface CollectionFeatures extends GradientFeatures {
 
 		// TODO  This should use outputShape, so that the calculation isn't
 		// TODO  implemented in two separate places
-		long count = highestCount(List.of(arguments));
+		long count = highestCount(args);
 
 		if (c instanceof Shape) {
 			Shape<?> s = (Shape<?>) c;
