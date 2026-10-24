@@ -231,6 +231,11 @@ public class StateDictionary implements Destroyable {
 
 ### AttentionFeatures
 
+The attention, transformer and feed-forward structures are PDSL assets under
+`src/main/resources/pdsl/`. The [PDSL Language Reference](../../docs/internals/pdsl-language.md)
+describes the language they are written in: its grammar, the blocks each statement builds, and
+the built-in catalog with each built-in's shapes and gradient behavior.
+
 The signatures below are a reference summary, not compilable Java — each `default` method
 body is omitted (shown as `;`) since these are the real implementations' parameter shapes,
 not a copy-pasteable interface:
