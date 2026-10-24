@@ -35,6 +35,9 @@ public class ParsedCollectionDataMemory extends CollectionDataMemory {
 	/** The message serving as the backing store; {@code null} once destroyed. */
 	private Collections.CollectionData data;
 
+	/** Which payload of the message holds the values, selected once. */
+	private final ValueEncoding encoding;
+
 	/** The number of values the message contains. */
 	private final int length;
 
@@ -48,8 +51,8 @@ public class ParsedCollectionDataMemory extends CollectionDataMemory {
 										 Collections.CollectionData data) {
 		super(provider);
 		this.data = data;
-		this.length = data.getDataCount() > 0 ?
-				data.getDataCount() : data.getData32Count();
+		this.encoding = ValueEncoding.of(data);
+		this.length = encoding == null ? 0 : encoding.count(data);
 	}
 
 	@Override
@@ -61,7 +64,7 @@ public class ParsedCollectionDataMemory extends CollectionDataMemory {
 			throw new IllegalStateException("Memory has been destroyed");
 		}
 
-		return data.getDataCount() > 0 ? data.getData(index) : data.getData32(index);
+		return encoding.valueAt(data, index);
 	}
 
 	/** Releases the reference to the backing message. */

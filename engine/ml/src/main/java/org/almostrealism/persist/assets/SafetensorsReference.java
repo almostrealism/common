@@ -21,9 +21,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
-import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.io.Bits;
 
 import java.io.File;
 import java.io.IOException;
@@ -31,11 +29,13 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * A tensor in a safetensors file, located but not read.
@@ -55,62 +55,6 @@ import java.util.function.Function;
  */
 public class SafetensorsReference extends CollectionDataReference {
 
-	/** How the values of a tensor are stored, as the header's {@code dtype} names it. */
-	public enum Encoding {
-		/** Brain floating point: the upper 16 bits of an IEEE single-precision value. */
-		BF16(Precision.FP16) {
-			@Override
-			double decode(ByteBuffer buffer, int at) {
-				return Float.intBitsToFloat((buffer.getShort(at) & 0xFFFF) << 16);
-			}
-		},
-		/** IEEE half precision. */
-		F16(Precision.FP16) {
-			@Override
-			double decode(ByteBuffer buffer, int at) {
-				return Bits.float16ToFloat(buffer.getShort(at));
-			}
-		},
-		/** IEEE single precision. */
-		F32(Precision.FP32) {
-			@Override
-			double decode(ByteBuffer buffer, int at) {
-				return buffer.getFloat(at);
-			}
-		},
-		/** IEEE double precision. */
-		F64(Precision.FP64) {
-			@Override
-			double decode(ByteBuffer buffer, int at) {
-				return buffer.getDouble(at);
-			}
-		};
-
-		/** The precision with the same width, which sets how many bytes each value occupies. */
-		private final Precision width;
-
-		/**
-		 * Creates an encoding whose values each occupy the width of the given precision.
-		 *
-		 * @param width the precision with the same width
-		 */
-		Encoding(Precision width) {
-			this.width = width;
-		}
-
-		/** Returns the precision whose width matches this encoding. */
-		public Precision getWidth() { return width; }
-
-		/**
-		 * Decodes the value stored at a byte position.
-		 *
-		 * @param buffer the file's bytes, in little-endian order
-		 * @param at     the byte position of the value
-		 * @return the value
-		 */
-		abstract double decode(ByteBuffer buffer, int at);
-	}
-
 	/**
 	 * The longest header that can be read: the header is decoded from a single array, which
 	 * cannot be longer than this. This is the format's technical ceiling, not a limit a genuine
@@ -129,29 +73,18 @@ public class SafetensorsReference extends CollectionDataReference {
 	 */
 	public static final long MAX_SAFE_HEADER_LENGTH = 100_000_000L;
 
-	/** How this tensor's values are stored. */
-	private final Encoding encoding;
-
 	/**
-	 * Creates a reference to a located tensor.
+	 * Creates a reference to a located tensor. The tensor's {@link ValueEncoding} decodes each
+	 * value, so this inherits {@link CollectionDataReference}'s reading of them unchanged.
 	 *
 	 * @param shape       the tensor's shape
 	 * @param encoding    how its values are stored
 	 * @param valueOffset byte position of its first value within the file
 	 * @param count       number of values
 	 */
-	protected SafetensorsReference(TraversalPolicy shape, Encoding encoding,
+	protected SafetensorsReference(TraversalPolicy shape, ValueEncoding encoding,
 								   long valueOffset, int count) {
-		super(shape, encoding.getWidth(), valueOffset, count);
-		this.encoding = encoding;
-	}
-
-	/** Returns how this tensor's values are stored. */
-	public Encoding getEncoding() { return encoding; }
-
-	@Override
-	protected double valueAt(ByteBuffer buffer, int index) {
-		return encoding.decode(buffer, (int) (getValueOffset() + (long) index * getPrecision().bytes()));
+		super(shape, encoding, valueOffset, count);
 	}
 
 	/**
@@ -165,10 +98,10 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @throws IOException if the file cannot be read
 	 * @throws IllegalArgumentException if the file is too short to hold a header, the header is
 	 *         longer than {@link #MAX_HEADER_LENGTH} or than the {@link #MAX_SAFE_HEADER_LENGTH}
-	 *         this reader will allocate, the header is malformed, names an element type other
-	 *         than BF16, F16, F32 or F64, gives a tensor a byte range that is reversed, lies
-	 *         outside the file's tensor data, or does not match its shape, or the tensors' byte
-	 *         ranges do not tile the tensor data exactly (see {@link #requireTiled})
+	 *         this reader will allocate, the header is malformed, names an element type that is not
+	 *         one of the readable {@link ValueEncoding}s, gives a tensor a byte range that is
+	 *         reversed, lies outside the file's tensor data, or does not match its shape, or the
+	 *         tensors' byte ranges do not tile the tensor data exactly (see {@link #requireTiled})
 	 */
 	public static Map<String, SafetensorsReference> locate(File file) throws IOException {
 		JsonObject header;
@@ -347,13 +280,14 @@ public class SafetensorsReference extends CollectionDataReference {
 	private static SafetensorsReference locateTensor(File file, String name, JsonObject entry,
 													 long dataStart, long dataLength,
 													 List<Range> ranges) {
-		Encoding encoding;
+		ValueEncoding encoding;
 		String dtype = require(file, name, "dtype", entry, e -> e.getAsJsonPrimitive().getAsString());
 		try {
-			encoding = Encoding.valueOf(dtype);
+			encoding = ValueEncoding.valueOf(dtype);
 		} catch (IllegalArgumentException e) {
 			throw new IllegalArgumentException(name + " in " + file + " is stored as " + dtype
-					+ "; only BF16, F16, F32 and F64 tensors can be read", e);
+					+ "; only " + Arrays.stream(ValueEncoding.values()).map(Enum::name)
+							.collect(Collectors.joining(", ")) + " tensors can be read", e);
 		}
 
 		long[] dims = require(file, name, "shape", entry, SafetensorsReference::longs);
@@ -392,7 +326,7 @@ public class SafetensorsReference extends CollectionDataReference {
 		}
 
 		TraversalPolicy policy = new TraversalPolicy(shape);
-		long expected = policy.getTotalSizeLong() * encoding.getWidth().bytes();
+		long expected = policy.getTotalSizeLong() * encoding.getBytes();
 		if (end - begin != expected) {
 			throw new IllegalArgumentException(name + " in " + file + " occupies " + (end - begin)
 					+ " bytes, but " + policy + " values of " + dtype + " occupy " + expected);
