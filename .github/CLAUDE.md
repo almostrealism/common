@@ -643,7 +643,7 @@ group's load small. Several groups also shrink the retry unit: re-running failed
 jobs re-runs only the failed group, not the whole suite. A job's matrix and the
 `AR_TEST_GROUPS` its steps pass must agree, or the groups with no matrix entry
 never run; `tools/tests/test_accelerator_lane_admission.py` checks this for
-`test-cl`.
+every sharded lane.
 
 The CL and CUDA jobs each run up to three groups at a time (`max-parallel: 3`).
 
