@@ -111,6 +111,7 @@ public class ExternalDataDirectory implements Destroyable {
 	 */
 	public void write() {
 		try {
+			// TODO(review): a view argument (offset > 0) writes the root's first values, not its own region; see review-followup memory.
 			for (int i = 0; i < args.length; i++) {
 				writeFile(String.valueOf(i), args[i].getMem().getBytes(args[i].getMemLength()));
 			}
