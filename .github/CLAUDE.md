@@ -535,8 +535,9 @@ Never add a lane stage that depends on a layer-gated stage without it.
 
 The CUDA lane (`test-cuda` → `test-media-cuda`) is described in its own section
 below, "What the `test-cuda` and `test-media-cuda` jobs cover". It runs in
-parallel with the CL lane but is admitted later: after the macOS lane as well
-as the CPU lane. The rest of this section describes the other three lanes. All
+parallel with the CL lane: `test-cuda` is admitted exactly as `test-cl` is, so
+the two start together once `test` is green, while `test-media-cuda` still waits
+for the macOS lane as well as the CPU lane. The rest of this section describes the other three lanes. All
 four are part of the merge gate.
 
 The self-hosted test jobs run as three lanes, each serialised internally so
@@ -686,12 +687,13 @@ up per `tools/ci/cuda/README.md`. The fleet reuses the Linux CPU fleet's image o
 the host's own Docker and NVIDIA Container Toolkit, so it installs nothing on the
 host.
 
-**Admission** is stricter than the CL lane's. Both stages gate on `test`,
-`test-media`, `test-mac` and `test-media-mac` (success-or-skipped) plus `build`
-and the four validation checks, and `test-media-cuda` gates on those upstream
-lanes directly as well as on `test-cuda`. The CL lane no longer waits for the
-macOS lane; the CUDA lane still does. The two accelerator lanes run on separate
-machines; neither gates on the other.
+**Admission.** `test-cuda` is admitted exactly as `test-cl` is: it gates on
+`test` (success-or-skipped) plus `build` and the four validation checks, so
+`test-cl` and `test-cuda` start together as soon as the Linux test stage is
+green, without waiting for `test-media` or the macOS lane. `test-media-cuda` is
+stricter than `test-media-cl`: it gates on `test`, `test-media`, `test-mac` and
+`test-media-mac` directly as well as on `test-cuda`. The two accelerator lanes
+run on separate machines; neither gates on the other.
 
 **The CUDA lane is required**, like every other test lane: it is in
 `analysis.needs`, `all-checks`, `auto-resolve.needs`, the
@@ -708,11 +710,12 @@ lane as well instead of running a separate CPU fleet beside it. That is safe
 because `test` and `test-media` run every step with `AR_HARDWARE_DRIVER=native` on
 the same image (the CUDA bridge tests in `base/hardware` still use the GPU
 directly when one is present, so on such a host they run in `test` too, and the
-fleet's preflight guarantees a complete CUDA environment for them), and because
-the CUDA lane is admitted only after the CPU lane
-finishes, so within one pipeline the two never compete for those runners. The
-`ar-ci-cl` caveat above still applies: across concurrent pipelines, CUDA jobs can
-queue behind CPU jobs on a shared host.
+fleet's preflight guarantees a complete CUDA environment for them). Sharing
+costs queueing, not correctness: `test-cuda` is admitted once `test` finishes,
+so within one pipeline it can queue beside `test-media` on a shared host
+(`test-media-cuda` still waits for the whole CPU lane), and across concurrent
+pipelines CUDA jobs can queue behind CPU jobs as the `ar-ci-cl` caveat above
+describes.
 
 ### What the `docker-build` job covers
 
