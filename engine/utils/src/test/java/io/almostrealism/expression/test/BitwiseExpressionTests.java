@@ -150,6 +150,25 @@ public class BitwiseExpressionTests extends TestSuiteBase implements ExpressionF
 	}
 
 	/**
+	 * When an integer product or sum of constants overflows a {@code long}, exact folding is
+	 * abandoned and the constants are folded through the double accumulator instead, so the
+	 * result is still a single constant rather than an exception.
+	 */
+	// TODO(review): this pins saturation to Long.MAX_VALUE, while Product/Sum.withIndex wrap on overflow; decide on one semantic
+	@Test(timeout = 10000)
+	public void exactFoldingOverflowFallsBack() {
+		long a = 1L << 40;
+		long b = 1L << 30;
+		Expression<?> product = new LongConstant(a).multiply(new LongConstant(b));
+		Assert.assertTrue(product.longValue().isPresent());
+		Assert.assertEquals((long) ((double) a * (double) b), product.longValue().getAsLong());
+
+		Expression<?> sum = new LongConstant(Long.MAX_VALUE).add(new LongConstant(Long.MAX_VALUE));
+		Assert.assertTrue(sum.longValue().isPresent());
+		Assert.assertEquals((long) ((double) Long.MAX_VALUE * 2), sum.longValue().getAsLong());
+	}
+
+	/**
 	 * Substituting a constant for the index in a {@code Long} product or sum folds it
 	 * exactly, even beyond 2^53 where a double accumulator would round.
 	 */
