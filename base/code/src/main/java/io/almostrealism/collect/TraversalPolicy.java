@@ -1574,4 +1574,24 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 		return (int) repeat;
 	}
+
+	/**
+	 * Validates that a collection of this shape can be reshaped to {@code shape}: a reshape
+	 * preserves the number of elements, so both shapes must describe the same total size.
+	 * Returns {@code shape} so the validated target can be used inline, mirroring
+	 * {@link Shape#requireShape(String, Object)}.
+	 *
+	 * @param shape the target shape of the reshape
+	 * @return {@code shape}, when it has the same total size as this shape
+	 * @throws IllegalArgumentException if the total sizes differ
+	 */
+	public TraversalPolicy requireReshape(TraversalPolicy shape) {
+		if (getTotalSizeLong() != shape.getTotalSizeLong()) {
+			throw new IllegalArgumentException("Cannot reshape " + this + " to " + shape +
+					"; the total size differs (" + getTotalSizeLong() + " vs " +
+					shape.getTotalSizeLong() + ")");
+		}
+
+		return shape;
+	}
 }

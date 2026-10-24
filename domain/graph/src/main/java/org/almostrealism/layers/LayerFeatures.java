@@ -605,9 +605,7 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 * @throws IllegalArgumentException if the total sizes differ
 	 */
 	default Block reshape(TraversalPolicy inputShape, TraversalPolicy outputShape) {
-		if (inputShape.getTotalSize() != outputShape.getTotalSize()) {
-			throw new IllegalArgumentException("Cannot reshape " + inputShape + " to " + outputShape);
-		}
+		inputShape.requireReshape(outputShape);
 
 		return new DefaultBlock(inputShape, outputShape,
 				Cell.of((in, next) -> next.push(reshape(outputShape, in))),
