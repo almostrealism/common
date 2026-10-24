@@ -490,6 +490,64 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	}
 
 	/**
+	 * Test 6: Verify the runtime-position write-back is sample-accurate and local.
+	 *
+	 * <p>Directly validates the mechanism {@link #writeAudioAt} relies on: the frame
+	 * position is a runtime kernel argument read through
+	 * {@code subset(shape(len), cp(destination), cp(position))} and written back with a
+	 * {@link CollectionSlotUpdateComputation} at the same position. This test writes a
+	 * small source of known values into a destination pre-filled with a distinct, entirely
+	 * non-zero baseline and then checks every sample, asserting that:</p>
+	 * <ul>
+	 *   <li>the window {@code [startFrame, startFrame + len)} holds {@code baseline + source}
+	 *       (the write-back mixes additively, exactly as the view-offset form did);</li>
+	 *   <li>every sample outside that window is left exactly as the baseline, so writing the
+	 *       whole destination back does not disturb the frames the placement should not
+	 *       touch.</li>
+	 * </ul>
+	 *
+	 * <p>The per-second and ±5-frame-tolerance checks in the other tests do not exercise
+	 * either property, which is why this branch needs this test: it is the guard that the
+	 * runtime position addresses the same frames the compile-time view offset used to.</p>
+	 */
+	@Test(timeout = 30_000)
+	public void testRuntimePositionWriteBackPlacesExactly() {
+		int totalFrames = 100;
+		int len = 10;
+		int startFrame = 40;
+
+		// Distinct, entirely non-zero baseline (values 1..totalFrames) so any frame the
+		// write-back disturbs outside the target window is detectable.
+		PackedCollection destination = new PackedCollection(totalFrames);
+		integers(0, totalFrames).add(1.0).into(destination.traverseEach()).evaluate();
+
+		// Distinct source values (1000..1000+len) so the additive mix stands out clearly
+		// against the baseline.
+		PackedCollection source = new PackedCollection(len);
+		integers(0, len).add(1000.0).into(source.traverseEach()).evaluate();
+
+		writeAudioAt(destination, source, startFrame);
+
+		for (int i = 0; i < totalFrames; i++) {
+			double baseline = i + 1.0;
+			double expected = baseline;
+			if (i >= startFrame && i < startFrame + len) {
+				expected += 1000.0 + (i - startFrame);
+			}
+
+			assertEquals("Frame " + i + " should be "
+							+ (i >= startFrame && i < startFrame + len ? "baseline + source" : "untouched baseline"),
+					expected, destination.toDouble(i), 1e-4);
+		}
+
+		log("Runtime-position write-back placed " + len + " samples at frame " + startFrame
+				+ " with the rest of the " + totalFrames + "-frame buffer untouched");
+
+		destination.destroy();
+		source.destroy();
+	}
+
+	/**
 	 * Ensures the results directory exists.
 	 */
 	private void ensureResultsDir() {
