@@ -40,9 +40,10 @@ configuration:
   registers the mounted toolkit in the container's loader cache (`ldconfig`, as
   the host does through `/etc/ld.so.conf.d`) and refuses to register the runner
   unless the cache resolves it. Only the container's own `/etc` is written.
-- The CUDA lane is admitted only after `test` and `test-media` finish, so within
-  one pipeline the two lanes never compete for these runners. Across concurrent
-  pipelines they share them; the cost is queueing, not correctness.
+- `test-cuda` is admitted once `test` finishes, so within one pipeline it can
+  run beside `test-media` and the two compete for these runners; across
+  concurrent pipelines every stage shares them. The cost is queueing, not
+  correctness. `test-media-cuda` is still admitted only after the whole CPU lane.
 
 `AR_HARDWARE_DRIVER=native` governs only which backend the framework selects.
 It does not isolate the job: a CPU-lane job on these runners still has the GPU
