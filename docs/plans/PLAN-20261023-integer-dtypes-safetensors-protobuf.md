@@ -222,6 +222,18 @@ an FP32 device.
    every array into the float fields. Teaching it to write `data_i32`/`data_i64` is a small,
    separate change; it is left out of this task and can be filed as a follow-up if wanted.
 
+## Branch status
+
+- `FixedPatternCorrectnessTest#testTwoMinuteContinuousAudio` (`studio/compose`) timed out in CI on
+  this branch at a head that predated master's change to the test's `writeAudioAt` helper. That
+  helper placed each of ~600 notes through a view of the destination; a view's offset is part of
+  the kernel signature, so every note compiled its own kernel, which is slow enough on the OpenCL
+  lane to exceed the 120s budget. Master now passes the note position as a runtime argument
+  (`subset` plus `CollectionSlotUpdateComputation`), so every placement shares one compiled kernel.
+  The branch carries that change through its merge of `origin/master`. None of this branch's
+  `engine/ml` changes are on the test's path. After the merge, the method passes locally in about
+  13 seconds.
+
 ## Estimated complexity
 
 Medium. The changes are confined to six classes in `engine/ml` (`SafetensorsReference`,
