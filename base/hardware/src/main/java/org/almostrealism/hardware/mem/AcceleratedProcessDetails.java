@@ -204,8 +204,10 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * Host-thread readiness latch for the asynchronous {@link #whenReady(Runnable)} mechanism.
 	 *
 	 * <p>This is <em>not</em> the operation's completion. It is counted down by
-	 * {@link #notifyListeners()} once the {@code whenReady} listener has finished running — i.e.
-	 * once the arguments have been processed and the dispatch has been issued (and the
+	 * {@link #runListeners(List)} (on whichever thread takes the listeners: the executor via
+	 * {@link #notifyListeners()}, or the waiter via {@link #runPendingListeners()}) once the
+	 * {@code whenReady} listener has finished running — i.e. once the arguments have been
+	 * processed and the dispatch has been issued (and the
 	 * {@link #semaphore completion semaphore} has been published). Because {@code apply} returns
 	 * the process before that listener runs (it may run later on an {@link Executor} thread),
 	 * callers use {@link #awaitReady()} to block on this latch and guarantee the dispatch has
@@ -336,8 +338,8 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 
 	/**
 	 * Sets the host-thread {@link #readyLatch readiness latch} that {@link #awaitReady()} blocks
-	 * on. It is counted down by {@link #notifyListeners()} once the {@link #whenReady(Runnable)}
-	 * listener has run and the dispatch has been issued.
+	 * on. It is counted down by {@link #runListeners(List)} once the {@link #whenReady(Runnable)}
+	 * listener has run, on whichever thread took it, and the dispatch has been issued.
 	 *
 	 * @param readyLatch the readiness latch to set
 	 */
@@ -580,25 +582,36 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	/**
 	 * Runs the given listeners in order on the calling thread, which must not hold the instance
 	 * monitor (see {@link #notifyListeners()}). The {@link #readyLatch readiness latch} is counted
-	 * down once for each listener that runs, whether or not it completes normally. A failure is
-	 * recorded for {@link #awaitReady()} to rethrow and is then rethrown here, ending the run.
+	 * down once for each listener that runs, whether or not it completes normally. Every listener
+	 * runs even when an earlier one fails, since these listeners have been taken and no other
+	 * thread will run them; the first failure is recorded for {@link #awaitReady()} to rethrow and
+	 * is rethrown here once all of them have run.
 	 *
 	 * @param pending the listeners to run
 	 */
 	private void runListeners(List<Runnable> pending) {
-		// TODO(review): a failing listener drops the rest of pending (never run, latch not counted); see review-followup memory.
-		pending.forEach(r -> {
+		Throwable failure = null;
+
+		for (Runnable r : pending) {
 			try {
 				r.run();
 			} catch (RuntimeException | Error e) {
-				listenerFailure = e;
-				throw e;
+				if (failure == null) {
+					failure = e;
+					listenerFailure = e;
+				}
 			} finally {
 				if (readyLatch != null) {
 					readyLatch.countDown();
 				}
 			}
-		});
+		}
+
+		if (failure instanceof RuntimeException) {
+			throw (RuntimeException) failure;
+		} else if (failure != null) {
+			throw (Error) failure;
+		}
 	}
 
 	/**

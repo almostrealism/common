@@ -211,6 +211,46 @@ public class AcceleratedProcessDetailsWaiterTest {
 	}
 
 	/**
+	 * A failing listener does not drop the listeners taken with it: every one of them runs and
+	 * counts the readiness latch down, so {@code awaitReady} reports the first failure instead
+	 * of waiting forever for a latch count that will never arrive.
+	 */
+	@Test(timeout = 30000)
+	public void failingListenerDoesNotDropLaterListeners() {
+		HeldExecutor executor = new HeldExecutor();
+		AcceleratedProcessDetails details = new AcceleratedProcessDetails(
+				new Object[1], 0, new MemoryReplacementManager(null, null, null), executor);
+		details.setReadyLatch(new DefaultLatchSemaphore((OperationMetadata) null, 3));
+
+		IllegalStateException first = new IllegalStateException("first launch failed");
+		IllegalStateException second = new IllegalStateException("second launch failed");
+		AtomicInteger laterRuns = new AtomicInteger();
+
+		details.whenReady(() -> { throw first; });
+		details.whenReady(() -> { throw second; });
+		details.whenReady(laterRuns::incrementAndGet);
+
+		try {
+			details.result(0, new Object());
+		} catch (IllegalStateException e) {
+			// Synchronous hardware runs the listeners on the delivering thread
+			Assert.assertSame("the first failure should be the one rethrown", first, e);
+		}
+
+		try {
+			details.awaitReady();
+			Assert.fail("awaitReady should have reported the listener failure");
+		} catch (HardwareException e) {
+			Assert.assertSame("the first failure should be reported", first, e.getCause());
+		}
+
+		Assert.assertEquals("the listener after the failing ones should still run", 1, laterRuns.get());
+
+		executor.runHeld();
+		Assert.assertEquals("the executor must not run the listeners again", 1, laterRuns.get());
+	}
+
+	/**
 	 * An {@link Executor} that holds the tasks it is given until {@link #runHeld()} runs them on
 	 * the calling thread, standing in for a listener executor whose threads have not yet been
 	 * scheduled.
