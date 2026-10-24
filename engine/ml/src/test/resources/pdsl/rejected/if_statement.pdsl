@@ -1,0 +1,5 @@
+layer conditional(n: int) {
+    if n {
+        relu()
+    }
+}
