@@ -416,8 +416,9 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		if (enableConstantExtraction) {
 			operands = new ArrayList<>();
 
-			// Integer constants are also accumulated exactly, since a double
-			// holds a product exactly only up to 2^53
+			// Integer constants are also accumulated in long, since a double
+			// holds a product exactly only up to 2^53; overflow wraps, as it
+			// does in computeValue and withIndex
 			long exact = 1;
 			boolean exactValid = true;
 
@@ -432,11 +433,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 					OptionalLong l = e.longValue();
 					if (exactValid && l.isPresent() && !e.isFP()) {
-						try {
-							exact = Math.multiplyExact(exact, l.getAsLong());
-						} catch (ArithmeticException ex) {
-							exactValid = false;
-						}
+						exact *= l.getAsLong();
 					} else {
 						exactValid = false;
 					}

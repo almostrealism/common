@@ -150,22 +150,31 @@ public class BitwiseExpressionTests extends TestSuiteBase implements ExpressionF
 	}
 
 	/**
-	 * When an integer product or sum of constants overflows a {@code long}, exact folding is
-	 * abandoned and the constants are folded through the double accumulator instead, so the
-	 * result is still a single constant rather than an exception.
+	 * When an integer product or sum of constants overflows a {@code long}, folding wraps in
+	 * two's complement, giving the same single constant whether the constants are combined
+	 * when the expression is created or when an index is substituted with
+	 * {@link Expression#withIndex}.
 	 */
-	// TODO(review): this pins saturation to Long.MAX_VALUE, while Product/Sum.withIndex wrap on overflow; decide on one semantic
 	@Test(timeout = 10000)
-	public void exactFoldingOverflowFallsBack() {
-		long a = 1L << 40;
-		long b = 1L << 30;
+	public void exactFoldingOverflowWraps() {
+		long a = (1L << 40) + 1;
+		long b = (1L << 30) + 3;
 		Expression<?> product = new LongConstant(a).multiply(new LongConstant(b));
 		Assert.assertTrue(product.longValue().isPresent());
-		Assert.assertEquals((long) ((double) a * (double) b), product.longValue().getAsLong());
+		Assert.assertEquals(a * b, product.longValue().getAsLong());
 
 		Expression<?> sum = new LongConstant(Long.MAX_VALUE).add(new LongConstant(Long.MAX_VALUE));
 		Assert.assertTrue(sum.longValue().isPresent());
-		Assert.assertEquals((long) ((double) Long.MAX_VALUE * 2), sum.longValue().getAsLong());
+		Assert.assertEquals(-2L, sum.longValue().getAsLong());
+
+		KernelIndex index = kernel();
+		Expression<?> indexProduct = index.toLong(true).multiply(new LongConstant(b));
+		Assert.assertEquals(product.longValue().getAsLong(),
+				indexProduct.withIndex(index, new LongConstant(a)).longValue().getAsLong());
+
+		Expression<?> indexSum = index.toLong(true).add(new LongConstant(Long.MAX_VALUE));
+		Assert.assertEquals(sum.longValue().getAsLong(),
+				indexSum.withIndex(index, new LongConstant(Long.MAX_VALUE)).longValue().getAsLong());
 	}
 
 	/**
