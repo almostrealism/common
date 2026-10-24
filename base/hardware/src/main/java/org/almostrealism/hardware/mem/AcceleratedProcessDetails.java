@@ -586,6 +586,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * @param pending the listeners to run
 	 */
 	private void runListeners(List<Runnable> pending) {
+		// TODO(review): a failing listener drops the rest of pending (never run, latch not counted); see review-followup memory.
 		pending.forEach(r -> {
 			try {
 				r.run();
