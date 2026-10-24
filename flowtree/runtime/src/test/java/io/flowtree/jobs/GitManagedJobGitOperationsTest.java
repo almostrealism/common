@@ -174,6 +174,31 @@ public class GitManagedJobGitOperationsTest extends TestSuiteBase {
     }
 
     /**
+     * A fetch that keeps failing after its bounded retries is raised as a
+     * {@link TransientGitException} rather than a generic runtime failure, so
+     * the job that hit it is reported {@code DEGRADED} as an infrastructure
+     * hiccup instead of {@code FAILED} as an agent failure. The repository has
+     * no {@code origin} remote, so every fetch attempt fails deterministically.
+     */
+    @Test(timeout = 60000)
+    public void exhaustedFetchIsReportedAsTransientGitFailure() throws IOException, InterruptedException {
+        CodingAgentJob job = job();
+        GitRepositorySetup setup = new GitRepositorySetup(job);
+
+        TransientGitException error = null;
+        try {
+            setup.prepare();
+            Assert.fail("prepare() must fail when origin cannot be fetched");
+        } catch (TransientGitException e) {
+            error = e;
+        }
+        assertTrue(error.getMessage(), error.getMessage().contains("Failed to fetch from origin after 3 attempts"));
+        Assert.assertEquals("the target branch must be left untouched when the sync aborts",
+                "feature/x", job.getCurrentBranch());
+        assertEquals(JobCompletionEvent.Status.DEGRADED, job.createEvent(error).getStatus());
+    }
+
+    /**
      * Creates a job working in {@link #repo} on {@code feature/x} with the
      * {@link #JOB_NAME} identity.
      *

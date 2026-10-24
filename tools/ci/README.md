@@ -146,6 +146,7 @@ it knowingly does not cover are in
 | `build-goal-decomposition-prompt.sh` | Build prompt for the goal-decomposition round: turn a repository's release plan into tracker tasks, in its own project or the framework's; changes no files |
 | `build-docs-review-prompt.sh` | Build prompt for auto-review of a docs-only branch: review and improve the documents, never implement a plan |
 | `build-defect-hunt-prompt.sh` | Build prompt for the recurring defect hunt |
+| `build-flaky-hunt-prompt.sh` | Build prompt for the pilot flaky-test hunt: repeatedly run one module's small, named test slice on a fixed commit and fix or file the source of any nondeterminism |
 | `build-doc-qa-prompt.sh` | Build prompt for the recurring documentation-staleness review |
 | `build-performance-prompt.sh` | Build prompt for the recurring performance round |
 | `build-pdsl-migration-prompt.sh` | Build prompt for the recurring PDSL migration round |
@@ -161,12 +162,13 @@ it knowingly does not cover are in
 | `consolidation.txt` | Template for the consolidation round: find one duplicated behavior, share it, pin it with tests |
 | `coverage.txt` | Template for the test-coverage round |
 | `defect-hunt.txt` | Template for the defect hunt |
+| `flaky-hunt.txt` | Template for the pilot flaky-test hunt: one module, a small named slice run repeatedly on one commit, find a test whose outcome varies, fix the production/test-helper cause or file a follow-up, never editing the existing test |
 | `docs-review.txt` | Template for the docs-only review prompt |
 | `doc-qa.txt` | Template for the documentation-staleness review |
 | `goal-decomposition.txt` | Template for the goal-decomposition round: reconcile a release's tracker tasks with its plan, touching only the goal-derived tasks of the repository being reconciled |
 | `general-review.txt` | Template for general code review prompt: review and fix within what the branch set out to do, routing out-of-scope work to `tracker_create_task` rather than widening the branch |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
-| `retrospective.txt` | Template for the QA retrospective: study recent automated work and propose, with evidence, how the agent harness and the QA jobs should improve — proposes, never implements. Writes a skeleton report and ledger row to disk first, before the survey, so a stalled run still leaves a reviewable artifact; the round is submitted with `ENFORCE_CHANGES` and a re-run cap of 0, so an empty-tree exit is reported DEGRADED without a re-run |
+| `retrospective.txt` | Template for the QA retrospective: study recent automated work and propose, with evidence, how the agent harness and the QA jobs should improve — proposes, never implements. Before classifying any prior proposal "still open" it checks open PRs (`github_list_open_prs`) and in-window branches (`workstream_list`, incl. `ci/qa-`) for an in-flight implementation and reports it "in progress (PR #N)". Writes a skeleton report and ledger row to disk first, before the survey, so a stalled run still leaves a reviewable artifact; the round is submitted with `ENFORCE_CHANGES` and a re-run cap of 0, so an empty-tree exit is reported DEGRADED without a re-run |
 | `pdsl-migration.txt` | Template for the PDSL migration round: move one piece of pipeline structure from Java into a `.pdsl` asset, delete the Java assembly, pin parity with tests, and report language gaps rather than aliasing around them |
 | `plan-workstream-settings.txt` | Shared fragment: when a plan needs particular hardware, declare it in `docs/plans/<branch>-workstream.yaml` — included by both planning prompts |
 | `plan-pr-framing.txt` | Shared fragment: write the commit message (and so the pull request) for the planned work, not the plan — included by both planning prompts |

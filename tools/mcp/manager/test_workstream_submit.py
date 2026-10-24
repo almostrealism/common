@@ -103,6 +103,23 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("autoCreatePr", mock_post.call_args[0][1])
 
     @patch.object(server, "_controller_post")
+    def test_create_pr_as_draft_is_forwarded(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-draft"}
+        server.workstream_submit_task(
+            prompt="Task", workstream_id="ws-test",
+            auto_create_pr=True, create_pr_as_draft=True)
+        self.assertIs(True, mock_post.call_args[0][1]["createPrAsDraft"])
+
+    @patch.object(server, "_controller_post")
+    def test_create_pr_as_draft_is_omitted_by_default(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workstream_submit_task(
+            prompt="Task", workstream_id="ws-test", auto_create_pr=True)
+        self.assertNotIn("createPrAsDraft", mock_post.call_args[0][1])
+
+    @patch.object(server, "_controller_post")
     def test_submit_omits_zero_defaults(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True}
