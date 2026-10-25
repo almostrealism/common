@@ -4258,6 +4258,7 @@ jobs:
               UPSTREAM_LANE_FAILED="true"
             fi
           done
+          # TODO(review): test-cl no longer gates on test/test-media, so CPU_LANE_FAILED no longer explains its skip (handle it like test-cuda).
           if [ "$CL_RESULT" = "cancelled" ] || [ "$CL_RESULT" = "skipped" ]; then
             if [ "$CPU_LANE_FAILED" = "true" ]; then
               echo "::notice::test-cl job was ${CL_RESULT} because an earlier lane failed — not treating as incomplete"
