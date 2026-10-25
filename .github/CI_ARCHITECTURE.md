@@ -337,13 +337,13 @@ This skip is intentional and correct. The test categories covered by this job ar
 
 1. **Checkout** — full clone
 2. **Set up Java** — Temurin distribution
-3. **Run audio/music/studio tests** — tests requiring hardware media capabilities, split across two groups
-4. **Upload coverage per group** — `coverage-media-{0,1}`
+3. **Run audio/music/studio tests** — tests requiring hardware media capabilities, as a single (non-matrix) job
+4. **Upload coverage** — `coverage-media`
    - `retention-days: 1`, `if-no-files-found: ignore`
 
 ### Coverage artifacts produced
 
-`coverage-media-0`, `coverage-media-1`
+`coverage-media`
 
 ### When skipped
 
@@ -446,7 +446,7 @@ This job does not upload coverage artifacts. It does not appear in `analysis.nee
 1. **Checkout** — full clone
 2. **Download all `coverage-*` artifacts** into `all-coverage/`
    - Downloads every artifact whose name starts with `coverage-`
-   - This includes: `coverage-flowtree`, `coverage-cpu`, `coverage-media-0` and `coverage-media-1`
+   - This includes: `coverage-flowtree`, `coverage-cpu` and `coverage-media`
    - **`mkdir -p all-coverage` MUST come before `find`** — see critical invariant below
 3. **Merge JaCoCo `.exec` files** — uses JaCoCo CLI to merge all `.exec` files into a single combined file
 4. **Generate XML coverage report** — produces the XML report consumed by Qodana
@@ -485,7 +485,7 @@ needs: [build, test, test-media]
 This covers:
 - `build` → produces `coverage-flowtree`
 - `test` → produces `coverage-cpu`
-- `test-media` → produces `coverage-media-0` and `coverage-media-1`
+- `test-media` → produces `coverage-media`
 
 If you add a new job that uploads `coverage-*`, you MUST add it to `analysis.needs`.
 
@@ -503,7 +503,7 @@ All coverage artifacts follow the naming pattern `coverage-<descriptor>`. The `r
 |--------------------|--------------|---------------------------------------|
 | `coverage-flowtree` | `build`     | JaCoCo `.exec` from flowtree tests    |
 | `coverage-cpu`     | `test`       | JaCoCo `.exec` from the CPU test suite |
-| `coverage-media-{0,1}` | `test-media` | JaCoCo `.exec` from each media/studio group |
+| `coverage-media` | `test-media` | JaCoCo `.exec` from the media/studio test suite |
 
 All artifacts use:
 - `retention-days: 1`
