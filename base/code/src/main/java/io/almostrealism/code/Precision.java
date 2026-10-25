@@ -17,88 +17,82 @@
 package io.almostrealism.code;
 
 /**
- * Enumerates the supported floating-point precisions for computation backends.
+ * How precise a number system's values are: the number of bytes per element, the minimum
+ * representable value, machine epsilon, the type name used in generated code (e.g. {@code "float"}
+ * for FP32), and the formatting of numeric literals in generated expressions.
  *
- * <p>The precision determines the number of bytes per element, the minimum representable
- * value, machine epsilon, the type name used in generated code (e.g., {@code "float"} for FP32),
- * and the formatting of numeric literals in generated expressions.</p>
+ * <p>This is one half of a number system — the computational half. The other half, how a value is
+ * laid out in storage, is {@link BinaryLayout}. {@link NumberSystem} is the enumeration of the
+ * systems the framework supports, and implements both halves; most code accepts a {@code Precision}
+ * because it reasons only about how precise a value is, not about its byte layout.</p>
  *
+ * <p>The three floating-point precisions a compute backend runs at keep their historical names as
+ * the constants {@link #FP16}, {@link #FP32} and {@link #FP64}, each of which is the corresponding
+ * {@link NumberSystem}. A system that is not floating-point ({@link NumberSystem#I32},
+ * {@link NumberSystem#I64}) is still a {@code Precision}, but has no precision properties; use
+ * {@link #isFloatingPoint()} before reading any of them.</p>
+ *
+ * @see NumberSystem
+ * @see BinaryLayout
  * @see MemoryProvider
  * @see io.almostrealism.lang.LanguageOperations
  */
-public enum Precision {
-	/** 16-bit half-precision floating point (bfloat). */
-	FP16,
-	/** 32-bit single-precision floating point. */
-	FP32,
-	/** 64-bit double-precision floating point. */
-	FP64;
+public interface Precision {
+	/**
+	 * 16-bit half-precision floating point (bfloat). The historical name for {@link NumberSystem#BF16},
+	 * whose precision behaviour this preserves unchanged.
+	 */
+	Precision FP16 = NumberSystem.BF16;
+
+	/** 32-bit single-precision floating point, i.e. {@link NumberSystem#F32}. */
+	Precision FP32 = NumberSystem.F32;
+
+	/** 64-bit double-precision floating point, i.e. {@link NumberSystem#F64}. */
+	Precision FP64 = NumberSystem.F64;
+
+	/**
+	 * Returns the storage identity of this precision's number system, such as {@code "F32"}. For a
+	 * {@link NumberSystem} this is {@link Enum#name()}, the name a safetensors {@code dtype} resolves
+	 * through, so it is {@code "F32"}/{@code "F64"}/{@code "BF16"} rather than the historical
+	 * {@code "FP32"}/{@code "FP64"}/{@code "FP16"}. The historical precision name, as it appears in
+	 * log and error messages, is the value's {@link Object#toString() string form} — see
+	 * {@link #valueOf(String)}, which is keyed on those historical names.
+	 *
+	 * @return the number system name
+	 */
+	String name();
+
+	/**
+	 * Returns whether this precision has floating-point values at all. An integer system is a
+	 * {@code Precision}, but its floating-point properties ({@link #minValue()}, {@link #epsilon()},
+	 * {@link #typeName()}, the {@code stringFor*} formatters) cannot be read.
+	 *
+	 * @return {@code true} if floating-point values are representable
+	 */
+	boolean isFloatingPoint();
 
 	/**
 	 * Returns the number of bytes required to store one element at this precision.
 	 *
 	 * @return the byte count per element (2, 4, or 8)
 	 */
-	public int bytes() {
-		switch (this) {
-			case FP16:
-				return 2;
-			case FP32:
-				return 4;
-			case FP64:
-				return 8;
-			default:
-				throw new RuntimeException("Unknown precision");
-		}
-	}
-
-	/**
-	 * Returns the precision whose elements occupy the given number of bytes,
-	 * the inverse of {@link #bytes()}.
-	 *
-	 * @param bytes the byte count per element (2, 4, or 8)
-	 * @return the matching precision
-	 * @throws IllegalArgumentException if no precision uses the given byte count
-	 */
-	public static Precision ofBytes(int bytes) {
-		switch (bytes) {
-			case 2:
-				return FP16;
-			case 4:
-				return FP32;
-			case 8:
-				return FP64;
-			default:
-				throw new IllegalArgumentException(bytes + " bytes does not correspond to a supported precision");
-		}
-	}
+	int bytes();
 
 	/**
 	 * Returns the most negative finite value representable at this precision.
 	 *
 	 * @return the minimum (most negative) finite floating-point value
+	 * @throws UnsupportedOperationException if this precision has no floating-point values
 	 */
-	public double minValue() {
-		switch (this) {
-			case FP16:
-				return -3.3895313e+38;
-			case FP32:
-				return -3.4028234663852886e+38;
-			case FP64:
-				return -1.7976931348623157e+308;
-			default:
-				throw new RuntimeException("Unknown precision");
-		}
-	}
+	double minValue();
 
 	/**
 	 * Returns the approximate machine epsilon for this precision (non-strict variant).
 	 *
 	 * @return the machine epsilon
+	 * @throws UnsupportedOperationException if this precision has no floating-point values
 	 */
-	public double epsilon() {
-		return epsilon(false);
-	}
+	default double epsilon() { return epsilon(false); }
 
 	/**
 	 * Returns the machine epsilon for this precision.
@@ -106,69 +100,37 @@ public enum Precision {
 	 * @param strict if {@code true}, returns the exact theoretical epsilon; if {@code false},
 	 *               returns a slightly larger practical value for numerical comparisons
 	 * @return the machine epsilon
+	 * @throws UnsupportedOperationException if this precision has no floating-point values
 	 */
-	public double epsilon(boolean strict) {
-		switch (this) {
-			case FP16:
-				return strict ? 0.0009765625 : 1e-4;
-			case FP32:
-				return strict ? 1.1920928955078125e-7 : 1e-5;
-			case FP64:
-				return strict ? 2.220446049250313e-16 : 1e-7;
-			default:
-				throw new RuntimeException("Unknown precision");
-		}
-	}
+	double epsilon(boolean strict);
 
 	/**
 	 * Returns the type name used in generated code for this precision.
 	 *
 	 * @return the type name (e.g., {@code "float"} for FP32, {@code "double"} for FP64)
+	 * @throws UnsupportedOperationException if this precision has no floating-point values
 	 */
-	public String typeName() {
-		switch (this) {
-			case FP16:
-				return "bfloat";
-			case FP32:
-				return "float";
-			case FP64:
-				return "double";
-			default:
-				return "float";
-		}
-	}
+	String typeName();
 
 	/**
 	 * Returns the generated code literal for the given integer value at this precision.
 	 *
 	 * @param i the integer value to format
 	 * @return the literal string
-	 * @throws UnsupportedOperationException if the value is out of range for this precision
+	 * @throws UnsupportedOperationException if the value is out of range for this precision, or this
+	 *         precision has no floating-point values
 	 */
-	public String stringForInt(int i) {
-		if (this == Precision.FP16 && (i < -32768 || i > 32767)) {
-			throw new UnsupportedOperationException();
-		}
-
-		return String.valueOf(i);
-	}
+	String stringForInt(int i);
 
 	/**
 	 * Returns the generated code literal for the given long value at this precision.
 	 *
 	 * @param l the long value to format
 	 * @return the literal string
-	 * @throws UnsupportedOperationException if the value is out of range for this precision
+	 * @throws UnsupportedOperationException if the value is out of range for this precision, or this
+	 *         precision has no floating-point values
 	 */
-	public String stringForLong(long l) {
-		if (this == Precision.FP64) {
-			return String.valueOf(l);
-		} else if (l < Integer.MIN_VALUE || l > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException(String.valueOf(l));
-		}
-
-		return stringForInt(Math.toIntExact(l));
-	}
+	String stringForLong(long l);
 
 	/**
 	 * Returns the generated code literal for the given double value at this precision.
@@ -184,11 +146,9 @@ public enum Precision {
 	 *
 	 * @param d the double value to format
 	 * @return the literal string, formatted for the target precision
+	 * @throws UnsupportedOperationException if this precision has no floating-point values
 	 */
-	public String stringForDouble(double d) {
-		String raw = rawStringForDouble(d);
-		return this == Precision.FP64 ? raw : raw + "f";
-	}
+	String stringForDouble(double d);
 
 	/**
 	 * Returns the raw string representation of the given double value at this precision,
@@ -203,26 +163,59 @@ public enum Precision {
 	 *
 	 * @param d the double value to format
 	 * @return the raw literal string
+	 * @throws UnsupportedOperationException if this precision has no floating-point values
 	 */
-	public String rawStringForDouble(double d) {
-		if (this != Precision.FP64) {
-			Float f = (float) d;
-			if (f.isInfinite()) {
-				return String.valueOf(f > 0 ? Float.MAX_VALUE : -Float.MAX_VALUE);
-			} else if (f.isNaN()) {
-				return "0.0";
-			}
+	String rawStringForDouble(double d);
 
-			return String.valueOf((float) d);
-		} else {
-			Double v = d;
-			if (v.isInfinite()) {
-				return String.valueOf(v > 0 ? Double.MAX_VALUE : -Double.MAX_VALUE);
-			} else if (v.isNaN()) {
-				return "0.0";
-			}
+	/**
+	 * Returns the floating-point precisions, in order of increasing width. These are the precisions a
+	 * compute backend runs at, the historical values of this type when it was an enum.
+	 *
+	 * @return the floating-point precisions
+	 */
+	static Precision[] values() {
+		return new Precision[] { FP16, FP32, FP64 };
+	}
 
-			return String.valueOf(d);
+	/**
+	 * Returns the floating-point precision of the given name, the inverse of {@link Object#toString()}
+	 * over the historical precision names {@code FP16}, {@code FP32} and {@code FP64}.
+	 *
+	 * @param name the precision's name
+	 * @return the precision
+	 * @throws IllegalArgumentException if no floating-point precision has the given name
+	 */
+	static Precision valueOf(String name) {
+		switch (name) {
+			case "FP16":
+				return FP16;
+			case "FP32":
+				return FP32;
+			case "FP64":
+				return FP64;
+			default:
+				throw new IllegalArgumentException(name + " is not a floating-point precision");
+		}
+	}
+
+	/**
+	 * Returns the precision whose elements occupy the given number of bytes, the inverse of
+	 * {@link #bytes()} over the floating-point precisions.
+	 *
+	 * @param bytes the byte count per element (2, 4, or 8)
+	 * @return the matching precision
+	 * @throws IllegalArgumentException if no precision uses the given byte count
+	 */
+	static Precision ofBytes(int bytes) {
+		switch (bytes) {
+			case 2:
+				return FP16;
+			case 4:
+				return FP32;
+			case 8:
+				return FP64;
+			default:
+				throw new IllegalArgumentException(bytes + " bytes does not correspond to a supported precision");
 		}
 	}
 }

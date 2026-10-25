@@ -255,7 +255,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 		long sizeOf = (long) len * getNumberSize();
 
 		if (shared && getContext().getPrecision() != Precision.FP32) {
-			throw new HardwareException("Shared memory must be " + Precision.FP32.name());
+			throw new HardwareException("Shared memory must be " + Precision.FP32);
 		}
 
 		return allocateReserved(memoryUsed, memoryMax, sizeOf, () -> {
