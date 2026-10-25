@@ -150,10 +150,15 @@ existing mechanism rather than inventing one:
   back into the ring with `into(...)` — exactly what `LayerFeatures.cacheWrite`
   does (one computation over the raw arguments, part of the compiled operation
   order, no host copy, nothing for `Process.optimize` to isolate);
-- the delayed spike vector is read with the `cacheRead` pattern: the row
-  `(writeIndex − delaySteps)` modulo `delaySteps`, gathered as a producer the
-  caller feeds into the weight product;
-  <!-- TODO(review): confirm exact D-step delay vs ring row count — with exactly delaySteps rows, (writeIndex − delaySteps) mod delaySteps is the current write row, so the delay is exact only if the read strictly precedes the write; otherwise delaySteps+1 rows are needed. -->
+- the delayed spike vector is read with the `cacheRead` pattern: the row holding
+  the spike vector written `delaySteps` steps ago, gathered as a producer the
+  caller feeds into the weight product. The exact row index and ring size are a
+  design subtlety the implementation must pin down — see open question 6: on a
+  ring of exactly `delaySteps` rows the row written `delaySteps` steps ago is the
+  same row about to be overwritten this step, so an exact `delaySteps` delay holds
+  only if the read strictly precedes the write; if the compiled operation order
+  does not guarantee read-before-write, the ring needs `delaySteps + 1` rows to
+  avoid an off-by-one;
 
 - the write index is a single-element device-resident collection advanced with the
   `a(cp(idx), …)` assignment pattern `AutoregressiveModel.advancePosition` uses,
@@ -269,6 +274,15 @@ utilities), following the existing test conventions.
    each step, reload on spike). Confirm this matches the reference's refractory
    handling (absolute refractory with `v` clamped at reset) rather than a
    threshold-adaptation scheme.
+6. **Ring size vs read/write ordering for the synaptic delay.** A ring of exactly
+   `delaySteps` rows makes the row written `delaySteps` steps ago the same row the
+   current step is about to overwrite, so an exact `delaySteps` delay depends on
+   the delayed-spike read being ordered strictly before the write in the compiled
+   operation list. The implementation must either guarantee that ordering or size
+   the ring to `delaySteps + 1` rows so the delay is unambiguous; the synaptic-delay
+   test (success criterion 5) must then assert the spike lands exactly `delaySteps`
+   later, not `delaySteps ± 1`. Decide the mechanism before the delay test is
+   written.
 
 **Follow-ups filed:** none. All adjacent work (sparse product, ingest, loop owner,
 parity runs, benchmark) is already filed as separate Phase 1 tasks in the tracker.
