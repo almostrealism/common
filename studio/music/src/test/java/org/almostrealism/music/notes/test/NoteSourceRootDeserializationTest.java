@@ -30,10 +30,10 @@ import org.junit.Test;
  * Pins that a stored note-source root can be read by any {@link ObjectMapper}.
  *
  * <p>The root is declared as the {@code KeyPosition} interface, which Jackson
- * cannot construct on its own. A stored root is the name of a
- * {@link WesternChromatic} key, so a plain mapper with no registered
+ * cannot construct on its own. A stored root is the name of a key, resolved
+ * by {@code KeyPosition.of}, so a plain mapper with no registered
  * deserializers must still read it, and must still reject a name that is not
- * a key.</p>
+ * a key or a value that is not a name.</p>
  */
 public class NoteSourceRootDeserializationTest extends TestSuiteBase {
 	/** A mapper with no deserializers registered for the root type. */
@@ -88,6 +88,42 @@ public class NoteSourceRootDeserializationTest extends TestSuiteBase {
 			Assert.fail("Expected an unknown key name to be refused, but read " + source.getRoot());
 		} catch (JsonProcessingException e) {
 			Assert.assertTrue(e.getMessage(), e.getMessage().contains("H9"));
+		}
+	}
+
+	/**
+	 * A root stored with type information, as a class name and key name pair, is read
+	 * as the named key, and the properties after it are still read.
+	 */
+	@Test(timeout = 30000)
+	public void typedRootIsReadByName() throws JsonProcessingException {
+		FileNoteSource source = read(FileNoteSource.class,
+				"\"root\":[\"" + WesternChromatic.class.getName() + "\",\"D2\"],\"source\":\"/a/snare.wav\"");
+
+		Assert.assertEquals(WesternChromatic.D2, source.getRoot());
+		Assert.assertEquals("/a/snare.wav", source.getSource());
+	}
+
+	/** A typed root whose name is not a key is refused like a plain one. */
+	@Test(timeout = 30000)
+	public void typedUnknownKeyNameIsRefused() {
+		try {
+			TreeNoteSource source = read(TreeNoteSource.class,
+					"\"root\":[\"" + WesternChromatic.class.getName() + "\",\"H9\"]");
+			Assert.fail("Expected an unknown typed key name to be refused, but read " + source.getRoot());
+		} catch (JsonProcessingException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("H9"));
+		}
+	}
+
+	/** A root that is not stored as a name is refused rather than failing inside the lookup. */
+	@Test(timeout = 30000)
+	public void nonNameRootIsRefused() {
+		try {
+			TreeNoteSource source = read(TreeNoteSource.class, "\"root\":{\"key\":\"C1\"}");
+			Assert.fail("Expected a non-name root to be refused, but read " + source.getRoot());
+		} catch (JsonProcessingException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("stored as its name"));
 		}
 	}
 

@@ -763,6 +763,22 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Membership agrees with {@link #toDouble(int)}: when a {@link #getMemOrdering() memory
+	 * ordering} is applied, an index is a member when the ordering gives it a physical position
+	 * (an absent element reads as zero); otherwise every index within {@link #getMemLength()}
+	 * is a member.</p>
+	 */
+	@Override
+	default Expression<Boolean> containsIndex(Expression<Integer> index) {
+		TraversalOrdering order = getMemOrdering();
+		if (order != null) return order.containsIndex(index);
+
+		return index.greaterThanOrEqual(0).and(index.lessThan(getMemLength()));
+	}
+
 	@Override
 	default Expression<Double> getValueAt(Expression pos) {
 		int i = pos.intValue().orElseThrow(UnsupportedOperationException::new);

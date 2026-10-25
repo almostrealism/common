@@ -176,13 +176,32 @@ public interface Shape<T> extends Traversable<T>, IndexSet, Describable {
 	 * Checks whether the given index is contained within the valid index range
 	 * for this shape's ordering.
 	 *
+	 * <p>When the shape carries a {@link TraversalOrdering}, membership is the ordering's:
+	 * an index is a member when it has a physical position. Otherwise every index within
+	 * the total size of the shape is a member.</p>
+	 *
 	 * @param index the index expression to check
 	 * @return a boolean expression that is true if the index is valid
 	 */
 	@Override
 	default Expression<Boolean> containsIndex(Expression<Integer> index) {
-		return getShape().getOrder().containsIndex(index);
+		TraversalOrdering order = getShape().getOrder();
+		if (order != null) return order.containsIndex(index);
+
+		return index.greaterThanOrEqual(0).and(index.lessThan(getShape().getTotalSize()));
 	}
+
+	/**
+	 * Returns the {@link TraversalOrdering} through which generated code reads the elements
+	 * of this shape. The default is the ordering of {@link #getShape()}, which is correct for
+	 * any ordering whose mapping is a closed-form function of the index. A shape whose ordering
+	 * reads a collection obtains the kernel argument for that collection while its scope is
+	 * prepared, and returns the {@link TraversalOrdering#bind bound} ordering here until its
+	 * arguments are reset.
+	 *
+	 * @return the ordering applied to reads of the elements, or {@code null} if none
+	 */
+	default TraversalOrdering getOrdering() { return getShape().getOrder(); }
 
 	/**
 	 * Returns a detailed string description of this object's shape.

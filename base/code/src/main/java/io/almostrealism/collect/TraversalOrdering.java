@@ -16,8 +16,10 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.uml.Signature;
 
 import java.util.OptionalInt;
 
@@ -28,20 +30,74 @@ import java.util.OptionalInt;
  * within the underlying element sequence. It is used by {@link TraversalPolicy} to
  * transform indices during collection traversal, enabling patterns such as repetition,
  * permutation, or arbitrary index remapping.</p>
+ *
+ * <p>A logical index that has no physical position (an absent element of a compact or
+ * sparse ordering) maps to a negative position, and is not a member of the ordering in
+ * the sense of {@link #containsIndex(Expression)}. Readers of an ordered collection treat
+ * such an element as zero, both on the host and in generated code.</p>
+ *
+ * <h2>Generated code</h2>
+ * <p>An ordering whose {@link #indexOf(Expression)} is a closed-form function of the index
+ * (such as {@link RepeatTraversalOrdering}) can appear in generated code as it is. An
+ * ordering that reads a collection to map an index (a lookup table or a mask) must have that
+ * collection delivered to the kernel as an argument; {@link #bind(ArgumentProvider)} returns
+ * the equivalent ordering that reads the kernel argument instead.</p>
  */
-public interface TraversalOrdering extends IndexSet {
+public interface TraversalOrdering extends IndexSet, Signature {
 	/**
 	 * Maps a logical traversal index to the physical position in the element sequence.
 	 *
 	 * @param idx the logical traversal index expression
-	 * @return an expression representing the physical position
+	 * @return an expression representing the physical position, which is negative when the
+	 *         logical index has no physical position
 	 */
 	Expression<Integer> indexOf(Expression<Integer> idx);
 
-	/** {@inheritDoc} Returns {@code indexOf(index) >= 0}. */
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>For an ordering, membership means that the logical index has a physical position.
+	 * Returns {@code indexOf(index) >= 0}.</p>
+	 */
 	@Override
 	default Expression<Boolean> containsIndex(Expression<Integer> index) {
 		return indexOf(index).greaterThanOrEqual(0);
+	}
+
+	/**
+	 * Returns an ordering equivalent to this one that can appear in the generated code of a
+	 * kernel whose arguments are obtained from the given {@link ArgumentProvider}.
+	 *
+	 * <p>An ordering that reads a collection in order to map an index obtains an argument for
+	 * that collection from the provider, so that the collection is delivered to the kernel and
+	 * {@link #indexOf(Expression)} renders as a read of it. The default returns this ordering,
+	 * which is correct for an ordering whose mapping is a closed-form function of the index.</p>
+	 *
+	 * <p>Binding is idempotent: because the provider supplies the same argument for the same
+	 * collection however often it is asked, binding again to the same provider yields an
+	 * ordering that reads the same argument, so a caller may bind whenever it is prepared.</p>
+	 *
+	 * @param provider the provider of the kernel's arguments
+	 * @return the equivalent ordering to use in generated code
+	 */
+	default TraversalOrdering bind(ArgumentProvider provider) {
+		return this;
+	}
+
+	/**
+	 * Returns a signature that identifies the structure of this ordering, so that two
+	 * computations reading inputs with the same structure may share a compiled kernel.
+	 *
+	 * <p>The default returns {@code null}, which prevents the reuse of a compiled kernel. That
+	 * is required of any ordering that reads a collection: the collection is delivered to the
+	 * kernel as an argument with no position in the computation's process tree, so a reused
+	 * kernel would read the collection of the computation it was compiled for.</p>
+	 *
+	 * @return the signature, or {@code null} if kernels reading this ordering must not be reused
+	 */
+	@Override
+	default String signature() {
+		return null;
 	}
 
 	/**
@@ -56,9 +112,12 @@ public interface TraversalOrdering extends IndexSet {
 	}
 
 	/**
-	 * Returns the number of elements covered by this ordering, or empty if unbounded.
+	 * Returns the number of physical elements this ordering addresses, or empty if unbounded.
+	 * This is the length of the backing memory the ordering reads from: every non-negative
+	 * position returned by {@link #indexOf(Expression)} is less than it. It is used to size
+	 * and bound-check memory, and is not the number of logical indices the ordering maps.
 	 *
-	 * @return the optional element count
+	 * @return the optional physical element count
 	 */
 	default OptionalInt getLength() {
 		return OptionalInt.empty();
