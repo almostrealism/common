@@ -482,6 +482,31 @@ public class SimulationRunnerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A recording compiles both its write and its index reset with the runner's profile, and
+	 * the reset still returns the index to zero, so the samples recorded after
+	 * {@link SimulationRunner#reset()} start again at row zero.
+	 */
+	@Test(timeout = 120000)
+	public void recordingUsesProfile() {
+		CountedSystem system = new CountedSystem();
+		OperationProfileNode profile = new OperationProfileNode("simulationRunnerRecordingProfile");
+		SimulationRunner runner = new SimulationRunner(system, DT, new PackedCollection(1), profile);
+		int before = profile.getChildren().size();
+		SimulationRunner.Recording recording = runner.record(cp(system.x), 2, 4);
+		assertEquals(before + 2, profile.getChildren().size());
+
+		runner.run(6);
+		runner.reset();
+		runner.run(4);
+
+		assertEquals(2, recording.getSampleCount());
+		assertEquals(2, recording.getBuffer().toDouble(0), 0.0);
+		assertEquals(4, recording.getBuffer().toDouble(1), 0.0);
+		assertEquals(6, recording.getBuffer().toDouble(2), 0.0);
+		runner.destroy();
+	}
+
+	/**
 	 * {@code run(0)} runs the pending setup and the counter reset but no step, and runs no
 	 * listener, input or recording; the accessors report the configuration the runner was built
 	 * with, including the profile given to the profiling constructor.

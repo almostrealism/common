@@ -560,8 +560,23 @@ public class SimulationRunner extends TemporalRunner {
 					new CollectionSlotUpdateComputation(buffer.getShape(), 1, capacity * width, width,
 							f.cp(buffer), selected, f.cp(index).multiply(width))));
 			op.add(f.a("Advance Recording Index", f.cp(index), f.add(f.cp(index), f.c(1.0))));
-			this.write = op.get(profile);
-			this.resetIndex = f.a("Reset Recording Index", f.cp(index), f.c(0.0)).get();
+
+			OperationList reset = new OperationList("Reset Recording Index", false);
+			reset.add(f.a("Reset Recording Index", f.cp(index), f.c(0.0)));
+
+			Runnable compiledWrite = null;
+
+			try {
+				compiledWrite = op.get(profile);
+				this.resetIndex = reset.get(profile);
+			} catch (RuntimeException e) {
+				Destroyable.destroy(compiledWrite);
+				buffer.destroy();
+				index.destroy();
+				throw e;
+			}
+
+			this.write = compiledWrite;
 			this.resetIndex.run();
 		}
 
