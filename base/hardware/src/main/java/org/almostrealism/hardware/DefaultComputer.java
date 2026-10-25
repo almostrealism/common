@@ -568,7 +568,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 					return mgr;
 				};
 
-		if (context.isDestroyed() || context.getDataContext().isDestroyed()) {
+		if (!context.isLive()) {
 			instructionsCache.evict(cacheKey);
 			throw new IllegalStateException("Cannot compile signature \"" + signature +
 					"\" because the compute context it was placed under has been destroyed");

@@ -21,6 +21,9 @@
  * {@link org.almostrealism.hardware.external.LocalExternalMemoryProvider} provides
  * file-backed memory that survives process boundaries, and
  * {@link org.almostrealism.hardware.external.ExternalComputeContext} manages the
- * lifecycle of an external compute process.</p>
+ * lifecycle of an external compute process. Each run of a compiled
+ * {@link org.almostrealism.hardware.external.ExternalInstructionSet} exchanges its
+ * arguments with the process through an
+ * {@link org.almostrealism.hardware.external.ExternalDataDirectory}.</p>
  */
 package org.almostrealism.hardware.external;
