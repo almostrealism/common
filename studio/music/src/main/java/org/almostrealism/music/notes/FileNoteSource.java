@@ -15,6 +15,8 @@
  */
 
 package org.almostrealism.music.notes;
+
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import org.almostrealism.audio.notes.NoteAudioProvider;
 import org.almostrealism.audio.notes.NoteAudio;
 
@@ -83,6 +85,7 @@ public class FileNoteSource implements NoteAudioSource {
 	public void setSource(String source) { this.source = source; }
 
 	public KeyPosition<?> getRoot() { return root; }
+	@JsonDeserialize(as = WesternChromatic.class)
 	public void setRoot(KeyPosition<?> root) { this.root = root; }
 
 	/**

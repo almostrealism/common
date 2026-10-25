@@ -25,8 +25,6 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.io.File;
 import java.io.IOException;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 /**
  * {@link InstructionSet} for executing compiled standalone executables via external processes.
@@ -36,25 +34,20 @@ import java.util.stream.Stream;
  *
  * <h2>Execution Protocol</h2>
  *
+ * <p>Each run of the executable ({@link #apply(MemoryData...)}) exchanges its arguments through
+ * a fresh {@link ExternalDataDirectory}, which defines the file format:</p>
+ *
  * <ol>
- *   <li>Write input {@link MemoryData} arrays to temporary directory as binary files (0, 1, 2, ...)</li>
+ *   <li>Write the input {@link MemoryData} arrays to the directory as binary files (0, 1, 2, ...)</li>
  *   <li>Write metadata files: sizes, offsets, count</li>
  *   <li>Launch executable with directory path as argument</li>
  *   <li>Wait for process completion</li>
  *   <li>Read modified data from same binary files</li>
- *   <li>Clean up temporary files</li>
+ *   <li>Destroy the directory</li>
  * </ol>
  *
- * <h2>File Format</h2>
- *
- * <pre>
- * data_dir/
- *   0          # Binary data for argument 0 (double array)
- *   1          # Binary data for argument 1
- *   sizes      # Array of element counts per argument
- *   offsets    # Array of memory offsets
- *   count      # Total argument count
- * </pre>
+ * <p>The executable is given no work-item index, so each execution performs a single
+ * work item (see {@link ExternalExecution}).</p>
  *
  * <h2>Performance Characteristics</h2>
  *
@@ -66,20 +59,21 @@ import java.util.stream.Stream;
  * </ul>
  *
  * @see ExternalComputeContext
+ * @see ExternalDataDirectory
  * @see LocalExternalMemoryProvider
  */
 public class ExternalInstructionSet implements InstructionSet, ConsoleFeatures {
 	/** Path to the compiled standalone executable. */
-	private String executable;
+	private final String executable;
 
-	/** Supplier of temporary directory for file-based I/O. */
-	private Supplier<File> dataDirectory;
+	/** Supplier of a fresh, existing directory for each run's data exchange. */
+	private final Supplier<File> dataDirectory;
 
 	/**
 	 * Creates an instruction set that executes via external process.
 	 *
 	 * @param executable Path to the compiled standalone executable
-	 * @param dataDirectory Supplier of temporary directory for I/O files
+	 * @param dataDirectory Supplier of a fresh, existing directory for each run's data exchange
 	 */
 	public ExternalInstructionSet(String executable, Supplier<File> dataDirectory) {
 		this.executable = executable;
@@ -87,11 +81,7 @@ public class ExternalInstructionSet implements InstructionSet, ConsoleFeatures {
 	}
 
 	/**
-	 * Returns an execution that runs the external process with file-based I/O.
-	 *
-	 * <p>Creates temporary directory, writes arguments as binary files, executes
-	 * the external process passing directory path, reads results from files, and
-	 * cleans up temporary data.</p>
+	 * Returns an execution that runs the executable over the given number of arguments.
 	 *
 	 * @param function Function name (unused for external execution)
 	 * @param argCount Number of {@link MemoryData} arguments
@@ -99,76 +89,45 @@ public class ExternalInstructionSet implements InstructionSet, ConsoleFeatures {
 	 */
 	@Override
 	public Execution get(String function, int argCount) {
-		return (args, dependsOn) -> {
-			if (dependsOn != null) dependsOn.waitFor();
-
-			File dest = dataDirectory.get();
-
-			try {
-				MemoryData data[] = IntStream.range(0, argCount).mapToObj(i -> (MemoryData) args[i]).toArray(MemoryData[]::new);
-
-				try {
-					LocalExternalMemoryProvider.writeData(dest, data);
-					LocalExternalMemoryProvider.writeSizes(dest, data);
-					LocalExternalMemoryProvider.writeOffsets(dest, data);
-					LocalExternalMemoryProvider.writeCount(dest, argCount);
-				} catch (IOException e) {
-					throw new HardwareException("Unable to write binary", e);
-				}
-
-				run(dest.getAbsolutePath());
-
-				try {
-					LocalExternalMemoryProvider.readData(dest, data);
-				} catch (IOException e) {
-					throw new HardwareException("Unable to read binary", e);
-				}
-			} finally {
-				deleteData(dest);
-			}
-
-			return null;
-		};
+		return new ExternalExecution(this, argCount);
 	}
 
 	/**
-	 * Executes the external process with the specified data directory.
+	 * Runs the executable once over the given arguments, exchanging them through a fresh
+	 * {@link ExternalDataDirectory}: the arguments are written to it, the executable is run
+	 * over it, the results are read back into the arguments, and the directory is destroyed
+	 * whether or not the run succeeded.
 	 *
-	 * <p>Launches the compiled executable with the directory path as an argument,
-	 * waits for completion, and logs execution time.</p>
+	 * @param args the arguments, which receive the results
+	 * @throws HardwareException if the arguments cannot be exchanged or the executable fails
+	 */
+	public void apply(MemoryData... args) {
+		try (ExternalDataDirectory data = new ExternalDataDirectory(dataDirectory.get(), args)) {
+			data.write();
+			run(data);
+			data.read();
+		}
+	}
+
+	/**
+	 * Launches the executable with the path of the given data directory as its argument, and
+	 * waits for it to exit.
 	 *
-	 * @param dir the absolute path to the data directory containing input files
+	 * @param data the directory holding the arguments
 	 * @throws HardwareException if execution fails or returns non-zero exit code
 	 */
-	protected void run(String dir) {
+	protected void run(ExternalDataDirectory data) {
 		try {
 			long start = System.currentTimeMillis();
-			Process process = new ProcessBuilder(new File(executable).getAbsolutePath(), dir).inheritIO().start();
+			Process process = new ProcessBuilder(new File(executable).getAbsolutePath(), data.getPath()).inheritIO().start();
 			process.waitFor();
-			log("ExternalInstructionSet: " + (System.currentTimeMillis() - start) + " msec");
+			log("Executable completed in " + (System.currentTimeMillis() - start) + " msec");
 
 			if (process.exitValue() != 0) {
 				throw new HardwareException("Native execution failure (" + process.exitValue() + ")");
 			}
 		} catch (IOException | InterruptedException e) {
 			throw new HardwareException(e.getMessage(), e);
-		}
-	}
-
-	/**
-	 * Recursively deletes temporary data files and directories.
-	 *
-	 * <p>If lazy reading is enabled, files are scheduled for deletion on JVM exit
-	 * instead of being deleted immediately.</p>
-	 *
-	 * @param data the file or directory to delete
-	 */
-	protected void deleteData(File data) {
-		if (data.isDirectory()) Stream.of(data.listFiles()).forEach(this::deleteData);
-		if (LocalExternalMemoryProvider.enableLazyReading) {
-			data.deleteOnExit();
-		} else {
-			data.delete();
 		}
 	}
 
