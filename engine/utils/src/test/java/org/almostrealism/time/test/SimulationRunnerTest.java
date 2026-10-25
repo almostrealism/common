@@ -17,6 +17,7 @@
 package org.almostrealism.time.test;
 
 import io.almostrealism.lifecycle.Setup;
+import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.SimulationRunner;
@@ -386,6 +387,87 @@ public class SimulationRunnerTest extends TestSuiteBase {
 		assertEquals(3, system.x.toDouble(0), 0.0);
 		assertEquals(3, calls.get());
 		runner.destroy();
+	}
+
+	/**
+	 * Invalid arguments are rejected with {@link IllegalArgumentException} before they can affect
+	 * the simulation: a counter that is not a single element, a negative step count, and a
+	 * non-positive interval or capacity for an input, listener or recording.
+	 */
+	@Test(timeout = 120000)
+	public void invalidArguments() {
+		CountedSystem system = new CountedSystem();
+		assertThrowsIllegalArgument(() -> new SimulationRunner(system, DT, new PackedCollection(2)));
+		assertThrowsIllegalArgument(() -> new SimulationRunner(system, DT, (PackedCollection) null));
+
+		SimulationRunner runner = new SimulationRunner(system, DT);
+		assertThrowsIllegalArgument(() -> runner.run(-1));
+		assertThrowsIllegalArgument(() -> runner.addInput(0, a(cp(system.x), c(5.0))));
+		assertThrowsIllegalArgument(() -> runner.addBoundaryListener(-3, step -> { }));
+		assertThrowsIllegalArgument(() -> runner.record(cp(system.x), 0, 4));
+		assertThrowsIllegalArgument(() -> runner.record(cp(system.x), 1, 0));
+
+		runner.run(4);
+		assertEquals(4, runner.getStepCount());
+		assertEquals(4, system.x.toDouble(0), 0.0);
+		assertEquals(1, system.setups.get());
+		runner.destroy();
+	}
+
+	/**
+	 * {@code run(0)} runs the pending setup and the counter reset but no step, and runs no
+	 * listener, input or recording; the accessors report the configuration the runner was built
+	 * with, including the profile given to the profiling constructor.
+	 */
+	@Test(timeout = 120000)
+	public void zeroStepsAndAccessors() {
+		CountedSystem system = new CountedSystem();
+		PackedCollection step = new PackedCollection(1).fill(7.0);
+		OperationProfile profile = new OperationProfile("simulationRunnerTest");
+		SimulationRunner runner = new SimulationRunner(system, DT, step, profile);
+		SimulationRunner.Recording recording = runner.record(cp(system.x), 3, 5);
+		AtomicInteger calls = new AtomicInteger();
+		runner.addBoundaryListener(1, s -> calls.incrementAndGet());
+
+		Assert.assertSame(system, runner.getSystem());
+		assertEquals(DT, runner.getTimeStep(), 0.0);
+		Assert.assertSame(step, runner.getStep());
+		Assert.assertSame(profile, runner.getProfile());
+		assertEquals(3, recording.getInterval());
+		assertEquals(5, recording.getCapacity());
+		assertEquals(1, recording.getWidth());
+
+		runner.run(0);
+		assertEquals(0, runner.getStepCount());
+		assertEquals(0.0, step.toDouble(0), 0.0);
+		assertEquals(1, system.setups.get());
+		assertEquals(0, calls.get());
+		assertEquals(0, recording.getSampleCount());
+
+		runner.run(7);
+		assertEquals(7, step.toDouble(0), 0.0);
+		assertEquals(7, calls.get());
+		assertEquals(2, recording.getSampleCount());
+		assertEquals(3, recording.getBuffer().toDouble(0), 0.0);
+		assertEquals(6, recording.getBuffer().toDouble(1), 0.0);
+		assertEquals(1, system.setups.get());
+
+		runner.destroy();
+		assertFalse(step.isDestroyed());
+	}
+
+	/**
+	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
+	 *
+	 * @param action the action expected to throw
+	 */
+	private static void assertThrowsIllegalArgument(Runnable action) {
+		try {
+			action.run();
+			Assert.fail("Expected an IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
 	}
 
 	/**
