@@ -26,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionSlotUpdateComputation;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -592,9 +593,14 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 
 			assertNotNull("A placement must have a signature so its kernel can be reused",
 					earlySignature);
-			assertTrue("Placements at different frame positions must share one kernel signature, but got "
-							+ earlySignature + " and " + lateSignature,
-					earlySignature.equals(lateSignature));
+			Assert.assertEquals("Placements at different frame positions must share one kernel signature",
+					earlySignature, lateSignature);
+
+			String shorterSignature = Signature.of(placement(destination, source, early, len / 2));
+			assertNotNull(shorterSignature);
+			Assert.assertNotEquals("A placement of a different length is a different kernel, so the signature "
+							+ "must distinguish it; otherwise the equality above proves nothing",
+					earlySignature, shorterSignature);
 		}
 	}
 
