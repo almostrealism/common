@@ -107,6 +107,25 @@ public class SplitIndexTests extends TestSuiteBase {
 	}
 
 	/**
+	 * The length is computed without {@code int} overflow: the largest position whose length is
+	 * an {@code int} yields {@link Integer#MAX_VALUE}, and {@link Integer#MAX_VALUE} itself, which
+	 * would address {@code 2^31} positions, is reported as an error rather than a negative length.
+	 */
+	@Test(timeout = 60000)
+	public void lengthDoesNotOverflowAtIntLimit() {
+		Assert.assertEquals(Integer.MAX_VALUE,
+				SplitIndexTraversalOrdering.of(Integer.MAX_VALUE - 1, Integer.MIN_VALUE).getLength().getAsInt());
+
+		SplitIndexTraversalOrdering order = SplitIndexTraversalOrdering.of(3, Integer.MAX_VALUE);
+		try {
+			order.getLength();
+			Assert.fail("Expected a length of 2^31 positions to be rejected");
+		} catch (ArithmeticException e) {
+			Assert.assertNotNull(e.getMessage());
+		}
+	}
+
+	/**
 	 * A kernel reading a collection through the ordering reads the element at every stored
 	 * position, including positions that straddle the lane boundary ({@code BASE - 1},
 	 * {@code BASE}, {@code BASE + 1}), so an error in the lane order or the radix of the

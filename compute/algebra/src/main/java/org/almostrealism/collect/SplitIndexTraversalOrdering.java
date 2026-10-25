@@ -147,14 +147,16 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	 * position, or 0 if no position is stored or every position is negative.
 	 *
 	 * @return the number of physical positions
+	 * @throws ArithmeticException if a stored position is {@link Integer#MAX_VALUE}, whose length
+	 *         of {@code 2^31} positions is not representable as an {@code int}
 	 */
 	@Override
 	public OptionalInt getLength() {
 		double[] values = lanes.toArray();
-		// TODO(review): max + 1 overflows to Integer.MIN_VALUE when a stored position is Integer.MAX_VALUE
-		return OptionalInt.of(IntStream.range(0, values.length / LANES)
-				.map(i -> (int) values[LANES * i] * BASE + (int) values[LANES * i + 1])
-				.max().orElse(-1) + 1);
+		long max = IntStream.range(0, values.length / LANES)
+				.mapToLong(i -> (long) values[LANES * i] * BASE + (long) values[LANES * i + 1])
+				.max().orElse(-1);
+		return OptionalInt.of(Math.toIntExact(max + 1));
 	}
 
 	/**
