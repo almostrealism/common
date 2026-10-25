@@ -16,6 +16,7 @@
 
 package org.almostrealism.persist.assets.test;
 
+import io.almostrealism.code.NumberSystem;
 import io.almostrealism.code.Precision;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persist.assets.CollectionDataReference;
@@ -89,13 +90,20 @@ public class CollectionDataReferenceTest {
 	 */
 	private double[] read(CollectionDataReference reference, byte[] encoded, long base) {
 		ByteBuffer buffer = ByteBuffer.wrap(encoded).order(ByteOrder.LITTLE_ENDIAN);
+		NumberSystem encoding = reference.getEncoding();
 		double[] out = new double[reference.getCount()];
 
 		for (int i = 0; i < out.length; i++) {
-			int at = (int) (reference.getValueOffset() - base)
-					+ i * reference.getPrecision().bytes();
-			out[i] = reference.getPrecision() == Precision.FP64 ?
-					buffer.getDouble(at) : buffer.getFloat(at);
+			int at = (int) (reference.getValueOffset() - base) + i * encoding.bytes();
+			if (encoding == NumberSystem.F64) {
+				out[i] = buffer.getDouble(at);
+			} else if (encoding == NumberSystem.F32) {
+				out[i] = buffer.getFloat(at);
+			} else if (encoding == NumberSystem.I32) {
+				out[i] = buffer.getInt(at);
+			} else {
+				out[i] = buffer.getLong(at);
+			}
 		}
 
 		return out;
@@ -291,6 +299,185 @@ public class CollectionDataReferenceTest {
 
 		for (int i = 0; i < located.length; i++) {
 			Assert.assertEquals(encoded.getData(i), located[i], 0.0);
+		}
+	}
+
+	/**
+	 * An {@code I32} payload reads back exactly through all three read paths — the located (mapped)
+	 * range, the parsed collection, and a decode into a destination buffer. The extreme values are
+	 * powers of two so they are held exactly by FP32 collection memory as well as FP64.
+	 */
+	@Test(timeout = 30000)
+	public void anI32PayloadReadsBackThroughEveryPath() {
+		assertIntegerPayloadReadsBack(
+				CollectionEncoder.encode(PackedCollection.of(-7, 0, 100, 1 << 30, Integer.MIN_VALUE), NumberSystem.I32),
+				NumberSystem.I32, new double[] { -7, 0, 100, 1 << 30, Integer.MIN_VALUE });
+	}
+
+	/**
+	 * An {@code I64} payload, including values past 2<sup>31</sup> and up to &plusmn;2<sup>53</sup>,
+	 * reads back exactly through all three read paths.
+	 */
+	@Test(timeout = 30000)
+	public void anI64PayloadReadsBackThroughEveryPath() {
+		assertIntegerPayloadReadsBack(
+				CollectionEncoder.encode(PackedCollection.of(-(1L << 40), 1L << 35, 1L << 53, -(1L << 53)), NumberSystem.I64),
+				NumberSystem.I64, new double[] { -(1L << 40), 1L << 35, 1L << 53, -(1L << 53) });
+	}
+
+	/**
+	 * Asserts that the given integer collection data reads back as {@code values} exactly through the
+	 * located (mapped) range, the parsed collection, and a decode into a destination buffer at an
+	 * offset.
+	 *
+	 * @param data     collection data already encoded as {@code encoding}'s integer payload
+	 * @param encoding the integer encoding the data is stored as
+	 * @param values   the whole-number values expected back
+	 */
+	private void assertIntegerPayloadReadsBack(Collections.CollectionData data,
+											   NumberSystem encoding, double[] values) {
+		byte[] bytes = data.toByteArray();
+		CollectionDataReference reference = CollectionDataReference.of(message(bytes, 0));
+		Assert.assertEquals(encoding, reference.getEncoding());
+		Assert.assertEquals(values.length, reference.getCount());
+		Assert.assertArrayEquals(values, read(reference, bytes, 0), 0.0);
+
+		PackedCollection parsed = CollectionEncoder.decode(data, false);
+		Assert.assertArrayEquals(values, parsed.toArray(), 0.0);
+
+		PackedCollection destination = new PackedCollection(values.length + 2);
+		PackedCollection decoded = CollectionEncoder.decode(data, destination, 1);
+		Assert.assertNotNull(decoded);
+		for (int i = 0; i < values.length; i++) {
+			Assert.assertEquals(values[i], destination.toDouble(i + 1), 0.0);
+		}
+		destination.destroy();
+	}
+
+	/**
+	 * A {@link Collections.CollectionData} carrying two payloads is rejected on read, through both
+	 * the mapped path ({@link CollectionDataReference#of}) and the parsed path: exactly one payload
+	 * is expected.
+	 */
+	@Test(timeout = 30000)
+	public void aCollectionWithTwoPayloadsIsRejected() {
+		Collections.CollectionData twoPayloads = Collections.CollectionData.newBuilder()
+				.setTraversalPolicy(Collections.TraversalPolicyData.newBuilder()
+						.addDims(2).setTraversalAxis(0))
+				.addData32(1.0f).addData32(2.0f)
+				.addDataI32(1).addDataI32(2)
+				.build();
+
+		byte[] encoded = twoPayloads.toByteArray();
+		try {
+			CollectionDataReference.of(message(encoded, 0));
+			Assert.fail("A collection with two payloads should be rejected on the mapped path");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("exactly one"));
+		}
+
+		try {
+			CollectionEncoder.decode(twoPayloads, false);
+			Assert.fail("A collection with two payloads should be rejected on the parsed path");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("exactly one"));
+		}
+	}
+
+	/** Encoding a value that is not a whole number as an integer payload is rejected, naming the index. */
+	@Test(timeout = 30000)
+	public void encodingANonIntegralValueAsIntegerThrows() {
+		PackedCollection c = PackedCollection.of(1.0, 2.5, 3.0);
+		try {
+			CollectionEncoder.encode(c, NumberSystem.I32);
+			Assert.fail("A non-integral value should not be stored as an integer payload");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("index 1"));
+		} finally {
+			c.destroy();
+		}
+	}
+
+	/** Encoding a value out of range for the integer width is rejected, naming the index. */
+	@Test(timeout = 30000)
+	public void encodingAnOutOfRangeValueAsIntegerThrows() {
+		PackedCollection c = PackedCollection.of(1.0, (double) Integer.MAX_VALUE + 1);
+		try {
+			CollectionEncoder.encode(c, NumberSystem.I32);
+			Assert.fail("A value out of range for I32 should be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("outside the range"));
+		} finally {
+			c.destroy();
+		}
+	}
+
+	/** An integer payload reports FP64 as its precision, since FP32 cannot hold every integer value exactly. */
+	@Test(timeout = 30000)
+	public void anIntegerPayloadNeedsDoublePrecision() {
+		byte[] bytes = CollectionEncoder.encode(PackedCollection.of(1, 2, 3), NumberSystem.I32).toByteArray();
+		CollectionDataReference reference = CollectionDataReference.of(message(bytes, 0));
+		Assert.assertEquals(NumberSystem.I32, reference.getEncoding());
+		Assert.assertEquals(Precision.FP64, reference.getPrecision());
+	}
+
+	/**
+	 * Each encoding reports the narrowest precision that holds its values exactly: FP16 for
+	 * {@code F16}, FP32 for {@code BF16} (whose exponent range exceeds FP16's) and {@code F32}, and
+	 * FP64 for {@code F64} and both integer encodings.
+	 */
+	@Test(timeout = 30000)
+	public void everyEncodingReportsTheNarrowestExactPrecision() {
+		Assert.assertEquals(Precision.FP16, NumberSystem.F16.storagePrecision());
+		Assert.assertEquals(Precision.FP32, NumberSystem.BF16.storagePrecision());
+		Assert.assertEquals(Precision.FP32, NumberSystem.F32.storagePrecision());
+		Assert.assertEquals(Precision.FP64, NumberSystem.F64.storagePrecision());
+		Assert.assertEquals(Precision.FP64, NumberSystem.I32.storagePrecision());
+		Assert.assertEquals(Precision.FP64, NumberSystem.I64.storagePrecision());
+	}
+
+	/**
+	 * {@code Integer.MAX_VALUE} is stored exactly by eight-byte collection memory and so encodes as
+	 * {@code I32}; narrower memory rounds it to 2<sup>31</sup>, and the rejection then says the value
+	 * may have been rounded out of range by the memory rather than only that it is out of range.
+	 */
+	@Test(timeout = 30000)
+	public void theLargestI32ValueIsRejectedOnlyWhenMemoryRoundsIt() {
+		PackedCollection c = PackedCollection.of(Integer.MAX_VALUE);
+		try {
+			if (c.getMem().getProvider().getNumberSize() >= Long.BYTES) {
+				assertIntegerPayloadReadsBack(CollectionEncoder.encode(c, NumberSystem.I32),
+						NumberSystem.I32, new double[] { Integer.MAX_VALUE });
+			} else {
+				try {
+					CollectionEncoder.encode(c, NumberSystem.I32);
+					Assert.fail("A value rounded past the I32 range by narrow memory should be rejected");
+				} catch (IllegalArgumentException e) {
+					Assert.assertTrue(e.getMessage(), e.getMessage().contains("outside the range"));
+					Assert.assertTrue(e.getMessage(), e.getMessage().contains("rounded"));
+				}
+			}
+		} finally {
+			c.destroy();
+		}
+	}
+
+	/**
+	 * Encoding at a precision that has no collection data payload is rejected rather than silently
+	 * stored at another width. Only {@code FP32} and {@code FP64} name a floating-point payload, so
+	 * {@code FP16} is refused: without the guard it would fall through to the {@code FP32} payload
+	 * and store the values at the wrong width.
+	 */
+	@Test(timeout = 30000)
+	public void encodingAtAPrecisionWithoutAPayloadThrows() {
+		PackedCollection c = PackedCollection.of(1.0, 2.0, 3.0);
+		try {
+			CollectionEncoder.encode(c, Precision.FP16);
+			Assert.fail("A precision with no collection data payload should be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("no collection data payload"));
+		} finally {
+			c.destroy();
 		}
 	}
 }
