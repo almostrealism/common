@@ -4241,11 +4241,12 @@ jobs:
             fi
           fi
 
-          # The CL lane and test-media-cuda run only once the CPU lane has cleared, and
-          # test-media-cuda also waits for the Metal lane (admission control — see test-cl and
-          # test-media-cuda), so an accelerator stage skipped or cancelled after one of its
-          # upstream lanes failed or was cancelled is expected. Any other skip of a stage whose
-          # layer gate was met is unexplained.
+          # The second-stage accelerator jobs run only once the CPU lane has cleared:
+          # test-media-cl gates on test and test-media, and test-media-cuda also waits for the
+          # Metal lane (admission control — see test-media-cl and test-media-cuda), so such a
+          # stage skipped or cancelled after one of its upstream lanes failed or was cancelled
+          # is expected. The first stages (test-cl, test-cuda) wait for no other lane. Any other
+          # skip of a stage whose layer gate was met is unexplained.
           CPU_LANE_FAILED="false"
           for result in "$TEST_RESULT" "$MEDIA_RESULT"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
@@ -4258,11 +4259,10 @@ jobs:
               UPSTREAM_LANE_FAILED="true"
             fi
           done
-          # TODO(review): test-cl no longer gates on test/test-media, so CPU_LANE_FAILED no longer explains its skip (handle it like test-cuda).
           if [ "$CL_RESULT" = "cancelled" ] || [ "$CL_RESULT" = "skipped" ]; then
-            if [ "$CPU_LANE_FAILED" = "true" ]; then
-              echo "::notice::test-cl job was ${CL_RESULT} because an earlier lane failed — not treating as incomplete"
-            elif [ "$VALIDATION_FAILED" = "true" ]; then
+            # test-cl, like test-mac and test-cuda, waits for no other lane, so an upstream
+            # lane's failure does not explain its skip.
+            if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-cl job was ${CL_RESULT} because an upstream validation check failed — not treating as incomplete"
             elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
               echo "::notice::test-cl job was ${CL_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"

@@ -454,7 +454,7 @@ Runs one Maven invocation over **every** flowtree module —
 `flowtree/api,flowtree/base,flowtree/python,flowtree/agents,flowtree/graphpersist,flowtree/runtime`
 — and uploads JaCoCo coverage as `coverage-flowtree`. `api` and `python` carry
 no tests today and are listed anyway, per the rule above. Gated on the same
-validation prerequisites as the `test` matrix (`code-policy-check`,
+validation prerequisites as the `test` job (`code-policy-check`,
 `test-timeout-check`, `duplicate-code-check`, `test-integrity-check`) and runs in
 parallel with `test`. Extracted from `build` because flowtree tests are slow and
 would otherwise block every other job.
@@ -478,7 +478,7 @@ change. Uploads `coverage-cpu`.
 Runs `engine/audio`, `studio/music`, `studio/compose`, `studio/spatial`, and
 `extern/ml-onnx,studio/experiments` on a self-hosted runner. Runs after `test`
 (CPU lane, below). Skipped when none of
-studio/extern/engine/domain/compute/base change. Uploads `coverage-media`.
+studio/extern/engine/domain/compute/base change. Uploads `coverage-media-{0,1}`.
 
 ### Tests excluded from the pipeline profile
 
@@ -1445,5 +1445,5 @@ Every job that uploads `coverage-*` artifacts must appear in `analysis`'s
 `needs` list, or analysis will run before coverage is available.
 
 **Mistake: Removing `test` from `analysis` needs.**
-The `test` matrix generates the bulk of coverage data. `analysis` must
+The `test` job generates the bulk of coverage data. `analysis` must
 always wait for it even though it may be skipped on flowtree-only branches.

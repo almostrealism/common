@@ -149,6 +149,45 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
             self.assertGreaterEqual(self.jobs[name]["strategy"]["max-parallel"],
                                     _MIN_ACCELERATOR_PARALLELISM, name)
 
+    def test_first_stage_skips_are_not_excused_by_another_lane(self):
+        # auto-resolve's incomplete-execution check may excuse a skipped stage
+        # only by a lane that stage actually waits for. test-cl and test-cuda
+        # gate on no other test lane, so a CPU- or Metal-lane failure cannot
+        # explain their skip; excusing it would hide an unexplained skip
+        # whenever test or test-media failed.
+        script = _incomplete_execution_script(self.jobs)
+        for result, waits_for_lanes in (("CL_RESULT", False),
+                                        ("CUDA_RESULT", False),
+                                        ("MEDIA_CL_RESULT", True),
+                                        ("MEDIA_CUDA_RESULT", True)):
+            block = _result_block(script, result)
+            excused = "CPU_LANE_FAILED" in block or "UPSTREAM_LANE_FAILED" in block
+            self.assertEqual(waits_for_lanes, excused,
+                             "%s skip %s be excused by an upstream lane's failure"
+                             % (result, "must" if waits_for_lanes else "must not"))
+        for name in ("test-cl", "test-cuda"):
+            for upstream in _CPU_LANE + _MAC_LANE:
+                self.assertNotIn(upstream, self.jobs[name]["needs"],
+                                 "%s must not wait for %s" % (name, upstream))
+
+
+def _incomplete_execution_script(jobs):
+    """The ``run`` script of auto-resolve's incomplete-execution step."""
+    for step in jobs["auto-resolve"]["steps"]:
+        if step.get("name") == "Check for incomplete test execution":
+            return step["run"]
+    raise AssertionError("auto-resolve has no 'Check for incomplete test execution' step")
+
+
+def _result_block(script, result):
+    """The ``if`` block that handles a cancelled or skipped ``$<result>``."""
+    opener = 'if [ "$%s" = "cancelled" ]' % result
+    start = script.index(opener)
+    end = script.find("\nfi\n", start)
+    if end < 0:
+        raise AssertionError("no closing fi for the %s block" % result)
+    return script[start:end]
+
 
 if __name__ == "__main__":
     unittest.main()
