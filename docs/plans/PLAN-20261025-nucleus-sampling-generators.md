@@ -67,6 +67,13 @@ This is squarely in scope: the fix for both defects is the same unification — 
 through `sampleToken` once, with the configured temperature and the configured top-p, from both
 generators.
 
+Note who each defect affects. The self-hosted LM generates through
+`SlidingWindowAutoregressiveModel` (the generator `CausalLanguageModelTest` builds over a
+`CausalLanguageModel`), which is already the clean path, so for the self-hosted LM this task is
+only about reaching top-p. The double-softmax lives in `of(...)`, whose production callers are
+`Qwen3` and `Llama2`; fixing it changes pretrained-model generation, not the self-hosted LM (see
+Open questions).
+
 ### What already exists elsewhere
 
 Top-p is already reachable in one place, outside these two generators: the MIDI generator
@@ -125,6 +132,17 @@ Concrete, in `engine/ml`:
      reproduces the unfiltered tempered distribution.
    - A test that the two generators now sample **identically** from the same logits given the same
      temperature, top-p and seed (closing the discrepancy, and guarding against its return).
+     This is not reachable with today's API: `of(...)` creates its own unseeded `new Random()`
+     inside the factory, and neither the factory nor `AutoregressiveModel` lets a caller supply
+     one, whereas `SlidingWindowAutoregressiveModel` takes its `Random` as a constructor argument.
+     The test therefore needs a way to give `of(...)` a seeded `Random` (for example an overload
+     that accepts one, with the existing three-argument form delegating to it). Exercising the
+     generators also means constructing them: `SlidingWindowAutoregressiveModel` compiles the
+     `CausalLanguageModel` it is given, and `of(...)` needs a `CompiledModel` and compiles its
+     `indexOfMax` evaluable, so this test (unlike the `sampleToken` tests) compiles kernels, on
+     whatever backend the node has. `sample(PackedCollection)` is `protected`, so a test in
+     `org.almostrealism.ml` can call it on both generators directly with crafted logits rather
+     than running a forward pass. See Open questions.
    - A test that `setTopP` rejects out-of-range values and that the default (`1.0`) leaves
      generation behavior unchanged.
 
@@ -206,7 +224,8 @@ any change to `CausalLanguageModelTest`'s existing acceptance assertions.
   `setTopP` rejects values outside `(0, 1]`.
 - `SlidingWindowAutoregressiveModel` and `AutoregressiveModel.of(...)` both pass the configured
   top-p and the configured temperature into `sampleToken`, and sample **identically** from the
-  same logits under the same `(temperature, topP, seed)` — proven by a test.
+  same logits under the same `(temperature, topP, seed)` — proven by a test (which requires a
+  way to seed `of(...)`; see Open question 6).
 - The `of(...)` double-softmax / hardcoded-temperature discrepancy is gone and cannot return
   without failing a test, and the `rescale`/`softmax` evaluables it leaves unused are removed
   from `of(...)` and its `destroy()`.
@@ -263,11 +282,20 @@ proposes.
    consumer. The single-element collection then exists only for API compatibility with the
    constructors. That is fine to leave, but the plan's Scope sentence explaining why `temperature`
    is device-resident describes today's code, not the code after this change.
+6. **`of(...)` cannot be seeded.** The factory creates `new Random()` internally and offers no way
+   to replace it, so the "same seed" agreement test in Scope step 4 needs a small API addition
+   (an `of(...)` overload taking a `Random`, or the `Random` becoming generator state settable on
+   `AutoregressiveModel`). That addition is not otherwise listed in Scope or Success Criteria. It
+   also makes `Qwen3`/`Llama2` sampling reproducible, which they cannot be today. The approver
+   should decide whether that API change is part of this task. If it is not, the agreement test
+   has to be dropped or weakened to a distribution-level comparison.
 
 ## Machine
 
 Runs on **any backend**. The committed deliverable is a host-side API change plus deterministic
 tests that construct logits directly and call the sampling path with a seeded `Random`; no
-training, no Metal kernel, no GPU is involved. **No workstream settings file is written.** (The
-follow-up that *measures* generation quality under top-p will need a macOS/Metal node, but that is
-a separate cycle.)
+training and no Metal-specific kernel is involved. The `sampleToken` tests are pure host Java;
+the two-generators-agree test constructs both generators and so compiles a small model and the
+`of(...)` evaluables on the node's default backend, which any backend can do. **No workstream
+settings file is written.** (The follow-up that *measures* generation quality under top-p will
+need a macOS/Metal node, but that is a separate cycle.)
