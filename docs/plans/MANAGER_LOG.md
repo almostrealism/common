@@ -75,8 +75,9 @@ the same code: `AutoregressiveModel.of(...)` pre-applies `rescale` (`logits / te
 with a **hardcoded temperature of `1.0`**, which re-exponentiates and renormalizes the
 already-softmaxed values: a redundant second softmax that flattens the already-tempered distribution.
 It therefore samples from a different (flatter) distribution than `SlidingWindowAutoregressiveModel`,
-which passes raw logits and the configured temperature straight through for a single softmax. The fix for both is one unification: route raw logits through `sampleToken` once, with the
-configured temperature and configured top-p, from both generators. It is the smallest change that
+which passes raw logits and the configured temperature straight through for a single softmax. The
+fix for both is one unification: route raw logits through `sampleToken` once, with the configured
+temperature and configured top-p, from both generators. It is the smallest change that
 materially improves what the self-hosted LM can produce, and a prerequisite for the sampling-quality
 comparison the training doc already promises.
 
