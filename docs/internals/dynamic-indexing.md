@@ -64,28 +64,37 @@ Producer<?> gathered = traverse(0, c(p(data), shape(10),
                                       traverseEach(p(indices))));
 ```
 
-### Integer-Exact Indices Above 2^24 (Split-Index Gather)
+### Integer-Exact Indices Above 2^24 (Split-Index Ordering)
 
 Index data is ordinarily held in a floating-point `PackedCollection`. On a single-precision
 backend (Metal, or any FP32 context) a `float` represents integers exactly only up to
 `2^24` (16,777,216), so an index above that bound is **rounded when it is stored** — before
 any kernel runs. A gather over a table with more than `2^24` elements then reads the wrong
-element: `2^24 + 1` is stored as `2^24`, and `2^24 + 5` as `2^24 + 4`.
+element: `2^24 + 1` is stored as `2^24`, and `2^24 + 5` as `2^24 + 4`. The same applies to the
+positions of an `ExplicitIndexTraversalOrdering`.
 
-For such index data, store the indices in the **split layout** owned by
-`SplitIndexTraversalOrdering` (`base/code`, `io.almostrealism.collect`) and gather with
-`CollectionFeatures.gatherSplitIndex`:
+For such positions, read the table through a `SplitIndexTraversalOrdering`
+(`compute/algebra`, `org.almostrealism.collect`). A gather is then nothing more than a
+collection configured with that ordering: every computation that reads it respects the
+ordering, so there is no special-purpose gather operation.
 
 ```java
-// Shape (3, 2): each index stored as a high lane and a low lane
-PackedCollection index = PackedCollection.ofSplitIndices(16777216, 16777217, 16777221);
+// gathered[i] = data[positions[i]], exact for every int position
+SplitIndexTraversalOrdering order = SplitIndexTraversalOrdering.of(16777216, 16777217, 16777221);
+PackedCollection gathered = new PackedCollection(shape(3), 0, data, 0, order);
 
-// gathered[i] = data[index[i]], exact for every int index
-Producer<?> gathered = gatherSplitIndex(shape(3), p(data), p(index));
+// Any computation reads it through the ordering, including the index argument of c()
+Producer<?> doubled = cp(gathered).multiply(2.0);
 ```
 
-**Representation.** Each integer index `v` is stored as two values, interleaved so index `i`
-occupies elements `2i` and `2i + 1` of an `(n, 2)` collection:
+Computations never refer to a particular ordering. The ordering travels with the collection's
+shape, and when a kernel is compiled the ordering's lane collection is delivered as a kernel
+argument through `TraversalOrdering.bind`, exactly as for `ExplicitIndexTraversalOrdering`.
+`c(shape, collection, index)` therefore respects an ordering on either its collection or its
+index argument.
+
+**Representation.** Each integer position `v` is stored as two values, interleaved so logical
+index `i` occupies elements `2i` and `2i + 1` of an `(n, 2)` lane collection:
 
 ```
 hi = floorDiv(v, BASE)
@@ -93,32 +102,32 @@ lo = floorMod(v, BASE)
 v  = hi * BASE + lo
 ```
 
-`BASE` is `SplitIndexTraversalOrdering.BASE = 2^12`. For any `int` index the high lane's
+`BASE` is `SplitIndexTraversalOrdering.BASE = 2^12`. For any `int` position the high lane's
 magnitude is at most `2^19` and the low lane lies in `[0, 2^12)`, so both lanes are exactly
 representable in FP32 (any power of two in `[2^12, 2^24]` would also work; `2^12` leaves the
-widest margin on the low lane). Negative indices are supported: the high lane carries the sign. The ordering
-owns both directions of the layout: `SplitIndexTraversalOrdering.encode(int...)` produces the
-lanes and `indexOf` decodes them; `PackedCollection.ofSplitIndices` stores `encode`'s output.
+widest margin on the low lane). A negative position marks an absent element, which reads as
+zero; the high lane carries the sign. The ordering owns both directions of the layout:
+`SplitIndexTraversalOrdering.encode(int...)` produces the lanes, `of(int...)` stores them in one
+transfer (through the host ingest factory `PackedCollection.ofSplitIndices`), and `indexOf`
+decodes them. The constructor rejects a lane collection whose last
+dimension is not `LANES = 2`, so an ordinary single-lane index table cannot be misread as lanes.
 
 **Exactness guarantee.** `SplitIndexTraversalOrdering.indexOf` reads both lanes, converts each to
 an integer, and computes `hi * BASE + lo` on integer expressions inside the kernel — the same
-technique `CollectionFeatures.rows` uses for row addresses — so the index never passes back
+technique `CollectionFeatures.rows` uses for row addresses — so the position never passes back
 through a floating-point value. The reconstruction is exact for the full `int` range
-(below `2^31`); indices beyond that would need a `long` reconstruction, which is not provided.
+(below `2^31`); positions beyond that would need a `long` reconstruction, which is not provided.
 
-**When to use it.** Prefer the split layout for index data whose values can exceed `2^24`:
-sparse row offsets, edge lists, and gathers over large flat tables. For small index sets the
-plain gather `c(shape, collection, index)` is simpler and equivalent. The representation is
-opt-in — ordinary collections keep their precision. `ofSplitIndices` is a host ingest
-boundary (index data entering the system) and uploads all lanes in one transfer.
-`gatherSplitIndex` rejects an index producer whose declared shape does not end in a dimension
-of `LANES = 2`, so an ordinary single-lane index cannot be silently misread as split lanes.
+**When to use it.** Prefer the split ordering for positions that can exceed `2^24`: sparse row
+offsets, edge lists, and gathers over large flat tables. For small position sets
+`ExplicitIndexTraversalOrdering` or the plain gather `c(shape, collection, index)` is simpler and
+equivalent. The representation is opt-in — ordinary collections keep their precision.
 
-**Testing on FP32.** An index above `2^24` cannot be read back from an FP32 output buffer, and a
+**Testing on FP32.** A position above `2^24` cannot be read back from an FP32 output buffer, and a
 table holding `data[i] = i` rounds its payload exactly as a float index rounds the address, so
-the bug is invisible with such data. Exactness is observable only through *which element* a
-gather selects, using a payload that is exact and distinct between adjacent addresses (for
-example the address modulo 16, computed from the integer kernel index). See `SplitIndexTests`.
+the bug is invisible with such data. Exactness is observable only through *which element* is
+read, using a payload that is exact and distinct between adjacent addresses (for example the
+address modulo 16, computed from the integer kernel index). See `SplitIndexTests`.
 
 ### Scatter (Writing with Dynamic Indices)
 
@@ -200,12 +209,15 @@ See `CollectionComputationTests.java`:
 - `integersRangeLarge` - Large-scale integer sequences
 
 See `SplitIndexTests.java`:
-- `storageIsExactAboveSinglePrecision` - Split lanes recover indices above 2^24 exactly
-- `gatherIsExactAboveSinglePrecision` - Split-index gather selects the exact element above 2^24
-- `gatherReadsEveryStoredPosition` - Split-index gather across the lane boundary (`BASE - 1`, `BASE`, `BASE + 1`)
-- `storageRoundTripsNegativeIndex` - Negative indices keep their sign in the high lane
+- `storageIsExactAboveSinglePrecision` - Split lanes recover positions above 2^24 exactly
+- `readIsExactAboveSinglePrecision` - A kernel reading through the split ordering selects the exact element above 2^24
+- `kernelReadsEveryStoredPosition` - Reads across the lane boundary (`BASE - 1`, `BASE`, `BASE + 1`)
+- `gatherRespectsOrderedCollection` / `gatherRespectsOrderedIndex` - `c(shape, collection, index)` respects an ordering on either argument
+- `retraversedViewReadsTheSameElements` - Re-traversing an ordered view keeps reading the same elements
+- `negativePositionIsAbsent` - Negative positions keep their sign in the high lane and read as zero
 - `storageRoundTripsIntExtremes` - `Integer.MAX_VALUE` and `Integer.MIN_VALUE` round-trip with a high lane of magnitude at most 2^19
-- `gatherRejectsSingleLaneIndex` - Split-index gather refuses an index whose last dimension is not 2
+- `lengthCoversLargestPosition` - The ordering addresses one more position than the largest stored
+- `rejectsIndexWithoutTwoLanes` - The ordering refuses a lane collection whose last dimension is not 2
 
 ## See Also
 

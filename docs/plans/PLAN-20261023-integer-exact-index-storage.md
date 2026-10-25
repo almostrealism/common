@@ -89,18 +89,22 @@ Within this task:
    path the task names (`IndexExpressionTraversalOrdering`, and downstream the sparse
    `TraversableExpression` work).
 
-3. **A gather overload in `CollectionFeatures`** that reads indices from the split representation.
-   The existing gather is `c(TraversalPolicy shape, Producer collection, Producer index)`, built as a
-   `DefaultTraversableExpressionComputation("valueAtIndex", ...)` whose body is
-   `args[1].getValueAt(args[2].getValueAt(idx).toInt())`. The new overload substitutes the exact
-   reconstruction for the inner `getValueAt(idx).toInt()`, leaving the rest identical. Follow the
-   placement rule: the overload belongs on `CollectionFeatures` beside the existing gather and
-   `rows`, named by what it is.
+3. **No gather overload.** *(Revised after owner review of PR #724.)* An earlier revision of this
+   plan added a `gatherSplitIndex` overload to `CollectionFeatures` that constructed the split
+   ordering inside the computation. That was rejected: a computation must never reference a specific
+   `TraversalOrdering` — it must simply respect whatever ordering its arguments carry — and if an
+   ordering breaks `c(shape, collection, index)`, the defect is in `c()`. The gather is therefore a
+   `PackedCollection` *configured* with `SplitIndexTraversalOrdering` (a view of the data whose
+   logical element `i` is the element at split position `i`), read by any ordinary computation. The
+   sparse-ordering kernel integration on master (task `82bda0b7`) delivers the ordering's lane
+   collection to the kernel through `TraversalOrdering.bind`, exactly as for
+   `ExplicitIndexTraversalOrdering`, so no computation needs to know about it. Tests also confirm
+   that `c(shape, collection, index)` respects an ordering on either argument.
 
-4. **A host-side store path** that encodes an `int[]`/`long[]` of indices into the split FP32 layout
-   in one contiguous buffer and uploads it with a single bulk fill (no per-element `setMem`/JNI loop)
-   — the legitimate top-of-stack ingest boundary, like weight loading. Placed on `PackedCollection`
-   (`compute/algebra`; see the module note below).
+4. **A host-side store path** that encodes an `int[]` of positions into the split FP32 layout in
+   one contiguous buffer and uploads it with a single bulk fill (no per-element `setMem`/JNI loop)
+   — the legitimate top-of-stack ingest boundary, like weight loading. Placed on the ordering itself
+   as the factory `SplitIndexTraversalOrdering.of(int...)`.
 
 5. **Documentation** of the representation in `docs/internals/dynamic-indexing.md` (the page that
    already documents gather, `traverseEach`, and index producers), including the exactness guarantee,
@@ -132,10 +136,11 @@ Files involved:
 
 New behaviour belongs:
 
-- The reconstruction expression and the `TraversalOrdering` in **`base/code`** — "it is a property of
-  collections and expressions" (CONNECTOME plan placement table), reading index data symbolically.
-- The gather overload in **`compute/algebra`** (`CollectionFeatures`), beside the gather it mirrors.
-- The host encode on **`PackedCollection`**, which currently lives in **`compute/algebra`**
+- The reconstruction expression and the `TraversalOrdering` in **`compute/algebra`**
+  (`org.almostrealism.collect.SplitIndexTraversalOrdering`), beside its single-lane sibling
+  `ExplicitIndexTraversalOrdering`: like that ordering it holds a `PackedCollection` and binds it to
+  kernel arguments through `CollectionProviderProducer`, neither of which `base/code` can see.
+- The host encode on the ordering, whose `PackedCollection` lives in **`compute/algebra`**
   (`org.almostrealism.collect`). The `base/collect` (`ar-collect`) module named in the CONNECTOME
   placement table holds no source today — it is a build-chain waypoint between `ar-code` and
   `ar-hardware`, and `PackedCollection` and the collection-producer API live in `compute/algebra`,

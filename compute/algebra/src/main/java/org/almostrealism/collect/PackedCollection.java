@@ -20,7 +20,6 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.Collection;
 import io.almostrealism.collect.RepeatTraversalOrdering;
-import io.almostrealism.collect.SplitIndexTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -1055,6 +1054,13 @@ public class PackedCollection extends MemoryDataAdapter
 		return reshape(getShape().traverse(axis));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>If the new shape carries the ordering through which this collection reads its delegate,
+	 * the result views the delegate through that ordering; nesting it in this collection would
+	 * apply the ordering twice.</p>
+	 */
 	@Override
 	public PackedCollection reshape(TraversalPolicy shape) {
 		if (shape.getTotalSize() != getMemLength()) {
@@ -1064,20 +1070,24 @@ public class PackedCollection extends MemoryDataAdapter
 			return this;
 		}
 
+		boolean sameOrderedView = getDelegate() != null && getDelegateOrdering() != null
+				&& shape.getOrder() == getDelegateOrdering();
+		MemoryData target = sameOrderedView ? getDelegate() : this;
+		int offset = sameOrderedView ? getDelegateOffset() : 0;
 		int axis = shape.getTraversalAxis();
 
 		if (axis <= 0) {
-			return new PackedCollection(shape, axis, this, 0);
+			return new PackedCollection(shape, axis, target, offset);
 		} else if (axis == 1) {
 			return new PackedCollection(shape, axis,
 					delegateSpec ->
 							new PackedCollection(shape.subset(1), 0,
 									delegateSpec.getDelegate(), delegateSpec.getOffset()),
-					this, 0);
+					target, offset);
 		} else {
 			// TODO  This could also provide the supply argument, so that PackedCollection::get is supported
 			// TODO  it's just a little more complicated to implement
-			return new PackedCollection(shape, axis, this, 0);
+			return new PackedCollection(shape, axis, target, offset);
 		}
 	}
 
@@ -1255,17 +1265,11 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	/**
-	 * Creates a collection of shape {@code (n, 2)} holding the given integer indices in the
-	 * split layout read by {@link SplitIndexTraversalOrdering}, as encoded by
-	 * {@link SplitIndexTraversalOrdering#encode(int...)}: for each index {@code v}, the high
-	 * lane {@code floorDiv(v, BASE)} followed by the low lane {@code floorMod(v, BASE)}.
+	 * Uploads the given integer positions, in one transfer, as the {@code (n, 2)} lane collection
+	 * of a {@link SplitIndexTraversalOrdering} (see {@link SplitIndexTraversalOrdering#encode(int...)}).
+	 * Unlike {@link #of(int...)}, positions above {@code 2^24} stay exact in FP32 memory.
 	 *
-	 * <p>Unlike {@link #of(int...)}, whose values above {@code 2^24} are rounded when stored in
-	 * single precision memory, every lane of this layout is exactly representable in FP32, so
-	 * the indices are recovered exactly by {@link SplitIndexTraversalOrdering#indexOf} and by the
-	 * split-index gather in {@code CollectionFeatures}. The lanes are uploaded in one transfer.</p>
-	 *
-	 * @param values the integer indices to store
+	 * @param values the integer positions to store
 	 * @return a new {@link PackedCollection} of shape {@code (values.length, 2)}
 	 */
 	public static PackedCollection ofSplitIndices(int... values) {

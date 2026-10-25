@@ -18,9 +18,11 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.SplitIndexTraversalOrdering;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.SplitIndexTraversalOrdering;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.util.TestSuiteBase;
@@ -28,10 +30,10 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Tests for integer-exact index storage: indices held in the split layout of
- * {@link SplitIndexTraversalOrdering} (built with {@link PackedCollection#ofSplitIndices(int...)})
- * and read back by the split-index gather, which must stay exact above {@code 2^24} where an
- * ordinary single-precision index is rounded.
+ * Tests for integer-exact index storage: positions held in the split layout of
+ * {@link SplitIndexTraversalOrdering}, and collections read through that ordering by ordinary
+ * computations, which must stay exact above {@code 2^24} where a position stored as an ordinary
+ * single-precision value is rounded.
  */
 public class SplitIndexTests extends TestSuiteBase {
 	/** {@code 2^24}, the largest bound below which every integer is exact in single precision. */
@@ -40,9 +42,12 @@ public class SplitIndexTests extends TestSuiteBase {
 	/** The modulus of the marker payload, small enough that every marker is exact in FP32. */
 	private static final int MARKER_MODULUS = 16;
 
+	/** The offset added by the kernels below, so that the result cannot be the unread input. */
+	private static final double OFFSET = 10.0;
+
 	/**
-	 * Returns whether the active backend stores collections in single precision, where an index
-	 * above {@code 2^24} held in an ordinary collection is rounded.
+	 * Returns whether the active backend stores collections in single precision, where a
+	 * position above {@code 2^24} held in an ordinary collection is rounded.
 	 *
 	 * @return true if collection memory is FP32
 	 */
@@ -51,15 +56,28 @@ public class SplitIndexTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Each index above {@code 2^24} is stored as two lanes that are individually below
-	 * {@code 2^24}, and reconstructing {@code hi * BASE + lo} from the stored lanes recovers the
-	 * original value exactly. The control stores the same value as an ordinary index and shows
-	 * the rounding the split layout avoids on a single-precision backend.
+	 * Returns a view of the given collection that reads it through the given ordering.
+	 *
+	 * @param size  the number of logical elements of the view
+	 * @param data  the collection to read
+	 * @param order the ordering mapping logical indices to positions in {@code data}
+	 * @return the ordered view
+	 */
+	private PackedCollection view(int size, PackedCollection data, TraversalOrdering order) {
+		return new PackedCollection(shape(size), 0, data, 0, order);
+	}
+
+	/**
+	 * Each position above {@code 2^24} is stored as two lanes that are individually below
+	 * {@code 2^24}, and the ordering maps each logical index to the original position exactly.
+	 * The control stores the same value as an ordinary collection and shows the rounding the
+	 * split layout avoids on a single-precision backend.
 	 */
 	@Test(timeout = 60000)
 	public void storageIsExactAboveSinglePrecision() {
 		int[] values = { 16777216, 16777217, 16777221, 50000003 };
-		PackedCollection lanes = PackedCollection.ofSplitIndices(values);
+		SplitIndexTraversalOrdering order = SplitIndexTraversalOrdering.of(values);
+		PackedCollection lanes = order.getLanes();
 
 		Assert.assertEquals(new TraversalPolicy(values.length, SplitIndexTraversalOrdering.LANES),
 				lanes.getShape());
@@ -70,6 +88,7 @@ public class SplitIndexTests extends TestSuiteBase {
 			Assert.assertTrue(hi < SINGLE_PRECISION_LIMIT);
 			Assert.assertTrue(lo >= 0 && lo < SplitIndexTraversalOrdering.BASE);
 			Assert.assertEquals(values[i], (long) hi * SplitIndexTraversalOrdering.BASE + (long) lo);
+			Assert.assertEquals(values[i], order.indexOf(i));
 		}
 
 		PackedCollection plain = PackedCollection.of(16777217);
@@ -77,36 +96,65 @@ public class SplitIndexTests extends TestSuiteBase {
 	}
 
 	/**
-	 * The split-index gather reads the element at every stored position, including positions that
-	 * straddle the lane boundary ({@code BASE - 1}, {@code BASE}, {@code BASE + 1}), so an error in
-	 * the lane order or the radix of the reconstruction selects the wrong elements.
+	 * The ordering addresses one more position than the largest one it stores, ignoring absent
+	 * (negative) positions, including above {@code 2^24}.
 	 */
 	@Test(timeout = 60000)
-	public void gatherReadsEveryStoredPosition() {
-		int count = 20000;
-		PackedCollection data = integers(0, count).get().evaluate();
-		PackedCollection index = PackedCollection.ofSplitIndices(0, 4095, 4096, 4097, 12345, 19999);
-
-		PackedCollection result = gatherSplitIndex(shape(6), p(data), p(index)).get().evaluate();
-		assertEquals(0, result.toDouble(0));
-		assertEquals(4095, result.toDouble(1));
-		assertEquals(4096, result.toDouble(2));
-		assertEquals(4097, result.toDouble(3));
-		assertEquals(12345, result.toDouble(4));
-		assertEquals(19999, result.toDouble(5));
+	public void lengthCoversLargestPosition() {
+		Assert.assertEquals(6, SplitIndexTraversalOrdering.of(5, -1, 3).getLength().getAsInt());
+		Assert.assertEquals(0, SplitIndexTraversalOrdering.of(-1, -4097).getLength().getAsInt());
+		Assert.assertEquals(16777222, SplitIndexTraversalOrdering.of(16777221, 4096).getLength().getAsInt());
 	}
 
 	/**
-	 * An ordinary single-lane index collection passed to the split-index gather is rejected
-	 * rather than silently misread as interleaved high and low lanes.
+	 * A kernel reading a collection through the ordering reads the element at every stored
+	 * position, including positions that straddle the lane boundary ({@code BASE - 1},
+	 * {@code BASE}, {@code BASE + 1}), so an error in the lane order or the radix of the
+	 * reconstruction selects the wrong elements.
 	 */
 	@Test(timeout = 60000)
-	public void gatherRejectsSingleLaneIndex() {
-		PackedCollection data = integers(0, 16).get().evaluate();
-		PackedCollection plainIndex = PackedCollection.of(1, 2, 3);
+	public void kernelReadsEveryStoredPosition() {
+		int[] positions = { 0, 4095, 4096, 4097, 12345, 19999 };
+		PackedCollection data = integers(0, 20000).get().evaluate();
+		PackedCollection gathered = view(positions.length, data, SplitIndexTraversalOrdering.of(positions));
 
+		PackedCollection result = cp(gathered).add(c(OFFSET)).get().evaluate();
+		for (int i = 0; i < positions.length; i++) {
+			assertEquals(positions[i], gathered.toDouble(i));
+			assertEquals(positions[i] + OFFSET, result.toDouble(i));
+		}
+	}
+
+	/**
+	 * Re-traversing a view that reads a larger table through an ordering yields another view of
+	 * that table through the same ordering, which reads the same elements, rather than a view
+	 * nested inside the first one, which would apply the ordering a second time and address more
+	 * positions than the first view has elements.
+	 */
+	@Test(timeout = 60000)
+	public void retraversedViewReadsTheSameElements() {
+		PackedCollection data = integers(0, 20).get().evaluate();
+		SplitIndexTraversalOrdering order = SplitIndexTraversalOrdering.of(19, 4, 7);
+		PackedCollection gathered = view(3, data, order);
+
+		PackedCollection retraversed = gathered.traverse(1);
+		Assert.assertEquals(1, retraversed.getShape().getTraversalAxis());
+		Assert.assertSame(data, retraversed.getDelegate());
+		Assert.assertSame(order, retraversed.getShape().getOrder());
+		assertEquals(19.0, retraversed.toDouble(0));
+		assertEquals(4.0, retraversed.toDouble(1));
+		assertEquals(7.0, retraversed.toDouble(2));
+	}
+
+	/**
+	 * An ordinary single-lane index table, or one with more than two lanes, is rejected rather
+	 * than silently misread as interleaved high and low lanes.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsIndexWithoutTwoLanes() {
+		PackedCollection plainIndex = PackedCollection.of(1, 2, 3);
 		try {
-			gatherSplitIndex(shape(3), p(data), p(plainIndex));
+			new SplitIndexTraversalOrdering(plainIndex);
 			Assert.fail("Expected a single-lane index to be rejected");
 		} catch (IllegalArgumentException e) {
 			Assert.assertTrue(e.getMessage().contains(String.valueOf(SplitIndexTraversalOrdering.LANES)));
@@ -114,7 +162,7 @@ public class SplitIndexTests extends TestSuiteBase {
 
 		PackedCollection wideIndex = PackedCollection.of(1, 2, 3, 4, 5, 6).reshape(new TraversalPolicy(2, 3));
 		try {
-			gatherSplitIndex(shape(2), p(data), p(wideIndex));
+			new SplitIndexTraversalOrdering(wideIndex);
 			Assert.fail("Expected an index with three lanes to be rejected");
 		} catch (IllegalArgumentException e) {
 			Assert.assertTrue(e.getMessage().contains(wideIndex.getShape().toString()));
@@ -122,84 +170,120 @@ public class SplitIndexTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Negative positions (used by orderings to mark absent elements) survive the split layout:
-	 * the high lane carries the sign and the low lane stays non-negative.
+	 * Negative positions (absent elements) survive the split layout: the high lane carries the
+	 * sign and the low lane stays non-negative, and an absent element reads as zero both on the
+	 * host and inside a kernel.
 	 */
 	@Test(timeout = 60000)
-	public void storageRoundTripsNegativeIndex() {
-		PackedCollection lanes = PackedCollection.ofSplitIndices(-1, -4097);
+	public void negativePositionIsAbsent() {
+		SplitIndexTraversalOrdering order = SplitIndexTraversalOrdering.of(-1, -4097, 3);
+		PackedCollection lanes = order.getLanes();
 		Assert.assertEquals(-1.0, lanes.toDouble(0), 0.0);
 		Assert.assertEquals(SplitIndexTraversalOrdering.BASE - 1, lanes.toDouble(1), 0.0);
 		Assert.assertEquals(-2.0, lanes.toDouble(2), 0.0);
 		Assert.assertEquals(SplitIndexTraversalOrdering.BASE - 1, lanes.toDouble(3), 0.0);
+
+		PackedCollection gathered = view(3, pack(5.0, 6.0, 7.0, 8.0), order);
+		assertEquals(0.0, gathered.toDouble(0));
+		assertEquals(0.0, gathered.toDouble(1));
+		assertEquals(8.0, gathered.toDouble(2));
+
+		PackedCollection result = cp(gathered).multiply(c(2.0)).get().evaluate();
+		assertEquals(0.0, result.toDouble(0));
+		assertEquals(0.0, result.toDouble(1));
+		assertEquals(16.0, result.toDouble(2));
 	}
 
 	/**
 	 * The extremes of the {@code int} range survive the split layout: {@link Integer#MAX_VALUE}
 	 * and {@link Integer#MIN_VALUE} are stored with a high lane of magnitude at most {@code 2^19}
-	 * and a low lane in {@code [0, BASE)}, and reconstructing {@code hi * BASE + lo} from the
-	 * stored lanes recovers each value exactly.
+	 * and a low lane in {@code [0, BASE)}, and the ordering maps them back exactly.
 	 */
 	@Test(timeout = 60000)
 	public void storageRoundTripsIntExtremes() {
-		PackedCollection lanes = PackedCollection.ofSplitIndices(Integer.MAX_VALUE, Integer.MIN_VALUE);
+		SplitIndexTraversalOrdering order = SplitIndexTraversalOrdering.of(Integer.MAX_VALUE, Integer.MIN_VALUE);
+		PackedCollection lanes = order.getLanes();
 		Assert.assertEquals(524287.0, lanes.toDouble(0), 0.0);
 		Assert.assertEquals(SplitIndexTraversalOrdering.BASE - 1, lanes.toDouble(1), 0.0);
 		Assert.assertEquals(-524288.0, lanes.toDouble(2), 0.0);
 		Assert.assertEquals(0.0, lanes.toDouble(3), 0.0);
 
-		Assert.assertEquals(Integer.MAX_VALUE,
-				(long) lanes.toDouble(0) * SplitIndexTraversalOrdering.BASE + (long) lanes.toDouble(1));
-		Assert.assertEquals(Integer.MIN_VALUE,
-				(long) lanes.toDouble(2) * SplitIndexTraversalOrdering.BASE + (long) lanes.toDouble(3));
+		Assert.assertEquals(Integer.MAX_VALUE, order.indexOf(0));
+		Assert.assertEquals(Integer.MIN_VALUE, order.indexOf(1));
 	}
 
 	/**
-	 * End-to-end acceptance: gathering at {@code 2^24}, {@code 2^24 + 1} and {@code 2^24 + 5}
-	 * from a table whose payload is the exact address modulo 16 returns {@code {0, 1, 5}}. The
-	 * payload is computed from the integer kernel index, so it is exact and distinct between
-	 * adjacent addresses. The control gathers through an ordinary index collection, which on a
-	 * single-precision backend reads the rounded addresses {@code {2^24, 2^24, 2^24 + 4}} and
-	 * returns {@code {0, 0, 4}}.
+	 * The gather {@code c(shape, collection, index)} respects the ordering of its collection
+	 * argument: indexing a view that reads {@code data} at positions {@code [5, 3, 1]} with
+	 * {@code [2, 0]} selects {@code data[1]} and {@code data[5]}.
+	 */
+	@Test(timeout = 60000)
+	public void gatherRespectsOrderedCollection() {
+		PackedCollection data = integers(0, 20).get().evaluate();
+		PackedCollection ordered = view(3, data, SplitIndexTraversalOrdering.of(5, 3, 1));
+
+		PackedCollection result = c(shape(2), cp(ordered), p(pack(2, 0))).get().evaluate();
+		assertEquals(1.0, result.toDouble(0));
+		assertEquals(5.0, result.toDouble(1));
+	}
+
+	/**
+	 * The gather {@code c(shape, collection, index)} respects the ordering of its index
+	 * argument: an index table holding {@code [7, 3, 9]} read through an ordering selecting its
+	 * positions {@code [2, 0]} supplies the indices {@code [9, 7]}.
+	 */
+	@Test(timeout = 60000)
+	public void gatherRespectsOrderedIndex() {
+		PackedCollection data = integers(0, 20).get().evaluate();
+		PackedCollection index = view(2, pack(7, 3, 9), SplitIndexTraversalOrdering.of(2, 0));
+
+		PackedCollection result = c(shape(2), p(data), cp(index)).get().evaluate();
+		assertEquals(9.0, result.toDouble(0));
+		assertEquals(7.0, result.toDouble(1));
+	}
+
+	/**
+	 * End-to-end acceptance: reading a table at {@code 2^24}, {@code 2^24 + 1} and
+	 * {@code 2^24 + 5} through the split ordering selects payloads {@code {0, 1, 5}}, where the
+	 * payload is the exact address modulo 16, computed from the integer kernel index so that it
+	 * is exact and distinct between adjacent addresses. The control reads the same positions
+	 * through an {@link ExplicitIndexTraversalOrdering}, whose positions are stored as ordinary
+	 * values, and on a single-precision backend reads the rounded addresses
+	 * {@code {2^24, 2^24, 2^24 + 4}}, selecting {@code {0, 0, 4}}.
 	 */
 	@Test(timeout = 300000)
-	public void gatherIsExactAboveSinglePrecision() {
+	public void readIsExactAboveSinglePrecision() {
 		int size = SINGLE_PRECISION_LIMIT + 8;
 		TraversalPolicy tableShape = shape(size);
 		try (PackedCollection data = new DefaultTraversableExpressionComputation("addressMarker", tableShape,
 				CollectionExpression.create(tableShape, idx -> idx.imod(MARKER_MODULUS)))
 				.get().evaluate()) {
-			assertGatherIsExact(data);
+			assertReadIsExact(data);
 		}
 	}
 
 	/**
-	 * Gathers at {@code 2^24}, {@code 2^24 + 1} and {@code 2^24 + 5} from the marker table, both
-	 * through the split layout and through an ordinary index collection, and checks the payloads.
+	 * Reads the marker table at {@code 2^24}, {@code 2^24 + 1} and {@code 2^24 + 5}, both through
+	 * the split ordering and through an explicit index ordering, and checks the payloads.
 	 *
 	 * @param data the marker table of {@code 2^24 + 8} elements whose payload is address mod 16
 	 */
-	private void assertGatherIsExact(PackedCollection data) {
+	private void assertReadIsExact(PackedCollection data) {
 		assertEquals(0, data.toDouble(16777216));
 		assertEquals(1, data.toDouble(16777217));
 		assertEquals(5, data.toDouble(16777221));
 
-		PackedCollection splitIndex = PackedCollection.ofSplitIndices(16777216, 16777217, 16777221);
-		PackedCollection exact = gatherSplitIndex(shape(3), p(data), p(splitIndex)).get().evaluate();
-		assertEquals(0, exact.toDouble(0));
-		assertEquals(1, exact.toDouble(1));
-		assertEquals(5, exact.toDouble(2));
+		PackedCollection exact = view(3, data, SplitIndexTraversalOrdering.of(16777216, 16777217, 16777221));
+		PackedCollection result = cp(exact).add(c(OFFSET)).get().evaluate();
+		assertEquals(OFFSET, result.toDouble(0));
+		assertEquals(1 + OFFSET, result.toDouble(1));
+		assertEquals(5 + OFFSET, result.toDouble(2));
 
-		PackedCollection plainIndex = PackedCollection.of(16777216, 16777217, 16777221);
-		PackedCollection plain = c(shape(3), p(data), p(plainIndex)).get().evaluate();
-		if (singlePrecision()) {
-			assertEquals(0, plain.toDouble(0));
-			assertEquals(0, plain.toDouble(1));
-			assertEquals(4, plain.toDouble(2));
-		} else {
-			assertEquals(0, plain.toDouble(0));
-			assertEquals(1, plain.toDouble(1));
-			assertEquals(5, plain.toDouble(2));
-		}
+		PackedCollection rounded = view(3, data,
+				new ExplicitIndexTraversalOrdering(PackedCollection.of(16777216, 16777217, 16777221)));
+		PackedCollection control = cp(rounded).add(c(OFFSET)).get().evaluate();
+		assertEquals(OFFSET, control.toDouble(0));
+		assertEquals((singlePrecision() ? 0 : 1) + OFFSET, control.toDouble(1));
+		assertEquals((singlePrecision() ? 4 : 5) + OFFSET, control.toDouble(2));
 	}
 }

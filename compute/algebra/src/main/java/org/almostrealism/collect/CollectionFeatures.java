@@ -19,7 +19,6 @@ package org.almostrealism.collect;
 import io.almostrealism.code.Computation;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.SplitIndexTraversalOrdering;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Absolute;
@@ -507,44 +506,6 @@ public interface CollectionFeatures extends GradientFeatures {
 		}
 
 		return exp;
-	}
-
-	/**
-	 * Retrieves values from a collection at positions stored in the split, integer-exact layout
-	 * of {@link SplitIndexTraversalOrdering} (see {@link PackedCollection#ofSplitIndices(int...)}),
-	 * producing output with the given explicit shape.
-	 *
-	 * <p>This is the gather of {@link #c(TraversalPolicy, Producer, Producer)} with the single
-	 * floating-point index read replaced by the exact reconstruction
-	 * {@code hi * BASE + lo} on integer expressions. An index above {@code 2^24} stored as an
-	 * ordinary single-precision value is rounded before any kernel runs, so the plain gather reads
-	 * the wrong element on an FP32 backend; this gather reads the intended one for every
-	 * {@code int} index.</p>
-	 *
-	 * @param shape the output shape, one element per stored index
-	 * @param collection the collection to read values from
-	 * @param splitIndex the producer of indices in the split layout, of shape {@code (n, 2)}
-	 * @return a computation that gathers values at the specified indices
-	 * @throws IllegalArgumentException if {@code splitIndex} declares a shape whose last
-	 *         dimension is not {@link SplitIndexTraversalOrdering#LANES}, which indicates an
-	 *         ordinary index collection that would otherwise be misread as split lanes
-	 */
-	default CollectionProducerComputation gatherSplitIndex(TraversalPolicy shape,
-														   Producer<PackedCollection> collection,
-														   Producer<PackedCollection> splitIndex) {
-		if (splitIndex instanceof Shape) {
-			TraversalPolicy indexShape = ((Shape<?>) splitIndex).getShape();
-			if (indexShape.length(indexShape.getDimensions() - 1) != SplitIndexTraversalOrdering.LANES) {
-				throw new IllegalArgumentException("Split index shape " + indexShape
-						+ " must have a last dimension of " + SplitIndexTraversalOrdering.LANES);
-			}
-		}
-
-		return new DefaultTraversableExpressionComputation("valueAtSplitIndex", shape,
-				true,
-				args -> CollectionExpression.create(shape, idx ->
-						args[1].getValueAt(new SplitIndexTraversalOrdering(args[2]).indexOf(idx.toInt()))),
-				collection, splitIndex);
 	}
 
 	/**
