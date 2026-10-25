@@ -180,13 +180,13 @@ public class CudaDataContextLifecycleTest {
 	}
 
 	/**
-	 * An allocation larger than {@link CudaMemoryProvider#maxSmallCachedAllocation}, which the
-	 * provider frees on release rather than keeping for reuse when the allocation cache is off,
-	 * reads as zeros when allocated again after a block of the same size was written and released.
+	 * An allocation larger than {@link CudaMemoryProvider#maxCachedAllocation}, which the provider
+	 * frees on release rather than keeping for reuse, reads as zeros when allocated again after a
+	 * block of the same size was written and released.
 	 */
 	@Test(timeout = 60000)
 	public void largeReallocationIsZeroed() {
-		int count = (int) (2 * CudaMemoryProvider.maxSmallCachedAllocation / Float.BYTES);
+		int count = (int) (2 * CudaMemoryProvider.maxCachedAllocation / Float.BYTES);
 		CudaDataContext context = newContext();
 
 		try {
