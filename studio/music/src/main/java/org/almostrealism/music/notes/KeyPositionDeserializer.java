@@ -58,7 +58,8 @@ public class KeyPositionDeserializer<T extends KeyPosition<?>> extends StdDeseri
 	 * @param parser  the parser positioned on the stored key position
 	 * @param context the deserialization context
 	 * @return the key position the stored name resolves to
-	 * @throws IOException if the stored value cannot be read or names no key position
+	 * @throws IOException if the stored value cannot be read, is not a name, or names no key
+	 *                     position
 	 */
 	@Override
 	public T deserialize(JsonParser parser, DeserializationContext context) throws IOException {
@@ -71,6 +72,11 @@ public class KeyPositionDeserializer<T extends KeyPosition<?>> extends StdDeseri
 			parser.nextToken();
 		} else {
 			name = parser.getValueAsString();
+		}
+
+		if (name == null) {
+			throw context.wrongTokenException(parser, handledType(), JsonToken.VALUE_STRING,
+					"a key position is stored as its name");
 		}
 
 		try {
