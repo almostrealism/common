@@ -272,6 +272,37 @@ backends batch or submit dispatches.
    state when the `Temporal` is a `Lifecycle`, as `Temporal.iter(n, true)` does? Without it, a
    second simulation from the initial condition needs a new runner and a second compile.
 
+## Implementation status
+
+Implemented as planned, with these resolutions and deviations:
+
+- **Open question 1:** kept `SimulationRunner extends TemporalRunner`. `get()`, `getContinue()`
+  and `tick()` route through `run(1)`. The setup list (the system's setup plus the counter reset)
+  is passed to the supertype, which compiles and releases it; a protected hook,
+  `TemporalRunner.getCompiledSetup()`, lets the runner dispatch it once per simulation, and the
+  overridden `setup()` supplies a runnable that runs it only when pending. (An earlier revision
+  passed an empty placeholder to the supertype and compiled its own setup beside it; the design
+  review replaced that.)
+- **Step dispatch:** the step `OperationList` is built with compilation disabled and flattened, so
+  every top-level operation of the system's tick is dispatched on its own. Otherwise a uniform
+  list (for example matmul into `next`, then copy back, both of size N) would fuse into one kernel
+  with per-thread ordering only, which races a coupled step. The step contract in the javadoc says
+  this.
+- **Step counter:** besides the self-allocating constructor, there is one that takes a
+  caller-allocated counter (as `AutoregressiveModel` takes its position). A system's tick is built
+  inside the runner's constructor, so a graph that reads `p(step)` needs the counter before the
+  runner exists. The runner releases only a counter it allocated itself.
+- **Open question 2:** the `CollectionSlotUpdateComputation` write is used as is. With one
+  recording of 100,000 elements every 100 steps (capacity 105), native went from 238 to 271 µs per
+  step and Metal showed no measurable change. No cheaper write was needed for this task.
+- **Open question 3:** overflow fails fast, before setup or any step runs.
+- **Open question 5:** refused. There is no API for more than one step per dispatch.
+- **Open question 6:** `reset()` is implemented. It returns the host count and the recordings to
+  zero, re-runs setup and the counter reset on the next `run`, and calls `Lifecycle.reset()` on a
+  `Lifecycle` system. Nothing is recompiled.
+- **Measurement:** recorded in `docs/internals/simulation-loop-examples.md` for native and Metal.
+  No CUDA node was available.
+
 ## Estimated complexity
 
 **Medium.** One new production class of moderate size, two test classes, documentation, and a

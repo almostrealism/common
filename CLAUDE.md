@@ -586,6 +586,8 @@ Consult the linked references before writing related code.
 
 **Sampling Loops:** `DiffusionSampler` owns the loop. Never write `for (int step = 0; ...)` outside it. See [docs/internals/sampling-loop-examples.md](docs/internals/sampling-loop-examples.md).
 
+**Simulation Loops:** `SimulationRunner` owns the simulation loop for recurrent dynamical systems (neural populations, physical systems, ODE integrators). Never write `for (long step = 0; ...)` around a compiled step outside it, and never use `buffer(n)`/`Loop` for a globally coupled step. See [docs/internals/simulation-loop-examples.md](docs/internals/simulation-loop-examples.md).
+
 **PackedCollection is NOT a Java Array.** It is a handle to potentially GPU-resident memory. Never use `System.arraycopy`, `Arrays.copyOf`, or tight `setMem` loops. Use the Producer pattern: `cp(source).multiply(2.0).evaluate()`. See [docs/internals/packed-collection-examples.md](docs/internals/packed-collection-examples.md).
 
 **PackedCollection and Model are AutoCloseable** via `Destroyable` (a subinterface of `AutoCloseable` in `io.almostrealism.lifecycle`). Both hold GPU/native memory that should be released when no longer needed. Use try-with-resources for short-lived local instances. Do NOT use try-with-resources when the collection or model is captured by a computation graph, stored as a field, passed to a block/layer, or returned from a method — in those cases the caller is responsible for lifecycle management. When in doubt: if you created it just to use it within a single method and it won't escape, close it.
