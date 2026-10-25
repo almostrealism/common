@@ -43,20 +43,20 @@ configuration:
 - `test-cuda` starts alongside `test` and `test-mac`, so within one pipeline it
   runs beside the CPU lane and the two compete for these runners; across
   concurrent pipelines every stage shares them. The cost is queueing, not
-  correctness. `test-media-cuda` is still admitted only after the whole CPU lane.
+  correctness. `test-media-cuda` waits only for `test-cuda`, so it can likewise run
+  beside `test-media`.
 
 `AR_HARDWARE_DRIVER=native` governs only which backend the framework selects.
 It does not isolate the job: a CPU-lane job on these runners still has the GPU
 device and the read-only sample library mount, which runners in the plain CPU
 fleet do not. That is not a new trust boundary: `test-media-cuda` runs the same
-pull request's code on the same runners with both, and it is gated more
-strictly than `test` and `test-media`. If the CPU lane must keep the CPU fleet's
+pull request's code on the same runners with both. If the CPU lane must keep the CPU fleet's
 isolation from the sample data, leave `RUNNER_EXTRA_LABELS` empty and run
 `../docker` beside this fleet.
 
 When this host replaces a CPU fleet (`docker compose down` in `../docker`), count
 the CPU lane in the runner count and the memory limit: `test` runs as a single
-job (no matrix), so one runner holds the whole lane at once.
+job (no matrix), and so does `test-media`, so one runner holds each stage at once.
 
 ## Design: Nothing Installed on the Host
 

@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.kernel.KernelWork;
 import io.almostrealism.streams.Semaphore;
 
 /**
@@ -26,15 +27,22 @@ import io.almostrealism.streams.Semaphore;
  * dispatches the computation asynchronously or synchronously, returning a {@link Semaphore}
  * that the caller can wait on.</p>
  *
+ * <p>The computation is dispatched over the work range of the {@link KernelWork} this
+ * extends, which the caller sets before {@link #accept(Object[], Semaphore) accepting}
+ * arguments. A range the backend cannot dispatch over is refused, when it is set or when
+ * the execution is dispatched, and is never replaced by a different range.</p>
+ *
  * @see InstructionSet
+ * @see KernelWork
  * @see io.almostrealism.streams.Semaphore
  */
-public interface Execution {
+public interface Execution extends KernelWork {
 	/**
 	 * Executes this computation with the given arguments, with no predecessor dependency.
 	 *
 	 * @param args the array of memory arguments to pass to the computation
-	 * @return a semaphore that completes when the execution finishes
+	 * @return a semaphore that completes when the execution finishes, or {@code null} if it
+	 *         has already finished when this returns
 	 */
 	default Semaphore accept(Object[] args) {
 		return accept(args, null);
@@ -45,7 +53,8 @@ public interface Execution {
 	 *
 	 * @param args the array of memory arguments to pass to the computation
 	 * @param dependsOn a semaphore from a preceding execution that must complete first, or {@code null}
-	 * @return a semaphore that completes when this execution finishes
+	 * @return a semaphore that completes when this execution finishes, or {@code null} if it
+	 *         has already finished when this returns
 	 */
 	Semaphore accept(Object[] args, Semaphore dependsOn);
 

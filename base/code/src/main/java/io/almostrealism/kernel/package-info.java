@@ -32,6 +32,8 @@
  *       analyze row-level duplication and simplify repeated patterns</li>
  *   <li>{@link io.almostrealism.kernel.KernelPreferences} — global configuration flags for
  *       kernel-level parallelism settings</li>
+ *   <li>{@link io.almostrealism.kernel.KernelWork} — the work range (global size, offset and
+ *       workgroup size) every compiled {@link io.almostrealism.code.Execution} is dispatched over</li>
  * </ul>
  */
 package io.almostrealism.kernel;

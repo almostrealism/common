@@ -16,6 +16,7 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.uml.Signature;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
@@ -23,7 +24,9 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionSlotUpdateComputation;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -171,12 +174,29 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 
 		try (PackedCollection position = new PackedCollection(1)) {
 			position.fill(startFrame);
-
-			CollectionProducer mixed = subset(shape(len), cp(destination), cp(position))
-					.add(cp(source.range(shape(len), 0)));
-			a(cp(destination), new CollectionSlotUpdateComputation(shape(destLen),
-					1, destLen, len, cp(destination), mixed, cp(position))).get().run();
+			placement(destination, source, position, len).get().run();
 		}
+	}
+
+	/**
+	 * Builds the assignment that mixes the first {@code len} frames of {@code source}
+	 * into {@code destination} at the frame held by {@code position}. The position is
+	 * read by the kernel at runtime, so it is not part of the assignment's signature.
+	 *
+	 * @param destination the destination buffer
+	 * @param source the source audio to write
+	 * @param position a single-element collection holding the start frame
+	 * @param len the number of frames to write
+	 * @return the placement assignment
+	 */
+	private Assignment<PackedCollection> placement(PackedCollection destination, PackedCollection source,
+												   PackedCollection position, int len) {
+		int destLen = destination.getMemLength();
+
+		CollectionProducer mixed = subset(shape(len), cp(destination), cp(position))
+				.add(cp(source.range(shape(len), 0)));
+		return a(cp(destination), new CollectionSlotUpdateComputation(shape(destLen),
+				1, destLen, len, cp(destination), mixed, cp(position)));
 	}
 
 	/**
@@ -545,6 +565,43 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 
 		destination.destroy();
 		source.destroy();
+	}
+
+	/**
+	 * Test 7: Verify that placements at different frame positions share one kernel signature.
+	 *
+	 * <p>Placing hundreds of notes through views of the destination compiled one kernel per
+	 * distinct view offset, which is what pushed {@link #testTwoMinuteContinuousAudio} past
+	 * its timeout on the OpenCL lane. {@link #placement} supplies the frame position as a
+	 * runtime argument instead, so every placement of the same length must resolve to the
+	 * same signature, and therefore to the same compiled kernel.</p>
+	 */
+	@Test(timeout = 30_000)
+	public void testPlacementSignatureIndependentOfPosition() {
+		int totalFrames = 1000;
+		int len = 50;
+
+		try (PackedCollection destination = new PackedCollection(totalFrames);
+			 PackedCollection source = new PackedCollection(len);
+			 PackedCollection early = new PackedCollection(1);
+			 PackedCollection late = new PackedCollection(1)) {
+			early.fill(10);
+			late.fill(777);
+
+			String earlySignature = Signature.of(placement(destination, source, early, len));
+			String lateSignature = Signature.of(placement(destination, source, late, len));
+
+			assertNotNull("A placement must have a signature so its kernel can be reused",
+					earlySignature);
+			Assert.assertEquals("Placements at different frame positions must share one kernel signature",
+					earlySignature, lateSignature);
+
+			String shorterSignature = Signature.of(placement(destination, source, early, len / 2));
+			assertNotNull(shorterSignature);
+			Assert.assertNotEquals("A placement of a different length is a different kernel, so the signature "
+							+ "must distinguish it; otherwise the equality above proves nothing",
+					earlySignature, shorterSignature);
+		}
 	}
 
 	/**
