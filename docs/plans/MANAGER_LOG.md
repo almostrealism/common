@@ -70,11 +70,12 @@ The survey turned up a sharp, high-confidence instance of the category. `Autoreg
 **already implements nucleus filtering in full**, but **no public API lets a caller set `topP`** —
 both generator call sites hardcode it to `1.0`. The platform ships a nucleus-sampling implementation
 that is unreachable from a consumer. Reading the two paths together also surfaced a second defect in
-the same code: `AutoregressiveModel.of(...)` pre-applies `rescale`+`softmax` on the device and then
-calls `sampleToken` with a **hardcoded temperature of `1.0`**, so it softmaxes an already-softmaxed
-distribution and ignores the configured temperature — it samples from a different distribution than
-`SlidingWindowAutoregressiveModel`, which passes raw logits and the configured temperature straight
-through. The fix for both is one unification: route raw logits through `sampleToken` once, with the
+the same code: `AutoregressiveModel.of(...)` pre-applies `rescale` (`logits / temperature`) and
+`softmax` on the device — so the configured temperature *is* applied — and then calls `sampleToken`
+with a **hardcoded temperature of `1.0`**, which re-exponentiates and renormalizes the
+already-softmaxed values: a redundant second softmax that flattens the already-tempered distribution.
+It therefore samples from a different (flatter) distribution than `SlidingWindowAutoregressiveModel`,
+which passes raw logits and the configured temperature straight through for a single softmax. The fix for both is one unification: route raw logits through `sampleToken` once, with the
 configured temperature and configured top-p, from both generators. It is the smallest change that
 materially improves what the self-hosted LM can produce, and a prerequisite for the sampling-quality
 comparison the training doc already promises.
