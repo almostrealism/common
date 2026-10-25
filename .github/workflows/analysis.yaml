@@ -4266,10 +4266,9 @@ jobs:
 
           # The CL lane and test-media-cuda run only once the CPU lane has cleared, and
           # test-media-cuda also waits for the Metal lane (admission control — see test-cl and
-          # test-media-cuda), so
-          # an accelerator stage skipped or cancelled after one of its upstream lanes failed
-          # or was cancelled is expected. Any other skip of a stage whose layer gate was met
-          # is unexplained.
+          # test-media-cuda), so an accelerator stage skipped or cancelled after one of its
+          # upstream lanes failed or was cancelled is expected. Any other skip of a stage whose
+          # layer gate was met is unexplained.
           CPU_LANE_FAILED="false"
           for result in "$TEST_RESULT" "$MEDIA_RESULT"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
