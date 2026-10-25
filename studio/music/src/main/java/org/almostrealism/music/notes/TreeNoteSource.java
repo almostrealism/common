@@ -135,8 +135,11 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 	/** Returns the root key position used when building note providers. */
 	public KeyPosition<?> getRoot() { return root; }
 
-	/** Sets the root key position. */
-	@JsonDeserialize(as = WesternChromatic.class)
+	/**
+	 * Sets the root key position. A stored root is the name of a key, resolved by
+	 * {@link KeyPosition#of(String)}.
+	 */
+	@JsonDeserialize(using = KeyPositionDeserializer.Named.class)
 	public void setRoot(KeyPosition<?> root) { this.root = root; }
 
 	/** Returns the BPM value used for time-based splitting, or {@code null} if not set. */

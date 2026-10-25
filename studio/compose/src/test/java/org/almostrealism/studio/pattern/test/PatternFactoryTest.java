@@ -37,6 +37,7 @@ import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -67,13 +68,17 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	/**
-	 * Test that pattern choices can be read from file and re-serialized.
+	 * Test that the curated pattern choices can be read with a plain mapper and re-serialized.
+	 * The curated pattern factory is required on every host meant to carry it, so this fails
+	 * rather than skips on a GPU host or a host that declares {@code AR_RINGS_PATTERNS}.
 	 */
 	@Test(timeout = 30_000)
 	public void fixChoices() throws IOException {
-		requireLocalResource("pattern factory " + new File("pattern-factory.json").getAbsolutePath(), null,
-				new File("pattern-factory.json").exists() || new File("pattern-factory.json.old").exists());
-		List<NoteAudioChoice> choices = readChoices();
+		File patternFactory = new File(AudioSceneTestBase.PATTERN_FACTORY);
+		requireResource("curated pattern factory " + patternFactory.getAbsolutePath(),
+				"AR_RINGS_PATTERNS", patternFactory.isFile());
+		List<NoteAudioChoice> choices = readChoices(patternFactory);
+		Assert.assertFalse("no pattern choices were read from " + patternFactory, choices.isEmpty());
 		new ObjectMapper().writeValue(new File("pattern-factory-new.json"), choices);
 	}
 
@@ -126,15 +131,21 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 	 * @throws IOException if reading fails
 	 */
 	public NoteAudioChoiceList readChoices(boolean useOld) throws IOException {
+		File f = new File("pattern-factory.json.old");
+		return readChoices(useOld && f.exists() ? f : new File("pattern-factory.json"));
+	}
+
+	/**
+	 * Reads pattern choices from the given file with a plain mapper.
+	 *
+	 * @param file the pattern-factory file to read
+	 * @return the deserialized choice list
+	 * @throws IOException if reading fails
+	 */
+	public NoteAudioChoiceList readChoices(File file) throws IOException {
 		ObjectMapper mapper = new ObjectMapper();
 		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-		File f = new File("pattern-factory.json.old");
-		if (useOld && f.exists()) {
-			return mapper.readValue(f, NoteAudioChoiceList.class);
-		} else {
-			return mapper.readValue(new File("pattern-factory.json"), NoteAudioChoiceList.class);
-		}
+		return mapper.readValue(file, NoteAudioChoiceList.class);
 	}
 
 	/**
