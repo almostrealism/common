@@ -1,10 +1,13 @@
 package org.almostrealism.persist.assets.test;
 
+import io.almostrealism.code.NumberSystem;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.FileMapping;
 import org.almostrealism.io.Bits;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.persist.assets.SafetensorsReference;
+import org.almostrealism.protobuf.Collections;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -111,16 +114,20 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 		Assert.assertArrayEquals(new String[] { "model.layers.0.weight", "model.layers.0.bias",
 						"model.norm.weight", "model.scale" },
 				tensors.keySet().toArray(new String[0]));
-		Assert.assertEquals(SafetensorsReference.Encoding.BF16,
+		Assert.assertEquals(NumberSystem.BF16,
 				tensors.get("model.layers.0.weight").getEncoding());
-		Assert.assertEquals(SafetensorsReference.Encoding.F16,
+		Assert.assertEquals(NumberSystem.F16,
 				tensors.get("model.layers.0.bias").getEncoding());
 	}
 
-	/** An element type the reader cannot decode is named in the failure. */
+	/**
+	 * An element type the reader cannot decode is named in the failure. {@code U8} is one of the
+	 * narrow integer types the reader does not accept; {@code I32} and {@code I64} are now readable,
+	 * so they are not rejected.
+	 */
 	@Test(timeout = 60000)
 	public void rejectsUnsupportedElementType() throws IOException {
-		assertRejected("{\"ids\":{\"dtype\":\"I64\",\"shape\":[1],\"data_offsets\":[0,8]}}", 8, "I64");
+		assertRejected("{\"ids\":{\"dtype\":\"U8\",\"shape\":[1],\"data_offsets\":[0,1]}}", 1, "U8");
 	}
 
 	/** A byte range past the end of the file is rejected when the header is read, not when the tensor is. */
@@ -421,13 +428,179 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 		File file = writeFile("{\"d\":{\"dtype\":\"F64\",\"shape\":[2],\"data_offsets\":[0,16]}}", data);
 
 		SafetensorsReference reference = SafetensorsReference.locate(file).get("d");
-		Assert.assertEquals(SafetensorsReference.Encoding.F64, reference.getEncoding());
+		Assert.assertEquals(NumberSystem.F64, reference.getEncoding());
 		Assert.assertEquals(2, reference.getCount());
 
 		Path directory = Files.createTempDirectory("safetensors");
 		Files.copy(file.toPath(), directory.resolve("model.safetensors"));
 		StateDictionary weights = new StateDictionary(directory.toString());
 		Assert.assertArrayEquals(new double[] { 0.375, -1024.5 }, weights.get("d").toArray(), 0.0);
+	}
+
+	/**
+	 * An {@code I32} tensor holding negative values, zero and the extremes of the type reads back
+	 * exactly through the mapped (deferred) collection: every {@code int32} is exact in a double.
+	 */
+	@Test(timeout = 60000)
+	public void readsI32Exactly() throws IOException {
+		File file = writeFile("{\"ids\":{\"dtype\":\"I32\",\"shape\":[4],\"data_offsets\":[0,16]}}",
+				intBytes(-7, 0, Integer.MIN_VALUE, Integer.MAX_VALUE));
+
+		SafetensorsReference reference = SafetensorsReference.locate(file).get("ids");
+		Assert.assertEquals(NumberSystem.I32, reference.getEncoding());
+
+		PackedCollection mapped = CollectionEncoder.decode(reference, file, false);
+		Assert.assertEquals("PROTOBUF",
+				mapped.getRootDelegate().getMem().getProvider().getName());
+		Assert.assertArrayEquals(new double[] { -7, 0, Integer.MIN_VALUE, Integer.MAX_VALUE },
+				mapped.toArray(), 0.0);
+	}
+
+	/**
+	 * An {@code I64} tensor holding values past 2<sup>31</sup> and up to &plusmn;2<sup>53</sup> reads
+	 * back exactly: these are the largest integers a double represents without loss.
+	 */
+	@Test(timeout = 60000)
+	public void readsI64Exactly() throws IOException {
+		File file = writeFile("{\"ids\":{\"dtype\":\"I64\",\"shape\":[4],\"data_offsets\":[0,32]}}",
+				longBytes(-(1L << 40), 1L << 35, NumberSystem.MAX_EXACT_INTEGER,
+						-NumberSystem.MAX_EXACT_INTEGER));
+
+		SafetensorsReference reference = SafetensorsReference.locate(file).get("ids");
+		Assert.assertEquals(NumberSystem.I64, reference.getEncoding());
+
+		PackedCollection mapped = CollectionEncoder.decode(reference, file, false);
+		Assert.assertArrayEquals(new double[] { -(1L << 40), 1L << 35, 1L << 53, -(1L << 53) },
+				mapped.toArray(), 0.0);
+	}
+
+	/**
+	 * An {@code I64} value past 2<sup>53</sup> cannot be represented exactly as a double and is
+	 * rejected when it is read, rather than silently rounded to a nearby value.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsI64BeyondExactDouble() throws IOException {
+		long tooLarge = NumberSystem.MAX_EXACT_INTEGER + 1;
+		File file = writeFile("{\"ids\":{\"dtype\":\"I64\",\"shape\":[1],\"data_offsets\":[0,8]}}",
+				longBytes(tooLarge));
+
+		SafetensorsReference reference = SafetensorsReference.locate(file).get("ids");
+		PackedCollection mapped = CollectionEncoder.decode(reference, file, false);
+
+		try {
+			mapped.toDouble(0);
+			Assert.fail("An I64 value past 2^53 should be rejected when read");
+		} catch (ArithmeticException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains(String.valueOf(tooLarge)));
+		}
+	}
+
+	/**
+	 * Copying integer tensors (with values below 2<sup>24</sup>) into allocated memory gives the
+	 * same values as reading the file, so the result holds on any backend.
+	 */
+	@Test(timeout = 60000)
+	public void materializedIntegerValuesMatchMapped() throws IOException {
+		File i32 = writeFile("{\"ids\":{\"dtype\":\"I32\",\"shape\":[3],\"data_offsets\":[0,12]}}",
+				intBytes(-5, 100, 16_000_000));
+		SafetensorsReference r32 = SafetensorsReference.locate(i32).get("ids");
+		Assert.assertArrayEquals(CollectionEncoder.decode(r32, i32, false).toArray(),
+				CollectionEncoder.decode(r32, i32, true).toArray(), 0.0);
+
+		File i64 = writeFile("{\"ids\":{\"dtype\":\"I64\",\"shape\":[3],\"data_offsets\":[0,24]}}",
+				longBytes(-5, 100, 16_000_000));
+		SafetensorsReference r64 = SafetensorsReference.locate(i64).get("ids");
+		Assert.assertArrayEquals(CollectionEncoder.decode(r64, i64, false).toArray(),
+				CollectionEncoder.decode(r64, i64, true).toArray(), 0.0);
+	}
+
+	/** An integer tensor whose byte range does not match its shape and element width is rejected. */
+	@Test(timeout = 60000)
+	public void rejectsIntegerRangeNotMatchingShape() throws IOException {
+		assertRejected("{\"ids\":{\"dtype\":\"I32\",\"shape\":[2],\"data_offsets\":[0,12]}}", 12, "occupy 8");
+		assertRejected("{\"ids\":{\"dtype\":\"I64\",\"shape\":[2],\"data_offsets\":[0,12]}}", 12, "occupy 16");
+	}
+
+	/**
+	 * A dictionary loaded from a safetensors file with an {@code I32} tensor is saved and reloaded,
+	 * and the entry is still an {@code sfixed32} payload holding the same values. The save uses the
+	 * default FP32 precision, which the integer source must override: the chosen value
+	 * 2<sup>24</sup>&nbsp;+&nbsp;1 is not representable in FP32, so a save that ignored the integer
+	 * source would read back as 2<sup>24</sup> instead.
+	 */
+	@Test(timeout = 60000)
+	public void stateDictionaryKeepsIntegerPayloadThroughSave() throws IOException {
+		int inexactInFloat = (1 << 24) + 1;
+		Path checkpoint = Files.createTempDirectory("safetensors");
+		Files.copy(writeFile("{\"ids\":{\"dtype\":\"I32\",\"shape\":[4],\"data_offsets\":[0,16]}}",
+						intBytes(-7, 0, 100, inexactInFloat)).toPath(),
+				checkpoint.resolve("model.safetensors"));
+
+		double[] expected;
+		Path saved = Files.createTempDirectory("protobuf").resolve("weights.pb");
+		StateDictionary loaded = new StateDictionary(checkpoint.toString());
+		try {
+			expected = loaded.get("ids").toArray();
+			loaded.save(saved);
+		} finally {
+			loaded.destroy();
+		}
+
+		Collections.CollectionData data = Collections.CollectionLibraryData
+				.parseFrom(Files.readAllBytes(saved)).getCollections(0).getCollection();
+		Assert.assertEquals("the integer source overrides the FP32 precision argument",
+				4, data.getDataI32Count());
+		Assert.assertEquals(0, data.getData32Count());
+		Assert.assertEquals(0, data.getDataCount());
+
+		StateDictionary reloaded = new StateDictionary(saved.getParent().toString());
+		try {
+			Assert.assertArrayEquals(expected, reloaded.get("ids").toArray(), 0.0);
+			Assert.assertEquals(inexactInFloat, reloaded.get("ids").toDouble(3), 0.0);
+		} finally {
+			reloaded.destroy();
+		}
+	}
+
+	/**
+	 * A {@link StateDictionary#group(String) group} carries the integer source encoding of the
+	 * entries it exposes, so saving the group keeps those entries integer payloads. The chosen value
+	 * 2<sup>24</sup>&nbsp;+&nbsp;1 is not representable in FP32, so a save that dropped the group's
+	 * encoding and fell back to the default precision would read back as 2<sup>24</sup> instead.
+	 */
+	@Test(timeout = 60000)
+	public void groupKeepsIntegerPayloadThroughSave() throws IOException {
+		int inexactInFloat = (1 << 24) + 1;
+		Path checkpoint = Files.createTempDirectory("safetensors");
+		Files.copy(writeFile("{\"model.ids\":{\"dtype\":\"I32\",\"shape\":[4],\"data_offsets\":[0,16]}}",
+						intBytes(-7, 0, 100, inexactInFloat)).toPath(),
+				checkpoint.resolve("model.safetensors"));
+
+		double[] expected;
+		Path saved = Files.createTempDirectory("protobuf").resolve("weights.pb");
+		StateDictionary loaded = new StateDictionary(checkpoint.toString());
+		try {
+			StateDictionary group = loaded.group("model");
+			expected = group.get("ids").toArray();
+			group.save(saved);
+		} finally {
+			loaded.destroy();
+		}
+
+		Collections.CollectionData data = Collections.CollectionLibraryData
+				.parseFrom(Files.readAllBytes(saved)).getCollections(0).getCollection();
+		Assert.assertEquals("the group preserves the integer source encoding",
+				4, data.getDataI32Count());
+		Assert.assertEquals(0, data.getData32Count());
+		Assert.assertEquals(0, data.getDataCount());
+
+		StateDictionary reloaded = new StateDictionary(saved.getParent().toString());
+		try {
+			Assert.assertArrayEquals(expected, reloaded.get("ids").toArray(), 0.0);
+			Assert.assertEquals(inexactInFloat, reloaded.get("ids").toDouble(3), 0.0);
+		} finally {
+			reloaded.destroy();
+		}
 	}
 
 	/**
@@ -582,6 +755,30 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 	 */
 	private byte[] floatBytes(float value) {
 		return ByteBuffer.allocate(Float.BYTES).order(ByteOrder.LITTLE_ENDIAN).putFloat(value).array();
+	}
+
+	/**
+	 * Encodes the given values as little-endian {@code I32} tensor data.
+	 *
+	 * @param values the values
+	 * @return their bytes
+	 */
+	private byte[] intBytes(int... values) {
+		ByteBuffer bytes = ByteBuffer.allocate(values.length * Integer.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+		for (int value : values) bytes.putInt(value);
+		return bytes.array();
+	}
+
+	/**
+	 * Encodes the given values as little-endian {@code I64} tensor data.
+	 *
+	 * @param values the values
+	 * @return their bytes
+	 */
+	private byte[] longBytes(long... values) {
+		ByteBuffer bytes = ByteBuffer.allocate(values.length * Long.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+		for (long value : values) bytes.putLong(value);
+		return bytes.array();
 	}
 
 	/**

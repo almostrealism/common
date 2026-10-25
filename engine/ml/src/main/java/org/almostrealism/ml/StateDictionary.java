@@ -25,11 +25,13 @@ import org.almostrealism.persist.assets.AssetGroupInfo;
 import org.almostrealism.hardware.mem.FileMapping;
 import org.almostrealism.persist.assets.CollectionDataMemoryProvider;
 import org.almostrealism.persist.assets.CollectionDataReference;
+import org.almostrealism.persist.assets.CollectionDataPayload;
 import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.persist.assets.EncodedMessage;
 import org.almostrealism.persist.assets.SafetensorsReference;
 import org.almostrealism.protobuf.Collections;
 
+import io.almostrealism.code.NumberSystem;
 import io.almostrealism.code.Precision;
 
 import java.io.File;
@@ -88,6 +90,15 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	private Map<String, PackedCollection> weights;
 
 	/**
+	 * The source {@link NumberSystem} of each entry that was loaded from an integer payload. An
+	 * entry here is written back as that integer payload by {@link #save}, regardless of the
+	 * precision argument, so a checkpoint's index arrays keep their integers through a round trip
+	 * without the caller naming them. Entries loaded from a floating-point source are not recorded;
+	 * the precision argument governs those.
+	 */
+	private Map<String, NumberSystem> sourceEncodings;
+
+	/**
 	 * Whether this dictionary owns the native memory of its tensors. A dictionary that loads its
 	 * weights from files or is constructed with its own map owns them, so {@link #destroy()}
 	 * releases them. A {@link #group} shares another dictionary's tensors rather than copying them,
@@ -139,7 +150,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * @param weights Map of weight names to PackedCollections
 	 */
 	public StateDictionary(Map<String, PackedCollection> weights) {
-		this(weights, true);
+		this(weights, new HashMap<>(), true);
 	}
 
 	/**
@@ -147,11 +158,14 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * (non-owning) dictionary is the backing of {@link #group}: it exposes tensors held by another
 	 * dictionary without taking responsibility for their native memory.
 	 *
-	 * @param weights Map of weight names to PackedCollections
-	 * @param owning  whether this dictionary owns the tensors' native memory
+	 * @param weights         Map of weight names to PackedCollections
+	 * @param sourceEncodings the integer source encoding of each entry that has one
+	 * @param owning          whether this dictionary owns the tensors' native memory
 	 */
-	private StateDictionary(Map<String, PackedCollection> weights, boolean owning) {
+	private StateDictionary(Map<String, PackedCollection> weights,
+							Map<String, NumberSystem> sourceEncodings, boolean owning) {
 		this.weights = weights;
+		this.sourceEncodings = sourceEncodings;
 		this.owning = owning;
 	}
 
@@ -162,6 +176,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 */
 	protected void init() throws IOException {
 		this.weights = new HashMap<>();
+		this.sourceEncodings = new HashMap<>();
 
 		try {
 			loadWeights();
@@ -259,6 +274,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 
 				if (key != null && reference != null) {
 					weights.put(key, CollectionEncoder.decode(reference, weightFile, false));
+					recordEncoding(key, reference.getEncoding());
 				}
 			}
 
@@ -296,9 +312,25 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 		}
 
 		tensors.keySet().forEach(key -> shards.put(key, file));
-		tensors.forEach((key, reference) ->
-				weights.put(key, CollectionEncoder.decode(reference, file, enableMaterializeWeights)));
+		tensors.forEach((key, reference) -> {
+			weights.put(key, CollectionEncoder.decode(reference, file, enableMaterializeWeights));
+			recordEncoding(key, reference.getEncoding());
+		});
 		return tensors.size();
+	}
+
+	/**
+	 * Records the source encoding of a loaded entry when it is an integer encoding, so {@link #save}
+	 * can keep it an integer payload. A floating-point source is not recorded; the precision
+	 * argument governs those entries.
+	 *
+	 * @param key      the entry's key
+	 * @param encoding the number system the entry was loaded from, or {@code null}
+	 */
+	private void recordEncoding(String key, NumberSystem encoding) {
+		if (encoding != null && encoding.isInteger()) {
+			sourceEncodings.put(key, encoding);
+		}
 	}
 
 	/**
@@ -319,6 +351,8 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 
 				if (collection != null) {
 					weights.put(entry.getKey(), collection);
+					CollectionDataPayload payload = CollectionDataPayload.of(entry.getCollection());
+					recordEncoding(entry.getKey(), payload == null ? null : payload.getSystem());
 				}
 			}
 
@@ -395,10 +429,16 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	public StateDictionary group(String name) {
 		String prefix = name + ".";
 		Map<String, PackedCollection> members = new HashMap<>();
+		Map<String, NumberSystem> memberEncodings = new HashMap<>();
 		weights.forEach((key, weight) -> {
-			if (key.startsWith(prefix)) members.put(key.substring(prefix.length()), weight);
+			if (key.startsWith(prefix)) {
+				String member = key.substring(prefix.length());
+				members.put(member, weight);
+				NumberSystem encoding = sourceEncodings.get(key);
+				if (encoding != null) memberEncodings.put(member, encoding);
+			}
 		});
-		return new StateDictionary(members, false);
+		return new StateDictionary(members, memberEncodings, false);
 	}
 
 	/**
@@ -491,7 +531,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * @throws IOException if writing fails
 	 */
 	public void save(Path outputPath, Precision precision) throws IOException {
-		Collections.CollectionLibraryData libraryData = encode(weights, precision);
+		Collections.CollectionLibraryData libraryData = encode(weights, precision, sourceEncodings);
 		try (OutputStream out = Files.newOutputStream(outputPath)) {
 			libraryData.writeTo(out);
 		}
@@ -515,14 +555,39 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * @return Encoded protobuf data
 	 */
 	public static Collections.CollectionLibraryData encode(Map<String, PackedCollection> weights, Precision precision) {
+		return encode(weights, precision, Map.of());
+	}
+
+	/**
+	 * Encode a map of weights to protobuf format, writing each entry named in {@code encodings} as
+	 * that encoding's payload and every other entry at the given floating-point precision.
+	 *
+	 * <p>This is how a caller that builds an index collection itself asks for it to be written as an
+	 * integer payload: name it in {@code encodings} with {@link NumberSystem#I32} or
+	 * {@link NumberSystem#I64}. It is also how {@link #save} keeps an entry loaded from an integer
+	 * source an integer, by passing the encodings it recorded while loading.</p>
+	 *
+	 * @param weights   Map of weight names to PackedCollections
+	 * @param precision Precision for encoding floating-point entries (FP32 or FP64)
+	 * @param encodings The integer number system to write a named entry as; other entries use {@code precision}
+	 * @return Encoded protobuf data
+	 * @throws IllegalArgumentException if an entry named in {@code encodings} holds a value that is
+	 *         not a whole number in range for the named integer number system
+	 */
+	public static Collections.CollectionLibraryData encode(Map<String, PackedCollection> weights,
+			Precision precision, Map<String, NumberSystem> encodings) {
 		Collections.CollectionLibraryData.Builder libraryBuilder = Collections.CollectionLibraryData.newBuilder();
 
 		for (Map.Entry<String, PackedCollection> entry : weights.entrySet()) {
-			Collections.CollectionLibraryEntry libraryEntry = Collections.CollectionLibraryEntry.newBuilder()
+			NumberSystem encoding = encodings.get(entry.getKey());
+			Collections.CollectionData collection = encoding != null && encoding.isInteger() ?
+					CollectionEncoder.encode(entry.getValue(), encoding) :
+					CollectionEncoder.encode(entry.getValue(), precision);
+
+			libraryBuilder.addCollections(Collections.CollectionLibraryEntry.newBuilder()
 					.setKey(entry.getKey())
-					.setCollection(CollectionEncoder.encode(entry.getValue(), precision))
-					.build();
-			libraryBuilder.addCollections(libraryEntry);
+					.setCollection(collection)
+					.build());
 		}
 
 		return libraryBuilder.build();

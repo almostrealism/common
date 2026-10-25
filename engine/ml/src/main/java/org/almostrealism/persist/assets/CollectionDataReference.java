@@ -16,6 +16,7 @@
 
 package org.almostrealism.persist.assets;
 
+import io.almostrealism.code.NumberSystem;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -29,8 +30,8 @@ import java.nio.ByteBuffer;
  * <p>A {@link Collections.CollectionData} can be had by parsing one, which
  * puts every value on the Java heap in order to hand them to a device that may
  * never ask for them. This names the same data by where it is instead: the
- * byte range its values occupy, and the precision they are stored at. Nothing
- * is read until something reads it.</p>
+ * byte range its values occupy, and the {@link NumberSystem} they are stored
+ * as. Nothing is read until something reads it.</p>
  *
  * <p>The data need not be the whole of the file. A reference is resolved by
  * descending a path of field numbers, so collection data nested inside a
@@ -56,11 +57,17 @@ public class CollectionDataReference {
 	/** Field number of the FP32 {@code data_32} within {@code CollectionData}. */
 	public static final int DATA_32_FIELD = 3;
 
+	/** Field number of the signed 32-bit integer {@code data_i32} within {@code CollectionData}. */
+	public static final int DATA_I32_FIELD = 4;
+
+	/** Field number of the signed 64-bit integer {@code data_i64} within {@code CollectionData}. */
+	public static final int DATA_I64_FIELD = 5;
+
 	/** Shape of the collection the values describe. */
 	private final TraversalPolicy shape;
 
-	/** Precision the values are stored at. */
-	private final Precision precision;
+	/** How the values are stored and decoded. */
+	private final NumberSystem encoding;
 
 	/** Byte position of the first value within the file. */
 	private final long valueOffset;
@@ -72,14 +79,14 @@ public class CollectionDataReference {
 	 * Creates a reference to values already located.
 	 *
 	 * @param shape       shape of the collection
-	 * @param precision   precision the values are stored at
+	 * @param encoding    how the values are stored and decoded
 	 * @param valueOffset byte position of the first value within the file
 	 * @param count       number of values
 	 */
-	protected CollectionDataReference(TraversalPolicy shape, Precision precision,
+	protected CollectionDataReference(TraversalPolicy shape, NumberSystem encoding,
 									  long valueOffset, int count) {
 		this.shape = shape;
-		this.precision = precision;
+		this.encoding = encoding;
 		this.valueOffset = valueOffset;
 		this.count = count;
 	}
@@ -87,8 +94,15 @@ public class CollectionDataReference {
 	/** Returns the shape of the collection the values describe. */
 	public TraversalPolicy getShape() { return shape; }
 
-	/** Returns the precision the values are stored at. */
-	public Precision getPrecision() { return precision; }
+	/** Returns how the values are stored and decoded. */
+	public NumberSystem getEncoding() { return encoding; }
+
+	/**
+	 * Returns the narrowest precision that holds every value exactly.
+	 *
+	 * @see NumberSystem#storagePrecision()
+	 */
+	public Precision getPrecision() { return encoding.storagePrecision(); }
 
 	/** Returns the byte position of the first value within the file. */
 	public long getValueOffset() { return valueOffset; }
@@ -97,22 +111,22 @@ public class CollectionDataReference {
 	public int getCount() { return count; }
 
 	/** Returns how many bytes the values occupy. */
-	public long getValueLength() { return (long) count * precision.bytes(); }
+	public long getValueLength() { return (long) count * encoding.bytes(); }
 
 	/**
 	 * Reads one value from a buffer holding the whole file this reference was resolved
 	 * against, decoding it from the form it is stored in.
 	 *
-	 * <p>Protobuf collection data is stored as little-endian FP64 or FP32, which the buffer's
-	 * own accessors decode. A file format that stores values in another form overrides this.</p>
+	 * <p>The {@link NumberSystem} decodes each value from its little-endian bytes, so a format
+	 * that stores values in any of the readable forms is served without this needing to know
+	 * which.</p>
 	 *
 	 * @param buffer the file's bytes, in the order the values were written
 	 * @param index  the position of the value among this reference's values
 	 * @return the value
 	 */
 	protected double valueAt(ByteBuffer buffer, int index) {
-		int at = (int) (valueOffset + (long) index * precision.bytes());
-		return precision == Precision.FP64 ? buffer.getDouble(at) : buffer.getFloat(at);
+		return encoding.decode(buffer, (int) (valueOffset + (long) index * encoding.bytes()));
 	}
 
 	/**
@@ -157,23 +171,15 @@ public class CollectionDataReference {
 				policy.parse(Collections.TraversalPolicyData.parser()));
 		if (shape == null || shape.getTotalSizeLong() == 0) return null;
 
-		Precision precision = data.has(DATA_FIELD) ? Precision.FP64 : Precision.FP32;
-		int field = precision == Precision.FP64 ? DATA_FIELD : DATA_32_FIELD;
+		CollectionDataPayload payload = CollectionDataPayload.of(data);
+		if (payload == null) return null;
 
-		long values = data.positionOf(field);
+		long values = data.positionOf(payload.getField());
 		if (values < 0) return null;
 
-		int bytes = data.lengthOf(field);
+		int count = payload.getSystem().valuesIn("the value payload at byte " + values,
+				data.lengthOf(payload.getField()));
 
-		if (bytes % precision.bytes() != 0) {
-			throw new IllegalArgumentException("Values at " + values +
-					" occupy " + bytes + " bytes, which is not a whole number " +
-					"of " + precision + " values. A producer that writes this " +
-					"field unpacked leaves the values discontiguous, and they " +
-					"cannot be addressed as a range.");
-		}
-
-		return new CollectionDataReference(shape, precision, values,
-				bytes / precision.bytes());
+		return new CollectionDataReference(shape, payload.getSystem(), values, count);
 	}
 }

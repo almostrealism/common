@@ -738,7 +738,7 @@ public final class Hardware implements ConsoleFeatures {
 		if (contexts.stream().map(DataContext::getPrecision).distinct().count() <= 1) return;
 
 		warn("Hardware[" + getName() + "]: Contexts do not agree on precision (" +
-				contexts.stream().map(c -> c.getName() + "=" + c.getPrecision().name())
+				contexts.stream().map(c -> c.getName() + "=" + c.getPrecision())
 						.collect(Collectors.joining(", ")) + "), so memory copied between them" +
 				" must be converted element by element. Set AR_HARDWARE_PRECISION to the lowest" +
 				" of these to avoid it");
@@ -796,7 +796,7 @@ public final class Hardware implements ConsoleFeatures {
 
 				log("Hardware[" + ctx.getName() + "]: Max RAM is " +
 						ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes (" +
-						ctx.getPrecision().name() + ")");
+						ctx.getPrecision() + ")");
 
 				if (KernelPreferences.isEnableSharedMemory() && sharedMemoryCtx == null &&
 						ctx.getHostAccessibleMemoryProvider() != null) {
