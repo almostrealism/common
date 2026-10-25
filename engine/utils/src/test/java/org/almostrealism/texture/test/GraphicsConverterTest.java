@@ -19,12 +19,11 @@ package org.almostrealism.texture.test;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.texture.GraphicsConverter;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -35,9 +34,16 @@ import java.io.IOException;
  * and AWT graphics. Covers color conversion, pixel extraction, image loading into
  * {@link PackedCollection}, histogramming, and round-tripping back to AWT images.
  */
-public class GraphicsConverterTest extends TestSuiteBase {
-	/** Numerical tolerance for floating-point comparisons. */
-	private static final double TOL = 1e-9;
+public class GraphicsConverterTest extends TextureTestBase {
+	/**
+	 * Numerical tolerance for floating-point comparisons. {@link RGB} and
+	 * {@link PackedCollection} values are stored at the hardware precision, so under
+	 * FP32 a channel such as {@code 128 / 255} carries up to half a unit of rounding
+	 * in the last place; the tolerance is therefore never tighter than the strict
+	 * machine epsilon of that precision.
+	 */
+	private static final double TOL =
+			Math.max(1e-9, Hardware.getLocalHardware().getPrecision().epsilon(true));
 
 	/**
 	 * Writes a known 2x2 image (red, green, blue, white) to a temporary PNG file.
@@ -51,11 +57,7 @@ public class GraphicsConverterTest extends TestSuiteBase {
 		image.setRGB(1, 0, 0x00FF00);
 		image.setRGB(0, 1, 0x0000FF);
 		image.setRGB(1, 1, 0xFFFFFF);
-
-		File file = File.createTempFile("texture-test", ".png");
-		file.deleteOnExit();
-		ImageIO.write(image, "png", file);
-		return file;
+		return writePng(image);
 	}
 
 	/**

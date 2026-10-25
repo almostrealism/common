@@ -17,11 +17,9 @@
 package org.almostrealism.texture.test;
 
 import org.almostrealism.texture.URLImageSource;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -31,7 +29,7 @@ import java.net.URL;
  * Tests for {@link URLImageSource}, which loads an image from a URL via AWT and
  * exposes its dimensions and packed-ARGB pixels.
  */
-public class URLImageSourceTest extends TestSuiteBase {
+public class URLImageSourceTest extends TextureTestBase {
 	/**
 	 * Writes a 3x2 image with a red top-left pixel to a temporary PNG and returns
 	 * its URL.
@@ -47,11 +45,7 @@ public class URLImageSourceTest extends TestSuiteBase {
 			}
 		}
 		image.setRGB(0, 0, 0xFF0000);
-
-		File file = File.createTempFile("url-image", ".png");
-		file.deleteOnExit();
-		ImageIO.write(image, "png", file);
-		return file.toURI().toURL();
+		return writePng(image).toURI().toURL();
 	}
 
 	/**

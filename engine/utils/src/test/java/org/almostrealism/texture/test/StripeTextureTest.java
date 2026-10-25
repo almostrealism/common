@@ -19,7 +19,6 @@ package org.almostrealism.texture.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
 import org.almostrealism.texture.StripeTexture;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -27,24 +26,7 @@ import org.junit.Test;
  * Tests for {@link StripeTexture}, exercising the compiled color-producer graph it
  * builds for hard-edged and smooth stripes across each axis.
  */
-public class StripeTextureTest extends TestSuiteBase {
-	/** Numerical tolerance for floating-point comparisons. */
-	private static final double TOL = 1e-6;
-
-	/**
-	 * Asserts that two colors match channel-by-channel within tolerance.
-	 *
-	 * @param r the expected red channel
-	 * @param g the expected green channel
-	 * @param b the expected blue channel
-	 * @param actual the color to check
-	 */
-	private void assertColor(double r, double g, double b, RGB actual) {
-		Assert.assertEquals(r, actual.getRed(), TOL);
-		Assert.assertEquals(g, actual.getGreen(), TOL);
-		Assert.assertEquals(b, actual.getBlue(), TOL);
-	}
-
+public class StripeTextureTest extends TextureTestBase {
 	/**
 	 * Verifies the default hard-edged stripe selects the first color where the sine
 	 * test is positive and the second color where it is not. At the default width

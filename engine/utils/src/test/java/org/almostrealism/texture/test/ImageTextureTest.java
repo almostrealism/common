@@ -19,27 +19,22 @@ package org.almostrealism.texture.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
 import org.almostrealism.texture.ImageTexture;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 
 /**
  * Tests for {@link ImageTexture}, covering constructor validation, the
- * pixel-not-loaded contract, and projection lookups against a solid-color image.
+ * pixel-not-loaded contract, pixel index resolution, and projection lookups.
  *
- * <p>A solid-color source image is used for the loaded-image cases so the assertions
- * depend only on the projection selection, not on the exact pixel index arithmetic.</p>
+ * <p>The projection cases use a solid-color source image so their assertions depend
+ * only on the projection selection; the direct {@code getColorAt} cases use an image
+ * with distinct pixel colors so they pin down the pixel index arithmetic.</p>
  */
-public class ImageTextureTest extends TestSuiteBase {
-	/** Numerical tolerance for floating-point comparisons. */
-	private static final double TOL = 1e-6;
-
+public class ImageTextureTest extends TextureTestBase {
 	/**
 	 * Writes a solid red image of the given size to a temporary PNG and returns its URL.
 	 *
@@ -54,10 +49,28 @@ public class ImageTextureTest extends TestSuiteBase {
 				image.setRGB(x, y, 0xFF0000);
 			}
 		}
-		File file = File.createTempFile("image-texture", ".png");
-		file.deleteOnExit();
-		ImageIO.write(image, "png", file);
-		return file.toURI().toURL();
+		return writePng(image).toURI().toURL();
+	}
+
+	/**
+	 * Writes a 3x3 image whose top-left pixel is red, the pixel to its right green,
+	 * the pixel below it blue, and every other pixel white, so that sampled colors
+	 * identify exactly which pixel index a lookup resolved to.
+	 *
+	 * @return a {@code file:} URL pointing at the written image
+	 * @throws IOException if the file cannot be written
+	 */
+	private URL distinctPixelImage() throws IOException {
+		BufferedImage image = new BufferedImage(3, 3, BufferedImage.TYPE_INT_RGB);
+		for (int x = 0; x < 3; x++) {
+			for (int y = 0; y < 3; y++) {
+				image.setRGB(x, y, 0xFFFFFF);
+			}
+		}
+		image.setRGB(0, 0, 0xFF0000);
+		image.setRGB(1, 0, 0x00FF00);
+		image.setRGB(0, 1, 0x0000FF);
+		return writePng(image).toURI().toURL();
 	}
 
 	/**
@@ -81,13 +94,10 @@ public class ImageTextureTest extends TestSuiteBase {
 		ImageTexture texture = new ImageTexture();
 
 		RGB direct = texture.getColorAt(0.5, 0.5);
-		Assert.assertEquals(0.0, direct.getRed(), TOL);
-		Assert.assertEquals(0.0, direct.getGreen(), TOL);
-		Assert.assertEquals(0.0, direct.getBlue(), TOL);
+		assertColor(0.0, 0.0, 0.0, direct);
 
 		RGB projected = texture.operate(new Vector(0.5, 0.7, 0.2));
-		Assert.assertEquals(0.0, projected.getRed(), TOL);
-		Assert.assertEquals(0.0, projected.getBlue(), TOL);
+		assertColor(0.0, 0.0, 0.0, projected);
 	}
 
 	/**
@@ -105,6 +115,41 @@ public class ImageTextureTest extends TestSuiteBase {
 			threw = true;
 		}
 		Assert.assertTrue(threw);
+	}
+
+	/**
+	 * Verifies {@link ImageTexture#getColorAt(double, double)} on a loaded image maps
+	 * {@code (u, v)} to pixel {@code (int(u * (width - 1)), int(v * (height - 1)))},
+	 * and that the constructor's scale and offset are applied before the lookup.
+	 */
+	@Test(timeout = 60000)
+	public void colorLookupResolvesPixelIndex() throws IOException {
+		ImageTexture texture = new ImageTexture(ImageTexture.XY_PLANAR_PROJECTION, distinctPixelImage());
+		assertColor(1.0, 0.0, 0.0, texture.getColorAt(0.0, 0.0));
+		assertColor(0.0, 1.0, 0.0, texture.getColorAt(0.6, 0.0));
+		assertColor(0.0, 0.0, 1.0, texture.getColorAt(0.0, 0.6));
+		assertColor(1.0, 1.0, 1.0, texture.getColorAt(0.6, 0.6));
+
+		// xScale=2 maps u=0.3 to 0.6 (column 1); yOff=0.5 maps v=0.1 to 0.6 (row 1)
+		ImageTexture scaled = new ImageTexture(ImageTexture.XY_PLANAR_PROJECTION,
+				distinctPixelImage(), 2.0, 1.0, 0.0, 0.5);
+		assertColor(0.0, 0.0, 1.0, scaled.getColorAt(0.0, 0.1));
+		assertColor(1.0, 1.0, 1.0, scaled.getColorAt(0.3, 0.1));
+	}
+
+	/**
+	 * Verifies the explicit scale/offset overload of {@code getColorAt} on a loaded
+	 * image applies its arguments (not the texture's own scale and offset), and that
+	 * coordinates wrap modulo 1.
+	 */
+	@Test(timeout = 60000)
+	public void scaledColorLookupAppliesArguments() throws IOException {
+		ImageTexture texture = new ImageTexture(ImageTexture.XY_PLANAR_PROJECTION, distinctPixelImage());
+		assertColor(1.0, 0.0, 0.0, texture.getColorAt(0.0, 0.0, 1.0, 1.0, 0.0, 0.0));
+		assertColor(0.0, 1.0, 0.0, texture.getColorAt(0.3, 0.0, 2.0, 1.0, 0.0, 0.0));
+		assertColor(0.0, 0.0, 1.0, texture.getColorAt(0.0, 0.1, 1.0, 1.0, 0.0, 0.5));
+		// (1.6 % 1) = 0.6 wraps back into column 1
+		assertColor(0.0, 1.0, 0.0, texture.getColorAt(1.6, 0.0, 1.0, 1.0, 0.0, 0.0));
 	}
 
 	/**
@@ -132,9 +177,7 @@ public class ImageTextureTest extends TestSuiteBase {
 		ImageTexture texture = new ImageTexture(ImageTexture.XY_PLANAR_PROJECTION, solidRedImage(4));
 
 		RGB color = texture.operate(new Vector(0.3, 0.4, 0.0));
-		Assert.assertEquals(1.0, color.getRed(), TOL);
-		Assert.assertEquals(0.0, color.getGreen(), TOL);
-		Assert.assertEquals(0.0, color.getBlue(), TOL);
+		assertColor(1.0, 0.0, 0.0, color);
 	}
 
 	/**
@@ -146,9 +189,7 @@ public class ImageTextureTest extends TestSuiteBase {
 		ImageTexture texture = new ImageTexture(ImageTexture.SPHERICAL_PROJECTION, solidRedImage(4));
 
 		RGB color = texture.operate(new Vector(1.0, 1.0, 1.0));
-		Assert.assertEquals(1.0, color.getRed(), TOL);
-		Assert.assertEquals(0.0, color.getGreen(), TOL);
-		Assert.assertEquals(0.0, color.getBlue(), TOL);
+		assertColor(1.0, 0.0, 0.0, color);
 	}
 
 	/**
@@ -160,9 +201,7 @@ public class ImageTextureTest extends TestSuiteBase {
 		ImageTexture texture = new ImageTexture(ImageTexture.XZ_PLANAR_PROJECTION, solidRedImage(4));
 
 		RGB color = texture.operate(new Vector(0.3, 0.9, 0.4));
-		Assert.assertEquals(1.0, color.getRed(), TOL);
-		Assert.assertEquals(0.0, color.getGreen(), TOL);
-		Assert.assertEquals(0.0, color.getBlue(), TOL);
+		assertColor(1.0, 0.0, 0.0, color);
 	}
 
 	/**
@@ -174,8 +213,6 @@ public class ImageTextureTest extends TestSuiteBase {
 		ImageTexture texture = new ImageTexture(ImageTexture.YZ_PLANAR_PROJECTION, solidRedImage(4));
 
 		RGB color = texture.operate(new Vector(0.9, 0.3, 0.4));
-		Assert.assertEquals(1.0, color.getRed(), TOL);
-		Assert.assertEquals(0.0, color.getGreen(), TOL);
-		Assert.assertEquals(0.0, color.getBlue(), TOL);
+		assertColor(1.0, 0.0, 0.0, color);
 	}
 }
