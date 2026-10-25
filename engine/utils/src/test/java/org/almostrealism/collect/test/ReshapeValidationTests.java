@@ -21,6 +21,9 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.layers.LayerRoutingFeatures;
+import org.almostrealism.model.Block;
+import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -29,13 +32,15 @@ import org.junit.Test;
  * Pins the shared reshape total-size invariant enforced by
  * {@link TraversalPolicy#requireReshape(TraversalPolicy)} and each of the call sites that
  * delegate to it: {@link org.almostrealism.model.Block#reshape(TraversalPolicy)},
- * {@link LayerFeatures#reshape(TraversalPolicy, TraversalPolicy)}, and the
- * {@link ReshapeProducer} constructor. A reshape preserves the number of elements, so a
+ * {@link LayerFeatures#reshape(TraversalPolicy, TraversalPolicy)}, the
+ * {@link ReshapeProducer} constructor, and
+ * {@link LayerRoutingFeatures#residual(Block)} (whose inner block's input and output
+ * shapes must be reshape-compatible). A reshape preserves the number of elements, so a
  * target whose total size differs from the source is rejected with an
  * {@link IllegalArgumentException} naming both shapes and their differing total sizes; a
  * target with a matching total size (even with different dimensions) is accepted.
  */
-public class ReshapeValidationTests extends TestSuiteBase implements LayerFeatures {
+public class ReshapeValidationTests extends TestSuiteBase implements LayerRoutingFeatures {
 
 	/**
 	 * Asserts that {@code operation} throws an {@link IllegalArgumentException} whose message
@@ -107,5 +112,17 @@ public class ReshapeValidationTests extends TestSuiteBase implements LayerFeatur
 		Assert.assertNotNull(new ReshapeProducer(shape(24), input));
 		assertReshapeRejected(24, 30,
 				() -> new ReshapeProducer(shape(5, 6), input));
+	}
+
+	/**
+	 * {@link LayerRoutingFeatures#residual(Block)} accepts an inner block whose input and
+	 * output shapes have the same total size and rejects one whose total sizes differ,
+	 * reporting both shapes.
+	 */
+	@Test(timeout = 10000)
+	public void residualValidatesTotalSize() {
+		Assert.assertNotNull(residual(passThrough(shape(4, 6))));
+		assertReshapeRejected(24, 30,
+				() -> residual(new DefaultBlock(shape(4, 6), shape(5, 6), null, null)));
 	}
 }
