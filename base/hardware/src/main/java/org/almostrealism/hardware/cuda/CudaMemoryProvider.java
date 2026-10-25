@@ -63,7 +63,8 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	 * avoids the cost of allocating and freeing native memory repeatedly (freeing synchronizes the
 	 * device), which a workload such as a training loop pays on every step, at the cost of holding
 	 * memory against the reservation. When disabled, only small buffers (no larger than
-	 * {@link #maxSmallCachedAllocation}) are kept, within {@link #smallCacheCapacity}; every larger
+	 * {@link #maxSmallCachedAllocation}) are kept, holding at most one part in
+	 * {@link #smallCacheCapacity} of the maximum reservation; every larger
 	 * released buffer is freed at once and every larger allocation is made fresh.
 	 */
 	public static boolean enableAllocationCache =
