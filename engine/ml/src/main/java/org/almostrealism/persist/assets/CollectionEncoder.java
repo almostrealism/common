@@ -16,6 +16,7 @@
 
 package org.almostrealism.persist.assets;
 
+import io.almostrealism.code.NumberSystem;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -23,7 +24,6 @@ import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.protobuf.Collections;
 
 import java.io.File;
-import java.nio.ByteBuffer;
 import java.util.stream.IntStream;
 
 /**
@@ -59,19 +59,36 @@ public class CollectionEncoder {
 	 * @throws IllegalArgumentException if {@code precision} is not FP32 or FP64
 	 */
 	public static Collections.CollectionData encode(PackedCollection c, Precision precision) {
+		if (precision == Precision.FP64) {
+			return encode(c, NumberSystem.F64);
+		} else if (precision == Precision.FP32) {
+			return encode(c, NumberSystem.F32);
+		}
+
+		throw new IllegalArgumentException(precision + " has no collection data payload");
+	}
+
+	/**
+	 * Encodes a {@link PackedCollection} to protobuf format as the given number system's payload.
+	 *
+	 * <p>If {@code c} is {@code null}, the default (empty) instance of
+	 * {@link Collections.CollectionData} is returned. An integer system ({@link NumberSystem#I32}
+	 * or {@link NumberSystem#I64}) requires every value to be a whole number in range for its
+	 * width, failing rather than truncating a value that is not; a value is exact in the collection
+	 * only to the limits the system documents (an {@code int64} to &plusmn;2<sup>53</sup>).</p>
+	 *
+	 * @param c        The collection to encode
+	 * @param encoding The number system to store the values as; must have a protobuf payload
+	 * @return A {@link Collections.CollectionData} message, or the default instance if {@code c} is null
+	 * @throws IllegalArgumentException if {@code encoding} has no protobuf payload, or an integer
+	 *         system is asked to store a value that is not a whole number in range
+	 */
+	public static Collections.CollectionData encode(PackedCollection c, NumberSystem encoding) {
 		if (c == null) return Collections.CollectionData.getDefaultInstance();
 
 		Collections.CollectionData.Builder data = Collections.CollectionData.newBuilder();
 		data.setTraversalPolicy(encode(c.getShape()));
-
-		if (precision == Precision.FP64) {
-			c.doubleStream().forEach(data::addData);
-		} else if (precision == Precision.FP32) {
-			c.doubleStream().forEach(d -> data.addData32((float) d));
-		} else {
-			throw new IllegalArgumentException();
-		}
-
+		CollectionDataPayload.of(encoding).write(c, data);
 		return data.build();
 	}
 
@@ -176,14 +193,31 @@ public class CollectionEncoder {
 	private static PackedCollection decode(TraversalPolicy shape,
 										   CollectionDataMemory mem,
 										   boolean materialize) {
-		PackedCollection deferred = new PackedCollection(shape, shape.getTraversalAxis(),
-				Bytes.of(mem, mem.getLength()), 0);
-		if (!materialize) return deferred;
+		if (!materialize) {
+			return new PackedCollection(shape, shape.getTraversalAxis(),
+					Bytes.of(mem, mem.getLength()), 0);
+		}
 
 		PackedCollection result = new PackedCollection(shape);
-		result.setFrom(0, deferred, 0, mem.getLength());
-		deferred.getRootDelegate().destroy();
+		copyInto(result, shape, mem);
 		return result;
+	}
+
+	/**
+	 * Copies the values of message-backed memory into the given destination, which must already be
+	 * the shape those values fill. The deferred collection built over the memory is read through
+	 * once by {@link PackedCollection#setFrom} and then released.
+	 *
+	 * @param destination the collection to copy into, written from element 0
+	 * @param shape       the shape of the values
+	 * @param mem         the memory holding the values
+	 */
+	private static void copyInto(PackedCollection destination, TraversalPolicy shape,
+								 CollectionDataMemory mem) {
+		PackedCollection deferred = new PackedCollection(shape, shape.getTraversalAxis(),
+				Bytes.of(mem, mem.getLength()), 0);
+		destination.setFrom(0, deferred, 0, mem.getLength());
+		deferred.getRootDelegate().destroy();
 	}
 
 	/**
@@ -221,21 +255,10 @@ public class CollectionEncoder {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
 		if (shape.getTotalSizeLong() == 0) return null;
 
+		CollectionDataMemory mem = (CollectionDataMemory)
+				CollectionDataMemoryProvider.getInstance().allocate(data);
 		PackedCollection decoded = destination.range(shape, destinationOffset);
-
-		ByteBuffer buffer = ByteBuffer.allocate(decoded.getMemLength() * Double.BYTES);
-
-		if (data.getDataList().isEmpty()) {
-			for (int i = 0; i < data.getData32Count(); i++) {
-				buffer.putDouble(data.getData32(i));
-			}
-		} else {
-			data.getDataList().forEach(buffer::putDouble);
-		}
-
-		buffer.flip();
-		decoded.read(buffer);
-
+		copyInto(decoded, shape, mem);
 		return decoded;
 	}
 

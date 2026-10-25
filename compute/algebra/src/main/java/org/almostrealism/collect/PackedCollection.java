@@ -49,6 +49,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
@@ -456,6 +457,19 @@ public class PackedCollection extends MemoryDataAdapter
 	@Override
 	public DoubleStream doubleStream() {
 		return doubleStream(0, getShape().getTotalSize());
+	}
+
+	/**
+	 * Returns whether the given collection has the same shape and the same values as this one,
+	 * in logical order. Values are compared as {@link Arrays#equals(double[], double[])} does.
+	 *
+	 * @param other the collection to compare with; may be null
+	 * @return true if {@code other} has an equal shape and equal values
+	 */
+	public boolean contentEquals(PackedCollection other) {
+		if (other == this) return true;
+		if (other == null || !getShape().equals(other.getShape())) return false;
+		return Arrays.equals(doubleStream().toArray(), other.doubleStream().toArray());
 	}
 
 	/**

@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml.audio;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.ResamplingConfig;
@@ -24,6 +25,7 @@ import org.almostrealism.ml.StateDictionary;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Random;
 
 /**
  * Builds a small {@link SAMEAutoEncoder} over synthetic weights: two audio channels folded two
@@ -40,6 +42,16 @@ public class SAMEAutoEncoderFixture implements CodeFeatures {
 
 	/** Latent channels. */
 	public static final int LATENT = 3;
+
+	/**
+	 * Base seed for the synthetic weights. Each weight is filled from a {@link Random} seeded by this
+	 * value combined with the weight's key, so the autoencoder the fixture builds is the same on every
+	 * run. An unseeded fill left the decoded audio to vary run to run, which made the tests that assert
+	 * a decoded sample stays strictly inside the generator's {@code [-1, 1]} clamp flaky: a run whose
+	 * random weights happened to decode a sample just past the clamp failed the precondition. A fixed
+	 * seed removes that run-to-run variation.
+	 */
+	private static final long WEIGHT_SEED = 1927L;
 
 	/**
 	 * The resampling configuration of one side of the small autoencoder: the same small
@@ -75,21 +87,34 @@ public class SAMEAutoEncoderFixture implements CodeFeatures {
 	public StateDictionary weights(double outputGain) {
 		Map<String, PackedCollection> w = new HashMap<>();
 		config(true).weightShapes("encoder.layers.0").forEach((key, dims) ->
-				w.put(key, new PackedCollection(shape(dims)).randnFill()));
+				w.put(key, randn(key, shape(dims))));
 		config(false).weightShapes("decoder.layers.3").forEach((key, dims) -> {
-			PackedCollection weight = new PackedCollection(shape(dims)).randnFill();
+			PackedCollection weight = randn(key, shape(dims));
 			w.put(key, writesResidual(key) ? cp(weight).multiply(outputGain).evaluate() : weight);
 		});
 
 		int dim = config(true).getOutChannels();
-		w.put("encoder.layers.2.weight", new PackedCollection(shape(LATENT, dim)).randnFill());
-		w.put("encoder.layers.2.bias", new PackedCollection(shape(LATENT)).randnFill());
-		w.put("decoder.layers.1.weight", new PackedCollection(shape(dim, LATENT)).randnFill());
-		w.put("decoder.layers.1.bias", new PackedCollection(shape(dim)).randnFill());
-		w.put("bottleneck.scaling_factor", new PackedCollection(shape(1, LATENT, 1)).randnFill());
-		w.put("bottleneck.bias", new PackedCollection(shape(1, LATENT, 1)).randnFill());
+		w.put("encoder.layers.2.weight", randn("encoder.layers.2.weight", shape(LATENT, dim)));
+		w.put("encoder.layers.2.bias", randn("encoder.layers.2.bias", shape(LATENT)));
+		w.put("decoder.layers.1.weight", randn("decoder.layers.1.weight", shape(dim, LATENT)));
+		w.put("decoder.layers.1.bias", randn("decoder.layers.1.bias", shape(dim)));
+		w.put("bottleneck.scaling_factor", randn("bottleneck.scaling_factor", shape(1, LATENT, 1)));
+		w.put("bottleneck.bias", randn("bottleneck.bias", shape(1, LATENT, 1)));
 		w.put("bottleneck.running_std", new PackedCollection(shape(1)).fill(1.5));
 		return new StateDictionary(w);
+	}
+
+	/**
+	 * A collection of the given shape filled with normally distributed values from a {@link Random}
+	 * seeded deterministically from {@link #WEIGHT_SEED} and the weight's key. Seeding per key rather
+	 * than from one shared source keeps the fill independent of the order the weight map is iterated.
+	 *
+	 * @param key   the weight's key, mixed into the seed
+	 * @param shape the shape of the collection
+	 * @return the filled collection
+	 */
+	private PackedCollection randn(String key, TraversalPolicy shape) {
+		return new PackedCollection(shape).randnFill(new Random(WEIGHT_SEED + key.hashCode()));
 	}
 
 	/**

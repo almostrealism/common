@@ -16,15 +16,24 @@
 
 package org.almostrealism.collect.test;
 
+import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.collect.DelegatedTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.StaticReference;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Tests for collection traversal ordering implementations.
@@ -35,7 +44,6 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	 * Tests repeat ordering traversal.
 	 */
 	@Test(timeout = 10000)
-	@TestProperties(knownIssue = true)
 	public void repeatOrdering() {
 
 		PackedCollection root = pack(2.0, 3.0, 1.0);
@@ -77,7 +85,6 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	 * Tests compact ordering traversal.
 	 */
 	@Test(timeout = 10000)
-	@TestProperties(knownIssue = true)
 	public void compactOrdering() {
 
 		PackedCollection values = pack(2.0, 3.0);
@@ -97,7 +104,6 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	 * Tests mask ordering traversal.
 	 */
 	@Test(timeout = 10000)
-	@TestProperties(knownIssue = true)
 	public void maskOrdering() {
 
 		PackedCollection values = pack(2.0, 3.0);
@@ -112,6 +118,181 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		assertEquals(0.0, compact.valueAt(0, 1));
 		assertEquals(0.0, compact.valueAt(1, 0));
 		assertEquals(3.0, compact.valueAt(1, 1));
+	}
+
+	/**
+	 * A composition whose first ordering is compact does not ask its second ordering to map the
+	 * negative position of an absent element: on the host that would read the second ordering's
+	 * index table out of bounds. The second index table here is a view preceded by a non-negative
+	 * entry, so a read at position -1 would report the absent element as present at position 5.
+	 */
+	@Test(timeout = 10000)
+	public void composedCompactOrderingKeepsAbsentElementsAbsent() {
+		ExplicitIndexTraversalOrdering compact = new ExplicitIndexTraversalOrdering(pack(0, -1, 1));
+		ExplicitIndexTraversalOrdering permutation =
+				new ExplicitIndexTraversalOrdering(pack(5, 1, 0).range(shape(2), 1));
+		DelegatedTraversalOrdering order = new DelegatedTraversalOrdering(compact, permutation);
+
+		assertEquals(1, order.indexOf(0));
+		assertEquals(-1, order.indexOf(1));
+		assertEquals(0, order.indexOf(2));
+
+		assertTrue(order.containsIndex(new IntegerConstant(0)).booleanValue().orElseThrow());
+		assertFalse(order.containsIndex(new IntegerConstant(1)).booleanValue().orElseThrow());
+		assertTrue(order.containsIndex(new IntegerConstant(2)).booleanValue().orElseThrow());
+	}
+
+	/**
+	 * The length of a composition is the number of physical positions its second ordering
+	 * addresses, whatever the extent of its first ordering, and is unbounded when the second
+	 * ordering is.
+	 */
+	@Test(timeout = 10000)
+	public void composedOrderingLengthIsSecondOrderingLength() {
+		ExplicitIndexTraversalOrdering compact = new ExplicitIndexTraversalOrdering(pack(0, -1, 4));
+		ExplicitIndexTraversalOrdering permutation = new ExplicitIndexTraversalOrdering(pack(1, 0));
+
+		assertEquals(2, new DelegatedTraversalOrdering(compact, permutation).getLength().getAsInt());
+		assertEquals(3, new DelegatedTraversalOrdering(permutation, new RepeatTraversalOrdering(3))
+				.getLength().getAsInt());
+		assertFalse(new DelegatedTraversalOrdering(compact, idx -> idx).getLength().isPresent());
+	}
+
+	/**
+	 * A composition has a signature only when both of its orderings do, so a kernel that reads
+	 * an index table through either half of a composition is never reused.
+	 */
+	@Test(timeout = 10000)
+	public void composedOrderingSignature() {
+		RepeatTraversalOrdering period3 = new RepeatTraversalOrdering(3);
+		RepeatTraversalOrdering period2 = new RepeatTraversalOrdering(2);
+		ExplicitIndexTraversalOrdering table = new ExplicitIndexTraversalOrdering(pack(1, 0));
+
+		assertEquals("(repeat:3)->(repeat:2)", new DelegatedTraversalOrdering(period3, period2).signature());
+		assertNotEquals(new DelegatedTraversalOrdering(period3, period2).signature(),
+				new DelegatedTraversalOrdering(period2, period3).signature());
+		assertTrue(new DelegatedTraversalOrdering(period3, table).signature() == null);
+		assertTrue(new DelegatedTraversalOrdering(table, period3).signature() == null);
+	}
+
+	/**
+	 * Every logical index of a repeat ordering has a position within the period, so its
+	 * membership test is the constant {@code true} even for a variable index, and reads of a
+	 * repeated collection carry no gate. A composition with a compact first ordering still
+	 * excludes the absent elements of that ordering.
+	 */
+	@Test(timeout = 10000)
+	public void repeatOrderingContainsEveryIndex() {
+		RepeatTraversalOrdering period3 = new RepeatTraversalOrdering(3);
+		Expression<Integer> index = new StaticReference<>(Integer.class, "i");
+
+		assertTrue(period3.containsIndex(index).booleanValue().orElseThrow());
+		assertTrue(period3.containsIndex(new IntegerConstant(7)).booleanValue().orElseThrow());
+		assertEquals(1, period3.indexOf(7));
+
+		DelegatedTraversalOrdering composed = new DelegatedTraversalOrdering(
+				new ExplicitIndexTraversalOrdering(pack(4, -1)), period3);
+		assertTrue(composed.containsIndex(new IntegerConstant(0)).booleanValue().orElseThrow());
+		assertFalse(composed.containsIndex(new IntegerConstant(1)).booleanValue().orElseThrow());
+		assertEquals(1, composed.indexOf(0));
+		assertEquals(-1, composed.indexOf(1));
+	}
+
+	/**
+	 * Binding a composition binds both of its orderings: each index table is requested from the
+	 * provider, and a composition whose orderings are unchanged by binding is returned as is.
+	 */
+	@Test(timeout = 10000)
+	public void composedOrderingBindsBothOrderings() {
+		List<Supplier<?>> requested = new ArrayList<>();
+		ArgumentProvider provider = OrderedCollectionInputTests.recordingProvider(null, requested);
+
+		DelegatedTraversalOrdering closedForm = new DelegatedTraversalOrdering(
+				new RepeatTraversalOrdering(3), new RepeatTraversalOrdering(2));
+		assertTrue(closedForm.bind(provider) == closedForm);
+		assertEquals(0, requested.size());
+
+		DelegatedTraversalOrdering tables = new DelegatedTraversalOrdering(
+				new ExplicitIndexTraversalOrdering(pack(1, 0)),
+				new IndexMaskTraversalOrdering(pack(0, 3)));
+		assertTrue(tables.bind(provider) == tables);
+		assertEquals(2, requested.size());
+	}
+
+	/**
+	 * A bound {@link ExplicitIndexTraversalOrdering} is still an explicit index ordering: it
+	 * reads the argument the provider supplies, reports the length of the original index
+	 * collection, and binding it again requests the index collection from the new provider.
+	 */
+	@Test(timeout = 10000)
+	public void explicitIndexBindingKeepsOrdering() {
+		List<Supplier<?>> requested = new ArrayList<>();
+		PackedCollection argument = pack(1, 0, 0);
+		ArgumentProvider provider = OrderedCollectionInputTests.recordingProvider(argument, requested);
+
+		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(pack(2, 0, -1));
+		TraversalOrdering bound = order.bind(provider);
+		assertEquals(3, bound.getLength().getAsInt());
+		assertEquals(1, bound.indexOf(0));
+		assertEquals(0, bound.indexOf(2));
+
+		bound.bind(provider);
+		assertEquals(2, requested.size());
+	}
+
+	/**
+	 * The length of an {@link ExplicitIndexTraversalOrdering} is the number of physical positions
+	 * its indices address, one more than the largest index, since that is how much backing memory
+	 * the ordering reads.
+	 */
+	@Test(timeout = 10000)
+	public void explicitIndexLengthCountsPhysicalPositions() {
+		assertEquals(4, new ExplicitIndexTraversalOrdering(pack(2, 0, 3, 1)).getLength().getAsInt());
+		assertEquals(2, new ExplicitIndexTraversalOrdering(pack(0, -1, -1, 1)).getLength().getAsInt());
+		assertEquals(0, new ExplicitIndexTraversalOrdering(pack(-1, -1)).getLength().getAsInt());
+	}
+
+	/**
+	 * A range through an {@link ExplicitIndexTraversalOrdering} is bounds checked against every
+	 * position the ordering addresses: a range whose largest index would fall past the end of the
+	 * collection is refused rather than reading beyond it.
+	 */
+	@Test(timeout = 10000)
+	public void explicitIndexRangeChecksEveryPosition() {
+		PackedCollection values = pack(10.0, 20.0, 30.0, 40.0, 50.0);
+		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(pack(2, 0, 3, 1));
+
+		PackedCollection permuted = values.range(shape(4).withOrder(order), 1);
+		assertEquals(40.0, permuted.toDouble(0));
+		assertEquals(20.0, permuted.toDouble(1));
+		assertEquals(50.0, permuted.toDouble(2));
+		assertEquals(30.0, permuted.toDouble(3));
+
+		try {
+			values.range(shape(4).withOrder(order), 2);
+			throw new AssertionError("a range reading past the end of the collection was accepted");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage().contains("exceeds"));
+		}
+	}
+
+	/**
+	 * The search of an {@link IndexMaskTraversalOrdering} is symbolic: for an index that is not a
+	 * compile-time constant it builds an expression rather than scanning the mask on the host, and
+	 * for a constant index it folds to the position, or to {@code -1} for an absent index.
+	 */
+	@Test(timeout = 10000)
+	public void maskIndexOfIsSymbolic() {
+		IndexMaskTraversalOrdering order = new IndexMaskTraversalOrdering(pack(0, 3));
+
+		assertEquals(0, order.indexOf(0));
+		assertEquals(-1, order.indexOf(1));
+		assertEquals(-1, order.indexOf(2));
+		assertEquals(1, order.indexOf(3));
+
+		Expression<Integer> index = new StaticReference<>(Integer.class, "i");
+		Expression<Integer> position = order.indexOf(index);
+		assertFalse("a variable index should not fold to a constant", position.intValue().isPresent());
 	}
 
 	/**
