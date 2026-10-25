@@ -36,8 +36,8 @@ In scope:
    `studio/music`, package `org.almostrealism.music.pattern`.
 3. Unit tests: text round-trip in `studio/music`, and text ↔ protobuf equivalence in
    `studio/compose` (the only module that sees both formats).
-4. A short section on the format in `studio/music/README.md` (grammar summary and an example)
-   so agents and client authors can write it.
+4. A short section on the format in `studio/music/README.md` (grammar summary, the
+   keyword→field mapping table, and an example) so agents and client authors can write it.
 
 Out of scope: any change to `audio.proto` or to `PatternElementPersistence`'s behavior; an MCP
 tool or application endpoint that accepts the text (that belongs to the consuming
@@ -71,12 +71,23 @@ dependency — none is on `ar-music`'s classpath, and the grammar is small).
 
 ### Grammar (to be finalized in implementation)
 
-Brace-delimited, whitespace-insensitive, `#` line comments. Keywords are the snake_case names
-of the protobuf fields, and enum values are the Java constant names (the protobuf enums
-already use the same names), so the mapping between the two formats is one-to-one and
-mechanical. Illustrative:
+Brace-delimited, whitespace-insensitive, `#` line comments. Each keyword corresponds
+one-to-one to a field (or, where noted below, a fixed pair of fields) of `PatternElementData`
+and its nested messages, and enum values are the Java constant names — which the protobuf
+enums already share (`NONE`, `FIXED`, `NO_OVERLAP`; `CHORD`, `SEQUENCE`; `FORWARD`,
+`BACKWARD`; `MAIN`, `WET`) — so the mapping between the two formats stays mechanical. The
+keywords are chosen to be concise rather than the literal snake_case field names (`duration`
+rather than `duration_strategy`, `scale` rather than `scale_traversal_strategy`), and three
+of them bundle the two proto fields that always travel together onto one line:
 
-<!-- TODO(review): the example keywords (duration, scale, repeat ... every, automation) are not the exact proto field names; reconcile the rule with the example. -->
+- `duration <strategy> <selection>` → `duration_strategy` + `note_duration_selection`
+- `scale <strategy> [positions]` → `scale_traversal_strategy` + `scale_positions`
+- `repeat <count> every <duration>` → `repeat_count` + `repeat_duration`
+
+The remaining keywords map to a single field each: `position` → `position`, `direction` →
+`direction`, `automation` → `automation_parameters`, `note` → an entry of `notes`. The README
+section (scope item 4) carries the full keyword→field table so the correspondence is explicit
+and reviewable. Illustrative:
 
 ```
 pattern {
