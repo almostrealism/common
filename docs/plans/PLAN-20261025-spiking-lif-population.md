@@ -162,8 +162,10 @@ existing mechanism rather than inventing one:
 
 - the write index is a single-element device-resident collection advanced with the
   `a(cp(idx), …)` assignment pattern `AutoregressiveModel.advancePosition` uses,
-  wrapping modulo `delaySteps`. The Poisson counter advances the same way (and may
-  be the same step counter the future loop owner advances).
+  wrapping modulo the ring size — `delaySteps` or `delaySteps + 1`, whichever open
+  question 6 settles on; the wrap must match the chosen number of rows, not be fixed
+  at `delaySteps`. The Poisson counter advances the same way (and may be the same
+  step counter the future loop owner advances).
 
 Whether to reuse `cacheWrite`/`cacheRead` directly or construct
 `CollectionSlotUpdateComputation` and the gather read directly in the owner is an
