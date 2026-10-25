@@ -130,6 +130,11 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		Expression<T> result = super.withIndex(index, e);
 		if (!(result instanceof Sum)) return result;
 
+		if (result.getType() == Long.class && result.getChildren().stream().allMatch(v -> v.longValue().isPresent())) {
+			return new LongConstant(result.getChildren().stream()
+					.mapToLong(v -> v.longValue().getAsLong()).reduce(0L, Long::sum));
+		}
+
 		if (result.getChildren().stream().allMatch(v -> v.doubleValue().isPresent())) {
 			double r = result.getChildren().stream()
 					.mapToDouble(v -> v.doubleValue().getAsDouble()).reduce(0.0, (a, b) -> a + b);
@@ -540,6 +545,12 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		boolean fp = false;
 		List<Expression<?>> operands = new ArrayList<>();
 
+		// Integer constants are also accumulated in long, since a double
+		// holds a sum exactly only up to 2^53; overflow wraps, as it
+		// does in computeValue and withIndex
+		long exact = 0;
+		boolean exactValid = true;
+
 		e: for (Expression e : values) {
 			if (e.isFP()) fp = true;
 			if (e.longValue().orElse(-1) == 0) continue e;
@@ -548,12 +559,21 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 			if (d.isPresent()) {
 				constant += d.getAsDouble();
+
+				OptionalLong l = e.longValue();
+				if (exactValid && l.isPresent() && !e.isFP()) {
+					exact += l.getAsLong();
+				} else {
+					exactValid = false;
+				}
 			} else {
 				operands.add(e);
 			}
 		}
 
-		if (constant != 0.0) {
+		if (!fp && exactValid) {
+			if (exact != 0) operands.add(ExpressionFeatures.getInstance().e(exact));
+		} else if (constant != 0.0) {
 			Expression c = fp ? new DoubleConstant(constant) : ExpressionFeatures.getInstance().e((long) constant);
 			operands.add(c);
 		}

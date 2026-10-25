@@ -40,8 +40,8 @@ configuration:
   registers the mounted toolkit in the container's loader cache (`ldconfig`, as
   the host does through `/etc/ld.so.conf.d`) and refuses to register the runner
   unless the cache resolves it. Only the container's own `/etc` is written.
-- `test-cuda` is admitted once `test` finishes, so within one pipeline it can
-  run beside `test-media` and the two compete for these runners; across
+- `test-cuda` starts alongside `test` and `test-mac`, so within one pipeline it
+  runs beside the CPU lane and the two compete for these runners; across
   concurrent pipelines every stage shares them. The cost is queueing, not
   correctness. `test-media-cuda` is still admitted only after the whole CPU lane.
 
@@ -55,9 +55,8 @@ isolation from the sample data, leave `RUNNER_EXTRA_LABELS` empty and run
 `../docker` beside this fleet.
 
 When this host replaces a CPU fleet (`docker compose down` in `../docker`), count
-the CPU lane in the runner count and the memory limit: `test` has three groups
-(`max-parallel: 4`, so the cap never binds), so three runners hold the whole
-lane at once with nothing queued.
+the CPU lane in the runner count and the memory limit: `test` runs as a single
+job (no matrix), so one runner holds the whole lane at once.
 
 ## Design: Nothing Installed on the Host
 
