@@ -372,9 +372,10 @@ All three scripts are on `test-integrity-check`'s protected list, and
 ### What the `build` job covers
 
 The `build` job always runs when `code_changed=true`. It is the critical path
-blocker: every downstream job depends on it, so it MUST stay as short as
-possible. It does one thing: `mvn install -DskipTests`. It does not run tests
-and does not upload coverage.
+blocker for every job that compiles, tests or analyses the project, so it MUST
+stay as short as possible; jobs that need only git do not wait for it (see
+"Branch checks that need no build" below). It runs `mvn install -DskipTests`
+and nothing else: it does not run tests and does not upload coverage.
 
 ### Re-run jobs and artifacts
 
@@ -423,6 +424,21 @@ job that needs the project's artifacts restores them the same way and lists
 Checkstyle rules are Checkstyle's own modules and `checkstyle:check` resolves
 no project dependencies, so it runs straight from the sources, in parallel
 with `build`. Do not add an `mvn install` back to it.
+
+### Branch checks that need no build
+
+`test-integrity-check`, `checkstyle-integrity-check`, `deception-audit`,
+`agent-commit-validation` and `assertion-density-report` read git history and
+sources with bash (and python3, for the exfiltration guard verifier); none sets
+up a JDK or restores `maven-installed-artifacts`. They need `changes`, not
+`build`, and run in parallel with it, each gated on `code_changed` — the
+condition they used to inherit from `build`. A broken build therefore no longer
+hides their verdicts, and the test lanes, which require both `build` and
+`test-integrity-check` to succeed, start as soon as `build` and the policy
+checks finish rather than after a further serial step.
+`tools/tests/test_build_artifact_sharing.py` pins this. A check added to this
+group must stay free of Java; one that needs the project's classes restores the
+artifacts and lists `build` in `needs`, as above.
 
 ### Every module with tests must be named by some job
 
@@ -1419,10 +1435,10 @@ specific jobs (`test-flowtree`, `code-policy-check`) that always execute on
 code changes. Do not create spurious layer flags for them.
 
 **Mistake: Adding test steps to the `build` job.**
-`build` is the critical path — every downstream job waits for it. Keep it
-limited to `mvn install -DskipTests`. Add new test coverage in a dedicated
-job that gates on `build` (and whatever validation jobs make sense) so the
-rest of the pipeline is not blocked.
+`build` is the critical path — every job that compiles or tests waits for
+it. Keep it limited to `mvn install -DskipTests`. Add new test coverage in a
+dedicated job that gates on `build` (and whatever validation jobs make sense)
+so the rest of the pipeline is not blocked.
 
 **Mistake: Forgetting to add a new test job to `analysis` needs.**
 Every job that uploads `coverage-*` artifacts must appear in `analysis`'s
