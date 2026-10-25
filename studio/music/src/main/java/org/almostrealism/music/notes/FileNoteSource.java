@@ -15,7 +15,9 @@
  */
 
 package org.almostrealism.music.notes;
+
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+
 import org.almostrealism.audio.notes.NoteAudioProvider;
 import org.almostrealism.audio.notes.NoteAudio;
 
