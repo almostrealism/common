@@ -67,6 +67,18 @@ This is squarely in scope: the fix for both defects is the same unification — 
 through `sampleToken` once, with the configured temperature and the configured top-p, from both
 generators.
 
+### What already exists elsewhere
+
+Top-p is already reachable in one place, outside these two generators: the MIDI generator
+`MoonbeamMidiGenerator` (`studio/compose`) keeps its own `double topP` field with a public
+`setTopP(double)` (no range validation; its Javadoc says "0.0 to 1.0") and passes it to its GRU
+decoder from the `sample` function it hands to the public `AutoregressiveModel` constructor. It does
+not go through `sampleToken`. So this plan does not introduce top-p to the platform; it brings the
+text generators up to what the MIDI generator already offers. The earlier
+`PLAN-20261005-self-hosted-lm-beat-baseline-and-generate.md` names "static `sampleToken` with
+top-p" as an existing piece of infrastructure but never exposes it. No other plan in `docs/plans/`
+covers it.
+
 ### Connection to the larger vision
 
 Readable, non-degenerate generation is the visible proof that the platform can train and run a
@@ -98,7 +110,11 @@ Concrete, in `engine/ml`:
 3. **Unify the `of(...)` sampling path with the `SlidingWindow` path.** Route the raw logits
    through `sampleToken` once with the configured temperature and configured top-p, eliminating
    the double-softmax / hardcoded-`1.0`-temperature discrepancy identified above. The greedy
-   branch (`temperature == 0`) is unchanged.
+   branch (`temperature == 0`) is unchanged. Once `of(...)` stops tempering and softmaxing on the
+   device, its `rescale` and `softmax` evaluables (and their entries in the anonymous subclass's
+   `destroy()`) have no remaining use and should be removed rather than left as dead code.
+   `of(...)` is not used only by the self-hosted LM: `Qwen3` and `Llama2` build their generators
+   with it, so this step changes their sampling at `temperature > 0` too (see Open questions).
 
 4. **Deterministic tests** (host-side, no training, no Metal — see Approach), extending
    `TestSuiteBase`, every `@Test` with a `timeout`:
@@ -135,21 +151,35 @@ any change to `CausalLanguageModelTest`'s existing acceptance assertions.
    evidence-led. `ar-profile-analyzer` is not needed — `sampleToken` is pure host Java over a
    `double[]`, not a compiled kernel.
 
-2. **Choose the top-p representation that keeps both call sites clean.** Two candidates, both
+2. **Choose the top-p representation that keeps both call sites clean.** Three candidates, all
    consistent with existing code:
-   - A plain `double topP` field on `AutoregressiveModel` with `get/set`. Clean for
-     `SlidingWindow` (which overrides `sample()` and has `this`), but the `of(...)` sampling
-     lambda is constructed *before* the instance exists and cannot see `this` — so the lambda
-     would need the value threaded in another way.
+   - A plain `double topP` field on `AutoregressiveModel` with `get/set`, read through a `sample`
+     **lambda**. Clean for `SlidingWindow` (which overrides `sample()` and has `this`), but the
+     `of(...)` sampling lambda is constructed *before* the instance exists and cannot see `this` —
+     so the lambda would need the value threaded in another way.
+   - The same plain `double` field, with `of(...)` **overriding `sample(PackedCollection)`** in the
+     anonymous `AutoregressiveModel` subclass it already returns (it already overrides `destroy()`
+     there) and passing `null` as the `sample` function — the pattern `SlidingWindow` already
+     uses. Inside the override, `getTopP()` and `getTemperature()` are reachable on `this`, so the
+     closure problem disappears without a new constructor parameter.
    - A single-element `PackedCollection topP` that `setTopP` writes and the `of(...)` lambda reads
-     with `topP.toDouble(0)` — **exactly** the shared-collection mechanism `temperature` already
-     uses, which the `of(...)` lambda already closes over. This avoids the closure problem and
-     introduces no new pattern.
-   The second mirrors the accepted `temperature` design and is the expected choice; the
-   implementer should confirm it reads cleanly and that `destroy()` releases the collection,
-   following the `temperature` precedent. Whichever is chosen, the accessors live on
-   `AutoregressiveModel` (generator state belongs on the generator), and no member exposes a
-   concrete subclass or reaches into another object's fields.
+     with `topP.toDouble(0)` — the shared-collection mechanism `temperature` already uses. The
+     collection would have to reach `AutoregressiveModel` the way `temperature` does, i.e. as a
+     **new constructor parameter** on both the public five-argument constructor and the protected
+     two-argument one. That changes the signature `SlidingWindowAutoregressiveModel` and
+     `MoonbeamMidiGenerator` (in `studio/compose`, a different module) call, unless an overload is
+     kept. It also puts a value that never enters a computation graph into device-addressable
+     memory for no reason.
+   The plan originally named the `PackedCollection` option as the expected choice; given that the
+   anonymous subclass in `of(...)` already exists, the plain-field-plus-override option is
+   arguably the smaller change (see Open questions). On lifecycle, note that the `temperature`
+   precedent is **not** "`AutoregressiveModel.destroy()` releases it": the base class's
+   `destroy()` explicitly does not release the position or temperature passed to its constructor.
+   The **owner** releases it — the anonymous subclass returned by `of(...)`,
+   `SlidingWindowAutoregressiveModel.destroy()` and `MoonbeamMidiGenerator`. A `PackedCollection`
+   top-p would need the same owner-side release at each of those sites. Whichever is chosen, the
+   accessors live on `AutoregressiveModel` (generator state belongs on the generator), and no
+   member exposes a concrete subclass or reaches into another object's fields.
 
 3. **Make the change minimal and behavior-preserving by default.** `topP` defaults to `1.0`;
    with the default, the unified path must reproduce today's `SlidingWindow` behavior exactly
@@ -178,7 +208,8 @@ any change to `CausalLanguageModelTest`'s existing acceptance assertions.
   top-p and the configured temperature into `sampleToken`, and sample **identically** from the
   same logits under the same `(temperature, topP, seed)` — proven by a test.
 - The `of(...)` double-softmax / hardcoded-temperature discrepancy is gone and cannot return
-  without failing a test.
+  without failing a test, and the `rescale`/`softmax` evaluables it leaves unused are removed
+  from `of(...)` and its `destroy()`.
 - A new nucleus-sampling test pins the top-p branch of `sampleToken`: out-of-nucleus tokens never
   appear, tightening `p` monotonically shrinks the reachable support, and `topP == 1.0` matches the
   unfiltered tempered distribution.
@@ -193,6 +224,45 @@ any change to `CausalLanguageModelTest`'s existing acceptance assertions.
 None. `sampleToken`'s nucleus implementation already exists; this task exposes and unifies it. The
 honest attention backward pass (the prior correctness cycles) and the PDSL reference (prior doc
 cycle) are already on `master`.
+
+## Open questions
+
+These are for the person deciding whether the plan goes ahead. They do not change what the plan
+proposes.
+
+1. **The default-case change reaches pretrained-model generation.** "Behavior unchanged unless a
+   caller opts in" holds for top-p, but not for the `of(...)` unification. `Qwen3` and `Llama2`
+   build their generators with `AutoregressiveModel.of(...)`, so at any `temperature > 0` they
+   will stop double-softmaxing and sample from a sharper distribution than today. That is the
+   intended fix, but it is a visible behavior change for those models, not only for the
+   self-hosted LM. Their greedy output (`temperature == 0`) is unaffected. Does the approver
+   accept that, and should the release notes or the pretrained-model docs say so? No existing test
+   pins their tempered output (the two `of(...)` uses in `CausalLanguageModelTest` are a
+   generation/destroy check, not a distribution check), so nothing will flag the change on its own.
+2. **Which top-p representation.** The plan first named the single-element `PackedCollection`
+   (mirroring `temperature`) as the expected choice. Overriding `sample(...)` in the anonymous
+   subclass `of(...)` already returns, with a plain `double` field, avoids a constructor-signature
+   change that reaches `studio/compose`. The approver may want to settle this up front rather than
+   leave it to the implementer.
+3. **An inert accessor on generators that do not use `sampleToken`.** `AutoregressiveModel` can
+   also be built with an arbitrary `sample` function, and `MoonbeamMidiGenerator` does exactly
+   that, keeping its own `topP`. Once `setTopP` exists on `AutoregressiveModel`, calling it on
+   such an instance silently does nothing. `getTemperature()`/`setTemperature()` already work this
+   way, since a custom `sample` function decides whether to read the temperature collection, so
+   this follows existing precedent rather than adding a new kind of contract gap. Still, the
+   project's "honor the interface" rule makes it worth an explicit decision: either document on
+   the accessor that it applies to the `sampleToken`-based generators, or route
+   `MoonbeamMidiGenerator`'s `topP` through the base-class accessor too. The second is a
+   `studio/compose` change and is out of scope here unless the approver adds it.
+4. **Validation inconsistency with the existing `setTopP`.** The plan validates `(0, 1]` on
+   `AutoregressiveModel.setTopP`. `MoonbeamMidiGenerator.setTopP` does not validate, and its
+   Javadoc gives the range as "0.0 to 1.0". Leaving them inconsistent is harmless but untidy.
+   Aligning them is a one-line follow-up outside this plan's module.
+5. **Temperature stays device-resident for no graph reason.** After the unification, nothing in
+   `of(...)` reads `temperature` inside a computation graph. `rescale` was its only graph
+   consumer. The single-element collection then exists only for API compatibility with the
+   constructors. That is fine to leave, but the plan's Scope sentence explaining why `temperature`
+   is device-resident describes today's code, not the code after this change.
 
 ## Machine
 
