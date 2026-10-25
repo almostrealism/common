@@ -533,7 +533,9 @@ public class SimulationRunner extends TemporalRunner {
 		private long sampleCount;
 
 		/**
-		 * Creates a recording and compiles its write.
+		 * Creates a recording, compiles its write and index reset, and resets the index. If any of
+		 * these fails, everything already allocated or compiled is released before the failure
+		 * propagates.
 		 *
 		 * @param selected the producer to record
 		 * @param interval the number of steps between samples
@@ -565,19 +567,22 @@ public class SimulationRunner extends TemporalRunner {
 			reset.add(f.a("Reset Recording Index", f.cp(index), f.c(0.0)));
 
 			Runnable compiledWrite = null;
+			Runnable compiledReset = null;
 
 			try {
 				compiledWrite = op.get(profile);
-				this.resetIndex = reset.get(profile);
+				compiledReset = reset.get(profile);
+				compiledReset.run();
 			} catch (RuntimeException e) {
 				Destroyable.destroy(compiledWrite);
+				Destroyable.destroy(compiledReset);
 				buffer.destroy();
 				index.destroy();
 				throw e;
 			}
 
 			this.write = compiledWrite;
-			this.resetIndex.run();
+			this.resetIndex = compiledReset;
 		}
 
 		/** Returns the number of steps between samples. */
