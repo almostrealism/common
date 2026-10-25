@@ -47,7 +47,7 @@ Error: Process completed with exit code 1.
 1. Only non-layer-flagged directories changed (anywhere under flowtree/ or tools/)
 2. No named-layer flag was set (`base_changed`, `compute_changed`, etc. all false)
 3. Both `test` and `test-media` were skipped (gated on layer flags)
-4. No `coverage-group-*` or `coverage-media` artifacts were uploaded
+4. No `coverage-cpu` or `coverage-media-*` artifacts were uploaded
 5. The `analysis` job ran (it doesn't gate on layer flags, only on its `needs`)
 6. The merge step ran `find all-coverage/` before `mkdir -p all-coverage`
 
