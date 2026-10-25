@@ -27,7 +27,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionSlotUpdateComputation;
-import org.almostrealism.collect.computations.Random;
+import org.almostrealism.collect.computations.RandomProducer;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CollectionReceptor;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -38,6 +38,7 @@ import org.almostrealism.model.DefaultBlock;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -1009,7 +1010,7 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 
 		OperationList setup = new OperationList("dense " + size + " init");
 		if (init) {
-			Random randn = randn(weightShape, getInitializationRandom());
+			RandomProducer randn = randn(weightShape, getInitializationRandom());
 			setup.add(() -> randn::refresh);
 			setup.add(a(p(weights.each()), divide(randn.traverseEach(), c(size).traverseAll())));
 			if (biases != null) {
@@ -1198,14 +1199,16 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 * draw their initial weights from, or {@code null} to draw them from an unseeded
 	 * source, which is the default.
 	 *
-	 * <p>Returning a seeded {@link java.util.Random} makes weight initialization
+	 * <p>Returning a seeded {@link Random} makes weight initialization
 	 * reproducible: layers built in the same order draw the same weights on every run.
-	 * Values are drawn when a layer's setup runs, so the source is consumed in the order
-	 * the layers are initialized.</p>
+	 * With the default {@code java} random implementation values are drawn when a layer's
+	 * setup runs, so the source is consumed in the order the layers are initialized; with
+	 * the {@code counter} implementation a seed is drawn when the layer is built, so it is
+	 * consumed in the order the layers are constructed.</p>
 	 *
 	 * @return the random source for weight initialization, or {@code null}
 	 */
-	default java.util.Random getInitializationRandom() {
+	default Random getInitializationRandom() {
 		return null;
 	}
 
@@ -1220,7 +1223,7 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	@Override
 	default Supplier<Runnable> randnInit(PackedCollection weights, double scale) {
 		OperationList setup = new OperationList();
-		Random randn = randn(shape(weights), getInitializationRandom());
+		RandomProducer randn = randn(shape(weights), getInitializationRandom());
 		setup.add(() -> randn::refresh);
 		setup.add(a(p(weights.each()), multiply(randn.traverseEach(), c(scale).traverse(0))));
 		return setup;

@@ -1,0 +1,29 @@
+# Every fault that must exist.
+#
+# Without this file, deleting a fault directory is a silent way to make the
+# catalogue pass: fewer entries, all green, nothing to see. That is the same
+# move as deleting a failing test, one level up, and it is cheaper because a
+# fault has no obvious owner and its absence looks like it was never there.
+#
+# run-fault-catalogue.sh requires every name here to exist, and every
+# directory present to be named here. It also requires every method of the
+# catalogue class to be claimed by a directory, so the code and this list
+# cannot drift apart either. Removing a fault stays allowed — a defect can
+# genuinely stop being expressible, or turn out to be caught by unit tests
+# already — but it takes an edit to this file, which lands in the diff where
+# a reviewer will see the entry and its why.md disappearing together.
+#
+# Removed when the catalogue moved from patches into code:
+#   test-method-lock-lifted — lifting the base-branch test-method lock fails
+#   five methods of TestMethodProtectionTest and two of
+#   GitManagedJobDegradedStatusTest, so the unit tests already watch it fail.
+#
+# One name per line. Comments and blank lines ignored.
+
+control-no-defect
+required-mcp-server-kills-job
+dropped-work-reported-as-success
+all-changes-dropped-not-reported
+missing-commit-message-drops-work
+reverted-work-not-reported
+tampering-restart-skipped

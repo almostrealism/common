@@ -40,22 +40,23 @@ configuration:
   registers the mounted toolkit in the container's loader cache (`ldconfig`, as
   the host does through `/etc/ld.so.conf.d`) and refuses to register the runner
   unless the cache resolves it. Only the container's own `/etc` is written.
-- The CUDA lane is admitted only after `test` and `test-media` finish, so within
-  one pipeline the two lanes never compete for these runners. Across concurrent
-  pipelines they share them; the cost is queueing, not correctness.
+- `test-cuda` starts alongside `test` and `test-mac`, so within one pipeline it
+  runs beside the CPU lane and the two compete for these runners; across
+  concurrent pipelines every stage shares them. The cost is queueing, not
+  correctness. `test-media-cuda` waits only for `test-cuda`, so it can likewise run
+  beside `test-media`.
 
 `AR_HARDWARE_DRIVER=native` governs only which backend the framework selects.
 It does not isolate the job: a CPU-lane job on these runners still has the GPU
 device and the read-only sample library mount, which runners in the plain CPU
 fleet do not. That is not a new trust boundary: `test-media-cuda` runs the same
-pull request's code on the same runners with both, and it is gated more
-strictly than `test` and `test-media`. If the CPU lane must keep the CPU fleet's
+pull request's code on the same runners with both. If the CPU lane must keep the CPU fleet's
 isolation from the sample data, leave `RUNNER_EXTRA_LABELS` empty and run
 `../docker` beside this fleet.
 
 When this host replaces a CPU fleet (`docker compose down` in `../docker`), count
-the CPU lane in the runner count and the memory limit: `test` runs up to four
-groups at once, so with three runners it simply queues the fourth.
+the CPU lane in the runner count and the memory limit: `test` runs as a single
+job (no matrix), and so does `test-media`, so one runner holds each stage at once.
 
 ## Design: Nothing Installed on the Host
 

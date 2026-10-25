@@ -143,8 +143,12 @@ The docs-only review (`docs-review.txt`) reviews and improves documents and
 stays on that route. A plan branch's first commit is always docs-only, so this
 route reaches every plan as soon as it is proposed; it once sent the
 implementation prompt (`verify-completion.txt`) and so carried out every plan
-before anyone had read it. Implementation starts only when someone dispatches
-`verify-completion.yaml` on the branch.
+before anyone had read it. Implementation starts only when the owner approves
+the plan — by marking its draft pull request ready for review, which the
+`Plan Ready` workflow turns into a `verify-completion.yaml` dispatch (see below),
+or by dispatching that workflow by hand. The docs-only review runs on a draft
+plan PR exactly as on any other PR (GitHub fires `pull_request` for drafts), and
+that is wanted: it is what improves the plan before approval.
 `tools/tests/test_remediation_job_exclusivity.py` pins that `auto-review`
 cannot reach the implementation prompt.
 
@@ -253,8 +257,8 @@ pins that mapping. The early submit jobs set the flag themselves;
 `src/test/`, `src/it/` and the CI directories, so for the Python-failure job it
 adds nothing over `test-integrity-check`'s Python step; the Python suites under
 `tools/` are not in them. In `master-agent-dispatch.yaml` the
-performance, consolidation and PDSL-migration rounds keep it on, because their
-premise is that existing tests stay the reference.
+performance, consolidation, PDSL-migration and flaky-test-hunt rounds keep it
+on, because their premise is that existing tests stay the reference.
 
 **A required test job's `failure` result must never go unresolved on
 `auto-resolve`'s attempt.** The `Check for incomplete test execution` step
@@ -276,7 +280,7 @@ allowlist does not match has its real failures silently discarded — it still
 routes correctly (via the `needs.<job>.result` check above), but through the
 generic crash prompt instead of one naming the actual failing tests.
 `test-flowtree` uploaded no Surefire artifact at all until this was fixed;
-`test-media`'s (`surefire-media-${{ matrix.group }}`) was uploaded under a
+`test-media`'s (then `surefire-media-${{ matrix.group }}`) was uploaded under a
 name the allowlist's `surefire-media` entry (no wildcard) could never match.
 `tools/tests/test_auto_resolve_test_job_coverage.py` (see `tools/ci/README.md`)
 pins both wirings for the full required set, so adding a job to
@@ -368,9 +372,10 @@ All three scripts are on `test-integrity-check`'s protected list, and
 ### What the `build` job covers
 
 The `build` job always runs when `code_changed=true`. It is the critical path
-blocker: every downstream job depends on it, so it MUST stay as short as
-possible. It does one thing: `mvn install -DskipTests`. It does not run tests
-and does not upload coverage.
+blocker for every job that compiles, tests or analyses the project, so it MUST
+stay as short as possible; jobs that need only git do not wait for it (see
+"Branch checks that need no build" below). It runs `mvn install -DskipTests`
+and nothing else: it does not run tests and does not upload coverage.
 
 ### Re-run jobs and artifacts
 
@@ -420,6 +425,21 @@ Checkstyle rules are Checkstyle's own modules and `checkstyle:check` resolves
 no project dependencies, so it runs straight from the sources, in parallel
 with `build`. Do not add an `mvn install` back to it.
 
+### Branch checks that need no build
+
+`test-integrity-check`, `checkstyle-integrity-check`, `deception-audit`,
+`agent-commit-validation` and `assertion-density-report` read git history and
+sources with bash (and python3, for the exfiltration guard verifier); none sets
+up a JDK or restores `maven-installed-artifacts`. They need `changes`, not
+`build`, and run in parallel with it, each gated on `code_changed` — the
+condition they used to inherit from `build`. A broken build therefore no longer
+hides their verdicts, and the test lanes, which require both `build` and
+`test-integrity-check` to succeed, start as soon as `build` and the policy
+checks finish rather than after a further serial step.
+`tools/tests/test_build_artifact_sharing.py` pins this. A check added to this
+group must stay free of Java; one that needs the project's classes restores the
+artifacts and lists `build` in `needs`, as above.
+
 ### Every module with tests must be named by some job
 
 A Maven module whose tests no job runs is worse than one with no tests: new
@@ -450,7 +470,7 @@ Runs one Maven invocation over **every** flowtree module —
 `flowtree/api,flowtree/base,flowtree/python,flowtree/agents,flowtree/graphpersist,flowtree/runtime`
 — and uploads JaCoCo coverage as `coverage-flowtree`. `api` and `python` carry
 no tests today and are listed anyway, per the rule above. Gated on the same
-validation prerequisites as the `test` matrix (`code-policy-check`,
+validation prerequisites as the `test` job (`code-policy-check`,
 `test-timeout-check`, `duplicate-code-check`, `test-integrity-check`) and runs in
 parallel with `test`. Extracted from `build` because flowtree tests are slow and
 would otherwise block every other job.
@@ -462,17 +482,19 @@ coverage" above and `tools/ci/README.md`.
 
 ### What the `test` job covers
 
-Runs the main test matrix (7 groups) for engine/domain/compute/base layers:
-`base/hardware`, `engine/utils`, `engine/ml`, plus `engine/render` and
-`base/io,engine/utils-http` on group 0 only. Skipped when none of those layers
-change. Uploads `coverage-group-{0..6}`.
+Runs the main test suite for engine/domain/compute/base layers as a single
+(non-matrix) job: `base/hardware`, `engine/utils`, `engine/ml`, `engine/render`
+and `base/io,engine/utils-http`. It is driven by native RAM rather than the GPU
+memory ceiling the accelerator lanes split around, so it no longer shards
+`engine/utils`/`engine/ml` across groups. Skipped when none of those layers
+change. Uploads `coverage-cpu`.
 
 ### What the `test-media` job covers
 
 Runs `engine/audio`, `studio/music`, `studio/compose`, `studio/spatial`, and
-`extern/ml-onnx,studio/experiments` on a self-hosted runner. Runs after `test`
-(CPU lane, below). Skipped when none of
-studio/extern/engine/domain/compute/base change. Uploads `coverage-media`.
+`extern/ml-onnx,studio/experiments` on a self-hosted runner as a single
+(non-matrix) job, like `test`. Runs after `test` (CPU lane, below). Skipped when
+none of studio/extern/engine/domain/compute/base change. Uploads `coverage-media`.
 
 ### Tests excluded from the pipeline profile
 
@@ -520,8 +542,8 @@ it, had been skipped. `auto-review` and `auto-resolve-python` run exactly when
 `python-tests` was skipped or failed, so both submit jobs start their `if:` with
 `!cancelled()` and check the producer's `result` explicitly.
 
-Every lane-chained job (`test-media`, `test-media-mac`, `test-cl`,
-`test-media-cl`, `test-cuda`, `test-media-cuda`) starts its `if:` with
+Every lane-chained job (`test-media`, `test-media-mac`, `test-media-cl`,
+`test-media-cuda`) starts its `if:` with
 `!cancelled() &&` for this reason. Their explicit `result == 'success'` checks
 on `build` and the four validation jobs already exclude every failure path, so
 `!cancelled()` does not weaken the gate — it is what makes the gate run at all.
@@ -529,14 +551,9 @@ Never add a lane stage that depends on a layer-gated stage without it.
 
 ### Lanes: CPU (linux), GPU (macOS), CL (linux/ROCm) and CUDA (linux/NVIDIA)
 
-The CUDA lane (`test-cuda` → `test-media-cuda`) is described in its own section
-below, "What the `test-cuda` and `test-media-cuda` jobs cover". It runs in
-parallel with the CL lane but is admitted later: after the macOS lane as well
-as the CPU lane. The rest of this section describes the other three lanes. All
-four are part of the merge gate.
-
-The self-hosted test jobs run as three lanes, each serialised internally so
-heavy suites do not contend on their fleet:
+The self-hosted test jobs run as four lanes, one per hardware driver setup, each
+two stages in order — a test stage, then a media stage — serialised internally
+so heavy suites do not contend on their fleet:
 
 - **CPU lane (linux, `ar-ci`):** `test` → `test-media`.
 - **GPU lane (macOS, `ar-ci`):** `test-mac` → `test-media-mac`.
@@ -545,36 +562,35 @@ heavy suites do not contend on their fleet:
   mechanism behind the PDSL hot-path timeouts).
 - **CL lane (linux/ROCm, `ar-ci-cl`):** `test-cl` → `test-media-cl`.
   Serialised for the same reason: the ROCm host has a single GPU.
+- **CUDA lane (linux/NVIDIA, `ar-ci-cuda`):** `test-cuda` → `test-media-cuda`,
+  described in its own section below. Serialised because the host has one GPU.
 
-The CPU and GPU lanes run in parallel. The CL lane starts once the **CPU lane**
-has finished, and runs alongside the GPU lane: `test-cl` beside `test-mac`,
-`test-media-cl` beside `test-media-mac`. `test-cl` gates on `test` and
-`test-media` (each success-or-skipped), and `test-media-cl` gates on `test-cl`
-**and on those same two jobs directly**. The second part is not redundant:
-`test-cl` is skipped either by its own layer gate or by an upstream failure, and
-its `skipped` result cannot tell the two apart — gating `test-media-cl` on
-`test-cl` alone let it run after a Linux suite had failed. A downstream job must
-never infer "upstream was fine" from a `skipped` that has more than one cause;
-it gates on the upstream lanes itself. This is admission control, not GPU
-serialisation — the fleets are different machines. The CL lane is fourteen
-matrix jobs on a single host, and it is "Linux plus an accelerator": a branch
-that cannot pass the Linux CPU suites will not pass their OpenCL duplicates
-either, so the ROCm runners are spent only on branches that have cleared them.
+The four lanes run in parallel and none gates on another. Every first stage
+(`test`, `test-mac`, `test-cl`, `test-cuda`) is admitted on `build` and the four
+validation checks alone, so all four start together, and every media stage
+gates only on its own lane's first stage: `test-media-cuda` starts as soon as
+`test-cuda` is done, without waiting for `test-media` or the macOS lane. All
+four lanes are part of the merge gate.
 
-The CL lane does **not** wait for the Metal suites. It once did, so that a
-branch failing on Metal would not spend the ROCm fleet, but that held a healthy
-pipeline's CL lane until the slower of the two other lanes had finished. Running
-it beside the macOS lane lets more of the pipeline start as soon as the Linux
-suites are green; the cost is that a branch that fails only on Metal still runs
-its CL jobs.
+A media stage can tolerate its first stage being `skipped` without gating on any
+other lane because the first stage waits only for `build` and the validation
+checks, which the media stage also reads directly: a skipped first stage can
+therefore only mean its own (narrower) layer gate. A downstream job must never
+infer "upstream was fine" from a `skipped` that has more than one cause; if a
+first stage ever gains another upstream, its media stage must gate on that
+upstream itself.
+
+The accelerator lanes once carried cross-lane admission control: `test-cl`, and
+later `test-media-cl`, gated on the Linux CPU lane, and `test-media-cuda` on the
+CPU and macOS lanes, so that a branch failing the CPU suite would not spend the
+accelerator fleets. That held a healthy pipeline's second stages until the
+slowest other lane had finished, and was dropped so each lane runs as its own
+pair. The cost is that a branch that fails only on one backend still runs every
+other lane's jobs.
 
 The CL lane was formerly the third and fourth stages of the macOS GPU lane. It
 moved to its own AMD/ROCm fleet (`tools/ci/rocm`) to give the OpenCL backend a
-real, non-deprecated OpenCL implementation. The gates on `test-mac` and
-`test-media-mac` were dropped at that point, restored for admission control,
-and dropped again so the two accelerator lanes run side by side. The gate on the
-CPU lane came after a pipeline in which the mac lane passed, the linux lane
-failed, and the CL lane ran all its jobs anyway.
+real, non-deprecated OpenCL implementation.
 
 The `ar-ci-cl` label is deliberately distinct from `ar-ci`. If the ROCm host
 also carried `ar-ci` it would start picking up general CPU test jobs, putting
@@ -629,9 +645,10 @@ retune them one variable at a time, as measured follow-ups, so a regression stay
 attributable.
 
 The self-hosted jobs split their suites across several groups, with group counts
-tuned per lane: `test-media-cl` uses eight; `test`, `test-media` and
-`test-media-cuda` seven; `test-mac`, `test-cl` and `test-cuda` six; and
-`test-media-mac` four. The CL backend hits its
+tuned per lane: `test-media-cl` and `test-media-cuda` use five; `test-cuda`
+four; `test-cl` and `test-mac` three; and `test-media-mac` two. The native
+`test` and `test-media` jobs are not sharded at all — each runs as a single job,
+so the agreement check below does not apply to them. The CL backend hits its
 memory ceiling under large per-group loads even at `AR_HARDWARE_MEMORY_SCALE=7`
 (the highest scale used anywhere — the scale is exponential, so raising it
 further is not an option), so spreading the tests across several JVMs keeps each
@@ -639,14 +656,15 @@ group's load small. Several groups also shrink the retry unit: re-running failed
 jobs re-runs only the failed group, not the whole suite. A job's matrix and the
 `AR_TEST_GROUPS` its steps pass must agree, or the groups with no matrix entry
 never run; `tools/tests/test_accelerator_lane_admission.py` checks this for
-`test-cl`.
+every sharded lane.
 
 The CL and CUDA jobs each run up to three groups at a time (`max-parallel: 3`).
 
-`test-media-mac` is the exception: it uses **4 groups at `max-parallel: 2`**
-(up to two groups at a time), fewer groups than any other lane. As the second GPU-lane stage it
+`test-media-mac` is the exception: it uses **2 groups at `max-parallel: 2`**
+(both groups at once), the fewest groups of any
+sharded lane. As the second GPU-lane stage it
 already runs alone on the fleet (no other GPU-heavy stage runs concurrently), so
-running two of its four groups at once trades some GPU contention on the
+running both of its groups at once trades some GPU contention on the
 studio benchmark tick tails for shorter wall-clock time.
 
 The accelerator jobs upload surefire reports — `surefire-mac-group-*` and
@@ -680,12 +698,12 @@ up per `tools/ci/cuda/README.md`. The fleet reuses the Linux CPU fleet's image o
 the host's own Docker and NVIDIA Container Toolkit, so it installs nothing on the
 host.
 
-**Admission** is stricter than the CL lane's. Both stages gate on `test`,
-`test-media`, `test-mac` and `test-media-mac` (success-or-skipped) plus `build`
-and the four validation checks, and `test-media-cuda` gates on those upstream
-lanes directly as well as on `test-cuda`. The CL lane no longer waits for the
-macOS lane; the CUDA lane still does. The two accelerator lanes run on separate
-machines; neither gates on the other.
+**Admission.** `test-cuda` is admitted exactly as `test-mac` is: it gates on
+`build` and the four validation checks alone, so `test-mac` and `test-cuda`
+start together, without waiting for `test`, `test-media` or the macOS lane (the
+host has its own GPU, so nothing gains from holding it back). `test-media-cuda`,
+like every media stage, gates only on its own lane's first stage, `test-cuda`.
+The accelerator lanes run on separate machines; none gates on another.
 
 **The CUDA lane is required**, like every other test lane: it is in
 `analysis.needs`, `all-checks`, `auto-resolve.needs`, the
@@ -702,11 +720,12 @@ lane as well instead of running a separate CPU fleet beside it. That is safe
 because `test` and `test-media` run every step with `AR_HARDWARE_DRIVER=native` on
 the same image (the CUDA bridge tests in `base/hardware` still use the GPU
 directly when one is present, so on such a host they run in `test` too, and the
-fleet's preflight guarantees a complete CUDA environment for them), and because
-the CUDA lane is admitted only after the CPU lane
-finishes, so within one pipeline the two never compete for those runners. The
-`ar-ci-cl` caveat above still applies: across concurrent pipelines, CUDA jobs can
-queue behind CPU jobs on a shared host.
+fleet's preflight guarantees a complete CUDA environment for them). Sharing
+costs queueing, not correctness: `test-cuda` starts alongside `test` and `test-mac`,
+so within one pipeline it can queue beside the CPU lane on a shared host
+(as can `test-media-cuda` beside `test-media`), and across concurrent
+pipelines CUDA jobs can queue behind CPU jobs as the `ar-ci-cl` caveat above
+describes.
 
 ### What the `docker-build` job covers
 
@@ -863,7 +882,7 @@ so that check is made from the agent's side with `lsof`.
 Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
 that fire on a merge to master: `plan-next-task` (Project Manager),
 `plan-release-task` (Task Planning), `doc-qa`
-(Quality Assurance), `defect-hunt`, `coverage-qa`, `consolidation-qa`,
+(Quality Assurance), `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
 `performance-qa`, `pdsl-qa` and `qa-retrospective`. The `plan-next-task`, `doc-qa` and `defect-hunt`
 jobs were separate workflows with byte-identical triggers; merging them keeps the
 Actions sidebar navigable without changing what any of them does, and each job
@@ -886,10 +905,10 @@ the window needs a controller-side reservation that the round takes before it
 creates its branch; until one exists, this check removes the common case (a
 round that starts while intake is already closed).
 
-The seven QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
+The eight QA-style jobs (`doc-qa`, `defect-hunt`, `flaky-qa`, `coverage-qa`,
 `consolidation-qa`, `performance-qa`, `pdsl-qa`, `qa-retrospective`) share a shape:
 `tools/ci/qa-cadence.sh` decides whether to run from the job's own
-`BRANCH_PREFIX` (`qa/docs-`, `qa/defect-`, `qa/coverage-`, `qa/consolidate-`,
+`BRANCH_PREFIX` (`qa/docs-`, `qa/defect-`, `qa/flaky-`, `qa/coverage-`, `qa/consolidate-`,
 `qa/performance-`, `qa/pdsl-`, `qa/retro-`), `tools/ci/archive-stale-workstreams.sh` retires
 the previous rounds, then a branch is created, a workstream registered, a prompt
 built from `tools/ci/prompts/`, and a coding-agent job submitted with
@@ -898,9 +917,9 @@ cadence logic.
 
 Each QA job's `MIN_INTERVAL_DAYS` is 2 (`defect-hunt`, `coverage-qa`,
 `consolidation-qa`, `performance-qa`), 5 (`doc-qa`, `pdsl-qa`) or 7
-(`qa-retrospective`). Every one of
+(`flaky-qa`, `qa-retrospective`). Every one of
 them also has its own boolean `workflow_dispatch` input,
-`ignore_interval_<job>` (`docs`, `defect_hunt`, `coverage`, `consolidation`,
+`ignore_interval_<job>` (`docs`, `defect_hunt`, `flaky`, `coverage`, `consolidation`,
 `performance`, `pdsl`, `retrospective`), passed to `qa-cadence.sh` as `IGNORE_INTERVAL`. It lifts
 only the interval: a round still in progress holds it off either way — a PR from
 the job's previous round is still open, or (via `PR_GRACE_HOURS`, set to 24 on
@@ -927,6 +946,20 @@ passes the same number as its `max-open-prs` input, since a called workflow
 cannot read the caller's `env`. No job sets a limit of its own;
 `tools/tests/test_master_agent_dispatch.py` checks that. The count covers open
 PRs only: a round whose agent has not opened its PR yet is not in it.
+
+`MAX_OPEN_PRS` is sized to the **full-cadence** QA rounds — one open PR each,
+seven of them (`doc-qa`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
+`performance-qa`, `pdsl-qa`, `qa-retrospective`) — so the value tracks that
+count and rose from 6 to 7 when `qa-retrospective` was added. `flaky-qa` is a
+**pilot** (RETRO-20261022 F6): it still participates in the backlog gate like
+every round (it will not start while the backlog is full, and its own PR counts
+toward the next round's check), but adding it deliberately did **not** raise
+`MAX_OPEN_PRS` — the eight QA jobs share the budget of seven until the pilot
+proves its yield and a person decides to promote it. Promoting the pilot to a
+full round, or adding an eighth full-cadence round, is what raises the limit;
+`test_the_flaky_pilot_does_not_raise_the_open_pr_limit` in
+`tools/tests/test_master_agent_dispatch.py` pins this so the decision is made on
+purpose rather than by surprise.
 
 `plan-next-task` keeps **exactly one** planning round open, because every round
 rewrites the single `docs/plans/MANAGER_LOG.md` and two open at once cannot both
@@ -1043,14 +1076,34 @@ was acted on. `ci/qa-…` is the branch convention for a pipeline-subject QA
 follow-up a person opens from an accepted proposal; it is one of the prefixes
 the survey covers (`QA_PREFIXES`), and a person — never a job — creates it.
 
+`flaky-qa` is the pilot nondeterministic-test hunt
+(`tools/ci/prompts/flaky-hunt.txt`, RETRO-20261022 F6). It takes one module and
+a small, named slice of its tests, runs that slice repeatedly on the current
+commit, and looks for a test whose pass/fail outcome varies with no change to
+the code under test; on a finding it fixes the source of the nondeterminism in
+production or test-helper code, or — when the cause is out of scope — files a
+follow-up with `tracker_create_task`, the same routing the general review uses.
+Three things set it apart. Its `MIN_INTERVAL_DAYS` is 7, tied with `qa-retrospective`
+for the longest of any round, because it is a pilot rather than a full cadence job — and for the same
+reason it does **not** raise `MAX_OPEN_PRS` (see "One open-PR limit" above). Its
+prompt keeps it inside the repository's test-execution limits: named, bounded
+selections through the MCP test runner only, each with an explicit timeout,
+repeating a small selection rather than widening it, never a module or full
+suite or `AR_TEST_GROUP`/`AR_TEST_GROUPS`. And `PROTECT_TEST_FILES` stays
+`"true"`: the test that reveals a flake is the specification, so the round fixes
+the production/helper cause or files a follow-up rather than weakening the test
+— it carries no `ENFORCE_CHANGES`, since an honestly empty-handed round is a
+valid outcome, and pins the primary phase to `claude/opus` like the defect hunt,
+telling a real flake from a deterministic failure being judgment, not mechanism.
+
 Each job carries its **own** `concurrency` group (`project-manager`,
-`task-planning`, `quality-assurance`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
+`task-planning`, `quality-assurance`, `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
 `performance-qa`, `pdsl-qa`, `qa-retrospective`, none cancelling in progress), so they serialize
 independently rather than queueing behind one another. Workflow-level
 concurrency would couple them — do not add one.
 
 A `workflow_dispatch` selects a single job via the `agent` input
-(`all` | `project-manager` | `quality-assurance` | `defect-hunt` | `coverage` |
+(`all` | `project-manager` | `quality-assurance` | `defect-hunt` | `flaky` | `coverage` |
 `consolidation` | `performance` | `pdsl` | `retrospective`); `force` is passed through to
 whichever job runs, and each `ignore_interval_*` input reaches only its own job. Each job's
 `if` is written as `github.event_name != 'workflow_dispatch' || ...` so a push
@@ -1136,6 +1189,14 @@ client secret as a declared secret), and describes its caller in its header.
   its name and `plan_file` input for the `project_verify_branch` MCP tool.
   Because the prompt templates now come from `framework-ref`, a branch that
   edits `verify-completion.txt` is implemented with master's copy of it.
+  Its `register-workstream` job asks the controller's in-flight view
+  (`tools/ci/workstream-idle.sh`, `GET /api/workstreams/{id}/jobs/active` and
+  `/pending`) whether the branch's workstream already has a job pending or
+  running, and `build-prompt` gates on the answer, so no second implementation
+  is dispatched beside one in flight — the guard that holds across the
+  ready-for-review trigger, a manual dispatch and `project_verify_branch`, and
+  across separate runs that the per-branch concurrency group does not cover. It
+  fails open: an unreachable controller is read as idle.
 - **`plan-review.yaml`** sends the docs-only review (`docs-review.txt`) to a
   branch whose every change is under `docs/`, for a repository that does not run
   this pipeline. This repository does not call it: here the same review is the
@@ -1149,6 +1210,82 @@ runs the release, plan-detection and docs-only steps for real. `test_master_agen
 `test_automated_intake.py` and `test_verify_completion_workflow.py` follow a
 caller job into the workflow it calls, so their checks still apply to the steps
 that run.
+
+### What the `Plan Ready` workflow does
+
+Lives in `.github/workflows/ready-plan.yaml`. It starts implementation when the
+owner approves a plan by marking its pull request **ready for review**.
+
+**The draft convention.** A plan PR is opened as a **draft** (the planning jobs
+set `PR_DRAFT`/`createPrAsDraft`; see "Draft plan pull requests" below). A draft
+means the branch carries only a plan awaiting approval — almost no CI ran on a
+docs-only branch, so a green check on it says nothing about work that does not
+exist yet. Marking the PR **ready for review** is the owner's approval, and this
+workflow turns that transition into the same `verify-completion.yaml` dispatch a
+manual approval makes. For a PR that is real work rather than a plan, "ready"
+keeps its ordinary meaning (work under review); such a PR is not a draft and not
+docs-only, so this workflow does nothing with it.
+
+**It must stay in its own file, for the same reason `Cancel Merged PR Runs`
+does.** It is triggered by `pull_request_target` (`types: [ready_for_review]`,
+base `master`), which grants a writable token in the base-repository context, so
+GitHub runs *master's* copy of the file — the PR's branch cannot change what it
+does. It is safe only because it checks out nothing and runs nothing from the
+PR: every value it uses is event metadata or comes from the GitHub API. Never
+add a checkout of PR code to it, and never move it into a file beside jobs that
+build PR code.
+
+It dispatches `verify-completion.yaml` on the PR's head branch through the API
+(`workflow_dispatch`, which `GITHUB_TOKEN` is allowed to trigger, needing
+`actions: write`), so the implementation path is exactly the one a manual
+dispatch or `project_verify_branch` takes. It dispatches only when all of:
+
+- the PR's head is a branch in **this** repository, not a fork
+  (`github.event.pull_request.head.repo.full_name == github.repository`); a fork
+  cannot be given a `workflow_dispatch` here and must not be able to start one;
+- the person who marked it ready (`github.event.sender.login`) is in the
+  `PLAN_APPROVERS` repository variable (see below). With the variable unset
+  nothing is dispatched, so an agent or bot can never approve a plan by marking
+  it ready;
+- the PR is **still docs-only** by the same rule `analysis.yaml` uses (every
+  changed file under `docs/`, read from the PR files API). Once implementation
+  commits land the PR is no longer docs-only, so re-toggling draft afterwards
+  dispatches nothing — this is the main guard against a second implementation,
+  alongside `implement-plan.yaml`'s own in-flight-job refusal.
+
+`analysis.yaml` does **not** re-run on the `ready_for_review` transition: its
+`pull_request` trigger uses the default types (`opened`, `synchronize`,
+`reopened`), which do not include `ready_for_review`. Keep it that way — the
+plan's pipeline already ran on the push that opened it.
+
+### Draft plan pull requests
+
+A plan PR is opened as a draft so its status reads honestly: draft = a plan
+awaiting the owner's approval, ready-for-review = approved for implementation (or,
+for a non-plan PR, real work under review). The flag travels as
+`createPrAsDraft` from the submitter to the controller, which sends
+`"draft": true` to GitHub when it opens the auto-created PR
+(`GitHubProxyHandler.pullRequestPayload`); `autoCreatePr` must also be set or
+there is no PR to draft. The submitters expose it as `PR_DRAFT`
+(`tools/ci/submit-agent-job.sh`) and `create_pr_as_draft`
+(`workstream_submit_task`). The plan-writing jobs set it: `task-planning.yaml`,
+`master-agent-dispatch.yaml`'s `plan-next-task`, and the job
+`workstream_register`'s `plan_instructions` submits. The docs-QA and other
+docs-only QA rounds deliberately do **not** — their PRs are documentation meant
+to be merged as they stand, and marking one ready must not dispatch an
+implementation of a branch with nothing to implement.
+`tools/tests/test_master_agent_dispatch.py` pins which jobs draft and which do
+not.
+
+### The `PLAN_APPROVERS` repository variable
+
+A space-, comma- or newline-separated list of GitHub logins allowed to approve a
+plan by marking its draft PR ready for review. `Plan Ready` reads it and
+dispatches `verify-completion.yaml` only for a sender in the list. It is a
+repository **variable**, not a workflow value, so the allowlist changes without a
+commit and is never present on a fork. **Unset means no one can approve this
+way** — the transition then dispatches nothing, which is the intended
+fail-closed default, not a misconfiguration to "fix" by dropping the check.
 
 ### What the `Cancel Merged PR Runs` workflow does
 
@@ -1298,15 +1435,15 @@ specific jobs (`test-flowtree`, `code-policy-check`) that always execute on
 code changes. Do not create spurious layer flags for them.
 
 **Mistake: Adding test steps to the `build` job.**
-`build` is the critical path — every downstream job waits for it. Keep it
-limited to `mvn install -DskipTests`. Add new test coverage in a dedicated
-job that gates on `build` (and whatever validation jobs make sense) so the
-rest of the pipeline is not blocked.
+`build` is the critical path — every job that compiles or tests waits for
+it. Keep it limited to `mvn install -DskipTests`. Add new test coverage in a
+dedicated job that gates on `build` (and whatever validation jobs make sense)
+so the rest of the pipeline is not blocked.
 
 **Mistake: Forgetting to add a new test job to `analysis` needs.**
 Every job that uploads `coverage-*` artifacts must appear in `analysis`'s
 `needs` list, or analysis will run before coverage is available.
 
 **Mistake: Removing `test` from `analysis` needs.**
-The `test` matrix generates the bulk of coverage data. `analysis` must
+The `test` job generates the bulk of coverage data. `analysis` must
 always wait for it even though it may be skipped on flowtree-only branches.

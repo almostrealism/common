@@ -16,12 +16,17 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.uml.Signature;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionSlotUpdateComputation;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -149,6 +154,13 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	 * <p>This simulates what the pattern rendering should do: place audio
 	 * at exact frame positions.</p>
 	 *
+	 * <p>The frame position is supplied to the kernel as a runtime argument
+	 * rather than as the offset of a view of the destination. A view's offset
+	 * is part of the kernel signature, so placing notes through views at
+	 * hundreds of distinct offsets compiled hundreds of distinct kernels; with
+	 * the position as an argument, every placement of the same length shares
+	 * one compiled kernel.</p>
+	 *
 	 * @param destination the destination buffer
 	 * @param source the source audio to write
 	 * @param startFrame the frame position to start writing
@@ -160,9 +172,31 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		int len = Math.min(sourceLen, destLen - startFrame);
 		if (len <= 0) return;
 
-		a(cp(destination.range(shape(len), startFrame)),
-				cp(destination.range(shape(len), startFrame))
-						.add(cp(source.range(shape(len), 0)))).get().run();
+		try (PackedCollection position = new PackedCollection(1)) {
+			position.fill(startFrame);
+			placement(destination, source, position, len).get().run();
+		}
+	}
+
+	/**
+	 * Builds the assignment that mixes the first {@code len} frames of {@code source}
+	 * into {@code destination} at the frame held by {@code position}. The position is
+	 * read by the kernel at runtime, so it is not part of the assignment's signature.
+	 *
+	 * @param destination the destination buffer
+	 * @param source the source audio to write
+	 * @param position a single-element collection holding the start frame
+	 * @param len the number of frames to write
+	 * @return the placement assignment
+	 */
+	private Assignment<PackedCollection> placement(PackedCollection destination, PackedCollection source,
+												   PackedCollection position, int len) {
+		int destLen = destination.getMemLength();
+
+		CollectionProducer mixed = subset(shape(len), cp(destination), cp(position))
+				.add(cp(source.range(shape(len), 0)));
+		return a(cp(destination), new CollectionSlotUpdateComputation(shape(destLen),
+				1, destLen, len, cp(destination), mixed, cp(position)));
 	}
 
 	/**
@@ -473,6 +507,101 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 
 		saveAudio(output, RESULTS_DIR + "/two-minute-continuous.wav");
 		log("\nTest PASSED: 2-minute audio has " + String.format("%.1f%%", overallNonZero * 100) + " non-zero coverage");
+	}
+
+	/**
+	 * Test 6: Verify the runtime-position write-back is sample-accurate and local.
+	 *
+	 * <p>Directly validates the mechanism {@link #writeAudioAt} relies on: the frame
+	 * position is a runtime kernel argument read through
+	 * {@code subset(shape(len), cp(destination), cp(position))} and written back with a
+	 * {@link CollectionSlotUpdateComputation} at the same position. This test writes a
+	 * small source of known values into a destination pre-filled with a distinct, entirely
+	 * non-zero baseline and then checks every sample, asserting that:</p>
+	 * <ul>
+	 *   <li>the window {@code [startFrame, startFrame + len)} holds {@code baseline + source}
+	 *       (the write-back mixes additively, exactly as the view-offset form did);</li>
+	 *   <li>every sample outside that window is left exactly as the baseline, so writing the
+	 *       whole destination back does not disturb the frames the placement should not
+	 *       touch.</li>
+	 * </ul>
+	 *
+	 * <p>The per-second and ±5-frame-tolerance checks in the other tests do not exercise
+	 * either property, which is why this branch needs this test: it is the guard that the
+	 * runtime position addresses the same frames the compile-time view offset used to.</p>
+	 */
+	@Test(timeout = 30_000)
+	public void testRuntimePositionWriteBackPlacesExactly() {
+		int totalFrames = 100;
+		int len = 10;
+		int startFrame = 40;
+
+		// Distinct, entirely non-zero baseline (values 1..totalFrames) so any frame the
+		// write-back disturbs outside the target window is detectable.
+		PackedCollection destination = new PackedCollection(totalFrames);
+		integers(0, totalFrames).add(1.0).into(destination.traverseEach()).evaluate();
+
+		// Distinct source values (1000..1000+len) so the additive mix stands out clearly
+		// against the baseline.
+		PackedCollection source = new PackedCollection(len);
+		integers(0, len).add(1000.0).into(source.traverseEach()).evaluate();
+
+		writeAudioAt(destination, source, startFrame);
+
+		for (int i = 0; i < totalFrames; i++) {
+			double baseline = i + 1.0;
+			double expected = baseline;
+			if (i >= startFrame && i < startFrame + len) {
+				expected += 1000.0 + (i - startFrame);
+			}
+
+			assertEquals("Frame " + i + " should be "
+							+ (i >= startFrame && i < startFrame + len ? "baseline + source" : "untouched baseline"),
+					expected, destination.toDouble(i), 1e-4);
+		}
+
+		log("Runtime-position write-back placed " + len + " samples at frame " + startFrame
+				+ " with the rest of the " + totalFrames + "-frame buffer untouched");
+
+		destination.destroy();
+		source.destroy();
+	}
+
+	/**
+	 * Test 7: Verify that placements at different frame positions share one kernel signature.
+	 *
+	 * <p>Placing hundreds of notes through views of the destination compiled one kernel per
+	 * distinct view offset, which is what pushed {@link #testTwoMinuteContinuousAudio} past
+	 * its timeout on the OpenCL lane. {@link #placement} supplies the frame position as a
+	 * runtime argument instead, so every placement of the same length must resolve to the
+	 * same signature, and therefore to the same compiled kernel.</p>
+	 */
+	@Test(timeout = 30_000)
+	public void testPlacementSignatureIndependentOfPosition() {
+		int totalFrames = 1000;
+		int len = 50;
+
+		try (PackedCollection destination = new PackedCollection(totalFrames);
+			 PackedCollection source = new PackedCollection(len);
+			 PackedCollection early = new PackedCollection(1);
+			 PackedCollection late = new PackedCollection(1)) {
+			early.fill(10);
+			late.fill(777);
+
+			String earlySignature = Signature.of(placement(destination, source, early, len));
+			String lateSignature = Signature.of(placement(destination, source, late, len));
+
+			assertNotNull("A placement must have a signature so its kernel can be reused",
+					earlySignature);
+			Assert.assertEquals("Placements at different frame positions must share one kernel signature",
+					earlySignature, lateSignature);
+
+			String shorterSignature = Signature.of(placement(destination, source, early, len / 2));
+			assertNotNull(shorterSignature);
+			Assert.assertNotEquals("A placement of a different length is a different kernel, so the signature "
+							+ "must distinguish it; otherwise the equality above proves nothing",
+					earlySignature, shorterSignature);
+		}
 	}
 
 	/**

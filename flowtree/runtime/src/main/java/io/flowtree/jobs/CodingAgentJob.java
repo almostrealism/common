@@ -253,9 +253,11 @@ public class CodingAgentJob extends GitManagedJob {
     private final PhaseRunnerConfig phaseRunnerConfig = new PhaseRunnerConfig();
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. Package private so the same-package pushed-tools test can assert propagated state without reflection. */
-    final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
+    McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
     /** Turns this job's configuration into the launch configuration of a single agent session. */
-    private final AgentLaunchConfig launchConfig = new AgentLaunchConfig(this, mcpConfigBuilder);
+    private AgentLaunchConfig launchConfig = new AgentLaunchConfig(this, mcpConfigBuilder);
+    /** Resolves this job's commit message, including both fallbacks for an agent that wrote none. */
+    private CommitMessageBuilder commitMessageBuilder = new CommitMessageBuilder();
     /** Per-runner and per-model USD cost accumulation across every phase invocation. */
     private final JobCostTracker costTracker = new JobCostTracker();
     /**
@@ -264,8 +266,6 @@ public class CodingAgentJob extends GitManagedJob {
      * @see JobSessionAccumulator
      */
     private final JobSessionAccumulator accumulator = new JobSessionAccumulator();
-    /** How the commit message was produced: {@code "agent"}, {@code "prompt_fallback"}, or {@code "commit_rule_recovered"}. */
-    private String commitMessageSource;
 
     /** Wall-clock instant at which {@link #doWork()} began; used to filter abandoned-test-run scans. */
     private Instant sessionStartedAt;
@@ -1420,26 +1420,10 @@ public class CodingAgentJob extends GitManagedJob {
         accumulator.absorb(result);
     }
 
-    /**
-     * Returns whether the agent wrote a commit message to {@code commit.txt}.
-     * That file is its declaration that it produced changes worth describing,
-     * which is what lets {@link JobWorkOutcome#describeUnpublishedWork()} tell a job that
-     * deliberately changed nothing from one whose changes went missing.
-     *
-     * <p>A file that exists but cannot be read counts as authored. The
-     * alternative reads an unreadable message as an absent one, and since
-     * {@code commit.txt} is excluded from the working-tree query as a harness
-     * artifact, nothing else would notice it either.</p>
-     *
-     * @return {@code true} when {@code commit.txt} holds a message, or exists
-     *         and could not be read
-     */
+    /** Delegates to {@link CommitMessageBuilder#isAuthored(CodingAgentJob)}. */
     @Override
     protected boolean hasAuthoredCommitMessage() {
-        String message = CommitMessageBuilder.captureCommitTxt(this);
-        if (message != null) return !message.trim().isEmpty();
-        Path commitFile = resolveWorkingPath("commit.txt");
-        return commitFile != null && Files.exists(commitFile);
+        return commitMessageBuilder.isAuthored(this);
     }
 
     /**
@@ -1514,17 +1498,41 @@ public class CodingAgentJob extends GitManagedJob {
      * @return the source tag, or {@code null} if no commit has been made yet
      */
     public String getCommitMessageSource() {
-        return commitMessageSource;
-    }
-
-    /** Sets the commit message source tag; called by {@link CommitMessageRule} on recovery. */
-    void setCommitMessageSource(String source) {
-        this.commitMessageSource = source;
+        return commitMessageBuilder.getSource();
     }
 
     @Override
     protected String getCommitMessage() {
-        return CommitMessageBuilder.resolve(this);
+        return commitMessageBuilder.resolve(this);
+    }
+
+    /** Returns the builder that resolves this job's commit message and its fallbacks. */
+    CommitMessageBuilder commitMessageBuilder() {
+        return commitMessageBuilder;
+    }
+
+    /**
+     * Replaces the builder this job resolves its commit message with. Call
+     * before the job runs. A seam for tests that run the whole job against a
+     * builder carrying a known defect; production code never calls it.
+     *
+     * @param builder the commit-message builder this job uses from now on
+     */
+    void setCommitMessageBuilder(CommitMessageBuilder builder) {
+        commitMessageBuilder = builder;
+    }
+
+    /**
+     * Replaces the builder this job assembles its MCP configuration with, and
+     * the launch configuration that reads it. Call before the job runs. A seam
+     * for tests that run the whole job against a builder carrying a known
+     * defect; production code never calls it.
+     *
+     * @param builder the MCP configuration builder this job uses from now on
+     */
+    void setMcpConfigBuilder(McpConfigBuilder builder) {
+        mcpConfigBuilder = builder;
+        launchConfig = new AgentLaunchConfig(this, builder);
     }
 
     /**

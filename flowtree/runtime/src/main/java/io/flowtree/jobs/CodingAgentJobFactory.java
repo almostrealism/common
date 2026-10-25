@@ -1269,6 +1269,26 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns whether an auto-created pull request should be opened as a draft.
+     * A draft pull request means the branch carries only a plan awaiting the
+     * owner's approval; marking it ready for review is what approves it. Has no
+     * effect unless {@link #isAutoCreatePr()} is also set.
+     */
+    public boolean isCreatePrAsDraft() {
+        return "true".equals(get("createPrAsDraft"));
+    }
+
+    /**
+     * Sets whether an auto-created pull request is opened as a draft rather
+     * than ready for review.
+     *
+     * @param createPrAsDraft true to open the auto-created PR as a draft
+     */
+    public void setCreatePrAsDraft(boolean createPrAsDraft) {
+        set("createPrAsDraft", String.valueOf(createPrAsDraft));
+    }
+
+    /**
      * Returns the Python requirements for the managed venv.
      *
      * @return pip requirements.txt content, or null

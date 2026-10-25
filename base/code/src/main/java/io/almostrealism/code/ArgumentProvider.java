@@ -31,6 +31,13 @@ import java.util.function.Supplier;
  * other computations, avoiding unnecessary memory copies when one computation's output
  * feeds directly into another's input.</p>
  *
+ * <h2>Idempotence</h2>
+ * <p>Obtaining an argument is idempotent: asking a provider for the argument of the same
+ * input any number of times yields the same argument, and so the same kernel parameter.
+ * Participants in scope compilation (see {@link ScopeLifecycle}) rely on this and request
+ * their arguments whenever they are prepared, without remembering which provider they were
+ * last prepared with.</p>
+ *
  * @see ArrayVariable
  * @see Computation
  */

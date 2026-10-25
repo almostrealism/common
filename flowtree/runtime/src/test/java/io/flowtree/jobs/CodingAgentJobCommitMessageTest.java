@@ -162,7 +162,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
         assertFalse("Trailing attribution is stripped, not corrected",
                 rule.isViolated(job));
         assertEquals("Fix auth bug: validate token expiry\n\nAdded an expiry check.",
-                CommitMessageBuilder.resolve(job));
+                job.commitMessageBuilder().resolve(job));
     }
 
     /**

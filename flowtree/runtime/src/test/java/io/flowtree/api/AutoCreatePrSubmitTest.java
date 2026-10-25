@@ -65,6 +65,21 @@ public class AutoCreatePrSubmitTest extends FlowTreeApiSubmitTestBase {
         assertTrue(response.toString(), response.get("ok").asBoolean());
         assertTrue(response.get("autoCreatePr").asBoolean());
         assertTrue(queued().isAutoCreatePr());
+        // A plain auto-PR request opens the PR ready for review, not as a draft.
+        assertFalse(response.get("createPrAsDraft").asBoolean());
+        assertFalse(queued().isCreatePrAsDraft());
+    }
+
+    /** A draft request is recorded on the queued factory and reported in the response. */
+    @Test(timeout = 15000)
+    public void requestedDraftPullRequestIsQueuedAndEchoed() throws IOException {
+        JsonNode response = submitToWorkstream(",\"autoCreatePr\":true,\"createPrAsDraft\":true");
+
+        assertTrue(response.toString(), response.get("ok").asBoolean());
+        assertTrue(response.get("autoCreatePr").asBoolean());
+        assertTrue(response.get("createPrAsDraft").asBoolean());
+        assertTrue(queued().isAutoCreatePr());
+        assertTrue(queued().isCreatePrAsDraft());
     }
 
     /** Without the field no pull request is requested, and the response says so. */

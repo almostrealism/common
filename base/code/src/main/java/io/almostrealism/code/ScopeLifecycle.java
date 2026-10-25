@@ -45,6 +45,11 @@ public interface ScopeLifecycle {
 	 * <p>Called during scope compilation to allow components to configure
 	 * inputs and interact with the kernel structure.</p>
 	 *
+	 * <p>A component may be prepared more than once, with the same manager or with the
+	 * manager of another compilation, so preparation must be idempotent. Since obtaining an
+	 * argument from an {@link ArgumentProvider} is itself idempotent, an implementation
+	 * simply requests what it needs from the manager it is given each time.</p>
+	 *
 	 * @param manager the scope input manager for registering inputs
 	 * @param context the kernel structure context for the compilation
 	 */

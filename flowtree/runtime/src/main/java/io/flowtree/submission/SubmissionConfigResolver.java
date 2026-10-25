@@ -165,6 +165,7 @@ public final class SubmissionConfigResolver {
         json.append(",\"falsificationEnabled\":")
                 .append(factory.isFalsificationEnabled());
         json.append(",\"autoCreatePr\":").append(factory.isAutoCreatePr());
+        json.append(",\"createPrAsDraft\":").append(factory.isCreatePrAsDraft());
         json.append(",\"enforceChanges\":").append(factory.isEnforceChanges());
         json.append(",\"maxEnforceChangesRetries\":")
                 .append(factory.getMaxEnforceChangesRetries());

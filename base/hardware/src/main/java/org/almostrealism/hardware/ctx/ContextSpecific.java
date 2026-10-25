@@ -355,7 +355,7 @@ public abstract class ContextSpecific<T> implements ContextListener, Destroyable
 
 		/** Returns whether the context this value was created under has been destroyed. */
 		private boolean isOrphaned() {
-			return context != null && (context.isDestroyed() || context.getDataContext().isDestroyed());
+			return context != null && !context.isLive();
 		}
 
 		// TODO(review): an unclaimed context==null entry never matches this, so contextDestroyed() can't dispose it; see review-followup memory.
