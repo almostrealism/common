@@ -1,14 +1,12 @@
 """Guard: how the accelerator lanes in analysis.yaml are admitted and sized.
 
-The CL lane (``test-cl`` -> ``test-media-cl``) runs alongside the macOS GPU
-lane rather than after it: ``test-cl`` beside ``test-mac``, ``test-media-cl``
-beside ``test-media-mac``. ``test-cl`` is admitted exactly as ``test-mac`` and
-``test-cuda`` are, on ``build`` and the validation checks alone, so all three
-accelerator first stages start together without waiting for the Linux ``test``
-stage; ``test-media-cl`` still gates on both ``test`` and ``test-media``
-directly, as the duplicate of ``test-media``. ``test-media-cuda`` likewise
-still gates on both the CPU and the macOS lanes. The ``test`` job itself runs
-as a single job (no matrix), so it is not among the sharded lanes this guard
+The test jobs run as four lanes, one per hardware driver setup (CPU, Metal,
+OpenCL, CUDA), each two stages in order: a test stage and then a media stage.
+Every first stage (``test``, ``test-mac``, ``test-cl``, ``test-cuda``) is
+admitted on ``build`` and the validation checks alone, so all four start
+together, and every media stage waits only for its own lane's test stage, never
+for another lane. The CPU lane's ``test`` and ``test-media`` jobs each run as a
+single job (no matrix), so they are not among the sharded lanes this guard
 sizes. A matrix whose size disagrees with the ``AR_TEST_GROUPS`` its steps
 pass silently drops the groups that have no matrix entry, so the two are
 checked together.
@@ -27,6 +25,7 @@ _CPU_LANE = ("test", "test-media")
 _MAC_LANE = ("test-mac", "test-media-mac")
 _CL_LANE = ("test-cl", "test-media-cl")
 _CUDA_LANE = ("test-cuda", "test-media-cuda")
+_LANES = (_CPU_LANE, _MAC_LANE, _CL_LANE, _CUDA_LANE)
 
 # The fewest groups any accelerator job may run at once.
 _MIN_ACCELERATOR_PARALLELISM = 3
@@ -55,17 +54,18 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
         self.jobs = _jobs()
 
     def test_cl_lane_gates_on_the_cpu_lane(self):
-        # test-cl no longer waits for the CPU lane at all: it is admitted
-        # alongside test-mac and test-cuda. test-media-cl, the duplicate of
-        # test-media, still gates on the whole CPU lane directly, so it is where
-        # the ROCm fleet's CPU-lane admission control now lives.
+        # Neither CL stage waits for the CPU lane: test-cl is admitted
+        # alongside test-mac and test-cuda, and test-media-cl follows test-cl
+        # alone, so a CPU-lane failure no longer holds the ROCm fleet.
         self.assertNotIn("test", self.jobs["test-cl"]["needs"],
                          "test-cl must not wait for test")
         self.assertNotIn("test-media", self.jobs["test-cl"]["needs"],
                          "test-cl must not wait for test-media")
         for upstream in _CPU_LANE:
-            self.assertTrue(_gates_on(self.jobs["test-media-cl"], upstream),
-                            "test-media-cl must gate on %s" % upstream)
+            self.assertNotIn(upstream, self.jobs["test-media-cl"]["needs"],
+                             "test-media-cl must not wait for %s" % upstream)
+        self.assertTrue(_gates_on(self.jobs["test-media-cl"], "test-cl"),
+                        "test-media-cl must gate on test-cl")
 
     def test_cl_lane_runs_alongside_the_mac_lane(self):
         for name in _CL_LANE:
@@ -74,17 +74,19 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
                                  "%s must not wait for %s" % (name, upstream))
 
     def test_cuda_lane_gates_on_the_cpu_and_mac_lanes(self):
-        # test-cuda starts with test-mac, without waiting for `test`; it must
-        # not wait for any stage of the CPU or macOS lanes. test-media-cuda
-        # still gates on the whole CPU and macOS lanes directly.
+        # test-cuda starts with test-mac, without waiting for `test`; neither
+        # CUDA stage waits for any stage of the CPU or macOS lanes, and
+        # test-media-cuda follows test-cuda alone.
         self.assertFalse(_gates_on(self.jobs["test-cuda"], "test"),
                          "test-cuda must not gate on test")
         for upstream in _CPU_LANE + _MAC_LANE:
             self.assertNotIn(upstream, self.jobs["test-cuda"]["needs"],
                              "test-cuda must not wait for %s" % upstream)
         for upstream in _CPU_LANE + _MAC_LANE:
-            self.assertTrue(_gates_on(self.jobs["test-media-cuda"], upstream),
-                            "test-media-cuda must gate on %s" % upstream)
+            self.assertNotIn(upstream, self.jobs["test-media-cuda"]["needs"],
+                             "test-media-cuda must not wait for %s" % upstream)
+        self.assertTrue(_gates_on(self.jobs["test-media-cuda"], "test-cuda"),
+                        "test-media-cuda must gate on test-cuda")
 
     def test_cuda_starts_with_cl(self):
         # test-cl and test-cuda are now admitted on exactly the same set, so the
@@ -127,22 +129,46 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
                              % (name, sorted(counts), len(group)))
         # Guard the discovery itself: every sharded test lane must be seen, so a
         # renamed or dropped lane fails here rather than going unchecked. `test`
-        # runs as a single non-matrix job and is deliberately absent from this
-        # set (test_cpu_test_job_is_not_sharded pins that); the sharded lanes are
-        # test-media plus the three accelerator lanes.
+        # and `test-media` run as single non-matrix jobs and are deliberately
+        # absent from this set (test_cpu_test_job_is_not_sharded pins that); the
+        # sharded lanes are the three accelerator lanes.
         self.assertEqual(
-            sorted(("test-media",) + _MAC_LANE + _CL_LANE + _CUDA_LANE),
+            sorted(_MAC_LANE + _CL_LANE + _CUDA_LANE),
             sorted(checked))
 
     def test_cpu_test_job_is_not_sharded(self):
-        # The native `test` job runs as a single job rather than a matrix: it no
-        # longer splits engine/utils and engine/ml across groups, so it neither
-        # declares a `strategy` matrix nor passes AR_TEST_GROUPS.
-        job = self.jobs["test"]
-        self.assertNotIn("strategy", job,
-                         "test must run as a single job, with no matrix")
-        self.assertEqual(set(), _test_group_counts(job),
-                         "test must not pass AR_TEST_GROUPS")
+        # The native `test` and `test-media` jobs each run as a single job
+        # rather than a matrix: neither splits its modules across groups, so
+        # neither declares a `strategy` matrix nor passes AR_TEST_GROUPS.
+        for name in _CPU_LANE:
+            job = self.jobs[name]
+            self.assertNotIn("strategy", job,
+                             "%s must run as a single job, with no matrix" % name)
+            self.assertEqual(set(), _test_group_counts(job),
+                             "%s must not pass AR_TEST_GROUPS" % name)
+
+    def test_cuda_matrix_matches_its_test_groups(self):
+        name = "test-cuda"
+        job = self.jobs[name]
+        groups = job["strategy"]["matrix"]["group"]
+        self.assertEqual(4, len(groups), name)
+        self.assertEqual({len(groups)}, _test_group_counts(job), name)
+
+    def test_each_media_stage_follows_only_its_own_lane(self):
+        # Four lanes, two stages each: every media stage gates on its own
+        # lane's test stage and waits for no other lane's stage, so e.g.
+        # test-media-cuda starts as soon as test-cuda is done.
+        for first, media in _LANES:
+            self.assertTrue(_gates_on(self.jobs[media], first),
+                            "%s must gate on %s" % (media, first))
+            for other in _LANES:
+                if other == (first, media):
+                    continue
+                for upstream in other:
+                    self.assertNotIn(upstream, self.jobs[media]["needs"],
+                                     "%s must not wait for %s" % (media, upstream))
+                    self.assertNotIn("needs.%s.result" % upstream, self.jobs[media]["if"],
+                                     "%s must not read %s's result" % (media, upstream))
 
     def test_accelerator_jobs_run_at_least_three_groups_at_once(self):
         for name in _CL_LANE + _CUDA_LANE:
@@ -151,15 +177,15 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
 
     def test_first_stage_skips_are_not_excused_by_another_lane(self):
         # auto-resolve's incomplete-execution check may excuse a skipped stage
-        # only by a lane that stage actually waits for. test-cl and test-cuda
-        # gate on no other test lane, so a CPU- or Metal-lane failure cannot
-        # explain their skip; excusing it would hide an unexplained skip
+        # only by a lane that stage actually waits for. No accelerator stage
+        # gates on another test lane, so a CPU- or Metal-lane failure cannot
+        # explain its skip; excusing it would hide an unexplained skip
         # whenever test or test-media failed.
         script = _incomplete_execution_script(self.jobs)
         for result, waits_for_lanes in (("CL_RESULT", False),
                                         ("CUDA_RESULT", False),
-                                        ("MEDIA_CL_RESULT", True),
-                                        ("MEDIA_CUDA_RESULT", True)):
+                                        ("MEDIA_CL_RESULT", False),
+                                        ("MEDIA_CUDA_RESULT", False)):
             block = _result_block(script, result)
             excused = "CPU_LANE_FAILED" in block or "UPSTREAM_LANE_FAILED" in block
             self.assertEqual(waits_for_lanes, excused,

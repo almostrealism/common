@@ -16,8 +16,12 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
+
+import java.util.OptionalInt;
 
 /**
  * A {@link TraversalOrdering} that composes two orderings by applying one after the other.
@@ -59,9 +63,66 @@ public class DelegatedTraversalOrdering implements TraversalOrdering, Delegated<
 		return delegate;
 	}
 
-	/** {@inheritDoc} Returns {@code delegate.indexOf(order.indexOf(idx))}. */
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns {@code delegate.indexOf(order.indexOf(idx))}. When the first ordering maps the
+	 * index to a known negative position (an absent element), that position is returned and the
+	 * second ordering is not asked to map it, since doing so would read its index table out of
+	 * bounds.</p>
+	 */
 	@Override
 	public Expression<Integer> indexOf(Expression<Integer> idx) {
-		return getDelegate().indexOf(order.indexOf(idx));
+		Expression<Integer> position = order.indexOf(idx);
+		return position.upperBound(null).orElse(0) < 0 ? position : getDelegate().indexOf(position);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A logical index is a member when the first ordering gives it a position and the
+	 * second ordering gives that position a position in turn. When the first position is
+	 * known to be negative, the index is not a member and the second ordering is never
+	 * asked about it. Otherwise both tests are combined with a short-circuiting conjunction,
+	 * so generated code evaluates the second test only for a position that exists.</p>
+	 */
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		Expression<Integer> position = order.indexOf(index);
+		if (position.upperBound(null).orElse(0) < 0) return new BooleanConstant(false);
+
+		return order.containsIndex(index).and(getDelegate().containsIndex(position));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Every physical position of the composition is one the second ordering produces, so the
+	 * composition addresses the backing memory of the second ordering.</p>
+	 */
+	@Override
+	public OptionalInt getLength() {
+		return getDelegate().getLength();
+	}
+
+	/** {@inheritDoc} Binds both of the composed orderings. */
+	@Override
+	public TraversalOrdering bind(ArgumentProvider provider) {
+		TraversalOrdering first = order.bind(provider);
+		TraversalOrdering second = getDelegate().bind(provider);
+		return first == order && second == getDelegate() ? this : new DelegatedTraversalOrdering(first, second);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The composition is identified by the signatures of both orderings, and has none
+	 * unless both of them do.</p>
+	 */
+	@Override
+	public String signature() {
+		String first = order.signature();
+		String second = getDelegate().signature();
+		return first == null || second == null ? null : "(" + first + ")->(" + second + ")";
 	}
 }

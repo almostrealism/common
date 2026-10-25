@@ -109,7 +109,7 @@ def _allowlist_case_patterns():
 def _media_arm(patterns):
     """test-media's own alternative from the allowlist pattern."""
     for arm in patterns.split("|"):
-        if arm.startswith("surefire-media-["):
+        if arm == "surefire-media":
             return arm
     raise AssertionError("could not find test-media's arm in %s" % patterns)
 
@@ -236,14 +236,14 @@ class AutoResolveTestJobCoverageTest(unittest.TestCase):
                           "keeps their surefire artifacts: %s (allowlist: %s)" % (kept, patterns))
 
     def test_media_arm_does_not_match_other_lanes(self):
-        """test-media's arm keeps only its own numbered groups.
+        """test-media's arm keeps only its own single artifact.
 
         Checked on the arm alone: the other lanes' media artifacts are kept by
         their own arms, and this arm must not be what keeps them.
         """
         arm = _media_arm(_allowlist_case_patterns())
-        self.assertTrue(_matches_allowlist("surefire-media-0", arm))
-        self.assertTrue(_matches_allowlist("surefire-media-7", arm))
+        self.assertTrue(_matches_allowlist("surefire-media", arm))
+        self.assertFalse(_matches_allowlist("surefire-media-mac-group-0", arm))
         self.assertFalse(_matches_allowlist("surefire-media-cuda-group-0", arm))
         self.assertFalse(_matches_allowlist("surefire-media-cl-group-0", arm))
         self.assertFalse(_matches_allowlist("surefire-media-", arm))

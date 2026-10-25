@@ -18,6 +18,7 @@ package io.almostrealism.collect;
 
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
@@ -82,6 +83,24 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	public CollectionVariable(String name, TraversalPolicy shape,
 							  Supplier<Evaluable<? extends Multiple<T>>> producer) {
 		this(name, shape, PhysicalScope.GLOBAL, Double.class, producer);
+	}
+
+	/**
+	 * Constructs a new {@code CollectionVariable} with global physical scope and Double type
+	 * for a producer whose values have the given {@link Shape}. The variable takes that shape
+	 * with the {@link Shape#getOrdering() ordering} the producer reports when the variable is
+	 * created, which is the ordering the producer has bound to the arguments of the kernel
+	 * being compiled if its scope has been prepared. The ordering is part of the variable's
+	 * shape from then on, so the variable keeps reading through its own kernel's arguments even
+	 * if the producer is later prepared for another kernel.
+	 *
+	 * @param name     the name identifier for this variable
+	 * @param source   the shape of the values supplied by the producer
+	 * @param producer the supplier that produces evaluable instances of this collection
+	 */
+	public CollectionVariable(String name, Shape<?> source,
+							  Supplier<Evaluable<? extends Multiple<T>>> producer) {
+		this(name, source.getShape().withOrder(source.getOrdering()), producer);
 	}
 
 	/**
@@ -199,7 +218,9 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 *   <li>Delegating to the underlying {@link TraversableExpression} if the producer supports it</li>
 	 *   <li>Handling single-element shapes specially</li>
 	 *   <li>Applying modular arithmetic for fixed-count collections</li>
-	 *   <li>Transforming indices according to the shape's traversal order</li>
+	 *   <li>Transforming indices according to the shape's traversal order, reading zero for
+	 *       an index that ordering does not contain (an absent element of a compact or sparse
+	 *       ordering), as the host read path does</li>
 	 * </ul>
 	 *
 	 * <p>Falling back to this variable's own references when the
@@ -225,12 +246,25 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 				index = index.toInt().imod(getShape().getTotalSize());
 			}
 
-			if (getShape().getOrder() != null) {
-				index = getShape().getOrder().indexOf(index);
+			TraversalOrdering order = getShape().getOrder();
+			if (order == null) {
+				return (Expression) reference(index);
 			}
 
-			return (Expression) reference(index);
+			return Mask.of(order.containsIndex(index), (Expression) reference(order.indexOf(index)));
 		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Membership is decided by the ordering of the {@link #getShape() shape}, through which
+	 * this variable is read, so it agrees with {@link #getValueAt(Expression)}.</p>
+	 */
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		TraversalOrdering order = getShape().getOrder();
+		return order == null ? CollectionExpression.super.containsIndex(index) : order.containsIndex(index);
 	}
 
 	/**
@@ -332,7 +366,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 											  Supplier<Evaluable<? extends Multiple<T>>> p) {
 		Object shaped = p instanceof Delegated && !(p instanceof Shape) ? ((Delegated<?>) p).getDelegate() : p;
 		return shaped instanceof Shape
-				? new CollectionVariable(name, ((Shape<?>) shaped).getShape(), p)
+				? new CollectionVariable(name, (Shape<?>) shaped, p)
 				: new ArrayVariable<>(name, p);
 	}
 }

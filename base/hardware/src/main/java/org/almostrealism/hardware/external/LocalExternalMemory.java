@@ -33,8 +33,9 @@ import java.nio.file.StandardOpenOption;
  *
  * <p>The file <em>is</em> the memory: values are read and written through a shared mapping of it,
  * so nothing is copied onto the Java heap, and a process at the other end of the exchange sees a
- * write without anything being flushed on its behalf. Used by {@link ExternalInstructionSet} to
- * transfer data to and from external processes.</p>
+ * write without anything being flushed on its behalf. An {@link ExternalDataDirectory} reads the
+ * results an external process leaves in its files back as this memory, when
+ * {@link LocalExternalMemoryProvider#enableLazyReading} is set.</p>
  *
  * <p>Values are stored as big-endian FP64, the format
  * {@link io.almostrealism.code.Memory#getBytes} and
@@ -78,7 +79,7 @@ import java.nio.file.StandardOpenOption;
  * }</pre>
  *
  * @see LocalExternalMemoryProvider
- * @see ExternalInstructionSet
+ * @see ExternalDataDirectory
  */
 public class LocalExternalMemory implements Memory {
 	/** Provider that owns and manages this memory instance. */

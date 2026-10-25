@@ -65,7 +65,7 @@ public interface ParameterizedEnvelope extends EnvelopeFeatures {
 	 *
 	 * @param params the parameter set controlling envelope shape
 	 * @param voicing the signal path voicing
-	 * @return the computed filter
+	 * @return the computed filter, which reports this envelope, {@code params} and {@code voicing}
 	 */
-	NoteAudioFilter createFilter(ParameterSet params, ChannelInfo.Voicing voicing);
+	ParameterizedEnvelopeFilter createFilter(ParameterSet params, ChannelInfo.Voicing voicing);
 }
