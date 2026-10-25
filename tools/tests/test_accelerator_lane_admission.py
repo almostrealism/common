@@ -6,7 +6,8 @@ beside ``test-media-mac``. ``test-cl`` is admitted as soon as the Linux
 ``test`` stage is green (it no longer waits for ``test-media``), since it is
 the OpenCL duplicate of the same modules; ``test-media-cl`` still gates on both
 ``test`` and ``test-media`` directly, as the duplicate of ``test-media``.
-``test-cuda`` is admitted exactly as ``test-cl`` is, so the two start together;
+``test-cuda`` is admitted exactly as ``test-mac`` is, on ``build`` and the
+validation checks alone, so the two start together without waiting for ``test``;
 ``test-media-cuda`` still gates on both the CPU and the macOS lanes. A
 matrix whose size disagrees with the ``AR_TEST_GROUPS`` its steps pass silently
 drops the groups that have no matrix entry, so the two are checked together.
@@ -71,12 +72,12 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
                                  "%s must not wait for %s" % (name, upstream))
 
     def test_cuda_lane_gates_on_the_cpu_and_mac_lanes(self):
-        # test-cuda starts with test-cl, as soon as `test` is green; it must not
-        # wait for test-media or the macOS lane. test-media-cuda still gates on
-        # the whole CPU and macOS lanes directly.
-        self.assertTrue(_gates_on(self.jobs["test-cuda"], "test"),
-                        "test-cuda must gate on test")
-        for upstream in ("test-media",) + _MAC_LANE:
+        # test-cuda starts with test-mac, without waiting for `test`; it must
+        # not wait for any stage of the CPU or macOS lanes. test-media-cuda
+        # still gates on the whole CPU and macOS lanes directly.
+        self.assertFalse(_gates_on(self.jobs["test-cuda"], "test"),
+                         "test-cuda must not gate on test")
+        for upstream in _CPU_LANE + _MAC_LANE:
             self.assertNotIn(upstream, self.jobs["test-cuda"]["needs"],
                              "test-cuda must not wait for %s" % upstream)
         for upstream in _CPU_LANE + _MAC_LANE:
@@ -84,14 +85,22 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
                             "test-media-cuda must gate on %s" % upstream)
 
     def test_cuda_starts_with_cl(self):
-        self.assertEqual(sorted(self.jobs["test-cl"]["needs"]),
+        # test-cuda is admitted on everything test-cl is admitted on except
+        # `test`, so it never starts later than test-cl.
+        self.assertEqual(sorted(n for n in self.jobs["test-cl"]["needs"] if n != "test"),
                          sorted(self.jobs["test-cuda"]["needs"]))
+
+    def test_cuda_starts_with_mac(self):
+        self.assertEqual(sorted(self.jobs["test-mac"]["needs"]),
+                         sorted(self.jobs["test-cuda"]["needs"]))
+        self.assertEqual(self.jobs["test-mac"]["if"].strip(),
+                         self.jobs["test-cuda"]["if"].strip())
 
     def test_cl_matrix_matches_its_test_groups(self):
         name = "test-cl"
         job = self.jobs[name]
         groups = job["strategy"]["matrix"]["group"]
-        self.assertEqual(4, len(groups), name)
+        self.assertEqual(3, len(groups), name)
         self.assertEqual(list(range(len(groups))), groups, name)
         self.assertEqual({len(groups)}, _test_group_counts(job), name)
 
