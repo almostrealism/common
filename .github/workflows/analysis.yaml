@@ -427,8 +427,15 @@ jobs:
   # Detects modifications to existing test files that hide failures
   # (e.g., adding @Ignore, deleting assertions, weakening checks).
   # This job FAILS the build to prevent test-hiding from being merged.
+  #
+  # Every step reads git history and sources with bash and python3; none
+  # uses Java or the project's artifacts. So it needs `changes`, not `build`,
+  # and runs in parallel with `build` (see "Branch checks that need no
+  # build" in .github/CLAUDE.md). The code_changed gate is the one it used
+  # to inherit by way of `build`.
   test-integrity-check:
-    needs: build
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     outputs:
       passed: ${{ steps.check.outcome == 'success' && steps.python_check.outcome == 'success' }}
@@ -872,8 +879,10 @@ jobs:
   # removing rules to make violating code pass is not allowed. Any change
   # to it relative to master fails the build. If a rule genuinely needs to
   # change, open a separate PR with justification for human review.
+  # Needs only git, so it waits for `changes`, not `build`.
   checkstyle-integrity-check:
-    needs: build
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
@@ -978,10 +987,11 @@ jobs:
   # TestDepth churn, and revert-then-reapply cycles.
   # This is an informational check — it does not block the build
   # but its findings are included in the auto-resolve prompt.
+  # Needs only git, so it waits for `changes`, not `build`.
   deception-audit:
-    needs: build
+    needs: changes
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/master'
+    if: github.ref != 'refs/heads/master' && needs.changes.outputs.code_changed == 'true'
     outputs:
       # audit_error=true when deception-audit.sh could not resolve the
       # merge-base (or its file listing) and never ran the audit --
@@ -1042,11 +1052,12 @@ jobs:
   # percentage with assertion-free tests. Never a merge gate: it is
   # deliberately absent from all-checks' needs, and the script itself
   # always exits 0. Scoped to qa/coverage-* branches so every other PR's
-  # summary is unaffected.
+  # summary is unaffected. Reads test sources with git, so it waits for
+  # `changes`, not `build`.
   assertion-density-report:
-    needs: build
+    needs: changes
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/master' && startsWith(github.head_ref || github.ref_name, 'qa/coverage-')
+    if: github.ref != 'refs/heads/master' && startsWith(github.head_ref || github.ref_name, 'qa/coverage-') && needs.changes.outputs.code_changed == 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1078,11 +1089,12 @@ jobs:
   # test-integrity-check's question, and the CI file lock is checked in
   # `changes`. Fails the job when it blocks; the override_integrity_checks
   # input lets a run through for a known false positive. Only runs on
-  # non-master branches.
+  # non-master branches. Needs only git, so it waits for `changes`, not
+  # `build`.
   agent-commit-validation:
-    needs: build
+    needs: changes
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/master'
+    if: github.ref != 'refs/heads/master' && needs.changes.outputs.code_changed == 'true'
     outputs:
       blocked: ${{ steps.validate.outputs.blocked }}
       block_reason: ${{ steps.validate.outputs.block_reason }}

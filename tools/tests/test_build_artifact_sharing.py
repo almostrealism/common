@@ -16,6 +16,13 @@ import yaml
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
 _ARTIFACT = "maven-installed-artifacts"
+_NO_BUILD_CHECKS = (
+    "test-integrity-check",
+    "checkstyle-integrity-check",
+    "deception-audit",
+    "agent-commit-validation",
+    "assertion-density-report",
+)
 
 
 def _jobs():
@@ -53,6 +60,20 @@ class BuildArtifactSharingTest(unittest.TestCase):
         for name, job in restoring.items():
             with self.subTest(job=name):
                 self.assertIn("build", _needs(job))
+
+    def test_branch_checks_that_need_no_build_run_beside_it(self):
+        """The git-only branch checks wait for `changes`, not `build`, and keep the
+        code_changed gate they used to inherit from it (see "Branch checks that need
+        no build" in .github/CLAUDE.md). None of them may use Java or the artifacts."""
+        jobs = _jobs()
+        for name in _NO_BUILD_CHECKS:
+            job = jobs[name]
+            with self.subTest(job=name):
+                self.assertEqual(["changes"], _needs(job))
+                self.assertIn("needs.changes.outputs.code_changed == 'true'", job["if"])
+                self.assertEqual([], _steps_using(job, "actions/setup-java"))
+                self.assertEqual([], _steps_using(job, "actions/download-artifact"))
+                self.assertFalse(any("mvn " in str(s.get("run", "")) for s in job["steps"]))
 
     def test_jobs_that_run_maven_tests_restore_the_artifacts(self):
         for name, job in _jobs().items():
