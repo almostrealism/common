@@ -295,30 +295,44 @@ public static AutoregressiveModel<Integer> of(CompiledModel model,
     PackedCollection temperature = new PackedCollection(1);
 
     Evaluable<PackedCollection> indexOfMax = Ops.o().indexOfMax(Ops.o().x(vocabSize)).get();
-    Evaluable<PackedCollection> rescale = Ops.o().x(vocabSize).divide(Ops.o().cp(temperature)).get();
-    Evaluable<? extends PackedCollection> softmax =
-            Process.optimized(DIST.softmax(Ops.o().x(vocabSize))).get();
 
-    Random random = new Random();
+    AtomicReference<AutoregressiveModel<Integer>> generator = new AtomicReference<>();
     Function<PackedCollection, Integer> sample = logits -> {
         if (temperature.toDouble(0) == 0.0) {
             return (int) indexOfMax.evaluate(logits).toDouble(0);
-        } else {
-            rescale.into(logits).evaluate(logits);
-            softmax.into(logits).evaluate(logits);
-            return sampleToken(logits, vocabSize, 1.0, 1.0, random);
         }
+
+        return sampleToken(logits, vocabSize,
+                temperature.toDouble(0), generator.get().getTopP(), random);
     };
 
-    return new AutoregressiveModel<>(
+    AutoregressiveModel<Integer> instance = new AutoregressiveModel<>(
             position,
             t -> in.setFrom(0, tokenEmbed.apply(t), 0,
                             model.getInputShape().getTotalSize()),
             () -> model.forward(in),
             sample,
-            temperature);
+            temperature) { /* destroy() releases indexOfMax, in and temperature */ };
+
+    generator.set(instance);
+    return instance;
 }
 ```
+
+The factory samples through the same `sampleToken` path as
+`SlidingWindowAutoregressiveModel`: at a positive temperature the raw logits are
+tempered, softmaxed and (when `topP < 1.0`) nucleus-filtered exactly once, with the
+generator's configured temperature and top-p, so both generators sample identically
+from the same logits under the same temperature, top-p and seed. The three-argument
+factory delegates to a four-argument overload that accepts a caller-supplied
+`Random`, so sampling can be made reproducible. The `sample` function reads the
+generator's `getTopP()` through a self-reference holder, since the function is built
+before the instance exists; the top-p threshold is host-only state and never enters
+the computation graph. Earlier the factory tempered and softmaxed on the device and
+then called `sampleToken(logits, vocabSize, 1.0, 1.0, random)`, which re-softmaxed
+the already-softmaxed distribution — a double transform that made the two generators
+sample differently for the same logits and temperature. Greedy decoding
+(temperature `0`) is unchanged: it still reduces on the device via `indexOfMax`.
 
 Note the use of `setFrom` for the token-embedding copy — the recent
 `setmem-policy-phases` work retired the `setMem(int, double[], int, int)` bulk-host-array
@@ -440,23 +454,31 @@ if (temperature.toDouble(0) == 0.0) {
     return (int) indexOfMax.evaluate(logits).toDouble(0);
 }
 
-// Sampling path
-rescale.into(logits).evaluate(logits);   // logits / temperature
-softmax.into(logits).evaluate(logits);   // softmax(scaled_logits)
-return sampleToken(logits, vocabSize, 1.0, 1.0, random);
+// Sampling path — temper, softmax and (when topP < 1.0) nucleus-filter once
+return sampleToken(logits, vocabSize,
+        temperature.toDouble(0), generator.get().getTopP(), random);
 ```
 
 `sampleToken` is the static, host-side sampling
 helper. It reads the logits once with `toArray(0, vocabSize)` — a single
 sanctioned device-to-host transfer at the step boundary — and operates on the
-resulting host array. The recent `setmem-policy-phases` work changed sampling from
-per-element `toDouble(i)` calls to this single bulk read after the same per-element
-pattern produced ~17 million native readbacks during
-`MoonbeamValueDistributionTest.testSoftmaxAndSampling` (10.3s → 0.14s).
+resulting host array, applying temperature scaling, a stable softmax, optional
+nucleus (top-p) filtering, and categorical sampling. The recent
+`setmem-policy-phases` work changed sampling from per-element `toDouble(i)` calls to
+this single bulk read after the same per-element pattern produced ~17 million native
+readbacks during `MoonbeamValueDistributionTest.testSoftmaxAndSampling`
+(10.3s → 0.14s).
 
 - **Temperature = 0:** Greedy decoding — always picks the highest-probability token
 - **Temperature > 0:** Divides logits by temperature before softmax, then samples
   from the resulting probability distribution. Higher temperature = more random.
+- **Top-p < 1.0 (nucleus sampling):** Applied on top of temperature sampling, it
+  restricts each draw to the smallest set of most probable tokens whose cumulative
+  probability reaches `p`, renormalizes over that set, and samples within it, cutting
+  off the unreliable low-probability tail. `getTopP()`/`setTopP(double)` on
+  `AutoregressiveModel` carry the threshold (default `1.0`, meaning no filtering;
+  valid range `(0, 1]`); both `SlidingWindowAutoregressiveModel` and the `of(...)`
+  factory route it through `sampleToken`.
 
 ---
 
