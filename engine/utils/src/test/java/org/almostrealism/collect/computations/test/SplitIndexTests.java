@@ -166,6 +166,34 @@ public class SplitIndexTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Reshaping an ordered view that starts at a non-zero offset of its table, to a shape that
+	 * carries the same ordering, yields a view of the table at that offset for every traversal
+	 * axis: axis 0, and an axis beyond the first dimension. The ordering is applied once,
+	 * relative to the offset, so each reshaped view reads the same elements as the original.
+	 */
+	@Test(timeout = 60000)
+	public void reshapedOffsetViewReadsTheSameElements() {
+		int offset = 5;
+		PackedCollection data = integers(0, 30).get().evaluate();
+		SplitIndexTraversalOrdering order = SplitIndexTraversalOrdering.of(19, 4, 7);
+		PackedCollection gathered = new PackedCollection(shape(3), 0, data, offset, order);
+		assertEquals(24.0, gathered.toDouble(0));
+
+		PackedCollection flat = gathered.reshape(shape(3, 1).withOrder(order));
+		PackedCollection deep = gathered.reshape(shape(3, 1, 1).withOrder(order).traverse(2));
+		Assert.assertEquals(0, flat.getShape().getTraversalAxis());
+		Assert.assertEquals(2, deep.getShape().getTraversalAxis());
+
+		for (PackedCollection reshaped : new PackedCollection[] { flat, deep }) {
+			Assert.assertSame(data, reshaped.getDelegate());
+			Assert.assertEquals(offset, reshaped.getDelegateOffset());
+			assertEquals(24.0, reshaped.toDouble(0));
+			assertEquals(9.0, reshaped.toDouble(1));
+			assertEquals(12.0, reshaped.toDouble(2));
+		}
+	}
+
+	/**
 	 * An ordinary single-lane index table, or one with more than two lanes, is rejected rather
 	 * than silently misread as interleaved high and low lanes.
 	 */

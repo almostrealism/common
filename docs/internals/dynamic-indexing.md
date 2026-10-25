@@ -214,6 +214,7 @@ See `SplitIndexTests.java`:
 - `kernelReadsEveryStoredPosition` - Reads across the lane boundary (`BASE - 1`, `BASE`, `BASE + 1`)
 - `gatherRespectsOrderedCollection` / `gatherRespectsOrderedIndex` - `c(shape, collection, index)` respects an ordering on either argument
 - `retraversedViewReadsTheSameElements` - Re-traversing an ordered view keeps reading the same elements
+- `reshapedOffsetViewReadsTheSameElements` - Reshaping an ordered view at a non-zero offset, at traversal axis 0 or beyond the first dimension, keeps the offset and applies the ordering once
 - `negativePositionIsAbsent` - Negative positions keep their sign in the high lane and read as zero
 - `storageRoundTripsIntExtremes` - `Integer.MAX_VALUE` and `Integer.MIN_VALUE` round-trip with a high lane of magnitude at most 2^19
 - `lengthCoversLargestPosition` - The ordering addresses one more position than the largest stored
