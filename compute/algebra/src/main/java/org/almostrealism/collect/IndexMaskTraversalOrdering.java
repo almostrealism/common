@@ -130,7 +130,8 @@ public class IndexMaskTraversalOrdering implements TraversalOrdering {
 	 */
 	@Override
 	public TraversalOrdering bind(ArgumentProvider provider) {
-		TraversableExpression<?> bound = provider.traversableArgument(new CollectionProviderProducer<>(mask));
+		TraversableExpression<?> bound = provider.<PackedCollection>argumentForInput()
+				.apply(new CollectionProviderProducer<>(mask)).getTraversableExpression();
 		return bound == null ? this : new IndexMaskTraversalOrdering(mask, bound);
 	}
 

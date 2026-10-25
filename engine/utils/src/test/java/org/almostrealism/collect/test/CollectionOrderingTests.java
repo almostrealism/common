@@ -19,14 +19,11 @@ package org.almostrealism.collect.test;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.collect.DelegatedTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
@@ -208,14 +205,7 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void composedOrderingBindsBothOrderings() {
 		List<Supplier<?>> requested = new ArrayList<>();
-		ArgumentProvider provider = new ArgumentProvider() {
-			@Override
-			public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
-													ArrayVariable<T> delegate, int delegateOffset) {
-				requested.add(input);
-				return null;
-			}
-		};
+		ArgumentProvider provider = OrderedCollectionInputTests.recordingProvider(null, requested);
 
 		DelegatedTraversalOrdering closedForm = new DelegatedTraversalOrdering(
 				new RepeatTraversalOrdering(3), new RepeatTraversalOrdering(2));
@@ -238,19 +228,7 @@ public class CollectionOrderingTests extends TestSuiteBase {
 	public void explicitIndexBindingKeepsOrdering() {
 		List<Supplier<?>> requested = new ArrayList<>();
 		PackedCollection argument = pack(1, 0, 0);
-		ArgumentProvider provider = new ArgumentProvider() {
-			@Override
-			public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
-													ArrayVariable<T> delegate, int delegateOffset) {
-				return null;
-			}
-
-			@Override
-			public <T> TraversableExpression<?> traversableArgument(Supplier<Evaluable<? extends T>> input) {
-				requested.add(input);
-				return argument;
-			}
-		};
+		ArgumentProvider provider = OrderedCollectionInputTests.recordingProvider(argument, requested);
 
 		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(pack(2, 0, -1));
 		TraversalOrdering bound = order.bind(provider);

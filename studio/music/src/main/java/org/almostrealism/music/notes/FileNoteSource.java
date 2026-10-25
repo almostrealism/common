@@ -86,10 +86,10 @@ public class FileNoteSource implements NoteAudioSource {
 	public KeyPosition<?> getRoot() { return root; }
 
 	/**
-	 * Sets the root key position. A stored root is the name of a {@link WesternChromatic}
-	 * key, which is how {@link KeyPosition#of(String)} resolves names.
+	 * Sets the root key position. A stored root is the name of a key, resolved by
+	 * {@link KeyPosition#of(String)}.
 	 */
-	@JsonDeserialize(as = WesternChromatic.class)
+	@JsonDeserialize(using = KeyPositionDeserializer.Named.class)
 	public void setRoot(KeyPosition<?> root) { this.root = root; }
 
 	/**

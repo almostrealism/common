@@ -29,6 +29,7 @@ import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -299,36 +300,38 @@ public class OrderedCollectionInputTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Returns an {@link ArgumentProvider} that supplies the given collection as the kernel
-	 * argument of every traversable input, recording each input it is asked for.
+	 * Returns an {@link ArgumentProvider} whose argument for every input is read through the
+	 * given collection, recording each input it is asked for.
 	 *
-	 * @param argument  the collection to supply as the argument
+	 * @param argument  the collection through which every argument is read, or {@code null}
+	 *                  for arguments that are not traversable
 	 * @param requested the list each requested input is added to
 	 * @return the provider
 	 */
-	protected ArgumentProvider recordingProvider(PackedCollection argument, List<Supplier<?>> requested) {
+	protected static ArgumentProvider recordingProvider(PackedCollection argument, List<Supplier<?>> requested) {
 		return new ArgumentProvider() {
 			@Override
 			public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
 													ArrayVariable<T> delegate, int delegateOffset) {
-				return null;
-			}
-
-			@Override
-			public <T> TraversableExpression<?> traversableArgument(Supplier<Evaluable<? extends T>> input) {
 				requested.add(input);
-				return argument;
+				return new ArrayVariable<T>(null, "arg", new IntegerConstant(1)) {
+					@Override
+					public TraversableExpression<?> getTraversableExpression() {
+						return argument;
+					}
+				};
 			}
 		};
 	}
 
 	/**
 	 * A provider of an ordered collection binds the ordering to the arguments of the scope that
-	 * prepares it, keeps that binding while the same manager prepares it again, rebinds for a
-	 * different manager, and discards the binding when its arguments are reset. A reshape of the
-	 * provider reads through the provider's current binding, while an argument variable created
-	 * for the provider keeps the binding it was created with. A provider of an unordered
-	 * collection binds nothing.
+	 * prepares it each time it is prepared, relying on binding being idempotent: the same manager
+	 * yields an ordering that reads the same argument, and a different manager one that reads its
+	 * own. The binding is discarded when its arguments are reset. A reshape of the provider reads
+	 * through the provider's current binding, while an argument variable created for the provider
+	 * keeps the binding it was created with in its shape. A provider of an unordered collection
+	 * binds nothing.
 	 */
 	@Test(timeout = 10000)
 	public void providerBindsOrderingForItsScope() {
@@ -354,16 +357,22 @@ public class OrderedCollectionInputTests extends TestSuiteBase {
 		assertTrue("the host shape should keep the unbound ordering", input.getShape().getOrder() == original);
 
 		input.prepareScope(first, null);
-		assertTrue("the same manager should keep the binding", input.getOrdering() == bound);
-		assertEquals(1, requested.size());
+		assertEquals(2, requested.size());
+		assertTrue("binding again should request the same collection", requested.get(0).equals(requested.get(1)));
+		TraversalOrdering rebound = input.getOrdering();
+		assertTrue(rebound instanceof ExplicitIndexTraversalOrdering);
+		assertEquals("binding again to the same manager should be equivalent", 1, rebound.indexOf(0));
+		assertEquals(0, rebound.indexOf(3));
+		assertEquals(2, rebound.getLength().getAsInt());
 
 		CollectionVariable variable = new CollectionVariable("v", input, input);
+		assertTrue("the variable's shape should carry the bound ordering", variable.getShape().getOrder() == rebound);
 		input.prepareScope(second, null);
-		assertEquals(2, requested.size());
-		assertFalse("a different manager should rebind", input.getOrdering() == bound);
+		assertEquals(3, requested.size());
 		assertEquals(-1, input.getOrdering().indexOf(0));
 		assertEquals(1, input.getOrdering().indexOf(1));
-		assertTrue("the variable should keep the ordering it was created with", variable.getOrdering() == bound);
+		assertTrue("the variable should keep the ordering it was created with", variable.getShape().getOrder() == rebound);
+		assertTrue(variable.getOrdering() == rebound);
 
 		input.resetArguments();
 		assertTrue(input.getOrdering() == original);
@@ -372,7 +381,7 @@ public class OrderedCollectionInputTests extends TestSuiteBase {
 		CollectionProviderProducer<PackedCollection> plain = new CollectionProviderProducer<>(pack(1.0, 2.0));
 		plain.prepareScope(first, null);
 		assertTrue("an unordered value should have no ordering", plain.getOrdering() == null);
-		assertEquals(2, requested.size());
+		assertEquals(3, requested.size());
 	}
 
 	/**

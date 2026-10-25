@@ -37,7 +37,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
-import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -193,12 +192,6 @@ public class CollectionProviderProducer<T extends Shape>
 	private TraversalOrdering boundOrder;
 
 	/**
-	 * The {@link ArgumentProvider} that {@link #boundOrder} was bound to, held weakly so that
-	 * it does not pin the argument map of a previous compilation in memory.
-	 */
-	private WeakReference<ArgumentProvider> boundProvider;
-
-	/**
 	 * Constructs a provider producer for the specified {@link Shape} value.
 	 *
 	 * <p>This constructor initializes the operation metadata with descriptive
@@ -273,9 +266,10 @@ public class CollectionProviderProducer<T extends Shape>
 	/**
 	 * Binds the ordering of the value's shape to the arguments supplied by the given manager,
 	 * so that any collection the ordering reads in order to map an index is delivered to the
-	 * kernel. A value whose shape has no ordering depends on no other argument. Preparing again
-	 * with the same manager keeps the existing binding, while a different manager (a new
-	 * compilation) rebinds, so that no variable of a previous argument map is reused.
+	 * kernel. A value whose shape has no ordering depends on no other argument. Binding is
+	 * {@link TraversalOrdering#bind(ArgumentProvider) idempotent}, so the ordering is bound
+	 * again each time the scope is prepared: the same manager yields an ordering that reads
+	 * the same argument, and the manager of another compilation yields one that reads its own.
 	 *
 	 * @param manager the provider of the kernel's arguments
 	 * @param context the kernel structure context for the compilation
@@ -283,13 +277,7 @@ public class CollectionProviderProducer<T extends Shape>
 	@Override
 	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		TraversalOrdering order = getShape().getOrder();
-		if (order == null) return;
-
-		ArgumentProvider previous = boundProvider == null ? null : boundProvider.get();
-		if (boundOrder != null && previous == manager) return;
-
-		boundOrder = order.bind(manager);
-		boundProvider = new WeakReference<>(manager);
+		boundOrder = order == null ? null : order.bind(manager);
 	}
 
 	/**
@@ -299,7 +287,6 @@ public class CollectionProviderProducer<T extends Shape>
 	@Override
 	public void resetArguments() {
 		boundOrder = null;
-		boundProvider = null;
 	}
 
 	/**

@@ -115,7 +115,8 @@ public class ExplicitIndexTraversalOrdering extends IndexExpressionTraversalOrde
 	 */
 	@Override
 	public TraversalOrdering bind(ArgumentProvider provider) {
-		TraversableExpression<?> lookup = provider.traversableArgument(new CollectionProviderProducer<>(indices));
+		TraversableExpression<?> lookup = provider.<PackedCollection>argumentForInput()
+				.apply(new CollectionProviderProducer<>(indices)).getTraversableExpression();
 		return lookup == null ? this : new ExplicitIndexTraversalOrdering(indices, lookup);
 	}
 }

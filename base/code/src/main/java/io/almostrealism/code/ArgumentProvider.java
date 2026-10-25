@@ -16,7 +16,6 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
@@ -31,6 +30,13 @@ import java.util.function.Supplier;
  * that represent computation inputs. It handles delegation to output variables from
  * other computations, avoiding unnecessary memory copies when one computation's output
  * feeds directly into another's input.</p>
+ *
+ * <h2>Idempotence</h2>
+ * <p>Obtaining an argument is idempotent: asking a provider for the argument of the same
+ * input any number of times yields the same argument, and so the same kernel parameter.
+ * Participants in scope compilation (see {@link ScopeLifecycle}) rely on this and request
+ * their arguments whenever they are prepared, without remembering which provider they were
+ * last prepared with.</p>
  *
  * @see ArrayVariable
  * @see Computation
@@ -72,21 +78,6 @@ public interface ArgumentProvider {
 				return arg;
 			}
 		};
-	}
-
-	/**
-	 * Returns the {@link TraversableExpression} through which generated code reads the
-	 * argument this provider supplies for the given input, so that a value derived by
-	 * indexing into that input renders as a read of the kernel argument.
-	 *
-	 * @param <T>   the type of value produced by the input
-	 * @param input the input to obtain an argument for
-	 * @return the traversable expression of the argument, or {@code null} if the input is
-	 *         {@code null} or its argument is not traversable
-	 */
-	default <T> TraversableExpression<?> traversableArgument(Supplier<Evaluable<? extends T>> input) {
-		ArrayVariable<T> argument = this.<T>argumentForInput().apply(input);
-		return argument == null ? null : argument.getTraversableExpression();
 	}
 
 	/**

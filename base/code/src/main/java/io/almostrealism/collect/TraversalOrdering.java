@@ -73,6 +73,10 @@ public interface TraversalOrdering extends IndexSet, Signature {
 	 * {@link #indexOf(Expression)} renders as a read of it. The default returns this ordering,
 	 * which is correct for an ordering whose mapping is a closed-form function of the index.</p>
 	 *
+	 * <p>Binding is idempotent: because the provider supplies the same argument for the same
+	 * collection however often it is asked, binding again to the same provider yields an
+	 * ordering that reads the same argument, so a caller may bind whenever it is prepared.</p>
+	 *
 	 * @param provider the provider of the kernel's arguments
 	 * @return the equivalent ordering to use in generated code
 	 */
