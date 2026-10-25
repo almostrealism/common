@@ -59,8 +59,8 @@ reference). In scope:
      back out as a producer.
 
 3. **Poisson drive** on a chosen set of input neurons, using the in-kernel
-   counter-based random generator (`rand` with `AR_RANDOM=counter` →
-   `CounterRandom`): a neuron in the input set spikes this step when its uniform
+   counter-based random generator `CounterRandom` (see "Poisson drive" under
+   Approach for how it is obtained — `rand` alone does not guarantee it): a neuron in the input set spikes this step when its uniform
    draw is below `rate · dt`. The draw is a pure function of `(seed, counter,
    index)`, so it is reproducible and, for the uniform, bit-identical across
    backends — which is what lets the parity test use deterministic drive.
@@ -95,7 +95,7 @@ into here):
 
 The CONNECTOME placement table assigns "Spiking and rate neuron population
 dynamics" to `domain/graph` ("Neural computation graphs; no format knowledge"),
-and the module's own `CLAUDE.md` lists "Neural network layers using the
+and the domain layer's `domain/CLAUDE.md` lists "Neural network layers using the
 Cell/Receptor/Transmitter pattern" as belonging there while routing core math
 types to `compute/` and training/inference to `engine/`. The LIF step is neural
 computation-graph structure carrying no data-format knowledge, so `domain/graph`
@@ -174,8 +174,22 @@ slot-update computation is needed** — the capability exists.
 
 ### Poisson drive
 
-The input-neuron drive uses the landed counter-based generator. A uniform draw
-`u = rand(shape(n))` (counter-based) compared `lessThan(u, rate·dt)` gives a 1/0
+The input-neuron drive uses the landed counter-based generator. Note that
+`rand(shape)` returns whatever `RandomProducer.IMPLEMENTATION` selects, and that
+static field reads the `AR_RANDOM` setting once per JVM and defaults to `java` —
+the host-side `Random`, which is neither in-kernel nor cross-backend exact. The
+test runner and CI do not set `AR_RANDOM=counter`, so relying on `rand(...)` would
+silently give the host generator in every test. The step should therefore obtain
+the counter generator explicitly — `new CounterRandom(shape(n), false, seed)`
+(public constructor; `CounterRandomTests` likewise constructs the generator
+directly, through the overload that takes seed and counter collections) — or the tests must pin the setting; which of the two is an
+open question (7) because the `RandomProducer` javadoc frames the implementation
+as an application-wide choice. `refresh()` on the generator advances its counter
+with a device-side assignment, once per step.
+
+A uniform draw `u` of shape `[n]` compared `lessThan(u, rate·dt)` (the
+four-argument `ComparisonFeatures.lessThan(a, b, trueValue, falseValue)`, or the
+two-argument 1/0 form) gives a 1/0
 spike mask on the input set; combine it with the threshold spikes (e.g. the input
 set is forced to the Poisson outcome, or the drive adds current — matched to how
 Shiu et al. inject the stimulus, confirmed against the reference). Because the
@@ -187,9 +201,9 @@ Brian2 comparison under "deterministic drive" well defined.
 
 | Concern | File / symbol |
 |---|---|
-| Spike threshold / reset selection | `ComparisonFeatures.greaterThan(a, b, trueValue, falseValue)` (`compute/algebra`), `Conditional` |
+| Spike threshold / reset selection | `ComparisonFeatures.greaterThan(a, b, trueValue, falseValue)` / `lessThan` (`compute/algebra`); `Conditional` (`base/code`, the expression it generates) |
 | Element-wise decay / leak / current | `CollectionProducer` `multiply`/`add`/`subtract`/`divide`, `exp`, `bound`, `rectify` |
-| Counter-based random (Poisson) | `compute/algebra/.../collect/computations/CounterRandom.java`; `rand`/`randn` in `CollectionCreationFeatures`; `AR_RANDOM=counter` |
+| Counter-based random (Poisson) | `compute/algebra/.../collect/computations/CounterRandom.java`; `RandomProducer` (`IMPLEMENTATION`, `refresh`); `rand`/`randn` in `CollectionCreationFeatures` (counter-based only under `AR_RANDOM=counter`) |
 | Ring-buffer slot write | `compute/algebra/.../collect/computations/CollectionSlotUpdateComputation.java`; `LayerFeatures.cacheWrite` / `cacheRead` |
 | Device-side state assignment / advancing an index | `LayerFeatures.into(...)`; `AutoregressiveModel` (`position`, `advancePosition`, `reset`) |
 | Persistent recurrent state owner precedent | `engine/ml/.../ml/AutoregressiveModel.java`, `engine/ml/.../ml/midi/GRUDecoder.java` |
@@ -241,8 +255,9 @@ utilities), following the existing test conventions.
 
 - **Counter-based random (18c76a7a) — landed.** `CounterRandom`, `RandomProducer`,
   and `CounterRandomTests` are present; `rand`/`randn` select the in-kernel
-  generator via `AR_RANDOM=counter`. The Poisson drive consumes it directly. No
-  further RNG work is needed here.
+  generator only when `AR_RANDOM=counter` is set (the default is `java`), so the
+  Poisson drive constructs `CounterRandom` directly or pins the setting — see
+  open question 7. No further RNG work is needed here.
 - **Brian2 reference output.** Success criterion 3 needs a reference spike raster
   from a Brian2 run of the Shiu et al. model on the small hand-wired network, for a
   fixed stimulus and seed. The project owner provides this if agents cannot run
@@ -285,6 +300,17 @@ utilities), following the existing test conventions.
    test (success criterion 5) must then assert the spike lands exactly `delaySteps`
    later, not `delaySteps ± 1`. Decide the mechanism before the delay test is
    written.
+7. **How the step obtains the counter-based generator.** `RandomProducer`'s
+   javadoc presents the implementation as one application-wide choice made through
+   `AR_RANDOM`, read once into the static `RandomProducer.IMPLEMENTATION` (default
+   `java`). The determinism and cross-backend-exactness claims in this plan (Poisson
+   drive, criterion 3, Machine requirement) hold only for `CounterRandom`. Options:
+   (a) the population constructs `CounterRandom` directly with an explicit seed,
+   which guarantees reproducibility but overrides the application's choice; or
+   (b) it uses `rand(...)` and the tests that need determinism pin
+   `AR_RANDOM=counter` at JVM start, which the test runner and CI do not do today
+   and which cannot be changed per test once `IMPLEMENTATION` has been read. The
+   plan recommends (a); the approver decides.
 
 **Follow-ups filed:** none. All adjacent work (sparse product, ingest, loop owner,
 parity runs, benchmark) is already filed as separate Phase 1 tasks in the tracker.
@@ -293,7 +319,8 @@ parity runs, benchmark) is already filed as separate Phase 1 tasks in the tracke
 
 **None.** All success criteria — the single-neuron analytic rate, the refractory
 and delay tests, and the deterministic small-network Brian2 parity — run on the
-native backend; the Poisson uniform is reproducible and cross-backend-exact, so no
+native backend; the Poisson uniform, drawn from `CounterRandom` (open question 7),
+is reproducible and cross-backend-exact, so no
 Metal-only behaviour is exercised. The implementation workstream therefore needs no
 `requiredLabels` pin and no `*-workstream.yaml` file is written for this branch.
 (Cross-backend spike parity and throughput on every backend belong to the separate
