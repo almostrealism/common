@@ -461,4 +461,23 @@ public class CollectionDataReferenceTest {
 			c.destroy();
 		}
 	}
+
+	/**
+	 * Encoding at a precision that has no collection data payload is rejected rather than silently
+	 * stored at another width. Only {@code FP32} and {@code FP64} name a floating-point payload, so
+	 * {@code FP16} is refused: without the guard it would fall through to the {@code FP32} payload
+	 * and store the values at the wrong width.
+	 */
+	@Test(timeout = 30000)
+	public void encodingAtAPrecisionWithoutAPayloadThrows() {
+		PackedCollection c = PackedCollection.of(1.0, 2.0, 3.0);
+		try {
+			CollectionEncoder.encode(c, Precision.FP16);
+			Assert.fail("A precision with no collection data payload should be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("no collection data payload"));
+		} finally {
+			c.destroy();
+		}
+	}
 }
