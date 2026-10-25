@@ -19,6 +19,7 @@ package org.almostrealism.time.test;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.SimulationRunner;
@@ -460,6 +461,24 @@ public class SimulationRunnerTest extends TestSuiteBase {
 
 		runner.destroy();
 		assertEquals(2, releases.get());
+	}
+
+	/**
+	 * A boundary input is compiled with the runner's profile, as the step, setup and recordings
+	 * are, and still folds its value into the state before each due step.
+	 */
+	@Test(timeout = 120000)
+	public void inputUsesProfile() {
+		CountedSystem system = new CountedSystem();
+		OperationProfileNode profile = new OperationProfileNode("simulationRunnerInputProfile");
+		SimulationRunner runner = new SimulationRunner(system, DT, new PackedCollection(1), profile);
+		int before = profile.getChildren().size();
+		runner.addInput(4, a(cp(system.x), c(10.0)));
+		assertEquals(before + 1, profile.getChildren().size());
+
+		runner.run(6);
+		assertEquals(12, system.x.toDouble(0), 0.0);
+		runner.destroy();
 	}
 
 	/**

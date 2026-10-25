@@ -292,15 +292,17 @@ public class SimulationRunner extends TemporalRunner {
 	/**
 	 * Adds a compiled operation that runs before every {@code interval}-th step (before steps
 	 * {@code 0, interval, 2 * interval, ...}). It is typically an assignment that folds an
-	 * external collection into the system's state. The operation is compiled now and released
-	 * by {@link #destroy()}.
+	 * external collection into the system's state. The operation is compiled now, with the
+	 * runner's profile, and released by {@link #destroy()}.
 	 *
 	 * @param interval  the number of steps between dispatches; must be positive
 	 * @param operation the operation to dispatch
 	 * @throws IllegalArgumentException if {@code interval} is not positive
 	 */
 	public void addInput(int interval, Supplier<Runnable> operation) {
-		Runnable compiled = operation.get();
+		OperationList op = new OperationList("Simulation Input", false);
+		op.add(operation);
+		Runnable compiled = op.get(getProfile());
 
 		try {
 			inputs.add(new Scheduled<>(interval, compiled));
