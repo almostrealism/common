@@ -1975,7 +1975,7 @@ jobs:
       # the cap queue and run as slots free up.
       max-parallel: 4
       matrix:
-        group: [0, 1, 2]
+        group: [0, 1]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2045,7 +2045,7 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3 \
+           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-utils-test.log"
 
       - name: Upload Surefire Reports
@@ -2069,7 +2069,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3 \
+           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-ml-test.log"
 
       - name: Upload ML Surefire Reports
@@ -2510,7 +2510,7 @@ jobs:
     #
     # It also gates on the first stage of the CPU lane (test) with
     # success-or-skipped. This is admission control for a small fleet, not GPU serialisation:
-    # the CL lane is nine matrix jobs on one host, and it is "Linux plus an accelerator":
+    # the CL lane is eight matrix jobs on one host, and it is "Linux plus an accelerator":
     # a branch that cannot pass the Linux CPU suite will not pass its OpenCL duplicate
     # either. test-cl covers the same modules as test, so test is the stage that gates it;
     # the second CL stage (test-media-cl) gates on test-media, its CPU counterpart. It does
@@ -2549,14 +2549,14 @@ jobs:
       cancel-in-progress: true
     strategy:
       fail-fast: false
-      # Cap concurrency at 3 so the four groups do not monopolize the self-hosted
+      # Cap concurrency at 3 so the groups do not monopolize the self-hosted
       # runners when several pipelines run at once; remaining groups queue behind.
       max-parallel: 3
       matrix:
         # The CL backend reaches its memory ceiling under large per-group test loads
         # (AR_HARDWARE_MEMORY_SCALE is already at 7, the highest scale used anywhere),
-        # so the tests are spread across four JVMs to keep each group's load small.
-        group: [0, 1, 2, 3]
+        # so the tests are spread across three JVMs to keep each group's load small.
+        group: [0, 1, 2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2618,7 +2618,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=3
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -2629,7 +2629,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=3
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -2665,30 +2665,27 @@ jobs:
           if-no-files-found: ignore
 
   test-cuda:
-    needs: [changes, build, test, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CUDA lane, first stage: the CUDA duplicate of test-cl, with AR_HARDWARE_DRIVER=native,cuda
-    # so GPU-eligible work routes through the CUDA backend. Every step mirrors test-cl except
-    # the group count (three here, four there); see there for the FP32 precision, memory scale and
-    # direct-memory settings, which carry over unchanged (CudaDataContext is FP32, so the
-    # native context must match it).
+    # so GPU-eligible work routes through the CUDA backend. Every step mirrors test-cl; see
+    # there for the FP32 precision, memory scale and direct-memory settings, which carry over
+    # unchanged (CudaDataContext is FP32, so the native context must match it).
     #
-    # Runs on the NVIDIA fleet (tools/ci/cuda) and runs in parallel with the CL lane: the
-    # two lanes use different machines. It is admitted exactly as test-cl is: once the
-    # Linux test stage is success-or-skipped, so test-cl and test-cuda start together. A
-    # branch that cannot pass the Linux CPU suite will not pass its CUDA duplicate either.
-    # It does NOT wait for test-media or for the macOS GPU lane; test-media-cuda still
-    # gates on both (see there).
+    # Runs on the NVIDIA fleet (tools/ci/cuda), in parallel with the other lanes: they all
+    # use different machines. Unlike test-cl it does NOT wait for the Linux test stage: it
+    # is admitted exactly as test-mac is, on build and the validation checks alone, so
+    # test-cuda and test-mac start together. It does not wait for test-media or the macOS
+    # GPU lane either; test-media-cuda still gates on the CPU and macOS lanes directly (see
+    # there), so a branch that fails the CPU suite still never reaches the second CUDA stage.
     #
     # Required, like every other test lane: it is in analysis.needs, all-checks and
     # auto-resolve, which tools/tests/test_auto_resolve_test_job_coverage.py checks.
     if: >-
-      !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
       (needs.changes.outputs.engine_changed == 'true' ||
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
@@ -2845,15 +2842,15 @@ jobs:
       AR_RINGS_LIBRARY: /Users/Shared/Music/Samples
       AR_RINGS_PATTERNS: /Users/Shared/Music/pattern-factory.json
     strategy:
-      # Run the media set in three groups, up to two at a time (max-parallel 2): each group runs
-      # a third of every module's tests via AR_TEST_GROUPS=3, on its own runner. Gating the
+      # Run the media set in two groups, both at once (max-parallel 2): each group runs
+      # half of every module's tests via AR_TEST_GROUPS=2, on its own runner. Gating the
       # whole job behind test-mac keeps other GPU-heavy Metal stages off the fleet while this
       # runs; allowing two groups to run concurrently trades some GPU contention for wall-clock
       # time. This job uses the Metal provider (driver *), so no direct-memory ceiling is needed.
       fail-fast: false
       max-parallel: 2
       matrix:
-        group: [0, 1, 2]
+        group: [0, 1]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2931,7 +2928,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=2
 
       - name: Run Music Tests
         run: |
@@ -2940,7 +2937,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=2
 
       - name: Run Compose Tests
         run: |
@@ -2950,7 +2947,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=2
 
       - name: Run Spatial Tests
         run: |
@@ -2960,7 +2957,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=2
 
       # See the identical step in test-media for why these two modules share one invocation.
       - name: Run Extern and Experiments Tests
@@ -2971,7 +2968,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=2
 
       # Metal (mac) media surefire reports so auto-resolve can parse Metal-specific test
       # failures a Linux run would not surface.
@@ -4267,8 +4264,9 @@ jobs:
             fi
           fi
 
-          # The CL and CUDA lanes run only once the CPU lane has cleared, and test-media-cuda
-          # also waits for the Metal lane (admission control — see test-cl and test-cuda), so
+          # The CL lane and test-media-cuda run only once the CPU lane has cleared, and
+          # test-media-cuda also waits for the Metal lane (admission control — see test-cl and
+          # test-media-cuda), so
           # an accelerator stage skipped or cancelled after one of its upstream lanes failed
           # or was cancelled is expected. Any other skip of a stage whose layer gate was met
           # is unexplained.
@@ -4311,10 +4309,9 @@ jobs:
             fi
           fi
           if [ "$CUDA_RESULT" = "cancelled" ] || [ "$CUDA_RESULT" = "skipped" ]; then
-            # test-cuda, like test-cl, is admitted on the CPU lane alone.
-            if [ "$CPU_LANE_FAILED" = "true" ]; then
-              echo "::notice::test-cuda job was ${CUDA_RESULT} because an earlier lane failed — not treating as incomplete"
-            elif [ "$VALIDATION_FAILED" = "true" ]; then
+            # test-cuda, like test-mac, waits for no other lane, so an upstream lane's
+            # failure does not explain its skip.
+            if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-cuda job was ${CUDA_RESULT} because an upstream validation check failed — not treating as incomplete"
             elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
               echo "::notice::test-cuda job was ${CUDA_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
