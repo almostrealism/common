@@ -117,9 +117,16 @@ Concrete, in `engine/ml`:
 3. **Unify the `of(...)` sampling path with the `SlidingWindow` path.** Route the raw logits
    through `sampleToken` once with the configured temperature and configured top-p, eliminating
    the double-softmax / hardcoded-`1.0`-temperature discrepancy identified above. The greedy
-   branch (`temperature == 0`) is unchanged. Once `of(...)` stops tempering and softmaxing on the
-   device, its `rescale` and `softmax` evaluables (and their entries in the anonymous subclass's
-   `destroy()`) have no remaining use and should be removed rather than left as dead code.
+   branch (`temperature == 0`) is unchanged: `of(...)` keeps its device-side `indexOfMax` for the
+   greedy case and routes only the `temperature > 0` branch through `sampleToken`. The two
+   generators therefore still reach the argmax by **different code** at `temperature == 0` —
+   `of(...)` via `indexOfMax` on the device, `SlidingWindow` via `sampleToken`'s host-side
+   `argmax` (which `sampleToken` returns when `temperature <= 0`). These agree for a distinct
+   maximum but are not the same code path, so "unify" here means the `temperature > 0` sampling
+   path, not greedy; the cross-generator agreement test (step 4) is scoped accordingly. Once
+   `of(...)` stops tempering and softmaxing on the device, its `rescale` and `softmax` evaluables
+   (and their entries in the anonymous subclass's `destroy()`) have no remaining use and should be
+   removed rather than left as dead code.
    `of(...)` is not used only by the self-hosted LM: `Qwen3` and `Llama2` build their generators
    with it, so this step changes their sampling at `temperature > 0` too (see Open questions).
 
@@ -131,7 +138,11 @@ Concrete, in `engine/ml`:
      draws, that tightening `p` shrinks the reachable support monotonically, and that `topP == 1.0`
      reproduces the unfiltered tempered distribution.
    - A test that the two generators now sample **identically** from the same logits given the same
-     temperature, top-p and seed (closing the discrepancy, and guarding against its return).
+     `temperature > 0`, top-p and seed (closing the discrepancy, and guarding against its return).
+     This exercises the sampling branch both generators now share. The greedy branch is not
+     unified (see Scope step 3): `ArgmaxConsistencyTest` already pins `sampleToken`'s greedy
+     `argmax` (`SlidingWindow`'s greedy path), but nothing pins `of(...)`'s device `indexOfMax`
+     agreeing with it, so cross-generator greedy equality is not asserted here.
      This is not reachable with today's API: `of(...)` creates its own unseeded `new Random()`
      inside the factory, and neither the factory nor `AutoregressiveModel` lets a caller supply
      one, whereas `SlidingWindowAutoregressiveModel` takes its `Random` as a constructor argument.
@@ -222,10 +233,12 @@ any change to `CausalLanguageModelTest`'s existing acceptance assertions.
 
 - `getTopP()` / `setTopP(double)` exist on `AutoregressiveModel`, default to `1.0`, and
   `setTopP` rejects values outside `(0, 1]`.
-- `SlidingWindowAutoregressiveModel` and `AutoregressiveModel.of(...)` both pass the configured
-  top-p and the configured temperature into `sampleToken`, and sample **identically** from the
-  same logits under the same `(temperature, topP, seed)` — proven by a test (which requires a
-  way to seed `of(...)`; see Open question 6).
+- At `temperature > 0`, `SlidingWindowAutoregressiveModel` and `AutoregressiveModel.of(...)` both
+  route the logits through `sampleToken` with the configured top-p and the configured temperature,
+  and sample **identically** from the same logits under the same `(temperature, topP, seed)` —
+  proven by a test (which requires a way to seed `of(...)`; see Open question 6). The greedy case
+  (`temperature == 0`) is out of this criterion: `of(...)` keeps `indexOfMax` and `SlidingWindow`
+  uses `sampleToken`'s `argmax`, which agree for a distinct maximum but are not the same call.
 - The `of(...)` double-softmax / hardcoded-temperature discrepancy is gone and cannot return
   without failing a test, and the `rescale`/`softmax` evaluables it leaves unused are removed
   from `of(...)` and its `destroy()`.
@@ -289,6 +302,17 @@ proposes.
    also makes `Qwen3`/`Llama2` sampling reproducible, which they cannot be today. The approver
    should decide whether that API change is part of this task. If it is not, the agreement test
    has to be dropped or weakened to a distribution-level comparison.
+7. **Greedy is not unified, only sampling is.** The plan deliberately leaves `of(...)`'s greedy
+   branch on its device-side `indexOfMax` and routes only `temperature > 0` through `sampleToken`,
+   so the two generators share a code path for sampling but not for greedy — at `temperature == 0`
+   they reach the argmax by different implementations (`indexOfMax` on the device vs.
+   `sampleToken`'s host `argmax`). They agree for a distinct maximum, and `ArgmaxConsistencyTest`
+   pins the host side, but nothing pins the device `indexOfMax` against it, so cross-generator
+   greedy equality is unverified. The alternative — also routing `of(...)`'s greedy through
+   `sampleToken` and dropping `indexOfMax` — would make the unification total and let the agreement
+   test cover `temperature == 0` too, at the cost of moving that argmax from the device to the host
+   (a `vocabSize`-element `toArray` per greedy step). The approver should decide whether full greedy
+   unification is in scope or a deliberate non-goal.
 
 ## Machine
 
