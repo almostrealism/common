@@ -1961,21 +1961,12 @@ jobs:
     permissions:
       contents: read
       actions: read
-    # Direct ByteBuffers are GC-reclaimed, so a group can spike past the 4 GiB default before reclamation catches up.
+    # Direct ByteBuffers are GC-reclaimed, so the suite can spike past the 4 GiB default before reclamation catches up.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
-    strategy:
-      # Let every group in the matrix run to completion even when a peer fails.
-      # A failure in one group must not cancel the others: a simpler group often
-      # reproduces the same problem, and cancelling hides that cheaper signal.
-      # Cross-OS gating (don't run mac when linux fails) is handled by test-mac's
-      # needs/if, not by fail-fast.
-      fail-fast: false
-      # Cap concurrent groups so they don't overrun runner capacity; any beyond
-      # the cap queue and run as slots free up.
-      max-parallel: 4
-      matrix:
-        group: [0, 1]
+    # No matrix: the native CPU suite runs as a single job rather than sharding
+    # engine/utils and engine/ml across groups. Driven by native RAM (not the
+    # GPU memory ceiling the accelerator lanes split around), it fits one JVM.
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2015,7 +2006,6 @@ jobs:
           cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Hardware Tests
-        if: matrix.group == 0
         run: |
           set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
@@ -2026,7 +2016,7 @@ jobs:
            2>&1 | tee "${{ runner.temp }}/mvn-hardware-test.log"
 
       - name: Upload Hardware Surefire Reports
-        if: always() && matrix.group == 0
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
@@ -2036,7 +2026,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Run Utils Tests (Group ${{ matrix.group }})
+      - name: Run Utils Tests
         run: |
           set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
@@ -2044,8 +2034,6 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-utils-test.log"
 
       - name: Upload Surefire Reports
@@ -2053,13 +2041,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: surefire-utils-group-${{ matrix.group }}
+          name: surefire-utils
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Run ML Tests (Group ${{ matrix.group }})
+      - name: Run ML Tests
         run: |
           set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
@@ -2068,8 +2056,6 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-ml-test.log"
 
       - name: Upload ML Surefire Reports
@@ -2077,14 +2063,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: surefire-ml-group-${{ matrix.group }}
+          name: surefire-ml
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: ignore
 
       - name: Run Render Tests
-        if: matrix.group == 0
         run: |
           set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
@@ -2095,10 +2080,9 @@ jobs:
            2>&1 | tee "${{ runner.temp }}/mvn-render-test.log"
 
       # base/io and engine/utils-http hold one test class each and had no CI job at all.
-      # Grouped into a single Maven invocation on group 0 (as Render is) so covering them
-      # costs one reactor start rather than two per matrix group.
+      # Grouped into a single Maven invocation (as Render is) so covering them costs
+      # one reactor start rather than two.
       - name: Run IO and HTTP Tests
-        if: matrix.group == 0
         run: |
           set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
@@ -2110,7 +2094,7 @@ jobs:
            2>&1 | tee "${{ runner.temp }}/mvn-io-http-test.log"
 
       - name: Upload Render Surefire Reports
-        if: always() && matrix.group == 0
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
@@ -2132,7 +2116,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: crash-reports-group-${{ matrix.group }}
+          name: crash-reports-cpu
           path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
@@ -2148,7 +2132,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
-          name: coverage-group-${{ matrix.group }}
+          name: coverage-cpu
           path: coverage-data/
           retention-days: 1
 
@@ -2185,16 +2169,16 @@ jobs:
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
     strategy:
-      # Split the (growing) media test set across three groups: each group runs a third
-      # of every module's tests (AR_TEST_GROUPS=3 on the steps below). Self-hosted runners
-      # run one job at a time, so each group lands on its own runner with a third of the
+      # Split the media test set across two groups: each group runs half of every
+      # module's tests (AR_TEST_GROUPS=2 on the steps below). Self-hosted runners
+      # run one job at a time, so each group lands on its own runner with half the
       # tests, cutting peak memory per runner and shrinking the retry unit — a flaky
       # failure re-runs only that group, not the whole suite. max-parallel bounds how many
-      # groups run at once on the fleet, so three groups queue in ceil(3/max-parallel) waves.
+      # groups run at once on the fleet, so both groups run together at max-parallel: 2.
       fail-fast: false
       max-parallel: 2
       matrix:
-        group: [0, 1, 2]
+        group: [0, 1]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2243,7 +2227,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3 \
+           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-audio-test.log"
 
       - name: Run Music Tests
@@ -2256,7 +2240,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3 \
+           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-music-test.log"
 
       - name: Run Compose Tests
@@ -2269,7 +2253,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3 \
+           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-compose-test.log"
 
       - name: Run Spatial Tests
@@ -2282,7 +2266,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3 \
+           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-spatial-test.log"
 
       # extern/ml-onnx and studio/experiments had no CI job at all. Both are small, and both
@@ -2300,7 +2284,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3 \
+           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-extern-experiments-test.log"
 
       - name: Upload Surefire Reports
@@ -2491,7 +2475,7 @@ jobs:
           if-no-files-found: ignore
 
   test-cl:
-    needs: [changes, build, test, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # CL lane, first stage: the OpenCL duplicate of test-mac. AR_HARDWARE_DRIVER is native,cl
     # (rather than *) so Metal is excluded and GPU-eligible work routes through CL.
     #
@@ -2505,31 +2489,23 @@ jobs:
     # more than it is worth.
     #
     # Runs on the ROCm fleet (tools/ci/rocm), not the macOS fleet, and is serialised internally
-    # as test-cl -> test-media-cl because the ROCm host has a single GPU. Gates on the
-    # validation checks directly.
+    # as test-cl -> test-media-cl because the ROCm host has a single GPU.
     #
-    # It also gates on the first stage of the CPU lane (test) with
-    # success-or-skipped. This is admission control for a small fleet, not GPU serialisation:
-    # the CL lane is eight matrix jobs on one host, and it is "Linux plus an accelerator":
-    # a branch that cannot pass the Linux CPU suite will not pass its OpenCL duplicate
-    # either. test-cl covers the same modules as test, so test is the stage that gates it;
-    # the second CL stage (test-media-cl) gates on test-media, its CPU counterpart. It does
-    # NOT wait for the rest of the CPU lane: test-cl starts as soon as test is green rather
-    # than waiting for test-media. It does NOT gate on the macOS GPU lane either: test-cl runs
-    # alongside test-mac, and test-media-cl alongside test-media-mac, so the CL lane starts as
-    # soon as the Linux test stage is green instead of waiting for the slower Metal suites.
-    #
-    # A stage skipped by its own layer gate is tolerated; a failure in test skips this stage
-    # and, through it, test-media-cl (fail-chain). `!cancelled()` is
-    # required for that tolerance to take effect — see test-media.
+    # Admission: test-cl is admitted exactly as test-mac and test-cuda are, on build and the
+    # four validation checks alone, so all three accelerator first stages start together
+    # without waiting for the Linux `test` stage. It no longer gates on the CPU lane at all:
+    # the fleets are different machines, so there is no reason to hold the ROCm host until the
+    # Linux CPU suite is green. The cost is that a branch that fails only the Linux CPU suite
+    # still spends the ROCm fleet on test-cl; the second CL stage (test-media-cl) keeps its
+    # direct gate on test and test-media, so a failed CPU suite still never reaches it. It does
+    # NOT gate on the macOS GPU lane either: test-cl runs alongside test-mac, and test-media-cl
+    # alongside test-media-mac.
     if: >-
-      !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
       (needs.changes.outputs.engine_changed == 'true' ||
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
@@ -2990,19 +2966,20 @@ jobs:
     # GPU-eligible work routes through CL.
     #
     # Runs on the ROCm fleet (tools/ci/rocm). Gates on test-cl because the ROCm host has a
-    # single GPU and the two CL stages must not contend for it; test-cl in turn gates on the
-    # Linux test stage (see there). This stage additionally gates on test and test-media
-    # directly, so it runs only once every Linux suite and the OpenCL compute suite are green.
-    # It runs alongside test-media-mac, not after it.
+    # single GPU and the two CL stages must not contend for it. test-cl no longer gates on the
+    # Linux test stage (it is admitted alongside test-mac and test-cuda), so the CPU-lane
+    # admission control for the ROCm fleet lives entirely here: this stage additionally gates
+    # on test and test-media directly, so it runs only once every Linux suite and the OpenCL
+    # compute suite are green. It runs alongside test-media-mac, not after it.
     #
     # It gates on those upstream lanes DIRECTLY, not only on test-cl's result. test-cl is
     # skipped for two different reasons — its own layer gate, or an upstream failure — and
     # its `skipped` result cannot tell them apart. Gating on test-cl alone therefore let this
     # stage run after a Linux suite had failed (test-cl skipped, this job saw 'skipped' and
-    # tolerated it). Listing the upstream lanes here, each success-or-skipped exactly as
-    # test-cl lists them, makes an upstream failure skip this stage too, while a stage
-    # skipped by its own layer gate is still tolerated. `!cancelled()` is required for that
-    # tolerance to take effect — see test-media.
+    # tolerated it). Listing the upstream lanes here, each success-or-skipped, makes an
+    # upstream failure skip this stage too, while a stage skipped by its own layer gate is
+    # still tolerated. `!cancelled()` is required for that tolerance to take effect — see
+    # test-media.
     if: >-
       !cancelled() &&
       needs.build.result == 'success' &&
@@ -4082,7 +4059,7 @@ jobs:
           # Keep artifacts from every required test job (the set `analysis.needs`
           # minus `build` — see tools/tests/test_auto_resolve_test_job_coverage.py,
           # which fails a new test lane until it is added here):
-          #   surefire-utils-group-*, surefire-ml-group-* (test),
+          #   surefire-utils, surefire-ml (test, a single non-matrix job),
           #   surefire-media-[0-9]* (test-media), surefire-flowtree (test-flowtree),
           #   surefire-mac-group-* (test-mac), surefire-media-mac-group-* (test-media-mac),
           #   surefire-cl-group-* (test-cl), surefire-media-cl-group-* (test-media-cl),
@@ -4093,7 +4070,7 @@ jobs:
           for dir in all-surefire-reports/*/; do
             base=$(basename "$dir")
             case "$base" in
-              surefire-utils-group-*|surefire-ml-group-*|surefire-media-[0-9]*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*|surefire-cl-group-*|surefire-media-cl-group-*|surefire-cuda-group-*|surefire-media-cuda-group-*)
+              surefire-utils|surefire-ml|surefire-media-[0-9]*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*|surefire-cl-group-*|surefire-media-cl-group-*|surefire-cuda-group-*|surefire-media-cuda-group-*)
                 echo "::notice::Keeping surefire artifact: $base"
                 ;;
               *)
@@ -4264,11 +4241,12 @@ jobs:
             fi
           fi
 
-          # The CL lane and test-media-cuda run only once the CPU lane has cleared, and
-          # test-media-cuda also waits for the Metal lane (admission control — see test-cl and
-          # test-media-cuda), so an accelerator stage skipped or cancelled after one of its
-          # upstream lanes failed or was cancelled is expected. Any other skip of a stage whose
-          # layer gate was met is unexplained.
+          # The second-stage accelerator jobs run only once the CPU lane has cleared:
+          # test-media-cl gates on test and test-media, and test-media-cuda also waits for the
+          # Metal lane (admission control — see test-media-cl and test-media-cuda), so such a
+          # stage skipped or cancelled after one of its upstream lanes failed or was cancelled
+          # is expected. The first stages (test-cl, test-cuda) wait for no other lane. Any other
+          # skip of a stage whose layer gate was met is unexplained.
           CPU_LANE_FAILED="false"
           for result in "$TEST_RESULT" "$MEDIA_RESULT"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
@@ -4282,9 +4260,9 @@ jobs:
             fi
           done
           if [ "$CL_RESULT" = "cancelled" ] || [ "$CL_RESULT" = "skipped" ]; then
-            if [ "$CPU_LANE_FAILED" = "true" ]; then
-              echo "::notice::test-cl job was ${CL_RESULT} because an earlier lane failed — not treating as incomplete"
-            elif [ "$VALIDATION_FAILED" = "true" ]; then
+            # test-cl, like test-mac and test-cuda, waits for no other lane, so an upstream
+            # lane's failure does not explain its skip.
+            if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-cl job was ${CL_RESULT} because an upstream validation check failed — not treating as incomplete"
             elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
               echo "::notice::test-cl job was ${CL_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
