@@ -58,11 +58,13 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_LOGGING").orElse(false);
 
 	/**
-	 * Whether released buffers are kept for reuse rather than freed. Off by default; enabled with
-	 * {@code AR_HARDWARE_ALLOCATION_CACHE}. Reuse avoids the cost of allocating and freeing native
-	 * memory repeatedly (freeing synchronizes the device), which a workload such as a training loop
-	 * pays on every step, at the cost of holding memory against the reservation. When disabled, each
-	 * released buffer is freed at once and every allocation is made fresh.
+	 * Whether released buffers of any size up to {@link #maxCachedAllocation} are kept for reuse
+	 * rather than freed. Off by default; enabled with {@code AR_HARDWARE_ALLOCATION_CACHE}. Reuse
+	 * avoids the cost of allocating and freeing native memory repeatedly (freeing synchronizes the
+	 * device), which a workload such as a training loop pays on every step, at the cost of holding
+	 * memory against the reservation. When disabled, only small buffers (no larger than
+	 * {@link #maxSmallCachedAllocation}) are kept, within {@link #smallCacheCapacity}; every larger
+	 * released buffer is freed at once and every larger allocation is made fresh.
 	 */
 	public static boolean enableAllocationCache =
 			SystemUtils.isEnabled("AR_HARDWARE_ALLOCATION_CACHE").orElse(false);
@@ -72,6 +74,20 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 
 	/** The largest released buffer, in bytes, kept for reuse rather than freed. */
 	public static long maxCachedAllocation = 16L * 1024 * 1024;
+
+	/**
+	 * The largest released buffer, in bytes, kept for reuse when {@link #enableAllocationCache} is
+	 * off. Small buffers are what a workload of many short dispatches (one result per evaluation)
+	 * allocates and drops on every call, and for them the native allocation and the synchronizing
+	 * free cost far more than the kernel itself, while holding them idle costs almost nothing.
+	 */
+	public static long maxSmallCachedAllocation = 64L * 1024;
+
+	/**
+	 * The most bytes held in small released buffers when {@link #enableAllocationCache} is off, as
+	 * a fraction (one part in this many) of the provider's maximum reservation.
+	 */
+	public static int smallCacheCapacity = 256;
 
 	/** Sizes of allocations made by all CUDA memory providers. */
 	public static DistributionMetric allocationSizes = Hardware.console.distribution("cudaAllocationSizes", 1024 * 1024);
@@ -118,8 +134,8 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	 * (freeing synchronizes the device), and a workload such as a training loop allocates the
 	 * same sizes over and over. Held buffers count toward the reservation, and are freed when an
 	 * allocation would otherwise exceed it. Reuse is governed by {@link #enableAllocationCache};
-	 * when it is off the cache is given a capacity of zero, so it holds nothing and the provider
-	 * allocates and frees every buffer directly.
+	 * when it is off the cache holds only small buffers, so the provider allocates and frees every
+	 * larger buffer directly.
 	 */
 	private final AllocationCache<CUDeviceBuffer> cache;
 
@@ -136,8 +152,10 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 		this.numberSize = numberSize;
 		this.memoryMax = memoryMax;
 		this.managed = managed;
-		this.cache = new AllocationCache<>(
-				enableAllocationCache ? memoryMax / 8 : 0, maxCachedAllocation);
+		// TODO(review): default-on small-buffer reuse reverses the off-by-default cache decision and is unverified on CUDA hardware
+		this.cache = enableAllocationCache ?
+				new AllocationCache<>(memoryMax / 8, maxCachedAllocation) :
+				new AllocationCache<>(memoryMax / smallCacheCapacity, maxSmallCachedAllocation);
 	}
 
 	@Override
