@@ -16,12 +16,12 @@
 
 package org.almostrealism.persist.assets.test;
 
+import io.almostrealism.code.NumberSystem;
 import io.almostrealism.code.Precision;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persist.assets.CollectionDataReference;
 import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.persist.assets.EncodedMessage;
-import org.almostrealism.persist.assets.ValueEncoding;
 import org.almostrealism.protobuf.Collections;
 import org.junit.Assert;
 import org.junit.Test;
@@ -90,16 +90,16 @@ public class CollectionDataReferenceTest {
 	 */
 	private double[] read(CollectionDataReference reference, byte[] encoded, long base) {
 		ByteBuffer buffer = ByteBuffer.wrap(encoded).order(ByteOrder.LITTLE_ENDIAN);
-		ValueEncoding encoding = reference.getEncoding();
+		NumberSystem encoding = reference.getEncoding();
 		double[] out = new double[reference.getCount()];
 
 		for (int i = 0; i < out.length; i++) {
-			int at = (int) (reference.getValueOffset() - base) + i * encoding.getBytes();
-			if (encoding == ValueEncoding.F64) {
+			int at = (int) (reference.getValueOffset() - base) + i * encoding.bytes();
+			if (encoding == NumberSystem.F64) {
 				out[i] = buffer.getDouble(at);
-			} else if (encoding == ValueEncoding.F32) {
+			} else if (encoding == NumberSystem.F32) {
 				out[i] = buffer.getFloat(at);
-			} else if (encoding == ValueEncoding.I32) {
+			} else if (encoding == NumberSystem.I32) {
 				out[i] = buffer.getInt(at);
 			} else {
 				out[i] = buffer.getLong(at);
@@ -310,8 +310,8 @@ public class CollectionDataReferenceTest {
 	@Test(timeout = 30000)
 	public void anI32PayloadReadsBackThroughEveryPath() {
 		assertIntegerPayloadReadsBack(
-				CollectionEncoder.encode(PackedCollection.of(-7, 0, 100, 1 << 30, Integer.MIN_VALUE), ValueEncoding.I32),
-				ValueEncoding.I32, new double[] { -7, 0, 100, 1 << 30, Integer.MIN_VALUE });
+				CollectionEncoder.encode(PackedCollection.of(-7, 0, 100, 1 << 30, Integer.MIN_VALUE), NumberSystem.I32),
+				NumberSystem.I32, new double[] { -7, 0, 100, 1 << 30, Integer.MIN_VALUE });
 	}
 
 	/**
@@ -321,8 +321,8 @@ public class CollectionDataReferenceTest {
 	@Test(timeout = 30000)
 	public void anI64PayloadReadsBackThroughEveryPath() {
 		assertIntegerPayloadReadsBack(
-				CollectionEncoder.encode(PackedCollection.of(-(1L << 40), 1L << 35, 1L << 53, -(1L << 53)), ValueEncoding.I64),
-				ValueEncoding.I64, new double[] { -(1L << 40), 1L << 35, 1L << 53, -(1L << 53) });
+				CollectionEncoder.encode(PackedCollection.of(-(1L << 40), 1L << 35, 1L << 53, -(1L << 53)), NumberSystem.I64),
+				NumberSystem.I64, new double[] { -(1L << 40), 1L << 35, 1L << 53, -(1L << 53) });
 	}
 
 	/**
@@ -335,7 +335,7 @@ public class CollectionDataReferenceTest {
 	 * @param values   the whole-number values expected back
 	 */
 	private void assertIntegerPayloadReadsBack(Collections.CollectionData data,
-											   ValueEncoding encoding, double[] values) {
+											   NumberSystem encoding, double[] values) {
 		byte[] bytes = data.toByteArray();
 		CollectionDataReference reference = CollectionDataReference.of(message(bytes, 0));
 		Assert.assertEquals(encoding, reference.getEncoding());
@@ -389,7 +389,7 @@ public class CollectionDataReferenceTest {
 	public void encodingANonIntegralValueAsIntegerThrows() {
 		PackedCollection c = PackedCollection.of(1.0, 2.5, 3.0);
 		try {
-			CollectionEncoder.encode(c, ValueEncoding.I32);
+			CollectionEncoder.encode(c, NumberSystem.I32);
 			Assert.fail("A non-integral value should not be stored as an integer payload");
 		} catch (IllegalArgumentException e) {
 			Assert.assertTrue(e.getMessage(), e.getMessage().contains("index 1"));
@@ -403,7 +403,7 @@ public class CollectionDataReferenceTest {
 	public void encodingAnOutOfRangeValueAsIntegerThrows() {
 		PackedCollection c = PackedCollection.of(1.0, (double) Integer.MAX_VALUE + 1);
 		try {
-			CollectionEncoder.encode(c, ValueEncoding.I32);
+			CollectionEncoder.encode(c, NumberSystem.I32);
 			Assert.fail("A value out of range for I32 should be rejected");
 		} catch (IllegalArgumentException e) {
 			Assert.assertTrue(e.getMessage(), e.getMessage().contains("outside the range"));
@@ -415,9 +415,9 @@ public class CollectionDataReferenceTest {
 	/** An integer payload reports FP64 as its precision, since FP32 cannot hold every integer value exactly. */
 	@Test(timeout = 30000)
 	public void anIntegerPayloadNeedsDoublePrecision() {
-		byte[] bytes = CollectionEncoder.encode(PackedCollection.of(1, 2, 3), ValueEncoding.I32).toByteArray();
+		byte[] bytes = CollectionEncoder.encode(PackedCollection.of(1, 2, 3), NumberSystem.I32).toByteArray();
 		CollectionDataReference reference = CollectionDataReference.of(message(bytes, 0));
-		Assert.assertEquals(ValueEncoding.I32, reference.getEncoding());
+		Assert.assertEquals(NumberSystem.I32, reference.getEncoding());
 		Assert.assertEquals(Precision.FP64, reference.getPrecision());
 	}
 
@@ -428,12 +428,12 @@ public class CollectionDataReferenceTest {
 	 */
 	@Test(timeout = 30000)
 	public void everyEncodingReportsTheNarrowestExactPrecision() {
-		Assert.assertEquals(Precision.FP16, ValueEncoding.F16.getPrecision());
-		Assert.assertEquals(Precision.FP32, ValueEncoding.BF16.getPrecision());
-		Assert.assertEquals(Precision.FP32, ValueEncoding.F32.getPrecision());
-		Assert.assertEquals(Precision.FP64, ValueEncoding.F64.getPrecision());
-		Assert.assertEquals(Precision.FP64, ValueEncoding.I32.getPrecision());
-		Assert.assertEquals(Precision.FP64, ValueEncoding.I64.getPrecision());
+		Assert.assertEquals(Precision.FP16, NumberSystem.F16.storagePrecision());
+		Assert.assertEquals(Precision.FP32, NumberSystem.BF16.storagePrecision());
+		Assert.assertEquals(Precision.FP32, NumberSystem.F32.storagePrecision());
+		Assert.assertEquals(Precision.FP64, NumberSystem.F64.storagePrecision());
+		Assert.assertEquals(Precision.FP64, NumberSystem.I32.storagePrecision());
+		Assert.assertEquals(Precision.FP64, NumberSystem.I64.storagePrecision());
 	}
 
 	/**
@@ -446,11 +446,11 @@ public class CollectionDataReferenceTest {
 		PackedCollection c = PackedCollection.of(Integer.MAX_VALUE);
 		try {
 			if (c.getMem().getProvider().getNumberSize() >= Long.BYTES) {
-				assertIntegerPayloadReadsBack(CollectionEncoder.encode(c, ValueEncoding.I32),
-						ValueEncoding.I32, new double[] { Integer.MAX_VALUE });
+				assertIntegerPayloadReadsBack(CollectionEncoder.encode(c, NumberSystem.I32),
+						NumberSystem.I32, new double[] { Integer.MAX_VALUE });
 			} else {
 				try {
-					CollectionEncoder.encode(c, ValueEncoding.I32);
+					CollectionEncoder.encode(c, NumberSystem.I32);
 					Assert.fail("A value rounded past the I32 range by narrow memory should be rejected");
 				} catch (IllegalArgumentException e) {
 					Assert.assertTrue(e.getMessage(), e.getMessage().contains("outside the range"));

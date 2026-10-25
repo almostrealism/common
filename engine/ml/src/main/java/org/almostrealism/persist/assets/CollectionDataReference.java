@@ -16,6 +16,7 @@
 
 package org.almostrealism.persist.assets;
 
+import io.almostrealism.code.NumberSystem;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -29,8 +30,8 @@ import java.nio.ByteBuffer;
  * <p>A {@link Collections.CollectionData} can be had by parsing one, which
  * puts every value on the Java heap in order to hand them to a device that may
  * never ask for them. This names the same data by where it is instead: the
- * byte range its values occupy, and the {@link ValueEncoding} they are stored
- * at. Nothing is read until something reads it.</p>
+ * byte range its values occupy, and the {@link NumberSystem} they are stored
+ * as. Nothing is read until something reads it.</p>
  *
  * <p>The data need not be the whole of the file. A reference is resolved by
  * descending a path of field numbers, so collection data nested inside a
@@ -66,7 +67,7 @@ public class CollectionDataReference {
 	private final TraversalPolicy shape;
 
 	/** How the values are stored and decoded. */
-	private final ValueEncoding encoding;
+	private final NumberSystem encoding;
 
 	/** Byte position of the first value within the file. */
 	private final long valueOffset;
@@ -82,7 +83,7 @@ public class CollectionDataReference {
 	 * @param valueOffset byte position of the first value within the file
 	 * @param count       number of values
 	 */
-	protected CollectionDataReference(TraversalPolicy shape, ValueEncoding encoding,
+	protected CollectionDataReference(TraversalPolicy shape, NumberSystem encoding,
 									  long valueOffset, int count) {
 		this.shape = shape;
 		this.encoding = encoding;
@@ -94,14 +95,14 @@ public class CollectionDataReference {
 	public TraversalPolicy getShape() { return shape; }
 
 	/** Returns how the values are stored and decoded. */
-	public ValueEncoding getEncoding() { return encoding; }
+	public NumberSystem getEncoding() { return encoding; }
 
 	/**
 	 * Returns the narrowest precision that holds every value exactly.
 	 *
-	 * @see ValueEncoding#getPrecision()
+	 * @see NumberSystem#storagePrecision()
 	 */
-	public Precision getPrecision() { return encoding.getPrecision(); }
+	public Precision getPrecision() { return encoding.storagePrecision(); }
 
 	/** Returns the byte position of the first value within the file. */
 	public long getValueOffset() { return valueOffset; }
@@ -110,13 +111,13 @@ public class CollectionDataReference {
 	public int getCount() { return count; }
 
 	/** Returns how many bytes the values occupy. */
-	public long getValueLength() { return (long) count * encoding.getBytes(); }
+	public long getValueLength() { return (long) count * encoding.bytes(); }
 
 	/**
 	 * Reads one value from a buffer holding the whole file this reference was resolved
 	 * against, decoding it from the form it is stored in.
 	 *
-	 * <p>The {@link ValueEncoding} decodes each value from its little-endian bytes, so a format
+	 * <p>The {@link NumberSystem} decodes each value from its little-endian bytes, so a format
 	 * that stores values in any of the readable forms is served without this needing to know
 	 * which.</p>
 	 *
@@ -125,7 +126,7 @@ public class CollectionDataReference {
 	 * @return the value
 	 */
 	protected double valueAt(ByteBuffer buffer, int index) {
-		return encoding.decode(buffer, (int) (valueOffset + (long) index * encoding.getBytes()));
+		return encoding.decode(buffer, (int) (valueOffset + (long) index * encoding.bytes()));
 	}
 
 	/**
@@ -170,15 +171,15 @@ public class CollectionDataReference {
 				policy.parse(Collections.TraversalPolicyData.parser()));
 		if (shape == null || shape.getTotalSizeLong() == 0) return null;
 
-		ValueEncoding encoding = ValueEncoding.of(data);
-		if (encoding == null) return null;
+		CollectionDataPayload payload = CollectionDataPayload.of(data);
+		if (payload == null) return null;
 
-		long values = data.positionOf(encoding.getField());
+		long values = data.positionOf(payload.getField());
 		if (values < 0) return null;
 
-		int count = encoding.valuesIn("the value payload at byte " + values,
-				data.lengthOf(encoding.getField()));
+		int count = payload.getSystem().valuesIn("the value payload at byte " + values,
+				data.lengthOf(payload.getField()));
 
-		return new CollectionDataReference(shape, encoding, values, count);
+		return new CollectionDataReference(shape, payload.getSystem(), values, count);
 	}
 }

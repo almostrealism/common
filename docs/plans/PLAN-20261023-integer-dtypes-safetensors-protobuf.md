@@ -205,11 +205,14 @@ an FP32 device.
 
 ## Open questions
 
-1. **Promoting the encoding type.** The plan replaces `SafetensorsReference.Encoding` and the
-   `Precision` field of `CollectionDataReference` with one top-level `ValueEncoding`. The smaller
-   alternative is to add `I32`/`I64` to `SafetensorsReference.Encoding` and a separate integer branch
-   in `CollectionDataReference.valueAt`, which duplicates the integer decoding. The plan prefers the
-   promotion; the reviewer may prefer the smaller diff.
+1. **Promoting the encoding type.** *Resolved in review (PR #726).* The first implementation added
+   a standalone `ValueEncoding` enum. The reviewer rejected it as a duplicate of
+   `io.almostrealism.code.Precision` and asked for one consistent representation of number systems.
+   The encoding type was therefore removed in favour of a new `NumberSystem` enum in
+   `io.almostrealism.code` that enumerates every storable/computable format; `Precision` became an
+   interface it implements (the computational half), and a new `BinaryLayout` interface describes the
+   storage half. The only part that stays in the ML module is the protobuf field binding,
+   `CollectionDataPayload`, keyed off `NumberSystem`.
 2. **How a caller asks for an integer payload when saving.** Proposed: entries keep the encoding
    they were loaded with, plus an explicit per-key map for collections built in memory. An
    alternative is a single "save integral collections as integers" flag, which would have to scan

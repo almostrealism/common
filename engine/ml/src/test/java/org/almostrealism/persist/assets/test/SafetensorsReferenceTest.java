@@ -1,12 +1,12 @@
 package org.almostrealism.persist.assets.test;
 
+import io.almostrealism.code.NumberSystem;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.FileMapping;
 import org.almostrealism.io.Bits;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.persist.assets.SafetensorsReference;
-import org.almostrealism.persist.assets.ValueEncoding;
 import org.almostrealism.protobuf.Collections;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -114,9 +114,9 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 		Assert.assertArrayEquals(new String[] { "model.layers.0.weight", "model.layers.0.bias",
 						"model.norm.weight", "model.scale" },
 				tensors.keySet().toArray(new String[0]));
-		Assert.assertEquals(ValueEncoding.BF16,
+		Assert.assertEquals(NumberSystem.BF16,
 				tensors.get("model.layers.0.weight").getEncoding());
-		Assert.assertEquals(ValueEncoding.F16,
+		Assert.assertEquals(NumberSystem.F16,
 				tensors.get("model.layers.0.bias").getEncoding());
 	}
 
@@ -428,7 +428,7 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 		File file = writeFile("{\"d\":{\"dtype\":\"F64\",\"shape\":[2],\"data_offsets\":[0,16]}}", data);
 
 		SafetensorsReference reference = SafetensorsReference.locate(file).get("d");
-		Assert.assertEquals(ValueEncoding.F64, reference.getEncoding());
+		Assert.assertEquals(NumberSystem.F64, reference.getEncoding());
 		Assert.assertEquals(2, reference.getCount());
 
 		Path directory = Files.createTempDirectory("safetensors");
@@ -447,7 +447,7 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 				intBytes(-7, 0, Integer.MIN_VALUE, Integer.MAX_VALUE));
 
 		SafetensorsReference reference = SafetensorsReference.locate(file).get("ids");
-		Assert.assertEquals(ValueEncoding.I32, reference.getEncoding());
+		Assert.assertEquals(NumberSystem.I32, reference.getEncoding());
 
 		PackedCollection mapped = CollectionEncoder.decode(reference, file, false);
 		Assert.assertEquals("PROTOBUF",
@@ -463,11 +463,11 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void readsI64Exactly() throws IOException {
 		File file = writeFile("{\"ids\":{\"dtype\":\"I64\",\"shape\":[4],\"data_offsets\":[0,32]}}",
-				longBytes(-(1L << 40), 1L << 35, ValueEncoding.MAX_EXACT_INTEGER,
-						-ValueEncoding.MAX_EXACT_INTEGER));
+				longBytes(-(1L << 40), 1L << 35, NumberSystem.MAX_EXACT_INTEGER,
+						-NumberSystem.MAX_EXACT_INTEGER));
 
 		SafetensorsReference reference = SafetensorsReference.locate(file).get("ids");
-		Assert.assertEquals(ValueEncoding.I64, reference.getEncoding());
+		Assert.assertEquals(NumberSystem.I64, reference.getEncoding());
 
 		PackedCollection mapped = CollectionEncoder.decode(reference, file, false);
 		Assert.assertArrayEquals(new double[] { -(1L << 40), 1L << 35, 1L << 53, -(1L << 53) },
@@ -480,7 +480,7 @@ public class SafetensorsReferenceTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 60000)
 	public void rejectsI64BeyondExactDouble() throws IOException {
-		long tooLarge = ValueEncoding.MAX_EXACT_INTEGER + 1;
+		long tooLarge = NumberSystem.MAX_EXACT_INTEGER + 1;
 		File file = writeFile("{\"ids\":{\"dtype\":\"I64\",\"shape\":[1],\"data_offsets\":[0,8]}}",
 				longBytes(tooLarge));
 

@@ -50,19 +50,25 @@ directory. The path each tensor takes depends on `StateDictionary.enableMaterial
 The two paths both consume the same protobuf layout; the difference is only when the
 values are read off disk.
 
-A `CollectionData` carries its values in exactly one payload, named by the `ValueEncoding`
-that decodes it: `data` (FP64), `data_32` (FP32), `data_i32` (signed 32-bit integer) or
-`data_i64` (signed 64-bit integer). The integer payloads are fixed-width (`sfixed32`,
-`sfixed64`) so the mapped reader can address a value as `offset + index * width` without
-parsing the field. A collection carrying more than one payload is rejected on read.
+A `CollectionData` carries its values in exactly one payload, bound to the `NumberSystem`
+its values are stored as by the `CollectionDataPayload` that reads and writes it: `data`
+(FP64), `data_32` (FP32), `data_i32` (signed 32-bit integer) or `data_i64` (signed 64-bit
+integer). The integer payloads are fixed-width (`sfixed32`, `sfixed64`) so the mapped reader
+can address a value as `offset + index * width` without parsing the field. A collection
+carrying more than one payload is rejected on read.
+
+The storable and computable number systems are enumerated once by `NumberSystem`
+(`io.almostrealism.code`), which is both a `Precision` (how precise a value is) and a
+`BinaryLayout` (how its bits are laid out and decoded); the protobuf field mapping is the only
+part that lives in the ML module, on `CollectionDataPayload`, keyed off `NumberSystem`.
 
 ### Integer exactness
 
 Integer values are read exactly to the framework's host-side memory: every `int32` is exact
-in a `double`, and an `int64` is exact up to ±2^53 (`ValueEncoding.MAX_EXACT_INTEGER`). An
+in a `double`, and an `int64` is exact up to ±2^53 (`NumberSystem.MAX_EXACT_INTEGER`). An
 `int64` value outside ±2^53 cannot be represented exactly, so it is rejected when read rather
 than silently rounded. Encoding a collection as an integer payload (`CollectionEncoder.encode`
-with `ValueEncoding.I32`/`I64`, or `StateDictionary.encode` with a per-key encoding map) rejects
+with `NumberSystem.I32`/`I64`, or `StateDictionary.encode` with a per-key encoding map) rejects
 any value that is not a whole number in range for the width rather than truncating it.
 
 Once a collection migrates to an **FP32 compute device** (such as Metal), its values are exact

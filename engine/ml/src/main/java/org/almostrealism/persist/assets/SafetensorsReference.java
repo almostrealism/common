@@ -21,6 +21,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
+import io.almostrealism.code.NumberSystem;
 import io.almostrealism.collect.TraversalPolicy;
 
 import java.io.File;
@@ -74,7 +75,7 @@ public class SafetensorsReference extends CollectionDataReference {
 	public static final long MAX_SAFE_HEADER_LENGTH = 100_000_000L;
 
 	/**
-	 * Creates a reference to a located tensor. The tensor's {@link ValueEncoding} decodes each
+	 * Creates a reference to a located tensor. The tensor's {@link NumberSystem} decodes each
 	 * value, so this inherits {@link CollectionDataReference}'s reading of them unchanged.
 	 *
 	 * @param shape       the tensor's shape
@@ -82,7 +83,7 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @param valueOffset byte position of its first value within the file
 	 * @param count       number of values
 	 */
-	protected SafetensorsReference(TraversalPolicy shape, ValueEncoding encoding,
+	protected SafetensorsReference(TraversalPolicy shape, NumberSystem encoding,
 								   long valueOffset, int count) {
 		super(shape, encoding, valueOffset, count);
 	}
@@ -99,7 +100,7 @@ public class SafetensorsReference extends CollectionDataReference {
 	 * @throws IllegalArgumentException if the file is too short to hold a header, the header is
 	 *         longer than {@link #MAX_HEADER_LENGTH} or than the {@link #MAX_SAFE_HEADER_LENGTH}
 	 *         this reader will allocate, the header is malformed, names an element type that is not
-	 *         one of the readable {@link ValueEncoding}s, gives a tensor a byte range that is
+	 *         one of the readable {@link NumberSystem}s, gives a tensor a byte range that is
 	 *         reversed, lies outside the file's tensor data, or does not match its shape, or the
 	 *         tensors' byte ranges do not tile the tensor data exactly (see {@link #requireTiled})
 	 */
@@ -280,13 +281,13 @@ public class SafetensorsReference extends CollectionDataReference {
 	private static SafetensorsReference locateTensor(File file, String name, JsonObject entry,
 													 long dataStart, long dataLength,
 													 List<Range> ranges) {
-		ValueEncoding encoding;
+		NumberSystem encoding;
 		String dtype = require(file, name, "dtype", entry, e -> e.getAsJsonPrimitive().getAsString());
 		try {
-			encoding = ValueEncoding.valueOf(dtype);
+			encoding = NumberSystem.valueOf(dtype);
 		} catch (IllegalArgumentException e) {
 			throw new IllegalArgumentException(name + " in " + file + " is stored as " + dtype
-					+ "; only " + Arrays.stream(ValueEncoding.values()).map(Enum::name)
+					+ "; only " + Arrays.stream(NumberSystem.values()).map(Enum::name)
 							.collect(Collectors.joining(", ")) + " tensors can be read", e);
 		}
 
@@ -326,7 +327,7 @@ public class SafetensorsReference extends CollectionDataReference {
 		}
 
 		TraversalPolicy policy = new TraversalPolicy(shape);
-		long expected = policy.getTotalSizeLong() * encoding.getBytes();
+		long expected = policy.getTotalSizeLong() * encoding.bytes();
 		if (end - begin != expected) {
 			throw new IllegalArgumentException(name + " in " + file + " occupies " + (end - begin)
 					+ " bytes, but " + policy + " values of " + dtype + " occupy " + expected);

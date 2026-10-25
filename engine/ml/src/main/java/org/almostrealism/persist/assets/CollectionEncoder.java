@@ -16,6 +16,7 @@
 
 package org.almostrealism.persist.assets;
 
+import io.almostrealism.code.NumberSystem;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -58,34 +59,36 @@ public class CollectionEncoder {
 	 * @throws IllegalArgumentException if {@code precision} is not FP32 or FP64
 	 */
 	public static Collections.CollectionData encode(PackedCollection c, Precision precision) {
-		if (precision != Precision.FP32 && precision != Precision.FP64) {
-			throw new IllegalArgumentException(precision + " has no collection data payload");
+		if (precision == Precision.FP64) {
+			return encode(c, NumberSystem.F64);
+		} else if (precision == Precision.FP32) {
+			return encode(c, NumberSystem.F32);
 		}
 
-		return encode(c, ValueEncoding.ofPrecision(precision));
+		throw new IllegalArgumentException(precision + " has no collection data payload");
 	}
 
 	/**
-	 * Encodes a {@link PackedCollection} to protobuf format as the given encoding's payload.
+	 * Encodes a {@link PackedCollection} to protobuf format as the given number system's payload.
 	 *
 	 * <p>If {@code c} is {@code null}, the default (empty) instance of
-	 * {@link Collections.CollectionData} is returned. An integer encoding ({@link ValueEncoding#I32}
-	 * or {@link ValueEncoding#I64}) requires every value to be a whole number in range for its
+	 * {@link Collections.CollectionData} is returned. An integer system ({@link NumberSystem#I32}
+	 * or {@link NumberSystem#I64}) requires every value to be a whole number in range for its
 	 * width, failing rather than truncating a value that is not; a value is exact in the collection
-	 * only to the limits the encoding documents (an {@code int64} to &plusmn;2<sup>53</sup>).</p>
+	 * only to the limits the system documents (an {@code int64} to &plusmn;2<sup>53</sup>).</p>
 	 *
 	 * @param c        The collection to encode
-	 * @param encoding The encoding to store the values as; must have a protobuf payload
+	 * @param encoding The number system to store the values as; must have a protobuf payload
 	 * @return A {@link Collections.CollectionData} message, or the default instance if {@code c} is null
 	 * @throws IllegalArgumentException if {@code encoding} has no protobuf payload, or an integer
-	 *         encoding is asked to store a value that is not a whole number in range
+	 *         system is asked to store a value that is not a whole number in range
 	 */
-	public static Collections.CollectionData encode(PackedCollection c, ValueEncoding encoding) {
+	public static Collections.CollectionData encode(PackedCollection c, NumberSystem encoding) {
 		if (c == null) return Collections.CollectionData.getDefaultInstance();
 
 		Collections.CollectionData.Builder data = Collections.CollectionData.newBuilder();
 		data.setTraversalPolicy(encode(c.getShape()));
-		encoding.write(c, data);
+		CollectionDataPayload.of(encoding).write(c, data);
 		return data.build();
 	}
 
