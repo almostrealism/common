@@ -53,7 +53,7 @@ depends on `ar-algebra` and so on `ar-hardware`. `domain/heredity` depends on `a
   `TemporalRunner` lacks, and the state around it: the step counter, recorders, and boundary inputs.
 - `compute/time` is the lowest module that holds `Temporal`, and the owner is domain-agnostic. A
   damped oscillator in `domain/physics`, a rate or spiking population in `domain/graph`, and an
-  ODE in `compute/algebra` users can all reach it. Placing it in `domain/graph` would hide it
+  ODE in `compute/algebra` can all reach it. Placing it in `domain/graph` would hide it
   from physics; placing it in `engine/*` would put it above the population dynamics that need it.
 - The rule follows the existing ones: **`SimulationRunner` owns the simulation loop.** No other
   class writes `for (long step ...)` around a compiled step.
@@ -97,21 +97,36 @@ depends on `ar-algebra` and so on `ar-hardware`. `domain/heredity` depends on `a
      buffer is read on the host only when the caller asks for it, after `run` returns. When a run
      would exceed `capacity`, `run` fails fast before it starts (see open question 3).
    - **Inherited entry points.** Extending `TemporalRunner` makes `SimulationRunner` a public
-     `Supplier<Runnable>` (`get()`), a `Temporal` (`tick()`) and gives it `getContinue()`. Each of
-     these, unchanged, runs the compiled step, which includes the counter advance, but skips the
-     host step count, the boundary inputs, the listeners, the recorders and the capacity check, so
-     the device counter and the host schedule fall out of step. The plan therefore overrides all
-     three so that every entry point goes through the same bookkeeping as `run`: `getContinue()`
-     returns a runnable that performs `run(1)`; `get()` returns one that performs `run(1)` (setup
-     still runs only once, as above); `tick()` returns a supplier of the `getContinue()` runnable.
-     The runner obtains its raw compiled step internally through `super.getContinue()`. Throwing
-     `UnsupportedOperationException` from these instead is rejected, because it would break the
-     `Supplier`/`Temporal` contracts the class inherits (see the "Honor the interface" rule in
-     `CLAUDE.md`). The `tick()` returned this way is a plain supplier, not a `Computation`, so a
-     caller that wraps the runner in another `TemporalRunner` with `iter > 1` gets a host loop of
-     full steps, never an in-kernel `Loop`. Whether this override set is acceptable, or is a sign
-     that the runner should not extend `TemporalRunner` at all, is open question 1.
-     <!-- TODO(review): TemporalRunner also implements Setup (and OperationComputation); the inherited setup() is not in the override set, so a caller composing the runner as Setup + Temporal re-runs setup and breaks "setup runs once". -->
+     `Supplier<Runnable>` (`get()`), a `Temporal` (`tick()`), a `Setup` (`setup()`) and an
+     `OperationComputation` (`prepareScope()`, `getScope()`), and gives it `getContinue()`. The
+     three that run the compiled step — `get()`, `getContinue()`, `tick()` — do so unchanged: each
+     runs the step with its counter advance but skips the host step count, the boundary inputs, the
+     listeners, the recorders and the capacity check, so the device counter and the host schedule
+     fall out of step. The plan therefore overrides all three so that every one goes through the
+     same bookkeeping as `run`: `getContinue()` returns a runnable that performs `run(1)`; `get()`
+     returns one that performs `run(1)` (setup still runs only once, as above); `tick()` returns a
+     supplier of the `getContinue()` runnable. The runner obtains its raw compiled step internally
+     through `super.getContinue()`. Throwing `UnsupportedOperationException` from these instead is
+     rejected, because it would break the `Supplier`/`Temporal` contracts the class inherits (see
+     the "Honor the interface" rule in `CLAUDE.md`). The `tick()` returned this way is a plain
+     supplier, not a `Computation`, so a caller that wraps the runner in another `TemporalRunner`
+     with `iter > 1` gets a host loop of full steps, never an in-kernel `Loop`.
+
+     `setup()` is the fourth inherited entry point and must be handled too. `TemporalRunner.setup()`
+     returns the system's raw setup supplier, so a caller that composes the runner as `Setup` +
+     `Temporal` — for example `new TemporalRunner(simulationRunner, iter)`, whose `(Temporal, int)`
+     constructor casts to `Setup` and calls `setup()` — would re-run the system's setup outside the
+     runner's once-only guard and break "setup runs once". The plan therefore overrides `setup()`
+     to return an empty supplier: the runner runs the system's setup itself, once, inside the first
+     `run`, so no composing caller can re-trigger it. The `OperationComputation` surface is the
+     fifth: `getScope()` is inherited from `TemporalRunner`, where it throws
+     `UnsupportedOperationException`, so embedding the runner directly as a computation fails loudly
+     rather than silently bypassing the loop; `prepareScope()` prepares the raw setup and step and
+     is never reached by `run`. Neither is part of the runner's supported contract.
+
+     Whether this override set — five inherited public members across four interfaces, three
+     redefined and one (`setup()`) emptied — is acceptable, or is a sign that the runner should not
+     extend `TemporalRunner` at all, is open question 1.
    - **`destroy()`** releases the counter, the compiled counter, input and recorder operations,
      and the recording buffers it allocated, and then delegates to `TemporalRunner.destroy()`.
    - **The step contract**, stated in the javadoc: one compiled step may consist of several
@@ -141,7 +156,9 @@ depends on `ar-algebra` and so on `ar-hardware`. `domain/heredity` depends on `a
      - *Inherited entry points.* Interleaving `run(a)` with calls to `getContinue().run()`,
        `get().run()` and `tick().get().run()` leaves the device counter, the host step count,
        the recorded samples and the listener call count all equal to the total number of steps,
-       and setup has run exactly once.
+       and setup has run exactly once. Composing the runner as `Setup` + `Temporal` through
+       `new TemporalRunner(simulationRunner, iter)` and running that does not re-run the system's
+       setup (the overridden `setup()` is empty), so setup still runs exactly once.
    - `SimulationRunnerDispatchTest`: microseconds per step for (a) a one-element step, (b) a
      100,000-element element-wise step, and (c) a dense 1,024 × 1,024 `matmul` step with
      copy-back, each with and without one recorder, over 10,000 steps after warm-up. The numbers
@@ -216,13 +233,16 @@ backends batch or submit dispatches.
    `compute/time`. The alternative is to keep `TemporalRunner` unchanged and put a non-extending
    owner beside it. That costs duplicating the compile/flatten/destroy logic, so the plan prefers
    extension. The cost of extension is the override set described under "Inherited entry
-   points": three public methods whose inherited meaning (`get()` = setup then tick,
-   `getContinue()` = tick only, `tick()` = the compiled tick as a composable `Computation`) is
-   replaced. A non-extending owner could instead *hold* a `TemporalRunner` with `iter = 1` and
-   reuse its compile/flatten/destroy logic without duplicating it, exposing only `run`, so no
-   entry point exists that bypasses the bookkeeping. That alternative may be cheaper than the
-   plan assumes; the reviewer should weigh "is a `TemporalRunner`" against "owns a
-   `TemporalRunner`" with the overrides in view.
+   points": five inherited public members across four interfaces. Three are redefined — their
+   inherited meaning (`get()` = setup then tick, `getContinue()` = tick only, `tick()` = the
+   compiled tick as a composable `Computation`) is replaced; `setup()` is emptied so composing the
+   runner as a `Setup` cannot re-run setup; and the `OperationComputation` surface
+   (`getScope()`/`prepareScope()`) is inherited unchanged and left outside the supported contract.
+   A non-extending owner could instead *hold* a `TemporalRunner` with `iter = 1` and reuse its
+   compile/flatten/destroy logic without duplicating it, exposing only `run`, so none of these
+   inherited members exist to bypass the bookkeeping or to be left inherited by accident. That
+   alternative may be cheaper than the plan assumes; the reviewer should weigh "is a
+   `TemporalRunner`" against "owns a `TemporalRunner`" with the full inherited surface in view.
 
 2. **Recording write cost.** `CollectionSlotUpdateComputation` rewrites the whole recording buffer
    on each write. With a large capacity this could dominate a record step. The first
