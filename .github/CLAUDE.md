@@ -463,7 +463,7 @@ Runs one Maven invocation over **every** flowtree module —
 `flowtree/api,flowtree/base,flowtree/python,flowtree/agents,flowtree/graphpersist,flowtree/runtime`
 — and uploads JaCoCo coverage as `coverage-flowtree`. `api` and `python` carry
 no tests today and are listed anyway, per the rule above. Gated on the same
-validation prerequisites as the `test` matrix (`code-policy-check`,
+validation prerequisites as the `test` job (`code-policy-check`,
 `test-timeout-check`, `duplicate-code-check`, `test-integrity-check`) and runs in
 parallel with `test`. Extracted from `build` because flowtree tests are slow and
 would otherwise block every other job.
@@ -475,17 +475,19 @@ coverage" above and `tools/ci/README.md`.
 
 ### What the `test` job covers
 
-Runs the main test matrix (2 groups) for engine/domain/compute/base layers:
-`base/hardware`, `engine/utils`, `engine/ml`, plus `engine/render` and
-`base/io,engine/utils-http` on group 0 only. Skipped when none of those layers
-change. Uploads `coverage-group-{0..1}`.
+Runs the main test suite for engine/domain/compute/base layers as a single
+(non-matrix) job: `base/hardware`, `engine/utils`, `engine/ml`, `engine/render`
+and `base/io,engine/utils-http`. It is driven by native RAM rather than the GPU
+memory ceiling the accelerator lanes split around, so it no longer shards
+`engine/utils`/`engine/ml` across groups. Skipped when none of those layers
+change. Uploads `coverage-cpu`.
 
 ### What the `test-media` job covers
 
 Runs `engine/audio`, `studio/music`, `studio/compose`, `studio/spatial`, and
 `extern/ml-onnx,studio/experiments` on a self-hosted runner. Runs after `test`
 (CPU lane, below). Skipped when none of
-studio/extern/engine/domain/compute/base change. Uploads `coverage-media`.
+studio/extern/engine/domain/compute/base change. Uploads `coverage-media-{0,1}`.
 
 ### Tests excluded from the pipeline profile
 
@@ -533,8 +535,8 @@ it, had been skipped. `auto-review` and `auto-resolve-python` run exactly when
 `python-tests` was skipped or failed, so both submit jobs start their `if:` with
 `!cancelled()` and check the producer's `result` explicitly.
 
-Every lane-chained job (`test-media`, `test-media-mac`, `test-cl`,
-`test-media-cl`, `test-media-cuda`) starts its `if:` with
+Every lane-chained job (`test-media`, `test-media-mac`, `test-media-cl`,
+`test-media-cuda`) starts its `if:` with
 `!cancelled() &&` for this reason. Their explicit `result == 'success'` checks
 on `build` and the four validation jobs already exclude every failure path, so
 `!cancelled()` does not weaken the gate — it is what makes the gate run at all.
@@ -560,21 +562,25 @@ heavy suites do not contend on their fleet:
 - **CL lane (linux/ROCm, `ar-ci-cl`):** `test-cl` → `test-media-cl`.
   Serialised for the same reason: the ROCm host has a single GPU.
 
-The CPU and GPU lanes run in parallel. `test-cl` starts once the Linux **test**
-stage is green — it no longer waits for the whole CPU lane — and runs alongside
-the GPU lane: `test-cl` beside `test-mac`, `test-media-cl` beside
-`test-media-mac`. `test-cl` gates on `test` (success-or-skipped), since it is the
-OpenCL duplicate of the same modules; `test-media-cl` gates on `test-cl` **and on
-`test` and `test-media` directly**. That second part is not redundant:
+The CPU and GPU lanes run in parallel. `test-cl` is admitted exactly as
+`test-mac` and `test-cuda` are — on `build` and the four validation checks
+alone — so all three accelerator first stages start together without waiting for
+the Linux **test** stage, and `test-cl` runs alongside the GPU lane: `test-cl`
+beside `test-mac`, `test-media-cl` beside `test-media-mac`. `test-cl` **no
+longer gates on `test`**; the CPU-lane admission control for the ROCm fleet
+lives entirely at the second stage, where `test-media-cl` gates on `test-cl`
+**and on `test` and `test-media` directly**. That direct gate is not redundant:
 `test-cl` is skipped either by its own layer gate or by an upstream failure, and
 its `skipped` result cannot tell the two apart — gating `test-media-cl` on
 `test-cl` alone let it run after a Linux suite had failed. A downstream job must
 never infer "upstream was fine" from a `skipped` that has more than one cause;
 it gates on the upstream lanes itself. This is admission control, not GPU
-serialisation — the fleets are different machines. The CL lane is eight
-matrix jobs on a single host, and it is "Linux plus an accelerator": a branch
-that cannot pass the Linux CPU suite will not pass its OpenCL duplicate
-either, so the ROCm runners are spent only on branches that have cleared it.
+serialisation — the fleets are different machines. The CL lane is "Linux plus an
+accelerator": a branch that cannot pass the Linux CPU suite will not pass its
+OpenCL duplicate either, so the ROCm runners spent on `test-media-cl` go only to
+branches that have cleared the CPU lane. `test-cl` itself now runs on branches
+that have not, which is the cost of starting it alongside the other first
+stages.
 
 The CL lane does **not** wait for the Metal suites. It once did, so that a
 branch failing on Metal would not spend the ROCm fleet, but that held a healthy
@@ -587,9 +593,12 @@ The CL lane was formerly the third and fourth stages of the macOS GPU lane. It
 moved to its own AMD/ROCm fleet (`tools/ci/rocm`) to give the OpenCL backend a
 real, non-deprecated OpenCL implementation. The gates on `test-mac` and
 `test-media-mac` were dropped at that point, restored for admission control,
-and dropped again so the two accelerator lanes run side by side. The gate on the
-CPU lane came after a pipeline in which the mac lane passed, the linux lane
-failed, and the CL lane ran all its jobs anyway.
+and dropped again so the two accelerator lanes run side by side. `test-cl`'s
+gate on the Linux CPU lane followed the same arc: added after a pipeline in
+which the mac lane passed, the linux lane failed, and the CL lane ran all its
+jobs anyway; then moved off `test-cl` and onto `test-media-cl` alone so the
+first CL stage starts with the other accelerators, while a failed CPU suite
+still never reaches the heavier second stage.
 
 The `ar-ci-cl` label is deliberately distinct from `ar-ci`. If the ROCm host
 also carried `ar-ci` it would start picking up general CPU test jobs, putting
@@ -645,8 +654,9 @@ attributable.
 
 The self-hosted jobs split their suites across several groups, with group counts
 tuned per lane: `test-media-cl` and `test-media-cuda` use five; `test-cl`,
-`test-cuda`, `test-media` and `test-mac` three; and `test` and `test-media-mac` two.
-The CL backend hits its
+`test-cuda` and `test-mac` three; and `test-media` and `test-media-mac` two. The
+native `test` job is not sharded at all — it runs as a single job, so the
+agreement check below does not apply to it. The CL backend hits its
 memory ceiling under large per-group loads even at `AR_HARDWARE_MEMORY_SCALE=7`
 (the highest scale used anywhere — the scale is exponential, so raising it
 further is not an option), so spreading the tests across several JVMs keeps each
@@ -659,8 +669,8 @@ every sharded lane.
 The CL and CUDA jobs each run up to three groups at a time (`max-parallel: 3`).
 
 `test-media-mac` is the exception: it uses **2 groups at `max-parallel: 2`**
-(both groups at once), tied with `test` for the fewest groups of any lane.
-As the second GPU-lane stage it
+(both groups at once), tied with `test-media` for the fewest groups of any
+sharded lane. As the second GPU-lane stage it
 already runs alone on the fleet (no other GPU-heavy stage runs concurrently), so
 running both of its groups at once trades some GPU contention on the
 studio benchmark tick tails for shorter wall-clock time.
@@ -1444,5 +1454,5 @@ Every job that uploads `coverage-*` artifacts must appear in `analysis`'s
 `needs` list, or analysis will run before coverage is available.
 
 **Mistake: Removing `test` from `analysis` needs.**
-The `test` matrix generates the bulk of coverage data. `analysis` must
+The `test` job generates the bulk of coverage data. `analysis` must
 always wait for it even though it may be skipped on flowtree-only branches.
