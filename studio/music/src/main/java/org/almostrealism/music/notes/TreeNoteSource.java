@@ -19,6 +19,7 @@ import org.almostrealism.audio.notes.NoteAudioProvider;
 import org.almostrealism.audio.notes.NoteAudio;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import io.almostrealism.uml.Named;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.data.FileWaveDataProvider;
@@ -135,6 +136,7 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 	public KeyPosition<?> getRoot() { return root; }
 
 	/** Sets the root key position. */
+	@JsonDeserialize(as = WesternChromatic.class)
 	public void setRoot(KeyPosition<?> root) { this.root = root; }
 
 	/** Returns the BPM value used for time-based splitting, or {@code null} if not set. */

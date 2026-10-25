@@ -26,9 +26,12 @@ import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.music.notes.FileNoteSource;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.music.notes.TreeNoteSource;
+import org.almostrealism.audio.tone.KeyPosition;
+import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.music.pattern.ChordProgressionManager;
 import org.almostrealism.music.pattern.NoteAudioChoiceList;
 import org.almostrealism.music.pattern.PatternLayerManager;
@@ -37,6 +40,7 @@ import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -75,6 +79,34 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 				new File("pattern-factory.json").exists() || new File("pattern-factory.json.old").exists());
 		List<NoteAudioChoice> choices = readChoices();
 		new ObjectMapper().writeValue(new File("pattern-factory-new.json"), choices);
+	}
+
+	/**
+	 * A plain {@link ObjectMapper}, with no {@code KeyPosition} deserializer registered,
+	 * must still be able to read a note source whose {@code root} is a {@code KeyPosition}.
+	 * This reproduces the {@code fixChoices} failure on hosts that carry the pattern factory
+	 * file without depending on that host-local resource: the {@code root} field is declared
+	 * as the abstract {@link KeyPosition} interface, so {@code setRoot} must narrow it to the
+	 * concrete {@link WesternChromatic} enum for a default mapper to construct it.
+	 */
+	@Test(timeout = 30_000)
+	public void noteSourceRootDeserializes() throws IOException {
+		ObjectMapper mapper = new ObjectMapper();
+		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+		String treeJson = "{\"@type\":\"" + TreeNoteSource.class.getName() + "\",\"root\":\"C1\"}";
+		NoteAudioSource treeSource = mapper.readValue(treeJson, NoteAudioSource.class);
+		Assert.assertTrue(treeSource instanceof TreeNoteSource);
+		KeyPosition<?> treeRoot = ((TreeNoteSource) treeSource).getRoot();
+		Assert.assertTrue(treeRoot instanceof WesternChromatic);
+		Assert.assertEquals(WesternChromatic.C1, treeRoot);
+
+		String fileJson = "{\"@type\":\"" + FileNoteSource.class.getName() + "\",\"source\":\"a.wav\",\"root\":\"C1\"}";
+		NoteAudioSource fileSource = mapper.readValue(fileJson, NoteAudioSource.class);
+		Assert.assertTrue(fileSource instanceof FileNoteSource);
+		KeyPosition<?> fileRoot = ((FileNoteSource) fileSource).getRoot();
+		Assert.assertTrue(fileRoot instanceof WesternChromatic);
+		Assert.assertEquals(WesternChromatic.C1, fileRoot);
 	}
 
 	/**
