@@ -55,9 +55,8 @@ isolation from the sample data, leave `RUNNER_EXTRA_LABELS` empty and run
 `../docker` beside this fleet.
 
 When this host replaces a CPU fleet (`docker compose down` in `../docker`), count
-the CPU lane in the runner count and the memory limit: `test` has two groups
-(`max-parallel: 4`, so the cap never binds), so two runners hold the whole
-lane at once with nothing queued.
+the CPU lane in the runner count and the memory limit: `test` runs as a single
+job (no matrix), so one runner holds the whole lane at once.
 
 ## Design: Nothing Installed on the Host
 
