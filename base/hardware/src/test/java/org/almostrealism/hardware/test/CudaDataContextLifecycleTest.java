@@ -149,25 +149,6 @@ public class CudaDataContextLifecycleTest {
 	 */
 	@Test(timeout = 60000)
 	public void reusedMemoryIsZeroed() {
-		assertReallocationsZeroed(16);
-	}
-
-	/**
-	 * An allocation larger than {@link CudaMemoryProvider#maxSmallCachedAllocation}, which the
-	 * provider frees on release rather than keeping for reuse when the allocation cache is off,
-	 * still reads as zeros each time it is allocated again after being written and released.
-	 */
-	@Test(timeout = 60000)
-	public void largeReallocationIsZeroed() {
-		assertReallocationsZeroed((int) (2 * CudaMemoryProvider.maxSmallCachedAllocation / Float.BYTES));
-	}
-
-	/**
-	 * Repeatedly allocates {@code size} numbers, asserts the allocation reads as zeros, then
-	 * fills it with a non-zero value and releases it, so that any reuse of the released block
-	 * by the next allocation would be visible. Skipped through {@link Assume} without CUDA.
-	 */
-	private void assertReallocationsZeroed(int size) {
 		CudaDataContext context = newContext();
 
 		try {
@@ -180,19 +161,57 @@ public class CudaDataContextLifecycleTest {
 				return;
 			}
 
-			double[] values = new double[size];
+			double[] values = new double[16];
 			Arrays.fill(values, 7.0);
 
 			for (int i = 0; i < 4; i++) {
-				CudaMemory mem = provider.allocate(size);
+				CudaMemory mem = provider.allocate(16);
 
-				double[] out = new double[size];
-				provider.getMem(mem, 0, out, 0, size);
-				Assert.assertArrayEquals("Allocation " + i, new double[size], out, 0.0);
+				double[] out = new double[16];
+				provider.getMem(mem, 0, out, 0, 16);
+				Assert.assertArrayEquals("Allocation " + i, new double[16], out, 0.0);
 
-				provider.setMem(mem, 0, values, 0, size);
-				provider.deallocate(size, mem);
+				provider.setMem(mem, 0, values, 0, 16);
+				provider.deallocate(16, mem);
 			}
+		} finally {
+			context.destroy();
+		}
+	}
+
+	/**
+	 * An allocation larger than {@link CudaMemoryProvider#maxSmallCachedAllocation}, which the
+	 * provider frees on release rather than keeping for reuse when the allocation cache is off,
+	 * reads as zeros when allocated again after a block of the same size was written and released.
+	 */
+	@Test(timeout = 60000)
+	public void largeReallocationIsZeroed() {
+		int count = (int) (2 * CudaMemoryProvider.maxSmallCachedAllocation / Float.BYTES);
+		CudaDataContext context = newContext();
+
+		try {
+			CudaMemoryProvider provider;
+
+			try {
+				provider = context.getMemoryProvider();
+			} catch (LinkageError | HardwareException e) {
+				Assume.assumeNoException("CUDA is unavailable", e);
+				return;
+			}
+
+			double[] written = new double[count];
+			Arrays.fill(written, 7.0);
+
+			CudaMemory released = provider.allocate(count);
+			provider.setMem(released, 0, written, 0, count);
+			provider.deallocate(count, released);
+
+			CudaMemory reallocated = provider.allocate(count);
+			double[] read = new double[count];
+			provider.getMem(reallocated, 0, read, 0, count);
+			provider.deallocate(count, reallocated);
+
+			Assert.assertArrayEquals(new double[count], read, 0.0);
 		} finally {
 			context.destroy();
 		}
