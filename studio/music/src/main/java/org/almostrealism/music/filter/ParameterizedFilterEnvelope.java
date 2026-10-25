@@ -69,19 +69,21 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 		this.mode = mode;
 	}
 
+	/** Returns the operating mode for this envelope. */
+	@Override
 	public Mode getMode() { return mode; }
 
 	public void setMode(Mode mode) { this.mode = mode; }
 
 	@Override
-	public NoteAudioFilter createFilter(ParameterSet params, ChannelInfo.Voicing voicing) {
+	public ParameterizedEnvelopeFilter createFilter(ParameterSet params, ChannelInfo.Voicing voicing) {
 		return new Filter(params, voicing);
 	}
 
 	/**
 	 * A concrete {@link NoteAudioFilter} implementation that applies a filter envelope to audio.
 	 */
-	public class Filter implements NoteAudioFilter {
+	public class Filter implements ParameterizedEnvelopeFilter {
 		/** The parameter set controlling envelope values. */
 		private final ParameterSet params;
 
@@ -99,7 +101,18 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 			this.voicing = voicing;
 		}
 
+		@Override
+		public ParameterizedFilterEnvelope getEnvelope() {
+			return ParameterizedFilterEnvelope.this;
+		}
+
+		@Override
+		public ParameterSet getParameters() {
+			return params;
+		}
+
 		/** Returns the signal path voicing used by this filter. */
+		@Override
 		public ChannelInfo.Voicing getVoicing() {
 			return voicing;
 		}
