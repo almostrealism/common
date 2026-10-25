@@ -15,10 +15,10 @@
  */
 
 package org.almostrealism.music.notes;
-import org.almostrealism.audio.notes.NoteAudioProvider;
-import org.almostrealism.audio.notes.NoteAudio;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import org.almostrealism.audio.notes.NoteAudioProvider;
+import org.almostrealism.audio.notes.NoteAudio;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
