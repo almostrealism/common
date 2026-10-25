@@ -281,14 +281,22 @@ compile a distinct operation for every position in the sequence.
 
 ### Factory Method
 
-The `of()` factory wraps a compiled text model and constructs the sampling function
-inline:
+The `of()` factory wraps a compiled text model in an anonymous `AutoregressiveModel`
+subclass that implements the generation steps by overriding `load`, `forward` and
+`sample` (the same pattern `SlidingWindowAutoregressiveModel` uses):
 
 ```java
 // AutoregressiveModel.of()
 public static AutoregressiveModel<Integer> of(CompiledModel model,
                                              PackedCollection position,
                                              IntFunction<PackedCollection> tokenEmbed) {
+    return of(model, position, tokenEmbed, new Random());
+}
+
+public static AutoregressiveModel<Integer> of(CompiledModel model,
+                                             PackedCollection position,
+                                             IntFunction<PackedCollection> tokenEmbed,
+                                             Random random) {
     PackedCollection in = new PackedCollection(model.getInputShape());
     int vocabSize = model.getOutputShape().getTotalSize();
 
@@ -296,26 +304,34 @@ public static AutoregressiveModel<Integer> of(CompiledModel model,
 
     Evaluable<PackedCollection> indexOfMax = Ops.o().indexOfMax(Ops.o().x(vocabSize)).get();
 
-    AtomicReference<AutoregressiveModel<Integer>> generator = new AtomicReference<>();
-    Function<PackedCollection, Integer> sample = logits -> {
-        if (temperature.toDouble(0) == 0.0) {
-            return (int) indexOfMax.evaluate(logits).toDouble(0);
+    // Greedy selection reads the argmax back from the device; kept a factory-local lambda
+    // so that device read stays at the `of` pipeline boundary, not in the sample override.
+    ToIntFunction<PackedCollection> greedy =
+            logits -> (int) indexOfMax.evaluate(logits).toDouble(0);
+
+    return new AutoregressiveModel<>(position, temperature) {
+        @Override
+        protected void load(Integer t) {
+            in.setFrom(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize());
         }
 
-        return sampleToken(logits, vocabSize,
-                temperature.toDouble(0), generator.get().getTopP(), random);
+        @Override
+        protected PackedCollection forward() {
+            return model.forward(in);
+        }
+
+        @Override
+        protected Integer sample(PackedCollection logits) {
+            if (getTemperature() == 0.0) {
+                return greedy.applyAsInt(logits);
+            }
+
+            return sampleToken(logits, vocabSize, getTemperature(), getTopP(), random);
+        }
+
+        @Override
+        public void destroy() { /* releases indexOfMax, in and temperature */ }
     };
-
-    AutoregressiveModel<Integer> instance = new AutoregressiveModel<>(
-            position,
-            t -> in.setFrom(0, tokenEmbed.apply(t), 0,
-                            model.getInputShape().getTotalSize()),
-            () -> model.forward(in),
-            sample,
-            temperature) { /* destroy() releases indexOfMax, in and temperature */ };
-
-    generator.set(instance);
-    return instance;
 }
 ```
 
@@ -325,10 +341,10 @@ tempered, softmaxed and (when `topP < 1.0`) nucleus-filtered exactly once, with 
 generator's configured temperature and top-p, so both generators sample identically
 from the same logits under the same temperature, top-p and seed. The three-argument
 factory delegates to a four-argument overload that accepts a caller-supplied
-`Random`, so sampling can be made reproducible. The `sample` function reads the
-generator's `getTopP()` through a self-reference holder, since the function is built
-before the instance exists; the top-p threshold is host-only state and never enters
-the computation graph. Earlier the factory tempered and softmaxed on the device and
+`Random`, so sampling can be made reproducible. Because the anonymous subclass
+overrides `sample`, it reads `getTemperature()` and `getTopP()` through `this` — no
+self-reference holder is needed; the top-p threshold is host-only state and never
+enters the computation graph. Earlier the factory tempered and softmaxed on the device and
 then called `sampleToken(logits, vocabSize, 1.0, 1.0, random)`, which re-softmaxed
 the already-softmaxed distribution — a double transform that made the two generators
 sample differently for the same logits and temperature. Greedy decoding
@@ -444,19 +460,18 @@ different program for every distinct token — the cost every step would otherwi
 
 ### Temperature Sampling
 
-The `sample` function constructed inside `of()`
+The `sample` override inside `of()`
 handles both greedy and sampling modes. `temperature` is a host-writable single-element
-collection updated by `setTemperature`:
+collection updated by `setTemperature`, read back through `getTemperature()`:
 
 ```java
-// Reading (greedy path)
-if (temperature.toDouble(0) == 0.0) {
-    return (int) indexOfMax.evaluate(logits).toDouble(0);
+// Greedy path
+if (getTemperature() == 0.0) {
+    return greedy.applyAsInt(logits);   // (int) indexOfMax.evaluate(logits).toDouble(0)
 }
 
 // Sampling path — temper, softmax and (when topP < 1.0) nucleus-filter once
-return sampleToken(logits, vocabSize,
-        temperature.toDouble(0), generator.get().getTopP(), random);
+return sampleToken(logits, vocabSize, getTemperature(), getTopP(), random);
 ```
 
 `sampleToken` is the static, host-side sampling
