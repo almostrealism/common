@@ -372,10 +372,10 @@ All three scripts are on `test-integrity-check`'s protected list, and
 ### What the `build` job covers
 
 The `build` job always runs when `code_changed=true`. It is the critical path
-blocker: every job that compiles, tests or analyses the project depends on
-it, so it MUST stay as short as possible. Jobs that need only git and the
-sources do not wait for it — see "Branch checks that need no build" below. It does one thing: `mvn install -DskipTests`. It does not run tests
-and does not upload coverage.
+blocker for every job that compiles, tests or analyses the project, so it MUST
+stay as short as possible; jobs that need only git do not wait for it (see
+"Branch checks that need no build" below). It runs `mvn install -DskipTests`
+and nothing else: it does not run tests and does not upload coverage.
 
 ### Re-run jobs and artifacts
 
@@ -1435,10 +1435,10 @@ specific jobs (`test-flowtree`, `code-policy-check`) that always execute on
 code changes. Do not create spurious layer flags for them.
 
 **Mistake: Adding test steps to the `build` job.**
-`build` is the critical path — every downstream job waits for it. Keep it
-limited to `mvn install -DskipTests`. Add new test coverage in a dedicated
-job that gates on `build` (and whatever validation jobs make sense) so the
-rest of the pipeline is not blocked.
+`build` is the critical path — every job that compiles or tests waits for
+it. Keep it limited to `mvn install -DskipTests`. Add new test coverage in a
+dedicated job that gates on `build` (and whatever validation jobs make sense)
+so the rest of the pipeline is not blocked.
 
 **Mistake: Forgetting to add a new test job to `analysis` needs.**
 Every job that uploads `coverage-*` artifacts must appear in `analysis`'s
