@@ -36,8 +36,9 @@ reference). In scope:
 1. **State collections** for a population of `n` neurons, held device-resident and
    persistent across steps: membrane potential `v[n]`, synaptic conductance
    `g[n]`, a refractory countdown `refractory[n]`, a spike ring buffer
-   `ring[delaySteps, n]`, and the ring's dynamic write index (a single-element
-   collection). Plus the seed/counter collections that drive the Poisson input
+   `ring[rows, n]` (where `rows` is `delaySteps` or `delaySteps + 1` depending on
+   the read/write ordering — see open question 6), and the ring's dynamic write
+   index (a single-element collection). Plus the seed/counter collections that drive the Poisson input
    (reused from the counter-based generator).
 
 2. **The step, as Producer math**:
@@ -144,7 +145,8 @@ The 18-step synaptic delay is a ring of recent spike vectors with a write index
 that advances each step — structurally identical to the KV-cache write. Reuse the
 existing mechanism rather than inventing one:
 
-- the ring is a persistent `[delaySteps, n]` collection the owner holds;
+- the ring is a persistent `[rows, n]` collection the owner holds (`rows` is
+  `delaySteps` or `delaySteps + 1` per open question 6, below);
 - each step writes the current spike vector into the row selected by the write
   index, keeping all other rows, via `CollectionSlotUpdateComputation` assigned
   back into the ring with `into(...)` — exactly what `LayerFeatures.cacheWrite`
