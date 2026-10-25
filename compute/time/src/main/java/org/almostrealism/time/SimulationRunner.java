@@ -300,8 +300,14 @@ public class SimulationRunner extends TemporalRunner {
 	 * @throws IllegalArgumentException if {@code interval} is not positive
 	 */
 	public void addInput(int interval, Supplier<Runnable> operation) {
-		// TODO(review): operation.get() compiles before Scheduled validates interval, so a rejected input leaks its compiled runnable
-		inputs.add(new Scheduled<>(interval, operation.get()));
+		Runnable compiled = operation.get();
+
+		try {
+			inputs.add(new Scheduled<>(interval, compiled));
+		} catch (IllegalArgumentException e) {
+			Destroyable.destroy(compiled);
+			throw e;
+		}
 	}
 
 	/**

@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.test;
 
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
@@ -304,6 +305,29 @@ public class SimulationRunnerTest extends TestSuiteBase {
 		assertTrue(buffer.isDestroyed());
 	}
 
+	/** A runnable standing in for a compiled operation, counting its runs and releases. */
+	private static class ReleasableRunnable implements Runnable, Destroyable {
+		/** The number of times this runnable has run. */
+		private final AtomicInteger runs;
+		/** The number of times this runnable has been released. */
+		private final AtomicInteger releases;
+
+		/**
+		 * @param runs     incremented on every run
+		 * @param releases incremented on every release
+		 */
+		ReleasableRunnable(AtomicInteger runs, AtomicInteger releases) {
+			this.runs = runs;
+			this.releases = releases;
+		}
+
+		@Override
+		public void run() { runs.incrementAndGet(); }
+
+		@Override
+		public void destroy() { releases.incrementAndGet(); }
+	}
+
 	/**
 	 * A system with a counted setup and a recording and listener on every step, used to check
 	 * that every way of running the runner keeps its bookkeeping consistent.
@@ -412,6 +436,30 @@ public class SimulationRunnerTest extends TestSuiteBase {
 		assertEquals(4, system.x.toDouble(0), 0.0);
 		assertEquals(1, system.setups.get());
 		runner.destroy();
+	}
+
+	/**
+	 * An input rejected for a non-positive interval releases the runnable compiled for it, since
+	 * it never reaches the inputs that {@link SimulationRunner#destroy()} releases. An accepted
+	 * input is released by {@link SimulationRunner#destroy()} instead.
+	 */
+	@Test(timeout = 120000)
+	public void rejectedInputIsReleased() {
+		SimulationRunner runner = new SimulationRunner(new CountedSystem(), DT);
+		AtomicInteger runs = new AtomicInteger();
+		AtomicInteger releases = new AtomicInteger();
+		Supplier<Runnable> operation = () -> new ReleasableRunnable(runs, releases);
+
+		assertThrowsIllegalArgument(() -> runner.addInput(0, operation));
+		assertEquals(1, releases.get());
+
+		runner.addInput(2, operation);
+		runner.run(3);
+		assertEquals(2, runs.get());
+		assertEquals(1, releases.get());
+
+		runner.destroy();
+		assertEquals(2, releases.get());
 	}
 
 	/**
