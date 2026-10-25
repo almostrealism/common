@@ -23,7 +23,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.Random;
+import org.almostrealism.collect.computations.RandomProducer;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.ml.AttentionFeatures;
@@ -620,7 +620,7 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 				cv(shape(batchSize), 1),
 				cv(shape, 2)).get();
 
-		Random randn = randn(shape);
+		RandomProducer randn = randn(shape);
 		PackedCollection xIn = xStart.evaluate();
 		PackedCollection tIn = t.evaluate();
 		PackedCollection noise = randn.evaluate();
@@ -695,7 +695,7 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 												cv(shape, 0),
 												cv(shape(batchSize), 1),
 												cv(shape, 2)).get();
-		Random randn = randn(shape);
+		RandomProducer randn = randn(shape);
 
 		return Dataset.of(loadInputs(imagesDir, shape), xStart -> {
 			if (!xStart.getShape().equalsIgnoreAxis(shape)) {

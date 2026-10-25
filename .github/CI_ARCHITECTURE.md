@@ -287,30 +287,29 @@ Moving flowtree tests into `build` — which runs on every `code_changed=true` �
 
 ## Job Reference: test
 
-**Purpose**: Run unit tests for the base, compute, domain, and engine layers in parallel groups.
+**Purpose**: Run unit tests for the base, compute, domain, and engine layers.
 
 **Needs**: `changes`
 
 **Condition**: `base_changed OR compute_changed OR domain_changed OR engine_changed`
 
-**Runner**: `ubuntu-latest` (matrix strategy — 3 parallel groups)
+**Runner**: self-hosted linux (`ar-ci`) — a single job, no matrix
 
 ### Steps
 
 1. **Checkout** — full clone
 2. **Set up Java** — Temurin distribution
-3. **Run test matrix** — 3 groups (labeled 0 through 2), each covering a subset of modules
-   - Groups are chosen to balance test duration across parallel runners
-   - Each group runs `mvn test -pl <modules>` for its subset
-4. **Upload coverage per group** — `coverage-group-{0..2}`
-   - Each group uploads its own `coverage-group-N` artifact
+3. **Run the suite** — one job covering `base/hardware`, `engine/utils`, `engine/ml`,
+   `engine/render` and `base/io,engine/utils-http`
+   - Each module runs `mvn test -pl <modules>`; the suite is no longer sharded across groups
+4. **Upload coverage** — `coverage-cpu`
    - `retention-days: 1`, `if-no-files-found: ignore`
 
 ### Coverage artifacts produced
 
-`coverage-group-0`, `coverage-group-1`, `coverage-group-2`
+`coverage-cpu`
 
-All 3 must appear in `analysis.needs` (they are listed via the `test` job dependency, since `analysis` depends on the `test` job completing).
+It must appear in `analysis.needs` (listed via the `test` job dependency, since `analysis` depends on the `test` job completing).
 
 ### When skipped
 
@@ -338,13 +337,13 @@ This skip is intentional and correct. The test categories covered by this job ar
 
 1. **Checkout** — full clone
 2. **Set up Java** — Temurin distribution
-3. **Run audio/music/studio tests** — tests requiring hardware media capabilities
-4. **Upload coverage** — `coverage-media`
+3. **Run audio/music/studio tests** — tests requiring hardware media capabilities, split across two groups
+4. **Upload coverage per group** — `coverage-media-{0,1}`
    - `retention-days: 1`, `if-no-files-found: ignore`
 
 ### Coverage artifacts produced
 
-`coverage-media`
+`coverage-media-0`, `coverage-media-1`
 
 ### When skipped
 
@@ -447,7 +446,7 @@ This job does not upload coverage artifacts. It does not appear in `analysis.nee
 1. **Checkout** — full clone
 2. **Download all `coverage-*` artifacts** into `all-coverage/`
    - Downloads every artifact whose name starts with `coverage-`
-   - This includes: `coverage-flowtree`, `coverage-group-0` through `coverage-group-2`, `coverage-media`
+   - This includes: `coverage-flowtree`, `coverage-cpu`, `coverage-media-0` and `coverage-media-1`
    - **`mkdir -p all-coverage` MUST come before `find`** — see critical invariant below
 3. **Merge JaCoCo `.exec` files** — uses JaCoCo CLI to merge all `.exec` files into a single combined file
 4. **Generate XML coverage report** — produces the XML report consumed by Qodana
@@ -485,8 +484,8 @@ needs: [build, test, test-media]
 
 This covers:
 - `build` → produces `coverage-flowtree`
-- `test` → produces `coverage-group-0` through `coverage-group-2`
-- `test-media` → produces `coverage-media`
+- `test` → produces `coverage-cpu`
+- `test-media` → produces `coverage-media-0` and `coverage-media-1`
 
 If you add a new job that uploads `coverage-*`, you MUST add it to `analysis.needs`.
 
@@ -503,10 +502,8 @@ All coverage artifacts follow the naming pattern `coverage-<descriptor>`. The `r
 | Artifact Name      | Produced By  | Contents                              |
 |--------------------|--------------|---------------------------------------|
 | `coverage-flowtree` | `build`     | JaCoCo `.exec` from flowtree tests    |
-| `coverage-group-0` | `test`       | JaCoCo `.exec` from test group 0      |
-| `coverage-group-1` | `test`       | JaCoCo `.exec` from test group 1      |
-| `coverage-group-2` | `test`       | JaCoCo `.exec` from test group 2      |
-| `coverage-media`   | `test-media` | JaCoCo `.exec` from media/studio tests |
+| `coverage-cpu`     | `test`       | JaCoCo `.exec` from the CPU test suite |
+| `coverage-media-{0,1}` | `test-media` | JaCoCo `.exec` from each media/studio group |
 
 All artifacts use:
 - `retention-days: 1`
