@@ -30,49 +30,32 @@ import org.almostrealism.hardware.MemoryBank;
 import java.util.stream.IntStream;
 
 /**
- * A producer of random values that generates {@link PackedCollection}s filled with
- * random numbers according to a specified {@link TraversalPolicy}. This class supports
- * both uniform random distribution (default) and normal (Gaussian) distribution.
- * 
- * <p>The Random class is designed to integrate seamlessly with the AlmostRealism
- * computational framework, providing random number generation capabilities that
- * respect the shape and dimensionality requirements of the computational graph.</p>
- * 
- * <p><strong>Usage Examples:</strong></p>
- * <pre>{@code
- * // Create uniform random values with shape [3, 4]
- * TraversalPolicy shape = new TraversalPolicy(3, 4);
- * Random uniformRandom = new Random(shape);
- * PackedCollection uniformValues = uniformRandom.get().evaluate();
- * 
- * // Create normal distribution random values
- * Random normalRandom = new Random(shape, true);
- * PackedCollection normalValues = normalRandom.get().evaluate();
- * 
- * // Using convenience methods from CollectionFeatures
- * Producer<PackedCollection> rand = rand(3, 4);  // uniform
- * Producer<PackedCollection> randn = randn(3, 4); // normal
- * }</pre>
- * 
+ * The {@link RandomProducer} implementation that draws its values on the host with
+ * {@link java.util.Random} and delivers them to the device as data. It is selected by
+ * {@link RandomProducer#create(TraversalPolicy, boolean, java.util.Random)} unless the
+ * {@code AR_RANDOM} setting chooses {@link CounterRandom}; code that only needs random
+ * values should obtain them through {@code rand}/{@code randn} rather than constructing
+ * this class.
+ *
  * <p>The class maintains an internal cache of generated values that can be refreshed
  * using the {@link #refresh()} method. Values are generated lazily and cached until
  * explicitly refreshed or the object is recreated.</p>
- * 
+ *
  * <p><strong>Distribution Types:</strong></p>
  * <ul>
  *   <li><strong>Uniform:</strong> Values distributed uniformly in the range [0.0, 1.0)</li>
  *   <li><strong>Normal:</strong> Values distributed according to standard normal distribution (mean=0, stddev=1)</li>
  * </ul>
- * 
+ *
  * <p>The class also provides static utility methods {@link #nextInt()} and {@link #nextFloat()}
  * that use a custom xorshift algorithm for high-performance random number generation.</p>
- * 
+ *
  * @author Michael Murray
- * @see TraversalPolicy
- * @see PackedCollection
+ * @see RandomProducer
+ * @see CounterRandom
  * @since 0.52
  */
-public class Random implements CollectionProducer, OperationInfo, Signature {
+public class Random implements RandomProducer, OperationInfo, Signature {
 	/** Static seed used by the xorshift random number generator in {@link #nextInt()} and {@link #nextFloat()} */
 	private static long seed;
 
@@ -225,7 +208,16 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 	 * <p>After calling this method, the next call to {@link #get()} will trigger
 	 * a fresh generation of random values.</p>
 	 */
+	@Override
 	public void refresh() { values = null; }
+
+	/**
+	 * Returns whether this generator produces standard normal values.
+	 *
+	 * @return {@code true} for normal values, {@code false} for uniform values
+	 */
+	@Override
+	public boolean isNormal() { return normal; }
 
 	/**
 	 * Returns an {@link Evaluable} over the random values produced by this generator.
@@ -304,9 +296,6 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 	public CollectionProducer reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
 	}
-
-	// TODO  There should be an option to use this ring xor algorithm
-	// TODO  (as a genuine Computation) instead of the java.util.Random
 
 	/**
 	 * Generates a pseudo-random integer using a custom xorshift algorithm.
