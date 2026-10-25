@@ -176,6 +176,32 @@ public class LocalExternalMemoryTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A provider created without a location maps only the files it is given, so it maps those
+	 * as any provider does but refuses to allocate empty memory, as the memory provider
+	 * contract requires of a provider that cannot.
+	 *
+	 * @throws IOException if the file cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void providerWithoutLocationMapsOnlyGivenFiles() throws IOException {
+		File file = File.createTempFile("external-memory-given", ".bin");
+		file.deleteOnExit();
+
+		LocalExternalMemoryProvider provider = new LocalExternalMemoryProvider();
+		Memory mem = provider.allocate(file, SIZE);
+		provider.setMem(mem, 0, values(), 0, SIZE);
+		Assert.assertEquals(valueAt(7), provider.toArray(mem, SIZE)[7], 0.0);
+
+		try {
+			provider.allocate(SIZE);
+			Assert.fail("A provider without a location must refuse to allocate empty memory");
+		} catch (UnsupportedOperationException expected) {
+			Assert.assertTrue("The refusal should name the provider",
+					expected.getMessage().contains(provider.getName()));
+		}
+	}
+
+	/**
 	 * Reads the given number of big-endian doubles from a file.
 	 *
 	 * @param file  the file to read

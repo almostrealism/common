@@ -550,20 +550,20 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	/**
 	 * Pads a collection along specified axes with a uniform depth.
 	 * This convenience method applies symmetric padding (same amount on all sides) to selected dimensions.
-	 * 
+	 *
+	 * <p>The input may carry a {@link io.almostrealism.collect.TraversalOrdering}: the ordering
+	 * determines how the elements of the input are read, while the padding depends only on the
+	 * dimensions of its shape.</p>
+	 *
 	 * @param axes Array of axis indices to pad (0-based)
 	 * @param depth Amount of padding to add on each side of the specified axes
 	 * @param collection The input collection to pad
 	 * @return A CollectionProducerComputation that produces the padded collection
-	 * @throws UnsupportedOperationException if the input collection has a non-null traversal order
-	 * 
+	 *
 	 * @see #pad(Producer, int...)
 	 */
 	default CollectionProducerComputation pad(int[] axes, int depth, Producer<?> collection) {
 		TraversalPolicy shape = shape(collection);
-		if (shape.getOrder() != null) {
-			throw new UnsupportedOperationException();
-		}
 
 		int[] depths = new int[shape.getDimensions()];
 		for (int i = 0; i < axes.length; i++) {

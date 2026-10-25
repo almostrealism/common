@@ -359,6 +359,12 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 
 	public Heap getDefaultDelegate() { return null; }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Membership is that of {@link MemoryData#containsIndex(Expression)}, which follows the
+	 * {@link #getMemOrdering() memory ordering} as {@link #toDouble(int)} does.</p>
+	 */
 	@Override
 	public Expression<Boolean> containsIndex(Expression<Integer> index) {
 		return MemoryData.super.containsIndex(index);

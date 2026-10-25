@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.kernel.KernelWork;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.streams.Semaphore;
@@ -29,7 +30,6 @@ import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.kernel.KernelWork;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -194,7 +194,7 @@ import java.util.function.Supplier;
  * @see KernelWork
  * @see Execution
  */
-public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named, ConsoleFeatures {
+public abstract class HardwareOperator implements Execution, OperationInfo, Named, ConsoleFeatures {
 	/** If true, emit basic log messages on each kernel execution. */
 	public static boolean enableLog;
 	/** If true, emit detailed log messages for every kernel invocation. Controlled by {@code AR_HARDWARE_KERNEL_LOG}. */

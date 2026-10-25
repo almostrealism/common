@@ -320,3 +320,132 @@ message KeySignatureEvent {
   int32 sharps_flats = 1; // -7..+7
   int32 mode = 2;         // 0 = major, 1 = minor
 }
+
+// Pattern model, mapped to and from Java by PatternElementPersistence.
+message PatternData {
+  repeated PatternElementData elements = 1;
+}
+
+message PatternElementData {
+  enum NoteDurationStrategy {
+    NOTE_DURATION_STRATEGY_UNSPECIFIED = 0;
+    NONE = 1;
+    FIXED = 2;
+    NO_OVERLAP = 3;
+  }
+
+  enum ScaleTraversalStrategy {
+    SCALE_TRAVERSAL_STRATEGY_UNSPECIFIED = 0;
+    CHORD = 1;
+    SEQUENCE = 2;
+  }
+
+  enum PatternDirection {
+    PATTERN_DIRECTION_UNSPECIFIED = 0;
+    FORWARD = 1;
+    BACKWARD = 2;
+  }
+
+  repeated VoicedPatternNote notes = 1;
+  double position = 2;
+  NoteDurationStrategy duration_strategy = 3;
+  double note_duration_selection = 4;
+  ScaleTraversalStrategy scale_traversal_strategy = 5;
+  repeated double scale_positions = 6;
+  PatternDirection direction = 7;
+  int32 repeat_count = 8;
+  double repeat_duration = 9;
+  optional CollectionData automation_parameters = 10;
+}
+
+enum PatternVoicing {
+  PATTERN_VOICING_UNSPECIFIED = 0;
+  MAIN = 1;
+  WET = 2;
+}
+
+message VoicedPatternNote {
+  PatternVoicing voicing = 1;
+  optional PatternNoteData note = 2;
+}
+
+message PatternNoteData {
+  optional PatternNoteLayers layers = 1;
+  optional PatternNoteAudioData delegate = 2;
+  optional NoteAudioFilterData filter = 3;
+  double aggregation_choice = 4;
+}
+
+message PatternNoteLayers {
+  repeated PatternNoteAudioData layers = 1;
+}
+
+message PatternNoteAudioData {
+  oneof kind {
+    double selection = 1;
+    FilteredNoteAudioData layer = 2;
+    PatternNoteData note = 3;
+  }
+}
+
+message FilteredNoteAudioData {
+  optional PatternNoteAudioData delegate = 1;
+  optional NoteAudioFilterData filter = 2;
+}
+
+message NoteAudioFilterData {
+  oneof envelope {
+    AdsrEnvelopeData volume_envelope = 1;
+    AdsrEnvelopeData filter_envelope = 2;
+    LayerEnvelopeData layer_envelope = 3;
+  }
+
+  optional ParameterSetData parameters = 4;
+  PatternVoicing voicing = 5;
+}
+
+message AdsrEnvelopeData {
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    STANDARD_NOTE = 1;
+    NOTE_LAYER = 2;
+  }
+
+  Mode mode = 1;
+  optional ParameterFunctionData attack_selection = 2;
+  optional ParameterFunctionData decay_selection = 3;
+  optional ParameterFunctionData sustain_selection = 4;
+  optional ParameterFunctionData release_selection = 5;
+}
+
+message LayerEnvelopeData {
+  EnvelopeLayersData layers = 1;
+  int32 layer = 2;
+}
+
+message EnvelopeLayersData {
+  optional ParameterFunctionData attack_selection = 1;
+  optional ParameterFunctionData sustain_selection = 2;
+  optional ParameterFunctionData release_selection = 3;
+  optional MultipleParameterFunctionData volume0 = 4;
+  optional MultipleParameterFunctionData volume1 = 5;
+  optional MultipleParameterFunctionData volume2 = 6;
+  optional MultipleParameterFunctionData volume3 = 7;
+}
+
+message ParameterFunctionData {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  double c = 4;
+}
+
+message MultipleParameterFunctionData {
+  repeated ParameterFunctionData functions = 1;
+}
+
+message ParameterSetData {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}

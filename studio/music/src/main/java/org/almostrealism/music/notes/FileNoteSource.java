@@ -15,10 +15,10 @@
  */
 
 package org.almostrealism.music.notes;
-import org.almostrealism.audio.notes.NoteAudioProvider;
-import org.almostrealism.audio.notes.NoteAudio;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import org.almostrealism.audio.notes.NoteAudioProvider;
+import org.almostrealism.audio.notes.NoteAudio;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
@@ -85,7 +85,11 @@ public class FileNoteSource implements NoteAudioSource {
 
 	public KeyPosition<?> getRoot() { return root; }
 
-	@JsonDeserialize(as = WesternChromatic.class)
+	/**
+	 * Sets the root key position. A stored root is the name of a key, resolved by
+	 * {@link KeyPosition#of(String)}.
+	 */
+	@JsonDeserialize(using = KeyPositionDeserializer.Named.class)
 	public void setRoot(KeyPosition<?> root) { this.root = root; }
 
 	/**
