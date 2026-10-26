@@ -89,10 +89,11 @@ common/
 ├── domain/                        # Layer 3 — Domain Models
 │   ├── color/                     #   ar-color: RGB/RGBA, lighting, shaders, textures
 │   ├── heredity/                  #   ar-heredity: Genetic algorithms, evolutionary computation
-│   ├── graph/                     #   ar-graph: Neural network layers, computation graphs, autodiff
+│   ├── graph/                     #   ar-graph: Neural network layers, computation graphs, autodiff, PDSL language core
 │   ├── physics/                   #   ar-physics: Atomic structures, photon fields, rigid body dynamics
 │   ├── space/                     #   ar-space: 3D scenes, meshes, CSG, spatial acceleration
-│   └── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
+│   ├── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
+│   └── biology/                   #   ar-biology: Neurons, synapses, connectomes; biological dynamics
 │
 ├── engine/                        # Layer 4 — Applications & Training
 │   ├── optimize/                  #   ar-optimize: Adam, evolutionary algorithms, training loops
@@ -110,7 +111,8 @@ common/
 ├── studio/                        # Layer 6 — Multimedia Composition
 │   ├── music/                     #   ar-music: Pattern-based music composition
 │   ├── spatial/                   #   ar-spatial: Spatial audio visualization
-│   └── compose/                   #   ar-compose: Audio scene orchestration, arrangement
+│   ├── compose/                   #   ar-compose: Audio scene orchestration, arrangement
+│   └── bioscience/                #   ar-bioscience: Biological models combined with the ML engine
 │
 ├── flowtree/                      # Standalone (above engine) — Workflow Orchestration
 │   ├── api/                       #   ar-flowtreeapi: protocol & API abstractions

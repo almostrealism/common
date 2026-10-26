@@ -21,8 +21,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.ml.dsl.PdslLoader;
-import org.almostrealism.ml.dsl.PdslNode;
+import org.almostrealism.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 

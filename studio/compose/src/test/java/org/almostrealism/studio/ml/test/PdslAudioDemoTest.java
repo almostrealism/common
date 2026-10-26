@@ -20,9 +20,9 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.audio.WavFile;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
-import org.almostrealism.ml.dsl.PdslNode;
+import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -50,7 +50,7 @@ import java.util.function.IntFunction;
  * <p>The PDSL primitives themselves ({@code PdslLoader}, {@code PdslInterpreter})
  * remain in the {@code engine/ml} module. Only this integration test has moved.</p>
  *
- * @see org.almostrealism.ml.dsl.PdslInterpreter
+ * @see org.almostrealism.dsl.PdslInterpreter
  * @see WavFile
  */
 public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFeatures {

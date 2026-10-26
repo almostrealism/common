@@ -45,6 +45,7 @@
 		<module>domain/physics</module>
 		<module>domain/space</module>
 		<module>domain/chemistry</module>
+		<module>domain/biology</module>
 
 		<!-- engine — Applications & Training -->
 		<module>engine/optimize</module>
@@ -64,6 +65,7 @@
 		<module>studio/spatial</module>
 		<module>studio/compose</module>
 		<module>studio/experiments</module>
+		<module>studio/bioscience</module>
 
 		<!-- Workflow Orchestration -->
 		<module>flowtree/graphpersist</module>

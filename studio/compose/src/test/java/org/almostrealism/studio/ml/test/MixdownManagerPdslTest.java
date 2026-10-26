@@ -19,9 +19,9 @@ package org.almostrealism.studio.ml.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
-import org.almostrealism.ml.dsl.PdslNode;
+import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -60,7 +60,7 @@ import java.util.function.IntFunction;
  * lands, each one should pass after removing only its {@code @Ignore}.</p>
  *
  * @see org.almostrealism.studio.arrange.MixdownManager
- * @see org.almostrealism.ml.dsl.PdslInterpreter
+ * @see org.almostrealism.dsl.PdslInterpreter
  */
 public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTestFeatures {
 

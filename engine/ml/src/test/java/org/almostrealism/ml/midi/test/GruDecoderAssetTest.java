@@ -21,7 +21,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MoonbeamConfig;
 import org.almostrealism.model.CompiledModel;
