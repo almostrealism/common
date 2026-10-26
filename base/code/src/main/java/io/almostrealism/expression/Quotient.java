@@ -485,8 +485,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * in {@code 4 * (j - 5)}) can still truncate in the opposite direction from the combined value
 	 * when it and the total straddle zero — for example {@code (4 * (j - 5) + 2) / 4} is
 	 * {@code trunc(-2 / 4) == 0} at {@code j == 4}, not {@code (j - 5) + trunc(2 / 4) == -1}. The
-	 * total-based guard above does not detect that case, which folds the same way on master, so it
-	 * is a pre-existing limitation rather than a regression; it is tracked for a separate fix.</p>
+	 * guards above inspect only the remainder sources, so neither fold detects a negative-valued
+	 * divisible term; this is a known limitation tracked for a separate fix.</p>
 	 *
 	 * @param values the numerator followed by denominator expression(s)
 	 * @return the simplified expression or a new {@link Quotient}
@@ -641,7 +641,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				}
 
 				// Known limitation (see method javadoc): a negative-valued divisible product
-				// can still mis-fold here, as it does on master; not a regression.
+				// can still mis-fold here.
 				if (unknown == 0 && (total >= 0 || total % d.getAsLong() == 0)) {
 					List<Expression<?>> newChildren = new ArrayList<>();
 					newChildren.addAll(products.stream()
