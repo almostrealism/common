@@ -28,6 +28,91 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-26 (later) — Teach PDSL model authoring with a worked tutorial
+
+**Category:** Documentation
+**Branch:** `project/plan-20261026-165814`
+**Plan:** [`PLAN-20261026-pdsl-authoring-tutorial.md`](PLAN-20261026-pdsl-authoring-tutorial.md)
+
+#### What changed since last cycle
+
+The KV-cache single-position decode landed (PR #753, merged): `CausalLanguageModel.decodeModel`
+builds the single-position decode `Model` over its own `StateDictionary`, and
+`KeyValueCacheAutoregressiveModel` (sibling of `SlidingWindowAutoregressiveModel`) owns the
+compilation, per-layer caches and position, sharing the top-p `sampleToken` path. Five new tests
+pin it, chief among them a byte-identical-to-full-forward assertion at every position. I verified
+one thing the stale review-followup memory (6c8764a3) got wrong: the merged `load(Integer)` already
+throws `IllegalStateException` when the step reaches `config.seqLen`, so the out-of-bounds guard that
+memory flagged as deferred is in fact present — that correctness item is closed, not open. So the
+single step the "what comes next" lists had telegraphed five cycles running is cashed, and no
+same-class defect trails it.
+
+#### Category assessment (priority order)
+
+- **Documentation — a real teaching gap, and it decided the cycle.** The *reference* corpus is
+  excellent and current (40+ internals pages; `pdsl-language.md` is the complete normative PDSL
+  reference, guarded by `PdslLanguageReferenceExamplesTest`). But the *tutorial* series
+  (`docs/tutorials/01`–`09`) covers vectors, `PackedCollection`, hardware, computation graphs, ML
+  inference, signal processing, testing, process optimization, FlowTree setup and secrets — and
+  **nothing teaches PDSL**, the declarative language in which every model the platform trains states
+  what it computes. For several cycles I logged this as low-priority precisely because there was a
+  proof-of-value step to cash *right now*; with the KV-cache decode landed and the next proof-of-value
+  steps either Metal-gated (throughput measurement) or heavy (conditional diffusion), the long-deferred
+  teaching gap is now the first category with genuine, reachable, high-leverage work. It is not a
+  second reference — it is the pedagogical companion the reference has lacked, and the owner has
+  explicitly flagged PDSL education as a direction (`PDSL_FOR_RESEARCH_AND_EDUCATION.md`).
+- **Code quality — strong and owned by continuous QA.** The attention-correctness arc is closed; the
+  KV-cache decode merged with a clean OOP review and its one flagged guard turned out to be present.
+  No flagship defect. The standing minor item (`io.almostrealism.collect` split) is unchanged.
+- **Performance — no blocker.** The named lever (weighted-sum `matmul` reduced form, outputs > 1000)
+  is real but blocks nothing.
+- **Proof of value — the category's momentum, deliberately not chosen this cycle.** The telegraphed
+  next steps (measure KV-cache throughput and compare greedy-vs-top-p over long samples on Metal;
+  conditional diffusion training) are live and strong, but the first is hardware-gated and the
+  documentation gap outranks them under the priority order now that it is the earliest category with
+  real work.
+
+#### Why this task
+
+PDSL is the most generative page we can add to the corpus the self-hosted LM trains on — the same
+reasoning that drove the 2026-10-23 reference cycle. The reference answers "what does this construct
+mean"; a tutorial answers "how do I read a model, then write one," progressively, in the register of
+the existing series. That is what a human reaches for first and what a model learning from prose and
+worked examples learns from best, so it is simultaneously human onboarding and training material for
+the self-understanding aim. Crucially it is **reachable today on any backend**: it stays inside what
+already ships — the parser, `PdslLoader`, and the already-tested `.pdsl` assets — and depends on none
+of the unbuilt `PDSL_FOR_RESEARCH_AND_EDUCATION.md` features (token-embedding primitive, runner,
+weight resolution, a Qwen checkpoint the agent cannot download).
+
+To hold the project's standard that shipped doc examples cannot drift, the plan pairs the page with
+`PdslTutorialExamplesTest`, modeled on the reference's examples test: it extracts every PDSL program
+the page shows as complete and asserts each parses (the final model also loads via `PdslLoader`). Any
+rough edge the tutorial surfaces in the language is recorded as a follow-up, not fixed here — this is
+a documentation cycle, not a language change.
+
+#### Balance across categories
+
+The last five cycles were proof-of-value (KV-cache decode, nucleus sampling), documentation (the PDSL
+reference) and two correctness cycles (differential lambda, cross-attention K/V). Returning to the
+foundation now is disciplined, not a retreat from momentum: the proof-of-value step those cycles were
+building toward is cashed, and the earliest category with genuine reachable work is the teaching gap.
+It is a medium task that **runs on any node** — no macOS requirement, no workstream settings file.
+
+#### What comes next
+
+1. This plan: `docs/tutorials/10-pdsl-model-definitions.html`, the `PdslTutorialExamplesTest`
+   drift-guard, and the index/reference/README/`llms.txt` cross-links.
+2. **Proof of value, Metal:** measure KV-cache decode throughput vs full-forward and compare
+   greedy-vs-top-p decoding over long samples now that decoding is cheap enough to run at length
+   (the one Metal-gated step, with a workstream settings file).
+3. **Proof of value:** conditional diffusion training, on an attention backward pass now honest end
+   to end for both conditioning (K/V) and differential cancellation (λ).
+4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
+5. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2 (with the SAME fine-tune); the
+   `io.almostrealism.collect` package split; the unbuilt PDSL research/education features
+   (embedding primitive, runner, interventions); letting a trained model read the platform's own
+   *source*.
+
 ### 2026-10-26 — Decode the self-hosted LM one token at a time with a key/value cache
 
 **Category:** Proof of Value (self-hosted LM generation)
@@ -268,187 +353,38 @@ workstream settings file.
    `io.almostrealism.collect` package split; a PDSL tutorial in `docs/tutorials/`; letting a trained
    model read the platform's own *source*.
 
-### 2026-10-22 — Train the learned lambda of differential attention
+### 2026-10-22 — Train the learned lambda of differential attention (condensed)
 
-**Category:** Code Quality (correctness — a silent zero-gradient defect in the attention backward pass)
-**Branch:** `project/plan-20261022-134809`
+**Category:** Code Quality (correctness) · **Branch:** `project/plan-20261022-134809` ·
 **Plan:** [`PLAN-20261022-differential-lambda-gradients.md`](PLAN-20261022-differential-lambda-gradients.md)
 
-#### What changed since last cycle
+The three `differential_attention*` layers applied the learned per-head λ with `scale(lambda, 1)`,
+reading it as a constant, so the four `differentialLambda` vectors (`λ = exp(λq1·λk1) − exp(λq2·λk2) +
+λinit`) were frozen at initialization — the one parameter that makes differential attention
+*differential* never trained. The plan diagnosed where the gradient was lost by finite difference,
+made the vectors trainable on the PR #697 trainable-operand template, and pinned them with a
+per-vector finite-difference test; the three `TODO(review)` markers in `differential_attention.pdsl`
+are gone and `DifferentialAttentionAssetTest` checks them (PR #716, merged). With PR #697 before it,
+every learnable operand of every attention variant the platform ships now receives its gradient —
+closing the correctness arc, apart from the SAME resampling site deferred to the cycle that first
+fine-tunes that autoencoder.
 
-The cross-attention K/V plan landed (PR #697). `sequenceCrossAttention` now feeds K and V to the score
-and context products as graph operands instead of buffering them through `into(kTensor)`/`into(vTensor)`
-and reading them back as constants, so both halves of `toKvWeight` and the K normalization weights train;
-a new `SequenceCrossAttentionGradientTest` proves it per slice. The work also made the auxiliary-input
-path trainable (`BranchBlock implements Learning`; `Model.setParameterUpdate` propagates to auxiliary
-inputs that are `Learning`), and the review confirmed per-step K/V training is correct — the one residual
-(the branch aggregator never forwarding gradient further upstream to `condEmbed`, which nothing consumes)
-was documented, not papered over. That cycle closed with a named list of what it deferred; two items on it
-are correctness defects of the same class, and the **learned differential lambda** is the cleaner and more
-fundamental of the two.
+### 2026-10-21 — Train the K/V projections of cross-attention and transformer resampling (condensed)
 
-#### Category assessment (priority order)
-
-- **Documentation — excellent, and tracking reality.** The internals corpus is current at `master`;
-  `training-a-language-model.md`'s "Gradient wiring in sequence attention" section honestly records the
-  attention-gradient state (the five projection sections, and `TransformerResamplingFeatures` as the one
-  remaining buffered site), and the frozen lambda this cycle fixes is recorded plainly in the
-  `differential_attention.pdsl` asset header itself (the "receives no gradient" paragraph and a
-  `TODO(review)` at each of the three stages). `consult` finds no flagship doc gap; the standing
-  low-priority items (the ONNX-pressure note) are owned by continuous QA. Moved on.
-- **Code quality — the category, because of a specific, evidenced correctness defect.** It is not a style
-  or coverage gap. The three `differential_attention*` layers of `/pdsl/differential_attention.pdsl` apply
-  the learned per-head lambda with `scale(lambda, 1)`, which reads it as a constant factor; the asset's own
-  header states that "when lambda is a learned re-parameterization its parameters therefore receive no
-  gradient," and a `TODO(review)` marks each of the three stages. `differentialLambda` computes
-  `λ = exp(λq1·λk1) − exp(λq2·λk2) + λinit` from four learned vectors, and those four vectors are **frozen
-  at initialization** — the one parameter that makes differential attention *differential* never trains.
-  This is the deterministic, total zero-gradient defect the cross-attention cycle named as its first
-  deferred item.
-- Performance (the weighted-sum `matmul` reduced form) and proof of value (top-p / KV-cache / scale for the
-  LM) both have live candidates. Not chosen — a silent wrong-gradient defect in the differentiation engine
-  outranks both, and this is a concrete, falsifiable instance of one.
-
-#### Why this task
-
-Differential attention subtracts a second attention map from the first in proportion to a learned per-head
-λ, so the attention both maps pay to irrelevant positions cancels. `differential_attention_qk_layernorm` is
-the Stable Audio diffusion transformer's attention, so this architecture is on the audio-diffusion
-proof-of-value track. With λ frozen, a differential-attention model trained on this platform cannot learn
-*how much* of the second map to subtract — the defining mechanism stays at initialization, invisibly,
-because the projections compensate and the loss still falls. Nothing on `master` trains differential
-attention yet (it is exercised only by tests), so the defect is preventive today — but it is cheaper and
-safer to repair now than to discover a dead lambda mid-training-run, and it is the honest completion of the
-"make the whole attention family's backward pass honest" arc PR #697 began. After this, every learnable
-operand of every attention variant the platform ships receives its gradient.
-
-The defect is subtler than the K/V case and the plan says so: the forward applies λ as a graph operand
-(`scale` lowers to `multiply(input, broadcast(…, factors))`), so the first step is a minimal
-finite-difference experiment to establish *where* the gradient is lost — most likely that `differentialLambda`
-hands the block an opaque producer whose underlying vectors are never registered as trainable (no backward
-cell, no `ParameterUpdate`), the same structural gap `BranchBlock implements Learning` closed for the K/V
-branch — before any attention code changes. The committed deliverable is a new per-vector finite-difference
-gradient test modeled on `everySectionOfTheProjectionReceivesItsGradient`. Weakening a correctness test to
-go green is out of bounds.
-
-#### Balance across categories
-
-The last cycle was code-quality correctness (cross-attention K/V), preceded by proof-of-value (readable
-generation) and two foundation cycles before that. This cycle stays on the correctness thread deliberately:
-the cross-attention cycle opened a short, finite list of same-class defects, and finishing the cleanest of
-them now — rather than leaving it to surface mid-training-run — is the disciplined move. It is a medium task
-gated by small finite-difference tests, so it **runs on any backend** — no macOS requirement, no workstream
-settings file.
-
-#### What comes next
-
-1. This plan: diagnose where the lambda gradient is lost, make the four `differentialLambda` vectors
-   trainable (following the PR #697 trainable-operand template, placing any general construct at its most
-   general home), add the per-vector finite-difference test, remove the three `TODO(review)` markers, and
-   update the training-doc gradient-wiring section.
-2. The other deferred correctness item — `TransformerResamplingFeatures.resamplingLayerBlock`'s buffered
-   K1/V/Q2/K2 — best taken in the cycle that first fine-tunes the SAME autoencoder (its `into(...)` leaves
-   bound kernel size at full SAME dimensions, so a naive rewiring may reintroduce the compile blow-up
-   `SAMEResamplingParityTest` guards against).
-3. **Proof of value**, on a now fully-honest attention backward pass: top-p through the sliding-window
-   generator (`SlidingWindowAutoregressiveModel` calls `sampleToken` with a top-p of `1.0`), a
-   single-position KV-cache decode, and conditional diffusion training that can learn both its conditioning
-   (K/V) and its differential cancellation (λ).
-4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
-5. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a trained
-   model read the platform's own *source*, the deeper self-understanding aim.
-
-### 2026-10-21 — Train the K/V projections of cross-attention and transformer resampling
-
-**Category:** Code Quality (correctness — a silent zero-gradient defect in the attention backward pass)
-**Branch:** `project/plan-20261021-012939`
+**Category:** Code Quality (correctness) · **Branch:** `project/plan-20261021-012939` ·
 **Plan:** [`PLAN-20261021-cross-attention-kv-gradients.md`](PLAN-20261021-cross-attention-kv-gradients.md)
 
-#### What changed since last cycle
-
-The non-trivial-generation plan landed (PR #685): the self-hosted LM now generates words instead of
-96 spaces. With `LEARNING_RATE` 5e-4 / final 5e-5 over 40 epochs (dimensions unchanged),
-`CausalLanguageModelTest.trainOnDocumentation` passes both assertions — all-83 held-out 3.426
-bits/byte against a 4.904 unigram baseline — and the run is deterministic and reproduced bit-for-bit
-across two machines. The milestone the LM track had been one step short of since September is cashed:
-the first readable artifact of the self-understanding goal. The "what comes next" list it left
-(top-p through the sliding-window generator, a KV-cache decode, scale) is proof-of-value work in
-category 4.
-
-#### Category assessment (priority order)
-
-- **Documentation — excellent, and tracking reality.** The internals corpus is current at `master`,
-  and `training-a-language-model.md` honestly records the very gradient gaps this cycle fixes (its
-  "Gradient wiring in sequence attention" section). `consult` finds no flagship doc gap; the standing
-  low-priority items (the ONNX-pressure note) are owned by continuous QA. Moved on.
-- **Code quality — the category, because of a specific, evidenced correctness defect.** It is not a
-  style or coverage gap. Two attention paths — `sequenceCrossAttention` and
-  `TransformerResamplingFeatures.resamplingLayerBlock` — still buffer their K/V operands through fixed
-  tensors (`k.andThen(into(kTensor))` / `v.andThen(into(vTensor))` in cross-attention; `k1Tensor`,
-  `vTensor`, `q2Tensor` and `map2Tensor` in resampling) and read them back as constants, so their
-  key/value projection weights receive **exactly zero** gradient. The self-attention paths were
-  already fixed (`sequenceAttention` and `differentialSequenceAttention` build PDSL asset layers whose
-  K/V are branch operands; `DifferentialAttentionAssetTest` covers all five differential sections);
-  the two remaining sites kept the original defect, flagged with a `TODO(review)` at the
-  `sequenceCrossAttention` site and documented in the training page. (The plan as first written also
-  listed `DifferentialAttentionFeatures`; review found it already fixed on `master`.)
-  `SequenceAttentionGradientTest` already proved this class of bug (the buffered key slice had an
-  analytic gradient of exactly 0 against a large numeric gradient). This is a deterministic, total
-  version of the same defect the 2026-10-18 cycle treated as top-priority.
-- Performance and proof of value both have live candidates (the weighted-sum `matmul` reduced form;
-  top-p / KV-cache / scale for the LM). Not chosen — a silent wrong-gradient defect in the
-  differentiation engine outranks both, and this is a concrete, falsifiable instance of one.
-
-#### Why this task
-
-Cross-attention is how a model reads its *conditioning*. `sequenceCrossAttention` is the conditioning
-mechanism of the `DiffusionTransformer` family and `TransformerResamplingFeatures` is the resampling
-autoencoder of the audio diffusion track (inference-only today). With K/V gradients dropped, a
-conditional model trained on this platform cannot learn *what in its context is relevant* — the
-query projection adapts while the key/value projections stay frozen at initialization, invisibly,
-because the loss still falls as the rest of the network compensates. Repairing it makes the
-attention backward pass honest across the whole family, not just the one path the language model
-exercised first — the "fix the general mechanism, not the one shape" standard the
-gradient-correctness cycle set.
-
-`sequenceCrossAttention` is the committed deliverable, with a new per-slice finite-difference
-`SequenceCrossAttentionGradientTest`. Review of the plan found it is not as clean as first assumed:
-its K/V are computed on a branch of a separate block (`condEmbed`, an auxiliary `Model` input), and
-`Model.backward()` is the main chain's backward only, so the first step is to establish whether a
-gradient can reach an auxiliary input at all — possibly a `domain/graph` change. A later review split
-that question: the K/V layers sit inside a `branch()` child, so they may train once the products push
-into their backward cells, while `condEmbed`'s own weights upstream of the `BranchBlock` look
-unreachable without a `domain/graph` change (inferred from the code, not observed). The resampling site
-reads one V into two attention maps; `differential_attention.pdsl` already expresses exactly that with
-`accum_blocks` and correct gradients, so it is the template, not a new branch fan-out mechanism. Its
-`into(...)` leaves also bound kernel size at full SAME dimensions, and nothing trains SAME today, so
-the plan lets that site stop at an evidenced follow-up rather than regress `SAMEResamplingParityTest`.
-Weakening a correctness test to go green is out of bounds.
-
-#### Balance across categories
-
-The last two cycles went to proof of value (the matmul VJP that made training cheap, then readable
-generation), preceded by two foundation cycles (the autodiff page, the reference-gradient fix). This
-cycle returns to the foundation — and not by rote: the proof-of-value track is about to lean on
-conditional attention (diffusion conditioning, resampling), and that backward pass is quietly broken
-for K/V. Fixing it now is cheaper and safer than discovering a dead projection mid-training-run later.
-It is a medium task gated by small finite-difference tests, so it **runs on any backend** — no macOS
-requirement, no workstream settings file.
-
-#### What comes next
-
-1. This plan: wire K/V gradients through `sequenceCrossAttention` (committed), rewire the resampling
-   site on the `differential_attention.pdsl` template if its kernel bounds allow, add per-slice
-   finite-difference tests, update the training-doc gradient-wiring section.
-2. Whatever this plan defers (backward through auxiliary inputs if it proves to be a `domain/graph`
-   change; the resampling site) is the next correctness item, alongside the learned differential
-   lambda, which `scale(lambda, 1)` reads as a constant.
-3. **Proof of value**, on a now-trustworthy conditional backward pass: top-p through the
-   sliding-window generator (`sampleToken` already takes a top-p argument hardcoded to `1.0`), a
-   single-position KV-cache decode, and conditional diffusion training that can learn its conditioning.
-4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
-5. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
-   trained model read the platform's own *source*, the deeper self-understanding aim.
+`sequenceCrossAttention` (the `DiffusionTransformer` conditioning mechanism) and
+`TransformerResamplingFeatures.resamplingLayerBlock` buffered their K/V operands through fixed tensors
+read back as constants, so their key/value projection weights received exactly zero gradient — a
+conditional model could not learn what in its context is relevant. The plan fed K and V to the score
+and context products as graph operands, made the auxiliary-input path trainable (`BranchBlock
+implements Learning`; `Model.setParameterUpdate` propagates to `Learning` auxiliary inputs), and
+proved it with a per-slice `SequenceCrossAttentionGradientTest` (PR #697, merged). The one residual
+(the branch aggregator not forwarding gradient upstream to `condEmbed`, which nothing consumes) and
+the resampling site's SAME kernel-bound concern were documented as evidenced follow-ups, not papered
+over. This began the "make the whole attention family's backward pass honest" arc the 10-22 cycle
+finished.
 
 ### 2026-10-19 — Make the self-hosted LM write a readable sentence about itself
 
