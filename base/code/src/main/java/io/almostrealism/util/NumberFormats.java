@@ -17,6 +17,7 @@
 package io.almostrealism.util;
 
 import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 
 /**
  * Provides standard {@link DecimalFormat} instances for formatting numeric values in logging and display.
@@ -81,6 +82,9 @@ public class NumberFormats {
 	/** An instance of DecimalFormat that can be used to format decimal numbers for display. */
 	public static final DecimalFormat displayFormat = new TruncatedDecimalFormat();
 
+	/** The symbols {@link #displayFormat} was created with, used by {@link #formatHundredths(double)}. */
+	private static final DecimalFormatSymbols displaySymbols = displayFormat.getDecimalFormatSymbols();
+
 	/**
 	 * Formats a number for display, selecting the appropriate format based on type and magnitude.
 	 *
@@ -96,9 +100,33 @@ public class NumberFormats {
 		} else if (value instanceof Integer) {
 			return integerFormat.format(value);
 		} else if (value.doubleValue() >= 0.0005 && value.doubleValue() <= 500000) {
-			return displayFormat.format(value);
+			String hundredths = formatHundredths(value.doubleValue());
+			return hundredths == null ? displayFormat.format(value) : hundredths;
 		} else {
 			return decimalFormat.format(value);
 		}
+	}
+
+	/**
+	 * Formats a value the way {@link #displayFormat} does, without going through
+	 * {@link DecimalFormat}, when the value is a whole number of hundredths. Every constant
+	 * computation names itself with {@link #formatNumber(Number)} when it is constructed,
+	 * and constants such as {@code 0.5} or {@code 2.0} are by far the most common, so this
+	 * avoids a measurable part of the cost of building small computations.
+	 *
+	 * @param value a non-negative value no larger than 500000
+	 * @return the formatted value, or {@code null} if it is not a whole number of hundredths
+	 *         or the display format does not use ASCII digits
+	 */
+	private static String formatHundredths(double value) {
+		if (displaySymbols.getZeroDigit() != '0') return null;
+
+		double scaled = Math.rint(value * 100);
+		if (scaled / 100 != value) return null;
+
+		long hundredths = (long) scaled;
+		long fraction = hundredths % 100;
+		return (hundredths / 100) + String.valueOf(displaySymbols.getDecimalSeparator()) +
+				(fraction < 10 ? "0" : "") + fraction;
 	}
 }

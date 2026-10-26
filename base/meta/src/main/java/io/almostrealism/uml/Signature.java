@@ -18,6 +18,7 @@ package io.almostrealism.uml;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 /**
  * An interface for objects that can produce a string signature representing their <em>structural</em>
@@ -251,13 +252,7 @@ public interface Signature {
 	 * @return A lowercase hexadecimal string representation of the bytes
 	 */
 	static String hex(byte[] bytes) {
-		StringBuilder hexString = new StringBuilder();
-		for (byte b : bytes) {
-			String hex = Integer.toHexString(0xff & b);
-			if (hex.length() == 1) hexString.append('0');
-			hexString.append(hex);
-		}
-		return hexString.toString();
+		return HexFormat.of().formatHex(bytes);
 	}
 }
 
