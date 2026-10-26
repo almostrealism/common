@@ -75,4 +75,26 @@ public class QuotientNegativeTermDistributionTest extends TestSuiteBase implemen
 					quotient.value(new IndexValues().put(kernel(), i)).longValue());
 		}
 	}
+
+	/**
+	 * A negative constant that the divisor divides exactly ({@code (4 * i - 8) / 4}) introduces no
+	 * remainder, so distributing the quotient is sound and must still happen: the sum folds to
+	 * {@code i - 2} rather than being left as a {@link Quotient}. This pins that the negative-term
+	 * guard does not over-restrict the exactly-divisible case, which keeps index arithmetic
+	 * compact. The evaluated value is also checked against plain truncating integer arithmetic.
+	 */
+	@Test(timeout = 30000)
+	public void divisibleProductPlusNegativeDivisibleConstantIsDistributed() {
+		Expression<?> numerator = Sum.of(kernel().multiply(4), e(-8));
+		Expression<?> quotient = Quotient.of(numerator, e(4));
+
+		Assert.assertFalse("exactly-divisible sum should fold rather than remain a Quotient",
+				quotient instanceof Quotient);
+
+		for (int i = 0; i < 64; i++) {
+			long expected = (4L * i - 8) / 4;
+			Assert.assertEquals("at " + i, expected,
+					quotient.value(new IndexValues().put(kernel(), i)).longValue());
+		}
+	}
 }
