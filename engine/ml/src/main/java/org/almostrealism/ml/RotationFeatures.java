@@ -191,21 +191,63 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 *                                  {@link #computeInvFreq(int, double)} rejects
 	 */
 	static CollectionProducer computeRopeFreqs(double theta, int headDim, int seqLen) {
-		// CRITICAL: This method MUST use CollectionProducer computations, NOT Java loops + setMem.
-		// Manual Java math loops hide computation from the native compiler, destroying hardware
-		// acceleration, breaking automatic differentiation (gradients cannot flow through setMem),
-		// and preventing kernel fusion. Every time this has been reverted to Java math it must be
-		// corrected. The CollectionProducer graph below is the ONLY acceptable implementation.
-		int freqDim = headDim / 2;
 		RotationFeatures rf = new RotationFeatures() {};
-		CollectionProducer invFreq = rf.computeInvFreq(headDim, theta);
+		return rf.computeRopeFreqs(seqLen, rf.computeInvFreq(headDim, theta));
+	}
+
+	/**
+	 * Precomputes a RoPE frequency tensor (freqCis) for autoregressive single-position attention
+	 * from already-computed inverse frequencies, rather than from a base frequency.
+	 *
+	 * <p>This is the single-position counterpart of {@link #computeRotaryFreqs(int, PackedCollection)}
+	 * (which produces the duplicated-angle layout the full-sequence rotation consumes): it produces
+	 * the {@code [cos, sin]} pairs the cached {@link #ropeRotation} indexes by position. The rotation
+	 * applied at position {@code p} is therefore identical to the one the full-sequence
+	 * {@link #applyRotaryPositionEmbedding(CollectionProducer, PackedCollection) rotation} applies at
+	 * row {@code p} of the same {@code invFreq}, so a single-position decode and a full-sequence
+	 * forward over the same inverse frequencies agree. The static {@link #computeRopeFreqs(double,
+	 * int, int)} overload delegates here after deriving the inverse frequencies from a base.</p>
+	 *
+	 * <pre>
+	 * angle              = position * invFreq[i]
+	 * freqCis[pos, i, 0] = cos(angle)
+	 * freqCis[pos, i, 1] = sin(angle)
+	 * </pre>
+	 *
+	 * @param seqLen  maximum sequence length to precompute
+	 * @param invFreq inverse frequencies, shape {@code (headDim / 2)}, one per rotated feature pair
+	 * @return frequency tensor of shape {@code (seqLen, headDim / 2, 2)} with {@code [cos, sin]} pairs
+	 */
+	default CollectionProducer computeRopeFreqs(int seqLen, PackedCollection invFreq) {
+		return computeRopeFreqs(seqLen, cp(invFreq));
+	}
+
+	/**
+	 * Precomputes a RoPE frequency tensor (freqCis) from a producer of inverse frequencies; the
+	 * {@link #computeRopeFreqs(int, PackedCollection) stored-weight} and
+	 * {@link #computeRopeFreqs(double, int, int) base-frequency} overloads both route here, so the
+	 * frequency layout is defined once.
+	 *
+	 * <p>The single most important property of this method is that it must build its result with
+	 * {@link CollectionProducer} operations, never a Java loop that writes elements with
+	 * {@code setMem}: a Java loop hides the computation from the native compiler (losing hardware
+	 * acceleration and kernel fusion) and from automatic differentiation (gradients cannot flow
+	 * through {@code setMem}). It has been reverted to Java math before; the graph below is the only
+	 * acceptable implementation.</p>
+	 *
+	 * @param seqLen  maximum sequence length to precompute
+	 * @param invFreq producer of the inverse frequencies, shape {@code (headDim / 2)}
+	 * @return frequency tensor of shape {@code (seqLen, headDim / 2, 2)} with {@code [cos, sin]} pairs
+	 */
+	default CollectionProducer computeRopeFreqs(int seqLen, CollectionProducer invFreq) {
+		int freqDim = invFreq.getShape().getTotalSize();
 		// angles[pos, f] = pos * invFreq[f]  — outer product via matmul
-		CollectionProducer positions = rf.integers(0, seqLen).reshape(rf.shape(seqLen, 1));
-		CollectionProducer angles = rf.matmul(positions, invFreq.reshape(rf.shape(1, freqDim)));
+		CollectionProducer positions = integers(0, seqLen).reshape(shape(seqLen, 1));
+		CollectionProducer angles = matmul(positions, invFreq.reshape(shape(1, freqDim)));
 		// freqCis[pos, f, 0] = cos(angle), freqCis[pos, f, 1] = sin(angle)
-		CollectionProducer cosVals = rf.cos(angles).reshape(rf.shape(seqLen, freqDim, 1));
-		CollectionProducer sinVals = rf.sin(angles).reshape(rf.shape(seqLen, freqDim, 1));
-		return rf.concat(2, cosVals, sinVals);
+		CollectionProducer cosVals = cos(angles).reshape(shape(seqLen, freqDim, 1));
+		CollectionProducer sinVals = sin(angles).reshape(shape(seqLen, freqDim, 1));
+		return concat(2, cosVals, sinVals);
 	}
 
 	/**
