@@ -18,7 +18,10 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.Precision;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
+import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 
 /**
  * Fluent arithmetic, comparison, logical, and conversion operators for {@link Expression}.
@@ -274,6 +277,106 @@ public interface ExpressionArithmetic<T> {
 	}
 
 	/**
+	 * Returns the bitwise AND of this integer expression and the operand.
+	 *
+	 * @param operand the integer mask
+	 * @return an expression representing {@code this & operand}
+	 * @see And
+	 */
+	public default Expression<?> bitwiseAnd(Expression<?> operand) { return And.of(self(), operand); }
+
+	/**
+	 * Returns the bitwise exclusive OR of this integer expression and the operand.
+	 *
+	 * @param operand the other integer operand
+	 * @return an expression representing {@code this ^ operand}
+	 * @see Xor
+	 */
+	public default Expression<?> xor(Expression<?> operand) { return Xor.of(self(), operand); }
+
+	/**
+	 * Returns this integer expression shifted right by a constant number of bits.
+	 *
+	 * @param bits the shift amount
+	 * @return an expression representing {@code this >> bits}
+	 * @see ShiftRight
+	 */
+	public default Expression<?> shiftRight(int bits) { return shiftRight(new IntegerConstant(bits)); }
+
+	/**
+	 * Returns this integer expression shifted right by the given number of bits.
+	 *
+	 * @param bits the shift amount
+	 * @return an expression representing {@code this >> bits}
+	 * @see ShiftRight
+	 */
+	public default Expression<?> shiftRight(Expression<?> bits) { return ShiftRight.of(self(), bits); }
+
+	/**
+	 * Returns this integer expression reinterpreted as an unsigned integer of the width of the
+	 * given precision, which is how unsigned arithmetic is represented in the expression tree.
+	 * The expression layer has no unsigned type, and signed overflow is undefined in the
+	 * generated C code, so wraparound at that width is carried out in {@code long} and made
+	 * explicit with a mask of {@code 8 * precision.bytes()} ones; the result lies in
+	 * {@code [0, 2^(8 * precision.bytes()))}. A floating-point expression must be converted
+	 * explicitly (for example with {@link Expression#toLong()}) first, so that truncation is
+	 * never applied silently.
+	 *
+	 * @param precision the precision whose width the unsigned value takes; {@link Precision#FP64}
+	 *                  is not supported, since an unsigned 64-bit value cannot be held in a
+	 *                  {@code long}
+	 * @return an expression representing {@code ((long) this) & mask}
+	 * @throws UnsupportedOperationException if this expression is floating point, or if the
+	 *                                       precision is {@link Precision#FP64}
+	 */
+	public default Expression<?> toUnsigned(Precision precision) {
+		if (self().isFP()) {
+			throw new UnsupportedOperationException(
+					"Unsigned wraparound requires an integer operand, not " +
+							self().getType().getSimpleName());
+		}
+
+		int bits = 8 * precision.bytes();
+		if (bits >= Long.SIZE) {
+			throw new UnsupportedOperationException(
+					"Unsigned wraparound is not supported at " + precision);
+		}
+
+		return self().toLong(true).bitwiseAnd(new LongConstant((1L << bits) - 1));
+	}
+
+	/**
+	 * Returns the PCG hash of this integer expression: a 32-bit to 32-bit integer hash with
+	 * the output permutation of the PCG random number generator, as recommended for GPU
+	 * random number generation by Jarzynski and Olano, "Hash Functions for GPU Rendering",
+	 * Journal of Computer Graphics Techniques, 2020. For {@code v = this mod 2^32}, with all
+	 * arithmetic modulo 2^32:
+	 * <pre>
+	 * state = v * 747796405 + 2891336453
+	 * word  = ((state &gt;&gt; ((state &gt;&gt; 28) + 4)) ^ state) * 277803737
+	 * hash  = (word &gt;&gt; 22) ^ word
+	 * </pre>
+	 *
+	 * <p>The arithmetic is carried out on {@code long} values reduced with
+	 * {@link #toUnsigned(Precision)} at {@link Precision#FP32}. Both multipliers are below
+	 * 2^31, so no product of a 32-bit value exceeds 2^63 and no intermediate overflows the
+	 * signed 64-bit range, which keeps the generated code free of undefined behaviour and
+	 * identical, bit for bit, on every backend and in host-side evaluation of the
+	 * expression.</p>
+	 *
+	 * @return a {@code Long} typed expression for the hash, in {@code [0, 2^32)}
+	 * @throws UnsupportedOperationException if this expression is floating point
+	 */
+	public default Expression<?> pcgHash() {
+		Expression<?> state = self().toUnsigned(Precision.FP32).multiply(747796405L)
+				.add(new LongConstant(2891336453L)).toUnsigned(Precision.FP32);
+		Expression<?> shift = state.shiftRight(28).add(4);
+		Expression<?> word = state.shiftRight(shift).xor(state)
+				.multiply(277803737L).toUnsigned(Precision.FP32);
+		return word.shiftRight(22).xor(word);
+	}
+
+	/**
 	 * Returns the sine of this expression.
 	 *
 	 * @return an expression representing {@code sin(this)}
@@ -511,6 +614,24 @@ public interface ExpressionArithmetic<T> {
 	 */
 	public default CollectionExpression<?> delta(CollectionExpression<?> target) {
 		throw new UnsupportedOperationException(getClass().getSimpleName());
+	}
+
+	/**
+	 * Completes a derivative with the identity case: wherever the target
+	 * {@link Expression#matches(Expression) matches} this expression the derivative is one,
+	 * and everywhere else it is the given {@code delta}.
+	 * When the match is statically known the conditional is eliminated entirely
+	 * (see {@link ExpressionMatchingCollectionExpression#create}).
+	 *
+	 * @param target the collection expression being differentiated with respect to
+	 * @param delta  the derivative of this expression where the target does not match it
+	 * @return the derivative of this expression with respect to {@code target}
+	 */
+	public default CollectionExpression<?> deltaUnlessTarget(CollectionExpression<?> target,
+															 CollectionExpression<?> delta) {
+		return ExpressionMatchingCollectionExpression.create(
+				new ConstantCollectionExpression(target.getShape(), self()), target,
+				new ConstantCollectionExpression(target.getShape(), new IntegerConstant(1)), delta);
 	}
 
 }

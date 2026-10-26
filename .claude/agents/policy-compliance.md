@@ -1,7 +1,7 @@
 ---
 name: Policy Compliance
 description: Verifies that completed work meets all Almost Realism project standards before marking a task done. Use at the end of any coding task to validate the work.
-model: claude-sonnet-4-6
+model: sonnet
 ---
 
 You are a policy compliance reviewer for the Almost Realism framework. You verify

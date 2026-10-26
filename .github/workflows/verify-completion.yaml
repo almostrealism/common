@@ -1,8 +1,31 @@
 name: "Verify Completion"
 
-# Runs on feature branches to verify (or implement) plan goals.
-# Includes an optional registration step that creates a FlowTree
-# workstream when a new plan document is detected.
+# The "implement the plan" trigger. Dispatched once a person has read the
+# branch's plan and approved it; it submits a coding agent that implements
+# every goal the plan sets and proves each one with tests.
+#
+# Approval is marking the plan's draft pull request ready for review: the Plan
+# Ready workflow (ready-plan.yaml) turns that transition into a dispatch of
+# this workflow on the branch. Dispatching it by hand, or through the
+# project_verify_branch MCP tool, does the same thing. Nothing else starts
+# implementation — a push or the pipeline does not. On a docs-only branch,
+# which is what a plan branch is until it is approved, auto-review in
+# analysis.yaml sends a review that improves the documents and never carries
+# out the plan.
+#
+# The work is done by the reusable Implement Plan workflow, the same one other
+# repositories call for their own plan branches, so this repository exercises
+# exactly the code they run. It registers the branch's workstream, applies the
+# workstream settings the plan declares for itself, and submits the agent,
+# running only the default branch's scripts and prompt templates: nothing from
+# the dispatched branch runs while the controller token is in reach. See its
+# header for how the jobs are split around the token.
+#
+# Manual dispatch is not a code-integrity boundary, and workflow_dispatch runs
+# this file from the dispatched ref, so a branch that edits it controls what
+# runs with the secret. That exposure is the one analysis.yaml already has for
+# pull_request runs and rests on the same mitigations; see "No job that runs
+# pull request code holds controller credentials" in .github/CLAUDE.md.
 
 on:
   workflow_dispatch:
@@ -18,152 +41,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ── Phase 1: Detect the plan file ─────────────────────────────────
-  detect-plan:
-    if: github.ref != 'refs/heads/master'
-    runs-on: [self-hosted, macos, ar-ci]
-
-    outputs:
-      plan_file: ${{ steps.detect.outputs.plan_file }}
-      is_new_plan: ${{ steps.detect.outputs.is_new_plan }}
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-
-      - name: Fetch base branch
-        run: git fetch origin master:refs/remotes/origin/master --no-tags
-
-      - name: Detect plan file
-        id: detect
-        run: |
-          # Use explicit input if provided
-          if [ -n "${{ github.event.inputs.plan_file }}" ]; then
-            PLAN="${{ github.event.inputs.plan_file }}"
-            if [ ! -f "$PLAN" ]; then
-              echo "::error::Plan file not found: $PLAN"
-              exit 1
-            fi
-            echo "plan_file=$PLAN" >> "$GITHUB_OUTPUT"
-
-            # Check if this file is new relative to master
-            if git diff --name-only --diff-filter=A origin/master...HEAD -- "$PLAN" | grep -q .; then
-              echo "is_new_plan=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "is_new_plan=false" >> "$GITHUB_OUTPUT"
-            fi
-            exit 0
-          fi
-
-          # Auto-detect: find new .md files in docs/plans/ relative to master
-          NEW_PLANS=$(git diff --name-only --diff-filter=A origin/master...HEAD -- 'docs/plans/*.md' \
-            | grep -v 'MANAGER_LOG.md' || true)
-
-          COUNT=$(echo "$NEW_PLANS" | grep -c '.' || true)
-
-          if [ "$COUNT" -eq 0 ]; then
-            echo "::error::No new plan document found in docs/plans/ and no plan_file input provided"
-            exit 1
-          elif [ "$COUNT" -gt 1 ]; then
-            echo "::warning::Multiple new plan documents found; using the first one"
-          fi
-
-          PLAN=$(echo "$NEW_PLANS" | head -1)
-          echo "plan_file=$PLAN" >> "$GITHUB_OUTPUT"
-          echo "is_new_plan=true" >> "$GITHUB_OUTPUT"
-          echo "::notice::Detected plan file: $PLAN"
-
-  # ── Phase 2: Register workstream (conditional) ────────────────────
-  #
-  # Runs whenever a NEW plan document was detected (registers the
-  # workstream that doesn't exist yet) OR the caller passed an explicit
-  # plan_file (so an already-registered workstream's planningDocument is
-  # synced to it before the verify agent runs — otherwise the agent would
-  # silently keep consulting whichever document was configured before,
-  # ignoring the caller's explicit choice).
-  register-workstream:
-    needs: detect-plan
-    if: needs.detect-plan.outputs.is_new_plan == 'true' || github.event.inputs.plan_file != ''
-    runs-on: [self-hosted, macos, ar-ci]
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-
-      - name: Register workstream
-        env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
-          BRANCH: ${{ github.ref_name }}
-          BASE_BRANCH: master
-          PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
-          REPO_URL: git@github.com:${{ github.repository }}.git
-        run: |
-          chmod +x ./tools/ci/register-workstream.sh
-          ./tools/ci/register-workstream.sh
-
-      - name: Summary
-        if: always()
-        run: |
-          echo "## Register Workstream" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Registered a FlowTree workstream for branch \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "with planning document \`${{ needs.detect-plan.outputs.plan_file }}\`." >> "$GITHUB_STEP_SUMMARY"
-
-  # ── Phase 3: Verify / implement ───────────────────────────────────
-  verify:
-    needs: [detect-plan, register-workstream]
-    # Run after detect-plan succeeds, even if register was skipped (but not if it failed)
-    if: |
-      always()
-      && needs.detect-plan.result == 'success'
-      && needs.register-workstream.result != 'failure'
-    runs-on: [self-hosted, macos, ar-ci]
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-
-      - name: Build prompt
-        env:
-          BRANCH: ${{ github.ref_name }}
-          BASE_BRANCH: master
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          chmod +x ./tools/ci/prompts/build-verify-prompt.sh
-          ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Submit agent job
-        env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
-          BRANCH: ${{ github.ref_name }}
-          BASE_BRANCH: master
-          DESCRIPTION: "Verify completion"
-          PROTECT_TEST_FILES: "true"
-        run: |
-          chmod +x ./tools/ci/submit-agent-job.sh
-          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Summary
-        if: always()
-        run: |
-          echo "## Verify Completion" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "A FlowTree coding agent job was submitted to verify and implement the goals" >> "$GITHUB_STEP_SUMMARY"
-          echo "on branch \`${{ github.ref_name }}\` as described in" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`${{ needs.detect-plan.outputs.plan_file }}\`." >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "The agent will:" >> "$GITHUB_STEP_SUMMARY"
-          echo "1. Implement any unfinished goals from the plan" >> "$GITHUB_STEP_SUMMARY"
-          echo "2. Verify every goal is fully implemented" >> "$GITHUB_STEP_SUMMARY"
-          echo "3. Ensure each goal is proven correct by meaningful tests" >> "$GITHUB_STEP_SUMMARY"
-          echo "4. Check that no existing tests were weakened or disabled" >> "$GITHUB_STEP_SUMMARY"
+  implement:
+    uses: ./.github/workflows/implement-plan.yaml
+    permissions:
+      contents: read
+    with:
+      plan-file: ${{ inputs.plan_file }}
+      controller-url: ${{ vars.FLOWTREE_CONTROLLER_URL }}
+      cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}

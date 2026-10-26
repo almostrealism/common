@@ -16,6 +16,8 @@
 
 package org.almostrealism.ml.dsl;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -51,23 +53,72 @@ public abstract class PdslNode {
 
 	// ---- Top-level structures ----
 
-	/** A complete PDSL program: a list of definitions. */
+	/** A complete PDSL program: the resources it imports and its own definitions. */
 	public static class Program extends PdslNode {
+		/** Classpath resources this program imports, in source order; empty when it imports none. */
+		private final List<Import> imports;
+
 		/** Top-level definitions (layers, models, configs) that make up this program. */
 		private final List<Definition> definitions;
 
 		/**
-		 * Constructs a program node from a list of top-level definitions.
+		 * Constructs a program node with no imports.
 		 *
 		 * @param definitions Top-level definitions in source order
 		 */
 		public Program(List<Definition> definitions) {
-			super(1, 1);
-			this.definitions = definitions;
+			this(Collections.emptyList(), definitions);
 		}
 
-		/** Returns the ordered list of top-level definitions. */
+		/**
+		 * Constructs a program node from its imports and top-level definitions.
+		 *
+		 * <p>Both lists are stored as unmodifiable copies so a parsed program cannot be
+		 * structurally altered after construction. This is what makes it safe for
+		 * {@link PdslLoader#parseResource(String)} to cache and share one parsed program
+		 * across every build: a caller of {@link #getDefinitions()} cannot corrupt the
+		 * shared instance for later loads.</p>
+		 *
+		 * @param imports     Imported resource references in source order
+		 * @param definitions Top-level definitions in source order
+		 */
+		public Program(List<Import> imports, List<Definition> definitions) {
+			super(1, 1);
+			this.imports = Collections.unmodifiableList(new ArrayList<>(imports));
+			this.definitions = Collections.unmodifiableList(new ArrayList<>(definitions));
+		}
+
+		/** Returns the ordered, unmodifiable list of imported resource references. */
+		public List<Import> getImports() { return imports; }
+
+		/** Returns the ordered, unmodifiable list of top-level definitions. */
 		public List<Definition> getDefinitions() { return definitions; }
+	}
+
+	/**
+	 * An {@code import "resource"} statement declaring that this program depends on the
+	 * definitions of another {@code .pdsl} asset. The resource is the same absolute classpath
+	 * path a Java caller would pass to {@link PdslLoader#parseResource(String)}; the loader
+	 * resolves imports transitively so a caller need only name the asset it builds from.
+	 */
+	public static class Import extends PdslNode {
+		/** Absolute classpath resource path of the imported {@code .pdsl} asset. */
+		private final String resource;
+
+		/**
+		 * Constructs an import node.
+		 *
+		 * @param resource Absolute classpath path of the imported resource
+		 * @param line     Source line number
+		 * @param column   Source column number
+		 */
+		public Import(String resource, int line, int column) {
+			super(line, column);
+			this.resource = resource;
+		}
+
+		/** Returns the absolute classpath resource path of the imported asset. */
+		public String getResource() { return resource; }
 	}
 
 	/** Base class for top-level definitions (layer, model, config). */
@@ -207,7 +258,11 @@ public abstract class PdslNode {
 		/** Formal parameters accepted by this layer. */
 		private final List<Parameter> parameters;
 
-		/** Declared output shape expression, or {@code null} if omitted. */
+		/**
+		 * The {@code -> [shape]} annotation, or {@code null} if omitted: the input shape the layer
+		 * is built for when another layer calls it. A layer without one is built for the shape of
+		 * the signal where the call is placed.
+		 */
 		private final Expression returnShape;
 
 		/** Statements that build the layer's computation graph. */
@@ -218,7 +273,7 @@ public abstract class PdslNode {
 		 *
 		 * @param name        Layer name
 		 * @param parameters  Formal parameter declarations
-		 * @param returnShape Declared output shape, or {@code null}
+		 * @param returnShape The {@code -> [shape]} annotation, or {@code null}
 		 * @param body        Statements forming the layer body
 		 * @param line        Source line number
 		 * @param column      Source column number
@@ -235,7 +290,7 @@ public abstract class PdslNode {
 		/** Returns the formal parameter list. */
 		public List<Parameter> getParameters() { return parameters; }
 
-		/** The declared return shape, or null if omitted. */
+		/** The {@code -> [shape]} annotation (the input shape of a call from another layer), or null if omitted. */
 		public Expression getReturnShape() { return returnShape; }
 
 		/** Returns the statements that form the layer body. */
@@ -508,6 +563,51 @@ public abstract class PdslNode {
 
 		/** Returns the list of sub-block expressions to be summed. */
 		public List<Expression> getBlocks() { return blocks; }
+	}
+
+	/**
+	 * Repetition over a weight group: {@code stack weights.model.layers as layer { body }}.
+	 *
+	 * <p>The body is built once for each member of the group, in the group's order, with the
+	 * member bound to {@code name}. The number of repetitions is the number of members the data
+	 * holds, and the body has no index to compute with: each repetition differs from the others
+	 * only in the weights it reads. That keeps the text the same shape as a diagram of the
+	 * model, which draws the stack as one box repeated.</p>
+	 */
+	public static class StackStatement extends Statement {
+		/** The weight group whose members the body is repeated over. */
+		private final Expression group;
+
+		/** The name each repetition binds its member to. */
+		private final String name;
+
+		/** Statements forming the repeated body. */
+		private final List<Statement> body;
+
+		/**
+		 * Constructs a stack statement.
+		 *
+		 * @param group  The weight group expression
+		 * @param name   The member name
+		 * @param body   The repeated body
+		 * @param line   Source line number
+		 * @param column Source column number
+		 */
+		public StackStatement(Expression group, String name, List<Statement> body, int line, int column) {
+			super(line, column);
+			this.group = group;
+			this.name = name;
+			this.body = body;
+		}
+
+		/** Returns the weight group expression. */
+		public Expression getGroup() { return group; }
+
+		/** Returns the name each repetition binds its member to. */
+		public String getName() { return name; }
+
+		/** Returns the repeated body. */
+		public List<Statement> getBody() { return body; }
 	}
 
 	/** For-loop: {@code for i in start..end { body }}. */

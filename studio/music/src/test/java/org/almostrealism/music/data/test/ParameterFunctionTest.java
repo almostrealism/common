@@ -19,8 +19,11 @@ package org.almostrealism.music.data.test;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.music.data.ParameterSet;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
+import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.stream.IntStream;
 
 /**
@@ -35,5 +38,63 @@ public class ParameterFunctionTest extends TestSuiteBase {
 	public void power() {
 		ParameterFunction f = ParameterFunction.random();
 		IntStream.range(0, 10).mapToObj(i -> ParameterSet.random()).mapToDouble(f.power(2.0, 3, -3)::apply).forEach(System.out::println);
+	}
+
+	/**
+	 * Reseeding with the same value reproduces the same sequence of random functions,
+	 * and a different seed produces a different sequence.
+	 */
+	@Test(timeout = 10_000)
+	public void randomSeedReproducesDraws() {
+		ParameterSet params = new ParameterSet(0.3, 0.6, 0.9);
+
+		ParameterFunction.setRandomSeed(7);
+		double[] first = draws(params, 8);
+		ParameterFunction.setRandomSeed(7);
+		double[] second = draws(params, 8);
+		ParameterFunction.setRandomSeed(8);
+		double[] other = draws(params, 8);
+
+		Assert.assertArrayEquals(first, second, 0.0);
+		Assert.assertFalse(Arrays.equals(first, other));
+	}
+
+	/**
+	 * Clearing the seed stops later draws from repeating the seeded sequence: after
+	 * {@link ParameterFunction#clearRandomSeed()} the draws no longer match those made
+	 * from the same seed, and two cleared sources draw different sequences.
+	 */
+	@Test(timeout = 10_000)
+	public void clearRandomSeedRestoresUnseededDraws() {
+		ParameterSet params = new ParameterSet(0.3, 0.6, 0.9);
+
+		ParameterFunction.setRandomSeed(7);
+		double[] seeded = draws(params, 8);
+
+		ParameterFunction.setRandomSeed(7);
+		ParameterFunction.clearRandomSeed();
+		double[] cleared = draws(params, 8);
+		ParameterFunction.clearRandomSeed();
+		double[] clearedAgain = draws(params, 8);
+
+		Assert.assertFalse(Arrays.equals(seeded, cleared));
+		Assert.assertFalse(Arrays.equals(cleared, clearedAgain));
+	}
+
+	/** Leaves the process-global random source unseeded for whatever runs next. */
+	@After
+	public void clearRandomSeed() {
+		ParameterFunction.clearRandomSeed();
+	}
+
+	/**
+	 * Evaluates {@code count} freshly drawn random functions at {@code params}.
+	 *
+	 * @param params the parameters to evaluate each function at
+	 * @param count  the number of functions to draw
+	 * @return the value of each drawn function, in draw order
+	 */
+	private static double[] draws(ParameterSet params, int count) {
+		return IntStream.range(0, count).mapToDouble(i -> ParameterFunction.random().apply(params)).toArray();
 	}
 }

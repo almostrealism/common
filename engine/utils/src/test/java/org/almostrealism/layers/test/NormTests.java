@@ -327,10 +327,13 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 			PackedCollection dLdXGroup = dlDxGroup(
 					dLdHatXGroup, dLdHatXGroupMean,
 					xHatGroup, dLdHatXGroupXHatGroupMean);
+			PackedCollection magnitudes = dlDxGroupMagnitude(
+					dLdHatXGroup, dLdHatXGroupMean,
+					xHatGroup, dLdHatXGroupXHatGroupMean).divide(c(stdG)).evaluate();
 			for (int i = 0; i < groupSize; i++) {
 				double expected = dLdXGroup.valueAt(i) / stdG;
 				double actual = result.valueAt(start + i);
-				assertSimilar(expected, actual);
+				assertSimilar(null, expected, actual, 0.001, magnitudes.valueAt(i));
 			}
 		}
 
@@ -502,18 +505,20 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 			int start = g * groupSize;
 
 			PackedCollection dLdBeta = gradient.range(shape(groupSize), start);
+			PackedCollection magnitudes = new PackedCollection(shape(groupSize));
 			PackedCollection expectedGrad = normBackwards(
 					input.range(shape(groupSize), start),
 					gradient.range(shape(groupSize), start),
 					null,
-					origBiases.range(shape(groupSize), start));
+					origBiases.range(shape(groupSize), start),
+					magnitudes);
 
 			for (int i = 0; i < groupSize; i++) {
 				double expected = expectedGrad.valueAt(i);
 				double actual = result.valueAt(start + i);
 				double diff = Math.abs(expected - actual);
 				loss += diff;
-				assertSimilar(expected, actual, threshold);
+				assertSimilar(null, expected, actual, threshold, magnitudes.valueAt(i));
 
 				expected = lr.toDouble() * dLdBeta.valueAt(i);
 				actual = origBiases.valueAt(start + i) - biases.valueAt(start + i);
@@ -748,18 +753,20 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 			PackedCollection dLdBeta = dLdyGroup;
 			PackedCollection dLdGamma = dLdGammaEval.evaluate(dLdyGroup, xHatGroup);
 
+			PackedCollection magnitudes = new PackedCollection(shape(groupSize));
 			PackedCollection expectedGrad = normBackwards(
 					input.range(shape(groupSize), start),
 					gradient.range(shape(groupSize), start),
 					origWeights.range(shape(groupSize), start),
-					origBiases.range(shape(groupSize), start));
+					origBiases.range(shape(groupSize), start),
+					magnitudes);
 
 			for (int i = 0; i < groupSize; i++) {
 				double expected = expectedGrad.valueAt(i);
 				double actual = result.valueAt(start + i);
 				double diff = Math.abs(expected - actual);
 				loss += diff;
-				assertSimilar(expected, actual, t * threshold);
+				assertSimilar(null, expected, actual, t * threshold, magnitudes.valueAt(i));
 
 				expected = lr.toDouble() * dLdGamma.valueAt(i);
 				actual = origWeights.valueAt(start + i) - weights.valueAt(start + i);

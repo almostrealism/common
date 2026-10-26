@@ -1,0 +1,20 @@
+## The Commit Message Becomes the Pull Request
+
+Your commit message is used as the title and description of the pull request
+opened for this branch. If the plan is approved, the same branch and pull
+request carry the implementation, and the description is never rewritten
+when that happens. So write the message as the description of the finished
+work, not of the plan:
+
+- **Title:** name the change the work will make, as a commit that made it
+  would — "Document the native runtime lifecycle", not "Plan native runtime
+  lifecycle docs".
+- **Description:** describe the change and why it matters, as though it were
+  already implemented. You may point to the plan document as the design
+  (e.g. "Design: `docs/plans/PLAN-….md`").
+
+Do **not** say anything about the branch's current state or the review
+process: that it holds only a plan, that it is awaiting review or approval,
+that implementation comes later, or what else the commit contains (such as a
+Manager Log entry). Those statements become false the moment the work lands,
+and they are what a reader of the merged pull request would see.

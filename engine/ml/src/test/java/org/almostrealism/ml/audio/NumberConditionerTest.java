@@ -58,6 +58,12 @@ public class NumberConditionerTest extends TestSuiteBase {
 	private final PackedCollection projBias =
 			new PackedCollection(shape(OUT_DIM)).randnFill();
 
+	/** Lowest frequency of the geometric ladder used by the expo-path tests. */
+	private static final double MIN_FREQ = 1.0;
+
+	/** Highest frequency of the geometric ladder used by the expo-path tests. */
+	private static final double MAX_FREQ = 1000.0;
+
 	/**
 	 * The scalar-to-embedding output must match a direct host reference of the Fourier features plus
 	 * the learned projection, with the bias applied, over the Stable Audio 3 duration range.
@@ -164,6 +170,67 @@ public class NumberConditionerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A conditioner built through {@link NumberConditioner#expo} uses the deterministic geometric
+	 * frequency ladder rather than learned frequencies. Its embedding must match a host reference that
+	 * computes the same ladder, the {@code concat(cos, sin)} Fourier features and the learned
+	 * projection, giving the expo path direct coverage rather than only coverage through the Stable
+	 * Audio 3 conditioner.
+	 *
+	 * <p>The Fourier features are {@code cos}/{@code sin} of arguments as large as
+	 * {@code 2*PI*MAX_FREQ}, and a backend without full fp64 precision carries the rounding error of
+	 * those arguments into the embedding. The comparison therefore uses the hardware-precision-aware
+	 * {@link #assertSimilar(String, double, double, double, double)} with that argument scale as the
+	 * magnitude, so the epsilon floor scales with the backend precision, rather than a fixed absolute
+	 * delta that only a full-precision backend can meet.</p>
+	 */
+	@Test(timeout = 120000)
+	public void expoEmbeddingMatchesReference() {
+		double value = 30.0;
+		NumberConditioner conditioner = NumberConditioner.expo(MIN_VAL, MAX_VAL, OUT_DIM, FOURIER_DIM,
+				MIN_FREQ, MAX_FREQ, projWeight, projBias);
+
+		PackedCollection out = evaluate(conditioner.embed(value));
+		double[] expected = referenceFromFrequencies(value, MIN_VAL, MAX_VAL, expoFrequencies(), true);
+		double[] actual = out.toArray();
+
+		double magnitude = 2.0 * Math.PI * MAX_FREQ;
+		assertEquals(OUT_DIM, actual.length);
+		for (int i = 0; i < OUT_DIM; i++) {
+			assertSimilar("expo embedding element " + i, expected[i], actual[i], 1e-3, magnitude);
+		}
+	}
+
+	/**
+	 * The learned-frequency constructor must reject {@code null} Fourier weights. The canonical
+	 * constructor treats {@code null} weights as the request for the expo ladder, so without this
+	 * rejection a missing learned matrix would silently produce a degenerate ladder over
+	 * {@code minFreq = maxFreq = 0} instead of failing.
+	 */
+	@Test(timeout = 120000, expected = IllegalArgumentException.class)
+	public void learnedConstructorRejectsNullFourierWeights() {
+		new NumberConditioner(MIN_VAL, MAX_VAL, OUT_DIM, null, projWeight, projBias);
+	}
+
+	/**
+	 * The geometric frequency ladder {@link NumberConditioner#expo} builds:
+	 * {@code f_k = exp(log(minFreq) + k * step)} with
+	 * {@code step = (log(maxFreq) - log(minFreq)) / (half - 1)}, or {@code 0} when {@code half == 1}.
+	 *
+	 * @return the {@link #FOURIER_DIM}{@code / 2} ladder frequencies
+	 */
+	private double[] expoFrequencies() {
+		int half = FOURIER_DIM / 2;
+		double logMin = Math.log(MIN_FREQ);
+		double logStep = half == 1 ? 0.0 : (Math.log(MAX_FREQ) - logMin) / (half - 1);
+
+		double[] freqs = new double[half];
+		for (int k = 0; k < half; k++) {
+			freqs[k] = Math.exp(logMin + k * logStep);
+		}
+		return freqs;
+	}
+
+	/**
 	 * Builds a conditioner over the given range from the shared synthetic weights.
 	 *
 	 * @param withBias whether to include the projection bias
@@ -209,13 +276,36 @@ public class NumberConditionerTest extends TestSuiteBase {
 	 * @return the reference embedding of length {@link #OUT_DIM}
 	 */
 	private double[] reference(double value, double minV, double maxV, boolean withBias) {
+		int half = FOURIER_DIM / 2;
+		double[] freqs = new double[half];
+		for (int j = 0; j < half; j++) {
+			freqs[j] = fourierWeights.valueAt(j, 0);
+		}
+		return referenceFromFrequencies(value, minV, maxV, freqs, withBias);
+	}
+
+	/**
+	 * Host-side reference of the conditioner computation over an explicit frequency ladder: clamp and
+	 * normalize the scalar, expand into Fourier features ({@code cos} components followed by {@code sin}
+	 * components), then apply the learned projection and optional bias. Shared by the learned-frequency
+	 * and expo paths, which differ only in how the frequencies are obtained.
+	 *
+	 * @param value    the input scalar
+	 * @param minV     lower bound of the range
+	 * @param maxV     upper bound of the range
+	 * @param freqs    the {@link #FOURIER_DIM}{@code / 2} frequencies
+	 * @param withBias whether to add the projection bias
+	 * @return the reference embedding of length {@link #OUT_DIM}
+	 */
+	private double[] referenceFromFrequencies(double value, double minV, double maxV,
+											  double[] freqs, boolean withBias) {
 		double clamped = Math.max(minV, Math.min(maxV, value));
 		double normalized = (clamped - minV) / (maxV - minV);
 
 		int half = FOURIER_DIM / 2;
 		double[] fourier = new double[FOURIER_DIM];
 		for (int j = 0; j < half; j++) {
-			double projected = 2.0 * Math.PI * normalized * fourierWeights.valueAt(j, 0);
+			double projected = 2.0 * Math.PI * normalized * freqs[j];
 			fourier[j] = Math.cos(projected);
 			fourier[half + j] = Math.sin(projected);
 		}

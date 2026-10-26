@@ -19,7 +19,7 @@ A phase carries four independently nullable knobs, collected in
 | Field | Meaning when set | What `null` means |
 |-------|------------------|-------------------|
 | `runner` | The `AgentRunner` name to dispatch this phase on | Inherit the runner from the next level up the ladder |
-| `model` | The model identifier handed to the runner (e.g. `"claude-opus-4-7"`) | Inherit the model from the next level up the ladder |
+| `model` | The model identifier handed to the runner (e.g. `"claude-opus-5-5"`) | Inherit the model from the next level up the ladder |
 | `effort` | The effort level (e.g. `"high"`) | Inherit the effort from the next level up the ladder |
 | `provider` | The provider identifier (e.g. `"openrouter"`) | Inherit the provider from the next level up the ladder |
 
@@ -46,7 +46,7 @@ its model from another.
 | Phase | Wire name | When it runs |
 |-------|-----------|--------------|
 | `PRIMARY` | `primary` | Initial `executeSingleRun()` in `doWork()` — the prompt the operator submitted. |
-| `ENFORCE_CHANGES` | `enforce-changes` | `EnforceChangesRule` — re-runs the primary prompt if no production code changed. |
+| `ENFORCE_CHANGES` | `enforce-changes` | Deprecated. `EnforceChangesRule` re-runs the primary prompt if no change was produced, but the re-run is a `PRIMARY` restart on the primary runner and never dispatches this phase. Re-runs are capped over the whole job by `maxEnforceChangesRetries` (0 = none); an empty result after the cap is `DEGRADED`. |
 | `REVIEW` | `review` | `ReviewRule` — one-shot second-pass review of the primary diff (default-on); makes small surgical fixes and defers the rest. |
 | `DEDUPLICATION` | `deduplication` | `DeduplicationRule` correction, when local dedup mode is on. |
 | `ORGANIZATIONAL_PLACEMENT` | `organizational-placement` | `OrganizationalPlacementRule` correction (default-on). |
@@ -54,6 +54,9 @@ its model from another.
 | `POST_COMPLETION` | `post-completion` | `PostCompletionCommandRule` correction with the script's output. |
 | `COMMIT_MESSAGE` | `commit-message` | `CommitMessageRule` — always the last enforcement phase. |
 | `GIT_TAMPERING_RESTART` | `git-tampering-restart` | `onGitTampering()` re-run with a stern warning. |
+| `PUSH_CONFLICT_RESOLUTION` | `push-conflict-resolution` | Focused session that resolves merge conflicts encountered while reconciling a push against an advanced target branch. |
+| `RETROSPECTIVE` | `retrospective` | Retrospective session — analyzes the primary phase transcript for improvement opportunities. |
+| `FALSIFICATION` | `falsification` | Falsification session — extracts load-bearing behavioural claims and bounces to primary when captured evidence refutes them. |
 
 The orchestrator resolves the current phase from the existing
 `currentActivity` field — no new session state was needed. Most rule

@@ -205,7 +205,7 @@ class TestBulkImport(unittest.TestCase):
         project_id = str(uuid.uuid4())
         task_id = str(uuid.uuid4())
         payload = {
-            "projects": [{"id": project_id, "name": "Imported"}],
+            "projects": [{"id": project_id, "name": "Imported", "workspace_id": "W1"}],
             "releases": [],
             "tasks": [{"id": task_id, "title": "T1", "project_id": project_id}],
         }

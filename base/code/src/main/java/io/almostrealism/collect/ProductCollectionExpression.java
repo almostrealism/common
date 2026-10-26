@@ -18,10 +18,10 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.Product;
 import io.almostrealism.sequence.DefaultIndex;
-import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * A {@link UniformCollectionExpression} that computes the element-wise product of its operands.
@@ -53,15 +53,16 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>When the diagonal optimisation is enabled and the target appears exactly once among
-	 * the operands, returns a {@link DiagonalCollectionExpression} whose diagonal values are
-	 * the product of the remaining operands. Otherwise delegates to the parent implementation.</p>
+	 * <p>When the diagonal optimisation is enabled, the target appears exactly once among
+	 * the operands, and the target reports that it is not
+	 * {@link CollectionExpression#isReferencedBy referenced by} any of the remaining
+	 * operands, returns a
+	 * {@link DiagonalCollectionExpression} whose diagonal values are the product of the
+	 * remaining operands. Otherwise delegates to the parent implementation.</p>
 	 */
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
-		if (!enableDiagonalDelta ||
-				!(target instanceof CollectionVariable) ||
-				((CollectionVariable) target).getProducer() instanceof TraversableExpression) {
+		if (!enableDiagonalDelta) {
 			return super.delta(target);
 		}
 
@@ -69,23 +70,18 @@ public class ProductCollectionExpression extends UniformCollectionExpression {
 		List<TraversableExpression<Double>> others = new ArrayList<>();
 
 		getOperands().forEach(e -> {
-			if (TraversableExpression.match(e, target)) {
+			if (Objects.equals(e, target)) {
 				matches.add(e);
 			} else {
 				others.add(e);
 			}
 		});
 
-		DefaultIndex index = generateTemporaryIndex();
+		DefaultIndex index = DefaultIndex.temporary();
 
-		if (matches.size() != 1 ||
-				others.stream().map(e -> e.getValueAt(index))
-						.anyMatch(e -> e.containsReference((Variable) target))) {
+		if (matches.size() != 1 || others.isEmpty() ||
+				others.stream().map(e -> e.getValueAt(index)).anyMatch(target::isReferencedBy)) {
 			return super.delta(target);
-		}
-
-		if (others.isEmpty()) {
-			throw new UnsupportedOperationException();
 		}
 
 		TraversalPolicy shape = getShape().append(target.getShape());

@@ -16,8 +16,11 @@
 
 package io.flowtree.workstream;
 
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.CodingAgentJob;
+import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.GitOperations;
+import io.flowtree.jobs.ShellCommandJob;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
@@ -47,48 +50,6 @@ import io.flowtree.controller.FlowTreeController;
  * @see FlowTreeController
  */
 public class Workstream {
-
-    /**
-     * Connection details for a Flowtree agent.
-     *
-     * <p>This is retained for optional pre-configured agent lists, but the
-     * primary connection model is inbound: agents connect to the controller's
-     * {@link io.flowtree.Server} using {@code FLOWTREE_ROOT_HOST} and
-     * {@code FLOWTREE_ROOT_PORT}.</p>
-     */
-    public static class AgentEndpoint {
-        /** The hostname or IP address of the agent. */
-        private final String host;
-        /** The port the agent's FlowTree node is listening on. */
-        private final int port;
-
-        /**
-         * Creates an agent endpoint with the given host and port.
-         *
-         * @param host the agent hostname or IP address
-         * @param port the agent port number
-         */
-        public AgentEndpoint(String host, int port) {
-            this.host = host;
-            this.port = port;
-        }
-
-        /** Returns the agent hostname or IP address. */
-        public String getHost() {
-            return host;
-        }
-
-        /** Returns the agent port number. */
-        public int getPort() {
-            return port;
-        }
-
-        /** Returns "host:port" for logging and diagnostics. */
-        @Override
-        public String toString() {
-            return host + ":" + port;
-        }
-    }
 
     /** Immutable identifier; used as a memory namespace and for API routing. */
     private final String workstreamId;
@@ -253,6 +214,37 @@ public class Workstream {
      * backstop.</p>
      */
     private boolean dispatchCapable;
+
+    /**
+     * Tracker roles granted to agents running on this workstream, in the
+     * canonical form {@link TrackerRoles} produces. The one role,
+     * {@code planner}, lets an agent create tasks with every field set, edit
+     * any task in the workspace, and create releases; without it an agent may
+     * still file backlog tasks and edit the tasks linked to this workstream.
+     * Empty by default. ar-manager enforces the role, reading it from
+     * {@link #toSummaryJson()}.
+     */
+    private List<String> trackerCapabilities = List.of();
+
+    /** Every canonical value {@link #setTrackerCapabilities(List)} stores. */
+    public static final Set<String> TRACKER_CAPABILITIES = TrackerRoles.KNOWN;
+
+    /**
+     * Branch-name prefixes whose jobs may bypass the agent runtime's
+     * interactive permission prompts. Empty or unset means no branch may —
+     * which is the default, because the grant lets a session write the
+     * guardrails it runs under.
+     *
+     * <p>This exists so the policy is the workstream's own. Repositories have
+     * their own conventions for which branches are allowed to change their
+     * tooling — one names them {@code ci/}, another {@code infra/}, another
+     * has no such branch at all — and a platform that hard-coded any one of
+     * them would force every repository onto it. FlowTree supplies the
+     * mechanism and each workstream states the policy here.</p>
+     *
+     * @see #permitsAgentPermissionBypass(String)
+     */
+    private List<String> agentPermissionBypassBranches;
 
     /**
      * Workstream-level default for {@code useTmux}: when {@code true},
@@ -755,6 +747,228 @@ public class Workstream {
     }
 
     /**
+     * Returns the branch-name prefixes whose jobs may bypass the agent
+     * runtime's permission prompts.
+     *
+     * @return the prefixes; empty when no branch is permitted
+     * @see #agentPermissionBypassBranches
+     */
+    public List<String> getAgentPermissionBypassBranches() {
+        if (agentPermissionBypassBranches == null) {
+            return Collections.emptyList();
+        }
+        return Collections.unmodifiableList(agentPermissionBypassBranches);
+    }
+
+    /**
+     * Sets the branch-name prefixes whose jobs may bypass the agent runtime's
+     * permission prompts.
+     *
+     * <p>Blank entries are dropped rather than stored. An empty prefix is a
+     * prefix of every branch name, so keeping one would turn a typo or a
+     * trailing comma into a silent grant for the whole workstream — the one
+     * mistake this list must not be able to make.</p>
+     *
+     * @param agentPermissionBypassBranches the prefixes, or {@code null} for none
+     */
+    public void setAgentPermissionBypassBranches(List<String> agentPermissionBypassBranches) {
+        List<String> copy = new ArrayList<>();
+        if (agentPermissionBypassBranches != null) {
+            for (String prefix : agentPermissionBypassBranches) {
+                if (prefix == null) continue;
+                String trimmed = prefix.trim();
+                if (trimmed.isEmpty()) continue;
+                copy.add(trimmed);
+            }
+        }
+        this.agentPermissionBypassBranches = copy;
+    }
+
+    /**
+     * Returns whether a job targeting {@code branch} may bypass the agent
+     * runtime's interactive permission prompts.
+     *
+     * <p>True when {@code branch} starts with any configured prefix. A job
+     * with no target branch is never permitted: the grant is scoped to work
+     * that lands somewhere reviewable, and a branchless job has nowhere for
+     * the change to be reviewed.</p>
+     *
+     * @param branch the job's target branch; may be {@code null}
+     * @return {@code true} when the bypass applies to this branch
+     */
+    public boolean permitsAgentPermissionBypass(String branch) {
+        if (branch == null || branch.isEmpty()) return false;
+        for (String prefix : getAgentPermissionBypassBranches()) {
+            if (branch.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Applies this workstream's agent capabilities to a job factory, for a job
+     * targeting {@code targetBranch}.
+     *
+     * <p>Every submission path — the HTTP submit endpoint, a Slack request, a
+     * completion-listener wake-up — has to make the same grants from the same
+     * workstream state, and a path that forgets one produces a job that is
+     * silently less capable than the workstream says it should be. Making each
+     * of them repeat the decision is what lets that happen, so the decision
+     * lives here and each path calls it once.</p>
+     *
+     * @param factory      the factory to configure
+     * @param targetBranch the branch the job will run against; may be {@code null}
+     * @see #applyCapabilities(CodingAgentJobFactory, String, boolean)
+     */
+    public void applyCapabilities(CodingAgentJobFactory factory, String targetBranch) {
+        applyCapabilities(factory, targetBranch, false);
+    }
+
+    /**
+     * Applies this workstream's agent capabilities to a job factory, adding the
+     * permission-prompt bypass when the submission itself asks for it.
+     *
+     * <p>The per-job grant is for an operator who wants one job to edit the
+     * agent runtime's own tooling ({@code .claude/settings.json},
+     * {@code .claude/hooks/}) without opening that door for every job on the
+     * branch. It can only add to what {@link #permitsAgentPermissionBypass(String)}
+     * grants, never revoke it, and nothing here is stored on the workstream, so
+     * the next job on the branch — including a completion-listener wake-up,
+     * which goes through {@link #applyCapabilities(CodingAgentJobFactory, String)}
+     * — does not inherit the per-job grant. That job may still receive the
+     * bypass independently, when its target branch satisfies
+     * {@link #permitsAgentPermissionBypass(String)}.</p>
+     *
+     * @param factory                the factory to configure
+     * @param targetBranch           the branch the job will run against; may be {@code null}
+     * @param jobGrantsPermissionBypass {@code true} when the submission grants
+     *                               this job the permission-prompt bypass
+     */
+    public void applyCapabilities(CodingAgentJobFactory factory, String targetBranch,
+                                  boolean jobGrantsPermissionBypass) {
+        factory.setDispatchCapable(dispatchCapable);
+        factory.setBypassAgentPermissionPrompts(jobGrantsPermissionBypass
+                || permitsAgentPermissionBypass(targetBranch));
+    }
+
+    /**
+     * Creates a job factory for {@code prompt} carrying this workstream's job
+     * defaults, targeting the workstream's default branch.
+     *
+     * @param prompt the prompt the job will run
+     * @return a factory configured from this workstream
+     * @see #newJobFactory(String, String)
+     */
+    public CodingAgentJob.Factory newJobFactory(String prompt) {
+        return newJobFactory(prompt, null);
+    }
+
+    /**
+     * Creates a job factory for {@code prompt} carrying this workstream's job
+     * defaults: allowed tools, agent environment, turn and budget limits,
+     * branches, checkout location, git identity, planning document, dependent
+     * repositories, and the tmux and wall-clock settings.
+     *
+     * <p>Every submission path starts from the same workstream state, so the
+     * defaults are applied here once rather than repeated by each path. A
+     * submission that carries its own value for a setting overrides it on the
+     * returned factory.</p>
+     *
+     * @param prompt       the prompt the job will run
+     * @param targetBranch the branch the job targets, or {@code null} for this
+     *                     workstream's default branch
+     * @return a factory configured from this workstream
+     */
+    public CodingAgentJob.Factory newJobFactory(String prompt, String targetBranch) {
+        CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
+        factory.setAllowedTools(allowedTools);
+        factory.setAgentEnv(agentEnv);
+        factory.setMaxTurns(maxTurns);
+        factory.setMaxBudgetUsd(maxBudgetUsd);
+
+        String branch = targetBranch != null ? targetBranch : defaultBranch;
+        if (branch != null) {
+            factory.setTargetBranch(branch);
+            factory.setPushToOrigin(pushToOrigin);
+        }
+        if (baseBranch != null) factory.setBaseBranch(baseBranch);
+        if (workingDirectory != null) factory.setWorkingDirectory(workingDirectory);
+        if (repoUrl != null) factory.setRepoUrl(repoUrl);
+        if (gitUserName != null) factory.setGitUserName(gitUserName);
+        if (gitUserEmail != null) factory.setGitUserEmail(gitUserEmail);
+        if (planningDocument != null) factory.setPlanningDocument(planningDocument);
+        if (dependentRepos != null && !dependentRepos.isEmpty()) factory.setDependentRepos(dependentRepos);
+        factory.setUseTmux(useTmux);
+        if (maxWallClockHours != null) factory.setMaxWallClockHours(maxWallClockHours);
+        return factory;
+    }
+
+    /**
+     * Creates a shell-command job factory for {@code command} carrying the
+     * subset of this workstream's job defaults a shell job uses: repository,
+     * branch, and checkout location. A shell job runs no agent and never
+     * commits, so agent configuration and git identity are not applied.
+     *
+     * @param command      the shell command the job will run
+     * @param targetBranch the branch the job checks out, or {@code null} for
+     *                     this workstream's default branch
+     * @return a factory configured from this workstream
+     * @see #newJobFactory(String, String)
+     */
+    public ShellCommandJob.Factory newShellJobFactory(String command, String targetBranch) {
+        ShellCommandJob.Factory factory = new ShellCommandJob.Factory(command);
+        String branch = targetBranch != null ? targetBranch : defaultBranch;
+        if (branch != null) factory.setTargetBranch(branch);
+        if (workingDirectory != null) factory.setWorkingDirectory(workingDirectory);
+        if (repoUrl != null) factory.setRepoUrl(repoUrl);
+        return factory;
+    }
+
+    /**
+     * Returns the Node labels a job submitted to this workstream must match:
+     * the submission's own labels when it carries any, otherwise this
+     * workstream's {@link #getRequiredLabels() default labels}. Unlike
+     * {@link #agentEnvWith(Map)} the two are not merged; job-level labels
+     * replace the workstream defaults entirely.
+     *
+     * @param submissionLabels the submission's labels; may be {@code null} or empty
+     * @return the effective labels, never {@code null}
+     */
+    public Map<String, String> requiredLabelsWith(Map<String, String> submissionLabels) {
+        if (submissionLabels != null && !submissionLabels.isEmpty()) return submissionLabels;
+        return requiredLabels != null ? requiredLabels : Collections.emptyMap();
+    }
+
+    /**
+     * Returns the status URL a job on this workstream reports to, served by
+     * the controller's API endpoint listening on {@code apiPort}.
+     *
+     * @param apiPort the controller API port
+     * @param jobId   the job's task ID
+     * @return the job's status URL, or {@code null} when {@code apiPort} is
+     *         not a bound port
+     */
+    public String jobUrl(int apiPort, String jobId) {
+        if (apiPort <= 0) return null;
+        return "http://0.0.0.0:" + apiPort + "/api/workstreams/" + workstreamId + "/jobs/" + jobId;
+    }
+
+    /**
+     * Returns this workstream's agent environment with a submission's own
+     * environment merged on top, the submission winning on key collisions.
+     * This is what lets a caller inject per-job environment, such as a
+     * short-lived bearer token, that cannot live in static workstream config.
+     *
+     * @param submissionEnv the submission's agent environment; may be {@code null}
+     * @return a new merged map, never {@code null}
+     */
+    public Map<String, String> agentEnvWith(Map<String, String> submissionEnv) {
+        Map<String, String> effective = new LinkedHashMap<>();
+        if (agentEnv != null) effective.putAll(agentEnv);
+        if (submissionEnv != null) effective.putAll(submissionEnv);
+        return effective;
+    }
+
+    /**
      * Returns the Node labels that jobs submitted to this workstream must match by default.
      * When a job submission does not specify {@code requiredLabels}, these labels are applied.
      * Job-level labels always take precedence over workstream-level defaults.
@@ -840,6 +1054,41 @@ public class Workstream {
      */
     public void setDispatchCapable(boolean dispatchCapable) {
         this.dispatchCapable = dispatchCapable;
+    }
+
+    /**
+     * Returns the tracker roles granted to agents on this workstream; see
+     * {@link #trackerCapabilities}. Never {@code null}.
+     */
+    public List<String> getTrackerCapabilities() {
+        return trackerCapabilities;
+    }
+
+    /**
+     * Replaces the tracker roles granted to agents on this workstream. Legacy
+     * aliases ({@code steward}) are stored as the role they stand for and
+     * duplicates are dropped; see {@link TrackerRoles}. Callers taking the
+     * list from a request should reject it first with
+     * {@link #unknownTrackerCapability(List)}.
+     *
+     * @param trackerCapabilities the roles to grant; {@code null} grants none
+     * @throws IllegalArgumentException if a value is neither a known role nor
+     *         a legacy alias of one
+     */
+    public void setTrackerCapabilities(List<String> trackerCapabilities) {
+        this.trackerCapabilities = new TrackerRoles(trackerCapabilities).roles();
+    }
+
+    /**
+     * Returns the first entry of {@code capabilities} that is not an accepted
+     * tracker role; see {@link TrackerRoles#firstUnknown(List)}.
+     *
+     * @param capabilities the proposed roles; may be {@code null}
+     * @return the first unknown value ({@code "null"} for a null entry), or
+     *         {@code null} when every entry is accepted
+     */
+    public static String unknownTrackerCapability(List<String> capabilities) {
+        return TrackerRoles.firstUnknown(capabilities);
     }
 
     /**
@@ -1125,7 +1374,8 @@ public class Workstream {
      * {@code planInstructions}, {@code dependentRepos}, {@code requiredLabels}.</p>
      *
      * <p>Capability flags (omitted when {@code false}): {@code archived},
-     * {@code dispatchCapable}, {@code useTmux}, {@code dormantForCompletionListeners}.</p>
+     * {@code dispatchCapable}, {@code useTmux}, {@code dormantForCompletionListeners}.
+     * {@code trackerCapabilities} is an array, omitted when empty.</p>
      *
      * <p>{@code pipelineCapable} is computed as {@code repoUrl} being non-null and non-empty.
      * {@code maxWallClockHours} is emitted only when explicitly set on this workstream
@@ -1137,31 +1387,31 @@ public class Workstream {
     public String toSummaryJson() {
         StringBuilder json = new StringBuilder();
         json.append("{");
-        json.append("\"workstreamId\":\"").append(escapeForJson(workstreamId)).append("\"");
+        json.append("\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstreamId)).append("\"");
 
         if (channelName != null) {
-            json.append(",\"channelName\":\"").append(escapeForJson(channelName)).append("\"");
+            json.append(",\"channelName\":\"").append(JsonFieldExtractor.escapeJson(channelName)).append("\"");
         }
         if (defaultBranch != null) {
-            json.append(",\"defaultBranch\":\"").append(escapeForJson(defaultBranch)).append("\"");
+            json.append(",\"defaultBranch\":\"").append(JsonFieldExtractor.escapeJson(defaultBranch)).append("\"");
         }
         if (baseBranch != null) {
-            json.append(",\"baseBranch\":\"").append(escapeForJson(baseBranch)).append("\"");
+            json.append(",\"baseBranch\":\"").append(JsonFieldExtractor.escapeJson(baseBranch)).append("\"");
         }
         if (repoUrl != null) {
-            json.append(",\"repoUrl\":\"").append(escapeForJson(repoUrl)).append("\"");
+            json.append(",\"repoUrl\":\"").append(JsonFieldExtractor.escapeJson(repoUrl)).append("\"");
         }
         if (githubOrg != null) {
-            json.append(",\"githubOrg\":\"").append(escapeForJson(githubOrg)).append("\"");
+            json.append(",\"githubOrg\":\"").append(JsonFieldExtractor.escapeJson(githubOrg)).append("\"");
         }
         if (workspaceId != null) {
-            json.append(",\"workspaceId\":\"").append(escapeForJson(workspaceId)).append("\"");
+            json.append(",\"workspaceId\":\"").append(JsonFieldExtractor.escapeJson(workspaceId)).append("\"");
         }
         if (planningDocument != null && !planningDocument.isEmpty()) {
-            json.append(",\"planningDocument\":\"").append(escapeForJson(planningDocument)).append("\"");
+            json.append(",\"planningDocument\":\"").append(JsonFieldExtractor.escapeJson(planningDocument)).append("\"");
         }
         if (planInstructions != null && !planInstructions.isEmpty()) {
-            json.append(",\"planInstructions\":\"").append(escapeForJson(planInstructions)).append("\"");
+            json.append(",\"planInstructions\":\"").append(JsonFieldExtractor.escapeJson(planInstructions)).append("\"");
         }
 
         boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();
@@ -1173,6 +1423,7 @@ public class Workstream {
         if (dispatchCapable) {
             json.append(",\"dispatchCapable\":true");
         }
+        appendStringArray(json, "trackerCapabilities", trackerCapabilities);
         if (maxWallClockHours != null) {
             json.append(",\"maxWallClockHours\":").append(maxWallClockHours.intValue());
         }
@@ -1187,19 +1438,10 @@ public class Workstream {
         // so an operator scanning a list can see which rows are
         // orchestrator/standing without opening each one.
         if (!"feature".equals(getKind())) {
-            json.append(",\"kind\":\"").append(escapeForJson(getKind())).append("\"");
+            json.append(",\"kind\":\"").append(JsonFieldExtractor.escapeJson(getKind())).append("\"");
         }
 
-        if (dependentRepos != null && !dependentRepos.isEmpty()) {
-            json.append(",\"dependentRepos\":[");
-            boolean first = true;
-            for (String repo : dependentRepos) {
-                if (!first) json.append(",");
-                first = false;
-                json.append("\"").append(escapeForJson(repo)).append("\"");
-            }
-            json.append("]");
-        }
+        appendStringArray(json, "dependentRepos", dependentRepos);
 
         if (requiredLabels != null && !requiredLabels.isEmpty()) {
             json.append(",\"requiredLabels\":{");
@@ -1207,8 +1449,8 @@ public class Workstream {
             for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
                 if (!first) json.append(",");
                 first = false;
-                json.append("\"").append(escapeForJson(entry.getKey())).append("\":");
-                json.append("\"").append(escapeForJson(entry.getValue())).append("\"");
+                json.append("\"").append(JsonFieldExtractor.escapeJson(entry.getKey())).append("\":");
+                json.append("\"").append(JsonFieldExtractor.escapeJson(entry.getValue())).append("\"");
             }
             json.append("}");
         }
@@ -1218,17 +1460,21 @@ public class Workstream {
     }
 
     /**
-     * Escapes a string for safe inclusion as a JSON string value.
+     * Appends {@code ,"key":["a","b"]} to {@code json}, or nothing when
+     * {@code values} is {@code null} or empty.
      *
-     * @param s the string to escape, or {@code null}
-     * @return the escaped string, never {@code null}
+     * @param json   the JSON object being built
+     * @param key    the field name
+     * @param values the strings to write
      */
-    private static String escapeForJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
+    private static void appendStringArray(StringBuilder json, String key, List<String> values) {
+        if (values == null || values.isEmpty()) return;
+        json.append(",\"").append(key).append("\":[");
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) json.append(",");
+            json.append("\"").append(JsonFieldExtractor.escapeJson(values.get(i))).append("\"");
+        }
+        json.append("]");
     }
 
     /**

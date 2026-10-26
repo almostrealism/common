@@ -43,17 +43,43 @@
 #                       have the controller reject such a submission instead.
 #   MAX_TURNS         - agent turn budget             (omitted → workstream default)
 #   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
-#   PROTECT_TEST_FILES - block edits to pre-existing test-method content on
-#                       the base branch (default: true). Test-file protection
-#                       is method-level, not whole-file: an agent may still
-#                       add new test methods or edit ones it introduced on
-#                       this branch (see flowtree/runtime/docs/file-staging.md).
-#                       Every caller here is an automated (unattended) job, so
-#                       this defaults on; set to "false" only for a path that
-#                       has a documented reason to allow unrestricted test
-#                       edits (e.g. a bypass-signed job).
-#   ENFORCE_CHANGES   - require code changes or retry (default: false)
+#   PROTECT_TEST_FILES - have the harness keep every test method that exists
+#                       on the base branch exactly as it is for this job
+#                       (default: false). It is method-level, not whole-file:
+#                       the agent may still add test methods and edit ones it
+#                       introduced (see flowtree/runtime/docs/file-staging.md).
+#                       Turn it on only for a job whose premise is that the
+#                       existing tests are the reference — one sent to make
+#                       failing tests pass, or to change code without
+#                       changing what its tests assert. Every other job is
+#                       held to test-integrity-check, which every branch
+#                       meets anyway.
+#   ENFORCE_CHANGES   - the job must produce a change (default: false). A run
+#                       that leaves none is re-run, up to the cap below; once
+#                       the cap is spent with nothing committed the job ends
+#                       DEGRADED rather than SUCCESS.
+#   MAX_ENFORCE_CHANGES_RETRIES - the cap on those re-runs, over the whole job
+#                       (a non-negative integer). 0 means never re-run: an
+#                       empty result is reported DEGRADED at once. Omitted →
+#                       the field is not sent and the controller's default
+#                       applies.
+#   OBJECT_ORIENTED_REVIEW_ENABLED - run the object-oriented design review
+#                       after the job (true/false). Omitted → the field is not
+#                       sent and the controller's default applies (on). The CI
+#                       follow-up submitters (auto-review, auto-resolve,
+#                       auto-resolve-python) set this to false so the review
+#                       runs once on a branch's initial work, not on each pass
+#                       of the remediation loop.
+#   REVIEW_ENABLED    - run the review phase after the job (true/false).
+#                       Omitted → the field is not sent and the controller's
+#                       default applies (on). The post-deploy canary sets it
+#                       to false: its task is a two-line file write, and a
+#                       review pass only adds time and failure modes that are
+#                       not the ones it measures.
 #   AUTO_CREATE_PR    - auto-create a GitHub PR on success (default: false)
+#   PR_DRAFT          - open the auto-created PR as a draft, the convention for
+#                       a PR carrying only a plan awaiting approval (default:
+#                       false). No effect unless AUTO_CREATE_PR is true.
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
 #   DELAY_SECONDS     - delay execution by this many seconds (default: unset → run immediately)
 #   DESCRIPTION       - short label for notifications (e.g., "Resolve test failures")
@@ -77,7 +103,8 @@
 #   1 - submission failed (unreachable host, non-200 response, etc.)
 #
 # Outputs (to stdout):
-#   job_id=<id>   (on success)
+#   job_id=<id>          (on success)
+#   workstream_id=<id>   (on success, when the controller reports one)
 
 set -euo pipefail
 
@@ -135,9 +162,10 @@ PAYLOAD=$(jq -n \
     --arg prompt "$PROMPT" \
     --arg branch "$BRANCH" \
     --arg base "$BASE_BRANCH" \
-    --argjson protect "${PROTECT_TEST_FILES:-true}" \
+    --argjson protect "${PROTECT_TEST_FILES:-false}" \
     --argjson enforce "${ENFORCE_CHANGES:-false}" \
     --argjson autopr "${AUTO_CREATE_PR:-false}" \
+    --argjson prdraft "${PR_DRAFT:-false}" \
     --argjson automated true \
     --argjson createws "$CREATE_WORKSTREAM" \
     '{
@@ -147,6 +175,7 @@ PAYLOAD=$(jq -n \
         protectTestFiles: $protect,
         enforceChanges: $enforce,
         autoCreatePr: $autopr,
+        createPrAsDraft: $prdraft,
         automated: $automated,
         createWorkstreamIfMissing: $createws
     }')
@@ -191,6 +220,47 @@ if [ -n "${REQUIRED_LABELS:-}" ]; then
         '. + {requiredLabels: $l}')
 fi
 
+# The object-oriented design review defaults to on at the controller, so the
+# field is sent only when a caller explicitly chooses a value. The CI
+# remediation submitters pass false to keep the review off the follow-up jobs
+# they run in a loop; everything else omits it and gets the default.
+if [ -n "${OBJECT_ORIENTED_REVIEW_ENABLED:-}" ]; then
+    case "$OBJECT_ORIENTED_REVIEW_ENABLED" in
+        true|false) ;;
+        *)
+            echo "ERROR: OBJECT_ORIENTED_REVIEW_ENABLED must be true or false (got: $OBJECT_ORIENTED_REVIEW_ENABLED)" >&2
+            exit 1
+            ;;
+    esac
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson o "$OBJECT_ORIENTED_REVIEW_ENABLED" \
+        '. + {objectOrientedReviewEnabled: $o}')
+fi
+
+# The review phase defaults to on at the controller, so, like the
+# object-oriented review above, the field is sent only when a caller chooses.
+if [ -n "${REVIEW_ENABLED:-}" ]; then
+    case "$REVIEW_ENABLED" in
+        true|false) ;;
+        *)
+            echo "ERROR: REVIEW_ENABLED must be true or false (got: $REVIEW_ENABLED)" >&2
+            exit 1
+            ;;
+    esac
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson r "$REVIEW_ENABLED" \
+        '. + {reviewEnabled: $r}')
+fi
+
+if [ -n "${MAX_ENFORCE_CHANGES_RETRIES:-}" ]; then
+    case "$MAX_ENFORCE_CHANGES_RETRIES" in
+        *[!0-9]*)
+            echo "ERROR: MAX_ENFORCE_CHANGES_RETRIES must be a non-negative integer (got: $MAX_ENFORCE_CHANGES_RETRIES)" >&2
+            exit 1
+            ;;
+    esac
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson m "$MAX_ENFORCE_CHANGES_RETRIES" \
+        '. + {maxEnforceChangesRetries: $m}')
+fi
+
 if [ -n "${STARTED_AFTER:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --arg t "$STARTED_AFTER" '. + {startedAfter: $t}')
 fi
@@ -225,10 +295,15 @@ if [ "$HTTP_CODE" != "200" ]; then
     exit 1
 fi
 
+# A skip is a successful response, so the step stays green; a warning and a
+# summary line keep a request the controller dropped from passing unnoticed.
 SKIPPED=$(echo "$BODY" | jq -r '.skipped // empty')
 if [ "$SKIPPED" = "true" ]; then
     REASON=$(echo "$BODY" | jq -r '.reason // "unknown"')
-    echo "::notice::Agent job skipped: $REASON"
+    echo "::warning::Agent job skipped by the controller: $REASON"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        echo "Agent job for \`$BRANCH\` was not submitted — the controller skipped it: $REASON" >> "$GITHUB_STEP_SUMMARY"
+    fi
     exit 0
 fi
 
@@ -241,6 +316,7 @@ fi
 
 JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
 echo "job_id=$JOB_ID"
+echo "workstream_id=$(echo "$BODY" | jq -r '.workstreamId // empty')"
 echo "Agent job submitted: $JOB_ID"
 
 if [ "$(echo "$BODY" | jq -r '.workstreamCreated // empty')" = "true" ]; then

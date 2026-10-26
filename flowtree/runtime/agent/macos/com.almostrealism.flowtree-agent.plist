@@ -4,15 +4,30 @@
 <!--
   launchd service definition for a native FlowTree agent on macOS.
 
-  This is a template: install.sh substitutes @AGENT_HOME@ and @ENV_FILE@ and
-  writes the result to ~/Library/LaunchAgents/. KeepAlive makes launchd
-  restart the agent whenever it exits, which is what turns "start the
-  agent by hand after every reboot or crash" into something that just runs.
+  This is a template: install.sh substitutes @AGENT_HOME@, @ENV_FILE@,
+  @AGENT_USER@, @AGENT_GROUP@ and @AGENT_USER_HOME@ and writes the result to
+  @AGENT_HOME@/conf/. It is a LaunchDaemon — loaded once by an administrator
+  into the system domain, from /Library/LaunchDaemons — that runs as the
+  service account, not a LaunchAgent in that account's own domain. The
+  account's per-user domain exists only while it has a login session, and
+  on a host where the account is only ever reached through `su` that domain
+  refuses every bootstrap (launchd reports EIO to anyone, root included).
+  The system domain has neither problem: it accepts a bootstrap from root
+  regardless of session, and it is there from boot without anyone logging in.
+
+  Redeploys never touch this definition. install.sh swaps the JARs and
+  signals the running process; KeepAlive makes launchd start it again on the
+  new classpath, which is also what turns "start the agent by hand after
+  every reboot or crash" into something that just runs.
 -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
     <string>com.almostrealism.flowtree-agent</string>
+    <key>UserName</key>
+    <string>@AGENT_USER@</string>
+    <key>GroupName</key>
+    <string>@AGENT_GROUP@</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
@@ -22,6 +37,11 @@
     <dict>
         <key>FLOWTREE_AGENT_ENV</key>
         <string>@ENV_FILE@</string>
+        <!-- A daemon gets no HOME of its own; run.sh and the tools the agent
+             launches (git config, npm-global on PATH, ~/.claude) need the
+             service account's. -->
+        <key>HOME</key>
+        <string>@AGENT_USER_HOME@</string>
     </dict>
     <key>WorkingDirectory</key>
     <string>@AGENT_HOME@</string>

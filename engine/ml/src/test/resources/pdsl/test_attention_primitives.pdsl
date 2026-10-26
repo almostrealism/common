@@ -1,0 +1,92 @@
+/**
+ * Fixtures for the tensor primitives that attention.pdsl is composed from.
+ *
+ * Each layer wraps ONE primitive (or the inverse pair it belongs with) so a test can
+ * pin that primitive's behaviour on small, hand-checkable inputs, independently of the
+ * attention structure that uses it.
+ */
+
+/** [1, heads * head_size] -> [heads, head_size / 2, 2]. */
+layer half_rope_split(heads: int, head_size: int) -> [1, heads * head_size] {
+    split_half_rope(heads, head_size)
+}
+
+/** [1, heads * head_size] -> [heads, head_size / 2, 2] -> [heads, head_size]: the split undone. */
+layer half_rope_roundtrip(heads: int, head_size: int) -> [1, heads * head_size] {
+    split_half_rope(heads, head_size)
+    merge_half_rope(heads, head_size)
+}
+
+/** [rows, size] -> [rows * n, size], every row duplicated n consecutive times. */
+layer repeat_rows(rows: int, size: int, n: int) -> [rows, size] {
+    repeat_each(n)
+}
+
+/** repeat_each(1) must reject a non-[rows, size] shape on its pass-through fast path too. */
+layer repeat_each_one_after_split(heads: int, head_size: int) -> [heads, head_size / 2, 2] {
+    split_half_rope(heads, head_size)
+    repeat_each(1)
+}
+
+/** A caller-owned [rows, size] cache that write_row fills one row per forward pass. */
+state row_cache_state {
+    row_cache: weight
+}
+
+/** Writes the [1, size] input into row `position` of row_cache and passes it through. */
+layer write_row(size: int, position: scalar) -> [1, size] {
+    cache_write(row_cache, position)
+}
+
+/** [heads, head_size] query against a [seq_len, heads * head_size] key cache -> [heads, seq_len]. */
+layer scores(heads: int, head_size: int, keys: weight) -> [heads, head_size] {
+    attention_scores(keys)
+}
+
+/** [heads, seq_len] -> [heads, seq_len]: columns after `position` leave each head's softmax. */
+layer masked_softmax(heads: int, seq_len: int, position: scalar) -> [heads, seq_len] {
+    causal_mask(position)
+    softmax()
+}
+
+/** [rows, size] -> [rows, size]: one softmax distribution per row. */
+layer row_softmax(rows: int, size: int) -> [rows, size] {
+    softmax()
+}
+
+/** [heads, seq_len] weights against a [seq_len, heads * head_size] value cache -> [1, heads * head_size]. */
+layer weighted(heads: int, seq_len: int, values: weight) -> [heads, seq_len] {
+    weighted_values(values)
+}
+
+/** Multiplies the input by 1 / sqrt(n), sqrt evaluated in configuration arithmetic. */
+layer scaled_by_inverse_root(size: int, n: int) -> [1, size] {
+    scale(1 / sqrt(n))
+}
+
+/** Rotary embedding of every head by one frequency table at one position. */
+layer rotate(heads: int, head_size: int, freq_cis: weight, position: scalar) -> [1, heads * head_size] {
+    split_half_rope(heads, head_size)
+    rope_rotation([heads, head_size / 2, 2], freq_cis, position)
+    merge_half_rope(heads, head_size)
+}
+
+/** Rotary embedding with one frequency table and one position per head group. */
+layer rotate_groups(heads: int, head_size: int, groups: rope_groups) -> [1, heads * head_size] {
+    split_half_rope(heads, head_size)
+    mra_rope_rotation([heads, head_size / 2, 2], groups)
+    merge_half_rope(heads, head_size)
+}
+
+/**
+ * [1, heads * head_size] -> [1, heads * head_size]: every head normalized by its own root mean
+ * square and scaled by its own row of the [heads, head_size] weights (Qwen3 QK-norm).
+ */
+layer head_norm(heads: int, head_size: int, weights: weight) -> [1, heads * head_size] {
+    rmsnorm(weights, 1e-6)
+}
+
+/** A projection whose bias weight may be bound to null, which dense() treats as no bias. */
+layer projection(in_size: int, w: weight, b: weight) -> [1, in_size] {
+    dense(w, b)
+}

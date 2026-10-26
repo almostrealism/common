@@ -22,14 +22,19 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -280,6 +285,52 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
+     * Returns a digest of the working tree's uncommitted state: the path,
+     * current content and executable bit (which git tracks, so a mode-only
+     * change is a change) of every file {@code git status} reports as changed,
+     * except the scratch paths {@link #isExcludedPath(String)} names (session
+     * output, build output, harness artifacts), plus the given extra paths,
+     * which are included whether git reports or ignores them. Two equal
+     * fingerprints mean nothing uncommitted outside scratch space changed in
+     * between; it says nothing about committed history.
+     *
+     * @param workingDirectory the repository root to inspect; {@code null}
+     *                         means the JVM's current working directory
+     * @param extraPaths       repository-relative paths to include whether or
+     *                         not git reports them
+     * @return a hex SHA-256 digest of the uncommitted state
+     * @throws IOException if the {@code git status} query fails or a changed
+     *                     file cannot be read
+     */
+    public static String fingerprintUncommittedState(String workingDirectory, String... extraPaths)
+            throws IOException {
+        Set<String> paths = new TreeSet<>();
+        for (String path : requireChangedFiles(workingDirectory)) {
+            if (!isExcludedPath(path)) paths.add(path);
+        }
+        paths.addAll(Arrays.asList(extraPaths));
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("SHA-256 is unavailable", e);
+        }
+        File root = workingDirectory != null ? new File(workingDirectory) : new File(".");
+        for (String path : paths) {
+            digest.update(path.getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) 0);
+            File file = new File(root, path);
+            // A length prefix keeps one file's bytes from reading as the next
+            // file's path; -1 marks a path with no regular file behind it.
+            byte[] content = file.isFile() ? Files.readAllBytes(file.toPath()) : null;
+            digest.update(ByteBuffer.allocate(Long.BYTES).putLong(content != null ? content.length : -1).array());
+            if (content != null) digest.update(content);
+            digest.update((byte) (file.canExecute() ? 1 : 0));
+        }
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    /**
      * Runs {@code git status --porcelain -uall} in {@code workingDirectory}
      * and parses its output, recording whether the query itself succeeded
      * separately from whether any changed files were found.
@@ -289,7 +340,6 @@ public class GitOperations implements ConsoleFeatures {
      * @return the parsed files and whether the underlying query succeeded
      */
     private static ChangedFilesResult queryChangedFiles(String workingDirectory) {
-        List<String> files = new ArrayList<>();
         try {
             ProcessBuilder pb = new ProcessBuilder(resolveGitCommand(), "status", "--porcelain", "-uall");
             if (workingDirectory != null) {
@@ -303,27 +353,52 @@ public class GitOperations implements ConsoleFeatures {
                     process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             int exitCode = process.waitFor();
             if (exitCode != 0) {
-                return new ChangedFilesResult(files, false);
+                return new ChangedFilesResult(new ArrayList<>(), false);
             }
 
-            for (String line : statusOutput.split("\n")) {
-                if (line.length() > 3) {
-                    String file = line.substring(3).trim();
-                    if (file.contains(" -> ")) {
-                        file = file.split(" -> ")[1];
-                    }
-                    if (!file.isEmpty()) {
-                        files.add(file);
-                    }
-                }
-            }
+            return new ChangedFilesResult(parseChangedFiles(statusOutput), true);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return new ChangedFilesResult(files, false);
+            return new ChangedFilesResult(new ArrayList<>(), false);
         } catch (IOException e) {
-            return new ChangedFilesResult(files, false);
+            return new ChangedFilesResult(new ArrayList<>(), false);
         }
-        return new ChangedFilesResult(files, true);
+    }
+
+    /**
+     * Parses the standard output of {@code git status --porcelain} into the
+     * list of changed file paths it reports. Each porcelain line carries a
+     * two-character status code followed by a space, so the path begins at
+     * the fourth column; lines too short to hold a path are ignored. For a
+     * renamed entry ({@code "R  old -> new"}) only the post-rename path (the
+     * part after {@code " -> "}) is returned, and blank paths are dropped.
+     *
+     * <p>This is the shared porcelain-parsing step behind both
+     * {@link #getChangedFiles(String)} (which runs the query itself) and
+     * callers that have already captured status output through another git
+     * invocation. It makes no assumption about the {@code -u} mode used to
+     * produce the output: whether untracked files are listed individually or
+     * collapsed is decided by the command that generated {@code statusOutput},
+     * not by this parser.</p>
+     *
+     * @param statusOutput the raw standard output of a
+     *                     {@code git status --porcelain} invocation
+     * @return the changed file paths, in the order git reported them
+     */
+    public static List<String> parseChangedFiles(String statusOutput) {
+        List<String> files = new ArrayList<>();
+        for (String line : statusOutput.split("\n")) {
+            if (line.length() > 3) {
+                String file = line.substring(3).trim();
+                if (file.contains(" -> ")) {
+                    file = file.split(" -> ")[1];
+                }
+                if (!file.isEmpty()) {
+                    files.add(file);
+                }
+            }
+        }
+        return files;
     }
 
     /**
@@ -398,6 +473,61 @@ public class GitOperations implements ConsoleFeatures {
                     + " failed (exit " + exitCode + "): " + output.trim());
         }
 
+        return exitCode;
+    }
+
+    /**
+     * A git operation that returns a process exit code, for use with
+     * {@link #retryTransient(int, long, GitStep)}.
+     */
+    @FunctionalInterface
+    public interface GitStep {
+        /**
+         * Runs the git operation once.
+         *
+         * @return the process exit code (0 indicates success)
+         * @throws IOException          if the process cannot be started
+         * @throws InterruptedException if the current thread is interrupted
+         */
+        int run() throws IOException, InterruptedException;
+    }
+
+    /**
+     * Runs a git step that returns an exit code, retrying a non-zero result
+     * with bounded backoff. A non-fast-forward sync, a lock held by a
+     * concurrent process, or a brief network failure clears on its own far
+     * more often than not, so the step is attempted up to {@code maxAttempts}
+     * times, sleeping {@code baseBackoffMillis * attempt} between tries.
+     *
+     * <p>Returns {@code 0} as soon as any attempt succeeds, or the last
+     * attempt's non-zero exit code when every attempt is spent. The caller
+     * decides what an exhausted failure means — typically a
+     * {@link TransientGitException} — so this method stays a pure policy with
+     * no opinion about how the failure is reported.</p>
+     *
+     * @param maxAttempts      the most times to run the step (at least 1)
+     * @param baseBackoffMillis the backoff unit; the wait before attempt
+     *                          {@code n+1} is {@code baseBackoffMillis * n}
+     *                          (pass 0 to disable the wait, as tests do)
+     * @param step             the git operation to run
+     * @return 0 on the first success, else the final non-zero exit code
+     * @throws IOException          if the step cannot be started
+     * @throws InterruptedException if the thread is interrupted while running
+     *                              or waiting between attempts
+     */
+    public static int retryTransient(int maxAttempts, long baseBackoffMillis, GitStep step)
+            throws IOException, InterruptedException {
+        int attempts = Math.max(1, maxAttempts);
+        int exitCode = 0;
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            exitCode = step.run();
+            if (exitCode == 0) {
+                return 0;
+            }
+            if (attempt < attempts && baseBackoffMillis > 0) {
+                Thread.sleep(baseBackoffMillis * attempt);
+            }
+        }
         return exitCode;
     }
 
@@ -710,11 +840,18 @@ public class GitOperations implements ConsoleFeatures {
     /**
      * Reads all output from a process's input stream into a string.
      *
+     * <p>Each line read from the process is appended followed by a {@code "\n"},
+     * so the returned string always ends with a trailing newline when the
+     * process produced any output, and is empty when it produced none. This is
+     * the single reader for process output, shared by every command this
+     * class runs; it uses no instance state and is therefore
+     * {@code static}.</p>
+     *
      * @param process the process to read from
-     * @return the full output, with lines separated by newlines
+     * @return the full output, with each line terminated by a newline
      * @throws IOException if reading fails
      */
-    private String readProcessOutput(Process process) throws IOException {
+    public static String readProcessOutput(Process process) throws IOException {
         StringBuilder output = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(process.getInputStream()))) {
@@ -744,6 +881,7 @@ public class GitOperations implements ConsoleFeatures {
     public static boolean isExcludedPath(String path) {
         return path.isEmpty()
                 || path.startsWith(".flowtree/")
+                || path.contains("/.flowtree/")
                 || path.startsWith("claude-output/")
                 || path.startsWith(".claude/")
                 || path.startsWith("target/")
@@ -1021,6 +1159,29 @@ public class GitOperations implements ConsoleFeatures {
             Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/]+@)?[^/]+/([^/]+/[^/]+?)(?:\\.git)?/?$");
 
     /**
+     * Pattern matching the host of an SSH-form repository URL
+     * ({@code git@host:owner/repo.git}), capturing the host between the
+     * {@code @} and the {@code :}. Requires the full {@code owner/repo} path
+     * so the host is reported only for a recognised repository URL.
+     */
+    private static final Pattern SSH_HOST_PATTERN =
+            Pattern.compile("^[^/@]+@([^:/]+):[^/]+/[^/]+?(?:\\.git)?/?$");
+
+    /**
+     * Pattern matching the host of an HTTP(S)-form or {@code git://}
+     * repository URL, capturing the host after the scheme and optional
+     * credentials while excluding an optional {@code :port} from the capture
+     * (so a URL with an explicit port reports the same host as one without).
+     * A bracketed IPv6 literal ({@code [2001:db8::1]}) is captured whole,
+     * brackets included, so the host is still reported for the same
+     * {@code [^/]+} authority {@link #HTTP_REPO_PATTERN} accepts. Requires the
+     * full {@code owner/repo} path so the host is reported only for a
+     * recognised repository URL.
+     */
+    private static final Pattern HTTP_HOST_PATTERN =
+            Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/]+@)?(\\[[^\\]]+\\]|[^:/]+)(?::[0-9]+)?/[^/]+/[^/]+?(?:\\.git)?/?$");
+
+    /**
      * Reduces a repository URL to its canonical {@code owner/repo} slug so
      * that URLs naming the same repository in different forms compare equal.
      *
@@ -1050,6 +1211,40 @@ public class GitOperations implements ConsoleFeatures {
         if (ssh.matches()) return ssh.group(1);
 
         Matcher http = HTTP_REPO_PATTERN.matcher(trimmed);
+        if (http.matches()) return http.group(1);
+
+        return null;
+    }
+
+    /**
+     * Extracts the host of a repository URL, so that a caller which needs a
+     * particular service (for example one that will query the GitHub API with
+     * the {@link #repositorySlug(String) slug}) can reject URLs pointing
+     * elsewhere. Because {@code repositorySlug} deliberately drops the host,
+     * a substring check against the raw URL is not a host check — it accepts
+     * a look-alike host such as {@code github.com.evil.example} — whereas this
+     * method returns the exact host to compare.
+     *
+     * <p>The host is reported only for a URL that also parses as a repository
+     * (the same SSH, HTTP(S), and {@code git://} forms {@code repositorySlug}
+     * recognises); an input that is not a repository URL yields {@code null},
+     * exactly as {@code repositorySlug} does.</p>
+     *
+     * @param repoUrl the repository URL in SSH, HTTP(S), or {@code git://}
+     *                form; may be {@code null}
+     * @return the host with its original case, or {@code null} when
+     *         {@code repoUrl} is {@code null}, blank, or not a recognised
+     *         repository URL
+     */
+    public static String repositoryHost(String repoUrl) {
+        if (repoUrl == null) return null;
+        String trimmed = repoUrl.trim();
+        if (trimmed.isEmpty()) return null;
+
+        Matcher ssh = SSH_HOST_PATTERN.matcher(trimmed);
+        if (ssh.matches()) return ssh.group(1);
+
+        Matcher http = HTTP_HOST_PATTERN.matcher(trimmed);
         if (http.matches()) return http.group(1);
 
         return null;

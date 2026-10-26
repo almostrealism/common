@@ -1143,6 +1143,121 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	}
 
 	/**
+	 * Verifies that {@link TransformMatrix#transpose()} reflects the current matrix
+	 * contents after the matrix has been modified with
+	 * {@link TransformMatrix#setMatrix(double[][])}.
+	 *
+	 * <p>{@code transpose()} caches its result; {@code setMatrix} resets the
+	 * inverse-cache guard flag but historically did not clear the transpose cache, so
+	 * a {@code transpose()} call after a modification returned a stale snapshot of the
+	 * matrix as it was before the modification — contradicting the method's contract
+	 * that a stored transposition corresponds to the matrix after its last
+	 * modification.</p>
+	 */
+	@Test(timeout = 10000)
+	public void transposeReflectsMatrixAfterSetMatrix() {
+		TransformMatrix m = new TransformMatrix(new double[][] {
+				{ 1, 2, 3, 4 },
+				{ 5, 6, 7, 8 },
+				{ 9, 10, 11, 12 },
+				{ 13, 14, 15, 16 } });
+
+		// Populate the transpose cache against the original contents
+		m.transpose();
+
+		// Replace the contents entirely with a non-symmetric matrix, so that a
+		// transpose can be distinguished from the untransposed contents
+		double[][] b = {
+				{ 100, 101, 102, 103 },
+				{ 0, 200, 201, 202 },
+				{ 0, 0, 300, 301 },
+				{ 0, 0, 0, 1 } };
+		m.setMatrix(b);
+
+		double[] actual = m.transpose().toArray();
+
+		double[] expected = {
+				100, 0, 0, 0,
+				101, 200, 0, 0,
+				102, 201, 300, 0,
+				103, 202, 301, 1 };
+		for (int i = 0; i < 16; i++) {
+			assertTrue("transpose()[" + i + "] should be " + expected[i]
+							+ " (transpose of the current matrix) but was " + actual[i],
+					Math.abs(actual[i] - expected[i]) < 1e-9);
+		}
+	}
+
+	/**
+	 * Verifies that {@link TransformMatrix#setMatrix(double[][])} copies every column of
+	 * a matrix that has fewer rows than columns, rather than bounding the column index by
+	 * the row count, and that the missing rows are filled with zeros.
+	 */
+	@Test(timeout = 10000)
+	public void setMatrixWideInputKeepsAllColumns() {
+		TransformMatrix m = new TransformMatrix(new double[][] {
+				{ 1, 2, 3, 4 },
+				{ 5, 6, 7, 8 } });
+
+		double[] expected = { 1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0 };
+		double[] actual = m.toArray();
+		for (int i = 0; i < 16; i++) {
+			assertEquals("element " + i, expected[i], actual[i], 0.0);
+		}
+
+		assertFalse(m.isIdentity());
+	}
+
+	/**
+	 * Verifies that {@link TransformMatrix#setMatrix(double[][])} handles a matrix with
+	 * more rows than columns and ragged rows: it copies only the columns each row
+	 * actually has, fills the rest with zeros, and ignores entries beyond 4x4.
+	 */
+	@Test(timeout = 10000)
+	public void setMatrixTallAndRaggedInput() {
+		TransformMatrix m = new TransformMatrix(new double[][] {
+				{ 1, 2 },
+				{ 3 },
+				{ 4, 5, 6, 7, 8 },
+				{ },
+				{ 9, 9, 9, 9 } });
+
+		double[] expected = { 1, 2, 0, 0, 3, 0, 0, 0, 4, 5, 6, 7, 0, 0, 0, 0 };
+		double[] actual = m.toArray();
+		for (int i = 0; i < 16; i++) {
+			assertEquals("element " + i, expected[i], actual[i], 0.0);
+		}
+
+		assertFalse(m.isIdentity());
+	}
+
+	/**
+	 * Verifies the identity flag maintained by {@link TransformMatrix#setMatrix(double[][])}:
+	 * a full 4x4 identity is recognized, while an input whose last row is truncated
+	 * (dropping the diagonal entry, which is then stored as zero) is not.
+	 */
+	@Test(timeout = 10000)
+	public void setMatrixIdentityFlag() {
+		TransformMatrix m = new TransformMatrix(new double[][] {
+				{ 1, 0, 0, 0 },
+				{ 0, 1, 0, 0 },
+				{ 0, 0, 1, 0 },
+				{ 0, 0, 0, 1 } });
+		assertTrue(m.isIdentity());
+
+		m.setMatrix(new double[][] {
+				{ 1, 0, 0, 0 },
+				{ 0, 1, 0, 0 },
+				{ 0, 0, 1, 0 },
+				{ 0, 0, 0 } });
+		assertFalse(m.isIdentity());
+		assertEquals(0.0, m.toArray()[15], 0.0);
+
+		m.setMatrix(TransformMatrix.identity);
+		assertTrue(m.isIdentity());
+	}
+
+	/**
 	 * Tests the adjoint matrix computation.
 	 */
 	@Test(timeout = 10000)

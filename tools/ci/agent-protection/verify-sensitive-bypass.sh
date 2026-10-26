@@ -10,11 +10,8 @@
 # where `secret` is the same shared secret the controller used to
 # produce the signature (env var `AR_AGENT_BYPASS_SECRET`).
 #
-# This script is deliberately decoupled from
-# `validate-agent-commit.sh` so it can be unit-tested in isolation
-# and so that the controller's bootstrapping situation (the script
-# change to call this helper from validate-agent-commit.sh is a
-# follow-up) does not block landing the harness/controller wiring.
+# This script is deliberately decoupled from its caller,
+# `check-ci-file-lock.sh`, so it can be unit-tested in isolation.
 #
 # Usage:
 #   verify-sensitive-bypass.sh <commit-message-file>

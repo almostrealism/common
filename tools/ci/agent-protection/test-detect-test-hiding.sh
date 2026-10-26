@@ -281,6 +281,191 @@ public class MyTest {
 }'
 }
 
+# ── Scenario: assert-named helper declaration moved out — FALSE-POSITIVE REGRESSION ──
+#
+# Reproduces the feature/sa3-prep / SAMEResamplingParityTest bug. The base file
+# defines an `assertWithin(...)` helper and calls it from a @Test. On the branch
+# the helper (declaration + body) is removed — moved verbatim into a shared base
+# class, a brand-new file that is outside Pattern 2's M-status loop, so the added
+# declaration is never counted to balance the removed one. The helper body here
+# contains no assertion *call* (it throws directly), so the ONLY assert-regex
+# line removed is the declaration itself. Every @Test body and every
+# `assertWithin(...)` call site is byte-identical. Pattern 2 must NOT fire
+# (expected exit 0): a method name beginning with "assert" is not an assertion.
+setup_moved_assert_helper_declaration() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    protected void assertWithin(int actual, int reference) {
+        if (actual != reference) throw new AssertionError();
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertWithin(1, 1);
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertWithin(1, 1);
+    }
+}'
+}
+
+# ── Scenario: assertEquals removed from a helper body — TRUE POSITIVE ───────
+#
+# The property the owner insists on preserving: helper-body assertions stay
+# covered. The `assertWithin(...)` declaration is UNCHANGED (still context in the
+# diff), but an `assertEquals(...)` CALL inside its body is deleted. Pattern 2
+# must still fire (expected exit 2) — a helper-body assertion is as load-bearing
+# as an inline one, and it is a call, not a declaration, so the exclusion does
+# not touch it.
+setup_helper_body_loses_assertion() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    protected void assertWithin(int actual, int reference) {
+        assertEquals(reference, actual);
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertWithin(1, 1);
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    protected void assertWithin(int actual, int reference) {
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertWithin(1, 1);
+    }
+}'
+}
+
+# ── Scenario: @Test-body assertion removed, file has an assert-named helper — TRUE POSITIVE ──
+#
+# A genuine removal exercised alongside the new predicate: the file contains an
+# `assertWithin(...)` helper declaration (unchanged context) and an
+# `assertEquals(...)` CALL is deleted from a @Test body. The declaration
+# exclusion must not suppress the real removal. Pattern 2 must still fire
+# (expected exit 2).
+setup_test_body_assertion_removed_with_helper() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    protected void assertWithin(int actual, int reference) {
+        if (actual != reference) throw new AssertionError();
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertWithin(1, 1);
+        assertEquals(2, 2);
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    protected void assertWithin(int actual, int reference) {
+        if (actual != reference) throw new AssertionError();
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertWithin(1, 1);
+    }
+}'
+}
+
+# ── Scenario: WRAPPED assert-named helper declaration moved out — FALSE-POSITIVE REGRESSION ──
+#
+# Same move as moved_assert_helper_declaration, but the helper's signature wraps
+# across two lines. Only the FIRST line carries the `assert`-named identifier and
+# is the only line Pattern 2's assert regex counts; an earlier, stricter
+# predicate required the closing `)` plus `{`/`throws` on that same line and so
+# failed to recognise the wrapped declaration, mis-counting it as a removed
+# assertion. The broadened predicate matches a first line that ends in `,`.
+# Pattern 2 must NOT fire (expected exit 0).
+setup_moved_wrapped_assert_helper_declaration() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    protected void assertWithin(int actual,
+                                int reference) {
+        if (actual != reference) throw new AssertionError();
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertWithin(1, 1);
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertWithin(1, 1);
+    }
+}'
+}
+
+# ── Scenario: PACKAGE-PRIVATE, typed-return assert-named helper moved out — FALSE-POSITIVE REGRESSION ──
+#
+# The helper has neither an access modifier nor a `void` return — a
+# package-private `Object assertLoaded(...)`. An earlier predicate keyed on
+# `public|private|protected|void` did not recognise it and mis-counted the moved
+# declaration as a removed assertion. The broadened predicate keys on the
+# return-type token instead. Pattern 2 must NOT fire (expected exit 0).
+setup_moved_typed_assert_helper_declaration() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    Object assertLoaded(int idx) {
+        if (idx < 0) throw new AssertionError();
+        return null;
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertLoaded(1);
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertLoaded(1);
+    }
+}'
+}
+
 # ── Scenario: no test files changed — CLEAN BRANCH ─────────────────────────
 setup_no_test_changes() {
     mkdir -p src/main/java
@@ -307,6 +492,11 @@ run_case "new-method-higher-timeout [false-positive regression]" 0 setup_new_met
 run_case "existing-timeout-inflated [true positive]"        2 setup_existing_timeout_inflated
 run_case "rename-and-inflate [true positive / dodge caught]" 2 setup_rename_and_inflate
 run_case "rename-no-inflate [no false positive]"            0 setup_rename_no_inflate
+run_case "moved-assert-helper-declaration [false-positive regression]" 0 setup_moved_assert_helper_declaration
+run_case "moved-wrapped-assert-helper-declaration [false-positive regression]" 0 setup_moved_wrapped_assert_helper_declaration
+run_case "moved-typed-assert-helper-declaration [false-positive regression]" 0 setup_moved_typed_assert_helper_declaration
+run_case "helper-body-loses-assertion [true positive]"      2 setup_helper_body_loses_assertion
+run_case "test-body-assertion-removed-with-helper [true positive]" 2 setup_test_body_assertion_removed_with_helper
 run_case "no-test-changes [clean branch]"                   0 setup_no_test_changes
 
 echo ""

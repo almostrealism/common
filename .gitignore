@@ -45,6 +45,10 @@ Extensions/**
 **/__pycache__
 
 # Automated coding
+# Scratch verdicts written by ObjectOrientedDesignRule sessions, at the repo
+# root or nested under any module directory — never part of a change set.
+.flowtree/
+**/.flowtree/
 claude-output/**
 .claude/*.local.json
 .claude/scheduled_tasks.lock
@@ -61,7 +65,13 @@ flowtree-controller.log
 **/slack-tokens.json
 tools/ci/.env
 flowtree/agent/.env
+# Written by flowtree/runtime/rebuild.sh: the compose project's interpolation
+# variables (the fleet services' tailnet bind address).
+flowtree/runtime/controller/.env
 
 # Data
 flowtreedb**
 graphpersistdb**
+
+# Agent session captures written beside a job working directory
+.flowtree/

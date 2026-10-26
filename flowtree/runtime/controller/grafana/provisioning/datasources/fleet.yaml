@@ -1,0 +1,20 @@
+# The fleet store, reached over the compose network. The password is the
+# same secret file fleet-db itself reads; Grafana resolves $__file{} at
+# provisioning time, so no credential is written into this checkout.
+apiVersion: 1
+
+datasources:
+  - name: fleet
+    uid: fleet-db
+    type: postgres
+    access: proxy
+    url: fleet-db:5432
+    user: fleet
+    secureJsonData:
+      password: $__file{/run/secrets/fleet-db-password}
+    jsonData:
+      database: fleet
+      sslmode: disable
+      timescaledb: false
+    isDefault: true
+    editable: false

@@ -50,6 +50,12 @@ recommends a sequencing.
   is blocked on root-causing that divergence (note
   `DefaultCellularLayer.enableMemoryDataCopy` is runtime-mutable, so the
   failing route can be reproduced in a test without a rebuild).
+  **Update (2026-10-13):** that divergence was root-caused and fixed on master
+  by `dd3facb92` (2026-07-06, hazard-aware `OperationList.subdivide()`), and the
+  flip was never re-attempted. Re-run with assignment recording, the
+  `GradientDescentTests` that diverged now pass. The remaining blocker is a
+  shape-tolerance gap in `LayerFeatures.into` (`NormTests.normLayerTrainable`).
+  See `MEMORY_DATA_COPY_RETIREMENT.md` for the evidence and the work-list.
 - **Step 5 (§4.5)**: primitives in place — `Semaphore.all(...)` merge and the
   shared `onComplete` callback executor (`SemaphoreCompositionTest`); the
   argument pipeline itself (delivering `(value, Semaphore)` downstream) remains.
@@ -105,7 +111,7 @@ but should be re-shaped by this plan.
 | `MetalOperator.accept` (`MetalOperator.java:229-231`) | Same-runner `MetalSemaphore` → GPU-ordered via event wait; foreign semaphore → host `waitFor()` before encode | ⚠️ best-in-class today; foreign bridge can become non-blocking (§4.6) |
 | `CLOperator.accept` (`CLOperator.java:221, 273-289, 307`) | **Blocks on `dependsOn` unconditionally** (making its own `cl_event` wait-list branch dead); `processEvent` calls `clWaitForEvents` inline (`CLComputeContext.java:414`), so every dispatch is synchronous; **returns `null`** — the `CLSemaphore` return is commented out as a TODO | ❌ the worst offender: CL neither consumes nor produces semaphores |
 | `NativeExecution.accept` (`NativeExecution.java:228, 279`) | Blocks on `dependsOn` (has a TODO admitting it), then dispatches to a pool but **blocks on its own latch before returning** — the returned semaphore is always already-fired | ❌ doubly synchronous; the returned latch is theater |
-| `ExternalInstructionSet.apply` (`ExternalInstructionSet.java:103`) | Blocks on `dependsOn`, runs a subprocess synchronously | ⚠️ subprocess is inherently synchronous; acceptable if it *returns* a fired semaphore honestly and stops pretending otherwise |
+| `ExternalExecution.accept` (`ExternalExecution.java`) | Blocks on `dependsOn`, runs a subprocess synchronously | ⚠️ subprocess is inherently synchronous; acceptable if it *returns* a fired semaphore honestly and stops pretending otherwise |
 
 ### 2.2 The async argument pipeline (the source of this branch's bugs)
 
@@ -141,7 +147,7 @@ handling here is the deepest debt:
 | `AcceleratedOperation.apply` (`AcceleratedOperation.java:606-612`) | Cross-provider replacement: `nextSemaphore.waitFor()` **inside apply**, then host-mediated copy-back | ❌ re-express postprocess as chained `ComputeContext.copy(…, dependsOn=kernel)`; the copy machinery for this now exists on this branch |
 | `AcceleratedOperation.apply` (`:581-583`) | Aggregation copy-in: `Submittable.submit(prepareOps, dependsOn)` — **return value discarded**; kernel chains on the caller's `dependsOn`, not on the copies | ⚠️ safe only by the copy-context == kernel-context invariant; chain the returned semaphore into `operator.accept` to make it safe by construction |
 | `Assignment.Runner.run` (`Assignment.java:588-589`) | `submit(null)` + wait | ✅ boundary (`run()`); `submit` chains properly |
-| `MemoryDataCopy` (`MemoryDataCopy.java:144`) | **Not `Submittable`** — as an optimized-list member it forces `pending.waitFor()` and then a synchronous host copy | ❌ route through `ComputeContext.copy(src, dst, dependsOn)` and implement `Submittable` |
+| `MemoryDataCopy` (`MemoryDataCopy.Runner`) | `get()` returns a `Submittable` runner (2026-10-13, see §4.4 interim note): a copy into device-context memory is queued through `ComputeContext.copy(src, dst, dependsOn)`; a copy into CPU-context memory still waits `dependsOn` and copies inline (deferring a host transfer only adds thread hand-offs) | ✅ interim — retirement in favor of `Assignment` (§4.4) is still the end state |
 | `AbstractComputeContext.copy` (`AbstractComputeContext.java:176`) / `MetalComputeContext.copy` (`:234`) | Fallback waits `dependsOn` then `setMem`; Metal bridges foreign deps by host wait | ✅ as designed — this *is* the backend's documented last-resort bridge (invariant 2); Metal's foreign bridge can improve later (§4.6) |
 | `Heap.HeapStage.destroy` (`Heap.java:791`) | Drains `pendingKernels` | ✅ lifecycle safety |
 | `OperationAdapter.waitFor(Semaphore)` (`OperationAdapter.java:141`) | Null-safe wait helper used by boundary methods | ✅ helper, fine |
@@ -287,6 +293,29 @@ Revised sub-steps:
   into an invariant-by-construction.
 - Once 4.4a-b hold, `MemoryDataCopy` has no callers outside 4.4c's internal
   machinery; when 4.4c lands it can be removed outright.
+
+**Interim note (2026-10-13, `qa/performance-20261013-132831`).** *Correction:
+the premise of this note was stale. The divergence it cites had been fixed by
+`dd3facb92` three months earlier, and a re-run of the flip shows it no longer
+reproduces. `MEMORY_DATA_COPY_RETIREMENT.md` records how this interim measure
+came to be chosen over the flip and the work-list for retiring the class.* The
+original note follows. With 4.4a still
+blocked on the assignment-recording divergence (`AssignmentIsolationDiagTest`), every
+layer input/output record in every training step remained a non-submittable
+`MemoryDataCopy`: on Metal that cost up to two commit-and-wait round trips per copy
+(`CommitCauseMeasurementTest`: 10 host-wait commits per step under copy recording vs. 4
+under assignment recording). As an interim measure, `MemoryDataCopy.get()` now returns a
+`Submittable` runner that resolves its operands the way `ProcessDetailsFactory` resolves
+kernel arguments (a `FixedEvaluable` is bound as a handle; a dispatch-backed
+`StreamingEvaluable` source is requested chained on `dependsOn` and delivers its
+completion; anything else waits for `dependsOn` first) and queues the copy through the
+target context's `ComputeContext.copy`. This reaches the same 4 commits per step without
+changing the recording route, so 4.4a-c and the eventual removal of the class are
+unaffected. Measured on Metal (M1 Ultra, old and new builds run back to back):
+`SyntheticDenseTrainingTest#denseClassification` 292 s -> 250 s,
+`TrainModelTest#trainSmallest` 20.4 s -> 14.0 s; the forward pass of the
+denseClassification model 1.78 ms -> 1.12 ms per call. The native backend is unchanged
+within run-to-run noise.
 
 ### 4.5 The argument pipeline carries semaphores
 

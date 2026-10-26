@@ -215,6 +215,14 @@ and to `applyTo(Node)` it, and detection never overwrites a configured
 value. A new machine-derived label is a new constant there, not a new
 branch wherever labels are applied.
 
+`AutomaticLabel.describeMachine()` joins every automatic label this process
+can detect into one string, in the terms a job's `required_labels` would
+use — e.g. `"platform=linux, hostname=halo"`. `GitManagedJob.describePlacement()`
+appends the checked-out branch and short commit hash (e.g.
+`"... at feature/x@abc1234"`) and is reported on a job's first phase-entry
+status message, since the controller never sees a worker's labels and this is
+how a submitter learns which machine took the job and how to target it again.
+
 ### The `hostname` Label
 
 Some workloads must run at a specific place on the network rather than

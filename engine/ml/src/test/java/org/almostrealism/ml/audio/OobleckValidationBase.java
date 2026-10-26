@@ -41,6 +41,17 @@ public abstract class OobleckValidationBase extends TestSuiteBase {
 	protected static final Path REFERENCE_DIR = TEST_DATA_DIR.resolve("reference");
 
 	/**
+	 * Requires the Stable Audio Open weights under {@link #WEIGHTS_DIR}, skipping the calling
+	 * test (reported as skipped, not passed) where no lane provides them, per
+	 * {@link #requireLocalResource(String, String, boolean)}. Generate them with
+	 * {@code extract_stable_audio_autoencoder.py}.
+	 */
+	protected void requireWeights() {
+		requireLocalResource("Stable Audio Open weights at " + WEIGHTS_DIR.toAbsolutePath(),
+				null, WEIGHTS_DIR.toFile().exists());
+	}
+
+	/**
 	 * Loads a reference binary output file produced by the PyTorch reference implementation.
 	 *
 	 * @param filename the file name within the reference directory

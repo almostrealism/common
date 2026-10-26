@@ -41,6 +41,16 @@ import java.util.Set;
  */
 class GitRepositorySetup implements ConsoleFeatures {
 
+    /**
+     * Attempts for a transient git sync step (fetch, pull, reset) before it is
+     * reported as an infrastructure failure. A non-fast-forward sync or a lock
+     * held by a concurrent process usually clears within a couple of tries.
+     */
+    private static final int SYNC_ATTEMPTS = 3;
+
+    /** Backoff unit between sync retries; the wait grows linearly per attempt. */
+    private static final long SYNC_BACKOFF_MILLIS = 500L;
+
     /** The job whose repository is being prepared. */
     private final GitManagedJob job;
 
@@ -49,6 +59,12 @@ class GitRepositorySetup implements ConsoleFeatures {
 
     /** Paths of files that were in a conflicted state during base-branch synchronization. */
     private final List<String> conflictFiles = new ArrayList<>();
+
+    /**
+     * The base-branch commit merged in by {@link #synchronize()} when that
+     * merge was left in progress for the agent, or {@code null}.
+     */
+    private String mergeParent;
 
     /** Resolved filesystem paths for dependent repos after cloning. */
     private final List<String> dependentRepoPaths = new ArrayList<>();
@@ -145,10 +161,13 @@ class GitRepositorySetup implements ConsoleFeatures {
             }
         }
 
-        // 2. Fetch latest from origin.
+        // 2. Fetch latest from origin, retrying a transient failure before
+        //    reporting it as an infrastructure failure rather than crashing.
         log("Fetching latest from origin...");
-        if (job.executeGit("fetch", "origin") != 0) {
-            throw new RuntimeException("Failed to fetch from origin");
+        if (GitOperations.retryTransient(SYNC_ATTEMPTS, SYNC_BACKOFF_MILLIS,
+                () -> job.executeGit("fetch", "origin")) != 0) {
+            throw new TransientGitException(
+                    "Failed to fetch from origin after " + SYNC_ATTEMPTS + " attempts");
         }
 
         // 3. Checkout target branch.
@@ -163,12 +182,17 @@ class GitRepositorySetup implements ConsoleFeatures {
                 "refs/remotes/origin/" + targetBranch) == 0;
         if (remoteBranchExists) {
             log("Syncing with origin/" + targetBranch + "...");
-            int pullResult = job.executeGit("pull", "--ff-only", "origin", targetBranch);
+            // Both the fast-forward pull and the hard-reset fallback race with
+            // a target branch that advances during the job, so retry each with
+            // bounded backoff before failing the sync.
+            int pullResult = GitOperations.retryTransient(SYNC_ATTEMPTS, SYNC_BACKOFF_MILLIS,
+                    () -> job.executeGit("pull", "--ff-only", "origin", targetBranch));
             if (pullResult != 0) {
                 log("Fast-forward pull failed; resetting to origin/" + targetBranch);
-                int resetResult = job.executeGit("reset", "--hard", "origin/" + targetBranch);
+                int resetResult = GitOperations.retryTransient(SYNC_ATTEMPTS, SYNC_BACKOFF_MILLIS,
+                        () -> job.executeGit("reset", "--hard", "origin/" + targetBranch));
                 if (resetResult != 0) {
-                    throw new RuntimeException(
+                    throw new TransientGitException(
                             "Failed to sync with origin/" + targetBranch
                                     + " -- both pull and reset failed");
                 }
@@ -201,6 +225,23 @@ class GitRepositorySetup implements ConsoleFeatures {
      */
     List<String> getConflictFiles() {
         return conflictFiles;
+    }
+
+    /**
+     * Returns the base-branch commit that the most recent {@link #prepare()}
+     * merged into the target branch and left in progress for the agent to
+     * resolve, or {@code null} when no merge was left in progress.
+     *
+     * <p>This is the harness's own record of the merge it started, taken
+     * before the agent ran. Staging compares merge content against it rather
+     * than against {@code .git/MERGE_HEAD}, which the agent can rewrite: content
+     * identical to this commit came from the base branch, not from the agent.
+     * See {@link FileStager#trustedMergeParent}.</p>
+     *
+     * @return the merge parent's full SHA, or {@code null}
+     */
+    String getMergeParent() {
+        return mergeParent;
     }
 
     // ==================== Private Helpers ====================
@@ -252,6 +293,7 @@ class GitRepositorySetup implements ConsoleFeatures {
         } else {
             log("Merge conflict detected while synchronizing with " + remoteBase);
             mergeConflictsDetected = true;
+            mergeParent = baseHead;
 
             String statusOutput = job.executeGitWithOutput("status", "--porcelain");
             for (String line : statusOutput.split("\n")) {
@@ -279,10 +321,7 @@ class GitRepositorySetup implements ConsoleFeatures {
      * Clones {@link GitManagedJob#getRepoUrl()} into {@code targetPath}.
      */
     private void cloneRepository(String targetPath) throws IOException, InterruptedException {
-        GitOperations gitOps = new GitOperations(null, job.getTaskId());
-        gitOps.setGitUserName(job.getGitUserName());
-        gitOps.setGitUserEmail(job.getGitUserEmail());
-        gitOps.cloneRepository(job.getRepoUrl(), targetPath);
+        job.gitOperations(null).cloneRepository(job.getRepoUrl(), targetPath);
     }
 
     /**
@@ -310,21 +349,7 @@ class GitRepositorySetup implements ConsoleFeatures {
      */
     private List<String> getAllDirtyFiles() throws IOException, InterruptedException {
         String statusOutput = job.executeGitWithOutput("status", "--porcelain");
-        List<String> dirtyFiles = new ArrayList<>();
-
-        for (String line : statusOutput.split("\n")) {
-            if (line.length() > 3) {
-                String file = line.substring(3).trim();
-                if (file.contains(" -> ")) {
-                    file = file.split(" -> ")[1];
-                }
-                if (!file.isEmpty()) {
-                    dirtyFiles.add(file);
-                }
-            }
-        }
-
-        return dirtyFiles;
+        return GitOperations.parseChangedFiles(statusOutput);
     }
 
     /**
@@ -356,28 +381,16 @@ class GitRepositorySetup implements ConsoleFeatures {
      * tree to {@code HEAD} and removes untracked files and directories.</p>
      */
     private void wipeWorkingTree() throws IOException, InterruptedException {
-        if (GitOperations.isMergeInProgress(job.getWorkingDirectory())) {
-            job.executeGit("merge", "--abort");
-        }
-        int resetExitCode = job.executeGit("reset", "--hard", "HEAD");
-        if (resetExitCode != 0) {
-            throw new IOException("Failed to reset working tree after stash failure"
-                    + " (exit " + resetExitCode + ")");
-        }
-        int cleanExitCode = job.executeGit("clean", "-fd");
-        if (cleanExitCode != 0) {
-            throw new IOException("Failed to clean working tree after stash failure"
-                    + " (exit " + cleanExitCode + ")");
-        }
-        log("Working tree wiped (stash fallback)");
+        wipeWorkingTree(job.gitOperations(job.getWorkingDirectory()));
     }
 
     /**
-     * Discards all uncommitted changes in a dependent repo working directory.
+     * Discards all uncommitted changes in the repository {@code gitOps} is
+     * bound to — the primary working directory or a dependent repo.
      *
      * <p>See {@link #wipeWorkingTree()} for the rationale.</p>
      *
-     * @param gitOps the {@link GitOperations} instance bound to the dependent repo
+     * @param gitOps the {@link GitOperations} instance bound to the repository
      */
     private void wipeWorkingTree(GitOperations gitOps) throws IOException, InterruptedException {
         if (gitOps.isMergeInProgress()) {
@@ -437,8 +450,7 @@ class GitRepositorySetup implements ConsoleFeatures {
                 log("Dependent repo already cloned: " + depPath);
             } else {
                 log("Cloning dependent repo: " + depRepoUrl + " into " + depPath);
-                GitOperations gitOps = new GitOperations(parentDir, job.getTaskId());
-                gitOps.cloneRepository(depRepoUrl, depPath);
+                job.gitOperations(parentDir).cloneRepository(depRepoUrl, depPath);
             }
             dependentRepoPaths.add(depPath);
         }
@@ -456,7 +468,7 @@ class GitRepositorySetup implements ConsoleFeatures {
         String baseBranch = job.getBaseBranch();
         for (String depPath : dependentRepoPaths) {
             log("Preparing dependent repo branch: " + depPath);
-            GitOperations gitOps = new GitOperations(depPath, job.getTaskId());
+            GitOperations gitOps = job.gitOperations(depPath);
 
             String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
             if (!statusOutput.trim().isEmpty()) {

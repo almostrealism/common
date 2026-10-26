@@ -1,4 +1,8 @@
 {
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "statusLine": {
     "type": "command",
     "command": ".claude/statusline-command.sh"
@@ -92,11 +96,6 @@
           },
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-worktree.sh",
-            "description": "Block 'git worktree add' \u2014 all changes must stay in the single working tree the developer can see (read-only 'git worktree list' allowed)"
-          },
-          {
-            "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/mvn-artifact-staleness.py\"",
             "description": "Warn when an artifact-producing mvn command (compile/install/etc.) is run, since it will not rebuild dependent modules; report ~/.m2 artifact staleness"
           },
@@ -134,6 +133,16 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-branch-track-master.sh",
             "description": "Block creating/tracking/pushing a non-master branch against remote master/main (the 'branch tracks origin/master' footgun) \u2014 use --no-track or branch off local master"
+          }
+        ]
+      },
+      {
+        "matcher": "EnterWorktree|Agent|Task|Edit|MultiEdit|Write|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-job-worktree.sh",
+            "description": "In a FlowTree job, block EnterWorktree, worktree-isolated subagents, edits in another worktree and commands run from one \u2014 the harness captures only the job's own working tree; interactive sessions are unaffected"
           }
         ]
       },
@@ -337,8 +346,18 @@
           },
           {
             "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-new-type-placement.py\"",
+            "description": "Placement reminder for every new top-level Java type; BLOCK a new type whose declared name ends in a suffix CLAUDE.md forbids (Util/Helper/Exporter/Converter...); escalate the wording when no discovery (Grep/Glob/Agent/consult) is on record"
+          },
+          {
+            "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-interface-bypass.py\"",
             "description": "Detect interface-contract bypass in Java edits: BLOCK new members that re-expose a concrete class the constructor adapts behind an interface (the getStemOutput pattern), warn on abstraction-level forks (getStemOutput beside getStem) and new instanceof checks against repo classes \u2014 an API that traffics in an interface must stay correct for every implementation"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-computed-ingest.py\"",
+            "description": "Block host-to-device ingest evasion in Java edits: reject a new read(ByteBuffer)/read(InputStream) collection ingest in a computation-layer file outside the ingest allowlist, and the ByteBuffer allocate->put*->read staging triple anywhere (even inside the allowlist) \u2014 mirror of the SetMemLiteralsDetector INGEST_OUTSIDE_SANCTIONED_SURFACE and COMPUTED_VALUE_STAGED_FOR_INGEST CI rules, sharing the same ingest-allowlist.txt"
           }
         ]
       },
@@ -431,6 +450,16 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/track-consultant-call.sh",
             "description": "Record timestamp of consultant call for enforce-consultant-first.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Grep|Glob|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/track-discovery-call.sh",
+            "description": "Record that discovery ran, for warn-new-type-placement.py's escalation"
           }
         ]
       },

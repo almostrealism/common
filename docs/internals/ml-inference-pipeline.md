@@ -48,42 +48,58 @@ The KV cache is the most performance-critical component of autoregressive infere
 It stores previously computed key and value projections so that each generation step
 only needs to compute projections for the new token, not the entire sequence.
 
+### Where the Structure Lives
+
+The attention structure itself is not assembled in Java. It is described by the PDSL
+asset `engine/ml/src/main/resources/pdsl/attention.pdsl`, whose `attention`,
+`attention_qk_norm` and `attention_mra` layers spell out every stage of one forward
+pass — normalization, projections, rotary embedding, the cache writes, scores, mask,
+softmax, weighted values and the output projection. (The language these assets are written
+in, including what each built-in they call computes, is described in the
+[PDSL Language Reference](pdsl-language.md).) The Java side,
+`AttentionFeatures.attention(...)`, is a thin loader: `attentionArguments` allocates the
+caches and binds the arguments, `attentionLayer` parses the asset and builds the
+requested layer through `PdslLoader.buildLayer`. The caches are caller-owned state that
+every attention layer of the asset takes as its last two parameters, so a model gives each
+of its layers a pair of its own:
+
+```
+layer attention(..., epsilon: float,
+                key_cache: weight, value_cache: weight) -> [1, heads * head_size] {
+```
+
 ### Cache Allocation
 
-Each attention layer allocates two caches — one for keys, one for values. The caches
-use **expanded** shape `(seqLen, heads, headSize)` where `heads` is the number of
-*query* heads, not KV heads:
+Each attention layer owns two caches — one for keys, one for values. They are
+`(seqLen, dim)` where `dim = heads * headSize` and `heads` is the number of *query*
+heads, not KV heads: row `s` holds token `s`'s key (or value) as one `headSize` slice
+per query head.
 
 ```java
-// AttentionFeatures.java:786-787 — inside the attention() method
-PackedCollection keyCache = new PackedCollection(seqLen, heads, headSize);
-PackedCollection valueCache = new PackedCollection(seqLen, heads, headSize);
+// AttentionFeatures.attentionArguments — bound to the layer's cache parameters
+args.put("key_cache", new PackedCollection(shape(seqLen, dim)));
+args.put("value_cache", new PackedCollection(shape(seqLen, dim)));
 ```
 
 For a Qwen3-4B model (32 query heads, 8 KV heads, headSize=112, seqLen=131072):
-- Key cache: `(131072, 32, 112)` = ~1.8 GB per layer
+- Key cache: `(131072, 3584)` = ~1.8 GB per layer
 - Value cache: same shape = ~1.8 GB per layer
 - Total per layer: ~3.6 GB
 - Total for 36 layers: ~130 GB (in practice, shorter seqLen is used)
 
-### Zero-Initialization
+### Unwritten Positions
 
-Caches are zero-initialized immediately after allocation:
+A freshly allocated cache holds zeros, so the rows of positions that have not been
+generated yet contribute zero to the dot product with the query. That alone is not
+enough — a zero score is not a negligible one after softmax — so the causal mask adds
+`-10000` to every column after the current position, and softmax assigns those
+positions ~0 probability. Both mechanisms are visible as stages of the asset
+(`causal_mask(position)` followed by `softmax()`).
 
-```java
-// AttentionFeatures.java:790-791
-keyCache.clear();
-valueCache.clear();
-```
-
-**Why this matters:** Without zero-initialization, unwritten cache positions contain
-garbage values. During attention, the softmax over all positions (including unwritten
-ones) would produce numerical explosions — garbage values create extreme attention
-scores that dominate the softmax distribution, corrupting the output.
-
-With zero-initialized caches, unwritten positions contribute zero to the dot product
-with queries. The causal mask then sets their attention scores to `-10000`, ensuring
-softmax assigns them ~0 probability.
+Zero-initialization of a freshly allocated `PackedCollection` is a property of the active
+`MemoryProvider`, not of `PackedCollection` itself: `JVMMemoryProvider` backs each allocation
+with a `new double[len]`, which the JVM zero-fills, but the mechanism is provider-specific
+rather than a guarantee documented on `PackedCollection`.
 
 ### GQA Expansion Strategy: Expand at Write Time
 
@@ -108,12 +124,13 @@ Compact caches (NOT used):                Expanded caches (USED):
 - Each cache slot is written once (at position `p`) but read at every subsequent step
 - Expanding during write (`O(1)` operations per step) avoids repeated expansion during
   read (`O(n)` operations per step where `n` grows with context length)
-- Expanded caches allow using the simpler `attentionKeysStandard` and
-  `attentionValuesStandard` methods (no GQA logic during the hot path)
+- Expanded caches let the score and weighted-value stages treat every query head
+  alike (no GQA logic during the hot path)
 
-The expansion is performed by the `gqaExpand` layer (`AttentionFeatures.java:401-439`),
-which uses index-based gathering to duplicate each KV head's data for all query heads
-it serves:
+The expansion is the `repeat_each(heads / kv_heads)` stage of the asset, backed by
+`LayerFeatures.repeatEach`: a single `gather` whose indices duplicate each `(kvHeads,
+headSize)` row `heads / kvHeads` consecutive times. With `kv_heads == heads` the stage
+is a pass-through and adds no kernel.
 
 ```java
 // For output index i in [0, dim):
@@ -124,20 +141,31 @@ it serves:
 
 ### Cache Write
 
-After computing key/value projections (with optional QK-Norm, RoPE, and GQA expansion),
-the results are written to the cache at the current position:
+After the key/value projections (with optional QK-Norm, RoPE, and GQA expansion), the
+`keys` and `values` branches of the asset end in a cache write at the current
+position:
 
-```java
-// AttentionFeatures.java:823 — key cache write
-keys.andThen(into(keyCache.reshape(shape(seqLen, dim)), position));
-
-// AttentionFeatures.java:836 — value cache write
-values.andThen(into(valueCache.reshape(shape(seqLen, dim)), position));
+```
+branch keys {
+    dense(wk, bk)
+    rotate_heads(kv_heads, head_size, freq_cis, position)
+    repeat_each(heads / kv_heads)
+    cache_write(key_cache, position)
+}
+branch values {
+    dense(wv, bv)
+    reshape([kv_heads, head_size])
+    repeat_each(heads / kv_heads)
+    cache_write(value_cache, position)
+}
 ```
 
-The `into(target, position)` method writes the computed vector into the cache at the
-row indexed by `position`. The cache is reshaped to `(seqLen, dim)` where
-`dim = heads * headSize` for flat storage.
+`cache_write(cache, position)` is backed by `LayerFeatures.cacheWrite`: a
+`CollectionSlotUpdateComputation` assigned into the cache through `into(...)`, so the
+row replacement is part of the compiled operation order rather than a host-side copy.
+The stage passes its input through unchanged. A branch runs before the path that
+follows it, so both caches already hold the current token when the scores are
+computed.
 
 ```
 Cache state at position=3:
@@ -153,31 +181,35 @@ Keys:    │ k[0]  │ k[1]  │ k[2]  │ k[3]  │  0    │...│   0    │
 
 ### Cache Read
 
-During attention computation, the entire key cache is read as a `Producer` to compute
-attention scores against the current query:
+The `attend` layer of the asset reads the whole of each cache: the key cache when the
+scores are computed against the current query, the value cache when the attention
+weights are applied.
 
-```java
-// AttentionFeatures.java:857 — read from expanded key cache
-attention.add(attentionKeysStandard(headShape, p(keyCache)));
-
-// AttentionFeatures.java:876 — read from expanded value cache
-attention.add(attentionValuesStandard(attentionShape, p(valueCache)));
+```
+layer attend(heads: int, head_size: int, position: scalar,
+             key_cache: weight, value_cache: weight) -> [heads, head_size] {
+    attention_scores(key_cache)
+    scale(1 / sqrt(head_size))
+    causal_mask(position)
+    softmax()
+    weighted_values(value_cache)
+}
 ```
 
-The `p(keyCache)` wraps the `PackedCollection` as a `Producer`, giving the attention
-computation access to all cached keys across all positions. The causal mask then
+`attention_scores` (`AttentionFeatures.attentionScores`) and `weighted_values`
+(`AttentionFeatures.weightedValues`) take the cache as a `Producer`, giving the
+computation access to all cached rows across all positions. The causal mask then
 prevents attending to future (unwritten) positions.
 
 ### Causal Masking
 
-A dynamic causal mask prevents the model from attending to future positions:
+A dynamic causal mask prevents the model from attending to future positions. The
+`causal_mask(position)` stage is backed by `AttentionFeatures.causalMask`:
 
 ```java
-// AttentionFeatures.java:861-866
-CollectionProducer indices = integers(0, seqLen);
-CollectionProducer maskRow =
-    greaterThan(indices, position, c(-10000.0), c(0.0), false);
-CollectionProducer causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
+CollectionProducer indices = integers(0, seqLength);
+CollectionProducer maskRow = greaterThan(indices, position, c(-10000.0), c(0.0), false);
+CollectionProducer mask = maskRow.reshape(1, 1, seqLength).repeat(heads);
 ```
 
 This creates a mask vector where `mask[i] = 0` if `i <= position` (attend) and
@@ -222,7 +254,7 @@ distribution.
 ### Components
 
 ```java
-// AutoregressiveModel.java:104-156
+// AutoregressiveModel
 public class AutoregressiveModel<T> {
     private final PackedCollection position;       // Shared device-resident step counter
     private final Runnable resetPosition;         // Compiled once: position = 0
@@ -249,44 +281,74 @@ compile a distinct operation for every position in the sequence.
 
 ### Factory Method
 
-The `of()` factory wraps a compiled text model and constructs the sampling function
-inline:
+The `of()` factory wraps a compiled text model in an anonymous `AutoregressiveModel`
+subclass that implements the generation steps by overriding `load`, `forward` and
+`sample` (the same pattern `SlidingWindowAutoregressiveModel` uses):
 
 ```java
-// AutoregressiveModel.java:405-434
+// AutoregressiveModel.of()
 public static AutoregressiveModel<Integer> of(CompiledModel model,
                                              PackedCollection position,
                                              IntFunction<PackedCollection> tokenEmbed) {
+    return of(model, position, tokenEmbed, new Random());
+}
+
+public static AutoregressiveModel<Integer> of(CompiledModel model,
+                                             PackedCollection position,
+                                             IntFunction<PackedCollection> tokenEmbed,
+                                             Random random) {
     PackedCollection in = new PackedCollection(model.getInputShape());
     int vocabSize = model.getOutputShape().getTotalSize();
 
     PackedCollection temperature = new PackedCollection(1);
 
     Evaluable<PackedCollection> indexOfMax = Ops.o().indexOfMax(Ops.o().x(vocabSize)).get();
-    Evaluable<PackedCollection> rescale = Ops.o().x(vocabSize).divide(Ops.o().cp(temperature)).get();
-    Evaluable<? extends PackedCollection> softmax =
-            Process.optimized(DIST.softmax(Ops.o().x(vocabSize))).get();
 
-    Random random = new Random();
-    Function<PackedCollection, Integer> sample = logits -> {
-        if (temperature.toDouble(0) == 0.0) {
-            return (int) indexOfMax.evaluate(logits).toDouble(0);
-        } else {
-            rescale.into(logits).evaluate(logits);
-            softmax.into(logits).evaluate(logits);
-            return sampleToken(logits, vocabSize, 1.0, 1.0, random);
+    // Greedy selection reads the argmax back from the device; kept a factory-local lambda
+    // so that device read stays at the `of` pipeline boundary, not in the sample override.
+    ToIntFunction<PackedCollection> greedy =
+            logits -> (int) indexOfMax.evaluate(logits).toDouble(0);
+
+    return new AutoregressiveModel<>(position, temperature) {
+        @Override
+        protected void load(Integer t) {
+            in.setFrom(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize());
         }
-    };
 
-    return new AutoregressiveModel<>(
-            position,
-            t -> in.setFrom(0, tokenEmbed.apply(t), 0,
-                            model.getInputShape().getTotalSize()),
-            () -> model.forward(in),
-            sample,
-            temperature);
+        @Override
+        protected PackedCollection forward() {
+            return model.forward(in);
+        }
+
+        @Override
+        protected Integer sample(PackedCollection logits) {
+            if (getTemperature() == 0.0) {
+                return greedy.applyAsInt(logits);
+            }
+
+            return sampleToken(logits, vocabSize, getTemperature(), getTopP(), random);
+        }
+
+        @Override
+        public void destroy() { /* releases indexOfMax, in and temperature */ }
+    };
 }
 ```
+
+The factory samples through the same `sampleToken` path as
+`SlidingWindowAutoregressiveModel`: at a positive temperature the raw logits are
+tempered, softmaxed and (when `topP < 1.0`) nucleus-filtered exactly once, with the
+generator's configured temperature and top-p, so both generators sample identically
+from the same logits under the same temperature, top-p and seed. The three-argument
+factory delegates to a four-argument overload that accepts a caller-supplied
+`Random`, so sampling can be made reproducible. Because the anonymous subclass
+overrides `sample`, it reads `getTemperature()` and `getTopP()` through `this` — no
+self-reference holder is needed; the top-p threshold is host-only state and never
+enters the computation graph. Earlier the factory tempered and softmaxed on the device and
+then called `sampleToken(logits, vocabSize, 1.0, 1.0, random)`, which re-softmaxed
+the already-softmaxed distribution — a double transform that made the two generators
+sample differently for the same logits and temperature. Greedy decoding
+(temperature `0`) is unchanged: it still reduces on the device via `indexOfMax`.
 
 Note the use of `setFrom` for the token-embedding copy — the recent
 `setmem-policy-phases` work retired the `setMem(int, double[], int, int)` bulk-host-array
@@ -296,20 +358,20 @@ move one device buffer into another.
 In Qwen3, this is wired as:
 
 ```java
-// Qwen3.java:411-414
+// Qwen3
 return AutoregressiveModel.of(
         compiledModel,
         position,                                                       // shared device-resident step
         t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim));
 ```
 
-`position` is created earlier in the same method (`Qwen3.java:338`) as a single-element
+`position` is created earlier in the same method of `Qwen3` as a single-element
 `PackedCollection` and passed to attention as `p(position)` so the model reads the
 current step from the device.
 
 ### Two-Phase Operation
 
-The `next()` method (`AutoregressiveModel.java:295-308`) implements two distinct phases:
+The `next()` method of `AutoregressiveModel` implements two distinct phases:
 
 ```
 Phase 1: PROMPT (currentStep < promptLength)
@@ -338,7 +400,7 @@ step's cached output before the current forward pass. This is because the model'
 output at step `t` predicts the token at position `t+1`:
 
 ```java
-// AutoregressiveModel.java:295-308
+// AutoregressiveModel.next()
 public T next() {
     if (currentStep < promptLength) {
         token.accept(prompt[currentStep]);
@@ -355,9 +417,9 @@ public T next() {
 }
 ```
 
-`advance()` (`AutoregressiveModel.java:217-220`) runs the compiled `advancePosition`
+`advance()` runs the compiled `advancePosition`
 operation and increments the host-side `currentStep`, keeping the two in lock-step.
-`reset()` (`AutoregressiveModel.java:203-207`) zeros the device position, the host
+`reset()` zeros the device position, the host
 step index, and discards the cached output before a new sequence.
 
 ### Position Tracking
@@ -379,50 +441,71 @@ buffer. For Qwen3 the representation is a `(1, dim)` slice of the embedding matr
 extracted at the token ID:
 
 ```java
-// Qwen3.java:414
+// Qwen3
 t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim)
 ```
 
 The factory's consumer wraps this in a `setFrom` so the slice is copied into the
 fixed input buffer that the compiled model reads.
 
+For a model whose tokens carry several attribute values rather than a single ID —
+such as the compound MIDI tokens produced by the Moonbeam model implemented in this
+repository (`org.almostrealism.ml.midi`) — `AutoregressiveModel.tokenLoader`
+builds the loader instead. It compiles the
+embedding once, with the token's values as a kernel argument, and assigns the result
+directly into the input on the device; each step only writes the packed values and
+runs that one operation, so no intermediate embedding is copied back through the host.
+Building the embedding from a token's values as literals would instead compile a
+different program for every distinct token — the cost every step would otherwise pay.
+
 ### Temperature Sampling
 
-The `sample` function constructed inside `of()` (`AutoregressiveModel.java:418-426`)
+The `sample` override inside `of()`
 handles both greedy and sampling modes. `temperature` is a host-writable single-element
-collection updated by `setTemperature` (`AutoregressiveModel.java:258-260`):
+collection updated by `setTemperature`, read back through `getTemperature()`:
 
 ```java
-// Reading (greedy path)
-if (temperature.toDouble(0) == 0.0) {
-    return (int) indexOfMax.evaluate(logits).toDouble(0);
+// Greedy path
+if (getTemperature() == 0.0) {
+    return greedy.applyAsInt(logits);   // (int) indexOfMax.evaluate(logits).toDouble(0)
 }
 
-// Sampling path
-rescale.into(logits).evaluate(logits);   // logits / temperature
-softmax.into(logits).evaluate(logits);   // softmax(scaled_logits)
-return sampleToken(logits, vocabSize, 1.0, 1.0, random);
+// Sampling path — temper, softmax and (when topP < 1.0) nucleus-filter once
+return sampleToken(logits, vocabSize, getTemperature(), getTopP(), random);
 ```
 
-`sampleToken` (`AutoregressiveModel.java:323-386`) is the static, host-side sampling
+`sampleToken` is the static, host-side sampling
 helper. It reads the logits once with `toArray(0, vocabSize)` — a single
 sanctioned device-to-host transfer at the step boundary — and operates on the
-resulting host array. The recent `setmem-policy-phases` work changed sampling from
-per-element `toDouble(i)` calls to this single bulk read after the same per-element
-pattern produced ~17 million native readbacks during
-`MoonbeamValueDistributionTest.testSoftmaxAndSampling` (10.3s → 0.14s).
+resulting host array, applying temperature scaling, a stable softmax, optional
+nucleus (top-p) filtering, and categorical sampling. The recent
+`setmem-policy-phases` work changed sampling from per-element `toDouble(i)` calls to
+this single bulk read after the same per-element pattern produced ~17 million native
+readbacks during `MoonbeamValueDistributionTest.testSoftmaxAndSampling`
+(10.3s → 0.14s).
 
 - **Temperature = 0:** Greedy decoding — always picks the highest-probability token
 - **Temperature > 0:** Divides logits by temperature before softmax, then samples
   from the resulting probability distribution. Higher temperature = more random.
+- **Top-p < 1.0 (nucleus sampling):** Applied on top of temperature sampling, it
+  restricts each draw to the smallest set of most probable tokens whose cumulative
+  probability reaches `p`, renormalizes over that set, and samples within it, cutting
+  off the unreliable low-probability tail. `getTopP()`/`setTopP(double)` on
+  `AutoregressiveModel` carry the threshold (default `1.0`, meaning no filtering;
+  valid range `(0, 1]`); both `SlidingWindowAutoregressiveModel` and the `of(...)`
+  factory route it through `sampleToken`.
 
 ---
 
 ## Attention Computation Flow
 
 This section traces data flow through a single attention layer during autoregressive
-inference. The implementation is in `AttentionFeatures.attention()`
-(`AttentionFeatures.java:763-884`).
+inference. The structure is the `attention` layer of
+`engine/ml/src/main/resources/pdsl/attention.pdsl` (with `attention_qk_norm` and
+`attention_mra` as the QK-Norm and per-head-group variants); the primitives it is
+composed from are implemented in `AttentionFeatures`, `RotationFeatures` and
+`LayerFeatures`, and `AttentionFeatures.attention()` only binds the arguments and
+builds the layer.
 
 ### Step-by-Step Flow
 
@@ -507,84 +590,85 @@ Input: x (1, dim)  —  single token embedding after transformer layers
 ### 1. QKV Projection
 
 The input `x` (after RMSNorm) is projected into queries, keys, and values using
-separate weight matrices:
+separate weight matrices. The biases are optional weights: a model without them
+(Llama 2, SkyTNT) binds `null`, and `dense()` adds nothing.
 
-```java
-// AttentionFeatures.java:802-803
-keys.add(bk != null ? dense(wk, bk) : dense(wk));   // K: (dim) → (kvDim)
-
-// AttentionFeatures.java:827
-values.add(bv != null ? dense(wv, bv) : dense(wv));  // V: (dim) → (kvDim)
-
-// AttentionFeatures.java:844
-attention.add(bq != null ? dense(wq, bq) : dense(wq)); // Q: (dim) → (dim)
+```
+branch keys   { dense(wk, bk) ... }     // K: (dim) → (kvDim)
+branch values { dense(wv, bv) ... }     // V: (dim) → (kvDim)
+dense(wq, bq)                            // Q: (dim) → (dim)
 ```
 
 For Qwen3: `dim=3584`, `kvDim=896` (8 KV heads * 112 headSize).
 
 ### 2. QK-Norm (Optional)
 
-When `qkNormQ` and `qkNormK` weights are provided (Qwen3, Gemma2), per-head
-RMSNorm is applied to queries and keys before RoPE:
+The `attention_qk_norm` layer (Qwen3, Gemma2) normalizes each projected query and key
+head by head before RoPE:
 
-```java
-// AttentionFeatures.java:803-808
-if (qkNormK != null) {
-    PackedCollection flatQkNormK = qkNormK.reshape(shape(kvDim));
-    keys.add(s -> rmsnorm(s, flatQkNormK, 1e-6, requirements));
+```
+branch keys {
+    dense(wk, bk)
+    rmsnorm(qk_norm_k, 1e-6)
+    ...
 }
+dense(wq, bq)
+rmsnorm(qk_norm_q, 1e-6)
 ```
 
 QK-Norm stabilizes attention logits by normalizing Q and K independently. The weights
-have shape `(heads, headSize)` or `(kvHeads, headSize)` and are flattened to 1D for
-the `rmsnorm` method.
+have shape `(heads, headSize)` or `(kvHeads, headSize)`; `rmsnorm` takes its
+statistic over the last axis of its weights, so every head is normalized by its own
+root mean square and scaled by its own row of weights — the `RMSNorm(head_dim)` of the
+reference implementation.
 
 ### 3. RoPE Application
 
 Rotary position embeddings encode positional information by rotating Q and K vectors
-in the complex plane. The implementation uses the split-half format matching
-PyTorch's Qwen/Llama RoPE:
+in the complex plane. The `rotate_heads` layer of the asset uses the split-half format
+matching PyTorch's Qwen/Llama RoPE:
 
-```java
-// AttentionFeatures.java:810-813 — for keys
-keys.add(reshapeToSplitHalfRope(kvDim, kvHeads, headSize));
-keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position));
-keys.add(reshapeFromSplitHalfRope(kvHeads, headSize));
+```
+layer rotate_heads(heads: int, head_size: int, freq_cis: weight, position: scalar)
+        -> [1, heads * head_size] {
+    split_half_rope(heads, head_size)
+    rope_rotation([heads, head_size / 2, 2], freq_cis, position)
+    merge_half_rope(heads, head_size)
+}
 ```
 
 The three-step process:
-1. **Reshape to split-half** (`reshapeToSplitHalfRope`): Transforms from flat
-   `(kvDim)` to `(kvHeads, headSize/2, 2)` where the last dimension pairs
-   `[firstHalf, secondHalf]` of each head
-2. **Apply rotation** (`ropeRotation`): For each pair `(x1, x2)` and frequency
-   `(cos, sin)` at the current position:
+1. **Split-half layout** (`split_half_rope`, backed by `reshapeToSplitHalfRope`):
+   Transforms from flat `(kvDim)` to `(kvHeads, headSize/2, 2)` where the last
+   dimension pairs `[firstHalf, secondHalf]` of each head
+2. **Apply rotation** (`rope_rotation`, backed by `ropeRotation`): For each pair
+   `(x1, x2)` and frequency `(cos, sin)` at the current position:
    - `out1 = x1 * cos - x2 * sin`
    - `out2 = x2 * cos + x1 * sin`
-3. **Reshape back** (`reshapeFromSplitHalfRope`): Returns to `(kvHeads, headSize)`
+3. **Merge** (`merge_half_rope`, backed by `reshapeFromSplitHalfRope`): Returns to
+   `(kvHeads, headSize)`
 
-The frequency tensor `freqCis` has shape `(seqLen, headSize/2, 2)` where position
+The frequency tensor `freq_cis` has shape `(seqLen, headSize/2, 2)` where position
 `p` and frequency index `i` store `[cos(p * theta_i), sin(p * theta_i)]`.
-The `ropeRotation` layer indexes into this tensor using the current position.
+The rotation indexes into this tensor using the current position. The
+`attention_mra` layer uses `rotate_head_groups` instead, which rotates each head
+group by its own table at its own position (`mra_rope_rotation`).
 
 ### 4. GQA Expansion
 
 For models with fewer KV heads than query heads (e.g., Qwen3: 8 KV heads, 32 query
-heads), the key and value vectors are expanded by duplicating each KV head's data:
-
-```java
-// AttentionFeatures.java:817-822 — key expansion
-if (useGQA) {
-    keys.add(reshape(shape(kvDim), shape(1, kvDim)));
-    keys.add(gqaExpand(kvDim, dim, kvHeads, heads, headSize, requirements));
-}
-```
-
-The `gqaExpand` method (`AttentionFeatures.java:401-439`) uses precomputed index
-maps for zero-copy gathering:
+heads), the key and value rows are expanded by duplicating each KV head's data before
+the cache write:
 
 ```
-Input:  (1, kvDim=896)  = (1, 8 KV heads * 112)
-Output: (1, dim=3584)   = (1, 32 query heads * 112)
+repeat_each(heads / kv_heads)
+```
+
+`LayerFeatures.repeatEach` is a single gather with graph-computed indices:
+
+```
+Input:  (8, 112)   = 8 KV heads * 112
+Output: (32, 112)  = 32 query heads * 112
 
 KV head 0 → duplicated to query heads 0, 1, 2, 3
 KV head 1 → duplicated to query heads 4, 5, 6, 7
@@ -594,64 +678,58 @@ KV head 7 → duplicated to query heads 28, 29, 30, 31
 
 ### 5. Scaled Dot-Product Attention with Causal Mask
 
-After cache write, attention scores are computed between the current query and all
-cached keys using `attentionKeysStandard`:
+After the cache writes, the `attend` layer computes the scores between the current
+query and all cached keys, scales, masks, normalizes and applies the weights:
 
-```java
-// AttentionFeatures.java:579-607
-// Q @ K^T / sqrt(headSize) using permute for transposition
-return layer("attentionKeysStd", inputShape, outputShape, input ->
-    permute(
-        traverse(1, keys).map(v -> v.multiply(input))
-            .traverse(2).sum()
-            .divide(c(Math.sqrt(headSize)))
-            .reshape(shape(seqLength, heads)),
-        1, 0
-    ).reshape(outputShape), requirements);
+```
+attention_scores(key_cache)      // scores[h][s] = sum_i(Q[h][i] * K[s][h][i])
+scale(1 / sqrt(head_size))       // / sqrt(headSize)
+causal_mask(position)            // -10000 on every column after position
+softmax()                        // one distribution per head over the sequence
+weighted_values(value_cache)     // sum_s(weights[h][s] * V[s][h][i]) → (1, dim)
 ```
 
-This computes `scores[h][s] = sum_i(Q[h][i] * K[s][h][i]) / sqrt(headSize)` for
-each head `h` and sequence position `s`.
-
-The causal mask is then added, and softmax normalizes the scores:
-
-```java
-// AttentionFeatures.java:870-874
-attention.add(layer("causal_mask", attentionShape, attentionShape,
-    input -> add(input, causalMask), requirements));
-attention.add(softmax(attentionShape, true));
-```
-
-Finally, the attention weights are applied to cached values using
-`attentionValuesStandard` to produce the output:
-
-```java
-// AttentionFeatures.java:876
-attention.add(attentionValuesStandard(attentionShape, p(valueCache)));
-```
+`attention_scores` (`AttentionFeatures.attentionScores`) tiles the query across the
+cache rows explicitly (`repeat(seqLength, ...)`) rather than relying on the broadcast
+of `multiply(cache, query)`: that broadcast matches leading dimensions, so when the
+head count equals the sequence length the `(heads, headSize)` query is a prefix of
+the `(seqLength, heads, headSize)` cache and each query element would be spread over a
+run of cache elements instead of the query being tiled across rows.
+`AttentionAssetTest` pins the four-head, four-row case against a host reference.
 
 ### 6. Output Projection
 
 The attended output `(1, dim)` is projected through `Wo`:
 
-```java
-// AttentionFeatures.java:877
-attention.add(dense(wo));
+```
+dense(wo)
+reshape([1, heads * head_size])
 ```
 
 ### Complete Transformer Layer
 
-The `transformer()` method (`AttentionFeatures.java:1711-1731`) wraps attention and
-feed-forward with residual connections using `accum()`:
+The layer is the asset `engine/ml/src/main/resources/pdsl/transformer.pdsl`. Its
+`transformer`, `transformer_qk_norm` and `transformer_mra` layers wrap an attention
+layer of `attention.pdsl` and the `swiglu_ffn` layer of `feed_forward.pdsl` in residual
+connections:
 
-```java
-SequentialBlock transformer = new SequentialBlock(shape(1, dim));
-transformer.accum(attention(...), requirements);  // x = x + attention(x)
-transformer.accum(feedForward(...), requirements); // x = x + ffn(x)
+```
+accum {
+    attention(heads, kv_heads, head_size, rms_att_weight, wq, wk, wv, wo,
+              bq, bk, bv, freq_cis, position, epsilon)      // x = x + attention(x)
+}
+accum {
+    swiglu_ffn(rms_ffn_weight, w1, w2, w3, epsilon)         // x = x + ffn(x)
+}
 ```
 
-The `accum()` method adds the block's output to the residual stream, implementing
-the standard pre-norm transformer pattern: `x = x + sublayer(norm(x))`.
+Each `accum` adds its stage's output to the residual stream, implementing the standard
+pre-norm transformer pattern `x = x + sublayer(norm(x))`. `transformer.pdsl` declares its
+dependency on `attention.pdsl` and `feed_forward.pdsl` with `import` statements, so the
+`transformer()` methods of `AttentionFeatures` only bind the arguments (`attentionArguments`
+allocates the key and value caches) and build one of those layers from the single asset
+(`PdslLoader.parseResource`), whose imports pull the other two into the same program; the
+model classes loop over their layers in Java.
 
 ---
 
@@ -702,11 +780,14 @@ In self-attention, Q, K, and V all come from the same input. In cross-attention:
 - **Keys (K) and Values (V)** come from the external context (e.g., text embeddings)
 
 ```java
-// AttentionFeatures.java:1066-1126 — sequenceCrossAttention
+// AttentionFeatures.sequenceCrossAttention
 // 1. Project main input to queries
 crossAttention.add(projectionFactory.create(queryShape, toQWeight, ...));
 
-// 2. Process context input through separate branch for K and V
+// 2. Apply Q normalization
+crossAttention.add(norm(normType, qNormWeight, qNormBias, 1e-6));
+
+// 3. Process context input through separate branch for K and V
 SequentialBlock contextBranch = contextInput.branch();
 contextBranch.add(projectionFactory.create(contextInput.getOutputShape(), toKvWeight, ...));
 // Split into K and V
@@ -716,7 +797,7 @@ List<Block> kv = contextBranch.split(shape(batch, contextSeqLen, 1, dim), 0);
 Key differences from self-attention:
 - **No RoPE on context:** Cross-attention keys/values do not receive rotary
   position embeddings because the context positions are independent of the
-  audio sequence positions (`AttentionFeatures.java:1102-1103`)
+  audio sequence positions (in `AttentionFeatures.sequenceCrossAttention`)
 - **Separate sequence lengths:** The query sequence length may differ from the
   context sequence length
 - **No causal mask:** Cross-attention allows attending to all context positions
@@ -726,7 +807,7 @@ Key differences from self-attention:
 In `DiffusionTransformer`, cross-attention uses fused KV projection for the context:
 
 ```java
-// DiffusionTransformer.java:367-368
+// DiffusionTransformer
 crossKv = createWeight("...cross_attn.to_kv.weight", 2 * dim, dim);
 ```
 
@@ -734,7 +815,7 @@ The fused KV weight projects the context to `2 * dim`, which is then split into
 separate K and V tensors:
 
 ```java
-// AttentionFeatures.java:1092-1096
+// AttentionFeatures.sequenceCrossAttention
 contextBranch.reshape(batchSize, contextSeqLen, 2, dim);
 List<Block> kv = contextBranch.split(shape(batchSize, contextSeqLen, 1, dim), 0);
 SequentialBlock k = (SequentialBlock) kv.get(0).reshape(batchSize, contextSeqLen, heads, dimHead);
@@ -745,7 +826,7 @@ K and V are stored in intermediate `PackedCollection` tensors for the attention
 computation:
 
 ```java
-// AttentionFeatures.java:1106-1110
+// AttentionFeatures.sequenceCrossAttention
 PackedCollection kTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
 PackedCollection vTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
 k.andThen(into(kTensor));
@@ -759,15 +840,14 @@ Instead of adaptive layer normalization (AdaLayerNorm), `DiffusionTransformer` u
 prepended as extra tokens to the audio sequence:
 
 ```java
-// DiffusionTransformer.java:284-296
-default Block prependConditioning(Block timestampEmbed, Block globalEmbed) {
+// DiffusionTransformer.prependConditioning
+protected Block prependConditioning(Block timestampEmbed, Block globalEmbed) {
     // ...
     return layer("prependConditioning",
         shape(batchSize, audioSeqLen, embedDim),
         shape(batchSize, audioSeqLen + 1, embedDim),
-        in -> concat(1,
-            add(cp(globalCond), cp(timestep)).reshape(batchSize, 1, embedDim),
-            c(in)));
+        in ->
+            concat(1, add(cp(globalCond), cp(timestep)).reshape(batchSize, 1, embedDim), c(in)));
 }
 ```
 
@@ -776,7 +856,7 @@ global conditioning), increasing the sequence length from `audioSeqLen` to
 `audioSeqLen + 1`. After the transformer blocks, the prepended token is removed:
 
 ```java
-// DiffusionTransformer.java:243-247
+// DiffusionTransformer
 if (seqLen > audioSeqLen) {
     int prependedLength = seqLen - audioSeqLen;
     main.reshape(batchSize, seqLen, ioChannels)
@@ -787,14 +867,42 @@ if (seqLen > audioSeqLen) {
 ### Sequence-Based Self-Attention (DiffusionTransformer)
 
 Unlike autoregressive attention which processes one token at a time with KV caches,
-`DiffusionTransformer` uses full-sequence attention via `sequenceAttention`
-(`AttentionFeatures.java:942-997`):
+`DiffusionTransformer` (and the T5Gemma text encoder) uses full-sequence attention via
+`sequenceAttention` (in `SequenceAttentionFeatures`, with further overloads adding a customizable
+`ProjectionFactory`, a selectable query/key `NormalizationType` and causal masking):
 
 - Processes all positions simultaneously with fused QKV projection
-- Uses `scaledDotProductAttention` over the full sequence (no causal mask needed)
+- Scores every query against every key with the scaled dot-product attention of
+  `engine/ml/src/main/resources/pdsl/sdpa.pdsl` (with a causal mask when requested); the
+  tensor-valued `scaledDotProductAttention` is a thin loader that binds the key and value tensors
+  and chains that asset's score and `sdpa_context` layers
 - Applies full-sequence RoPE via `applyRotaryPositionEmbedding` instead of
   single-position `ropeRotation`
-- No KV cache — the full K and V tensors are computed and stored for each forward pass
+- No KV cache — the full K and V tensors are computed for each forward pass
+
+Like the autoregressive block, its structure lives in a PDSL asset,
+`engine/ml/src/main/resources/pdsl/sequence_attention.pdsl` (fused projection separated into one
+row per head by `slice`, `reshape` and `permute`, `sequence_rope`, and the `sdpa.pdsl` score and
+context layers), and `sequenceAttention` is a thin loader that builds the two projections, binds
+the arguments and builds the layer for the requested query/key normalization, soft-cap and causal
+masking. The keys and values are branches of that layer which the score and context layers read
+as the operands of their products, so the backward pass carries gradients into the key and value
+projections as well as the query projection.
+
+The differential variant (`DifferentialAttentionFeatures.differentialSequenceAttention`, selected
+with `AttentionVariant.DIFFERENTIAL`) is a layer of `engine/ml/src/main/resources/pdsl/differential_attention.pdsl`:
+its fused projection holds five sections, `Q1 K1 K2 V Q2`; an `attention_map` layer forms each of
+the two attention maps from its query, key and value sections with the same `sdpa.pdsl` halves; and
+`accum_blocks` sums the two maps, the second weighted by each head's lambda (and negated) so the sum
+subtracts it, before the heads are merged and projected. `differentialSequenceAttention` binds the
+same arguments as `sequenceAttention` (`sequenceAttentionArguments`) plus the lambda.
+
+The T5Gemma text encoder calls these layers from an asset of its own,
+`engine/ml/src/main/resources/pdsl/t5gemma_encoder.pdsl`: each encoder layer is an `accum` around
+the soft-capped `sequence_attention_softcapped` layer, then an `accum` around the `glu_feed_forward`
+layer of `feed_forward.pdsl` with a GELU gate, each sub-layer sandwiched between two RMS norms that
+share the checkpoint's one epsilon. `T5GemmaEncoder` binds each layer's weights, the prompt mask (as
+the key mask) and an all-ones value mask, and builds that layer once per layer.
 
 ---
 
@@ -805,6 +913,7 @@ Unlike autoregressive attention which processes one token at a time with KV cach
 | File | Description |
 |------|-------------|
 | `engine/ml/src/.../ml/AttentionFeatures.java` | Unified attention mechanisms (MHA, GQA, cross-attention, transformer blocks) |
+| `engine/ml/src/.../ml/SequenceAttentionFeatures.java` | Full-sequence attention (`sequenceAttention`, `scaledDotProductAttention`); `AttentionFeatures` extends it |
 | `engine/ml/src/.../ml/AutoregressiveModel.java` | Autoregressive generation loop with prompt/generation phases |
 | `engine/ml/src/.../ml/RotationFeatures.java` | RoPE implementations (single-position and full-sequence) |
 | `engine/ml/src/.../ml/StateDictionary.java` | Model weight loading from protobuf format |

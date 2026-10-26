@@ -258,7 +258,7 @@ import java.util.stream.Collectors;
  * @see TemporalRunner
  * @author Michael Murray
  */
-public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells, Destroyable {
+public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells {
 	/** Parent CellLists whose temporals tick before this list's cells. */
 	private final List<CellList> parents;
 
@@ -950,8 +950,6 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 	 */
 	@Override
 	public void destroy() {
-		Destroyable.super.destroy();
-
 		if (data != null) {
 			data.forEach(PackedCollection::destroy);
 			data.clear();

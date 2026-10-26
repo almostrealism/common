@@ -43,6 +43,11 @@ import java.util.function.Supplier;
  *   <li>It always becomes a standalone kernel argument, so reusing operations resolve it to
  *       the original buffer, which holds exactly the values their identical computation
  *       would have produced.</li>
+ *   <li>The root delegate supplier of that standalone argument is not released when the
+ *       argument map of the operation that compiled the kernel is destroyed. The argument has
+ *       no position in any operation's process tree, so a reusing operation resolves it through
+ *       that very supplier; releasing it with the compiling operation would leave every later
+ *       reuse of the cached kernel unable to evaluate the argument.</li>
  * </ul>
  *
  * @see MemoryDataCacheManager

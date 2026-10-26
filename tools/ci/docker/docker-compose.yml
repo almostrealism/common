@@ -27,6 +27,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - GITHUB_PAT=${GITHUB_PAT}
+      - RUNNER_SCOPE=${RUNNER_SCOPE:-repo}
       - GITHUB_OWNER=${GITHUB_OWNER:-almostrealism}
       - GITHUB_REPO=${GITHUB_REPO:-common}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-ar-runner}

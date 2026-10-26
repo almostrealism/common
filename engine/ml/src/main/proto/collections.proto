@@ -13,6 +13,8 @@ message CollectionData {
   TraversalPolicyData traversal_policy = 1;
   repeated double data = 2;
   repeated float data_32 = 3;
+  repeated sfixed32 data_i32 = 4;
+  repeated sfixed64 data_i64 = 5;
 }
 
 message CollectionLibraryEntry {

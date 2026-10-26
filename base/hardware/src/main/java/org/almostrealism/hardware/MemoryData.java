@@ -26,13 +26,17 @@ import io.almostrealism.sequence.Index;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Node;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.BytesView;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.function.DoublePredicate;
+import java.util.function.Supplier;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
@@ -200,6 +204,23 @@ import java.util.stream.IntStream;
  * <p><strong>Important:</strong> Delegated {@link MemoryData} instances do not own their
  * underlying {@link Memory}. Only destroy instances that allocated their own memory.</p>
  *
+ * <p><strong>Native memory lifetime.</strong> When the backing {@link Memory} is native
+ * (JNI/OpenCL/Metal), its lifetime is tied to the provider-owned backing object, not to a bytes-used
+ * budget: {@code HardwareMemoryProvider}'s phantom-reference queue tracks that backing {@code RAM}
+ * (not every {@link MemoryData} instance) and, once it becomes unreachable, frees the native block
+ * at some later garbage-collection cycle. That phantom-queue free applies where the provider owns
+ * the native bytes &mdash; the JNI-calloc path of {@code NativeMemoryProvider}, {@code CLMemoryProvider}
+ * (OpenCL) and {@code MetalMemoryProvider} (Metal). {@code NativeMemoryProvider}'s NIO direct-buffer
+ * mode ({@code isDirect()}) is the exception: those bytes are a JVM {@code DirectByteBuffer} freed by
+ * the JVM's own cleaner, and the provider's phantom reference ({@code NativeBufferRef}) only unmaps
+ * shared memory and notifies deallocation listeners &mdash; it does not free the direct-buffer bytes.
+ * A delegated or view {@link MemoryData} does not own its
+ * {@link Memory}, so collecting the view does not free anything while its delegate &mdash; and thus
+ * the backing block &mdash; is still reachable. Freeing native memory while a dispatched kernel still
+ * reads it is a use-after-free; {@code KernelMemoryGuard} defers the free for kernels dispatched
+ * through the standard operators. Call {@link #destroy()} deterministically (via try-with-resources)
+ * for memory you own and no longer need, rather than waiting for GC.</p>
+ *
  * <h2>Thread Safety</h2>
  *
  * <p>{@link MemoryData} is <strong>not thread-safe</strong>. Concurrent access must be
@@ -280,6 +301,41 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 */
 	default boolean isDestroyed() {
 		return getMem() == null;
+	}
+
+	/**
+	 * Returns a view of the region this data describes, bound directly to the {@link Memory}
+	 * backing it at the moment of the call rather than through this object or its delegate chain.
+	 *
+	 * <p>Destroying this data (or the root it delegates to) clears that object's reference to
+	 * its memory, but not the view's: the view keeps the same memory, offset, length and atomic
+	 * length. It does not keep the memory itself alive &mdash; whoever needs the memory to outlive
+	 * a destroy must hold it some other way, for example with a
+	 * {@link org.almostrealism.hardware.mem.KernelMemoryGuard} scheduling lease. The view's root
+	 * never frees the captured memory; destroying that root only frees memory the root acquired
+	 * afterwards by being moved to another provider. Data that has already been destroyed has
+	 * nothing to bind to, and is returned unchanged.</p>
+	 *
+	 * @return a view of this data's current memory, or this data if it has been destroyed
+	 */
+	default MemoryData detachedView() {
+		Memory mem = getMem();
+		return mem == null ? this : detachedView(mem);
+	}
+
+	/**
+	 * Returns a view of the region this data describes, bound to the given {@link Memory}
+	 * rather than to whatever memory backs this data when the view is used. The view has this
+	 * data's offset, length and atomic length within that memory; see {@link #detachedView()}
+	 * for how its lifetime relates to the memory's.
+	 *
+	 * @param mem the memory to bind the view to, which must be memory this data's root describes
+	 * @return a view of this data's region within {@code mem}
+	 */
+	default MemoryData detachedView(Memory mem) {
+		MemoryData root = getRootDelegate();
+		Bytes storage = new BytesView(mem, root.getOffset() + root.getMemLength());
+		return new Bytes(getMemLength(), getAtomicMemLength(), storage, getOffset());
 	}
 
 	/**
@@ -523,6 +579,26 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	/**
+	 * Returns {@code true} if this instance and {@code other} present the same elements of
+	 * the same underlying memory in the same order, so that element {@code i} of one is
+	 * element {@code i} of the other. This holds for distinct views of one collection that
+	 * differ only in shape, such as a reshape of it, and fails for a view of part of it or
+	 * of a different region. Views whose {@link #getMemOrdering() orderings} are not both
+	 * {@code null} are only recognized when those orderings are equal.
+	 *
+	 * @param other the memory data to compare with
+	 * @return {@code true} if both expose the same elements of the same memory in the same order
+	 */
+	default boolean hasSameElements(MemoryData other) {
+		if (other == this) return true;
+		if (other == null || getRootDelegate() != other.getRootDelegate()) return false;
+
+		return getOffset() == other.getOffset()
+				&& getMemLength() == other.getMemLength()
+				&& Objects.equals(getMemOrdering(), other.getMemOrdering());
+	}
+
+	/**
 	 * Returns a stream of all double values in this memory data.
 	 *
 	 * @return A {@link DoubleStream} of all values
@@ -539,7 +615,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @return A {@link DoubleStream} of the specified range
 	 */
 	default DoubleStream doubleStream(int offset, int length) {
-		if (getDelegateOrdering() == null) {
+		if (getMemOrdering() == null) {
 			return DoubleStream.of(toArray(offset, length));
 		} else {
 			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
@@ -560,24 +636,34 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * Returns the double value at the specified index.
 	 *
 	 * <p>If a {@link TraversalOrdering} is set, the logical index is mapped through the ordering
-	 * to find the physical memory location. Returns 0.0 for out-of-bounds negative indices.</p>
+	 * to find the physical memory location. Returns 0.0 for out-of-bounds negative indices. When no
+	 * ordering is set, a positive index at or beyond {@link #getMemLength()} is out of range and is
+	 * rejected, matching {@link #toArray(int, int)}.</p>
 	 *
 	 * @param index The logical index
 	 * @return The double value at that index
+	 * @throws IllegalArgumentException If no ordering is set and {@code index} is at or beyond the length of this data
 	 */
 	default double toDouble(int index) {
 		if (getMemOrdering() == null) {
-			return index < 0 ? 0.0 : toArray(index, 1)[0];
+			if (index < 0) return 0.0;
+			if (index >= getMemLength()) {
+				throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+			}
+
+			return getMem().toDouble(getOffset() + index);
 		} else if (getDelegate() == null) {
 			index = getMemOrdering().indexOf(index);
 			if (index < 0) return 0.0;
 
-			return getMem().toArray(getOffset() + index, 1)[0];
+			return getMem().toDouble(getOffset() + index);
 		} else {
-			index = getDelegateOrdering().indexOf(index);
-			if (index < 0) return 0.0;
+			if (getDelegateOrdering() != null) {
+				index = getDelegateOrdering().indexOf(index);
+				if (index < 0) return 0.0;
+			}
 
-			return getDelegate().toDouble(getDelegateOffset() + getDelegateOrdering().indexOf(index));
+			return getDelegate().toDouble(getDelegateOffset() + index);
 		}
 	}
 
@@ -675,6 +761,22 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	@Override
 	default Expression<Double> getValue(Expression... pos) {
 		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Membership agrees with {@link #toDouble(int)}: when a {@link #getMemOrdering() memory
+	 * ordering} is applied, an index is a member when the ordering gives it a physical position
+	 * (an absent element reads as zero); otherwise every index within {@link #getMemLength()}
+	 * is a member.</p>
+	 */
+	@Override
+	default Expression<Boolean> containsIndex(Expression<Integer> index) {
+		TraversalOrdering order = getMemOrdering();
+		if (order != null) return order.containsIndex(index);
+
+		return index.greaterThanOrEqual(0).and(index.lessThan(getMemLength()));
 	}
 
 	@Override

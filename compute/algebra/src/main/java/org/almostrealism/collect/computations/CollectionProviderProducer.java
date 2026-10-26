@@ -16,12 +16,17 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -72,6 +77,18 @@ import java.util.List;
  *   <li><strong>Aggregation Targets:</strong> {@code null} (signature depends on computation context)</li>
  *   <li><strong>Other Shapes:</strong> {@code |shape} (shape only)</li>
  * </ul>
+ *
+ * <h2>Ordered Values</h2>
+ * <p>When the value's shape carries a {@link TraversalOrdering} that reads a collection in
+ * order to map an index (a lookup table or a mask), that collection must be delivered to any
+ * kernel that reads the value. As a {@link ScopeLifecycle} participant, this producer
+ * {@link TraversalOrdering#bind(ArgumentProvider) binds} the ordering to the kernel's arguments
+ * in {@link #prepareScope(ArgumentProvider, KernelStructureContext)}, before the argument
+ * variable for its value is created, and exposes the bound ordering through
+ * {@link #getOrdering()} until {@link #resetArguments()}. The argument variable captures the
+ * bound ordering when it is created, so a kernel keeps reading through its own arguments even
+ * if this producer is later prepared for another kernel. The {@link #getShape() shape} is
+ * unaffected, so the value reads the same way on the host.</p>
  *
  * <h2>Equality and Hashing</h2>
  * <p>Two {@code CollectionProviderProducer} instances are considered equal if they provide
@@ -154,7 +171,7 @@ public class CollectionProviderProducer<T extends Shape>
 		implements CollectionProducerBase<T, Producer<T>>,
 				Process<Process<?, ?>, Evaluable<? extends T>>,
 				OperationInfo, Signature, DescribableParent<Process<?, ?>>,
-				CollectionFeatures {
+				ScopeLifecycle, CollectionFeatures {
 	/**
 	 * Metadata for profiling and operation tracking, including the operation name
 	 * and shape details.
@@ -166,6 +183,13 @@ public class CollectionProviderProducer<T extends Shape>
 	 * producer provides.
 	 */
 	private final Shape value;
+
+	/**
+	 * The ordering of the value's shape, {@link TraversalOrdering#bind(ArgumentProvider) bound}
+	 * to the arguments of the kernel being compiled, or {@code null} if the scope has not been
+	 * prepared since the arguments were last reset.
+	 */
+	private TraversalOrdering boundOrder;
 
 	/**
 	 * Constructs a provider producer for the specified {@link Shape} value.
@@ -228,6 +252,44 @@ public class CollectionProviderProducer<T extends Shape>
 	public boolean isProvider() { return true; }
 
 	/**
+	 * Returns the ordering through which generated code reads the provided value: the ordering
+	 * of its shape, {@link TraversalOrdering#bind(ArgumentProvider) bound} to the kernel's
+	 * arguments if {@link #prepareScope(ArgumentProvider, KernelStructureContext)} has bound it.
+	 *
+	 * @return the ordering applied to reads of the value, or {@code null} if it has none
+	 */
+	@Override
+	public TraversalOrdering getOrdering() {
+		return boundOrder == null ? getShape().getOrder() : boundOrder;
+	}
+
+	/**
+	 * Binds the ordering of the value's shape to the arguments supplied by the given manager,
+	 * so that any collection the ordering reads in order to map an index is delivered to the
+	 * kernel. A value whose shape has no ordering depends on no other argument. Binding is
+	 * {@link TraversalOrdering#bind(ArgumentProvider) idempotent}, so the ordering is bound
+	 * again each time the scope is prepared: the same manager yields an ordering that reads
+	 * the same argument, and the manager of another compilation yields one that reads its own.
+	 *
+	 * @param manager the provider of the kernel's arguments
+	 * @param context the kernel structure context for the compilation
+	 */
+	@Override
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
+		TraversalOrdering order = getShape().getOrder();
+		boundOrder = order == null ? null : order.bind(manager);
+	}
+
+	/**
+	 * Discards the ordering bound by {@link #prepareScope(ArgumentProvider, KernelStructureContext)},
+	 * since it refers to the arguments of the compilation that prepared it.
+	 */
+	@Override
+	public void resetArguments() {
+		boundOrder = null;
+	}
+
+	/**
 	 * Creates a traversal view of this producer along the specified axis.
 	 *
 	 * <p>Delegates to the {@link CollectionFeatures#traverse(int, Producer)} helper method
@@ -280,6 +342,15 @@ public class CollectionProviderProducer<T extends Shape>
 	public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }
 
 	/**
+	 * Returns {@code true}, since a provider introduces its value into the graph
+	 * rather than deriving it from inputs.
+	 *
+	 * @return {@code true}
+	 */
+	@Override
+	public boolean isMatchRoot() { return true; }
+
+	/**
 	 * Generates a process with the specified child processes.
 	 *
 	 * <p>Since provider producers have no children, this method ignores the children
@@ -314,11 +385,21 @@ public class CollectionProviderProducer<T extends Shape>
 	 * must not share a compiled kernel. Encoding the root length scopes instruction reuse to
 	 * compatible aggregate layouts.</p>
 	 *
-	 * @return A signature string
+	 * <p>When the shape carries a {@link TraversalOrdering}, the signature includes the
+	 * {@link TraversalOrdering#signature() ordering's signature}, because the ordering is
+	 * compiled into every kernel that reads the value and shape equality does not compare it.
+	 * An ordering without a signature (one that reads a collection delivered to the kernel as an
+	 * argument) leaves this producer without one, so no kernel that reads it is reused.</p>
+	 *
+	 * @return A signature string, or {@code null} if kernels reading this value must not be reused
 	 */
 	@Override
 	public String signature() {
-		String shape = "|" + value.getShape().toStringDetail();
+		TraversalOrdering order = value.getShape().getOrder();
+		String ordering = order == null ? "" : order.signature();
+		if (ordering == null) return null;
+
+		String shape = "|" + value.getShape().toStringDetail() + (ordering.isEmpty() ? "" : "|order=" + ordering);
 
 		if (value instanceof MemoryData) {
 			MemoryData md = (MemoryData) value;
@@ -372,6 +453,27 @@ public class CollectionProviderProducer<T extends Shape>
 		if (super.equals(obj)) return true;
 		if (!(obj instanceof CollectionProviderProducer)) return false;
 		return ((CollectionProviderProducer) obj).value == value;
+	}
+
+	/**
+	 * Returns {@code true} if {@code other} provides the same value as this producer. Besides
+	 * the identical value recognized by {@link #equals(Object)}, this includes a different
+	 * view of the same memory that {@link MemoryData#hasSameElements has the same elements},
+	 * such as a reshape of it, so that a derivative taken with respect to
+	 * {@code cp(collection)} also reaches a computation that reads
+	 * {@code cp(collection.reshape(...))}.
+	 *
+	 * @param other the computable to compare with
+	 * @return {@code true} if both producers provide the same elements
+	 */
+	@Override
+	public boolean matches(Computable other) {
+		if (equals(other)) return true;
+		if (!(other instanceof CollectionProviderProducer)) return false;
+
+		Shape otherValue = ((CollectionProviderProducer<?>) other).value;
+		return value instanceof MemoryData && otherValue instanceof MemoryData
+				&& ((MemoryData) value).hasSameElements((MemoryData) otherValue);
 	}
 
 	/**

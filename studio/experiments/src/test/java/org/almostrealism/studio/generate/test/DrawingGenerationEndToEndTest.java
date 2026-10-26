@@ -125,10 +125,9 @@ public class DrawingGenerationEndToEndTest extends TestSuiteBase {
 	public void generateAudioFromDrawing() throws Exception {
 		File autoEncoderDir = new File(AUTOENCODER_DIR);
 		File ditDir = new File(DIT_DIR);
-		if (!autoEncoderDir.exists() || !ditDir.exists()) {
-			log("Skipping: model assets not found");
-			return;
-		}
+		requireLocalResource("autoencoder model assets at " + autoEncoderDir.getAbsolutePath(), null,
+				autoEncoderDir.exists());
+		requireLocalResource("DiT model assets at " + ditDir.getAbsolutePath(), null, ditDir.exists());
 
 		AssetGroup autoEncoderAssets = assetGroupFromDir(autoEncoderDir);
 		AssetGroup ditAssets = assetGroupFromDir(ditDir);
@@ -136,7 +135,7 @@ public class DrawingGenerationEndToEndTest extends TestSuiteBase {
 		AudioLibrary library = new AudioLibrary(tempDir.toFile(), SAMPLE_RATE);
 		OnnxAutoEncoder autoEncoder = new OnnxAutoEncoder(autoEncoderAssets);
 		library.getWaveDetailsFactory().setFeatureProvider(
-				new AutoEncoderFeatureProvider(autoEncoder));
+				new AutoEncoderFeatureProvider(autoEncoder, "onnx-autoencoder"));
 
 		try {
 			WaveDetails drawing = createDrawingDetails("e2e-drawing-id");

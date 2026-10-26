@@ -23,7 +23,10 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 
 /**
  * A composite {@link Index} representing a multi-dimensional position encoded as a flat integer.
@@ -116,7 +119,7 @@ public class IndexChild extends Sum<Integer> implements Index {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalLong max = parent.upperBound(context);
 		if (!max.isPresent()) return OptionalLong.empty();
 
@@ -124,6 +127,74 @@ public class IndexChild extends Sum<Integer> implements Index {
 		if (!limit.isPresent()) return OptionalLong.empty();
 
 		return OptionalLong.of((max.getAsLong() + 1) * limit.getAsLong() - 1);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index contains the given index when the two have the same name, and
+	 * otherwise when the parent or child index it is composed of does.</p>
+	 */
+	@Override
+	public boolean containsIndex(Index idx) {
+		return Objects.equals(getName(), idx.getName()) || super.containsIndex(idx);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index refers to its own name, in addition to the names its parent and
+	 * child indices refer to.</p>
+	 */
+	@Override
+	public void collectReferencedNames(Set<String> names) {
+		names.add(getName());
+		super.collectReferencedNames(names);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index is replaced by the given expression when the index being replaced
+	 * has its name, and otherwise passes the substitution on to the parent and child
+	 * indices it is composed of.</p>
+	 */
+	@Override
+	public Expression withIndex(Index index, Expression<?> e) {
+		if (Objects.equals(getName(), index.getName())) return e;
+		return super.withIndex(index, e);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index references itself, rather than the parent and child indices it is
+	 * composed of.</p>
+	 */
+	@Override
+	public Set<Index> getIndices() {
+		return Set.of(this);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index answers for itself, as described by {@link Index#getIndexOptions(Index)},
+	 * rather than combining the options of the parent and child indices it is composed of.</p>
+	 */
+	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		return Index.super.getIndexOptions(index);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index is already the series of its own values, so it is never a target.</p>
+	 */
+	@Override
+	public boolean isSeriesSimplificationTarget(int depth) {
+		return false;
 	}
 
 	@Override

@@ -24,7 +24,6 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler;
 import com.fasterxml.jackson.databind.deser.ValueInstantiator;
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.jsontype.TypeIdResolver;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.almostrealism.audio.AudioLibrary;
@@ -32,6 +31,7 @@ import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.WesternChromatic;
+import org.almostrealism.music.notes.KeyPositionDeserializer;
 import org.almostrealism.music.pattern.ChordProgressionManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.studio.generative.GenerationManager;
@@ -129,8 +129,9 @@ public class AudioSceneLoader {
 		mapper.configure(DeserializationFeature.FAIL_ON_INVALID_SUBTYPE, false);
 
 		SimpleModule module = new SimpleModule();
-		module.addDeserializer(KeyPosition.class, keyPositionDeserializer(KeyPosition.class, KeyPosition::of));
-		module.addDeserializer(WesternChromatic.class, keyPositionDeserializer(WesternChromatic.class, s -> WesternChromatic.valueOf(s)));
+		module.addDeserializer(KeyPosition.class, new KeyPositionDeserializer.Named());
+		module.addDeserializer(WesternChromatic.class,
+				new KeyPositionDeserializer<>(WesternChromatic.class, WesternChromatic::valueOf));
 		mapper.registerModule(module);
 
 		mapper.addHandler(new DeserializationProblemHandler() {
@@ -191,31 +192,6 @@ public class AudioSceneLoader {
 				current = parser.currentToken();
 			}
 		}
-	}
-
-	/**
-	 * Creates a JSON deserializer for key position types that handles both plain string
-	 * values and legacy array-encoded formats produced by older serializers.
-	 *
-	 * @param <T>     the key position type
-	 * @param clazz   the target type class
-	 * @param factory a factory function that creates instances from string representations
-	 * @return a {@link StdDeserializer} for the given key position type
-	 */
-	private static <T> StdDeserializer<T> keyPositionDeserializer(Class<T> clazz, Function<String, T> factory) {
-		return new StdDeserializer<>(clazz) {
-			@Override
-			public T deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-				if (p.currentToken() == JsonToken.START_ARRAY) {
-					p.nextToken(); // class name
-					p.nextToken(); // value
-					String value = p.getValueAsString();
-					p.nextToken(); // END_ARRAY
-					return factory.apply(value);
-				}
-				return factory.apply(p.getValueAsString());
-			}
-		};
 	}
 
 	/**

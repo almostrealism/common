@@ -54,4 +54,103 @@ public class Bits {
 		int mask = bits == 32 ? -1 : (1 << bits) - 1;
 		return (value & mask) << position;
 	}
+
+	/**
+	 * Converts an IEEE 754 half-precision value to single precision.
+	 *
+	 * <p>Every half-precision value is exactly representable as a {@code float}, so this
+	 * conversion is lossless. Signed zeros, subnormals, infinities and NaNs are all carried
+	 * across: a subnormal half is renormalized by shifting its mantissa up until the leading
+	 * bit becomes implicit, decrementing the exponent once per shift, which yields a normal
+	 * {@code float}; a half exponent of {@code 0x1F} maps to the {@code float} infinity/NaN
+	 * exponent. The constant {@code 127 - 15} rebiases from the half exponent bias to the
+	 * single-precision bias, and the 13-bit shift widens the 10-bit mantissa to 23 bits.</p>
+	 *
+	 * <p>This exists because {@code Float.float16ToFloat} is only available from Java 20, while
+	 * this project targets Java 17.</p>
+	 *
+	 * @param half the half-precision value, held in the low 16 bits
+	 * @return the equivalent single-precision value
+	 */
+	public static float float16ToFloat(short half) {
+		int bits = half & 0xFFFF;
+		int sign = bits >>> 15;
+		int exp = (bits >>> 10) & 0x1F;
+		int mant = bits & 0x3FF;
+
+		int result;
+		if (exp == 0) {
+			if (mant == 0) {
+				result = sign << 31;
+			} else {
+				exp = 127 - 15 + 1;
+				while ((mant & 0x400) == 0) {
+					mant <<= 1;
+					exp--;
+				}
+				mant &= 0x3FF;
+				result = (sign << 31) | (exp << 23) | (mant << 13);
+			}
+		} else if (exp == 0x1F) {
+			result = (sign << 31) | 0x7F800000 | (mant << 13);
+		} else {
+			result = (sign << 31) | ((exp + (127 - 15)) << 23) | (mant << 13);
+		}
+		return Float.intBitsToFloat(result);
+	}
+
+	/**
+	 * Converts a single-precision value to IEEE 754 half precision, rounding to nearest with
+	 * ties to even.
+	 *
+	 * <p>A value too large for half precision becomes a signed infinity, and a value too small
+	 * becomes a signed zero. Infinities and NaNs are preserved, a non-zero mantissa being kept
+	 * non-zero so a NaN stays a NaN. When the half exponent falls to zero or below the result is
+	 * subnormal, so the implicit leading mantissa bit is restored before the mantissa is shifted
+	 * down and rounded. On the normal path a mantissa carry out of rounding flows into the
+	 * exponent correctly, and an exponent that reaches {@code 0x1F} becomes infinity, which is
+	 * the correct overflow result.</p>
+	 *
+	 * <p>This exists because {@code Float.floatToFloat16} is only available from Java 20, while
+	 * this project targets Java 17.</p>
+	 *
+	 * @param value the single-precision value
+	 * @return the nearest half-precision value, held in the low 16 bits
+	 */
+	public static short floatToFloat16(float value) {
+		int bits = Float.floatToIntBits(value);
+		int sign = (bits >>> 16) & 0x8000;
+		int exp = (bits >>> 23) & 0xFF;
+		int mant = bits & 0x7FFFFF;
+
+		if (exp == 0xFF) {
+			return (short) (sign | 0x7C00 | (mant != 0 ? 0x200 : 0));
+		}
+
+		int halfExp = exp - 127 + 15;
+		if (halfExp >= 0x1F) {
+			return (short) (sign | 0x7C00);
+		}
+		if (halfExp <= 0) {
+			if (halfExp < -10) {
+				return (short) sign;
+			}
+			mant |= 0x800000;
+			int shift = 14 - halfExp;
+			int half = mant >>> shift;
+			int remainder = mant & ((1 << shift) - 1);
+			int tie = 1 << (shift - 1);
+			if (remainder > tie || (remainder == tie && (half & 1) != 0)) {
+				half++;
+			}
+			return (short) (sign | half);
+		}
+
+		int half = (halfExp << 10) | (mant >>> 13);
+		int remainder = mant & 0x1FFF;
+		if (remainder > 0x1000 || (remainder == 0x1000 && (half & 1) != 0)) {
+			half++;
+		}
+		return (short) (sign | half);
+	}
 }

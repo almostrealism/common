@@ -38,7 +38,9 @@ def write_section(output_file: Path, header: str, body: str = "") -> None:
         handle.write("\n")
 
 
-def run(run_dir: Path, module: str, project_root: Path) -> preflight.PreflightResult:
+def run(run_dir: Path, module: str, project_root: Path,
+        timeout_seconds: float = preflight.PREFLIGHT_TIMEOUT_SECONDS,
+        ) -> preflight.PreflightResult:
     """Run the upstream-artifact preflight and persist its output.
 
     Returns the :class:`preflight.PreflightResult` produced by
@@ -52,6 +54,18 @@ def run(run_dir: Path, module: str, project_root: Path) -> preflight.PreflightRe
     not already swallow) are reported as a synthetic ``"failed"``
     result so the caller can short-circuit cleanly without
     spawning Maven on a broken setup.
+
+    Args:
+        run_dir: The run's directory, for the output log.
+        module: Module path relative to the project root.
+        project_root: Project root (contains the reactor ``pom.xml``).
+        timeout_seconds: Hard ceiling on the seed ``mvn install``
+            subprocess. Callers should pass the run's own configured
+            timeout budget (already capped at the 40-minute ceiling by
+            ``run_validation.py``) so this preflight step -- which runs
+            and completes before the caller's own timeout timer is
+            armed -- is bounded exactly as every other build/test
+            invocation this server starts must be.
     """
     output_file = run_dir / "output.txt"
 
@@ -120,7 +134,7 @@ def run(run_dir: Path, module: str, project_root: Path) -> preflight.PreflightRe
             pass
 
     result = preflight.seed_upstream_artifacts(
-        project_root, module, output_writer=_writer)
+        project_root, module, output_writer=_writer, timeout_seconds=timeout_seconds)
 
     if result.action == "seeded":
         write_section(

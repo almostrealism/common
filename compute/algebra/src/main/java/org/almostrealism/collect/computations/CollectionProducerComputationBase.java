@@ -33,7 +33,8 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.calculus.DeltaAlternate;
+import org.almostrealism.calculus.InputStub;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -47,7 +48,9 @@ import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiFunction;
@@ -71,7 +74,9 @@ import java.util.stream.Stream;
  *   <li><strong>Memory Management:</strong> Intelligent destination buffer management and reuse</li>
  *   <li><strong>Shape Management:</strong> Flexible handling of multi-dimensional data structures via 
  *       {@link TraversalPolicy}</li>
- *   <li><strong>Delta Computation:</strong> Support for derivative and gradient calculations</li>
+ *   <li><strong>Delta Computation:</strong> The {@link #delta(Producer, ReduceAxis, Producer) delta}
+ *       of every computation, through protected extension points whose order is described
+ *       by {@link #deltaDependent}</li>
  *   <li><strong>Lifecycle Management:</strong> Comprehensive resource management and cleanup</li>
  * </ul>
  * 
@@ -121,7 +126,7 @@ import java.util.stream.Stream;
 public abstract class CollectionProducerComputationBase
 		extends ProducerComputationBase<PackedCollection, PackedCollection>
 												implements CollectionProducerComputation, IndexSet,
-															DeltaAlternate<PackedCollection>, MemoryDataComputation<PackedCollection>,
+															MemoryDataComputation<PackedCollection>,
 															HardwareFeatures {
 	/**
 	 * Global flag to enable logging of destination buffer operations.
@@ -129,7 +134,7 @@ public abstract class CollectionProducerComputationBase
 	 * during computation execution. Primarily used for debugging memory management issues.
 	 * 
 	 * @see #destinationLog(Runnable)
-	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
+	 * @see CollectionProducerComputation#shapeForLength(int)
 	 */
 	public static boolean enableDestinationLogging = false;
 
@@ -151,9 +156,6 @@ public abstract class CollectionProducerComputationBase
 	/** Cached hardware-accelerated evaluable instance for this computation. */
 	private HardwareEvaluable<PackedCollection> evaluable;
 
-	/** Alternative producer for delta computations (derivatives/gradients). */
-	private CollectionProducer deltaAlternate;
-	
 	/** Custom description function for generating human-readable computation descriptions. */
 	private Function<List<String>, String> description;
 
@@ -171,7 +173,15 @@ public abstract class CollectionProducerComputationBase
 	 * <p>The output shape must have a positive total size, and all arguments must be non-null.
 	 * The first argument position is reserved for the destination buffer, which is automatically
 	 * managed by this base class.</p>
-	 * 
+	 *
+	 * <p>Any {@link io.almostrealism.collect.TraversalOrdering} on the output shape is removed:
+	 * a computation produces a dense output, with one element per logical index. An ordered
+	 * collection is a correct <em>input</em> to a computation, which reads it through its
+	 * ordering, but producing an ordered (compact or sparse) output would mean writing only the
+	 * elements the ordering gives a position, which is a scatter or segmented reduction rather
+	 * than the element-wise evaluation every computation performs. Such outputs belong to
+	 * dedicated sparse computations, not to this base class.</p>
+	 *
 	 * @param name A human-readable name for this computation, used in debugging and profiling.
 	 *             May be null, in which case a default name will be generated.
 	 * @param outputShape The {@link TraversalPolicy} defining the multi-dimensional shape of the output.
@@ -218,14 +228,16 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
-	 * Prepares the operation metadata by adding shape information to the base metadata.
-	 * 
+	 * Prepares the operation metadata by adding shape information to the base metadata. The
+	 * signature is the one the base metadata defers to {@link #signature()}, so it is computed
+	 * only if it is requested.
+	 *
 	 * @param metadata The base metadata to enhance
 	 * @return Enhanced metadata including shape information
 	 */
 	@Override
 	protected OperationMetadata prepareMetadata(OperationMetadata metadata) {
-		return super.prepareMetadata(metadata).withShape(getShape()).withSignature(signature());
+		return super.prepareMetadata(metadata).withShape(getShape());
 	}
 
 	/**
@@ -239,28 +251,381 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
-	 * Returns the delta alternate producer for this computation.
-	 * The delta alternate is used for derivative and gradient calculations
-	 * in automatic differentiation scenarios.
-	 * 
-	 * @return The delta alternate producer, or null if none is set
-	 * @see #setDeltaAlternate(CollectionProducer)
+	 * Computes the delta of this computation, as {@link CollectionProducer#delta(Producer,
+	 * ReduceAxis, Producer)} describes. The cases determined by identity alone are left to
+	 * that implementation; every other case is the {@link #deltaDependent dependent delta},
+	 * which is where the extension points of a computation's derivative begin. This method
+	 * is not overridden.
 	 */
 	@Override
-	public CollectionProducer getDeltaAlternate() {
-		return deltaAlternate;
+	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (cannotMatch(target) || refersTo(target)) {
+			return CollectionProducerComputation.super.delta(target, axis, weight);
+		}
+
+		return deltaDependent(target, axis, weight);
 	}
 
 	/**
-	 * Sets the delta alternate producer for this computation.
-	 * This is used in automatic differentiation to provide an alternative
-	 * computation path for calculating derivatives and gradients.
-	 * 
-	 * @param deltaAlternate The delta alternate producer to set
-	 * @see #getDeltaAlternate()
+	 * Indicates whether this computation may be differentiated through an intermediate
+	 * input using the multivariate chain rule, which the {@link #deltaDependent dependent
+	 * delta} then applies using the {@link #deltaPartial partial delta} with respect to
+	 * that input. Subclasses whose expression can be differentiated with respect to a
+	 * stubbed input return true.
+	 *
+	 * @return true if chain rule differentiation is supported (default: false)
 	 */
-	public void setDeltaAlternate(CollectionProducer deltaAlternate) {
-		this.deltaAlternate = deltaAlternate;
+	protected boolean isChainRuleSupported() {
+		return false;
+	}
+
+	/**
+	 * Returns the full Jacobian of this computation with respect to a target it depends on,
+	 * by whatever means this computation has of its own. This is the last of the
+	 * {@link #deltaDependent dependent delta}'s strategies, used for the Jacobian only
+	 * when it cannot be formed from the Jacobians of the inputs, either
+	 * {@link #deltaElement element by element} or by the chain rule (when
+	 * {@link #isChainRuleSupported()}), and for a reduced delta only when neither of
+	 * those applies, in which case the result is contracted. Computations that can
+	 * differentiate their own expression override this; the default has no such means.
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @return the Jacobian, in the shape of this computation followed by that of the target
+	 * @throws UnsupportedOperationException if this computation has no means of its own
+	 */
+	protected CollectionProducer deltaMatrix(Producer<?> target) {
+		throw new UnsupportedOperationException("No Jacobian of " + describe());
+	}
+
+	/**
+	 * Differentiates this computation with respect to a target that it may depend on and
+	 * is not, for the full Jacobian or either {@link ReduceAxis reduced} delta. This is the
+	 * first of the extension points of a computation's derivative, and the one to override
+	 * when a computation has a rule of its own that should take precedence over every
+	 * strategy below; an override defers to this implementation for any case its rule
+	 * does not cover. A computation that only needs one of those strategies overrides the
+	 * extension point for it instead:
+	 * <ul>
+	 *   <li>{@link #deltaElement(int)}, when this computation is element-wise in an input.
+	 *       Every input that may depend on the target is then differentiated element by
+	 *       element, for any number of such inputs and for all three axes.</li>
+	 *   <li>{@link #isChainRuleSupported()}, when this computation can be differentiated
+	 *       with respect to one of its inputs held as a variable, which is its
+	 *       {@link #deltaPartial partial delta}. The multivariate chain rule then applies
+	 *       when exactly one input depends on the target,
+	 *       <pre>
+	 * For h(x) = f(g(x)), compute: dh/dx = (df/dg) . (dg/dx)
+	 *       </pre>
+	 *       and when that input is the target itself, which is not a variable that this
+	 *       computation's expression could be differentiated by, the delta is that
+	 *       partial delta.</li>
+	 *   <li>{@link #deltaMatrix(Producer)}, when this computation can produce its own
+	 *       Jacobian with respect to the target, used when neither of the above applies.</li>
+	 * </ul>
+	 *
+	 * <p>The reduced deltas pass the reduction on to the inputs, so that neither this
+	 * computation's Jacobian with respect to the target nor that of any input {@code h} is
+	 * formed:</p>
+	 * <pre>
+	 * OUT:  gᵀ d(this)/dx = Σ_h (gᵀ d(this)/dh) dh/dx    -  Σ_h h.delta(x, OUT, this.delta(h, OUT, g))
+	 * IN:   d(this)/dx t  = Σ_h d(this)/dh (dh/dx t)      -  Σ_h this.delta(h, IN, h.delta(x, IN, t))
+	 * </pre>
+	 * <p>When neither the element-wise form nor the chain rule applies to a reduced delta,
+	 * the full Jacobian is {@link #jacobianContraction contracted}.</p>
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   the axis of the Jacobian to sum away
+	 * @param weight the weight of each entry along that axis, or null to weight every
+	 *               entry by one
+	 * @return the delta, in the shape of the axes that remain
+	 */
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis == ReduceAxis.NONE) {
+			CollectionProducer jacobian = isFixedCount() ? deltaElementMatrix(target) : null;
+			if (jacobian == null) jacobian = deltaInput(target, axis, weight);
+			if (jacobian == null) jacobian = deltaChainMatrix(target);
+			return jacobian == null ? deltaMatrix(target) : jacobian;
+		}
+
+		CollectionProducer elementwise = deltaElementReduced(target, axis, weight);
+		if (elementwise != null) return elementwise;
+
+		CollectionProducer input = deltaInput(target, axis, weight);
+		if (input != null) return input;
+
+		if (!isFixedCount() || !isChainRuleSupported()) {
+			return jacobianContraction(this, target, axis, weight);
+		}
+
+		Optional<Producer<PackedCollection>> match = matchInput(target);
+		if (match == null || match.isEmpty() || match.get().refersTo(target) ||
+				!(match.get() instanceof Shape)) {
+			return jacobianContraction(this, target, axis, weight);
+		}
+
+		Producer<PackedCollection> in = match.get();
+
+		if (axis == ReduceAxis.OUT) {
+			return c(in).delta(target, axis, deltaPartial(in, axis, weight));
+		}
+
+		return deltaPartial(in, axis, c(in).delta(target, axis, weight));
+	}
+
+	/**
+	 * Computes the delta with respect to a target that is itself the one input of this
+	 * computation that may depend on it, when that target is a computation rather than a
+	 * variable. This computation's expression does not present such a target as a variable
+	 * to differentiate by, so the delta is the {@link #deltaPartial partial delta} with
+	 * respect to that input, which is the whole of it because the input's own delta with
+	 * respect to the target is the identity.
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   the axis of the Jacobian to sum away
+	 * @param weight the weight of each entry along that axis, or null to weight every
+	 *               entry by one
+	 * @return the delta, or null when the target is not such an input
+	 */
+	private CollectionProducer deltaInput(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (!isChainRuleSupported() || target.getMatchRoot().isMatchRoot()) return null;
+
+		Optional<Producer<PackedCollection>> match = matchInput(target);
+		if (match == null || match.isEmpty() || !match.get().refersTo(target) ||
+				!(match.get() instanceof Shape)) {
+			return null;
+		}
+
+		Producer<PackedCollection> in = match.get();
+		if (shape(in).equals(shape(target))) {
+			return deltaPartial(in, axis, weight);
+		} else if (axis == ReduceAxis.IN && weight != null) {
+			weight = c(weight).reshape(shape(in));
+		}
+
+		return deltaPartial(in, axis, weight).reshape(axis.resultShape(getShape(), shape(target)));
+	}
+
+	/**
+	 * Forms the full Jacobian of this computation by the chain rule through the one input
+	 * that may depend on the target, as {@link #deltaDependent} describes, when that is
+	 * possible.
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @return the Jacobian, or null when the chain rule does not apply
+	 */
+	private CollectionProducer deltaChainMatrix(Producer<?> target) {
+		if (!isChainRuleSupported()) return null;
+
+		if (!isFixedCount()) {
+			warn("Cannot compute partial delta for variable Producer");
+			return null;
+		}
+
+		TraversalPolicy shape = getShape();
+		TraversalPolicy targetShape = shape(target);
+		Optional<Producer<PackedCollection>> match = matchInput(target);
+
+		if (match == null) {
+			return null;
+		} else if (match.isEmpty()) {
+			return zeros(shape.append(targetShape));
+		}
+
+		Producer<?> in = match.get();
+		if (in.refersTo(target) || !(in instanceof CollectionProducer)) return null;
+
+		CollectionProducer f = deltaPartial(in, ReduceAxis.NONE, null);
+		CollectionProducer g = ((CollectionProducer) in).delta(target);
+
+		int finalLength = shape.getTotalSize();
+		int outLength = shape(in).getTotalSize();
+		int inLength = targetShape.getTotalSize();
+
+		return matmul(reshape(shape(finalLength, outLength), f),
+				reshape(shape(outLength, inLength), g))
+				.reshape(shape.append(targetShape));
+	}
+
+	/**
+	 * Computes the delta of this computation with respect to one of its inputs, holding
+	 * every other input constant: the partial derivative that the chain rule of the
+	 * {@link #deltaDependent dependent delta} multiplies by the delta of that input. The
+	 * input is replaced by an {@link InputStub} in a regenerated copy of this computation,
+	 * and that copy is differentiated with respect to the stub, which is why the chain
+	 * rule requires {@link #isChainRuleSupported()}. This is a tool for the extension
+	 * points of the derivative, not one of them, and is not overridden.
+	 *
+	 * @param input  the input of this computation to differentiate with respect to
+	 * @param axis   the axis of the Jacobian to sum away
+	 * @param weight the weight of each entry along that axis, or null to weight every
+	 *               entry by one
+	 * @return the partial delta, in the shape of the axes that remain
+	 */
+	protected CollectionProducer deltaPartial(Producer<?> input, ReduceAxis axis, Producer<PackedCollection> weight) {
+		InputStub stub = new InputStub((Producer) input);
+		return replaceInput(input, stub).delta(stub, axis, weight);
+	}
+
+	/**
+	 * Returns the derivative of each element of this computation with respect to the
+	 * element of one of its inputs that it is computed from, when this computation is
+	 * element-wise in that input: output {@code i} depends on that input only through its
+	 * element {@code i}, or, for an input of a single element, through that element. The
+	 * result has the shape of this computation (or broadcasts to it) and is a computation
+	 * of the inputs' values, so the derivative of this computation with respect to the
+	 * input is the diagonal matrix it describes. Computations that are not element-wise in
+	 * the input return null, which is the default.
+	 *
+	 * <p>This is the cheapest of the extension points of a computation's derivative (see
+	 * {@link #deltaDependent}): when every input that may depend on the target has an
+	 * element delta, the Jacobian and both reduced deltas are formed from them, for any
+	 * number of such inputs, without any rule of this computation's own.</p>
+	 *
+	 * @param index the position of the input among {@link #getInputs()}, where the
+	 *              destination is at position zero
+	 * @return the element-wise partial derivative, or null if this computation is not
+	 *         element-wise in that input
+	 */
+	protected CollectionProducer deltaElement(int index) {
+		return null;
+	}
+
+	/**
+	 * Computes the reduced delta from the {@link #deltaElement element-wise partial}
+	 * derivatives of this computation, summing over every input that may depend on the
+	 * target. An input that appears more than once contributes the sum of its partials. For
+	 * an input {@code h} with partial {@code p}:
+	 * <pre>
+	 * OUT:  h.delta(x, OUT, g ⊙ p)     (summed over the outputs when h is a single element)
+	 * IN:   p ⊙ h.delta(x, IN, t)
+	 * </pre>
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @param axis   the axis of the Jacobian to sum away
+	 * @param weight the weight of each entry along that axis, or null to weight every
+	 *               entry by one
+	 * @return the reduced delta, or null if this computation is not element-wise in every
+	 *         input that may depend on the target
+	 */
+	private CollectionProducer deltaElementReduced(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		Map<Producer<PackedCollection>, CollectionProducer> partials = deltaElements(target);
+		if (partials == null) return null;
+
+		TraversalPolicy shape = getShape();
+		List<Producer<?>> terms = new ArrayList<>();
+
+		for (Map.Entry<Producer<PackedCollection>, CollectionProducer> entry : partials.entrySet()) {
+			CollectionProducer in = c(entry.getKey());
+			CollectionProducer partial = entry.getValue();
+			boolean scalar = in.getShape().getTotalSizeLong() != shape.getTotalSizeLong();
+
+			if (axis == ReduceAxis.OUT) {
+				CollectionProducer local = multiply(
+						weight == null ? constant(shape, 1.0) : c(weight).reshape(shape), partial);
+				if (scalar) local = local.reshape(shape.getTotalSize()).sum();
+				terms.add(in.delta(target, axis, local.reshape(in.getShape())));
+			} else {
+				CollectionProducer tangent = in.delta(target, axis, weight);
+				terms.add(multiply(scalar ? tangent : tangent.reshape(shape), partial).reshape(shape));
+			}
+		}
+
+		return terms.size() == 1 ? (CollectionProducer) terms.get(0) : add(terms);
+	}
+
+	/**
+	 * Computes the full Jacobian of this computation from its
+	 * {@link #deltaElement element-wise partial} derivatives: each input {@code h}
+	 * contributes its own Jacobian with every row scaled by the partial of the matching
+	 * output, or, when {@code h} is a single element, the outer product of the partial
+	 * with that element's Jacobian.
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @return the Jacobian, in the shape of this computation followed by that of the
+	 *         target, or null if this computation is not element-wise in every input that
+	 *         may depend on the target
+	 */
+	private CollectionProducer deltaElementMatrix(Producer<?> target) {
+		Map<Producer<PackedCollection>, CollectionProducer> partials = deltaElements(target);
+		if (partials == null) return null;
+
+		TraversalPolicy shape = getShape();
+		int outSize = shape.getTotalSize();
+		int targetSize = shape(target).getTotalSize();
+		List<Producer<?>> terms = new ArrayList<>();
+
+		for (Map.Entry<Producer<PackedCollection>, CollectionProducer> entry : partials.entrySet()) {
+			CollectionProducer in = c(entry.getKey());
+			CollectionProducer jacobian = in.delta(target);
+
+			if (in.getShape().getTotalSize() == outSize) {
+				jacobian = jacobian.reshape(outSize, targetSize);
+			} else {
+				jacobian = jacobian.reshape(targetSize).repeat(outSize).reshape(outSize, targetSize);
+			}
+
+			CollectionProducer partial = multiply(constant(shape, 1.0), entry.getValue())
+					.reshape(outSize).traverse(1).repeat(targetSize).reshape(outSize, targetSize);
+			terms.add(multiply(jacobian, partial));
+		}
+
+		CollectionProducer jacobian = terms.size() == 1 ? (CollectionProducer) terms.get(0) : add(terms);
+		return jacobian.reshape(shape.append(shape(target)));
+	}
+
+	/**
+	 * Returns the {@link #deltaElement element-wise partial} derivative of this
+	 * computation with respect to each input that may depend on the target, the partials
+	 * of an input that appears more than once summed.
+	 *
+	 * @param target the producer with respect to which to differentiate
+	 * @return the partial derivative of each such input, or null if there are none or this
+	 *         computation is not element-wise in every one of them
+	 */
+	private Map<Producer<PackedCollection>, CollectionProducer> deltaElements(Producer<?> target) {
+		long size = getShape().getTotalSizeLong();
+		List<Producer<PackedCollection>> inputs = getInputs();
+		Map<Producer<PackedCollection>, CollectionProducer> partials = new LinkedHashMap<>();
+
+		for (int i = 1; i < inputs.size(); i++) {
+			Producer<PackedCollection> in = inputs.get(i);
+			if (in.cannotMatch(target)) continue;
+			if (!(in instanceof Shape)) return null;
+
+			long inSize = ((Shape<?>) in).getShape().getTotalSizeLong();
+			if (inSize != size && inSize != 1) return null;
+
+			CollectionProducer partial = deltaElement(i);
+			if (partial == null) return null;
+
+			partials.merge(in, partial, (p, q) -> add(p, q));
+		}
+
+		return partials.isEmpty() ? null : partials;
+	}
+
+	/**
+	 * Returns a copy of this computation with one of its inputs replaced by another
+	 * producer of the same shape, leaving every other input in place.
+	 *
+	 * @param input       the input to replace
+	 * @param replacement the producer to use in its place
+	 * @return the regenerated computation
+	 * @throws IllegalArgumentException if {@code input} is not an input of this computation
+	 */
+	public CollectionProducer replaceInput(Producer<?> input, Producer<?> replacement) {
+		List<Producer<PackedCollection>> current = getInputs();
+		if (current.stream().skip(1).noneMatch(input::equals)) {
+			throw new IllegalArgumentException(input + " is not an input of " + describe());
+		}
+
+		List<Process<?, ?>> inputs = new ArrayList<>();
+		inputs.add(null);
+		current.stream().skip(1)
+				.map(in -> input.equals(in) ? (Process<?, ?>) replacement : (Process<?, ?>) in)
+				.forEach(inputs::add);
+
+		return generate(inputs);
 	}
 
 	/**
@@ -357,7 +722,7 @@ public abstract class CollectionProducerComputationBase
 	 * @param len The required length for the destination buffer
 	 * @return Adjusted memory bank, or null if length is invalid
 	 * @throws IllegalArgumentException if len is null
-	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
+	 * @see CollectionProducerComputation#shapeForLength(int)
 	 */
 	protected MemoryBank<PackedCollection> adjustDestination(MemoryBank<?> existing, Integer len) {
 		if (len == null) {
@@ -370,8 +735,7 @@ public abstract class CollectionProducerComputationBase
 			return null;
 		}
 
-		TraversalPolicy shape = CollectionProducerComputation.shapeForLength(
-				getShape(), getCount(), isFixedCount(), len);
+		TraversalPolicy shape = shapeForLength(len);
 
 		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
 				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
@@ -556,6 +920,16 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
+	 * Keeps the short-circuit for use when this computation is evaluated.
+	 *
+	 * @see #setShortCircuit(Evaluable)
+	 */
+	@Override
+	public CollectionProducerComputationBase withShortCircuit(Evaluable<PackedCollection> shortCircuit) {
+		return setShortCircuit(shortCircuit);
+	}
+
+	/**
 	 * Returns the custom description function for this computation.
 	 * This function can be used to generate human-readable descriptions
 	 * of the computation for debugging and profiling purposes.
@@ -587,12 +961,14 @@ public abstract class CollectionProducerComputationBase
 	 * allowing efficient traversal of multi-dimensional input data.
 	 * 
 	 * @param index The index expression for the current computation position
-	 * @return Array of traversable expressions for each input argument
+	 * @return Array of traversable expressions for each input argument, with a {@code null}
+	 *         entry for any input that has no traversable kernel argument
 	 */
 	protected TraversableExpression[] getTraversableArguments(Expression<?> index) {
 		TraversableExpression[] vars = new TraversableExpression[getInputs().size()];
 		for (int i = 0; i < vars.length; i++) {
-			vars[i] = TraversableExpression.traverse(getArgumentForInput(getInputs().get(i)));
+			ArrayVariable<?> arg = getArgumentForInput(getInputs().get(i));
+			vars[i] = arg == null ? null : arg.getTraversableExpression();
 		}
 		return vars;
 	}
@@ -814,43 +1190,5 @@ public abstract class CollectionProducerComputationBase
 		} finally {
 			enableDestinationLogging = log;
 		}
-	}
-
-	/**
-	 * Assigns a delta alternate producer to the given producer for automatic differentiation.
-	 * This utility method handles unwrapping reshaped producers to set the delta alternate
-	 * on the underlying computation.
-	 *
-	 * <p>The method performs the following steps:</p>
-	 * <ul>
-	 *   <li>Unwraps {@link ReshapeProducer} to access the underlying computation</li>
-	 *   <li>Verifies the computation is a {@link CollectionProducerComputationBase}</li>
-	 *   <li>Assigns the alternate producer via {@link #setDeltaAlternate(CollectionProducer)}</li>
-	 * </ul>
-	 *
-	 * @param producer The producer to assign the delta alternate to
-	 * @param alternate The alternative producer to use for delta computations
-	 * @return The original producer (for method chaining)
-	 * @throws IllegalArgumentException if the producer is not a {@link CollectionProducerComputationBase}
-	 * @see #setDeltaAlternate(CollectionProducer)
-	 * @see ReshapeProducer
-	 */
-	public static CollectionProducer assignDeltaAlternate(
-			CollectionProducer producer, CollectionProducer alternate) {
-		Producer computation;
-
-		if (producer instanceof ReshapeProducer) {
-			computation = ((ReshapeProducer) producer).getComputation();
-		} else {
-			computation = producer;
-		}
-
-		if (computation instanceof CollectionProducerComputationBase) {
-			((CollectionProducerComputationBase) computation).setDeltaAlternate(alternate);
-		} else {
-			throw new IllegalArgumentException();
-		}
-
-		return producer;
 	}
 }

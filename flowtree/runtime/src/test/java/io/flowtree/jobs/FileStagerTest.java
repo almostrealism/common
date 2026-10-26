@@ -288,6 +288,194 @@ public class FileStagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that the CI file lock holds for a job without the test lock:
+	 * a workflow file and a CI tooling file that exist at the merge-base are
+	 * blocked, while an existing test file is staged because only the test
+	 * lock protects it.
+	 */
+	@Test(timeout = 30000)
+	public void ciFileLockHoldsWithoutTheTestLock() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".github/workflows"));
+			Files.writeString(tempDir.resolve(".github/workflows/analysis.yaml"), "name: analysis\n");
+			Files.createDirectories(tempDir.resolve("tools/ci"));
+			Files.writeString(tempDir.resolve("tools/ci/run.sh"), "echo run\n");
+			Files.createDirectories(tempDir.resolve("src/test/java"));
+			Files.writeString(tempDir.resolve("src/test/java/FooTest.java"), "class FooTest {}\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectCiFiles(true)
+				.protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+				.baseBranch("master")
+				.build();
+
+			StagingResult result = new FileStager().evaluateFiles(
+				Arrays.asList(".github/workflows/analysis.yaml", "tools/ci/run.sh",
+					"src/test/java/FooTest.java"),
+				config, tempDir.toFile(),
+				listingGitOps(".github/workflows/analysis.yaml", "tools/ci/run.sh",
+					"src/test/java/FooTest.java"));
+
+			assertEquals(Collections.singletonList("src/test/java/FooTest.java"), result.getStagedFiles());
+			assertEquals(2, result.getSkippedFiles().size());
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that a branch-new CI/workflow file (absent from the merge-base
+	 * listing) is still blocked under the CI file lock. The shell lock
+	 * ({@code check-ci-file-lock.sh}) rejects a new workflow just as it rejects
+	 * an edit to an existing one, so the harness must not stage a new CI file
+	 * the pipeline would later refuse. Unlike a branch-new test file, which is
+	 * allowed, a branch-new CI file is not.
+	 */
+	@Test(timeout = 30000)
+	public void blocksBranchNewCiWorkflowFile() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".github/workflows"));
+			Files.writeString(tempDir.resolve(".github/workflows/new.yaml"), "name: new\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectCiFiles(true)
+				.protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+				.baseBranch("master")
+				.build();
+
+			// The merge-base listing is empty: the new workflow has no entry
+			// there, yet the CI lock must still block it.
+			StagingResult result = new FileStager().evaluateFiles(
+				Collections.singletonList(".github/workflows/new.yaml"),
+				config, tempDir.toFile(), listingGitOps());
+
+			assertTrue(result.getStagedFiles().isEmpty());
+			assertEquals(1, result.getSkippedFiles().size());
+			assertTrue(result.getSkippedFiles().get(0).contains("CI/workflow"));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that with neither lock active an existing workflow file is
+	 * staged, as it is for a job on a {@code ci/...} branch.
+	 */
+	@Test(timeout = 30000)
+	public void workflowFileStagedWithoutEitherLock() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".github/workflows"));
+			Files.writeString(tempDir.resolve(".github/workflows/analysis.yaml"), "name: analysis\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+				.baseBranch("master")
+				.build();
+
+			StagingResult result = new FileStager().evaluateFiles(
+				Collections.singletonList(".github/workflows/analysis.yaml"),
+				config, tempDir.toFile(), listingGitOps(".github/workflows/analysis.yaml"));
+
+			assertEquals(Collections.singletonList(".github/workflows/analysis.yaml"), result.getStagedFiles());
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the per-job test lock does not re-lock CI/workflow files.
+	 *
+	 * <p>This is the configuration a {@code ci/...} branch produces: the CI
+	 * lock is off ({@code buildStagingConfig} disables {@code protectCiFiles}
+	 * for such a branch) while the per-job test lock is on, with the production
+	 * {@link GitJobConfig#PROTECTED_PATH_PATTERNS}. Because those patterns list
+	 * test paths only, an existing workflow file is staged — matching
+	 * {@code check-ci-file-lock.sh}'s {@code ci/...} exemption — while an
+	 * existing test source on the same job stays protected by the test lock.
+	 * This guards the regression where the test lock caught CI files via a
+	 * shared protected-path set and blocked a CI branch from editing the
+	 * pipeline.</p>
+	 */
+	@Test(timeout = 30000)
+	public void testLockDoesNotReLockCiFiles() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".github/workflows"));
+			Files.writeString(tempDir.resolve(".github/workflows/analysis.yaml"), "name: analysis\n");
+			Files.createDirectories(tempDir.resolve("tools/ci"));
+			Files.writeString(tempDir.resolve("tools/ci/run.sh"), "echo run\n");
+			Files.createDirectories(tempDir.resolve("src/it/java"));
+			Files.writeString(tempDir.resolve("src/it/java/FooIT.txt"), "fixture\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectTestFiles(true)
+				.protectCiFiles(false)
+				.protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+				.baseBranch("master")
+				.build();
+
+			StagingResult result = new FileStager().evaluateFiles(
+				Arrays.asList(".github/workflows/analysis.yaml", "tools/ci/run.sh",
+					"src/it/java/FooIT.txt"),
+				config, tempDir.toFile(),
+				listingGitOps(".github/workflows/analysis.yaml", "tools/ci/run.sh",
+					"src/it/java/FooIT.txt"));
+
+			assertTrue("workflow file must stage on a ci/ branch config",
+				result.getStagedFiles().contains(".github/workflows/analysis.yaml"));
+			assertTrue("tools/ci file must stage on a ci/ branch config",
+				result.getStagedFiles().contains("tools/ci/run.sh"));
+			assertFalse("an existing integration-test file stays test-locked",
+				result.getStagedFiles().contains("src/it/java/FooIT.txt"));
+			assertEquals(1, result.getSkippedFiles().size());
+			assertTrue(result.getSkippedFiles().get(0).contains("src/it/java/FooIT.txt"));
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that only a {@code ci/...} target branch is exempt from the
+	 * harness's CI file lock.
+	 */
+	@Test(timeout = 30000)
+	public void onlyCiBranchesAreExemptFromTheCiFileLock() {
+		assertTrue(GitCommitHandler.isCiBranch("ci/pipeline-change"));
+		assertFalse(GitCommitHandler.isCiBranch("feature/ci-thing"));
+		assertFalse(GitCommitHandler.isCiBranch(null));
+	}
+
+	/**
+	 * A {@link FileStager.GitOperations} whose merge-base resolves and whose
+	 * merge-base tree lists exactly {@code files}.
+	 *
+	 * @param files the paths present at the merge-base
+	 * @return the git operations stub
+	 */
+	private static FileStager.GitOperations listingGitOps(String... files) {
+		return new FileStager.GitOperations() {
+			@Override
+			public int execute(String... args) {
+				return 0;
+			}
+
+			@Override
+			public String executeWithOutput(String... args) {
+				if (args.length >= 1 && "merge-base".equals(args[0])) {
+					return "abc1234def5678901234567890abcdef1234567";
+				}
+				if (args.length >= 1 && "ls-tree".equals(args[0])) {
+					return String.join("\n", files) + "\n";
+				}
+				return "";
+			}
+		};
+	}
+
+	/**
 	 * Verifies that a merge-base tree listing that fails outright (the
 	 * {@code ls-tree} command itself exits non-zero, not merely an empty
 	 * result) fails closed and blocks a protected file, rather than
@@ -487,6 +675,59 @@ public class FileStagerTest extends TestSuiteBase {
 					.anyMatch(s -> s.startsWith(path));
 				assertTrue("Expected " + path + " to be skipped, got "
 					+ result.getSkippedFiles(), found);
+			}
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that FlowTree's {@code .flowtree/} scratch directory is deliberately NOT excluded
+	 * by the production {@link GitJobConfig#DEFAULT_EXCLUDED_PATTERNS}, at the repository root or
+	 * inside any module.
+	 *
+	 * <p>The object-oriented design review writes its verdict file
+	 * ({@code .flowtree/oop-review.md}) as scratch, and an agent working from a module directory
+	 * writes {@code <module>/.flowtree/oop-review.md} instead. Keeping those out of the commit is
+	 * the job of the whitelist-aware guard {@link FlowtreeArtifacts#isExcludedFromCommit}, consulted
+	 * in {@link GitCommitHandler} <em>after</em> staging, not of a pattern here. If {@code .flowtree/}
+	 * were excluded at this layer, {@link FileStager} would strip the paths before the guard ran and
+	 * a path the whitelist promotes could never be committed — so the patterns must stay absent and
+	 * these paths must pass the staging filter.</p>
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void doesNotExcludeFlowtreeScratchLeavingItToTheCommitGuard() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".flowtree"));
+			Files.createDirectories(tempDir.resolve("engine/ml/.flowtree"));
+			Files.writeString(tempDir.resolve(".flowtree/oop-review.md"), "Window: CLEAN\n");
+			Files.writeString(tempDir.resolve("engine/ml/.flowtree/oop-review.md"), "Model: FIXED\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.excludedPatterns(GitJobConfig.DEFAULT_EXCLUDED_PATTERNS)
+				.build();
+
+			FileStager stager = new FileStager();
+			List<String> changed = Arrays.asList(
+				".flowtree/oop-review.md",
+				"engine/ml/.flowtree/oop-review.md"
+			);
+			StagingResult result = stager.evaluateFiles(
+				changed, config, tempDir.toFile(), (String... args) -> 0
+			);
+
+			assertEquals("FileStager must not exclude .flowtree/ scratch; the commit guard does. "
+				+ "Got staged=" + result.getStagedFiles(),
+				changed.size(), result.getStagedFiles().size());
+			assertTrue("No .flowtree/ scratch path may be skipped at the staging layer; got "
+				+ result.getSkippedFiles(),
+				result.getSkippedFiles().isEmpty());
+			for (String path : changed) {
+				assertTrue("Expected " + path + " to pass the staging filter, got "
+					+ result.getStagedFiles(), result.getStagedFiles().contains(path));
 			}
 		} finally {
 			deleteRecursively(tempDir);

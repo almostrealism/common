@@ -25,6 +25,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 
@@ -80,8 +81,20 @@ public class LongConstant extends Constant<Long> {
 	@Override
 	public OptionalLong longValue() { return OptionalLong.of(value); }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Reports the value for every {@code long}, not only one that fits in an {@code int},
+	 * so that constant folding recognizes a large constant as a constant.</p>
+	 */
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) { return OptionalLong.of(value); }
+	public OptionalDouble doubleValue() { return OptionalDouble.of(value); }
+
+	@Override
+	protected OptionalLong computeUpperBound(KernelStructureContext context) { return OptionalLong.of(value); }
+
+	@Override
+	protected OptionalLong computeLowerBound(KernelStructureContext context) { return OptionalLong.of(value); }
 
 	@Override
 	public KernelSeries kernelSeries() { return KernelSeries.constant(value); }

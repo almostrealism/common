@@ -30,6 +30,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * {@link io.almostrealism.code.MemoryProvider} for Metal GPU memory management.
@@ -98,7 +99,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	/** True if Metal shared storage mode is used; false for managed (private GPU) storage. */
 	private final boolean shared;
 	/** Cumulative bytes currently allocated and not yet released. */
-	private long memoryUsed;
+	private final AtomicLong memoryUsed = new AtomicLong();
 
 	/**
 	 * Creates a Metal memory provider with shared storage mode.
@@ -150,7 +151,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	 *
 	 * @return Allocated memory in bytes
 	 */
-	public long getAllocatedMemory() { return memoryUsed; }
+	public long getAllocatedMemory() { return memoryUsed.get(); }
 
 	/**
 	 * Returns the fraction of maximum memory currently in use.
@@ -186,6 +187,11 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	 * elements (each {@code numberSize} bytes). Tracks allocation in metrics and
 	 * logs large allocations if enabled.</p>
 	 *
+	 * <p>Reserves a {@link #beginAllocation()} lease before {@link #buffer(int)} creates
+	 * the backend Metal buffer, so a concurrent {@link #destroy()} cannot release the
+	 * Metal device this call depends on until the buffer has been created and either
+	 * registered via {@link #allocated(RAM)} or released again.</p>
+	 *
 	 * @param size Number of elements to allocate
 	 * @return New {@link MetalMemory} backed by an {@link MTLBuffer}
 	 * @throws HardwareException if allocation would exceed memory limit
@@ -196,9 +202,15 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 
-		MetalMemory mem = allocated(new MetalMemory(this, buffer(size), numberSize * (long) size));
-		allocationSizes.addEntry(numberSize * (long) size);
-		return mem;
+		beginAllocation();
+
+		try {
+			MetalMemory mem = allocated(new MetalMemory(this, buffer(size), numberSize * (long) size));
+			allocationSizes.addEntry(numberSize * (long) size);
+			return mem;
+		} finally {
+			endAllocation();
+		}
 	}
 
 	/**
@@ -219,7 +231,7 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 			synchronized (buf) {
 				if (!buf.isReleased()) {
 					buf.release();
-					memoryUsed = memoryUsed - ref.getSize();
+					memoryUsed.addAndGet(-ref.getSize());
 				}
 			}
 		} finally {
@@ -242,26 +254,19 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	protected MTLBuffer buffer(int len) {
 		long sizeOf = (long) len * getNumberSize();
 
-		if (memoryUsed + sizeOf > memoryMax) {
-			throw new HardwareException("Memory Max Reached");
+		if (shared && getContext().getPrecision() != Precision.FP32) {
+			throw new HardwareException("Shared memory must be " + Precision.FP32);
 		}
 
-		MTLBuffer mem;
-
-		if (shared) {
-			if (getContext().getPrecision() != Precision.FP32) {
-				throw new HardwareException("Shared memory must be " + Precision.FP32.name());
+		return allocateReserved(memoryUsed, memoryMax, sizeOf, () -> {
+			if (shared) {
+				return getContext().getDevice().newSharedBuffer32(getMemoryName().apply(len), len);
 			}
 
-			mem = getContext().getDevice().newSharedBuffer32(getMemoryName().apply(len), len);
-		} else {
-			mem = getContext().getPrecision() == Precision.FP16 ?
+			return getContext().getPrecision() == Precision.FP16 ?
 					getContext().getDevice().newBuffer16(len) :
 					getContext().getDevice().newBuffer32(len);
-		}
-
-		memoryUsed = memoryUsed + sizeOf;
-		return mem;
+		});
 	}
 
 	/**

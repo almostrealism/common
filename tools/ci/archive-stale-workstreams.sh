@@ -6,12 +6,14 @@
 # was written, 26 of the 54 registered workstreams were abandoned
 # documentation-QA rounds.
 #
-# This runs immediately before a new round is registered, and only once
-# the cadence gate has established that no PR from a previous round is
-# still open. That ordering is what makes archiving safe: an open PR
-# means the round is still live and the gate stops the run before it
-# reaches here, so anything this script finds has already been dealt
-# with — merged, closed, or abandoned.
+# This runs immediately before a new round is registered, once the
+# cadence gate has decided a round may start. That ordering is what makes
+# archiving safe: the gate has counted every round still in progress (an
+# open PR, or a recent branch awaiting one). A job that allows one round
+# at a time stops at the first, so anything this script finds has already
+# been dealt with — merged, closed, or abandoned. A job that allows
+# several passes the ones it counted as KEEP_BRANCHES (the gate's live=
+# output), and they are left alone.
 #
 # KEEP_BRANCH is excluded so a caller that registers first and archives
 # second cannot archive the round it just created. Archiving is
@@ -26,6 +28,8 @@
 #
 # Optional environment variables:
 #   KEEP_BRANCH       - never archive the workstream for this branch
+#   KEEP_BRANCHES     - space-separated branches whose workstreams are
+#                       never archived: the rounds still in progress
 #   CONTROLLER_URL    - FlowTree controller base URL (takes precedence)
 #   CONTROLLER_HOST   - controller hostname (default: localhost)
 #   CONTROLLER_PORT   - controller port     (default: 7780)
@@ -71,11 +75,14 @@ fi
 STALE=$(echo "$BODY" | jq -r \
     --arg p "$BRANCH_PREFIX" \
     --arg keep "${KEEP_BRANCH:-}" \
+    --arg live "${KEEP_BRANCHES:-}" \
     --arg repo "${REPO_URL:-}" \
-    '[ .[]
+    '($live | split(" ") | map(select(. != ""))) as $kept
+     | [ .[]
        | select(.defaultBranch != null)
        | select(.defaultBranch | startswith($p))
        | select(.defaultBranch != $keep)
+       | . as $w | select($kept | index($w.defaultBranch) | not)
        | select($repo == "" or .repoUrl == $repo)
      ] | .[] | "\(.workstreamId)\t\(.defaultBranch)"')
 

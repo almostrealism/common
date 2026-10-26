@@ -30,6 +30,7 @@ import org.almostrealism.studio.optimize.FixedFilterChromosome;
 import org.almostrealism.studio.optimize.OptimizeFactorFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.AdjustableDelayCell;
+import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.graph.PassThroughCell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.ReceptorCell;
@@ -163,6 +164,44 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	public static boolean enablePdslMixdown =
 			SystemUtils.isEnabled("AR_PDSL_MIXDOWN").orElse(true);
 
+	/**
+	 * Returns whether the PDSL mixdown path can faithfully render the given channel
+	 * selection. This is the capability contract behind {@link #enablePdslMixdown}: a
+	 * build only routes through {@link MixdownManagerPdslAdapter} when both the flag is
+	 * set and the selection is supported here; otherwise it falls back to the Java
+	 * {@link #createCells} path.
+	 *
+	 * <p>Two selection shapes are supported:</p>
+	 * <ul>
+	 *   <li><b>Any single channel</b> {@code [c]} — including a non-zero selection. The
+	 *       adapter maps bank position 0 to channel {@code c}'s genome (via
+	 *       {@link MixdownManagerPdslAdapter.Config#channel(int)}), so the PDSL render
+	 *       reads the same genes the Java path reads for that channel.</li>
+	 *   <li><b>The zero-based contiguous multi-channel prefix</b> {@code [0, 1, ..., n-1]}
+	 *       — the full-scene render. Here the channel mapping is the identity, so the
+	 *       per-channel genome reads land on the matching pattern channels.</li>
+	 * </ul>
+	 *
+	 * <p>A non-contiguous multi-channel selection (e.g. {@code [0, 2]}) is not yet
+	 * validated and must render through the Java path instead: the cross-channel
+	 * transmission feedback grid is indexed by bank position rather than scene channel,
+	 * so an arbitrary multi-channel subset would not faithfully reproduce the routing.</p>
+	 *
+	 * @param channels the resolved channel indices
+	 * @return true when the PDSL path can faithfully render this selection
+	 */
+	public static boolean supportsPdslMixdown(List<Integer> channels) {
+		if (channels.isEmpty() || channels.stream().anyMatch(c -> c == null)) return false;
+
+		// Any single channel is supported — the adapter maps its genome reads to the
+		// selected channel index, so a non-zero [c] renders channel c's genes.
+		if (channels.size() == 1) return true;
+
+		// Multi-channel: still require the zero-based contiguous prefix [0, 1, ..., n-1].
+		return IntStream.range(0, channels.size())
+				.allMatch(i -> channels.get(i) == i);
+	}
+
 	/** Global reverb wet-level multiplier applied during reverb processing. */
 	protected static double reverbLevel = 2.0;
 
@@ -218,6 +257,15 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 
 	/** Chromosome providing simple (non-automated) delay dynamics genes. */
 	private final Chromosome<PackedCollection> delayDynamicsSimple;
+
+	/**
+	 * Maximum delay time in seconds the delay network can produce, captured from the
+	 * {@link Configuration#maxDelay} that {@link #initRanges} uses to bound the delay gene.
+	 * The delay gene transform is the exact inverse of its range encoding, so a resultant
+	 * delay never exceeds this value; {@link #createEfx} uses it to right-size each delay
+	 * line's ring buffer instead of allocating {@link AcceleratedTimeSeries#defaultSize}.
+	 */
+	private double maxDelaySeconds;
 
 	/** Chromosome controlling reverb parameters. */
 	private final Chromosome<PackedCollection> reverb;
@@ -474,6 +522,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 					pg.setRange(i, config.minWetOut, config.maxWetOut));
 		});
 
+		this.maxDelaySeconds = config.maxDelay;
 		delay.forEach(gene -> {
 			ProjectedGene pg = (ProjectedGene) gene;
 			pg.setRange(0,
@@ -617,7 +666,8 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 
 		if (enableSourcesOnly) {
 			List<Receptor<PackedCollection>> r = new ArrayList<>();
-			r.add(output.getMaster(audioChannel));
+			Receptor<PackedCollection> master = output.getMaster(audioChannel);
+			if (master != null) r.add(master);
 			r.addAll(output.getMeasures(audioChannel));
 
 			return cells
@@ -692,7 +742,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		}
 
 		if (output.isStemsActive()) {
-			main = main.branch(i -> new ReceptorCell<>(output.getStem(i, audioChannel)),
+			main = main.branch(i -> new ReceptorCell<>(Receptor.toPresent(output.getStem(i, audioChannel))),
 								i -> new PassThroughCell<>())[1];
 		}
 
@@ -702,18 +752,38 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		if (enableEfx) {
 			main = createEfx(main, efx, reverbActive ? reverb : null, riser,
 					sources.size(), output, audioChannel, channelIndex);
-		} else if (output.isMeasuresActive()) {
-			// Deliver main to the output and measure for MAIN and WET
-			main = main.map(i -> new ReceptorCell<>(Receptor.to(
-					output.getMaster(audioChannel),
-					output.getMeasure(ChannelInfo.Voicing.MAIN, audioChannel),
-					output.getMeasure(ChannelInfo.Voicing.WET, audioChannel))));
 		} else {
-			// Deliver main to the output
-			main = main.map(i -> new ReceptorCell<>(output.getMaster(audioChannel)));
+			// Deliver main to the output and, when active, the MAIN and WET measures.
+			// A destination without a receptor for this stereo channel (a mono master)
+			// contributes nothing to the list, so the signal is delivered to the rest.
+			main = main.map(i -> new ReceptorCell<>(Receptor.toPresent(
+					output.getMaster(audioChannel),
+					output.isMeasuresActive() ? output.getMeasure(ChannelInfo.Voicing.MAIN, audioChannel) : null,
+					output.isMeasuresActive() ? output.getMeasure(ChannelInfo.Voicing.WET, audioChannel) : null)));
 		}
 
 		return main;
+	}
+
+	/**
+	 * Returns the ring-buffer capacity, in entries, for each delay line built by
+	 * {@link #createEfx}.
+	 *
+	 * <p>The delay gene is bounded to {@link #maxDelaySeconds} (its transform is the exact
+	 * inverse of the range encoding set in {@link #initRanges}), and the delay-dynamics scale
+	 * advances both buffer cursors together, so the number of live entries stays at
+	 * {@code sampleRate * delay} regardless of playback speed. The capacity is therefore the
+	 * {@link AdjustableDelayCell} documented floor — twice the maximum delay window — rather than
+	 * {@link AcceleratedTimeSeries#defaultSize}, whose ~10M-entry default reserves ~160MB of direct
+	 * memory per line and exhausted the direct-buffer budget across sequential scene renders. The
+	 * result is clamped to the default so a very long configured delay can never increase it.</p>
+	 *
+	 * @return the delay-line buffer capacity in entries
+	 */
+	private int delayBufferSize() {
+		long window = (long) Math.ceil(OutputLine.sampleRate * Math.max(0.0, maxDelaySeconds));
+		long size = window * 2 + 2;
+		return (int) Math.min(AcceleratedTimeSeries.defaultSize, Math.max(1, size));
 	}
 
 	/**
@@ -741,10 +811,13 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			IntFunction<Factor<PackedCollection>> df =
 					i -> toPolycyclicGene(clock, sampleRate, delayDynamicsSimple, i).valueAt(0);
 
+			int delayBufferSize = delayBufferSize();
+
 			CellList delays = IntStream.range(0, delayLayers)
 					.mapToObj(i -> new AdjustableDelayCell(OutputLine.sampleRate,
 							delay.valueAt(i, 0).getResultant(c(1.0)),
-							df.apply(i).getResultant(c(1.0))))
+							df.apply(i).getResultant(c(1.0)),
+							delayBufferSize))
 					.collect(CellList.collector());
 
 			IntFunction<Gene<PackedCollection>> tg =
@@ -776,11 +849,11 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		if (disableClean) {
 			List<Receptor<PackedCollection>> measures = output.getMeasures(audioChannel);
 
-			Receptor[] r = new Receptor[measures.size() + 1];
-			r[0] = output.getMaster(audioChannel);
-			for (int i = 0; i < measures.size(); i++) r[i + 1] = measures.get(i);
+			List<Receptor<PackedCollection>> r = new ArrayList<>(measures.size() + 1);
+			r.add(output.getMaster(audioChannel));
+			r.addAll(measures);
 
-			efx.get(0).setReceptor(Receptor.to(r));
+			efx.get(0).setReceptor(Receptor.toPresent(r.stream()));
 			return efx;
 		}
 
@@ -793,7 +866,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			efxReceptors.add(output.getStem(sourceCount, audioChannel));
 		}
 
-		efx.get(0).setReceptor(Receptor.to(efxReceptors.toArray(Receptor[]::new)));
+		efx.get(0).setReceptor(Receptor.toPresent(efxReceptors.stream()));
 
 		if (enableMasterFilterDown) {
 			// Apply dynamic low pass filter
@@ -824,14 +897,10 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 							bound(multiply(in, c(gain)), -1.0, 1.0)));
 		}
 
-		// Deliver main to the output and measure #1
-		if (!output.isMeasuresActive()) {
-			main = main.map(i -> new ReceptorCell<>(output.getMaster(audioChannel)));
-		} else {
-			main = main.map(i -> new ReceptorCell<>(Receptor.to(
-					output.getMaster(audioChannel),
-					output.getMeasure(ChannelInfo.Voicing.MAIN, audioChannel))));
-		}
+		// Deliver main to the output and, when active, measure #1
+		main = main.map(i -> new ReceptorCell<>(Receptor.toPresent(
+				output.getMaster(audioChannel),
+				output.isMeasuresActive() ? output.getMeasure(ChannelInfo.Voicing.MAIN, audioChannel) : null)));
 
 		return cells(main, efx);
 	}

@@ -55,6 +55,38 @@ public interface Shape<T> extends Traversable<T>, IndexSet, Describable {
 	TraversalPolicy getShape();
 
 	/**
+	 * Returns the {@code value} as a {@link Shape}, rejecting any value that an
+	 * operation cannot be performed on because it is not a {@link Shape}.
+	 *
+	 * @param operation the name of the operation, used in the error message
+	 * @param value     the input the operation requires to be a {@link Shape}
+	 * @param <T>       the declared type of {@code value}
+	 * @return {@code value} as a {@link Shape}
+	 * @throws IllegalArgumentException if {@code value} does not implement {@link Shape}
+	 */
+	static <T> Shape<?> asShape(String operation, T value) {
+		if (!(value instanceof Shape))
+			throw new IllegalArgumentException(operation + " cannot be performed without a TraversalPolicy");
+
+		return (Shape<?>) value;
+	}
+
+	/**
+	 * Returns the {@link TraversalPolicy} of a value that an operation cannot
+	 * be performed without, rejecting any value that is not a {@link Shape}.
+	 *
+	 * @param operation the name of the operation, used in the error message
+	 * @param value     the input whose shape the operation requires
+	 * @param <T>       the declared type of {@code value}
+	 * @return the shape of {@code value}
+	 * @throws IllegalArgumentException if {@code value} does not implement {@link Shape}
+	 * @see #asShape(String, Object)
+	 */
+	static <T> TraversalPolicy requireShape(String operation, T value) {
+		return asShape(operation, value).getShape();
+	}
+
+	/**
 	 * Reshapes this object to the specified dimensions. The total number of elements
 	 * must remain the same. A dimension value of -1 indicates that dimension should
 	 * be inferred from the total size and other dimensions.
@@ -144,13 +176,32 @@ public interface Shape<T> extends Traversable<T>, IndexSet, Describable {
 	 * Checks whether the given index is contained within the valid index range
 	 * for this shape's ordering.
 	 *
+	 * <p>When the shape carries a {@link TraversalOrdering}, membership is the ordering's:
+	 * an index is a member when it has a physical position. Otherwise every index within
+	 * the total size of the shape is a member.</p>
+	 *
 	 * @param index the index expression to check
 	 * @return a boolean expression that is true if the index is valid
 	 */
 	@Override
 	default Expression<Boolean> containsIndex(Expression<Integer> index) {
-		return getShape().getOrder().containsIndex(index);
+		TraversalOrdering order = getShape().getOrder();
+		if (order != null) return order.containsIndex(index);
+
+		return index.greaterThanOrEqual(0).and(index.lessThan(getShape().getTotalSize()));
 	}
+
+	/**
+	 * Returns the {@link TraversalOrdering} through which generated code reads the elements
+	 * of this shape. The default is the ordering of {@link #getShape()}, which is correct for
+	 * any ordering whose mapping is a closed-form function of the index. A shape whose ordering
+	 * reads a collection obtains the kernel argument for that collection while its scope is
+	 * prepared, and returns the {@link TraversalOrdering#bind bound} ordering here until its
+	 * arguments are reset.
+	 *
+	 * @return the ordering applied to reads of the elements, or {@code null} if none
+	 */
+	default TraversalOrdering getOrdering() { return getShape().getOrder(); }
 
 	/**
 	 * Returns a detailed string description of this object's shape.

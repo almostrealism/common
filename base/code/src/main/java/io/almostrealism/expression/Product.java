@@ -19,7 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
 import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexRange;
@@ -76,7 +75,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	 * @param values the operand expressions to multiply together
 	 */
 	protected Product(List<Expression<? extends Number>> values) {
-		this((Class<T>) type(values), (List) values);
+		this((Class<T>) promotedType(values), (List) values);
 	}
 
 	/**
@@ -98,6 +97,11 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	public Expression withIndex(Index index, Expression<?> e) {
 		Expression<T> result = super.withIndex(index, e);
 		if (!(result instanceof Product)) return result;
+
+		if (result.getType() == Long.class && result.getChildren().stream().allMatch(v -> v.longValue().isPresent())) {
+			return new LongConstant(result.getChildren().stream()
+					.mapToLong(v -> v.longValue().getAsLong()).reduce(1L, (a, b) -> a * b));
+		}
 
 		if (result.getChildren().stream().allMatch(v -> v.doubleValue().isPresent())) {
 			double r = result.getChildren().stream()
@@ -125,7 +129,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		List<OptionalLong> values = getChildren().stream()
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
@@ -159,7 +163,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	 * rather than as bounded below by zero.</p>
 	 */
 	@Override
-	public OptionalLong lowerBound(KernelStructureContext context) {
+	protected OptionalLong computeLowerBound(KernelStructureContext context) {
 		List<OptionalLong> lower = getChildren().stream()
 				.map(e -> e.lowerBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
@@ -342,11 +346,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			result = sum(target.getShape(), sum);
 		}
 
-		return ExpressionMatchingCollectionExpression.create(
-				new ConstantCollectionExpression(target.getShape(), this),
-				target,
-				new ConstantCollectionExpression(target.getShape(), new IntegerConstant(1)),
-				result);
+		return deltaUnlessTarget(target, result);
 	}
 
 	@Override
@@ -377,7 +377,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static Expression<?> of(Expression<?>... values) {
-		return Expression.process(create(values));
+		return create(values).process();
 	}
 
 	/**
@@ -405,7 +405,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			List<Expression> operands = Stream.of(values)
 					.map(e -> e == mask.get() ? mask.get().getMaskedValue() : e)
 					.collect(Collectors.toList());
-			return Mask.of(mask.get().getMask(), Product.of(operands.toArray(new Expression[0])));
+			return mask.get().withMaskedValue(Product.of(operands.toArray(new Expression[0])));
 		}
 
 		double constant = 1.0;
@@ -416,6 +416,12 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		if (enableConstantExtraction) {
 			operands = new ArrayList<>();
 
+			// Integer constants are also accumulated in long, since a double
+			// holds a product exactly only up to 2^53; overflow wraps, as it
+			// does in computeValue and withIndex
+			long exact = 1;
+			boolean exactValid = true;
+
 			e: for (Expression e : values) {
 				if (e.isFP()) fp = true;
 				if (e.longValue().orElse(-1) == 1) continue e;
@@ -424,12 +430,21 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 				if (d.isPresent()) {
 					constant *= d.getAsDouble();
+
+					OptionalLong l = e.longValue();
+					if (exactValid && l.isPresent() && !e.isFP()) {
+						exact *= l.getAsLong();
+					} else {
+						exactValid = false;
+					}
 				} else {
 					operands.add(e);
 				}
 			}
 
-			if (constant != 1.0) {
+			if (!fp && exactValid) {
+				if (exact != 1) operands.add(ExpressionFeatures.getInstance().e(exact));
+			} else if (constant != 1.0) {
 				Expression c = fp ? new DoubleConstant(constant) : ExpressionFeatures.getInstance().e((long) constant);
 				operands.add(c);
 			}
@@ -453,13 +468,8 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		if (enableSort)
 			operands = operands.stream().sorted(depthOrder()).collect(Collectors.toList());
 
-		// TODO  When ArithmeticGenerator is present, this should just delegate to ArithmeticGenerator::multiply
-		// TODO  which handles this case, but may include other optimizations
 		if (operands.size() == 2 && operands.get(0) instanceof ArithmeticGenerator && operands.get(1).longValue().isPresent()) {
-			ArithmeticGenerator<?> ag = (ArithmeticGenerator<?>) operands.get(0);
-			return ArithmeticGenerator.create(ag.getIndex(),
-					ag.getScale() * operands.get(1).longValue().getAsLong(),
-					ag.getGranularity(), ag.getMod());
+			return ((ArithmeticGenerator<?>) operands.get(0)).multiply(operands.get(1));
 		}
 
 		return fp ? new Product(Double.class, operands) : new Product(operands);

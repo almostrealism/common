@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.FixedEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.MemoryData;
 
@@ -100,9 +101,18 @@ public class MemoryDataDestination<T extends MemoryData> implements Evaluable<T>
 		return provider.apply(size);
 	}
 
+	/**
+	 * Returns a {@link FixedEvaluable} whose value is {@code destination} itself. Because the
+	 * handle is fixed, kernel argument preparation binds the destination directly as a resolved
+	 * argument of the invocation rather than requesting it asynchronously.
+	 *
+	 * @param destination the memory to hand back from every evaluation
+	 * @return a fixed evaluable of {@code destination}
+	 */
 	@Override
 	public Evaluable<T> into(Object destination) {
-		return args -> (T) destination;
+		FixedEvaluable<T> handle = () -> (T) destination;
+		return handle;
 	}
 
 	@Override

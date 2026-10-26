@@ -6,7 +6,7 @@
 # outside world: it enforces that nothing leaves the machine except a
 # repository-tracked file published as an artifact. A guard that an agent
 # can delete, unregister, or quietly weaken is not a guard. This script
-# mirrors how validate-agent-commit.sh protects CI files: the guard's
+# mirrors how check-ci-file-lock.sh protects CI files: the guard's
 # files are read-only for agents, and their registration must survive.
 #
 # Four checks, in order:
@@ -33,7 +33,7 @@
 #
 #   A ci/... branch is exempt from this comparison only. The pipeline is
 #   the declared subject of the work there — the same declaration
-#   validate-agent-commit.sh RULE 3 and the enforcement-tampering check
+#   the CI file lock (check-ci-file-lock.sh) and the enforcement-tampering check
 #   already accept — and a branch that may rewrite the workflow could
 #   equally delete the step that runs this script, so comparing its edits
 #   obstructs the work without policing it. CHECK 1 and CHECK 2 still
@@ -102,6 +102,9 @@ GUARD_FILES=(
     ".claude/hooks/lib/exfil_bash_vcs.py"
     ".claude/hooks/lib/exfil_bash_dispatch.py"
     ".claude/hooks/lib/test_exfiltration_guard_check.py"
+    ".claude/hooks/lib/test_exfiltration_guard_transport.py"
+    ".claude/hooks/lib/test_exfiltration_guard_interpreter.py"
+    ".claude/hooks/lib/test_exfiltration_guard_worktree.py"
     ".claude/hooks/exfil-allowlist.txt"
     "tools/ci/agent-protection/verify-exfiltration-guard.sh"
     "tools/ci/agent-protection/test-verify-exfiltration-guard.sh"

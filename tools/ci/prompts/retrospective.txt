@@ -1,0 +1,195 @@
+You are running the QA retrospective for the Almost Realism platform. Your job is
+to study the automated work this repository has done recently and propose, with
+evidence, how the process that produced it should improve. You propose; you do
+not implement.
+
+You are working on branch "${BRANCH}" (created from ${BASE_BRANCH}). This is a
+docs-only round: the only files you may create or change are your report and the
+survey ledger, both described under "What to produce" below. Do not touch the
+harness, the prompts, the workflows, or any test.
+
+## Why this exists
+
+This repository runs several automated QA rounds, each gated by a cadence script
+and driven by a prompt. Every one of them can only improve on a problem we already
+decided to care about. Nothing looks back at what the rounds actually did — whether
+their PRs merged or were closed, how many review and resolve cycles they took,
+where agents stalled or looped, and what they never looked at. You are the round
+that closes that loop. A person decides whether to act on anything you find.
+
+## The one repository you may survey
+
+Survey ONLY workstreams, memories, jobs and pull requests whose repository is:
+
+    ${REPO_URL}
+
+A job token can reach other repositories in the same workspace. You must not read,
+quote, or count anything from any other repository. Filter every tool result by
+repository before you use it.
+
+This repository is public and open source. Your report must not name any private
+downstream product, nor quote or paraphrase a private workstream. Describe behavior
+in platform terms. Follow the root CLAUDE.md section "This Repository Is Public".
+
+## The window
+
+Study activity since "${REVIEW_SINCE}" (a git --since expression). This is
+deliberately wide enough that most activity gets looked at twice across successive
+runs: the second look is how you tell whether a proposal from an earlier run was
+acted on.
+
+To anchor the window in commits:
+
+    git log --since="${REVIEW_SINCE}" --oneline origin/${BASE_BRANCH}
+    SINCE_REF=$(git rev-list -1 --before="${REVIEW_SINCE}" origin/${BASE_BRANCH})
+
+## Read your own history first
+
+Before surveying anything, read where you left off:
+
+1. Read docs/qa/retrospectives/ledger.tsv. Its last rows tell you the newest
+   activity a previous run already saw (newest_job_seen), how much it surveyed,
+   and the short slugs of the proposals it made (proposal_ids).
+2. Read the newest previous docs/qa/retrospectives/RETRO-*.md report, if any.
+   For each proposal it recorded, decide its current status from the evidence:
+   acted on, in progress, rejected, or still open. A proposal still open after
+   two runs is escalated in your new report, not merely restated.
+
+### Check for in-flight implementations before reporting a proposal "still open"
+
+A proposal is acted on the moment someone opens a pull request for it — not
+when that PR merges. A status check that reads only master (git log) reports
+such a proposal "still open", which wastes a person's attention or causes a
+second implementation of work already in flight. The previous run made exactly
+this mistake: it reported two proposals as open while a PR was already
+implementing them, because it noticed that PR only by its branch name.
+
+So before you classify ANY prior proposal "still open", look for an open PR, a
+recently merged one, or an open branch that implements it:
+
+- List every open PR with github_list_open_prs, filtered to ${REPO_URL}, and
+  read each title and branch. A PR whose title, branch or commits name or carry
+  out a proposal means that proposal is in progress, not open.
+- List in-window branches with workstream_list (include_archived=true). Pay
+  attention to the ci/qa- prefix: a pipeline-subject follow-up a person opens
+  from an accepted proposal uses it, and its branch name usually echoes the
+  proposal's slug.
+- For any candidate branch, resolve its PR with github_pr_find(state="all"),
+  which finds the PR whether it is open, merged or closed — and whether or not
+  the branch is one you already knew about.
+
+Report such a proposal as "in progress (PR #N)", not "still open", and do not
+re-propose work a PR is already doing. Only a proposal with no implementing PR
+and no implementing branch is genuinely still open.
+
+## Write your report skeleton first, before you survey anything
+
+The survey below is long and expensive, and the harness commits whatever is in
+the working tree when you stop. A run that surveys for an hour and then stalls
+or exhausts its budget before writing its report leaves nothing a person can
+review — which is exactly the failure this round exists to catch in others. So
+your FIRST action, before surveying, is to put both deliverables on disk as
+stubs:
+
+1. Create docs/qa/retrospectives/RETRO-<YYYYMMDD>.md (today's UTC date) with the
+   section headings listed under "What to produce" and, under each, a short
+   "survey in progress" note. This is a real file on disk, not a plan you hold
+   in your head.
+2. Append the ledger row (described under "What to produce") to
+   docs/qa/retrospectives/ledger.tsv now, filling in what you already know
+   (run_utc, branch, window_since, report_path) and leaving the survey counts
+   as 0 or "tbd"; correct them as the last thing you do.
+
+Then survey, and fill the skeleton in as you go — replace each "survey in
+progress" note with findings the moment you have them, rather than holding the
+whole report until the end. Whatever happens to the run after this point, the
+branch already carries a reviewable artifact.
+
+## Survey the QA rounds
+
+Survey every workstream of ${REPO_URL} since the window whose branch starts with
+one of these prefixes, archived ones included:
+
+    ${QA_PREFIXES}
+
+Use the tools you have, and pass a high job_limit wherever a tool bounds results:
+
+- workstream_list with include_archived=true, then filter client-side to
+  ${REPO_URL}.
+- workstream_context with repo_url and branch for each surviving workstream: it
+  returns the memories, the commits, the pull request, and the job timeline.
+- workstream_get_job for the detail of any job that failed or stalled.
+- memory_recall with scope="repo" for what prior sessions recorded.
+- github_pr_find, github_pr_reviews, github_pr_review_comments (with
+  include_resolved=true) and github_pr_conversation for the review history.
+- github_list_workflow_runs, github_workflow_run_status and github_job_logs for
+  CI results.
+
+For each round, establish what actually happened: did its PR merge or was it
+closed; how many auto-review and auto-resolve cycles did it take; where did agents
+stall, loop, or fail; and what did the round never look at.
+
+## Survey the non-QA rounds too
+
+Survey the repository's other recent workstreams — feature branches, free-form and
+task planning rounds, and the auto-review and auto-resolve jobs that ran on them —
+but only for their aggregate shape: where effort, cost and failures concentrate.
+This is what tells you whether a new KIND of QA round is worth proposing. Do not
+turn this into a per-branch audit.
+
+## Produce findings
+
+Group your findings into the three categories this round exists to cover:
+
+1. The FlowTree agent harness.
+2. The existing QA jobs.
+3. New kinds of QA job.
+
+Hold every finding to this bar:
+
+- It cites at least one checkable item: a workstream id or branch, a job id, a PR
+  number, a commit SHA, or a memory id. A finding you cannot point at is dropped,
+  not softened into an impression.
+- It names where its proposal would land:
+  - a ci/qa-... branch — anything under .github/workflows/, tools/ci/ (prompts,
+    builders, gates) or .claude/hooks/;
+  - an ordinary branch — harness Java under flowtree/, MCP tools under tools/mcp/,
+    or documentation;
+  - person-only — secrets, the runner fleet, or controller configuration.
+
+Rank the proposals across all three categories by the improvement you expect
+against the effort and risk of making it.
+
+## What to produce
+
+These are the two things you created as stubs in "Write your report skeleton
+first" and have been filling in ever since. Finish them now and create nothing
+else; the survey-in-progress notes must all be replaced, and the ledger counts
+corrected to their final values.
+
+1. docs/qa/retrospectives/RETRO-<YYYYMMDD>.md, using today's UTC date. Sections:
+   - Window and sources: what you surveyed, and how many workstreams, jobs and PRs.
+   - Status of previous proposals.
+   - Findings by category: each with its evidence, its impact, its proposal, and
+     its landing branch.
+   - Proposals ranked.
+2. One appended row in docs/qa/retrospectives/ledger.tsv, matching its existing
+   tab-separated columns in order: run_utc, branch, window_since,
+   workstreams_surveyed, jobs_surveyed, prs_surveyed, newest_job_seen,
+   proposal_ids, report_path. Do not rewrite earlier rows or the header.
+
+Then store one memory in namespace "qa-retrospective" summarising your proposals,
+so a session that never opens the report can still find them through consult and
+memory_recall.
+
+## Hard constraints
+
+- Survey only ${REPO_URL}. Never read, quote, or count another repository.
+- Name no private product; quote no private workstream.
+- Implement nothing. No edits to the harness, the prompts, the workflows, or any
+  test. Your deliverable is the report and the ledger row.
+- Every finding carries checkable evidence or it does not appear.
+
+Your committed changes will be opened as a pull request automatically. In your
+summary, give the ranked proposals and, for each, the one piece of evidence that is
+hardest to argue with.

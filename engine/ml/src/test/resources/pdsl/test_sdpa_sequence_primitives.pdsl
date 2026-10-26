@@ -1,0 +1,58 @@
+/**
+ * Fixtures for the two forms of operand a full-sequence attention stage reads that come from the
+ * layer itself rather than from the caller: a branch the layer splits off as the operand of
+ * scaled_dot_product, and the causal mask of the full-sequence score tensor. The operands a caller
+ * binds are exercised by /pdsl/test_sdpa_primitives.pdsl.
+ *
+ *   sdp_branch_keys(factor)        Q Kᵀ against a keys branch of the same input, K = factor * Q:
+ *                                  [batch, heads, n, dim] -> [batch, heads, n, n]
+ *   sdp_branch_values(factor)      A V against a values branch of the same input, V = factor * A:
+ *                                  [batch, heads, n, n] -> [batch, heads, n, n]
+ *   sdp_branch_wrong_shape(...)    a branch reshaped to three axes, rejected as an operand
+ *   sdp_branch_reused(factor)      one branch read by two products, rejected as reuse
+ *   causal_scores()                sequence_causal_mask on [batch, heads, queries, keys] scores
+ *   causal_weights()               sequence_causal_mask then softmax: causal attention weights
+ *   causal_with_argument()         sequence_causal_mask given an argument, rejected
+ */
+
+layer sdp_branch_keys(factor: float) {
+    branch keys {
+        scale(factor)
+    }
+    scaled_dot_product(keys, true)
+}
+
+layer sdp_branch_values(factor: float) {
+    branch values {
+        scale(factor)
+    }
+    scaled_dot_product(values, false)
+}
+
+layer sdp_branch_wrong_shape(heads: int, rows: int, dim: int) {
+    branch flat {
+        reshape([heads, rows, dim])
+    }
+    scaled_dot_product(flat, true)
+}
+
+layer sdp_branch_reused(factor: float) {
+    branch keys {
+        scale(factor)
+    }
+    scaled_dot_product(keys, true)
+    scaled_dot_product(keys, true)
+}
+
+layer causal_scores() {
+    sequence_causal_mask()
+}
+
+layer causal_weights() {
+    sequence_causal_mask()
+    softmax()
+}
+
+layer causal_with_argument() {
+    sequence_causal_mask(1)
+}

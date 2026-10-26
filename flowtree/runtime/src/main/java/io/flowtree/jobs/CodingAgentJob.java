@@ -21,7 +21,6 @@ import io.flowtree.jobs.agent.AgentRunRequest;
 import io.flowtree.jobs.agent.AgentRunResult;
 import io.flowtree.jobs.agent.AgentRunner;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
-import io.flowtree.jobs.agent.ClaudeCodeRunner;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
@@ -34,8 +33,10 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
@@ -71,24 +72,6 @@ public class CodingAgentJob extends GitManagedJob {
      * here — a second copy would drift the moment one of them was updated.</p>
      */
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop";
-
-    /**
-     * Valid values for the {@code --effort} flag exposed by the Claude Code runner.
-     *
-     * <p>Pluggable agent runners may accept different effort vocabularies; this
-     * list is retained on the orchestrator for backwards compatibility with
-     * callers (Workstream / WorkstreamConfig) that validate before submission.
-     * The canonical home is now {@link ClaudeCodeRunner#VALID_EFFORT_LEVELS}.</p>
-     */
-    public static final List<String> VALID_EFFORT_LEVELS = ClaudeCodeRunner.VALID_EFFORT_LEVELS;
-
-    /**
-     * Accepted values for the {@code --model} flag exposed by the Claude Code runner.
-     *
-     * <p>The canonical home is {@link ClaudeCodeRunner#VALID_MODELS}; this alias
-     * preserves the old API surface for callers that pre-validate inputs.</p>
-     */
-    public static final List<String> VALID_MODELS = ClaudeCodeRunner.VALID_MODELS;
 
     /**
      * Deduplication mode that runs an inline Claude Code session before the
@@ -143,8 +126,8 @@ public class CodingAgentJob extends GitManagedJob {
     private Map<String, String> agentEnv;
     /** Optional planning document text injected into the Claude Code system prompt. */
     private String planningDocument;
-    /** Whether the job must produce at least one staged file change to succeed. */
-    private boolean enforceChanges;
+    /** Whether the job must produce a change, and the whole-job cap on re-runs when it does not. */
+    private final EnforceChangesConfig enforceChanges = new EnforceChangesConfig();
     /** Number of times enforcement has been re-attempted after an empty commit. */
     private int enforcementAttempt;
     /** Enforcement rule name for the current correction session; {@code null} during primary runs. */
@@ -184,6 +167,8 @@ public class CodingAgentJob extends GitManagedJob {
      * {@link #setEnforceOrganizationalPlacement(boolean)}.
      */
     private boolean enforceOrganizationalPlacement = false;
+    /** When {@code true} (the default, and review is enabled), {@link ObjectOrientedDesignRule} runs. */
+    private boolean objectOrientedReviewEnabled = true;
 
     /** When {@code true} (the default), a second-pass review session runs after primary work. */
     private boolean reviewEnabled = true;
@@ -224,6 +209,14 @@ public class CodingAgentJob extends GitManagedJob {
     private boolean sensitiveFileProtectionEnabled = true;
 
     /**
+     * Whether this job's sessions may bypass the agent runtime's interactive
+     * permission prompts; {@code false} unless the controller grants it from
+     * the workstream's policy. See
+     * {@link #isBypassAgentPermissionPrompts()}.
+     */
+    private boolean bypassAgentPermissionPrompts;
+
+    /**
      * Controller-signed HMAC-SHA256 bypass signature, populated by the
      * controller at submission time when the flag is false. Verified by CI
      * via {@code tools/ci/agent-protection/verify-sensitive-bypass.sh} using
@@ -232,17 +225,9 @@ public class CodingAgentJob extends GitManagedJob {
      */
     private String sensitiveFileBypassSignature;
 
-    /** Shell command run after the agent completes; non-empty activates {@link PostCompletionCommandRule}. */
-    private String postCompletionCommand;
+    /** Post-completion verification command, its working directory, timeout and pass cap. */
+    private final PostCompletionConfig postCompletion = new PostCompletionConfig();
 
-    /** Working directory for {@link #postCompletionCommand}; {@code null} uses the job's working directory. */
-    private String postCompletionWorkingDir;
-
-    /** Timeout in seconds for {@link #postCompletionCommand}; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}. */
-    private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
-
-    /** Per-job post-completion pass cap; passed to {@link PostCompletionCommandRule}. */
-    private int maxPostCompletionPasses = DEFAULT_MAX_POST_COMPLETION_PASSES;
     /** {@code true} when the pass cap was exhausted without a zero exit. */
     private boolean postCompletionCapHit;
 
@@ -268,9 +253,11 @@ public class CodingAgentJob extends GitManagedJob {
     private final PhaseRunnerConfig phaseRunnerConfig = new PhaseRunnerConfig();
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. Package private so the same-package pushed-tools test can assert propagated state without reflection. */
-    final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
-    /** Downloads pushed MCP tool source files before each agent launch. */
-    private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
+    McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
+    /** Turns this job's configuration into the launch configuration of a single agent session. */
+    private AgentLaunchConfig launchConfig = new AgentLaunchConfig(this, mcpConfigBuilder);
+    /** Resolves this job's commit message, including both fallbacks for an agent that wrote none. */
+    private CommitMessageBuilder commitMessageBuilder = new CommitMessageBuilder();
     /** Per-runner and per-model USD cost accumulation across every phase invocation. */
     private final JobCostTracker costTracker = new JobCostTracker();
     /**
@@ -279,8 +266,6 @@ public class CodingAgentJob extends GitManagedJob {
      * @see JobSessionAccumulator
      */
     private final JobSessionAccumulator accumulator = new JobSessionAccumulator();
-    /** How the commit message was produced: {@code "agent"}, {@code "prompt_fallback"}, or {@code "commit_rule_recovered"}. */
-    private String commitMessageSource;
 
     /** Wall-clock instant at which {@link #doWork()} began; used to filter abandoned-test-run scans. */
     private Instant sessionStartedAt;
@@ -331,25 +316,6 @@ public class CodingAgentJob extends GitManagedJob {
         return prompt != null && prompt.length() > 50
             ? prompt.substring(0, 47) + "..."
             : prompt;
-    }
-
-    /** Returns a short display summary for this job; description if set, else {@link #summarizePrompt(String)}. */
-    public String getDisplaySummary() {
-        if (description != null && !description.isEmpty()) {
-            return description;
-        }
-        return summarizePrompt(prompt);
-    }
-
-    /** Short display string for {@code prompt}: returned as-is if ≤80 chars, otherwise formatted as character count. */
-    public static String summarizePrompt(String prompt) {
-        if (prompt == null) {
-            return "(no prompt)";
-        }
-        if (prompt.length() <= 80) {
-            return prompt;
-        }
-        return String.format("%,d character prompt", prompt.length());
     }
 
     /**
@@ -529,26 +495,26 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Returns whether this job enforces that code changes must be produced.
-     *
-     * <p>When enabled, the instruction prompt replaces the permissive
-     * "non-code requests" and "justifying no code changes" sections with
-     * a strict message requiring code changes. Used by the enforcement
-     * loop in {@link #doWork()} to prevent agents from dismissing test
-     * failures without investigation.</p>
+     * Returns whether this job must produce a change. When on, the instruction
+     * prompt carries a strict "changes are required" section in place of the
+     * permissive no-change sections, {@link EnforceChangesRule} re-runs a run that
+     * left none (up to {@link #getMaxEnforceChangesRetries()}), and a job that still
+     * commits nothing is reported {@link JobCompletionEvent.Status#DEGRADED}.
      */
-    public boolean isEnforceChanges() {
-        return enforceChanges;
-    }
+    public boolean isEnforceChanges() { return enforceChanges.isEnabled(); }
+    /** Sets whether this job must produce a change; {@code true} to require one. */
+    public void setEnforceChanges(boolean enforceChanges) { this.enforceChanges.setEnabled(enforceChanges); }
+
+    /** Returns the whole-job cap on enforce-changes re-runs; defaults to {@link #DEFAULT_MAX_RULE_RETRIES}. */
+    public int getMaxEnforceChangesRetries() { return enforceChanges.getMaxRetries(); }
+    /** Sets the whole-job cap on enforce-changes re-runs; 0 means report an empty result without re-running. */
+    public void setMaxEnforceChangesRetries(int maxRetries) { enforceChanges.setMaxRetries(maxRetries); }
 
     /**
-     * Sets whether this job enforces code changes.
-     *
-     * @param enforceChanges true to require code changes for completion
+     * Returns this job's {@link EnforceChangesConfig}, populated by
+     * {@link CodingAgentJobFactory} and read by {@link EnforcementRunner}.
      */
-    public void setEnforceChanges(boolean enforceChanges) {
-        this.enforceChanges = enforceChanges;
-    }
+    EnforceChangesConfig enforceChanges() { return enforceChanges; }
 
     /**
      * Returns the current enforcement attempt counter.
@@ -630,6 +596,33 @@ public class CodingAgentJob extends GitManagedJob {
     public void setUseTmux(boolean useTmux) { this.useTmux = useTmux; }
 
     /**
+     * Returns whether this job's sessions may bypass the agent runtime's
+     * interactive permission prompts, and so may write the files that runtime
+     * reserves for a human to approve — its own configuration and hooks,
+     * environment files, credentials.
+     *
+     * <p>{@code false} unless granted, because the grant covers the guardrails
+     * the session itself runs under. The controller decides per job, from the
+     * workstream's own policy
+     * ({@link io.flowtree.workstream.Workstream#permitsAgentPermissionBypass(String)}),
+     * so no branch-naming convention is built into the platform.</p>
+     *
+     * @return {@code true} when the grant is in effect for this job
+     * @see io.flowtree.jobs.agent.AgentRunRequest#isBypassPermissionPrompts()
+     */
+    public boolean isBypassAgentPermissionPrompts() { return bypassAgentPermissionPrompts; }
+
+    /**
+     * Sets whether this job's sessions may bypass the agent runtime's
+     * permission prompts.
+     *
+     * @param bypassAgentPermissionPrompts {@code true} to grant the bypass
+     */
+    public void setBypassAgentPermissionPrompts(boolean bypassAgentPermissionPrompts) {
+        this.bypassAgentPermissionPrompts = bypassAgentPermissionPrompts;
+    }
+
+    /**
      * Returns whether the organizational placement rule is active for this job.
      *
      * <p>When active, a correction session is run after the agent's primary work to
@@ -651,6 +644,11 @@ public class CodingAgentJob extends GitManagedJob {
     public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
         this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
     }
+
+    /** Returns whether {@link ObjectOrientedDesignRule} runs (only while review is enabled); default {@code false}. */
+    public boolean isObjectOrientedReviewEnabled() { return objectOrientedReviewEnabled; }
+    /** Sets whether {@link ObjectOrientedDesignRule} runs; it still requires review to be enabled. */
+    public void setObjectOrientedReviewEnabled(boolean enabled) { this.objectOrientedReviewEnabled = enabled; }
 
     /** Returns whether the {@link ReviewRule} (second-pass sanity check) is active; default {@code true}. */
     public boolean isReviewEnabled() { return reviewEnabled; }
@@ -714,31 +712,28 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /** Returns the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
-    public String getPostCompletionCommand() { return postCompletionCommand; }
+    public String getPostCompletionCommand() { return postCompletion.getCommand(); }
 
-    /** Sets the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
-    public void setPostCompletionCommand(String postCompletionCommand) { this.postCompletionCommand = postCompletionCommand; }
+    /** Sets the post-completion command; non-empty activates {@link PostCompletionCommandRule}, clearing it resets the dependent values. */
+    public void setPostCompletionCommand(String postCompletionCommand) { postCompletion.setCommand(postCompletionCommand); }
 
     /** Returns the per-job post-completion pass cap; defaults to {@link #DEFAULT_MAX_POST_COMPLETION_PASSES}. */
-    public int getMaxPostCompletionPasses() { return maxPostCompletionPasses; }
+    public int getMaxPostCompletionPasses() { return postCompletion.getMaxPasses(); }
+
     /** Sets the per-job post-completion pass cap; must be positive (see {@link #DEFAULT_MAX_POST_COMPLETION_PASSES}). */
-    public void setMaxPostCompletionPasses(int maxPostCompletionPasses) {
-        if (maxPostCompletionPasses <= 0)
-            throw new IllegalArgumentException("maxPostCompletionPasses must be positive, got: " + maxPostCompletionPasses);
-        this.maxPostCompletionPasses = maxPostCompletionPasses;
-    }
+    public void setMaxPostCompletionPasses(int maxPostCompletionPasses) { postCompletion.setMaxPasses(maxPostCompletionPasses); }
 
     /** Returns the working directory for the post-completion command; {@code null} uses the job's working directory. */
-    public String getPostCompletionWorkingDir() { return postCompletionWorkingDir; }
+    public String getPostCompletionWorkingDir() { return postCompletion.getWorkingDir(); }
 
     /** Sets the working directory for the post-completion command; {@code null} uses the job's working directory. */
-    public void setPostCompletionWorkingDir(String postCompletionWorkingDir) { this.postCompletionWorkingDir = postCompletionWorkingDir; }
+    public void setPostCompletionWorkingDir(String postCompletionWorkingDir) { postCompletion.setWorkingDir(postCompletionWorkingDir); }
 
     /** Returns the post-completion command timeout in seconds; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}. */
-    public int getPostCompletionTimeoutSeconds() { return postCompletionTimeoutSeconds; }
+    public int getPostCompletionTimeoutSeconds() { return postCompletion.getTimeoutSeconds(); }
 
     /** Sets the post-completion command timeout in seconds. */
-    public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) { this.postCompletionTimeoutSeconds = postCompletionTimeoutSeconds; }
+    public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) { postCompletion.setTimeoutSeconds(postCompletionTimeoutSeconds); }
 
     /** Sets the current correction-session rule name; null for primary work. Package-private for tests. */
     void setCurrentActivity(String currentActivity) { this.currentActivity = currentActivity; }
@@ -946,8 +941,9 @@ public class CodingAgentJob extends GitManagedJob {
                 .setPrompt(prompt)
                 .setWorkstreamUrl(getWorkstreamUrl())
                 .setProtectTestFiles(isProtectTestFiles())
-                .setEnforceChanges(enforceChanges)
+                .setEnforceChanges(enforceChanges.isEnabled())
                 .setEnforcementAttempt(enforcementAttempt)
+                .setMaxEnforceChangesRetries(enforceChanges.getMaxRetries())
                 .setCorrectionSession(inRuleCorrection)
                 .setBaseBranch(getBaseBranch())
                 .setTargetBranch(getTargetBranch())
@@ -994,28 +990,16 @@ public class CodingAgentJob extends GitManagedJob {
      * private so the dispatch-capable plumbing (job flag to builder to
      * allowed-tools CSV) can be exercised end to end in a unit test.
      */
-    void configureMcpBuilder() {
-        mcpConfigBuilder.setArManagerUrl(arManagerUrl);
-        mcpConfigBuilder.setArManagerToken(arManagerToken);
-        mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
-        mcpConfigBuilder.setPythonCommand(getPythonCommand());
-        mcpConfigBuilder.setDispatchCapable(dispatchCapable);
-        Path workDir = getWorkingDirectory() != null ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
-        mcpConfigBuilder.setWorkingDirectory(workDir);
-    }
+    void configureMcpBuilder() { launchConfig.configureMcpBuilder(); }
 
     /**
-     * Composes the allowed-tools CSV handed to the launched agent, layering
-     * ar-manager, dispatch (only when {@link #isDispatchCapable()}), pushed,
-     * and project-server entries onto the base tools. {@link #configureMcpBuilder()}
-     * must run first so the builder reflects current job state; this is the
-     * real artifact that grants the dispatch tools to an orchestrator.
+     * Composes the allowed-tools CSV handed to the launched agent.
+     * {@link #configureMcpBuilder()} must run first so the builder reflects
+     * current job state.
      *
      * @return the composed comma-separated allowed-tools list
      */
-    String buildComposedAllowedTools() {
-        return mcpConfigBuilder.buildAllowedTools(allowedTools);
-    }
+    String buildComposedAllowedTools() { return launchConfig.buildComposedAllowedTools(); }
 
     /**
      * Default maximum number of correction attempts per enforcement rule.
@@ -1217,6 +1201,21 @@ public class CodingAgentJob extends GitManagedJob {
      * dollar budget, or turn budget exhausted). This is the single chokepoint
      * through which every restart path passes, so no path can run away.
      * Package-private to allow test subclasses to override.</p>
+     *
+     * <p>A session that reports a required MCP server as unavailable ran
+     * without the instruction protocol that server carries, so its output is
+     * not trusted. What that costs depends on whether the phase touches the
+     * working tree ({@link Phase#modifiesWorkingTree()}). One that does has
+     * left untrusted content there, indistinguishable from the work around it,
+     * so the {@link IllegalStateException} thrown here takes the job down the
+     * error path and nothing is committed — that covers the primary session,
+     * every correction phase, and the post-revert
+     * {@link Phase#GIT_TAMPERING_RESTART}, whose tree has already been reset.
+     * The retrospective touches nothing a commit can reach, so losing its
+     * tools costs only that phase: the loss is recorded through
+     * {@link RestartGovernor#stopLaunching(String)} — every further session
+     * would configure the same server and find it missing again — and the work
+     * the earlier phases produced still reaches the commit.</p>
      */
     void executeSingleRun() {
         if (!restartGovernor.beginSession()) {
@@ -1246,7 +1245,7 @@ public class CodingAgentJob extends GitManagedJob {
         PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
         harnessStatus().phaseEntry(currentPhase, runner.getName(), effective, placement);
         harnessStatus().recordPhaseEntry(currentPhase, runner.getName(), effective, placement);
-        toolsDownloader.ensurePushedTools(pushedToolsConfig);
+        launchConfig.ensurePushedTools(pushedToolsConfig);
         configureMcpBuilder();
         String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();
         String composedAllowedTools = buildComposedAllowedTools();
@@ -1276,6 +1275,17 @@ public class CodingAgentJob extends GitManagedJob {
         }
         harnessStatus().phaseExit(currentPhase, finalResult);
         log("Output saved to: " + outputFile);
+        if (finalResult != null && finalResult.hasUnavailableRequiredMcpServer()) {
+            if (currentPhase.modifiesWorkingTree()) {
+                throw new IllegalStateException(finalResult.describeUnavailableRequiredMcpServers());
+            }
+            restartGovernor.stopLaunching(finalResult.describeUnavailableRequiredMcpServers());
+            warn(currentPhase.wireName() + " phase: "
+                    + finalResult.describeUnavailableRequiredMcpServers());
+            harnessStatus().unusual(currentPhase.wireName() + " phase lost a required MCP server;"
+                    + " no further phase will run and the primary session's work is kept");
+            return;
+        }
 
         if (getOutputConsumer() != null) {
             getOutputConsumer().accept(new CodingAgentJobOutput(
@@ -1308,16 +1318,9 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Builds the {@link AgentRunRequest} for the current session, snapshotting
-     * the instruction prompt and the orchestrator-owned MCP and tool policy.
-     *
-     * <p>Reads per-phase model and effort via
-     * {@link #resolveEffectivePhaseConfig(Phase)} so that mixed-phase jobs
-     * dispatch each phase with its own resolved {@code (model, effort)}
-     * pair. Runner selection still goes through {@link #resolveRunner(Phase)}
-     * in {@link #executeSingleRun()}.</p>
-     *
-     * <p>Package-private for tests.</p>
+     * Builds the {@link AgentRunRequest} for the current session; delegates to
+     * {@link AgentLaunchConfig#buildRunRequest(String, String, Path, int)}.
+     * Package-private for tests.
      *
      * @param composedAllowedTools allowed-tools CSV including ar-manager and
      *                             pushed-tool entries from {@link McpConfigBuilder}
@@ -1332,45 +1335,8 @@ public class CodingAgentJob extends GitManagedJob {
                                     String mcpConfigJson,
                                     Path outputCapturePath,
                                     int attempt) {
-        Map<String, String> env = new LinkedHashMap<>();
-        // Per-workstream agentEnv first, so framework-critical vars set by
-        // applyAgentEnvironment (ar-manager URL/token, workstream URL) win on
-        // any key collision.
-        if (agentEnv != null && !agentEnv.isEmpty()) {
-            env.putAll(agentEnv);
-        }
-        String wsUrl = resolveWorkstreamUrl();
-        if (wsUrl != null && !wsUrl.isEmpty()) {
-            log("AR_WORKSTREAM_URL: " + wsUrl);
-        }
-        mcpConfigBuilder.applyAgentEnvironment(env, wsUrl);
-
-        Path workDir = getWorkingDirectory() != null
-                ? Path.of(getWorkingDirectory()) : null;
-        // Resolve per-phase model/effort/provider from the bundle. The runner
-        // falls back to the default runner; model/effort/provider come solely
-        // from the phase config (null means "use the runner's CLI default").
-        Phase phase = resolveCurrentPhase();
-        PhaseConfig effective = resolveEffectivePhaseConfig(phase);
-        return AgentRunRequest.builder()
-                .prompt(buildInstructionPrompt())
-                .workingDirectory(workDir)
-                .allowedTools(composedAllowedTools)
-                .mcpConfigJson(mcpConfigJson)
-                .environment(env)
-                .model(effective.model())
-                .effort(effective.effort())
-                .provider(effective.provider())
-                .maxTurns(maxTurns)
-                .maxBudgetUsd(maxBudgetUsd)
-                .inactivityTimeoutMillis(resolveRunner(phase).defaultInactivityTimeoutMillis())
-                .inactivityRestartAttempt(attempt)
-                .maxInactivityRestarts(restartGovernor.getMaxInactivityRestarts())
-                .taskId(getTaskId())
-                .activityTag(currentActivity)
-                .outputCapturePath(outputCapturePath)
-                .useTmux(useTmux)
-                .build();
+        return launchConfig.buildRunRequest(
+                composedAllowedTools, mcpConfigJson, outputCapturePath, attempt);
     }
 
     /** Effective {@link PhaseConfig} for {@code phase}; delegates to {@link PhaseRunnerConfig}. */
@@ -1388,7 +1354,7 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Returns this job's cost tracker (per-runner/per-model USD cost plus the
-     * incomplete-cost flag), read by {@link CodingAgentJobEvent#populateFrom}.
+     * incomplete-cost flag), read by {@link CodingAgentJobEvent#forJob}.
      *
      * @return this job's cost tracker
      */
@@ -1405,6 +1371,16 @@ public class CodingAgentJob extends GitManagedJob {
      */
     RestartGovernor restartGovernor() {
         return restartGovernor;
+    }
+
+    /**
+     * Returns this job's {@link PostCompletionConfig}, populated by
+     * {@link CodingAgentJobFactory} from its own configuration.
+     *
+     * @return this job's post-completion configuration
+     */
+    PostCompletionConfig postCompletion() {
+        return postCompletion;
     }
 
     /**
@@ -1444,35 +1420,19 @@ public class CodingAgentJob extends GitManagedJob {
         accumulator.absorb(result);
     }
 
+    /** Delegates to {@link CommitMessageBuilder#isAuthored(CodingAgentJob)}. */
+    @Override
+    protected boolean hasAuthoredCommitMessage() {
+        return commitMessageBuilder.isAuthored(this);
+    }
+
     /**
-     * Returns {@code true} when the primary or any dependent repo has
-     * uncommitted changes to non-excluded files; checked by the enforcement
-     * loop to verify the agent produced meaningful changes.
-     *
-     * @return true if uncommitted changes exist
+     * Creates the completion event for this job, already carrying the job's
+     * final execution state; see {@link CodingAgentJobEvent#forJob}.
      */
-    boolean hasUncommittedChanges() {
-        if (GitOperations.hasUncommittedChanges(getWorkingDirectory())) {
-            return true;
-        }
-        for (String depPath : getDependentRepoPaths()) {
-            if (GitOperations.hasUncommittedChanges(depPath)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     @Override
-    protected JobCompletionEvent createEvent(Exception error) {
-        return CodingAgentJobEvent.forJob(this, accumulator, error);
-    }
-
-    @Override
-    protected void populateEventDetails(JobCompletionEvent event) {
-        if (event instanceof CodingAgentJobEvent) {
-            ((CodingAgentJobEvent) event).populateFrom(this, accumulator);
-        }
+    protected CodingAgentJobEvent createEvent(Exception error) {
+        return CodingAgentJobEvent.forJob(this, error);
     }
 
     @Override
@@ -1508,23 +1468,71 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
+     * Returns paths of files that differ between the working tree (including
+     * uncommitted changes) and the base branch: new files first, then every
+     * other changed path, excluding scratch space.
+     *
+     * @return the changed paths, without duplicates; never {@code null}
+     */
+    List<String> extractChangedFilePaths() {
+        String base = getBaseBranch() != null ? getBaseBranch() : "master";
+        Set<String> changed = new LinkedHashSet<>(extractNewFilePaths());
+        try {
+            for (String line : executeGitWithOutput("diff", "--name-only", "origin/" + base).split("\n")) {
+                String trimmed = line.trim();
+                if (!trimmed.isEmpty() && !GitOperations.isExcludedPath(trimmed)) changed.add(trimmed);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn("Failed to list changed files: " + e.getMessage());
+        } catch (IOException e) {
+            warn("Failed to list changed files: " + e.getMessage());
+        }
+        return new ArrayList<>(changed);
+    }
+
+    /**
      * Returns how the commit message was produced ({@code "agent"}, {@code "prompt_fallback"},
      * or {@code "commit_rule_recovered"}). Populated on the first call to {@link #getCommitMessage()}.
      *
      * @return the source tag, or {@code null} if no commit has been made yet
      */
     public String getCommitMessageSource() {
-        return commitMessageSource;
-    }
-
-    /** Sets the commit message source tag; called by {@link CommitMessageRule} on recovery. */
-    void setCommitMessageSource(String source) {
-        this.commitMessageSource = source;
+        return commitMessageBuilder.getSource();
     }
 
     @Override
     protected String getCommitMessage() {
-        return CommitMessageBuilder.resolve(this);
+        return commitMessageBuilder.resolve(this);
+    }
+
+    /** Returns the builder that resolves this job's commit message and its fallbacks. */
+    CommitMessageBuilder commitMessageBuilder() {
+        return commitMessageBuilder;
+    }
+
+    /**
+     * Replaces the builder this job resolves its commit message with. Call
+     * before the job runs. A seam for tests that run the whole job against a
+     * builder carrying a known defect; production code never calls it.
+     *
+     * @param builder the commit-message builder this job uses from now on
+     */
+    void setCommitMessageBuilder(CommitMessageBuilder builder) {
+        commitMessageBuilder = builder;
+    }
+
+    /**
+     * Replaces the builder this job assembles its MCP configuration with, and
+     * the launch configuration that reads it. Call before the job runs. A seam
+     * for tests that run the whole job against a builder carrying a known
+     * defect; production code never calls it.
+     *
+     * @param builder the MCP configuration builder this job uses from now on
+     */
+    void setMcpConfigBuilder(McpConfigBuilder builder) {
+        mcpConfigBuilder = builder;
+        launchConfig = new AgentLaunchConfig(this, builder);
     }
 
     /**
@@ -1545,12 +1553,19 @@ public class CodingAgentJob extends GitManagedJob {
     public String encode() {
         StringBuilder sb = new StringBuilder(super.encode());
         CodingAgentJobCodec.appendEncoded(sb, this);
+        restartGovernor.appendEncoded(sb);
+        postCompletion.appendEncoded(sb);
+        enforceChanges.appendEncoded(sb);
+        phaseRunnerConfig.appendEncoded(sb);
         return sb.toString();
     }
 
     @Override
     public void set(String key, String value) {
-        if (!CodingAgentJobCodec.applySetting(this, key, value)) {
+        if (!restartGovernor.applySetting(key, value)
+                && !postCompletion.applySetting(key, value)
+                && !enforceChanges.applySetting(key, value)
+                && !CodingAgentJobCodec.applySetting(this, key, value)) {
             super.set(key, value);
         }
     }

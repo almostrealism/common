@@ -83,6 +83,14 @@ class GitTamperingDetector implements ConsoleFeatures {
     private String description;
 
     /**
+     * Whether {@link #revert()} has run at least once, destroying whatever the
+     * agent's own commits held. Unlike {@link #detected} this is never cleared
+     * by {@link #reset()}: the revert happened, and a later clean detection
+     * does not undo it. See {@link #hasRevertedWork()}.
+     */
+    private boolean reverted;
+
+    /**
      * Creates a new detector for the given job and target branch.
      *
      * @param job          the job whose repository is being monitored
@@ -247,6 +255,7 @@ class GitTamperingDetector implements ConsoleFeatures {
      * @throws RuntimeException if the hard reset to {@link #preWorkHeadHash} fails
      */
     void revert() throws IOException, InterruptedException {
+        reverted = true;
         log("Reverting git tampering -- restoring pre-work state...");
 
         // 1. Discard all uncommitted changes and untracked files on the
@@ -312,6 +321,23 @@ class GitTamperingDetector implements ConsoleFeatures {
     void reset() {
         detected = false;
         description = null;
+    }
+
+    /**
+     * Returns whether this detector has reverted the agent's own commits,
+     * destroying what they contained.
+     *
+     * <p>Survives {@link #reset()}, because a clean detection afterwards says
+     * the tree is now consistent, not that the discarded work came back. A job
+     * whose restart never ran leaves no other trace of it: the tree is clean
+     * and there is no commit, so this is what
+     * {@link JobWorkOutcome#describeUnpublishedWork()} reads to tell that from
+     * a job that simply had nothing to do.</p>
+     *
+     * @return {@code true} once a revert has happened
+     */
+    boolean hasRevertedWork() {
+        return reverted;
     }
 
     /**

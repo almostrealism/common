@@ -572,18 +572,49 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     /**
      * Creates the appropriate completion event for the given job outcome.
      *
-     * <p>Encapsulates the terminal-state logic previously in
-     * {@code CodingAgentJob.createEvent}, now expressed in terms of the public
-     * job API and the {@link JobSessionAccumulator} so that
-     * {@link CodingAgentJob} does not need to hold a copy of this decision tree.</p>
+     * <p>Decides the terminal status from the job and the
+     * {@link JobSessionAccumulator} it owns, then populates the event with the
+     * job's final execution state via {@link #populateFrom(CodingAgentJob)}.</p>
      *
      * @param job   the job being completed
-     * @param acc   accumulated session state across all runs of the job
      * @param error the exception that terminated the job, or {@code null} for normal exit
-     * @return the appropriate {@link JobCompletionEvent} subtype
+     * @return the populated event
      */
-    static JobCompletionEvent forJob(CodingAgentJob job, JobSessionAccumulator acc, Exception error) {
+    static CodingAgentJobEvent forJob(CodingAgentJob job, Exception error) {
+        CodingAgentJobEvent event = statusFor(job, error);
+        event.populateFrom(job);
+        return event;
+    }
+
+    /**
+     * Creates the event carrying the terminal status of {@code job}, before
+     * its execution state is populated.
+     *
+     * <p>A job that terminated with a {@link TransientGitException} — a sync
+     * race, a lock held by a concurrent process, or a commit that could not be
+     * written despite staged changes, each after its bounded retries were spent
+     * — is reported {@link Status#DEGRADED} with an infrastructure-labelled
+     * message rather than {@link Status#FAILED}, so a harness git hiccup is not
+     * conflated with an agent failure.</p>
+     *
+     * <p>A job with {@link CodingAgentJob#isEnforceChanges()} on that exited
+     * cleanly with nothing committed is reported {@link Status#DEGRADED}. It
+     * had to produce a change, and {@link EnforceChangesRule} has spent its
+     * re-run budget ({@link CodingAgentJob#getMaxEnforceChangesRetries()},
+     * possibly 0) without getting one. It delivered nothing a person can review,
+     * and that is made visible rather than reported as success.</p>
+     *
+     * @param job   the job being completed
+     * @param error the exception that terminated the job, or {@code null} for normal exit
+     * @return the unpopulated event
+     */
+    private static CodingAgentJobEvent statusFor(CodingAgentJob job, Exception error) {
+        JobSessionAccumulator acc = job.sessionAccumulator();
         if (error != null) {
+            if (TransientGitException.isTransient(error)) {
+                return degraded(job.getTaskId(), job.getTaskString(),
+                        TransientGitException.describe(error));
+            }
             return failed(job.getTaskId(), job.getTaskString(), error.getMessage(), error);
         }
         if (job.isPrimaryPhaseHardFailed() && acc.getExitCode() == 0) {
@@ -600,10 +631,20 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
                     + job.getMaxPostCompletionPasses()
                     + " pass(es) — gate abandoned, work may be incomplete");
         }
-        if (job.hasAllChangesDropped()) {
+        if (job.workOutcome().allChangesDropped()) {
             return degraded(job.getTaskId(), job.getTaskString(),
                     "All changes were dropped by staging guardrails: "
                     + String.join("; ", job.getSkippedFiles()));
+        }
+        String unpublished = job.workOutcome().describeUnpublishedWork();
+        if (unpublished != null) {
+            return failed(job.getTaskId(), job.getTaskString(), unpublished, null);
+        }
+        if (job.isEnforceChanges() && job.workOutcome().publishedNothing()) {
+            return degraded(job.getTaskId(), job.getTaskString(),
+                    "enforceChanges required a change, but the result was empty: nothing was committed on "
+                    + job.getTargetBranch() + " after " + job.getEnforcementAttempt() + " of "
+                    + job.getMaxEnforceChangesRetries() + " permitted re-run(s) of the agent.");
         }
         List<String> abandoned = AbandonedTestRunDetector.findAbandonedRunsForJob(
                 job.getWorkingDirectory(), job.getSessionStartedAt());
@@ -618,14 +659,14 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     /**
      * Populates this event with the final execution state of the given job.
      *
-     * <p>Called from {@link CodingAgentJob#populateEventDetails(JobCompletionEvent)}.
-     * The cost maps are snapshotted at call time so the event is an immutable
-     * record of the job's final state.</p>
+     * <p>Called from {@link #forJob(CodingAgentJob, Exception)}. The cost maps
+     * are snapshotted at call time so the event is an immutable record of the
+     * job's final state.</p>
      *
      * @param job job that produced this event
-     * @param acc accumulated session state across all runs of the job
      */
-    void populateFrom(CodingAgentJob job, JobSessionAccumulator acc) {
+    private void populateFrom(CodingAgentJob job) {
+        JobSessionAccumulator acc = job.sessionAccumulator();
         withClaudeCodeInfo(job.getPrompt(), acc.getSessionId(), acc.getExitCode());
         withTimingInfo(acc.getDurationMs(), acc.getDurationApiMs(), acc.getCostUsd(), acc.getNumTurns());
         withSessionDetails(acc.getSubtype(), acc.isError(), acc.getPermissionDenials(), acc.getDeniedToolNames());

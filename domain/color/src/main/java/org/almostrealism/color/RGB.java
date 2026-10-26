@@ -191,17 +191,19 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	
 	/**
 	 * Constructs an RGB object with the specified red (r), green (g), and blue (b) channel
-	 * values. If any of the values are less than 0.0, the channel will be set to 0.0.
-	 * If any value is greater than 1.0, the channel is set 1.0.
+	 * values. The values are stored verbatim without clamping to the [0.0, 1.0] range; use
+	 * {@link #setRed(double)}, {@link #setGreen(double)} and {@link #setBlue(double)} if
+	 * clamping is required.
 	 */
 	public RGB(double r, double g, double b) {
 		this(RGB.defaultDepth, r, g, b);
 	}
-	
+
 	/**
 	 * Constructs an RGB object with the specified red (r), green (g), and blue (b) channel
-	 * values. If any of the values are less than 0.0, the channel will be set to 0.0.
-	 * If any value is greater than 1.0, the channel is set 1.0.
+	 * values. The values are stored verbatim without clamping to the [0.0, 1.0] range; use
+	 * {@link #setRed(double)}, {@link #setGreen(double)} and {@link #setBlue(double)} if
+	 * clamping is required.
 	 */
 	public RGB(int model, double r, double g, double b) {
 		this(model, r, g, b, true);
@@ -860,5 +862,26 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 */
 	public static BiFunction<MemoryData, Integer, RGB> postprocessor() {
 		return (output, offset) -> new RGB(output, offset);
+	}
+
+	/**
+	 * Normalises an evaluated color result to an {@link RGB}, reusing it directly when it
+	 * already is one and otherwise constructing a new {@link RGB} from its first three channels.
+	 *
+	 * <p>Color-producing {@link org.almostrealism.relation.Evaluable}s may yield either an
+	 * {@link RGB} or a plain {@link PackedCollection} of at least three channels, depending on
+	 * how the surrounding computation graph was assembled. Call sites that need host-side color
+	 * values use this factory to obtain an {@link RGB} without copying when the result already
+	 * is one.</p>
+	 *
+	 * @param color the evaluated color result; when it is not already an {@link RGB} it must
+	 *              expose at least three channels (red, green, blue) at indices 0, 1 and 2
+	 * @return the result itself when it is an {@link RGB}, otherwise a new {@link RGB} built
+	 *         from channels 0, 1 and 2. Channel values are stored without clamping, matching
+	 *         the {@link #RGB(double, double, double)} constructor.
+	 */
+	public static RGB of(PackedCollection color) {
+		return color instanceof RGB ? (RGB) color :
+				new RGB(color.toDouble(0), color.toDouble(1), color.toDouble(2));
 	}
 }

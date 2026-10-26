@@ -23,9 +23,6 @@ import org.almostrealism.hardware.metal.MetalDataContext;
 import org.junit.Assume;
 import org.junit.Test;
 
-import java.util.HashMap;
-import java.util.Map;
-
 /**
  * Standalone shape/composition tests for {@link TransformerResamplingFeatures}, using small synthetic
  * weights and no Stable Audio 3 data. These run in normal CI and prove the plumbing of the
@@ -147,6 +144,51 @@ public class TransformerResamplingShapeTest extends SAMEResamplingTestBase {
 	}
 
 	/**
+	 * Regression test for the weight ownership of {@link SAMEResamplingTestBase#evalBlock}: a single
+	 * {@link StateDictionary} must survive being used to build and evaluate more than one block, exactly
+	 * as the gated parity tests reuse one loaded checkpoint across every stage and the culminating
+	 * full-block evaluation. {@code evalBlock} wraps the caller's block in a throwaway {@link
+	 * org.almostrealism.model.Model} and must release only the compiled graph, never the model — the
+	 * model's layers hold these very weight collections, so destroying it would free the dictionary and
+	 * leave the second evaluation reading released memory (a {@code NaN} or crash rather than the same
+	 * deterministic output). Identical weights and input therefore must yield bit-for-bit identical
+	 * output across the two calls.
+	 */
+	@Test(timeout = 120000)
+	public void reusesWeightsAcrossBlocks() {
+		// TODO(0.76): Metal uninitialised-memory NaN in resampling block — re-enable on Metal once fixed.
+		skipWhenMetalPresent();
+
+		ResamplingConfig config = smallConfig(true);
+		int length = 8;
+		StateDictionary weights = syntheticWeights(config, "enc");
+
+		PackedCollection input = new PackedCollection(shape(1, config.getInChannels(), length)).randnFill();
+		PackedCollection first = null;
+		PackedCollection second = null;
+
+		try {
+			first = evalBlock(transformerResamplingBlock(1, length, config, weights, "enc"), input);
+			second = evalBlock(transformerResamplingBlock(1, length, config, weights, "enc"), input);
+
+			assertFinite(first);
+			assertFinite(second);
+
+			int total = first.getShape().getTotalSize();
+			assertEquals(second.getShape().getTotalSize(), total);
+			double[] a = first.toArray(0, total);
+			double[] b = second.toArray(0, total);
+			for (int i = 0; i < total; i++) {
+				assertEquals(a[i], b[i], 0.0);
+			}
+		} finally {
+			// first and second are evalBlock clones owned and released by SAMEResamplingTestBase.
+			input.destroy();
+			weights.destroy();
+		}
+	}
+
+	/**
 	 * The intermediate encoder stages must have the segment/chunk shapes the architecture prescribes.
 	 */
 	@Test(timeout = 120000)
@@ -163,36 +205,6 @@ public class TransformerResamplingShapeTest extends SAMEResamplingTestBase {
 		PackedCollection segment = eval(resamplingSegment(cp(mapped), 1, config, weights, "enc"));
 		int numSeg = length / config.getInputSegSize();
 		assertEquals(numSeg * config.getSubChunkSize() * config.getDim(), segment.getShape().getTotalSize());
-	}
-
-	/**
-	 * Builds a small encoder or decoder configuration that still exercises the full machinery
-	 * (segmentation, learned tokens, midpoint-shifted chunking, differential attention, SwiGLU).
-	 *
-	 * @param encoder {@code true} for an encoder (downsampling) config
-	 * @return the small configuration
-	 */
-	protected ResamplingConfig smallConfig(boolean encoder) {
-		int inChannels = encoder ? 4 : 8;
-		int outChannels = encoder ? 8 : 4;
-		int mappingKernel = encoder ? 1 : 3;
-		return new ResamplingConfig(inChannels, outChannels, 2, 4, 2, 4, 2,
-				encoder, true, true, 2.0, mappingKernel, ResamplingConfig.AttentionWindow.CHUNKED);
-	}
-
-	/**
-	 * Generates a complete set of synthetic weights for a resampling block under the given key prefix,
-	 * using the shared key/shape map so the synthetic key set matches the real one exactly.
-	 *
-	 * @param config the block configuration
-	 * @param prefix the weight key prefix
-	 * @return a {@link StateDictionary} holding randomly-initialized weights for every key the block reads
-	 */
-	protected StateDictionary syntheticWeights(ResamplingConfig config, String prefix) {
-		Map<String, PackedCollection> w = new HashMap<>();
-		blockWeightShapes(config, prefix).forEach((key, dims) ->
-				w.put(key, new PackedCollection(shape(dims)).randnFill()));
-		return new StateDictionary(w);
 	}
 
 	/**

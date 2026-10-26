@@ -42,6 +42,7 @@ import java.util.regex.Pattern;
 import io.flowtree.api.FlowTreeApiEndpoint;
 import io.flowtree.controller.FlowTreeController;
 import io.flowtree.controller.JobStatsStore;
+import io.flowtree.controller.WeeklyStats;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.api.SecretsRequestHandler;
@@ -567,42 +568,11 @@ public class SlackListener implements ConsoleFeatures {
             return false;
         }
 
-        // Create job factory with workstream settings
-        CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
-        factory.setAllowedTools(workstream.getAllowedTools());
-        factory.setAgentEnv(workstream.getAgentEnv());
-        factory.setMaxTurns(workstream.getMaxTurns());
-        factory.setMaxBudgetUsd(workstream.getMaxBudgetUsd());
-
-        if (workstream.getDefaultBranch() != null) {
-            factory.setTargetBranch(workstream.getDefaultBranch());
-            factory.setPushToOrigin(workstream.isPushToOrigin());
-        }
-
-        if (workstream.getBaseBranch() != null) {
-            factory.setBaseBranch(workstream.getBaseBranch());
-        }
-
-        if (workstream.getWorkingDirectory() != null) {
-            factory.setWorkingDirectory(workstream.getWorkingDirectory());
-        }
-
-        // Repository URL for automatic checkout
-        if (workstream.getRepoUrl() != null) {
-            factory.setRepoUrl(workstream.getRepoUrl());
-        }
+        CodingAgentJob.Factory factory = workstream.newJobFactory(prompt);
 
         // Default workspace path for repo checkouts
         if (defaultWorkspacePath != null) {
             factory.setDefaultWorkspacePath(defaultWorkspacePath);
-        }
-
-        // Git identity
-        if (workstream.getGitUserName() != null) {
-            factory.setGitUserName(workstream.getGitUserName());
-        }
-        if (workstream.getGitUserEmail() != null) {
-            factory.setGitUserEmail(workstream.getGitUserEmail());
         }
 
         // ar-manager config: generate temporary HMAC token for this job
@@ -616,30 +586,12 @@ public class SlackListener implements ConsoleFeatures {
                 factory.setArManagerToken(arToken);
             }
         }
-        // Dispatch capability: opt-in workstreams get the dispatch tools.
-        factory.setDispatchCapable(workstream.isDispatchCapable());
-        // Workstream-level default for tmux-backed agent launches. The
-        // Slack path has no per-job use_tmux override (Slack submissions
-        // always come from the workstream owner), so the workstream
-        // default flows through directly to the factory. The runner
-        // additionally honours AR_AGENT_USE_TMUX, which is unaffected
-        // by this flag.
-        factory.setUseTmux(workstream.isUseTmux());
+        workstream.applyCapabilities(factory, factory.getTargetBranch());
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);
         } else {
             warn("no pushedToolsConfig to forward to " + factory.getTaskId()
                 + " (value: " + McpConfigBuilder.pushedToolsConfigPreview(pushedToolsConfig) + ")");
-        }
-
-        // Dependent repos
-        if (workstream.getDependentRepos() != null) {
-            factory.setDependentRepos(workstream.getDependentRepos());
-        }
-
-        // Planning document
-        if (workstream.getPlanningDocument() != null) {
-            factory.setPlanningDocument(workstream.getPlanningDocument());
         }
 
         // GitHub organization is now handled via ar-manager's workstream resolution
@@ -660,11 +612,9 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         // Build workstream URL for status reporting and Slack messaging
-        if (apiPort > 0) {
-            String baseUrl = "http://0.0.0.0:" + apiPort
-                + "/api/workstreams/" + workstream.getWorkstreamId()
-                + "/jobs/" + factory.getTaskId();
-            factory.setWorkstreamUrl(baseUrl);
+        String jobUrl = workstream.jobUrl(apiPort, factory.getTaskId());
+        if (jobUrl != null) {
+            factory.setWorkstreamUrl(jobUrl);
         }
 
         // Notify that the job has been submitted (locally, before it leaves).
@@ -672,8 +622,7 @@ public class SlackListener implements ConsoleFeatures {
         // reply under it to create a thread. If already in a thread, continue there.
         String replyTo = (threadTs == null) ? messageTs : threadTs;
 
-        String displaySummary = CodingAgentJob.summarizePrompt(prompt);
-        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
+        JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), factory.getDisplaySummary());
         startEvent.withGitInfo(workstream.getDefaultBranch(), null, null, null, false);
 
         wsNotifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent, replyTo);
@@ -1192,8 +1141,8 @@ public class SlackListener implements ConsoleFeatures {
             LocalDate thisWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
             LocalDate lastWeekStart = thisWeekStart.minusWeeks(1);
 
-            JobStatsStore.WeeklyStats thisWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), thisWeekStart);
-            JobStatsStore.WeeklyStats lastWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), lastWeekStart);
+            WeeklyStats thisWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), thisWeekStart);
+            WeeklyStats lastWeek = statsStore.getWeeklyStats(ws.getWorkstreamId(), lastWeekStart);
 
             StringBuilder sb = new StringBuilder();
             sb.append(":bar_chart: *Agent Activity \u2014 ").append(ws.getChannelName()).append("*\n\n");
@@ -1217,19 +1166,19 @@ public class SlackListener implements ConsoleFeatures {
             sb.append(":bar_chart: *Agent Activity \u2014 All Workstreams*\n\n");
 
             // Global totals
-            JobStatsStore.WeeklyStats thisWeekTotal = statsStore.getWeeklyStats(thisWeekStart);
-            JobStatsStore.WeeklyStats lastWeekTotal = statsStore.getWeeklyStats(lastWeekStart);
+            WeeklyStats thisWeekTotal = statsStore.getWeeklyStats(thisWeekStart);
+            WeeklyStats lastWeekTotal = statsStore.getWeeklyStats(lastWeekStart);
             sb.append(thisWeekTotal.toSlackMrkdwn("This Week (total)", thisWeekStart));
             sb.append("\n");
             sb.append(lastWeekTotal.toSlackMrkdwn("Last Week (total)", lastWeekStart));
 
             // Per-workstream breakdown for this week
-            Map<String, JobStatsStore.WeeklyStats> thisWeekByWs = statsStore.getWeeklyStatsByWorkstream(thisWeekStart);
+            Map<String, WeeklyStats> thisWeekByWs = statsStore.getWeeklyStatsByWorkstream(thisWeekStart);
             if (!thisWeekByWs.isEmpty()) {
                 sb.append("\n:mag: *This Week by Workstream*\n");
-                for (Map.Entry<String, JobStatsStore.WeeklyStats> entry : thisWeekByWs.entrySet()) {
+                for (Map.Entry<String, WeeklyStats> entry : thisWeekByWs.entrySet()) {
                     String label = wsToChannel.getOrDefault(entry.getKey(), entry.getKey());
-                    JobStatsStore.WeeklyStats stats = entry.getValue();
+                    WeeklyStats stats = entry.getValue();
                     sb.append("  *").append(label).append("*: ");
                     sb.append(stats.jobCount).append(" jobs, ");
                     sb.append(HarnessStatusReporter.formatDuration(stats.totalWallClockMs)).append(", ");

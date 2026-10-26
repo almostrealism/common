@@ -130,7 +130,7 @@ public class GitManagedJobDegradedStatusTest extends TestSuiteBase {
 
         assertTrue("stagedFiles must be empty", handler.getStagedFiles().isEmpty());
         assertFalse("skippedFiles must be non-empty", handler.getSkippedFiles().isEmpty());
-        assertTrue("hasAllChangesDropped() must be true", job.hasAllChangesDropped());
+        assertTrue("allChangesDropped() must be true", job.workOutcome().allChangesDropped());
 
         JobCompletionEvent event = job.createEvent(null);
         assertEquals(JobCompletionEvent.Status.DEGRADED, event.getStatus());
@@ -155,11 +155,42 @@ public class GitManagedJobDegradedStatusTest extends TestSuiteBase {
 
         assertFalse("A branch-new file must still be staged", handler.getStagedFiles().isEmpty());
         assertFalse("The blocked file must be recorded as skipped", handler.getSkippedFiles().isEmpty());
-        assertFalse("hasAllChangesDropped() must be false when something staged",
-                job.hasAllChangesDropped());
+        assertFalse("allChangesDropped() must be false when something staged",
+                job.workOutcome().allChangesDropped());
 
         JobCompletionEvent event = job.createEvent(null);
         assertEquals(JobCompletionEvent.Status.SUCCESS, event.getStatus());
+    }
+
+    /**
+     * A transient git failure (sync race, lock contention, a commit that could
+     * not be written despite staged changes) is reported DEGRADED with an
+     * infrastructure-labelled message, not FAILED — so a harness git hiccup is
+     * not conflated with an agent failure in the signal the retrospective reads.
+     */
+    @Test(timeout = 60000)
+    public void transientGitFailureReportsDegradedNotFailed() {
+        TestGitJob job = newJob();
+
+        JobCompletionEvent event = job.createEvent(
+                new TransientGitException("both pull and reset failed"));
+
+        assertEquals(JobCompletionEvent.Status.DEGRADED, event.getStatus());
+        assertTrue("message must name the underlying failure: " + event.getErrorMessage(),
+                event.getErrorMessage().contains("both pull and reset failed"));
+        assertTrue("message must label it as infrastructure: " + event.getErrorMessage(),
+                event.getErrorMessage().startsWith("Transient git infrastructure failure:"));
+    }
+
+    /** An ordinary (non-transient) failure is still reported FAILED. */
+    @Test(timeout = 60000)
+    public void ordinaryFailureStaysFailed() {
+        TestGitJob job = newJob();
+
+        JobCompletionEvent event = job.createEvent(
+                new IllegalStateException("change validation rejected this job's work"));
+
+        assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
     }
 
     /** A clean run with no changes at all is plain SUCCESS, not DEGRADED. */
@@ -172,7 +203,7 @@ public class GitManagedJobDegradedStatusTest extends TestSuiteBase {
 
         assertTrue(handler.getStagedFiles().isEmpty());
         assertTrue(handler.getSkippedFiles().isEmpty());
-        assertFalse(job.hasAllChangesDropped());
+        assertFalse(job.workOutcome().allChangesDropped());
         assertEquals(JobCompletionEvent.Status.SUCCESS, job.createEvent(null).getStatus());
     }
 

@@ -221,6 +221,14 @@ public interface PatternFeatures extends CodeFeatures {
 	 *   <li><strong>destOffset</strong>: {@code overlapStart - startFrame} (position in destination)</li>
 	 * </ul>
 	 *
+	 * <p>The gathered notes are freshly created on every tick (this path has no gather
+	 * memoization), so each owns a single-element offset-argument {@link PackedCollection}
+	 * that nothing else references once the dispatch returns. They are
+	 * {@link RenderedNoteAudio#destroy() destroyed} in a {@code finally} after rendering so
+	 * long-running per-note rendering does not accumulate native allocations until GC. The
+	 * cached note audio is a separate copy owned by the {@link NoteAudioCache}, so releasing
+	 * the notes does not disturb it.</p>
+	 *
 	 * @param sceneContext scene context containing destination buffer
 	 * @param audioContext note audio context
 	 * @param elements elements to render
@@ -234,10 +242,14 @@ public interface PatternFeatures extends CodeFeatures {
 							   List<PatternElement> elements, boolean melodic, double offset,
 							   int startFrame, int frameCount, NoteAudioCache cache) {
 		List<RenderedNoteAudio> notes = new ArrayList<>();
-		for (PatternElement element : elements) {
-			notes.addAll(element.getNoteDestinations(melodic, offset, sceneContext, audioContext));
+		try {
+			for (PatternElement element : elements) {
+				notes.addAll(element.getNoteDestinations(melodic, offset, sceneContext, audioContext));
+			}
+			renderNotes(sceneContext, notes, startFrame, frameCount, cache);
+		} finally {
+			notes.forEach(RenderedNoteAudio::destroy);
 		}
-		renderNotes(sceneContext, notes, startFrame, frameCount, cache);
 	}
 
 	/**
@@ -278,7 +290,8 @@ public interface PatternFeatures extends CodeFeatures {
 					}
 
 					// Check cache first (fastest path for real-time rendering)
-					PackedCollection audio = (cache != null) ? cache.get(noteStart) : null;
+					PackedCollection audio = (cache != null)
+							? cache.get(noteStart, note.getCacheIdentity()) : null;
 
 					if (audio != null) {
 						// Cache hit: sum cached audio to destination
@@ -314,7 +327,7 @@ public interface PatternFeatures extends CodeFeatures {
 									// of a double free between the cache and the Heap stage.
 									fullResult[0] = new PackedCollection(evaluated.getShape());
 									fullResult[0].setFrom(0, evaluated);
-									cache.put(noteStart, fullResult[0]);
+									cache.put(noteStart, note.getCacheIdentity(), fullResult[0]);
 									sumToDestination(destination, fullResult[0], noteStart,
 											startFrame, endFrame, frameCount);
 								}
@@ -367,7 +380,7 @@ public interface PatternFeatures extends CodeFeatures {
 											 Exception cause) {
 		warn("Note evaluation failed at frame " + noteStart + ": " + cause.getMessage());
 
-		if (isExhaustionFailure(cause)) {
+		if (OperatorPoolExhaustedException.causeOf(cause).isPresent()) {
 			throw new IllegalStateException(
 					"Pattern rendering aborted at frame " + noteStart
 							+ " — runtime native-lib template class pool exhausted"
@@ -384,24 +397,6 @@ public interface PatternFeatures extends CodeFeatures {
 							+ " (causeClass=" + cause.getClass().getName() + ")",
 					cause);
 		}
-	}
-
-	/**
-	 * Walks the cause chain of the given throwable and returns {@code true} if
-	 * any link is an {@link OperatorPoolExhaustedException}.
-	 *
-	 * @param t the throwable to inspect
-	 * @return {@code true} when the chain contains an operator-pool exhaustion cause
-	 */
-	private static boolean isExhaustionFailure(Throwable t) {
-		Throwable cursor = t;
-		while (cursor != null) {
-			if (cursor instanceof OperatorPoolExhaustedException) {
-				return true;
-			}
-			cursor = cursor.getCause();
-		}
-		return false;
 	}
 
 	/**

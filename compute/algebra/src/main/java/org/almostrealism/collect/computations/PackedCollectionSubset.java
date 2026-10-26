@@ -23,7 +23,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -169,8 +169,7 @@ public class PackedCollectionSubset
 	 */
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Expression... pos) {
 		super("subset", shape, null, collection);
-		if (!(collection instanceof Shape))
-			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
+		Shape.requireShape("Subset", collection);
 
 		this.pos = pos;
 		init();
@@ -202,8 +201,7 @@ public class PackedCollectionSubset
 	 */
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Producer<?> pos) {
 		super("subset", shape, null, collection, pos);
-		if (!(collection instanceof Shape))
-			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
+		Shape.requireShape("Subset", collection);
 
 		if (!shape(pos).equalsIgnoreAxis(shape(shape.getDimensions()))) {
 			throw new IllegalArgumentException();
@@ -328,15 +326,15 @@ public class PackedCollectionSubset
 	 * @return A CollectionProducer representing the Jacobian matrix
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		if (pos != null && AlgebraFeatures.match(getInputs().get(1), target)) {
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (axis == ReduceAxis.NONE && pos != null && getInputs().get(1).refersTo(target)) {
 			TraversalPolicy outputShape = getShape();
 			TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 			TraversalPolicy jacobianShape = outputShape.append(inputShape);
 			return new SubsetProjectionComputation(jacobianShape, outputShape, inputShape, pos);
 		}
 
-		return super.delta(target);
+		return super.deltaDependent(target, axis, weight);
 	}
 
 	/**

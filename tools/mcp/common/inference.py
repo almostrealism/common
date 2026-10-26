@@ -6,6 +6,8 @@ Supports multiple backends:
               Linux containers with the server running on the Mac host)
   - ollama:   Ollama HTTP API
   - mlx:      MLX-LM for Apple Silicon (native macOS only)
+  - openrouter: OpenRouter's hosted OpenAI-compatible API (paid per token;
+              used when no local model can be spared)
   - passthrough: No model; returns retrieved context directly (fallback)
 
 The backend is selected via the AR_CONSULTANT_BACKEND environment variable.
@@ -77,62 +79,107 @@ class Synthesis:
 
 SYSTEM_PROMPT = """\
 You are the Almost Realism Documentation Consultant. You answer questions \
-about the AR framework by reading the documentation context provided to you.
+about the AR framework from the evidence list provided to you.
 
-Your job is to FIND the answer in the provided documentation and present it \
-clearly. The documentation chunks are retrieved by keyword search, so the \
-answer may not be in the first chunk — read ALL chunks carefully.
+Every evidence item has an ID and a tier label. The tier says what the item \
+may be used for:
+- DOC and INDEX items (tier A) state present fact for the snapshot. Cite them.
+- A "NOTE current" item (tier B) may supply a fact the documentation lacks. \
+An answer that rests on one is labelled as resting on a note.
+- A "NOTE branch-local" item (tier B') is true only on its own branch. Report \
+it only as "on branch X, ..."; never as a fact about master.
+- A "NOTE historical" or "NOTE stale" item (tier C) may supply history and \
+rationale ("this used to...", "it was introduced because..."), never a \
+present-tense fact. For a stale note, say which names are gone.
 
 RULES:
-1. Read ALL provided documentation chunks before answering. The answer is \
-usually there — you just need to find it and connect it to the question.
-2. When a chunk shows code examples, method signatures, or class names that \
-match what the question asks about, USE that information in your answer.
-3. If the documentation says something is NOT supported or does NOT exist, \
-say so — that IS an answer.
-4. When the documentation contains related but not exact information, \
-summarize what IS covered and cite the files.
-5. Only respond with "Not documented" when ALL provided chunks are \
-completely irrelevant to the question.
-6. Be CONCISE — 2-4 sentences. Cite sources like "per file.md:line".
-7. NO hedging ("might be", "could be"). State what the documentation says.
-8. ALWAYS include a concrete code example if the documentation provides one.
-9. Notes from prior sessions are an agent's record of one past task, not \
-documentation. A note is evidence only about the classes and files it names. \
-Never attribute a note's details to anything it does not mention — that a note \
-describes one class holding a flat array says nothing about any other class. \
-A note that mentions a concept in passing does not establish the types, field \
-layout, or implementation of anything it does not spell out; if the detail \
-asked for is not written in the note, it is not known, and "likely" or \
-"probably" is not an answer.
-10. A question about what a particular source file contains cannot be answered \
-from documentation unless a chunk quotes or describes that file. Say the \
-documentation does not cover it rather than inferring from the name, the \
-module, or how the framework usually works.
-11. Cite "per file.md:line" only for a location that states the claim. Never \
-attach a line number to something you inferred.
-12. A question can take a fact for granted that the documentation never \
-establishes — "what does X use arrays for" assumes X uses them. Do not adopt \
-the assumption. Check whether the chunks establish it, and if they do not, say \
-so plainly instead of answering as though it held.
+1. Read ALL evidence items before answering. The answer is usually there.
+2. Cite every claim with the ID of the item that states it, in square \
+brackets: [D1], [N2], [I1]. Never write a file name or a line number as a \
+citation; the server adds the locations.
+3. Cite an item only for a claim it actually states. A claim about one script, \
+class or file needs an item that names that script, class or file. If no item \
+states it, the claim is unknown: leave it out, or say it is not documented.
+4. Copy names, paths, prefixes and numbers exactly as the item writes them. \
+Never derive one from another name.
+5. Answer "Not documented" only when no item is relevant to the question.
+6. Be CONCISE — 2-5 sentences. NO hedging ("might be", "could be").
+7. When two items disagree, report the disagreement; do not silently pick one.
+8. A question can take a fact for granted that no item establishes — "what \
+does X use arrays for" assumes X uses them. Do not adopt the assumption.
+9. End with two lines:
+BASIS: documentation | documentation+notes | notes | none
+CONFLICTS: <ID> vs <ID> — <one line>; or none
 
 EXAMPLES:
-Doc chunk: "## Entering the Graph\\nUse cp() to wrap a PackedCollection...\\n\
-cp(data).multiply(2.0).add(1.0).evaluate()"
+Evidence: [D1] DOC — collection-producer-operations.md § Entering the Graph: \
+"Use cp() to wrap a PackedCollection... cp(data).multiply(2.0).evaluate()"
 Q: "How do I use cp() to chain operations?"
-A: "Use `cp()` to wrap a PackedCollection into a CollectionProducer, then \
-chain operations: `cp(data).multiply(2.0).add(1.0).evaluate()`. Each \
-operation returns a new producer; nothing executes until `evaluate()` \
-per collection-producer-operations.md:4."
+A: "Wrap a PackedCollection with `cp()` and chain operations on the producer: \
+`cp(data).multiply(2.0).evaluate()`; nothing executes until `evaluate()` [D1].
+BASIS: documentation
+CONFLICTS: none"
 
-Doc chunk: "A Features interface is a Java interface whose methods are all \
-default... Adding implements CollectionFeatures makes 40+ factory methods \
-available."
-Q: "What is the Features pattern?"
-A: "A Features interface has only `default` methods — adding `implements \
-CollectionFeatures` to a class gives it 40+ factory methods like `cp()`, \
-`c()`, `scalar()` without inheritance per features-pattern.md:1."
+Evidence: [N1] NOTE current — branch=qa/retro-20261015 state=merged: \
+"open-pr-backlog.sh skips a planning round while 7 or more PRs are open"
+Q: "When does a planning round skip?"
+A: "A planning round is skipped while 7 or more PRs are open [N1].
+BASIS: notes
+CONFLICTS: none"
+
+Evidence: [N2] NOTE stale — names absent from snapshot: ClaudeCodeJob: \
+"ClaudeCodeJob.runCorrectionSession re-runs the review"
+Q: "Where does the review record its verdicts?"
+A: "Not documented. Historically, ClaudeCodeJob (no longer in the snapshot) \
+re-ran the review through runCorrectionSession [N2].
+BASIS: none
+CONFLICTS: none"
+
+Evidence: [D3] DOC: "the job times out after 30 minutes"; [N4] NOTE current: \
+"the job timeout is 45 minutes"
+Q: "What is the job timeout?"
+A: "The documentation gives 30 minutes [D3], but a current note says \
+45 minutes [N4].
+BASIS: documentation+notes
+CONFLICTS: D3 vs N4 — timeout 30 vs 45 minutes"
 """
+
+# The persona for rewriting a note. Kept apart from SYSTEM_PROMPT because that
+# prompt's answering contract (cite evidence IDs, finish with BASIS:/CONFLICTS:
+# lines) would leak into the stored text of a rewritten note.
+REFORMULATE_SYSTEM_PROMPT = """\
+You rewrite notes that agents wrote about their work on the Almost Realism \
+framework, so that they use the project's own terminology. Keep the note's \
+meaning, its specific names, paths and numbers, and its scope: never add a \
+claim the note or the documentation excerpt does not make. Return only the \
+rewritten note.
+"""
+
+# Hedging phrases that indicate an answer is guessing rather than grounded in
+# the documentation, which SYSTEM_PROMPT forbids. Lower-case, because
+# has_speculation matches them against the lower-cased answer.
+SPECULATION_PHRASES = (
+    "does not contain",
+    "does not specifically",
+    "not mentioned",
+    "speculative",
+    "hypothetical",
+    "based on typical",
+    "i can infer",
+    "you may need to refer",
+    "not covered in",
+    "might be",
+    "could be",
+)
+
+
+def has_speculation(text: Optional[str]) -> bool:
+    """True when an answer contains any of the SPECULATION_PHRASES.
+
+    Matching is case-insensitive; a missing answer (``None``) has none.
+    """
+    low = (text or "").lower()
+    return any(phrase in low for phrase in SPECULATION_PHRASES)
 
 
 # ---------------------------------------------------------------------------
@@ -141,28 +188,35 @@ CollectionFeatures` to a class gives it 40+ factory methods like `cp()`, \
 
 def build_consult_prompt(
     question: str,
-    doc_context: str = "",
-    memory_context: str = "",
+    evidence="",
     extra_context: Optional[str] = None,
+    history: Optional[str] = None,
+    instructions: Optional[str] = None,
 ) -> str:
-    """Assemble the prompt for a documentation-grounded question.
+    """Assemble the prompt for an evidence-grounded question.
 
     Module-level rather than a backend method because callers differ in how
     they invoke the model — ar-consultant routes synthesis through its
-    request-history recorder — while the wording must not differ at all. Two
-    servers answering from one corpus have to ask the same question.
+    request-history recorder, ``memory_recall`` asks for a summary rather
+    than an answer — while the evidence contract must not differ at all. Two
+    tools answering from one corpus have to present evidence the same way.
 
-    The framing of the memory section is deliberate. Notes are agent-authored
-    records of particular past work, not documentation, and presented as bare
-    text they read with the same authority — so the prompt states their scope
-    explicitly rather than trusting the model to infer it.
+    The evidence is a single list of items, each with an ID, a tier label and
+    its provenance (see ``consult_evidence.EvidenceList``). The model cites the
+    IDs; the tier rules in :data:`SYSTEM_PROMPT` say what each tier may
+    supply. Notes are therefore no longer a separate, uniformly forbidden
+    section: a current note may answer, a stale one only supplies history.
 
     Args:
         question: What the caller asked.
-        doc_context: Documentation chunks retrieved for the question.
-        memory_context: Prior notes, already formatted for display.
+        evidence: The evidence list — an object with ``render()`` or an
+            already rendered string.
         extra_context: Anything supplied alongside the question, such as a
             code snippet or an error message.
+        history: Condensed earlier turns of a conversation, when this is a
+            follow-up.
+        instructions: Replaces the default answering instructions, for a
+            caller (such as a summary) that wants a different output.
 
     Returns:
         The assembled prompt.
@@ -170,41 +224,31 @@ def build_consult_prompt(
     parts = []
 
     # The question goes first so the model knows what to look for while
-    # reading the documentation that follows.
+    # reading the evidence that follows.
     parts.append(f"## Question\n\n{question}")
+
+    if history:
+        parts.append(
+            "## Earlier In This Conversation\n\n"
+            "Earlier questions and answers, for reference only. Evidence IDs "
+            f"are the same as before.\n\n{history}")
 
     if extra_context:
         parts.append(f"## Additional Context from Agent\n\n{extra_context}")
 
-    if doc_context:
-        parts.append(
-            "## Relevant Documentation\n\nRead these chunks carefully — "
-            f"the answer is in here.\n\n{doc_context}"
-        )
-    else:
-        parts.append(
-            "## Relevant Documentation\n\n"
-            "(No documentation found for this query)"
-        )
-
-    if memory_context:
-        parts.append(
-            "## Notes From Prior Sessions\n\n"
-            "These are notes agents wrote about particular past work. They "
-            "are not documentation and carry no authority beyond the classes "
-            "and files they name. Use a note only for the subject it "
-            "explicitly names; never carry its details across to a class, "
-            "file or module it does not mention, and never let its wording "
-            "supply a fact the documentation does not state.\n\n"
-            f"{memory_context}"
-        )
-
+    rendered = evidence.render() if hasattr(evidence, "render") else evidence
     parts.append(
+        "## Evidence\n\nEach item is headed by its ID and tier label. Read "
+        "every item — the answer is usually here.\n\n"
+        + (rendered or "(No evidence found for this query)"))
+
+    parts.append(instructions or (
         "## Instructions\n\n"
-        "Answer the question above using the documentation chunks. "
-        "Include a code example if the docs provide one. "
-        "Cite the source file and line number."
-    )
+        "Answer the question from the evidence list under the tier rules. "
+        "Cite each claim with the ID of the item that states it, e.g. [D1]. "
+        "Include a code example if an item provides one. Finish with the "
+        "BASIS: and CONFLICTS: lines."
+    ))
 
     return "\n\n".join(parts)
 
@@ -249,6 +293,23 @@ class InferenceBackend(ABC):
     @abstractmethod
     def name(self) -> str:
         """Human-readable backend name."""
+
+    @staticmethod
+    def chat_messages(prompt: str, system: Optional[str] = None) -> list:
+        """Build the chat message list every chat-style backend sends.
+
+        Args:
+            prompt: The user prompt.
+            system: Optional system prompt, sent first when present.
+
+        Returns:
+            A list of ``{"role", "content"}`` dicts.
+        """
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        return messages
 
     def _probe(self) -> bool:
         """Check whether the model is reachable right now.
@@ -312,36 +373,30 @@ class InferenceBackend(ABC):
     def consult(
         self,
         question: str,
-        doc_context: str = "",
-        memory_context: str = "",
+        evidence="",
         extra_context: Optional[str] = None,
+        history: Optional[str] = None,
     ) -> Synthesis:
-        """Answer a question from documentation, grounded by prior notes.
+        """Answer a question from an evidence list.
 
         Lives on the backend for the same reason :meth:`reformulate` does:
         both MCP servers answer questions over one documentation corpus, and a
         second copy of this prompt would let the two give different answers to
         the same question.
 
-        The framing of the memory section is deliberate. Notes are agent-
-        authored records of particular past work, not documentation, and
-        presented as bare text they read with the same authority — so the
-        prompt states their scope explicitly rather than trusting the model to
-        infer it.
-
         Args:
             question: What the caller asked.
-            doc_context: Documentation chunks retrieved for the question.
-            memory_context: Prior notes, already formatted for display.
+            evidence: The evidence list (see :func:`build_consult_prompt`).
             extra_context: Anything the caller supplied alongside the
                 question, such as a code snippet or an error message.
+            history: Condensed earlier turns, for a conversation follow-up.
 
         Returns:
             A :class:`Synthesis`; check :attr:`Synthesis.degraded`.
         """
         return self.synthesize(
             build_consult_prompt(
-                question, doc_context, memory_context, extra_context,
+                question, evidence, extra_context, history=history,
             ),
             system=SYSTEM_PROMPT,
         )
@@ -389,7 +444,8 @@ class InferenceBackend(ABC):
         )
 
         synthesis = self.synthesize(
-            "\n\n".join(parts), system=SYSTEM_PROMPT, max_tokens=max_tokens,
+            "\n\n".join(parts), system=REFORMULATE_SYSTEM_PROMPT,
+            max_tokens=max_tokens,
         )
         if synthesis.degraded:
             return synthesis
@@ -461,14 +517,9 @@ class OllamaBackend(InferenceBackend):
         max_tokens: int = 1024,
         temperature: float = 0.3,
     ) -> str:
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-
         payload = json.dumps({
             "model": self.model,
-            "messages": messages,
+            "messages": self.chat_messages(prompt, system),
             "stream": False,
             "options": {
                 "num_predict": max_tokens,
@@ -493,10 +544,103 @@ class OllamaBackend(InferenceBackend):
 
 
 # ---------------------------------------------------------------------------
+# OpenAI-compatible chat completions
+# ---------------------------------------------------------------------------
+
+class OpenAIChatBackend(InferenceBackend):
+    """A backend that speaks the OpenAI ``/chat/completions`` protocol.
+
+    llama.cpp's server and OpenRouter accept the same request and return the
+    same response shape; they differ only in where the endpoint lives, how a
+    request is authenticated, and which extra request fields they honour.
+    Subclasses supply those three things and inherit the exchange itself.
+    """
+
+    #: Seconds to wait for a completion before treating the model as down.
+    TIMEOUT_SECONDS = 180
+
+    @abstractmethod
+    def completions_url(self) -> str:
+        """The full URL of the chat completions endpoint."""
+
+    def request_headers(self) -> dict:
+        """Headers sent with every request; subclasses add authentication."""
+        return {"Content-Type": "application/json"}
+
+    def request_fields(self) -> dict:
+        """Backend-specific fields merged into every request body."""
+        return {}
+
+    def generate(
+        self,
+        prompt: str,
+        system: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.3,
+    ) -> str:
+        body = {
+            "messages": self.chat_messages(prompt, system),
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": False,
+        }
+        body.update(self.request_fields())
+
+        req = urllib.request.Request(
+            self.completions_url(),
+            data=json.dumps(body).encode("utf-8"),
+            headers=self.request_headers(),
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.TIMEOUT_SECONDS) as resp:
+                data = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            raise InferenceUnavailable(
+                self.name, f"HTTP {e.code}: {self.error_detail(e)}",
+            ) from e
+        except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
+            raise InferenceUnavailable(self.name, str(e)) from e
+
+        choices = data.get("choices", [])
+        if not choices:
+            return ""
+        choice = choices[0]
+        content = choice.get("message", {}).get("content") or ""
+        if not content.strip() and choice.get("finish_reason") == "length":
+            # A reasoning model can spend the whole max_tokens budget
+            # thinking and return no answer at all.
+            log.warning(
+                "%s hit max_tokens=%d before producing an answer; reasoning "
+                "may be consuming the budget", self.name, max_tokens,
+            )
+        return content
+
+    @staticmethod
+    def error_detail(error: urllib.error.HTTPError) -> str:
+        """Extract a provider's error message from an HTTP error response.
+
+        OpenAI-compatible servers report failures as
+        ``{"error": {"message": ...}}``. That message (for example "insufficient
+        credits") is far more useful to whoever reads a degraded consult than
+        the bare status line.
+        """
+        try:
+            payload = json.loads(error.read())
+            message = payload.get("error", {}).get("message")
+            if message:
+                return str(message)
+        except (OSError, ValueError, AttributeError):
+            pass
+        return str(error.reason)
+
+
+# ---------------------------------------------------------------------------
 # llama.cpp backend
 # ---------------------------------------------------------------------------
 
-class LlamaCppBackend(InferenceBackend):
+class LlamaCppBackend(OpenAIChatBackend):
     """Inference via a llama.cpp server (llama-server).
 
     llama.cpp's server exposes an OpenAI-compatible ``/v1/chat/completions``
@@ -582,6 +726,251 @@ class LlamaCppBackend(InferenceBackend):
 
         return False
 
+    def completions_url(self) -> str:
+        return f"{self.base_url}/v1/chat/completions"
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter backend
+# ---------------------------------------------------------------------------
+
+class OpenRouterBackend(OpenAIChatBackend):
+    """Inference via OpenRouter's hosted, pay-per-token API.
+
+    For when no local machine can be spared to run a model. The model is any
+    OpenRouter slug, so moving between hosted models — or onto a local
+    llama.cpp server running the same open-weights model — is a configuration
+    change, not a code change.
+
+    Two request defaults matter for this workload:
+
+    * **Reasoning is off** (``reasoning.enabled = false``). A consult answer is
+      a few sentences grounded in retrieved documentation. OpenRouter counts
+      reasoning tokens against ``max_tokens``, so a thinking model left at its
+      default can spend the whole budget reasoning and return nothing (while
+      still being billed).
+    * **Providers that retain prompts are excluded.** Prompts carry the memory
+      corpus, which holds notes about unpublished work.
+
+    Environment variables:
+        AR_CONSULTANT_OPENROUTER_API_KEY_FILE  - JSON secret file holding the
+                                                 key as {"openrouter-api-key": ...}
+                                                 (preferred; read first)
+        AR_CONSULTANT_OPENROUTER_API_KEY       - The API key itself
+        AR_CONSULTANT_OPENROUTER_MODEL         - Model slug
+                                                 (default: minimax/minimax-m3)
+        AR_CONSULTANT_OPENROUTER_REASONING     - Reasoning control: ``none``
+                                                 (default) disables reasoning;
+                                                 ``high``/``medium``/``low`` set
+                                                 ``reasoning.effort``; an empty
+                                                 string sends no reasoning field,
+                                                 leaving the model's default
+        AR_CONSULTANT_OPENROUTER_DATA_COLLECTION - ``deny`` (default) or
+                                                 ``allow``; sent as
+                                                 ``provider.data_collection``.
+                                                 A blank or unrecognised value
+                                                 falls back to ``deny`` so the
+                                                 privacy restriction is never
+                                                 silently dropped
+        AR_CONSULTANT_OPENROUTER_URL           - API base URL
+                                                 (default: https://openrouter.ai/api/v1)
+    """
+
+    #: The reasoning setting that turns reasoning off rather than selecting an
+    #: effort level. OpenRouter's documented ``reasoning.effort`` values are
+    #: ``high``/``medium``/``low``, so "off" is a sentinel of our own, not one
+    #: of them; it is translated to ``{"enabled": false}`` in a request.
+    REASONING_OFF = "none"
+
+    DEFAULT_MODEL = "minimax/minimax-m3"
+    DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+    DEFAULT_REASONING = REASONING_OFF
+    DEFAULT_DATA_COLLECTION = "deny"
+
+    #: The values OpenRouter documents for ``provider.data_collection``. Unlike
+    #: the reasoning field, a data-collection setting is a privacy control:
+    #: prompts carry the memory corpus, so a blank or unrecognised value must
+    #: never silently drop the restriction. Anything outside this set is
+    #: treated as unset and falls back to the privacy default.
+    DATA_COLLECTION_VALUES = ("deny", "allow")
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self._api_key = api_key if api_key is not None else self.load_api_key()
+        # An empty variable means "unset": compose passes ${VAR:-} through
+        # as an empty string when the operator has not chosen a value.
+        self.model = (
+            model
+            or os.environ.get("AR_CONSULTANT_OPENROUTER_MODEL", "").strip()
+            or self.DEFAULT_MODEL
+        )
+        self.base_url = (
+            base_url
+            or os.environ.get("AR_CONSULTANT_OPENROUTER_URL", "").strip()
+            or self.DEFAULT_BASE_URL
+        ).rstrip("/")
+        self.reasoning = os.environ.get(
+            "AR_CONSULTANT_OPENROUTER_REASONING", self.DEFAULT_REASONING
+        ).strip()
+        self.data_collection = self.resolve_data_collection(
+            os.environ.get(
+                "AR_CONSULTANT_OPENROUTER_DATA_COLLECTION",
+                self.DEFAULT_DATA_COLLECTION,
+            ).strip()
+        )
+        super().__init__()
+
+    #: Name of the secret, and the key that holds it in a secret payload file.
+    SECRET_NAME = "openrouter-api-key"
+
+    #: Generic fallback key accepted in a secret payload, matching the
+    #: workspace-secret convention's single-key ``{"value": ...}`` form.
+    SECRET_VALUE_KEY = "value"
+
+    @classmethod
+    def load_api_key(cls) -> str:
+        """Read the API key from its secret file, falling back to the environment.
+
+        The file form is what the controller deployment uses, so the key never
+        appears in ``docker inspect`` output or a compose file. It follows the
+        workspace-secret payload convention (flowtree/docs/operations/PROVIDERS.md):
+        a JSON object keyed by the secret name,
+        ``{"openrouter-api-key": "sk-or-v1-..."}``, or a ``value``-keyed
+        payload, ``{"value": "sk-or-v1-..."}``.
+        """
+        key_file = os.environ.get("AR_CONSULTANT_OPENROUTER_API_KEY_FILE", "").strip()
+        if key_file and os.path.isfile(key_file):
+            try:
+                with open(key_file) as f:
+                    payload = json.load(f)
+            except (OSError, ValueError) as e:
+                log.warning("Failed to read OpenRouter API key file: %s", e)
+            else:
+                key = cls.secret_value(payload)
+                if key:
+                    return key
+                log.warning(
+                    "OpenRouter API key file holds no %r entry", cls.SECRET_NAME,
+                )
+        return os.environ.get("AR_CONSULTANT_OPENROUTER_API_KEY", "").strip()
+
+    @classmethod
+    def secret_value(cls, payload) -> str:
+        """Extract the key from a secret payload, or return an empty string."""
+        if not isinstance(payload, dict):
+            return ""
+        value = payload.get(cls.SECRET_NAME)
+        if value is None:
+            value = payload.get(cls.SECRET_VALUE_KEY)
+        return value.strip() if isinstance(value, str) else ""
+
+    @classmethod
+    def resolve_data_collection(cls, setting: str) -> str:
+        """Normalise a data-collection setting, keeping the privacy default.
+
+        A blank value (compose passing ``${VAR:-}`` through, or the variable
+        set to an empty string) or any value OpenRouter does not document is
+        treated as unset and falls back to :attr:`DEFAULT_DATA_COLLECTION`.
+        This is deliberately stricter than the reasoning setting: an empty
+        reasoning value omits the field to take the model's default, but a
+        prompt carries the memory corpus, so an empty or unrecognised
+        data-collection value must never drop the restriction that keeps it
+        off prompt-retaining providers.
+
+        Args:
+            setting: The already-stripped configured value.
+
+        Returns:
+            One of :attr:`DATA_COLLECTION_VALUES`.
+        """
+        if setting in cls.DATA_COLLECTION_VALUES:
+            return setting
+        if setting:
+            log.warning(
+                "AR_CONSULTANT_OPENROUTER_DATA_COLLECTION=%r is not one of %s; "
+                "keeping the privacy default %r",
+                setting, cls.DATA_COLLECTION_VALUES, cls.DEFAULT_DATA_COLLECTION,
+            )
+        return cls.DEFAULT_DATA_COLLECTION
+
+    @property
+    def name(self) -> str:
+        return f"openrouter ({self.model})"
+
+    @property
+    def configured(self) -> bool:
+        """Whether an API key is present at all."""
+        return bool(self._api_key)
+
+    def completions_url(self) -> str:
+        return f"{self.base_url}/chat/completions"
+
+    def request_headers(self) -> dict:
+        headers = super().request_headers()
+        headers["Authorization"] = f"Bearer {self._api_key}"
+        return headers
+
+    def request_fields(self) -> dict:
+        fields = {"model": self.model}
+        reasoning = self.reasoning_request()
+        if reasoning is not None:
+            fields["reasoning"] = reasoning
+        if self.data_collection:
+            fields["provider"] = {"data_collection": self.data_collection}
+        return fields
+
+    def reasoning_request(self):
+        """Translate the configured reasoning setting into OpenRouter's field.
+
+        OpenRouter counts reasoning tokens against ``max_tokens``, so a thinking
+        model left on its default can spend a consult's whole budget reasoning
+        and return an empty (but billed) answer. Reasoning is therefore off by
+        default, expressed as ``{"enabled": false}`` — the field OpenRouter
+        documents for disabling reasoning. ``effort="none"`` is **not** a
+        documented level (the levels are ``high``/``medium``/``low``), so a
+        provider could silently ignore it and leave reasoning on.
+
+        Returns:
+            ``{"enabled": False}`` when reasoning is off (the default);
+            ``{"effort": <level>}`` when an effort level is configured; or
+            ``None`` when the setting is empty, which omits the field and
+            leaves the model's own default in place.
+        """
+        if not self.reasoning:
+            return None
+        if self.reasoning == self.REASONING_OFF:
+            return {"enabled": False}
+        return {"effort": self.reasoning}
+
+    def _probe(self) -> bool:
+        """Check the key against ``GET /key``, which costs no tokens.
+
+        A key with no credit left is reported down: every completion would
+        fail with HTTP 402, and an auto-detecting caller should move on to a
+        backend that can answer.
+        """
+        if not self.configured:
+            return False
+        req = urllib.request.Request(
+            f"{self.base_url}/key", headers=self.request_headers(), method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read()).get("data", {})
+        except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
+            log.info("OpenRouter not reachable at %s: %s", self.base_url, e)
+            return False
+
+        remaining = data.get("limit_remaining")
+        if remaining is not None and remaining <= 0:
+            log.warning("OpenRouter API key has no credit remaining")
+            return False
+        return True
+
     def generate(
         self,
         prompt: str,
@@ -589,34 +978,11 @@ class LlamaCppBackend(InferenceBackend):
         max_tokens: int = 1024,
         temperature: float = 0.3,
     ) -> str:
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-
-        payload = json.dumps({
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": False,
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            f"{self.base_url}/v1/chat/completions",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
+        if not self.configured:
+            raise InferenceUnavailable(self.name, "no OpenRouter API key is configured")
+        return super().generate(
+            prompt, system=system, max_tokens=max_tokens, temperature=temperature,
         )
-
-        try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
-                data = json.loads(resp.read())
-                choices = data.get("choices", [])
-                if choices:
-                    return choices[0].get("message", {}).get("content", "")
-                return ""
-        except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
-            raise InferenceUnavailable(self.name, str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -676,10 +1042,7 @@ class MLXBackend(InferenceBackend):
         self._load()
         from mlx_lm import generate as mlx_generate
 
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        messages = self.chat_messages(prompt, system)
 
         # Apply chat template if available
         if hasattr(self._tokenizer, "apply_chat_template"):
@@ -773,7 +1136,8 @@ class AutoBackend(InferenceBackend):
     def __init__(self, candidates: Optional[list] = None):
         self._candidates = (
             candidates if candidates is not None
-            else [LlamaCppBackend(), OllamaBackend(), MLXBackend()]
+            else [LlamaCppBackend(), OllamaBackend(), MLXBackend(),
+                  OpenRouterBackend()]
         )
         self._fallback = PassthroughBackend()
         self._delegate: InferenceBackend = self._fallback
@@ -864,7 +1228,9 @@ def create_backend(backend_name: Optional[str] = None) -> InferenceBackend:
       1. llama.cpp server (best for Linux container + Mac host setup)
       2. Ollama
       3. MLX (Apple Silicon, native macOS only)
-      4. Passthrough (no model)
+      4. OpenRouter (only when an API key is configured; paid, so local
+         models are always preferred when one is up)
+      5. Passthrough (no model)
 
     A backend is always returned. Detection failure is not an error here —
     it is reported per-request through :meth:`InferenceBackend.synthesize`,
@@ -872,8 +1238,8 @@ def create_backend(backend_name: Optional[str] = None) -> InferenceBackend:
     retrieval and starts synthesizing again once one comes up.
 
     Args:
-        backend_name: One of "llamacpp", "ollama", "mlx", "passthrough",
-                      or None / "auto" for auto-detection.
+        backend_name: One of "llamacpp", "ollama", "mlx", "openrouter",
+                      "passthrough", or None / "auto" for auto-detection.
 
     Returns:
         An InferenceBackend instance.
@@ -886,15 +1252,18 @@ def create_backend(backend_name: Optional[str] = None) -> InferenceBackend:
         return OllamaBackend()
     elif name == "mlx":
         return MLXBackend()
+    elif name == "openrouter":
+        return OpenRouterBackend()
     elif name == "passthrough":
         return PassthroughBackend()
     elif name == "auto":
         # Ordered llamacpp first (Linux container -> Mac host is the primary
-        # setup), then Ollama, then MLX. AutoBackend re-runs this selection
+        # setup), then Ollama, then MLX, then paid OpenRouter. AutoBackend re-runs this selection
         # whenever its choice goes stale.
         return AutoBackend()
     else:
         raise ValueError(
             f"Unknown backend: {name!r}. "
-            f"Supported: 'llamacpp', 'ollama', 'mlx', 'passthrough', 'auto'"
+            f"Supported: 'llamacpp', 'ollama', 'mlx', 'openrouter', "
+            f"'passthrough', 'auto'"
         )

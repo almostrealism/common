@@ -372,7 +372,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 
 		return func(shape(3), args -> {
 			PackedCollection dcResult = dcp.get().evaluate(args);
-			RGB dc = dcResult instanceof RGB ? (RGB) dcResult : new RGB(dcResult.toDouble(0), dcResult.toDouble(1), dcResult.toDouble(2));
+			RGB dc = RGB.of(dcResult);
 
 			Vector triple = new Vector(point.get().evaluate(args), 0);
 			if (dc.length() < Intersection.e * 100) return new RGB(0.0, 0.0, 0.0);

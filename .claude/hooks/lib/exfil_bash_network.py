@@ -42,21 +42,45 @@ from exfil_bash_lex import GuardError, normalize_host
 # API nobody listed, against a URL literal, now passes where the bare URL
 # would have caught it. That is the accepted cost of a guard people can
 # work with — one that blocks prose teaches its way around itself, which
-# buys nothing at all.
+# buys nothing at all. For the same reason, most entries below match a
+# *use* of the module or API it names — an import, a module-qualified
+# call, a constructor — never the bare word on its own: a string literal
+# that happens to contain "socket" or "subprocess" is prose, not code.
+# A handful of entries with no natural qualified form still match a bare
+# identifier, on the same accepted-cost basis as everywhere else in this
+# list -- see docs/internals/exfiltration-guard.md for which ones.
 NETWORK_CODE_PATTERNS = [re.compile(p) for p in (
-    r"\brequests\.", r"\burllib\b", r"\bhttp\.client\b", r"\bhttplib\b",
-    r"\bhttpx\b", r"\baiohttp\b", r"\bsocket\b", r"\bsmtplib\b", r"\bftplib\b",
-    r"\btelnetlib\b", r"\bparamiko\b", r"\bboto3\b", r"\bbotocore\b",
-    r"\bpycurl\b", r"\bwebsocket", r"\bfetch\s*\(", r"\bXMLHttpRequest\b",
+    r"\brequests\.",
+    r"\bimport\s+urllib\b|\bfrom\s+urllib\s+import\b|\burllib\.\w+",
+    r"\bhttp\.client\b",
+    r"\bimport\s+httplib\b|\bfrom\s+httplib\s+import\b|\bhttplib\.\w+",
+    r"\bimport\s+httpx\b|\bfrom\s+httpx\s+import\b|\bhttpx\.\w+",
+    r"\bimport\s+aiohttp\b|\bfrom\s+aiohttp\s+import\b|\baiohttp\.\w+",
+    r"\bimport\s+socket\b|\bfrom\s+socket\s+import\b|\bsocket\.\w+|\bsocket\(",
+    r"\bimport\s+smtplib\b|\bfrom\s+smtplib\s+import\b|\bsmtplib\.\w+",
+    r"\bimport\s+ftplib\b|\bfrom\s+ftplib\s+import\b|\bftplib\.\w+",
+    r"\bimport\s+telnetlib\b|\bfrom\s+telnetlib\s+import\b|\btelnetlib\.\w+",
+    r"\bimport\s+paramiko\b|\bfrom\s+paramiko\s+import\b|\bparamiko\.\w+",
+    r"\bimport\s+boto3\b|\bfrom\s+boto3\s+import\b|\bboto3\.\w+",
+    r"\bimport\s+botocore\b|\bfrom\s+botocore\s+import\b|\bbotocore\.\w+",
+    r"\bimport\s+pycurl\b|\bfrom\s+pycurl\s+import\b|\bpycurl\.\w+",
+    r"\bimport\s+websockets?\b|\bfrom\s+websockets?\s+import\b|\bwebsockets?\.\w+|"
+    r"\bnew\s+WebSocket(?:\(|\s+\(\s*['\"`])|require\(\s*['\"]ws['\"]\s*\)|"
+    r"\bimport\b[^\n]*\bfrom\s+['\"]ws['\"]",
+    r"\bfetch\s*\(", r"\bXMLHttpRequest\b",
     r"\bhttps?\.request\b", r"\bnet\.connect\b", r"\bnet\.createConnection\b",
-    r"\bdgram\b", r"\bWebSocket\b", r"\baxios\b", r"\bgot\s*\(",
-    r"\bnode-fetch\b", r"\bNet::", r"\bLWP\b", r"\bIO::Socket\b",
+    r"require\(\s*['\"]dgram['\"]\s*\)|\bimport\b[^\n]*\bfrom\s+['\"]dgram['\"]|\bdgram\.\w+",
+    r"\bgot\s*\(",
+    r"require\(\s*['\"]axios['\"]\s*\)|\bimport\b[^\n]*\bfrom\s+['\"]axios['\"]|\baxios\.\w+|\baxios\(",
+    r"\bnode-fetch\b", r"\bNet::", r"\bLWP::", r"\bIO::Socket\b",
     r"\bHTTP::Tiny\b", r"\bcurl_", r"\bfsockopen\b", r"\bstream_socket_client\b",
     r"\bInvoke-WebRequest\b", r"\bInvoke-RestMethod\b", r"\bNet\.WebClient\b",
     r"\bSystem\.Net\b", r"\bHttpClient\b", r"\bURLConnection\b", r"\bjava\.net\b",
     r"\bnew\s+URL\s*\(", r"\bSocket\s*\(", r"\bdo shell script\b",
-    r"\bsystem\s*\(", r"\bsubprocess\b", r"\bos\.system\b",
-    r"\bchild_process\b", r"\bexec\s*\(", r"\bpopen\b", r"/inet/",
+    r"\bsystem\s*\(",
+    r"\bimport\s+subprocess\b|\bfrom\s+subprocess\s+import\b|\bsubprocess\.\w+",
+    r"\bos\.system\b",
+    r"\bchild_process\b", r"\bexec\s*\(", r"\b[Pp]open\(", r"/inet/",
     r"\|\s*getline\b", r"\bopen\s*\(\s*['\"]https?:",
 )]
 
@@ -275,6 +299,22 @@ def _check_upload_tool(prog, argv, piped, ctx):
 _SSH_VALUE_FLAGS = frozenset({"-p", "-l", "-i", "-o", "-F", "-J", "-L", "-R", "-D", "-W",
                               "-b", "-c", "-e", "-m", "-O", "-Q", "-S", "-E", "-B", "-I", "-P"})
 
+# These environment variables choose or redirect rsync's transport, so any of
+# them can route a copy off the host even when the destination itself is
+# allowlisted. ``RSYNC_RSH`` names the remote shell rsync runs, exactly like the
+# ``-e`` flag the guard already refuses (``ssh -oProxyCommand=…``, or any command
+# at all). ``RSYNC_CONNECT_PROG`` names the program rsync runs to open a
+# daemon connection, and ``RSYNC_PROXY`` points the daemon connection through an
+# HTTP proxy host — either one sends the data through an attacker-chosen hop.
+# They are refused inline, exported, and through a wrapper.
+_RSYNC_TRANSPORT_ENV = frozenset({"RSYNC_RSH", "RSYNC_CONNECT_PROG", "RSYNC_PROXY"})
+
+
+def is_rsync_transport_env(name):
+    """Whether ``name`` chooses or redirects rsync's transport (the remote
+    shell, the daemon-connection program, or an HTTP proxy)."""
+    return name in _RSYNC_TRANSPORT_ENV
+
 
 def _ssh_positionals(argv, value_flags):
     """Positional arguments and the option values that matter for routing."""
@@ -303,6 +343,28 @@ def _require_lab(host, prog, ctx):
 
 
 def _check_ssh_family(prog, argv, ctx):
+    if prog == "rsync":
+        for a in argv[1:]:
+            if a == "--":
+                break
+            if a == "--rsync-path" or a.startswith("--rsync-path="):
+                raise _GuardError("rsync --rsync-path runs an arbitrary command on the remote "
+                                  "host, which can forward the transferred data to an "
+                                  "unallowlisted destination; denied")
+            # ``-e``/``--rsh`` substitutes the transport with an arbitrary
+            # command, which can forward the transferred data onward even to an
+            # allowlisted host. ``e`` is rsync's only lowercase short option
+            # that does this (capital ``-E`` is ``--executability``), so any
+            # single-dash cluster containing a lowercase ``e`` is refused along
+            # with the long spellings.
+            if a == "--rsh" or a.startswith("--rsh="):
+                raise _GuardError("rsync --rsh substitutes the transport with an arbitrary "
+                                  "command, which can forward the transferred data to an "
+                                  "unallowlisted destination; denied")
+            if a.startswith("-") and not a.startswith("--") and "e" in a[1:]:
+                raise _GuardError("rsync -e substitutes the transport with an arbitrary command, "
+                                  "which can forward the transferred data to an unallowlisted "
+                                  "destination; denied")
     positionals, options = _ssh_positionals(argv, _SSH_VALUE_FLAGS)
     for flag, value in options:
         if flag == "-o" and re.match(r"(?i)^\s*(ProxyCommand|ProxyJump|LocalCommand|PermitLocalCommand)",
@@ -313,8 +375,6 @@ def _check_ssh_family(prog, argv, ctx):
                 _require_lab(hop, f"{prog} jump host", ctx)
         if flag == "-S" and prog == "scp":
             raise _GuardError("scp -S substitutes the transport program; denied")
-        if flag in ("-e", "--rsh") and prog == "rsync" and re.search(r"-J|ProxyCommand|ProxyJump", value):
-            raise _GuardError("rsync -e with a jump/proxy option; denied")
     hosts = []
     if prog == "ssh":
         if not positionals:

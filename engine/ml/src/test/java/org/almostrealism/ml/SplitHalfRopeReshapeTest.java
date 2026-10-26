@@ -121,4 +121,44 @@ public class SplitHalfRopeReshapeTest extends TestSuiteBase implements Attention
 			Assert.assertEquals("output[" + i + "]", i, output.toDouble(i), 1e-9);
 		}
 	}
+
+	/**
+	 * An odd {@code headSize} would make {@code headSize / 2} truncate, so the split-half
+	 * output would hold fewer elements than the input and silently drop data. Both reshapes
+	 * must reject it instead.
+	 */
+	@Test(timeout = 60000)
+	public void oddHeadSizeIsRejected() {
+		try {
+			reshapeToSplitHalfRope(HEADS * 3, HEADS, 3);
+			Assert.fail("reshapeToSplitHalfRope should reject an odd headSize");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			reshapeFromSplitHalfRope(HEADS, 3);
+			Assert.fail("reshapeFromSplitHalfRope should reject an odd headSize");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/** A non-positive {@code headSize} is rejected the same way an odd one is. */
+	@Test(timeout = 60000)
+	public void nonPositiveHeadSizeIsRejected() {
+		try {
+			reshapeToSplitHalfRope(0, HEADS, 0);
+			Assert.fail("reshapeToSplitHalfRope should reject a non-positive headSize");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			reshapeFromSplitHalfRope(HEADS, 0);
+			Assert.fail("reshapeFromSplitHalfRope should reject a non-positive headSize");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
 }

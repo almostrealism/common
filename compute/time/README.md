@@ -433,7 +433,10 @@ Functional interface for tick-based sequential operations. Provides:
 High-capacity (10M+ entries) GPU-accelerated time-series. Features:
 - O(1) add operations
 - Linear interpolation with custom time mapping
-- Efficient purging via cursor adjustment
+- Efficient purging via cursor adjustment; once the end cursor reaches the last slot,
+  purging also compacts the live entries to the front of storage and rebases the
+  cursors, so a series purged as it is fed only needs capacity for the entries live
+  at any one time
 - Full Producer/Computation integration
 
 ### TemporalFeatures
@@ -474,7 +477,10 @@ Configurable FIR filter. Capabilities:
 ### Common Issues
 
 **Issue**: `RuntimeException: AcceleratedTimeSeries is full`
-- **Solution**: Increase capacity or purge old data periodically
+- **Solution**: Purge old data periodically. Once the end cursor reaches the last slot,
+  `purge()` compacts live entries to the front of storage and reclaims the freed slots,
+  so a series purged as it fills needs capacity only for the entries live at any one
+  time; increasing capacity is an alternative when the live set itself is too large.
 
 **Issue**: FFT produces unexpected results
 - **Solution**: Ensure input is complex format (real, imaginary pairs) and bin count is power of 2

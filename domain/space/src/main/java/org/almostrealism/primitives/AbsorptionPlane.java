@@ -124,15 +124,6 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast, ConsoleFea
 	@Override
 	public double getHeight() { return this.h; }
 
-	/**
-	 * Sets the orientation vector pointing upward across the surface.
-	 *
-	 * @param p  {x, y, z} - The vector pointing upwards across the surface of this
-	 *           absorption plane. This vector must be orthagonal to the surface normal.
-	 */
-	@Override
-	public void setOrientation(double[] p) { this.up = p; this.across = null; }
-
 	/** No-op: absorption delay is not used by this absorber. */
 	@Override
 	public void setAbsorbDelay(double t) { }
@@ -154,9 +145,8 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast, ConsoleFea
 		if (this.energy == null)
 			this.energy = new double[this.w][this.h];
 
-		if (this.across == null)
-			this.across = new Vector(this.up).crossProduct(new Vector(normal.get().evaluate(), 0)).toArray();
-		
+		double[] across = getAcross();
+
 		if (this.image == null) {
 			this.image = new RGB[this.w][this.h];
 			
@@ -166,7 +156,7 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast, ConsoleFea
 					this.image[i][j] = new RGB(0.0, 0.0, 0.0);
 		}
 		
-		double a = x.dotProduct(new Vector(this.across)) / this.pixel;
+		double a = x.dotProduct(new Vector(across)) / this.pixel;
 		double b = x.dotProduct(new Vector(this.up)) / this.pixel;
 		a = (this.h / 2.0) - a;
 		b = (this.w / 2.0) + b;

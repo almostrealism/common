@@ -15,8 +15,8 @@
 #   Agent commits that modify ONLY test files or CI files with no
 #   production code changes. These cannot fix bugs — they can only
 #   hide failures. On a ci/... branch a commit confined to CI files is
-#   the declared work rather than a finding, matching RULE 3 of
-#   validate-agent-commit.sh; a commit that also reaches base-branch
+#   the declared work rather than a finding, matching the CI file lock
+#   (check-ci-file-lock.sh); a commit that also reaches base-branch
 #   tests is reported there as everywhere else.
 #
 # PATTERN 3: Repeated Failure Dispatch
@@ -86,9 +86,9 @@ fi
 #
 # Every "does this file exist at the merge-base" question below is
 # answered from this one-time listing rather than a per-file
-# `git cat-file -e <rev>:<path>` probe -- see validate-agent-commit.sh
-# for why that probe cannot distinguish "path absent" from "the lookup
-# itself failed" by exit code alone. A listing failure is an audit
+# `git cat-file -e <rev>:<path>` probe: for that object-name form git
+# reports the same exit code and message whether the path is absent from
+# the tree or the lookup itself failed, so the probe cannot tell them apart. A listing failure is an audit
 # error, not evidence that a file is branch-new.
 if ! MERGE_BASE_FILE_LIST=$(git ls-tree -r --name-only "$MERGE_BASE" 2>&1); then
     echo "Cannot list files at merge-base ${MERGE_BASE} — the branch cannot be audited:" >&2
@@ -101,16 +101,26 @@ if ! MERGE_BASE_FILE_LIST=$(git ls-tree -r --name-only "$MERGE_BASE" 2>&1); then
     exit 1
 fi
 
-declare -A MERGE_BASE_FILE_SET
-while IFS= read -r f; do
-    [ -n "$f" ] && MERGE_BASE_FILE_SET["$f"]=1
-done <<< "$MERGE_BASE_FILE_LIST"
+# The listing is held as a newline-delimited string rather than an
+# associative array: `declare -A` needs bash 4, and macOS still ships
+# bash 3.2 as /bin/bash, where it aborts the script outright under
+# `set -e`. Agents are told to run this check locally before staging, and
+# they run on macOS hosts, so it has to work under the oldest bash any of
+# them provides rather than only under the CI runner's.
+MERGE_BASE_FILE_SET="
+$MERGE_BASE_FILE_LIST
+"
 
-# Reports whether $1 exists at the merge-base. Membership only -- the
-# listing's own success was already checked above, so this can never
-# confuse "absent" with "lookup failed".
+# Reports whether $1 exists at the merge-base. Exact whole-line membership
+# in the listing above -- the listing's own success was already checked,
+# so this can never confuse "absent" with "lookup failed".
 merge_base_has_file() {
-    [ -n "${MERGE_BASE_FILE_SET[$1]:-}" ]
+    case "$MERGE_BASE_FILE_SET" in
+        *"
+$1
+"*) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 FINDING_COUNT=0

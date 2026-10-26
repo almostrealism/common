@@ -1,0 +1,3 @@
+run_utc	branch	window_since	workstreams_surveyed	jobs_surveyed	prs_surveyed	newest_job_seen	proposal_ids	report_path
+2026-10-19T20:15:36Z	qa/retro-20261019-195827	14 days ago	79	175	33	2026-10-19T20:01:40Z c22fbda9-1ef6-4330-8614-6aa065851f6b	retro-land-artifact,review-scope-guard,review-loop-cap,harness-git-flake,flaky-test-round,jobless-roundup	docs/qa/retrospectives/RETRO-20261019.md
+2026-10-22T01:18:20Z	qa/retro-20261022-010234	14 days ago	84	96	75	2026-10-22T01:02:37Z aff31633-27eb-4f7f-ad15-171f518ae863	copilot-review-dark,retro-survey-open-prs,review-loop-cap,flaky-test-round,harness-git-flake,jobless-roundup	docs/qa/retrospectives/RETRO-20261022.md

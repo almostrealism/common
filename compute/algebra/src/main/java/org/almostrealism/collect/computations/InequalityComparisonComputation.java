@@ -16,7 +16,10 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -29,11 +32,12 @@ import org.almostrealism.collect.PackedCollection;
  * {@link CollectionComparisonComputation} in that it carries an {@link #includeEqual}
  * flag distinguishing a strict operator ({@code <}, {@code >}) from an inclusive one
  * ({@code <=}, {@code >=}). Concrete subclasses ({@link GreaterThanCollection},
- * {@link LessThanCollection}) supply the specific relational operator by overriding
- * {@link #getExpression(io.almostrealism.collect.TraversableExpression...)} and
+ * {@link LessThanCollection}) supply only the specific relational operator by overriding
+ * {@link #compare(Expression, Expression)}, plus the per-type reconstruction in
  * {@link #generate(java.util.List)}; everything the two operators share — the
- * {@code includeEqual} flag, the expansion width, and the signature contribution —
- * lives here so that a change to any of it is made once for both operators.</p>
+ * {@code includeEqual} flag, the expansion width, the signature contribution, and
+ * the conditional-selection expression scaffold — lives here so that a change to any
+ * of it is made once for both operators.</p>
  *
  * @see CollectionComparisonComputation
  * @see GreaterThanCollection
@@ -99,5 +103,35 @@ public abstract class InequalityComparisonComputation extends CollectionComparis
 		if (signature == null) return null;
 
 		return signature + "{includeEqual:" +  includeEqual + "}";
+	}
+
+	/**
+	 * Emits the relational comparison that this operator selects on, for a single
+	 * element. The subclass returns the strict form ({@code left > right} or
+	 * {@code left < right}) or, when {@link #includeEqual} is set, the inclusive form
+	 * ({@code left >= right} or {@code left <= right}); the surrounding conditional that
+	 * chooses between the true and false values is shared and lives in
+	 * {@link #getExpression(TraversableExpression...)}.
+	 *
+	 * @param left The left-hand operand value at the current index
+	 * @param right The right-hand operand value at the current index
+	 * @return A boolean {@link Expression} that is true when the operator's relation holds
+	 */
+	protected abstract Expression<Boolean> compare(Expression<?> left, Expression<?> right);
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Builds the element-wise {@code conditional(compare(left, right), trueValue, falseValue)}
+	 * selection that both inequality operators share, delegating only the relational operator to
+	 * {@link #compare(Expression, Expression)}. The argument positions are those documented by
+	 * {@link CollectionComparisonComputation}: {@code args[1]} and {@code args[2]} are the
+	 * operands, {@code args[3]} and {@code args[4]} the true and false values.</p>
+	 */
+	@Override
+	protected CollectionExpression getExpression(TraversableExpression... args) {
+		return CollectionExpression.create(getShape(), index ->
+				conditional(compare(args[1].getValueAt(index), args[2].getValueAt(index)),
+						args[3].getValueAt(index), args[4].getValueAt(index)));
 	}
 }

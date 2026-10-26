@@ -1,0 +1,7 @@
+// Imports a resource that does not exist on the classpath, so resolution must fail clearly
+// while trying to read it.
+import "/pdsl/imports/does_not_exist.pdsl"
+
+layer missing_import_layer() -> [1, 4] {
+    identity()
+}

@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
 
@@ -66,12 +67,18 @@ import org.almostrealism.ml.midi.GRUDecoder;
  * }
  * }</pre>
  *
+ * <h2>Lifecycle</h2>
+ * <p>The generator owns its input buffer, temperature, decoder input buffer, token-loading
+ * operation, and {@link #destroy()} releases them. The
+ * {@link MoonbeamMidi} model, including the position it reads, remains the caller's and stays
+ * usable by other generators.</p>
+ *
  * @see MoonbeamMidi
  * @see AutoregressiveModel
  * @see CompoundMidiEmbedding
  * @see GRUDecoder
  */
-public class MoonbeamMidiGenerator {
+public class MoonbeamMidiGenerator implements Destroyable {
 
 	/** The generic autoregressive token-generation loop. */
 	private final AutoregressiveModel<MidiCompoundToken> inner;
@@ -109,6 +116,18 @@ public class MoonbeamMidiGenerator {
 	/** Random number generator for sampling. */
 	private final Random random;
 
+	/** The transformer input each token is embedded into. */
+	private final PackedCollection input;
+
+	/** The sampling temperature read by the decoder. */
+	private final PackedCollection temperature;
+
+	/** The transformer output handed to the decoder. */
+	private final PackedCollection decodeInput;
+
+	/** Embeds every token, ordinary or special, into {@link #input} with one compiled kernel. */
+	private final AutoregressiveModel.TokenLoader<MidiCompoundToken> loader;
+
 	/**
 	 * Create a MoonbeamMidiGenerator from a MoonbeamMidi model.
 	 *
@@ -133,21 +152,29 @@ public class MoonbeamMidiGenerator {
 		this.random = random;
 
 		int hiddenSize = config.hiddenSize;
-		PackedCollection input = new PackedCollection(new TraversalPolicy(1, hiddenSize));
-		PackedCollection temperature = new PackedCollection(1);
+		this.input = new PackedCollection(new TraversalPolicy(1, hiddenSize));
+		this.temperature = new PackedCollection(1);
+		this.decodeInput = new PackedCollection(hiddenSize);
+
+		this.loader = AutoregressiveModel.tokenLoader(
+				input, MoonbeamConfig.NUM_ATTRIBUTES,
+				(token, values) -> {
+					try (PackedCollection packed = token.pack()) {
+						values.setFrom(0, packed);
+					}
+				},
+				embedding::embedValues);
 
 		this.inner = new AutoregressiveModel<>(
 				model.getPosition(),
 				token -> {
 					model.setAttributePositions(token);
-					PackedCollection emb = embedding.embed(token).evaluate();
-					input.setFrom(0, emb, 0, hiddenSize);
+					loader.accept(token);
 				},
 				() -> model.forward(input),
 				hidden -> {
-					PackedCollection vec = new PackedCollection(hiddenSize);
-					vec.setFrom(0, hidden, 0, hiddenSize);
-					int[] decodeTokens = decoder.decode(vec, temperature.toDouble(0), topP, random);
+					decodeInput.setFrom(0, hidden, 0, hiddenSize);
+					int[] decodeTokens = decoder.decode(decodeInput, temperature.toDouble(0), topP, random);
 					return decodeToCompoundToken(decodeTokens);
 				},
 				temperature);
@@ -261,6 +288,23 @@ public class MoonbeamMidiGenerator {
 
 	/** Returns the top-p setting. */
 	public double getTopP() { return topP; }
+
+	/**
+	 * Releases the compiled position operations, the token loader, the input buffer, the
+	 * temperature and the decoder input buffer of this generator; every release is attempted
+	 * even when an earlier one fails, and the compiled operations are released before the memory
+	 * they read. The {@link MoonbeamMidi} model and its position are not released. The generator
+	 * cannot be used afterwards; a repeated call is harmless.
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.releaseAll(List.<Runnable>of(
+				inner::destroy,
+				loader::destroy,
+				input::destroy,
+				temperature::destroy,
+				decodeInput::destroy));
+	}
 
 	/**
 	 * Generate tokens for a fill region within a masked token sequence.

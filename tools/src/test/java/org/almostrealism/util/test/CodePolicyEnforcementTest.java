@@ -24,9 +24,12 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * Build enforcement test that scans all source code for policy violations.
@@ -331,6 +334,204 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 		} finally {
 			Files.deleteIfExists(testFile);
 			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector flags a {@code read(ByteBuffer)} ingest call from a file that is
+	 * not on the ingest allowlist — the host-to-device write policy's ingest surface may be used
+	 * only by the enumerated genuine deserializers.
+	 */
+	@Test
+	public void testDetectorCatchesIngestOutsideSanctionedSurface() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-ingest");
+		Path testFile = tempDir.resolve("IngestViolation.java");
+
+		String violatingCode = """
+				package test;
+				import org.almostrealism.collect.PackedCollection;
+				import java.nio.ByteBuffer;
+				public class IngestViolation {
+				    public void bad(PackedCollection dest, ByteBuffer buffer) {
+				        dest.read(buffer);
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean flagged = detector.getViolations().stream()
+					.anyMatch(v -> "INGEST_OUTSIDE_SANCTIONED_SURFACE".equals(v.getRule()));
+			Assert.assertTrue("Should flag a read(ByteBuffer) ingest call outside the allowlist",
+					flagged);
+
+			log("Detector correctly identified an ingest call outside the sanctioned surface.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector flags a host-filled buffer — {@code ByteBuffer.allocate} then
+	 * {@code putDouble} then {@code read} — as a computed value staged for ingest, the shape of
+	 * the documented policy evasion.
+	 */
+	@Test
+	public void testDetectorCatchesComputedValueStagedForIngest() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-staged");
+		Path testFile = tempDir.resolve("StagedIngestViolation.java");
+
+		String violatingCode = """
+				package test;
+				import org.almostrealism.collect.PackedCollection;
+				import java.nio.ByteBuffer;
+				public class StagedIngestViolation {
+				    public void bad(PackedCollection dest, double value) {
+				        ByteBuffer buffer = ByteBuffer.allocate(8);
+				        buffer.putDouble(value);
+				        dest.read(buffer.flip());
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean flagged = detector.getViolations().stream()
+					.anyMatch(v -> "COMPUTED_VALUE_STAGED_FOR_INGEST".equals(v.getRule()));
+			Assert.assertTrue("Should flag an allocate/put/read host-filled buffer", flagged);
+
+			log("Detector correctly identified a computed value staged for ingest.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Canonical repo-relative path of an allowlisted deserializer, used to place a fixture where
+	 * the detector's anchored ingest-allowlist matching recognizes it.
+	 */
+	private static final String ALLOWLISTED_DESERIALIZER_PATH =
+			"engine/ml/src/main/java/org/almostrealism/persist/assets/CollectionEncoder.java";
+
+	/**
+	 * Verifies that a file on the ingest allowlist — placed at the canonical repo-relative path
+	 * the allowlist names, so anchored matching recognizes it — is not reported for calling the
+	 * ingest surface, so the new rules cannot silently start reporting the genuine deserializers.
+	 */
+	@Test
+	public void testDetectorAllowsAllowlistedDeserializer() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-ingest-allow");
+		Path testFile = tempDir.resolve(ALLOWLISTED_DESERIALIZER_PATH);
+		Files.createDirectories(testFile.getParent());
+
+		String cleanCode = """
+				package test;
+				import org.almostrealism.collect.PackedCollection;
+				import java.nio.ByteBuffer;
+				public class CollectionEncoder {
+				    public void ingest(PackedCollection dest, byte[] external) {
+				        dest.read(ByteBuffer.wrap(external));
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, cleanCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean flagged = detector.getViolations().stream()
+					.anyMatch(v -> "INGEST_OUTSIDE_SANCTIONED_SURFACE".equals(v.getRule())
+							|| "COMPUTED_VALUE_STAGED_FOR_INGEST".equals(v.getRule()));
+			Assert.assertFalse("Should not flag an allowlisted deserializer's ingest read", flagged);
+
+			log("Detector correctly allowed an allowlisted deserializer.");
+
+		} finally {
+			deleteTree(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that {@code COMPUTED_VALUE_STAGED_FOR_INGEST} still fires inside an allowlisted
+	 * deserializer. Allowlisting suppresses only {@code INGEST_OUTSIDE_SANCTIONED_SURFACE}; staging
+	 * host-computed values in a buffer ({@code ByteBuffer.allocate} → {@code put*} → {@code read})
+	 * is never ingest, so it must remain a violation even here — otherwise the documented evasion
+	 * could simply be relocated into an allowlisted file. Without this fixture the negative test
+	 * above (which stages nothing) does not exercise that guarantee.
+	 */
+	@Test
+	public void testDetectorFlagsStagedBufferInsideAllowlistedDeserializer() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-ingest-staged-allow");
+		Path testFile = tempDir.resolve(ALLOWLISTED_DESERIALIZER_PATH);
+		Files.createDirectories(testFile.getParent());
+
+		String stagedCode = """
+				package test;
+				import org.almostrealism.collect.PackedCollection;
+				import java.nio.ByteBuffer;
+				public class CollectionEncoder {
+				    public void bad(PackedCollection dest, double value) {
+				        ByteBuffer buffer = ByteBuffer.allocate(8);
+				        buffer.putDouble(value);
+				        dest.read(buffer.flip());
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, stagedCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean staged = detector.getViolations().stream()
+					.anyMatch(v -> "COMPUTED_VALUE_STAGED_FOR_INGEST".equals(v.getRule()));
+			Assert.assertTrue("Staged buffer must be flagged even in an allowlisted deserializer",
+					staged);
+
+			boolean outside = detector.getViolations().stream()
+					.anyMatch(v -> "INGEST_OUTSIDE_SANCTIONED_SURFACE".equals(v.getRule()));
+			Assert.assertFalse("Allowlist must still suppress INGEST_OUTSIDE_SANCTIONED_SURFACE",
+					outside);
+
+			log("Detector correctly flagged a staged buffer inside an allowlisted deserializer.");
+
+		} finally {
+			deleteTree(tempDir);
+		}
+	}
+
+	/**
+	 * Recursively deletes a temporary directory tree, deepest paths first.
+	 *
+	 * @param root  the root of the tree to delete
+	 * @throws IOException if the tree cannot be walked or an entry cannot be deleted
+	 */
+	private void deleteTree(Path root) throws IOException {
+		if (!Files.exists(root)) return;
+
+		try (Stream<Path> walk = Files.walk(root)) {
+			walk.sorted(Comparator.reverseOrder()).forEach(path -> {
+				try {
+					Files.deleteIfExists(path);
+				} catch (IOException e) {
+					throw new UncheckedIOException(e);
+				}
+			});
 		}
 	}
 

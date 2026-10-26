@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from jvm_diagnostics import is_process_alive, run_jstat, JVMDiagnosticsError
+from jvm_diagnostics import pid_alive, run_jstat, JVMDiagnosticsError
 
 
 class MemoryMonitor:
@@ -72,7 +72,7 @@ class MemoryMonitor:
         self.timeline_path.parent.mkdir(parents=True, exist_ok=True)
 
         while not self._stop_event.is_set():
-            if not is_process_alive(self.pid):
+            if not pid_alive(self.pid):
                 break
 
             try:

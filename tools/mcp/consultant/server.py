@@ -15,7 +15,7 @@ Memory access is via the ar-memory HTTP service (see tools/mcp/memory/).
 If ar-memory is unavailable, memory features degrade gracefully.
 
 Environment variables:
-    AR_CONSULTANT_BACKEND      - "llamacpp", "ollama", "mlx", "passthrough", or "auto" (default)
+    AR_CONSULTANT_BACKEND      - "llamacpp", "ollama", "mlx", "openrouter", "passthrough", or "auto" (default)
     AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: localhost:8084 on host, host.docker.internal:8084 in containers)
     AR_CONSULTANT_MODEL        - Ollama model name (default: qwen2.5-coder:32b-instruct-q4_K_M)
     AR_CONSULTANT_MLX_MODEL    - MLX model path (default: mlx-community/Qwen2.5-Coder-32B-Instruct-4bit)
@@ -48,6 +48,7 @@ if _COMMON_DIR not in sys.path:
 
 from mcp.server.fastmcp import FastMCP
 
+from consult_evidence import TIER_UNTIERED, EvidenceList
 from docs_retriever import DocsRetriever, keyword_guidance
 from history import HistoryStore, _current_request, tracked_synthesize, tracked_tool
 from inference import (
@@ -55,7 +56,7 @@ from inference import (
 )
 from memory_client import MemoryClient
 from memory_text import (
-    format_memory_context, prefers_reformulated, present,
+    prefers_reformulated, present,
     presented_entries, projected,
 )
 
@@ -68,6 +69,18 @@ log = logging.getLogger("ar-consultant")
 
 docs = DocsRetriever()
 memory = MemoryClient()
+
+
+def _evidence(doc_results: list, memories: list) -> EvidenceList:
+    """The evidence list ar-manager's consult shares, built from this server's
+    retrieval. Notes carry no computed tier here: this server does not look
+    up branch state."""
+    evidence = EvidenceList()
+    for result in doc_results:
+        evidence.add_doc(result)
+    for entry in memories:
+        evidence.add_note(entry, TIER_UNTIERED)
+    return evidence
 llm = create_backend()
 history = HistoryStore()
 
@@ -211,7 +224,6 @@ def consult(
     else:
         doc_retrieval = docs.get_context_for_query(question)
 
-    doc_context = doc_retrieval["context"]
     doc_results = doc_retrieval["markdown_results"]
     html_refs = doc_retrieval["html_refs"]
 
@@ -221,7 +233,6 @@ def consult(
         memory.search(query=question, namespace="default", limit=3),
         reformulated=prefers_reformulated(),
     )
-    mem_context = format_memory_context(memories)
 
     # Log retrieval results
     _log_doc_results(question, doc_results)
@@ -230,7 +241,8 @@ def consult(
     # The prompt is shared with ar-manager's consult so the two cannot answer
     # the same question differently; synthesis stays on the tracked path so
     # the request history still records it.
-    prompt = build_consult_prompt(question, doc_context, mem_context, context)
+    prompt = build_consult_prompt(
+        question, _evidence(doc_results, memories), context)
     synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
 
     # Source references: markdown files used in context + HTML for exploration
@@ -474,13 +486,12 @@ def start_consultation(topic: str) -> dict:
         memory.search(query=topic, namespace="default", limit=3),
         reformulated=prefers_reformulated(),
     )
-    mem_context = format_memory_context(memories)
 
     # Log retrieval results
     _log_doc_results(topic, doc_results)
     _log_memory_results(topic, memories)
 
-    prompt = build_consult_prompt(topic, doc_context, mem_context)
+    prompt = build_consult_prompt(topic, _evidence(doc_results, memories))
     synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
 
     # A degraded turn is not part of the conversation. Recording the

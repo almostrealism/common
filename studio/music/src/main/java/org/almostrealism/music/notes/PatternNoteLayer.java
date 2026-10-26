@@ -19,6 +19,7 @@ import org.almostrealism.audio.notes.NoteAudioFilter;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Validity;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuned;
 import org.almostrealism.audio.tone.KeyboardTuning;
@@ -37,7 +38,7 @@ import java.util.function.DoubleFunction;
  * @see PatternNoteAudio
  * @see PatternNoteAudioAdapter
  */
-public class PatternNoteLayer extends PatternNoteAudioAdapter implements KeyboardTuned {
+public class PatternNoteLayer extends PatternNoteAudioAdapter implements KeyboardTuned, Validity {
 
 	/** The underlying note audio source. */
 	private final PatternNoteAudio delegate;
@@ -72,6 +73,20 @@ public class PatternNoteLayer extends PatternNoteAudioAdapter implements Keyboar
 
 	@Override
 	public NoteAudioFilter getFilter() { return filter; }
+
+	/**
+	 * A layer is only as usable as the audio it filters: it is valid exactly when its
+	 * delegate is. Without this, a layer over an unreadable sample (for example, the
+	 * reverse-playback layer of a corrupt file) would pass the selection layer's
+	 * validity filter and fail every time it is rendered.
+	 *
+	 * @return whether the delegate is valid
+	 */
+	@JsonIgnore
+	@Override
+	public boolean isValid() {
+		return Validity.valid(delegate);
+	}
 
 	@Override
 	protected PatternNoteAudio getProvider(KeyPosition<?> target,

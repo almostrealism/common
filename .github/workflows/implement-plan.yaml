@@ -1,0 +1,461 @@
+name: "Implement Plan"
+
+# The manual "implement the plan" trigger of goal-driven release automation,
+# as a reusable workflow. A person who has read a plan branch's plan and
+# approved it dispatches the caller on that branch; this submits a coding
+# agent that implements every goal the plan sets and proves each one with
+# tests.
+#
+# This repository's Verify Completion workflow is a caller, and another
+# repository calls it the same way, so both run one implementation:
+#
+#   on:
+#     workflow_dispatch:
+#       inputs:
+#         plan_file:
+#           description: "Path to the plan file (auto-detected if omitted)"
+#           required: false
+#           type: string
+#   concurrency:
+#     group: verify-completion-${{ github.ref_name }}
+#     cancel-in-progress: false
+#   jobs:
+#     implement:
+#       uses: almostrealism/common/.github/workflows/implement-plan.yaml@master
+#       with:
+#         plan-file: ${{ inputs.plan_file }}
+#         cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+#       secrets:
+#         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+#
+# Implementation starts when the plan is approved, not from a push or the
+# pipeline. In this repository approval is marking the plan's draft pull
+# request ready for review, which the Plan Ready workflow (ready-plan.yaml)
+# turns into a dispatch of this workflow's caller; a consumer without that
+# workflow dispatches the caller by hand. Before approval a plan branch only
+# gets a review that improves its documents and never carries out the plan.
+#
+# It refuses to submit a second implementation while the branch's workstream
+# already has a job pending or running — the register-workstream job's
+# in-flight check against the controller, which gates build-prompt and so the
+# submission. That holds across every dispatch path (the ready-for-review
+# trigger, a manual dispatch, project_verify_branch) and across separate
+# workflow runs, which the per-branch concurrency group alone does not.
+#
+# Every run registers (or updates) the branch's FlowTree workstream, and
+# applies the workstream settings the plan declares for itself: a
+# <plans directory>/<prefix>-workstream.yaml file whose prefix matches the
+# branch name without "project/" (see tools/ci/plan_workstream_config.py).
+# Applying them here, when a person dispatches the implementation, means
+# approving the plan also approves the environment it asks for — Metal, for
+# instance.
+#
+# Trust: manual dispatch is not a code-integrity boundary, so nothing from
+# the dispatched branch ever runs. Every script and prompt template comes
+# from an explicit checkout of the framework repository at framework-ref.
+# The branch is read only as data: its changed file names (detect-plan) and
+# its plans directory (resolve-plan-settings). The jobs that hold the
+# controller token (register-workstream, verify) run nothing else, and the
+# prompt is still built in a separate, token-free job (build-prompt) and
+# handed over as an artifact that submit-staged-request.sh reads through a
+# key allowlist, so a change to how the prompt is built cannot reach the
+# token either.
+#
+# This guards the token against the branch's files, not against the branch's
+# copy of the caller: workflow_dispatch runs the caller's definition from the
+# dispatched ref, so a branch that edits it controls what runs with the
+# secret. That exposure rests on the same mitigations as pull request runs;
+# see "No job that runs pull request code holds controller credentials" in
+# .github/CLAUDE.md.
+
+on:
+  workflow_call:
+    inputs:
+      plan-file:
+        description: "Path to the plan file (auto-detected if empty)"
+        required: false
+        default: ""
+        type: string
+      plans-directory:
+        description: "Directory a plan branch adds its plan document to"
+        required: false
+        default: "docs/plans"
+        type: string
+      framework-repository:
+        description: "The framework repository, owner/name: where the scripts and prompts come from"
+        required: false
+        default: "almostrealism/common"
+        type: string
+      framework-ref:
+        description: "Framework branch the scripts and prompts are run from"
+        required: false
+        default: "master"
+        type: string
+      controller-url:
+        description: "FlowTree controller base URL"
+        required: false
+        default: "https://flowtree.almostrealism.ai"
+        type: string
+      cf-access-client-id:
+        description: "Cloudflare Access service token client ID for the controller"
+        required: false
+        default: ""
+        type: string
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET:
+        description: "Cloudflare Access service token client secret for the controller"
+        required: false
+
+jobs:
+  # ── Phase 1: Detect the plan file ─────────────────────────────────
+  # Reads the branch's changed file names; runs nothing from it.
+  detect-plan:
+    if: github.ref_name != github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    outputs:
+      plan_file: ${{ steps.detect.outputs.plan_file }}
+      is_new_plan: ${{ steps.detect.outputs.is_new_plan }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # plan_file is free text from a dispatch input, so it is read through the
+      # environment rather than interpolated into the script.
+      - name: Detect plan file
+        id: detect
+        env:
+          PLAN_FILE_INPUT: ${{ inputs.plan-file }}
+          PLANS_DIRECTORY: ${{ inputs.plans-directory }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          # Use explicit input if provided
+          if [ -n "$PLAN_FILE_INPUT" ]; then
+            PLAN="$PLAN_FILE_INPUT"
+            if [ ! -f "$PLAN" ]; then
+              echo "::error::Plan file not found: $PLAN"
+              exit 1
+            fi
+            echo "plan_file=$PLAN" >> "$GITHUB_OUTPUT"
+
+            # Check if this file is new relative to the default branch
+            if git diff --name-only --diff-filter=A "origin/${DEFAULT_BRANCH}...HEAD" -- "$PLAN" | grep -q .; then
+              echo "is_new_plan=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_new_plan=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          # Auto-detect: find new .md files in the plans directory relative to
+          # the default branch
+          NEW_PLANS=$(git diff --name-only --diff-filter=A "origin/${DEFAULT_BRANCH}...HEAD" -- "${PLANS_DIRECTORY%/}/*.md" \
+            | grep -v 'MANAGER_LOG.md' || true)
+
+          COUNT=$(echo "$NEW_PLANS" | grep -c '.' || true)
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::No new plan document found in ${PLANS_DIRECTORY} and no plan_file input provided"
+            exit 1
+          elif [ "$COUNT" -gt 1 ]; then
+            echo "::warning::Multiple new plan documents found; using the first one"
+          fi
+
+          PLAN=$(echo "$NEW_PLANS" | head -1)
+          echo "plan_file=$PLAN" >> "$GITHUB_OUTPUT"
+          echo "is_new_plan=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Detected plan file: $PLAN"
+
+  # ── Phase 2a: Resolve the plan's workstream settings (token-free) ──
+  # Reading the settings means installing PyYAML from the network, and code a
+  # package runs on install or import can rewrite the checked-out scripts or
+  # append to $GITHUB_ENV/$GITHUB_PATH, both of which persist into later steps
+  # of the same job. So the settings are resolved here, in a job that never
+  # holds the controller token, and only the validated JSON crosses into
+  # register-workstream, as job outputs read through `env:`.
+  resolve-plan-settings:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      settings_file: ${{ steps.plan_settings.outputs.settings_file }}
+      required_labels: ${{ steps.plan_settings.outputs.required_labels }}
+
+    steps:
+      # The resolver is the framework's copy, never the dispatched branch's,
+      # so a branch cannot change how its own settings are validated.
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.framework-repository }}
+          ref: ${{ inputs.framework-ref }}
+          persist-credentials: false
+
+      # The branch's plans directory as data: only those files, from the
+      # dispatched commit — the one every other job in this run uses — so a
+      # push made after the plan was approved cannot change the settings the
+      # implementation runs with. Nothing in it is run.
+      - name: Fetch the branch's plans as data
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: branch-plans
+          sparse-checkout: ${{ inputs.plans-directory }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # An invalid settings file fails the job, which stops the implementation
+      # from being submitted on a machine the plan did not ask for. The branch
+      # name is used only to match the settings file.
+      - name: Resolve the plan's workstream settings
+        id: plan_settings
+        env:
+          BRANCH: ${{ github.ref_name }}
+          PLANS_DIRECTORY: ${{ inputs.plans-directory }}
+        run: |
+          set -eo pipefail
+          python3 -m pip install --quiet pyyaml
+          if [ -d "branch-plans/${PLANS_DIRECTORY}" ]; then
+            SETTINGS=$(python3 ./tools/ci/plan_workstream_config.py "$BRANCH" "branch-plans/${PLANS_DIRECTORY}") \
+              || { echo "$SETTINGS"; exit 1; }
+          else
+            echo "The dispatched commit has no ${PLANS_DIRECTORY} — no plan settings are applied"
+            SETTINGS='{}'
+          fi
+          echo "Plan workstream settings: $SETTINGS"
+          echo "settings_file=$(echo "$SETTINGS" | jq -r '.file // empty')" >> "$GITHUB_OUTPUT"
+          echo "required_labels=$(echo "$SETTINGS" | jq -c '.requiredLabels // empty')" >> "$GITHUB_OUTPUT"
+
+  # ── Phase 2b: Register workstream and apply the plan's settings ────
+  # Runs on every dispatch: registration is idempotent, and an existing
+  # workstream is updated with the plan document and the plan's settings.
+  register-workstream:
+    needs: [detect-plan, resolve-plan-settings]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    outputs:
+      # Whether the branch's workstream already has a job pending or running.
+      # build-prompt gates on it so a second implementation is never dispatched
+      # beside one already in flight — from this trigger, a manual dispatch, or
+      # project_verify_branch.
+      inflight: ${{ steps.inflight.outputs.inflight }}
+
+    steps:
+      # register-workstream.sh takes its target from the environment
+      # (BRANCH/BASE_BRANCH/PLAN_FILE), so this job needs nothing from the
+      # branch: only the framework's scripts are checked out.
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.framework-repository }}
+          ref: ${{ inputs.framework-ref }}
+          persist-credentials: false
+
+      - name: Register workstream
+        id: register
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          REQUIRED_LABELS_JSON: ${{ needs.resolve-plan-settings.outputs.required_labels }}
+        run: bash ./tools/ci/register-workstream.sh
+
+      # The controller's in-flight view for this workstream: if a job is already
+      # pending or running on it, the implementation is not dispatched again.
+      # This is the one guard that holds across all three dispatch paths (this
+      # trigger, a manual Verify Completion, project_verify_branch) and across
+      # separate workflow runs, which the per-branch concurrency group alone
+      # does not — concurrency serialises runs of this workflow, not the agent
+      # job a finished run left running.
+      - name: Check for an in-flight job
+        id: inflight
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          WORKSTREAM_ID: ${{ steps.register.outputs.workstream_id }}
+        run: bash ./tools/ci/workstream-idle.sh
+
+      # plan_file derives from the dispatch input, so it and the ref name reach
+      # the summary through the environment rather than interpolated into the
+      # script, where either could execute.
+      - name: Summary
+        if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+          PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
+          SETTINGS_FILE: ${{ needs.resolve-plan-settings.outputs.settings_file }}
+          REQUIRED_LABELS: ${{ needs.resolve-plan-settings.outputs.required_labels }}
+          INFLIGHT: ${{ steps.inflight.outputs.inflight }}
+          INFLIGHT_COUNT: ${{ steps.inflight.outputs.inflight_count }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          echo "## Register Workstream" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          # This step runs even when an earlier one failed; only a successful
+          # job registered the workstream and applied the plan's settings.
+          if [ "$JOB_STATUS" != "success" ]; then
+            echo "Registration of the FlowTree workstream for branch \`$BRANCH\` **failed** ($JOB_STATUS)," >> "$GITHUB_STEP_SUMMARY"
+            echo "so the implementation was not submitted. See the failed step's log." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "Registered a FlowTree workstream for branch \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "with planning document \`$PLAN_FILE\`." >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$SETTINGS_FILE" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Applied \`$SETTINGS_FILE\`: required labels \`$REQUIRED_LABELS\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          # When the workstream already has work in flight, build-prompt and
+          # verify are skipped; say so here so the refusal is not read as a
+          # silent success.
+          if [ "$INFLIGHT" = "true" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**No implementation was dispatched:** the workstream already has ${INFLIGHT_COUNT:-a} job(s) pending or running." >> "$GITHUB_STEP_SUMMARY"
+            echo "Wait for that work to finish before approving the plan again." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ── Phase 3: Build the implementation prompt (token-free) ─────────
+  # The prompt is staged as an artifact for the submit job below, the same way
+  # auto-review stages its request in analysis.yaml, so the job that holds the
+  # token never runs a prompt builder.
+  build-prompt:
+    needs: [detect-plan, resolve-plan-settings, register-workstream]
+    # Run after detect-plan succeeds, and only if registration succeeded (or was
+    # skipped) — not if it failed, and not if the run was cancelled.
+    # `!cancelled()` (not `always()`) so a cancelled run stops here instead of
+    # building and submitting the implementation anyway; register-workstream is
+    # allowed only when it succeeded or was skipped, so its `cancelled` result
+    # blocks this job rather than passing a `!= 'failure'` test.
+    # resolve-plan-settings must itself have succeeded: when it fails (an
+    # invalid plan settings file, an unreadable dispatched commit) the
+    # register-workstream job that needs it is *skipped*, not failed, and the
+    # skipped-registration allowance above would otherwise submit the
+    # implementation without the labels the plan declared.
+    #
+    # The `inflight` guard refuses to build (and so to submit) when the
+    # workstream already has a job pending or running: a second implementation
+    # beside one in flight is exactly the double dispatch this prevents. An
+    # empty value — register-workstream skipped — is not 'true', so the
+    # skipped-registration path still proceeds.
+    if: |
+      !cancelled()
+      && needs.detect-plan.result == 'success'
+      && needs.resolve-plan-settings.result == 'success'
+      && (needs.register-workstream.result == 'success'
+          || needs.register-workstream.result == 'skipped')
+      && needs.register-workstream.outputs.inflight != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.framework-repository }}
+          ref: ${{ inputs.framework-ref }}
+          persist-credentials: false
+
+      - name: Build prompt
+        env:
+          BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: bash ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Stage submit request
+        env:
+          BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          DESCRIPTION: "Implement the plan"
+          PROTECT_TEST_FILES: "false"
+        run: bash ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" verify-request
+
+      - name: Upload staged request
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: verify-request
+          path: verify-request/
+          retention-days: 1
+
+  # ── Phase 4: Submit the implementation job (trusted) ──────────────
+  # Holds the controller token, so it runs only the framework's scripts. The
+  # prompt comes in as the staged artifact, and submit-staged-request.sh reads
+  # it through a key allowlist that ignores BASH_ENV/PATH/LD_PRELOAD and the
+  # like.
+  verify:
+    needs: [detect-plan, build-prompt]
+    # `!cancelled()` (not `always()`) so cancelling the run after build-prompt
+    # has staged its artifact stops the submission instead of letting the
+    # token-bearing job run anyway. build-prompt must have succeeded.
+    if: |
+      !cancelled()
+      && needs.build-prompt.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.framework-repository }}
+          ref: ${{ inputs.framework-ref }}
+          persist-credentials: false
+
+      - name: Download staged request
+        uses: actions/download-artifact@v4
+        with:
+          name: verify-request
+          path: staged-request
+
+      - name: Submit agent job
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          # The target comes from this run's event, never from the staged
+          # request.
+          BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          PROTECT_TEST_FILES: "false"
+        run: bash ./tools/ci/submit-staged-request.sh staged-request
+
+      # plan_file derives from the dispatch input, so it and the ref name reach
+      # the summary through the environment rather than interpolated into the
+      # script, where either could execute.
+      - name: Summary
+        if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+          PLAN_FILE: ${{ needs.detect-plan.outputs.plan_file }}
+        run: |
+          echo "## Implement Plan" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "A FlowTree coding agent job was submitted to implement and verify the goals" >> "$GITHUB_STEP_SUMMARY"
+          echo "on branch \`$BRANCH\` as described in" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$PLAN_FILE\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The agent will:" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. Implement any unfinished goals from the plan" >> "$GITHUB_STEP_SUMMARY"
+          echo "2. Verify every goal is fully implemented" >> "$GITHUB_STEP_SUMMARY"
+          echo "3. Ensure each goal is proven correct by meaningful tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "4. Check that no existing tests were weakened or disabled" >> "$GITHUB_STEP_SUMMARY"

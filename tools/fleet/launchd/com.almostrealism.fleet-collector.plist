@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd service for the fleet metrics collector on a macOS runner host.
+
+  A template: render it with tools/fleet/launchd/render.sh, which fills the
+  @PLACEHOLDERS@ and writes the result under FLEET_HOME, then register it
+  once as an administrator with
+  flowtree/runtime/agent/macos/register-daemon.sh (see tools/fleet/README.md).
+
+  A LaunchDaemon rather than a LaunchAgent, for the reason the native agent
+  is one: the account it runs as need not have a login session, and the
+  system domain accepts a bootstrap from root regardless of session. It runs
+  as FLEET_USER — an account that runs no CI job and no coding-agent job, so
+  the database credential in FLEET_HOME/store-url (mode 600) is not readable
+  from either — and samples every 15 seconds, writing each sample to the
+  local JSONL under FLEET_HOME/logs and to the central store.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.almostrealism.fleet-collector</string>
+    <key>UserName</key>
+    <string>@FLEET_USER@</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>@PYTHON@</string>
+        <string>-m</string>
+        <string>tools.fleet.collector</string>
+        <string>--host</string>
+        <string>@HOST@</string>
+        <string>--log-dir</string>
+        <string>@FLEET_HOME@/logs</string>
+        <string>--store-url-file</string>
+        <string>@FLEET_HOME@/store-url</string>
+        <string>--agent-domain-target</string>
+        <string>system</string>
+        <string>--disk-path</string>
+        <string>@DISK_PATH@</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- `python -m tools.fleet.collector` resolves the package from the
+             checkout; PATH covers ps/top/launchctl/vm_stat and nothing
+             another account can populate. -->
+        <key>PYTHONPATH</key>
+        <string>@CHECKOUT@</string>
+        <key>PATH</key>
+        <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>@FLEET_USER_HOME@</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>@CHECKOUT@</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>Nice</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>@FLEET_HOME@/logs/collector.log</string>
+    <key>StandardErrorPath</key>
+    <string>@FLEET_HOME@/logs/collector.log</string>
+</dict>
+</plist>

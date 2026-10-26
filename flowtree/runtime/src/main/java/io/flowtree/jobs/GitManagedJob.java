@@ -24,7 +24,6 @@ import org.almostrealism.io.HostFingerprint;
 import org.almostrealism.io.JobOutput;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -228,11 +227,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     private GitCommitHandler commitHandler;
 
+    /** Reports what became of this job's work: committed, dropped, or left behind. */
+    private JobWorkOutcome workOutcome = new JobWorkOutcome(this);
+
     /**
      * Test-only hook: injects the result of a {@link GitCommitHandler} run
      * without driving the full {@link #run()} lifecycle (clone, branch
      * preparation, tampering detection), so status-reporting logic that
-     * reads {@link #commitHandler} — {@link #hasAllChangesDropped()},
+     * reads {@link #commitHandler} — {@link JobWorkOutcome#allChangesDropped()},
      * {@link #createEvent(Exception)} — can be exercised directly against a
      * handler a test ran itself.
      *
@@ -240,6 +242,17 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     void setCommitHandlerForTesting(GitCommitHandler commitHandler) {
         this.commitHandler = commitHandler;
+    }
+
+    /**
+     * Replaces the view that classifies what became of this job's work. Call
+     * before the job runs. A seam for tests that run the whole job against a
+     * classification carrying a known defect; production code never calls it.
+     *
+     * @param workOutcome the outcome view, built over this job
+     */
+    void setWorkOutcome(JobWorkOutcome workOutcome) {
+        this.workOutcome = workOutcome;
     }
 
     /**
@@ -287,10 +300,32 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     protected abstract void doWork();
 
     /**
+     * Returns whether this job commits and pushes at all.
+     *
+     * <p>Distinct from {@link #validateChanges()}, which answers whether work
+     * that was <em>meant</em> to be committed may be. A job that never intended
+     * to commit — {@link ShellCommandJob} runs a command against a repository
+     * without mutating it — says so here, and neither the validation gate nor
+     * the unpublished-work check applies to it. Answering the two questions
+     * with one {@code false} made a deliberate opt-out indistinguishable from
+     * a rejected change set.</p>
+     *
+     * @return {@code true} when the job's work is expected to reach a commit
+     */
+    protected boolean performsGitOperations() {
+        return true;
+    }
+
+    /**
      * Validates changes made by {@link #doWork()} before git operations.
      * Subclasses can override to implement pre-commit validation logic.
      *
-     * @return true to proceed with git operations, false to abort
+     * <p>Returning {@code false} fails the job: it means work that was meant
+     * to be committed was rejected, and the changes are left in the working
+     * tree. A job that does not commit by design overrides
+     * {@link #performsGitOperations()} instead.</p>
+     *
+     * @return true to proceed with git operations, false to fail the job
      * @throws Exception if validation encounters an error
      */
     protected boolean validateChanges() throws Exception {
@@ -402,6 +437,17 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     public final void run() {
         Exception error = null;
         WorkspaceLock workspaceLock = new WorkspaceLock(taskId);
+        // False when no lock was taken at all, and when one was attempted and
+        // failed; see JobWorkOutcome#capture(boolean).
+        boolean workspaceHeld = false;
+
+        // Liveness independent of agent messages, for the whole run; see
+        // HarnessHeartbeatSender.
+        HarnessHeartbeatSender heartbeat = new HarnessHeartbeatSender(
+                HarnessHeartbeatSender.heartbeatUrl(resolveWorkstreamUrl(), taskId),
+                this::postJson, HostFingerprint.node(),
+                ProcessHandle.current().pid(), null, null);
+        heartbeat.start();
 
         try {
             if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
@@ -425,9 +471,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 String lockTarget = workingDirectory != null && !workingDirectory.isEmpty()
                     ? workingDirectory
                     : WorkspaceResolver.resolve(defaultWorkspacePath, repoUrl);
-                workspaceLock.acquire(lockTarget);
+                workspaceHeld = workspaceLock.acquire(lockTarget);
                 repoSetup = new GitRepositorySetup(this);
                 workingDirectory = repoSetup.resolveAndClone();
+            } else if (workingDirectory != null && !workingDirectory.isEmpty()) {
+                // A directory-only job clones nothing, but it shares the tree
+                // with every other job pointed at the same directory just the
+                // same — including for the completion snapshot taken below.
+                workspaceHeld = workspaceLock.acquire(workingDirectory);
             }
 
             // Clone/sync dependent repos alongside the primary repo
@@ -488,15 +539,27 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 // onInvalidFilesDetected(); if litter persists, the job fails.
                 enforceNoInvalidFiles();
 
-                if (validateChanges()) {
+                if (!performsGitOperations()) {
+                    log("This job does not commit; skipping git operations");
+                } else {
+                    if (!validateChanges()) {
+                        throw new IllegalStateException(
+                            "Job failed: change validation rejected this job's work, so nothing"
+                                + " was committed or pushed. The changes are still in the working"
+                                + " tree on the agent host. See the validation diagnostics above"
+                                + " for what rejected them.");
+                    }
+
                     commitHandler = new GitCommitHandler(this);
                     commitHandler.handle(repoSetup.hasMergeConflicts());
                     List<String> depPaths = repoSetup.getDependentRepoPaths();
                     commitHandler.handleDependentRepos(depPaths);
-                } else {
-                    warn("Change validation failed - skipping git operations");
                 }
             }
+
+            // Last thing inside the lock: the completion event is built after
+            // it is released, by which time the tree may belong to another job.
+            workOutcome.capture(workspaceHeld);
 
         } catch (Exception e) {
             warn("Error: " + e.getMessage(), e);
@@ -504,6 +567,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         } finally {
             workspaceLock.release();
             fireJobCompleted(error);
+            heartbeat.stop();
             future.complete(null);
         }
     }
@@ -512,38 +576,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * Fails the job when invalid files (currently any {@code .bin} file) are
      * present in the working tree of the primary repo or any dependent repo.
      *
-     * <p>Scans each working tree directly (not via git, so {@code .gitignore} is
-     * deliberately bypassed — ignored litter is still litter), excluding any
-     * {@code .bin} file that already exists on that repo's base branch, which is
-     * pre-existing content the job did not create. If any invalid file remains,
-     * {@link #onInvalidFilesDetected(List)} is invoked to give a subclass one
-     * chance to clean up, then the trees are re-scanned. If invalid files remain
-     * after that — or no corrective handler is configured — an exception is
-     * thrown so the whole job is marked failed and no git operations occur.</p>
+     * <p>Delegates to {@link InvalidFileDetector#enforceNone(GitManagedJob, List)},
+     * which owns every part of the decision.</p>
      *
      * @throws IllegalStateException if invalid files remain after correction
      */
     private void enforceNoInvalidFiles() {
-        List<String> dependentRepoPaths = repoSetup != null
-                ? repoSetup.getDependentRepoPaths() : Collections.emptyList();
-        InvalidFileDetector detector = new InvalidFileDetector(this, dependentRepoPaths);
-        detector.detect();
-        if (!detector.isDetected()) {
-            return;
-        }
-
-        warn("Invalid files detected in working tree: " + detector.getDescription());
-        if (onInvalidFilesDetected(detector.getInvalidFiles())) {
-            detector.detect();
-        }
-
-        if (detector.isDetected()) {
-            throw new IllegalStateException(
-                "Job failed: invalid files left in the repository working tree: "
-                    + detector.getDescription()
-                    + ". Binary (.bin) files must never be left behind — remove them "
-                    + "or generate them outside the repository.");
-        }
+        InvalidFileDetector.enforceNone(this, repoSetup != null
+                ? repoSetup.getDependentRepoPaths() : Collections.emptyList());
     }
 
     /**
@@ -581,17 +621,21 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     protected JobCompletionEvent createEvent(Exception error) {
         if (error != null) {
-            return JobCompletionEvent.failed(
-                taskId, getTaskString(),
-                error.getMessage(), error
-            );
-        } else if (hasAllChangesDropped()) {
+            return TransientGitException.isTransient(error)
+                ? JobCompletionEvent.degraded(taskId, getTaskString(),
+                        TransientGitException.describe(error))
+                : JobCompletionEvent.failed(taskId, getTaskString(), error.getMessage(), error);
+        } else if (workOutcome.allChangesDropped()) {
             return JobCompletionEvent.degraded(taskId, getTaskString(),
                 "All changes were dropped by staging guardrails: "
                     + String.join("; ", commitHandler.getSkippedFiles()));
-        } else {
-            return JobCompletionEvent.success(taskId, getTaskString());
         }
+
+        String unpublished = workOutcome.describeUnpublishedWork();
+        if (unpublished != null) {
+            return JobCompletionEvent.failed(taskId, getTaskString(), unpublished, null);
+        }
+        return JobCompletionEvent.success(taskId, getTaskString());
     }
 
     /**
@@ -616,6 +660,17 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     protected boolean hasAgentCommitted() {
         return tampering != null && tampering.hasCommitted();
+    }
+
+    /**
+     * Returns whether this job reverted commits the agent made itself,
+     * destroying what they contained; see
+     * {@link GitTamperingDetector#hasRevertedWork()}.
+     *
+     * @return {@code true} when agent commits were reverted during this job
+     */
+    protected boolean hasRevertedAgentWork() {
+        return tampering != null && tampering.hasRevertedWork();
     }
 
     /**
@@ -666,6 +721,18 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     protected List<String> getMergeConflictFiles() {
         if (repoSetup == null) return new ArrayList<>();
         return repoSetup.getConflictFiles();
+    }
+
+    /**
+     * Returns the base-branch commit the harness merged into the target branch
+     * and left in progress for the agent to resolve, or {@code null} when it
+     * left no merge in progress; see {@link GitRepositorySetup#getMergeParent()}.
+     * Not {@code final} so tests can supply a merge they performed themselves.
+     *
+     * @return the recorded merge parent SHA, or {@code null}
+     */
+    String getHarnessMergeParent() {
+        return repoSetup != null ? repoSetup.getMergeParent() : null;
     }
 
     // ==================== Job Interface ====================
@@ -1148,48 +1215,83 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      *
      * <p>Not {@code final} so tests can stub the result without a real git
      * working tree, the same testability pattern
-     * {@code CodingAgentJob.hasUncommittedChanges()} already uses.</p>
+     * {@link #hasUncommittedChanges()} already uses.</p>
      *
      * @return the staging result today's changes would produce: which files
      *         would be staged, and which would be skipped and why
      */
     StagingResult previewStaging() {
-        List<String> changedFiles = GitOperations.getChangedFiles(workingDirectory);
-        if (changedFiles.isEmpty()) {
-            return new StagingResult(Collections.emptyList(), Collections.emptyList());
-        }
-
-        FileStagingConfig config = FileStagingConfig.builder()
-                .excludedPatterns(getAllExcludedPatterns())
-                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
-                .protectTestFiles(protectTestFiles && GitCommitHandler.isSensitiveFileProtectionEnabled(this))
-                .baseBranch(baseBranch)
-                .maxFileSizeBytes(maxFileSizeBytes)
-                .build();
-        File workDir = workingDirectory != null ? new File(workingDirectory) : new File(".");
-        return new FileStager().evaluateFiles(changedFiles, config, workDir, asGitOperations());
+        return GitCommitHandler.previewStaging(this);
     }
 
     /**
-     * Returns whether every file the agent changed was dropped by a staging
-     * guardrail: the working tree had changes to stage, but none of them
-     * survived {@link FileStager}'s guardrails, so nothing was committed.
+     * Returns whether this job committed anything, in the primary repository
+     * or a dependent one; see {@link GitCommitHandler#hasAnyCommit()}.
      *
-     * <p>This is different from "nothing to do" (an agent session that made
-     * no changes at all): here the agent DID produce a change, and it was
-     * silently discarded. A job in this state must never report
-     * {@link JobCompletionEvent.Status#SUCCESS} — see
-     * {@link #createEvent(Exception)} and
-     * {@link CodingAgentJobEvent#forJob}.</p>
-     *
-     * @return {@code true} when every changed file was skipped and nothing
-     *         was staged or committed
+     * @return {@code true} when a commit was made in any repository
      */
-    protected boolean hasAllChangesDropped() {
-        return commitHandler != null
-                && !commitHandler.getSkippedFiles().isEmpty()
-                && commitHandler.getStagedFiles().isEmpty()
-                && commitHandler.getCommitHash() == null;
+    protected boolean hasPublishedCommit() {
+        return commitHandler != null && commitHandler.hasAnyCommit();
+    }
+
+    /**
+     * Returns the handler that ran this job's git operations, or {@code null}
+     * when none did.
+     *
+     * @return the commit handler, or {@code null}
+     */
+    GitCommitHandler commitHandler() {
+        return commitHandler;
+    }
+
+    /**
+     * Returns this job's work-outcome view.
+     *
+     * <p>Exposed so callers ask it directly. It answers a growing family of
+     * related questions — what was published, what was dropped, what may have
+     * been lost — and giving each one a pass-through on this class spreads one
+     * concern across two files and grows the larger of them every time the
+     * family gains a member.</p>
+     *
+     * @return the outcome view; never {@code null}
+     */
+    JobWorkOutcome workOutcome() {
+        return workOutcome;
+    }
+
+    /**
+     * Returns the commit message the agent authored for its own changes, or
+     * {@code null} when it authored none.
+     *
+     * <p>An authored message declares that the job has changes worth
+     * describing, which is why {@link JobWorkOutcome#describeUnpublishedWork()} treats one
+     * with no commit behind it as work that went missing. The base job has no
+     * such protocol; {@link CodingAgentJob} reads {@code commit.txt}.</p>
+     *
+     * <p>A predicate rather than the text, because the text is not what the
+     * question needs and asking for it loses the answer: a message that
+     * exists but cannot be read comes back indistinguishable from one that
+     * was never written, and the job then looks like it had nothing to
+     * publish.</p>
+     *
+     * @return {@code true} when the agent authored a commit message
+     */
+    protected boolean hasAuthoredCommitMessage() {
+        return false;
+    }
+
+    /**
+     * Returns whether the primary repository or any dependent repository was
+     * observed to hold uncommitted changes outside the standard exclusion set;
+     * see {@link JobWorkOutcome#observedUncommittedChanges()}. A tree that
+     * could not be read reads as clean here, which is what enforcement rules
+     * deciding whether there is work to act on want.
+     * Package-private so enforcement rules and test stubs can override it.
+     *
+     * @return {@code true} when uncommitted changes were observed anywhere
+     */
+    boolean hasUncommittedChanges() {
+        return workOutcome.observedUncommittedChanges();
     }
 
     // ==================== Status Reporting ====================
@@ -1222,14 +1324,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @return the resolved URL, or the original URL if no resolution is needed
      */
     protected String resolveWorkstreamUrl() {
-        String url = workstreamUrl;
-
-        String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-        if (url != null && rootHost != null && !rootHost.isEmpty() && url.contains("0.0.0.0")) {
-            url = url.replace("0.0.0.0", rootHost);
-        }
-
-        return url;
+        return WorkspaceResolver.resolveWorkstreamUrl(workstreamUrl);
     }
 
     /**
@@ -1261,19 +1356,22 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     // ==================== Git Utilities ====================
 
     /**
-     * Runs git and other subprocess commands for this job. Created lazily so
-     * that jobs which never issue a git command never pay for one.
-     */
-    private GitCommandExecutor commandExecutor;
-
-    /**
-     * Returns the lazily-created {@link GitCommandExecutor} for this job.
+     * Returns a {@link GitOperations} that runs commands in
+     * {@code workingDirectory} under this job's task id and git identity.
+     * Every repository this job drives — its own working directory, each
+     * dependent repository, a clone target — goes through an instance from
+     * here, so all of them run git under the same identity. A new instance is
+     * built per call, so it always reflects the job's current configuration.
      *
-     * @return the command executor
+     * @param workingDirectory the directory to run commands in; {@code null}
+     *                         uses the JVM's current working directory
+     * @return git operations bound to the directory and this job's identity
      */
-    private GitCommandExecutor commandExecutor() {
-        if (commandExecutor == null) commandExecutor = new GitCommandExecutor(this);
-        return commandExecutor;
+    GitOperations gitOperations(String workingDirectory) {
+        GitOperations git = new GitOperations(workingDirectory, getTaskId());
+        git.setGitUserName(getGitUserName());
+        git.setGitUserEmail(getGitUserEmail());
+        return git;
     }
 
     /**
@@ -1284,7 +1382,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the git command is interrupted
      */
     String getCurrentBranch() throws IOException, InterruptedException {
-        return executeGitWithOutput("rev-parse", "--abbrev-ref", "HEAD").trim();
+        return gitOperations(getWorkingDirectory()).getCurrentBranch();
     }
 
     /**
@@ -1326,13 +1424,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if a git command is interrupted
      */
     boolean branchExists(String branch) throws IOException, InterruptedException {
-        // Check local branches
-        int result = executeGit("show-ref", "--verify", "--quiet", "refs/heads/" + branch);
-        if (result == 0) return true;
-
-        // Check remote branches
-        result = executeGit("show-ref", "--verify", "--quiet", "refs/remotes/origin/" + branch);
-        return result == 0;
+        return gitOperations(getWorkingDirectory()).branchExists(branch);
     }
 
     /**
@@ -1386,7 +1478,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /**
      * Executes a git sub-command in the {@link #workingDirectory} and returns
-     * its exit code. Delegates to {@link GitCommandExecutor#executeGit}.
+     * its exit code. Delegates to {@link GitOperations#execute}.
      *
      * @param args git sub-command and its arguments (e.g. {@code "commit", "-m", "msg"})
      * @return the process exit code (0 on success)
@@ -1394,13 +1486,13 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     int executeGit(String... args) throws IOException, InterruptedException {
-        return commandExecutor().executeGit(args);
+        return gitOperations(getWorkingDirectory()).execute(args);
     }
 
     /**
      * Executes a git sub-command in the {@link #workingDirectory} and returns
      * its combined standard-output and standard-error as a string. Delegates
-     * to {@link GitCommandExecutor#executeGitWithOutput}.
+     * to {@link GitOperations#executeWithOutput}.
      *
      * <p>Unlike {@link #executeGit(String...)}, the exit code is not checked;
      * callers that need to detect failure should inspect the returned string
@@ -1412,13 +1504,13 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     String executeGitWithOutput(String... args) throws IOException, InterruptedException {
-        return commandExecutor().executeGitWithOutput(args);
+        return gitOperations(getWorkingDirectory()).executeWithOutput(args);
     }
 
     /**
      * Executes an arbitrary command and returns its output. Used for
      * non-git commands like {@code gh}. Delegates to
-     * {@link GitCommandExecutor#executeCommandWithOutput}.
+     * {@link GitOperations#executeCommandWithOutput}.
      *
      * @param command the command and its arguments
      * @return the combined stdout and stderr of the command
@@ -1426,7 +1518,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * @throws InterruptedException if the calling thread is interrupted while waiting
      */
     String executeCommandWithOutput(String... command) throws IOException, InterruptedException {
-        return commandExecutor().executeCommandWithOutput(command);
+        return gitOperations(getWorkingDirectory()).executeCommandWithOutput(command);
     }
 
     // ==================== Encoding ====================

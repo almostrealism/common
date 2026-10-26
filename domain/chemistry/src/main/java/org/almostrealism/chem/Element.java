@@ -653,7 +653,7 @@ public enum Element implements Atomic {
 			return Collections.unmodifiableList(Arrays.asList(
 				Caesium, Barium, Lanthanum, Cerium, Praseodymium, Neodymium, Promethium,
 				Samarium, Europium, Gadolinium, Terbium, Dysprosium, Holmium, Erbium,
-				Thallium, Ytterbium, Lutetium, Hafnium, Tantalum, Tungsten, Rhenium,
+				Thulium, Ytterbium, Lutetium, Hafnium, Tantalum, Tungsten, Rhenium,
 				Osmium, Iridium, Platinum, Gold, Mercury, Thallium, Lead, Bismuth,
 				Polonium, Astatine, Radon));
 		}
@@ -662,7 +662,7 @@ public enum Element implements Atomic {
 		public static List<Element> seventh() {
 			return Collections.unmodifiableList(Arrays.asList(
 				Francium, Radium, Actinium, Thorium, Protactinium, Uranium, Neptunium,
-				Polonium, Americium, Curium, Berkelium, Californium, Einsteinium,
+				Plutonium, Americium, Curium, Berkelium, Californium, Einsteinium,
 				Fermium, Mendelevium, Nobelium, Lawrencium, Rutherfordium, Dubnium,
 				Seaborgium, Bohrium, Hassium, Meitnerium, Darmstadtium, Roentgenium,
 				Copernicium, Nihonium, Flerovium, Moscovium, Livermorium, Tennessine,
@@ -776,7 +776,7 @@ public enum Element implements Atomic {
 		/** Returns elements in Group 17 (halogens). @return F, Cl, Br, I, At, Ts */
 		public static List<Element> seventeenth() {
 			return Collections.unmodifiableList(Arrays.asList(
-				Fluorine, Chlorine, Iodine, Astatine, Tennessine));
+				Fluorine, Chlorine, Bromine, Iodine, Astatine, Tennessine));
 		}
 
 		/** Returns elements in Group 18 (noble gases). @return He, Ne, Ar, Kr, Xe, Rn, Og */

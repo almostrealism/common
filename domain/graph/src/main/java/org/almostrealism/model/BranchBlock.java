@@ -17,6 +17,7 @@
 package org.almostrealism.model;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
@@ -25,6 +26,8 @@ import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.DefaultGradientPropagation;
+import org.almostrealism.layers.Learning;
+import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.layers.Tracking;
 
 import java.util.ArrayList;
@@ -34,9 +37,9 @@ import java.util.function.Supplier;
 
 /**
  * A {@link Block} that distributes a single forward input to multiple parallel child
- * {@link CellularPropagation} branches and aggregates their backward gradients.
+ * blocks and aggregates their backward gradients.
  *
- * <p>During the forward pass every {@link #append(CellularPropagation) appended} child
+ * <p>During the forward pass every {@link #append(Block) appended} child
  * receives the same input producer. Any downstream receptor set on the entry cell also
  * receives the input directly.</p>
  *
@@ -48,9 +51,12 @@ import java.util.function.Supplier;
  * @see SequentialBlock
  * @author Michael Murray
  */
-public class BranchBlock implements Block, Tracking {
+public class BranchBlock implements Block, Learning, Tracking {
 	/** The common input/output shape for this branch point. */
 	private final TraversalPolicy shape;
+
+	/** The parameter update strategy propagated to all child blocks that implement {@link Learning}. */
+	private ParameterUpdate<PackedCollection> parameterUpdate;
 
 	/** The lazily constructed entry cell returned by {@link #getForward()}. */
 	private Cell<PackedCollection> entry;
@@ -64,8 +70,8 @@ public class BranchBlock implements Block, Tracking {
 	/** The lazily constructed backward cell returned by {@link #getBackward()}. */
 	private Cell<PackedCollection> backwards;
 
-	/** The child propagation units whose forward cells receive input and backward cells provide gradients. */
-	private List<CellularPropagation<PackedCollection>> children;
+	/** The child blocks whose forward cells receive input and backward cells provide gradients. */
+	private List<Block> children;
 
 	/** Accumulated gradient sum from all child backward passes. */
 	private final PackedCollection gradient;
@@ -114,6 +120,24 @@ public class BranchBlock implements Block, Tracking {
 		return new OperationList("BranchBlock Setup");
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Stores the update and propagates it to every child branch that implements {@link Learning},
+	 * so a weight computed inside a branch (the key/value projection of cross-attention, say) trains
+	 * when the branch is fed from an auxiliary input rather than the main chain.</p>
+	 */
+	@Override
+	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
+		this.parameterUpdate = update;
+
+		children.forEach(child -> {
+			if (child instanceof Learning) {
+				((Learning) child).setParameterUpdate(update);
+			}
+		});
+	}
+
 	/** {@inheritDoc} */
 	@Override
 	public TraversalPolicy getInputShape() {
@@ -127,11 +151,11 @@ public class BranchBlock implements Block, Tracking {
 	}
 
 	/**
-	 * Returns an unmodifiable view of the child propagation units appended to this block.
+	 * Returns an unmodifiable view of the child blocks appended to this block.
 	 *
-	 * @return an unmodifiable list of child {@link CellularPropagation} instances
+	 * @return an unmodifiable list of child {@link Block} instances
 	 */
-	public List<CellularPropagation<PackedCollection>> getChildren() {
+	public List<Block> getChildren() {
 		return Collections.unmodifiableList(children);
 	}
 
@@ -203,19 +227,34 @@ public class BranchBlock implements Block, Tracking {
 	}
 
 	/**
-	 * Appends a child propagation unit to this branch.
+	 * Appends a child block to this branch.
 	 *
 	 * <p>The child's backward cell is wired to push its gradient into the shared
-	 * {@link #aggregator} for accumulation.</p>
+	 * {@link #aggregator} for accumulation. If this branch already holds a {@link ParameterUpdate}
+	 * and the child implements {@link Learning}, the child receives it too.</p>
 	 *
-	 * @param <T> the concrete type of the child propagation
+	 * @param <T> the concrete type of the child block
 	 * @param l   the child to append
 	 * @return {@code l}, for fluent chaining
 	 */
-	public <T extends CellularPropagation<PackedCollection>> T append(T l) {
+	public <T extends Block> T append(T l) {
 		children.add(l);
 		l.getBackward().setReceptor(aggregator);
+		if (parameterUpdate != null && l instanceof Learning) {
+			((Learning) l).setParameterUpdate(parameterUpdate);
+		}
 		return l;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Propagates the requirements to every child block appended to this branch, so a
+	 * requirement applied to the branch point reaches the layers inside each branch.</p>
+	 */
+	@Override
+	public void setComputeRequirements(List<ComputeRequirement> requirements) {
+		children.forEach(child -> child.setComputeRequirements(requirements));
 	}
 
 	/**

@@ -18,12 +18,11 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.ExpressionMatrix;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexSequence;
-import io.almostrealism.relation.Delegated;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -63,9 +62,9 @@ import org.almostrealism.io.ConsoleFeatures;
  * // Get value at index 5
  * Expression<Double> value = squared.getValueAt(e(5)); // Returns 25
  *
- * // Use with collection framework
- * CollectionExpression<?> collection = ...;
- * TraversableExpression<Double> traversable = TraversableExpression.traverse(collection);
+ * // Use with a kernel argument
+ * ArrayVariable<?> argument = ...;
+ * TraversableExpression<?> traversable = argument.getTraversableExpression();
  * if (traversable != null) {
  *     Expression<Double> first = traversable.getValueAt(e(0));
  * }
@@ -117,17 +116,21 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 	/**
 	 * Determines if the specified index is contained in this expression's valid index set.
 	 *
-	 * <p>The default implementation throws {@link UnsupportedOperationException}.
-	 * Subclasses should override to provide index bounds checking.
+	 * <p>Membership means that the index addresses an element this expression defines: for
+	 * an ordered collection, an element with a physical position. It does not depend on the
+	 * value of the element, so a member may hold zero; an index that is not a member reads
+	 * as zero.</p>
+	 *
+	 * <p>A traversable expression defines a value at every non-negative index, so the default
+	 * returns {@code index >= 0}. Types that know their extent, or that carry a
+	 * {@link TraversalOrdering}, override this to say more (see {@link Shape}).</p>
 	 *
 	 * @param index an {@link Expression} representing the index to test
 	 * @return an {@link Expression} evaluating to true if the index is valid
-	 * @throws UnsupportedOperationException by default
 	 */
 	@Override
 	default Expression<Boolean> containsIndex(Expression<Integer> index) {
-		// TODO  exploit unique non-zero offset to determine this?
-		throw new UnsupportedOperationException();
+		return index.greaterThanOrEqual(0);
 	}
 
 	/**
@@ -142,6 +145,8 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 	 *   <li>If the local index has a limit of 1, returns 0 (trivially unique)</li>
 	 *   <li>Creates an {@link ExpressionMatrix} mapping global/local indices to target indices</li>
 	 *   <li>Checks if columns follow a recognizable sequence pattern</li>
+	 *   <li>Returns null if the value has no symbolic form ({@link #getValueAt(Expression)}
+	 *       returns null) or is only a reference to a variable</li>
 	 *   <li>Evaluates actual values to find unique non-zero positions</li>
 	 * </ol>
 	 *
@@ -157,8 +162,8 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 
 		// The gather-collapse analysis below materialises one expression per matrix entry (via
 		// ExpressionMatrix.populate -> Expression.withIndex, whose simplification also calls
-		// upperBound etc.). Each is a traversal of the target, so for the deep shared-DAG gradients
-		// produced on this branch the cost (counted over paths) is exponential in depth and explodes
+		// upperBound etc.). Each is a traversal of the target, so for deep shared-DAG gradient
+		// targets the cost (counted over paths) is exponential in depth and explodes
 		// at compile time. Bound it by tree depth (with a node-count backstop) and fall back to the
 		// normal compilation path for pathological targets; legitimate gather targets are shallow.
 		if (targetIndex.treeDepth() > ScopeSettings.maxGatherAnalysisDepth ||
@@ -185,7 +190,10 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 			warn("localIndex is irrelevant");
 		}
 
-		if (getValueAt(CollectionExpressionAdapter.generateTemporaryIndex()) instanceof InstanceReference) {
+		// A value with no symbolic form (a deferred producer) or one that is only a
+		// reference to a variable has no per-entry structure to analyse
+		Expression<T> sample = getValueAt(DefaultIndex.temporary());
+		if (sample == null || sample.isVariableReference()) {
 			return null;
 		}
 
@@ -221,50 +229,5 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 	 */
 	default boolean isTraversable() {
 		return true;
-	}
-
-	/**
-	 * Attempts to obtain a {@link TraversableExpression} from an arbitrary object.
-	 *
-	 * <p>This utility method handles several cases:
-	 * <ul>
-	 *   <li>If the object is already a {@link TraversableExpression} and is traversable,
-	 *       returns it directly</li>
-	 *   <li>If the object implements {@link Delegated}, recursively checks the delegate</li>
-	 *   <li>Otherwise, returns null</li>
-	 * </ul>
-	 *
-	 * @param o the object to convert to a traversable expression
-	 * @return a {@link TraversableExpression} if conversion is possible, or null otherwise
-	 */
-	static TraversableExpression traverse(Object o) {
-		if (o instanceof TraversableExpression) {
-			if (!((TraversableExpression) o).isTraversable()) return null;
-			return (TraversableExpression) o;
-		} else if (o instanceof Delegated) {
-			return traverse(((Delegated) o).getDelegate());
-		} else {
-			return null;
-		}
-	}
-
-	/**
-	 * Checks if two {@link TraversableExpression} instances are equal.
-	 *
-	 * <p>This utility method handles null values safely:
-	 * <ul>
-	 *   <li>Returns true if both references point to the same object</li>
-	 *   <li>Returns false if either is null (but not both)</li>
-	 *   <li>Otherwise delegates to {@link Object#equals(Object)}</li>
-	 * </ul>
-	 *
-	 * @param a the first expression to compare
-	 * @param b the second expression to compare
-	 * @return {@code true} if the expressions are equal; {@code false} otherwise
-	 */
-	static boolean match(TraversableExpression<?> a, TraversableExpression<?> b) {
-		if (a == b) return true;
-		if (a == null || b == null) return false;
-		return a.equals(b);
 	}
 }

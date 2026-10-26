@@ -18,12 +18,14 @@ package io.almostrealism.collect;
 
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.sequence.Index;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Multiple;
 
 import java.util.function.Supplier;
@@ -84,6 +86,24 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	}
 
 	/**
+	 * Constructs a new {@code CollectionVariable} with global physical scope and Double type
+	 * for a producer whose values have the given {@link Shape}. The variable takes that shape
+	 * with the {@link Shape#getOrdering() ordering} the producer reports when the variable is
+	 * created, which is the ordering the producer has bound to the arguments of the kernel
+	 * being compiled if its scope has been prepared. The ordering is part of the variable's
+	 * shape from then on, so the variable keeps reading through its own kernel's arguments even
+	 * if the producer is later prepared for another kernel.
+	 *
+	 * @param name     the name identifier for this variable
+	 * @param source   the shape of the values supplied by the producer
+	 * @param producer the supplier that produces evaluable instances of this collection
+	 */
+	public CollectionVariable(String name, Shape<?> source,
+							  Supplier<Evaluable<? extends Multiple<T>>> producer) {
+		this(name, source.getShape().withOrder(source.getOrdering()), producer);
+	}
+
+	/**
 	 * Constructs a new {@code CollectionVariable} with specified scope and type.
 	 *
 	 * @param name  the name identifier for this variable
@@ -109,19 +129,28 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Determines whether this collection variable has a fixed element count.
-	 * This method checks if the underlying producer implements {@link Countable}
-	 * and reports a fixed count, unwrapping any delegation layers if present.
+	 * This method checks if the {@link #getProducerDelegate() producer delegate}
+	 * implements {@link Countable} and reports a fixed count.
 	 *
 	 * @return {@code true} if the element count is fixed and known at compile time,
 	 *         {@code false} otherwise
 	 */
 	public boolean isFixedCount() {
-		Supplier p = getProducer();
-		if (p instanceof Delegated) {
-			p = (Producer) ((Delegated<?>) p).getDelegate();
-		}
+		return Countable.isFixedCount(getProducerDelegate());
+	}
 
-		return Countable.isFixedCount(p);
+	/**
+	 * Returns the {@link #getProducerDelegate() producer delegate} as a
+	 * {@link TraversableExpression}, if it is one. When it is, the values of this
+	 * variable are defined by that expression rather than by references to this
+	 * variable's own memory.
+	 *
+	 * @return the traversable producer delegate, or {@code null} if the values of this
+	 *         variable are references to its own memory
+	 */
+	public TraversableExpression<Double> getTraversableProducer() {
+		Supplier<?> producer = getProducerDelegate();
+		return producer instanceof TraversableExpression ? (TraversableExpression<Double>) producer : null;
 	}
 
 	/**
@@ -189,34 +218,26 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 *   <li>Delegating to the underlying {@link TraversableExpression} if the producer supports it</li>
 	 *   <li>Handling single-element shapes specially</li>
 	 *   <li>Applying modular arithmetic for fixed-count collections</li>
-	 *   <li>Transforming indices according to the shape's traversal order</li>
+	 *   <li>Transforming indices according to the shape's traversal order, reading zero for
+	 *       an index that ordering does not contain (an absent element of a compact or sparse
+	 *       ordering), as the host read path does</li>
 	 * </ul>
+	 *
+	 * <p>Falling back to this variable's own references when the
+	 * {@link #getTraversableProducer() traversable producer} returns {@code null} should not
+	 * be necessary, but some implementations of {@link TraversableExpression} wrap other
+	 * types that may or may not be traversable themselves.</p>
 	 *
 	 * @param index the index expression specifying which element to access
 	 * @return an expression representing the Double value at the specified index
 	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		Supplier producer = getProducer();
-
-		if (producer instanceof Delegated) {
-			producer = (Producer) ((Delegated<?>) producer).getDelegate();
-		}
-
-		// TODO  This process of falling back when TraversableExpression
-		// TODO  returns null shouldn't really be necessary, but there
-		// TODO  are currently some implementations of TraversableExpression
-		// TODO  that wrap other types, and it isn't known whether those
-		// TODO  types are TraversableExpressions or not.
-		Expression<Double> result = null;
-
-		if (producer instanceof TraversableExpression) {
-			result = ((TraversableExpression<Double>) producer).getValueAt(index);
-		}
-
+		TraversableExpression<Double> producer = getTraversableProducer();
+		Expression<Double> result = producer == null ? null : producer.getValueAt(index);
 		if (result != null) return result;
 
-		boolean fixedCount = Countable.isFixedCount(getProducer());
+		boolean fixedCount = isFixedCount();
 
 		if (getShape().getTotalSize() == 1 && fixedCount) {
 			return (Expression) reference(e(0));
@@ -225,12 +246,36 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 				index = index.toInt().imod(getShape().getTotalSize());
 			}
 
-			if (getShape().getOrder() != null) {
-				index = getShape().getOrder().indexOf(index);
+			TraversalOrdering order = getShape().getOrder();
+			if (order == null) {
+				return (Expression) reference(index);
 			}
 
-			return (Expression) reference(index);
+			return Mask.of(order.containsIndex(index), (Expression) reference(order.indexOf(index)));
 		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Membership is decided by the ordering of the {@link #getShape() shape}, through which
+	 * this variable is read, so it agrees with {@link #getValueAt(Expression)}.</p>
+	 */
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		TraversalOrdering order = getShape().getOrder();
+		return order == null ? CollectionExpression.super.containsIndex(index) : order.containsIndex(index);
+	}
+
+	/**
+	 * A collection variable is itself a {@link TraversableExpression}, so it answers
+	 * with itself whenever it reports that it is traversable.
+	 *
+	 * @return this variable, or {@code null} if it is not traversable
+	 */
+	@Override
+	public TraversableExpression<?> getTraversableExpression() {
+		return isTraversable() ? this : null;
 	}
 
 	/**
@@ -246,37 +291,41 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
-		Supplier producer = getProducer();
+		TraversableExpression<Double> producer = getTraversableProducer();
 
-		if (producer instanceof Delegated) {
-			producer = (Producer) ((Delegated<?>) producer).getDelegate();
-		}
-
-		if (producer instanceof TraversableExpression) {
-			return ((TraversableExpression) producer).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
+		if (producer != null) {
+			return producer.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 		}
 
 		return CollectionExpression.super.uniqueNonZeroOffset(globalIndex, localIndex, targetIndex);
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the values of this variable are references to its own memory, the
+	 * dependence is detected precisely as a reference to this variable. When they are
+	 * defined by a {@link #getTraversableProducer() traversable producer} instead, a
+	 * possible dependence is reported.</p>
+	 */
+	@Override
+	public boolean isReferencedBy(Expression<?> e) {
+		return getTraversableProducer() != null || e.containsReference(this);
+	}
+
+	/**
 	 * Determines whether this collection variable algebraically matches another expression.
-	 * Two collection variables match if their underlying producers are both {@link Algebraic}
-	 * and report a match. Otherwise, falls back to the default {@link CollectionExpression}
+	 * This variable matches any other {@link Variable} with which it
+	 * {@link #hasMatchingProducer has matching producers}. Otherwise, falls back to the default {@link CollectionExpression}
 	 * matching logic.
 	 *
-	 * @param other the other algebraic expression to compare against
-	 * @param <A>   the type of algebraic expression
+	 * @param other the other computation to compare against
 	 * @return {@code true} if the expressions match algebraically, {@code false} otherwise
 	 */
 	@Override
-	public <A extends Algebraic> boolean matches(A other) {
-		if (other instanceof CollectionVariable) {
-			Supplier<?> a = getProducer();
-			Supplier<?> b = ((CollectionVariable) other).getProducer();
-			if (a instanceof Algebraic && b instanceof Algebraic) {
-				return ((Algebraic) a).matches((Algebraic) b);
-			}
+	public boolean matches(Computable other) {
+		if (other instanceof Variable && hasMatchingProducer((Variable<?, ?>) other)) {
+			return true;
 		}
 
 		return CollectionExpression.super.matches(other);
@@ -302,9 +351,10 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Factory method to create an appropriate array variable for the given producer.
-	 * If the producer or its delegate implements {@link Shape}, creates a
-	 * {@code CollectionVariable} with the corresponding shape. Otherwise, creates
-	 * a standard {@link ArrayVariable}.
+	 * If the producer implements {@link Shape}, or it is {@link Delegated} and its
+	 * {@link Delegated#getDelegate() delegate} implements {@link Shape}, creates a
+	 * {@code CollectionVariable} with the corresponding shape. Otherwise, creates a
+	 * standard {@link ArrayVariable}.
 	 *
 	 * @param name the name identifier for the variable
 	 * @param p    the supplier that produces evaluable instances
@@ -314,12 +364,9 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	public static <T> ArrayVariable<T> create(String name,
 											  Supplier<Evaluable<? extends Multiple<T>>> p) {
-		if (p instanceof Shape) {
-			return new CollectionVariable(name, ((Shape) p).getShape(), p);
-		} else if (p instanceof Delegated && ((Delegated) p).getDelegate() instanceof Shape) {
-			return new CollectionVariable(name, ((Shape) ((Delegated) p).getDelegate()).getShape(), p);
-		} else {
-			return new ArrayVariable<>(name, p);
-		}
+		Object shaped = p instanceof Delegated && !(p instanceof Shape) ? ((Delegated<?>) p).getDelegate() : p;
+		return shaped instanceof Shape
+				? new CollectionVariable(name, (Shape<?>) shaped, p)
+				: new ArrayVariable<>(name, p);
 	}
 }

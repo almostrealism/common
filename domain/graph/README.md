@@ -2,6 +2,10 @@
 
 The Graph Module provides the foundational architecture for building neural network layers and computation graphs in Almost Realism. It implements a cell-based design that enables flexible composition of forward and backward propagation paths, supporting both inference and training with automatic differentiation.
 
+> **Backpropagation internals:** how `DefaultGradientPropagation` turns each layer's `OUT`-reduced
+> `delta` into an input gradient and per-weight gradients, and how those feed `ModelOptimizer`, are
+> documented in [Automatic Differentiation](../../docs/internals/automatic-differentiation.md).
+
 ## Purpose
 
 This module exists to:
@@ -47,6 +51,7 @@ operation.get().run();  // Execute the computation
 
 **Block** - Composable neural network unit with forward/backward propagation
 **SequentialBlock** - Container for multiple blocks in sequence
+**AccumulationBlock** - Applies several blocks to the same input and sums their outputs (built by `LayerRoutingFeatures.accumBlocks`); the backward pass reaches every child
 **Model** - Top-level neural network container
 
 ## What It Provides
@@ -179,6 +184,7 @@ Block combined = block1.product(block2);  // Element-wise multiply
 ### Model Classes
 - **Block** - `org.almostrealism.model.Block`
 - **SequentialBlock** - `org.almostrealism.model.SequentialBlock`
+- **AccumulationBlock** - `org.almostrealism.model.AccumulationBlock`
 - **Model** - `org.almostrealism.model.Model`
 - **CompiledModel** - `org.almostrealism.model.CompiledModel`
 
@@ -336,15 +342,41 @@ CellularLayer layer = norm(shape(c, v), c, groups, trainable);  // ❌
 
 ### RMS Normalization
 
-RMS normalization (used in LLaMA, Qwen, etc.) normalizes by root-mean-square without centering:
+RMS normalization (used in LLaMA, Qwen, etc.) normalizes by root-mean-square without centering.
+The **last axis** of `weights` is the normalized vector length: each contiguous run of that many
+features in the input is treated as one row and normalized by its own root-mean-square, so a
+batch of multiple rows (e.g. a sequence of token positions) normalizes each row independently.
+The full extent of `weights` (`getShape().getTotalSize()`) is the span over which the scale and
+optional bias are then applied. With 1-D weights of `n` elements this is the usual RMSNorm of
+each `n`-feature vector; with `[heads, headSize]` weights each head's `headSize` slice is
+normalized separately while every head keeps its own scale — the per-head query/key normalization
+of Qwen3-style attention. Any `biases` must have as many elements as the weights:
 
 ```java
 // RMSNorm with weights
 CellularLayer layer = rmsnorm(weights, ComputeRequirement.GPU);
 
-// RMSNorm with explicit size
-CellularLayer layer = rmsnorm(shape, size, weights, eps);
+// RMSNorm with explicit epsilon
+CellularLayer layer = rmsnorm(shape, weights, eps);
 ```
+
+### Selecting Normalization by Checkpoint Family
+
+When a builder assembles blocks from checkpoint weights and the checkpoint may use either
+family, pass a `NormalizationType` instead of calling `norm()`/`rmsnorm()` directly:
+
+```java
+import org.almostrealism.layers.NormalizationType;
+
+// Routes to rmsnorm() or norm() depending on the checkpoint's normalization family
+Function<TraversalPolicy, CellularLayer> factory =
+        norm(NormalizationType.RMS, weights, biases, eps);
+CellularLayer layer = factory.apply(shape);
+```
+
+`NormalizationType.LAYER` centers features on their mean before dividing by the standard
+deviation; `NormalizationType.RMS` divides by the root mean square without centering. See
+`NormalizationLayerFeatures#norm(NormalizationType, PackedCollection, PackedCollection, double, ComputeRequirement...)`.
 
 ### Common Pitfalls
 
@@ -366,6 +398,8 @@ The graph module provides built-in support for LoRA, enabling parameter-efficien
 | `AdapterConfig` | Configuration for which layers to adapt and hyperparameters |
 | `LowRankAdapterSupport` | Interface for models that support LoRA fine-tuning |
 | `ProjectionFactory` | Factory abstraction for creating dense vs LoRA layers |
+| `DenseProjectionFactory` | `ProjectionFactory` that creates standard dense layers |
+| `LoRAProjectionFactory` | `ProjectionFactory` that wraps targeted projections with LoRA and delegates the rest to a fallback |
 
 ### Basic Usage
 
@@ -410,7 +444,9 @@ AdapterConfig config = new AdapterConfig()
 
 ### Using ProjectionFactory
 
-`ProjectionFactory` allows attention methods to create either dense or LoRA layers:
+`ProjectionFactory` allows attention methods to create either dense or LoRA layers. The
+static factories return the named implementations `DenseProjectionFactory` and
+`LoRAProjectionFactory`:
 
 ```java
 // Standard dense layers (default)

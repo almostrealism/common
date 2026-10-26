@@ -179,6 +179,17 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 	}
 
 	/**
+	 * Performs element-wise equality comparison, returning 1.0 for true and 0.0 for false.
+	 *
+	 * @param a the first collection to compare
+	 * @param b the second collection to compare
+	 * @return a {@link CollectionProducer} that generates 1.0 where a == b, 0.0 otherwise
+	 */
+	default CollectionProducer equals(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return equals(a, b, c(1.0), c(0.0));
+	}
+
+	/**
 	 * Performs element-wise greater-than comparison, returning 1.0 for true and 0.0 for false.
 	 *
 	 * @param a the first collection to compare

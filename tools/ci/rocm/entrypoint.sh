@@ -265,7 +265,21 @@ echo "Registering with ${SCOPE_LABEL} as '${RUNNER_NAME}' [${ALL_LABELS}]..."
     --work "${RUNNER_WORKDIR}" \
     --replace \
     --unattended \
-    --ephemeral
+    --ephemeral \
+    --disableupdate
+
+# --disableupdate: the agent must never self-update inside this container.
+#
+# Without it, an image whose agent is one release behind updates on EVERY job,
+# because the container is ephemeral and the update is discarded with it. The
+# update is applied the moment the job's result is reported: the listener exits
+# to relaunch itself, the relaunched listener finds its ephemeral registration
+# already gone ("Failed to create a session. The runner registration has been
+# deleted from the server") and exits again. Jobs caught in that hand-off were
+# left "in progress" on GitHub for hours after this log recorded "completed
+# with result: Succeeded" — the lane's "timeouts" of 2026-09. Freshness comes
+# from rebuilding the image (install-runner.sh resolves the current release),
+# not from the agent patching itself mid-lifecycle.
 
 # ---------- Graceful shutdown ----------
 cleanup() {

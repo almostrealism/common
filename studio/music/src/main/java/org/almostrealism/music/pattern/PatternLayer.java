@@ -113,7 +113,15 @@ public class PatternLayer {
 	}
 
 	/**
-	 * Returns elements whose position falls within {@code [start, end)}.
+	 * Returns elements with at least one onset within {@code [start, end)}.
+	 *
+	 * <p>An element sounds at every position enumerated by
+	 * {@link PatternElement#getPositions()} — one per repetition — so presence in
+	 * the range is decided by {@link PatternElement#isPresent(double, double)},
+	 * not by the base position alone. An element whose base position precedes
+	 * {@code start} is still returned when one of its later repetitions falls in
+	 * the range, which is what callers that expand {@link PatternElement#getPositions()}
+	 * (such as {@link PatternLayerManager#nextNotePosition(double)}) require.</p>
 	 *
 	 * @param start the inclusive start position
 	 * @param end   the exclusive end position
@@ -121,7 +129,7 @@ public class PatternLayer {
 	 */
 	public List<PatternElement> getElements(double start, double end) {
 		return elements.stream()
-				.filter(e -> e.getPosition() >= start && e.getPosition() < end)
+				.filter(e -> e.isPresent(start, end))
 				.collect(Collectors.toList());
 	}
 

@@ -18,7 +18,6 @@ package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.Algebraic;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.Absolute;
@@ -30,8 +29,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.util.DescribableParent;
 import org.almostrealism.algebra.computations.ScalarMatrixComputation;
-import org.almostrealism.calculus.DeltaFeatures;
-import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
@@ -39,18 +36,16 @@ import org.almostrealism.collect.computations.CollectionExponentialComputation;
 import org.almostrealism.collect.computations.CollectionLogarithmComputation;
 import org.almostrealism.collect.computations.CollectionMinusComputation;
 import org.almostrealism.collect.computations.CollectionProductComputation;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.collect.computations.CollectionProviderProducer;
+import org.almostrealism.collect.computations.CollectionQuotientComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.EpsilonConstantComputation;
-import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.SingleConstantComputation;
 import org.almostrealism.io.Console;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalDouble;
 import java.util.function.Predicate;
-import java.util.stream.Stream;
 
 /**
  * Factory interface for arithmetic and mathematical operations on collections.
@@ -105,15 +100,16 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * corresponding elements across all input collections.
 	 * 
 	 * <p>This method includes optimizations for constant operations:
-	 * when all operands are {@link SingleConstantComputation} instances,
-	 * the method computes the sum directly and returns a new constant
-	 * computation, avoiding the overhead of the full computation pipeline.</p>
+	 * when every operand reports a uniform constant value via
+	 * {@link Algebraic#getConstant()}, the method computes the sum directly and
+	 * returns a new constant computation, avoiding the overhead of the full
+	 * computation pipeline.</p>
 	 *
 	 * @param operands the list of collections to add together
 	 * @return a CollectionProducer that generates the element-wise sum
 	 * @throws IllegalArgumentException if any operand is null
-	 * 
-	 * @see SingleConstantComputation
+	 *
+	 * @see Algebraic#getConstant()
 	 *
 	 * <pre>{@code
 	 * // Add three vectors together
@@ -136,8 +132,8 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			throw new IllegalArgumentException();
 		}
 
-		if (operands.stream().allMatch(o -> o instanceof SingleConstantComputation)) {
-			double value = operands.stream().mapToDouble(o -> ((SingleConstantComputation) o).getConstantValue()).sum();
+		if (operands.stream().allMatch(o -> Algebraic.getConstant(o).isPresent())) {
+			double value = operands.stream().mapToDouble(o -> Algebraic.getConstant(o).getAsDouble()).sum();
 
 			return CollectionFeatures.getInstance().compute((shape, args) -> new SingleConstantComputation(shape, value),
 					args -> String.join(" + ", CollectionFeatures.getInstance().applyParentheses(args)),
@@ -207,12 +203,12 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 *
 	 * @param a the minuend (value to subtract from)
 	 * @param b the subtrahend (value to subtract)
-	 * @return a {@link CollectionProducerComputation} that performs epsilon-aware subtraction
+	 * @return a {@link CollectionProducer} that performs epsilon-aware subtraction
 	 * 
 	 * @see EpsilonConstantComputation
 	 * @see #equals(Producer, Producer, Producer, Producer)
 	 */
-	default CollectionProducerComputation subtractIgnoreZero(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+	default CollectionProducer subtractIgnoreZero(Producer<PackedCollection> a, Producer<PackedCollection> b) {
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
 
@@ -228,7 +224,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		}
 
 		CollectionProducer difference = CollectionFeatures.getInstance().equals(a, b, new EpsilonConstantComputation(shape), add(a, minus(b)));
-		return (CollectionProducerComputation) CollectionFeatures.getInstance().equals(a, c(0.0), zeros(shape), difference);
+		return CollectionFeatures.getInstance().equals(a, c(0.0), zeros(shape), difference);
 	}
 
 	/**
@@ -268,7 +264,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * <p>This method includes several optimizations:</p>
 	 * <ul>
 	 *   <li>Identity element detection (multiplication by 1.0)</li>
-	 *   <li>Constant multiplication optimization using {@link SingleConstantComputation}</li>
+	 *   <li>Constant multiplication optimization for operands with a known constant value</li>
 	 *   <li>When both operands are constants, computes the result directly</li>
 	 *   <li>Scalar constant multiplication optimization</li>
 	 * </ul>
@@ -278,8 +274,8 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * @param b the second collection to multiply
 	 * @param shortCircuit optional pre-computed result for optimization
 	 * @return a {@link CollectionProducer} that generates the element-wise product
-	 * 
-	 * @see SingleConstantComputation
+	 *
+	 * @see Algebraic#getConstant()
 	 *
 	 * <pre>{@code
 	 * // Multiply with potential optimization
@@ -309,28 +305,42 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			return zeros(outputShape(a, b));
 		}
 
-		if (checkComputable(a) && checkComputable(b)) {
-			if (shape(a).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, a)) {
-				return withShortCircuit(CollectionFeatures.getInstance().c(b), shortCircuit);
-			} else if (shape(b).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, b)) {
-				return withShortCircuit(CollectionFeatures.getInstance().c(a), shortCircuit);
-			} else if (a instanceof SingleConstantComputation && b instanceof SingleConstantComputation) {
-				double value = ((SingleConstantComputation) a).getConstantValue() * ((SingleConstantComputation) b).getConstantValue();
-				return constant(outputShape(a, b), value);
-			}
+		OptionalDouble constantA = Algebraic.getConstant(a);
+		OptionalDouble constantB = Algebraic.getConstant(b);
 
-			if (a instanceof SingleConstantComputation) {
-				CollectionProducer result = multiply(((SingleConstantComputation) a).getConstantValue(), b);
-				if (result != null) return withShortCircuit(result, shortCircuit);
-			}
-
-			if (b instanceof SingleConstantComputation) {
-				CollectionProducer result = multiply(((SingleConstantComputation) b).getConstantValue(), a);
-				if (result != null) return withShortCircuit(result, shortCircuit);
-			}
+		if (shape(a).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, a)) {
+			return CollectionFeatures.getInstance().c(b).withShortCircuit(shortCircuit);
+		} else if (shape(b).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, b)) {
+			return CollectionFeatures.getInstance().c(a).withShortCircuit(shortCircuit);
+		} else if (constantA.isPresent() && constantB.isPresent()) {
+			return constant(outputShape(a, b), constantA.getAsDouble() * constantB.getAsDouble());
 		}
 
-		return withShortCircuit(CollectionFeatures.getInstance().compute((shape, args) -> {
+		long size = outputShape(a, b).getTotalSizeLong();
+
+		if (constantA.isPresent() && shape(b).getTotalSizeLong() == size) {
+			return CollectionFeatures.getInstance().c(b)
+					.multiply(constantA.getAsDouble()).withShortCircuit(shortCircuit);
+		} else if (constantB.isPresent() && shape(a).getTotalSizeLong() == size) {
+			return CollectionFeatures.getInstance().c(a)
+					.multiply(constantB.getAsDouble()).withShortCircuit(shortCircuit);
+		}
+
+		return product(a, b).withShortCircuit(shortCircuit);
+	}
+
+	/**
+	 * Forms the element-wise product of two collections as a computation, without any of
+	 * the algebraic simplifications that {@link #multiply(Producer, Producer)} applies to
+	 * its operands. Operands are broadcast to the {@link #outputShape output shape}, and a
+	 * product with an operand known to be zero is still zeros.
+	 *
+	 * @param a the first collection to multiply
+	 * @param b the second collection to multiply
+	 * @return a {@link CollectionProducer} that generates the element-wise product
+	 */
+	default CollectionProducer product(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return CollectionFeatures.getInstance().compute((shape, args) -> {
 					if (args.stream().anyMatch(Algebraic::isZero)) {
 						// Mathematical optimization: anything * 0 = 0
 						// Returns CollectionZerosComputation to avoid unnecessary computation
@@ -339,18 +349,18 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 
 					return (Producer<PackedCollection>) new CollectionProductComputation(shape, args.toArray(new Producer[0]));
 				},
-				args -> String.join(" * ", CollectionFeatures.getInstance().applyParentheses(args)), a, b), shortCircuit);
+				args -> String.join(" * ", CollectionFeatures.getInstance().applyParentheses(args)), a, b);
 	}
 
 	/**
-	 * Multiplies a collection by a scalar value.
-	 * This is an optimized operation for scaling all elements of a collection
-	 * by the same constant factor.
+	 * Multiplies a collection by a scalar value, using whatever representation of the
+	 * scaled collection the collection itself provides (see
+	 * {@link CollectionProducer#multiply(double)}).
 	 *
 	 * @param scale the scalar value to multiply by
 	 * @param a the collection to scale
-	 * @return a {@link CollectionProducer} that generates the scaled collection, or null if no optimization available
-	 * 
+	 * @return a {@link CollectionProducer} that generates the scaled collection
+	 *
 	 *
 	 * <pre>{@code
 	 * // Scale a vector by 2
@@ -368,21 +378,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * }</pre>
 	 */
 	default CollectionProducer multiply(double scale, Producer<PackedCollection> a) {
-		if (scale == 0) {
-			// Mathematical optimization: 0 * anything = 0
-			// Returns CollectionZerosComputation with same shape as input
-			return zeros(shape(a));
-		} else if (scale == 1.0) {
-			return CollectionFeatures.getInstance().c(a);
-		} else if (scale == -1.0) {
-			return minus(a);
-		} else if (a instanceof ArithmeticSequenceComputation) {
-			return ((ArithmeticSequenceComputation) a).multiply(scale);
-		} else if (a.isConstant()) {
-			return multiply(shape(a), scale, a.get());
-		} else {
-			return null;
-		}
+		return CollectionFeatures.getInstance().c(a).multiply(scale);
 	}
 
 	/**
@@ -433,13 +429,9 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			return zeros(outputShape(a, b));
 		}
 
-		CollectionProducer p = CollectionFeatures.getInstance().compute("divide",
-				shape -> (args) ->
-						quotient(shape, Stream.of(args).skip(1).toArray(TraversableExpression[]::new)),
-				(List<String> args) -> String.join(" / ", CollectionFeatures.getInstance().applyParentheses(args)), a, b);
-
-		return CollectionProducerComputationBase.assignDeltaAlternate(
-				p, multiply(a, pow(b, c(-1.0))));
+		return CollectionFeatures.getInstance().compute((shape, args) ->
+						new CollectionQuotientComputation(shape, args.get(0), args.get(1)),
+				args -> String.join(" / ", CollectionFeatures.getInstance().applyParentheses(args)), a, b);
 	}
 
 	/**
@@ -449,23 +441,23 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 *
 	 *
 	 * @param a   the collection to negate
-	 * @return a {@link CollectionProducerComputationBase} that generates the negated collection
+	 * @return a {@link CollectionProducer} that generates the negated collection
 	 *
 	 *
 	 * <pre>{@code
 	 * // Negate a vector
 	 * CollectionProducer vector = c(1.0, -2.0, 3.0, -4.0);
-	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negated = minus(vector);
+	 * CollectionProducer negated = minus(vector);
 	 * // Result: Producer that generates [-1.0, 2.0, -3.0, 4.0]
 	 *
 	 * // Negate a constant (optimized case)
 	 * CollectionProducer constant = constant(5.0);
-	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negatedConstant = minus(constant);
+	 * CollectionProducer negatedConstant = minus(constant);
 	 * // Result: Producer that generates [-5.0]
 	 *
 	 * // Negate a matrix
 	 * CollectionProducer matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
-	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negatedMatrix = minus(matrix);
+	 * CollectionProducer negatedMatrix = minus(matrix);
 	 * // Result: Producer that generates 2x2 matrix [[-1,-2], [-3,-4]]
 	 * }</pre>
 	 */
@@ -548,7 +540,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 			TraversalPolicy shape = shape(exp);
 
 			if (shape.getTotalSizeLong() == 1) {
-				return (CollectionProducer) base;
+				return CollectionFeatures.getInstance().c(base);
 			} else {
 				return repeat(shape.getTotalSize(), base).reshape(shape);
 			}
@@ -615,9 +607,9 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * Computes the element-wise floor (greatest integer less than or equal to x) of a collection producer.
 	 *
 	 * @param value the producer supplying the values to floor
-	 * @return a {@link CollectionProducerComputationBase} computing the floor of each element
+	 * @return a {@link CollectionProducer} computing the floor of each element
 	 */
-	default CollectionProducerComputationBase floor(Producer<PackedCollection> value) {
+	default CollectionProducer floor(Producer<PackedCollection> value) {
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation(
 				"floor", shape,
@@ -723,7 +715,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	default CollectionProducer abs(Producer<PackedCollection> value) {
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation(
-				"abs", shape, DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
+				"abs", shape, true,
 				args -> new UniformCollectionExpression("abs", shape, in -> new Absolute(in[0]), args[1]),
 				value);
 	}
@@ -753,60 +745,5 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 */
 	default CollectionProducer sigmoid(Producer<PackedCollection> input) {
 		return divide(c(1.0), minus(input).exp().add(c(1.0)));
-	}
-
-	// Utility methods required for internal use
-	/**
-	 * Attaches a short-circuit evaluable to a collection producer computation so that, when
-	 * short-circuit conditions are met, the provided evaluable is used instead of the full
-	 * computation. If the producer is not a {@link CollectionProducerComputationBase} the
-	 * short-circuit is silently ignored.
-	 *
-	 * @param <P>          the producer type
-	 * @param producer     the producer to attach the short-circuit to
-	 * @param shortCircuit an evaluable invoked in place of the full computation when applicable
-	 * @return the same {@code producer} instance (with short-circuit attached if supported)
-	 */
-	default <P extends Producer<PackedCollection>> P withShortCircuit(P producer, Evaluable<PackedCollection> shortCircuit) {
-		if (producer instanceof CollectionProducerComputationBase) {
-			((CollectionProducerComputationBase) producer).setShortCircuit(shortCircuit);
-		}
-		return producer;
-	}
-
-	/**
-	 * Attaches a short-circuit evaluable to a {@link CollectionProducer} computation so that,
-	 * when short-circuit conditions are met, the provided evaluable is used instead of the full
-	 * computation. If the producer is not a {@link CollectionProducerComputationBase} the
-	 * short-circuit is silently ignored.
-	 *
-	 * @param producer     the {@link CollectionProducer} to attach the short-circuit to
-	 * @param shortCircuit an evaluable invoked in place of the full computation when applicable
-	 * @return the same {@code producer} instance (with short-circuit attached if supported)
-	 */
-	default CollectionProducer withShortCircuit(CollectionProducer producer, Evaluable<PackedCollection> shortCircuit) {
-		if (producer instanceof CollectionProducerComputationBase) {
-			((CollectionProducerComputationBase) producer).setShortCircuit(shortCircuit);
-		}
-		return producer;
-	}
-
-	/**
-	 * Checks whether a producer is directly computable as a collection computation,
-	 * meaning it can participate in kernel-level evaluation without additional wrapping.
-	 * A producer is computable if it is a {@link CollectionProducerComputation}, a
-	 * {@link CollectionProviderProducer}, or a {@link ReshapeProducer} wrapping a computable.
-	 *
-	 * @param p the producer to check
-	 * @return {@code true} if the producer is computable as a collection computation
-	 */
-	static boolean checkComputable(Producer<?> p) {
-		if (p instanceof CollectionProducerComputation || p instanceof CollectionProviderProducer) {
-			return true;
-		} else if (p instanceof ReshapeProducer) {
-			return checkComputable(((ReshapeProducer) p).getComputation());
-		} else {
-			return false;
-		}
 	}
 }

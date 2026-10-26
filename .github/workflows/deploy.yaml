@@ -3,14 +3,20 @@ name: "Deploy Controller Stack"
 # Rebuilds and restarts the FlowTree controller-stack containers on the host
 # that runs them.
 #
-# Why this is a separate workflow_run workflow:
-# The deployment is gated on a GitHub Environment. Any job that declares
+# This workflow runs ONLY when started by hand (workflow_dispatch). It used to
+# also run automatically on every green master "Build and Test" run (a
+# workflow_run trigger), but on 2026-10-19 one such automatic deploy rebuilt
+# and restarted the controller stack while agent jobs were in flight, dropping
+# their ar-manager connections. A deploy restarts the platform, so it must be a
+# deliberate, supervised action — never a side effect of a merge to master.
+#
+# It still lives in its own file rather than in analysis.yaml because the
+# deployment is gated on a GitHub Environment. Any job that declares
 # `environment:` inside a pull_request run attaches a deployment status to the
 # PR head commit; a pending deployment that is later cancelled then surfaces as
 # a spurious "had a problem deploying" red X on the PR. This is the same reason
 # "Auto-Resolve Submit" was split out — see the comment at the top of
-# auto-resolve-submit.yaml. Running from workflow_run puts the deployment in the
-# default-branch context, where it belongs.
+# auto-resolve-submit.yaml.
 #
 # Why deployment exists at all: the ar-manager image bakes in the documentation
 # corpus that grounds memory_recall. Under hand-run deploys that corpus drifts
@@ -18,19 +24,17 @@ name: "Deploy Controller Stack"
 #
 # Two jobs, two runners, one approval gate. `deploy` rebuilds the containers
 # and needs Docker, so it runs as the account that administers Docker on the
-# host. `deploy-macos-agent` installs a native agent under launchd as the
-# account that agent must run as (`worker`), which is not that account and
-# must not be: a job that restarted the worker's launchd services from the
-# Docker owner's session would either fail or land the service in the wrong
-# user's domain. Each job therefore has its own runner label, and the macOS
+# host. `deploy-macos-agent` redeploys a native agent that runs as `worker`:
+# it writes worker's install directory and restarts worker's process, and
+# only the owner of each can do that, so the job has to run as `worker` —
+# which is not the Docker account and must not be. The agent itself is a
+# LaunchDaemon an administrator registers once; the job needs no launchd
+# privilege. Each job therefore has its own runner label, and the macOS
 # runner README explains how to register a runner as the right account.
 #
-# Only master, and only after a green pipeline.
+# Manual only: dispatch this workflow deliberately when you intend to deploy.
 
 on:
-  workflow_run:
-    workflows: ["Build and Test"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       redeploy_agents:
@@ -58,10 +62,6 @@ concurrency:
 
 jobs:
   deploy:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.head_branch == 'master' &&
-       github.event.workflow_run.conclusion == 'success')
     # Native macOS runner on the host that owns the stack, with Docker
     # available to the runner user. The label is deliberately distinct from
     # `ar-ci` (the same reasoning as `ar-ci-cl`): a deploy must not queue
@@ -72,16 +72,14 @@ jobs:
     permissions:
       contents: read
     env:
-      # workflow_run carries no inputs, so an automatic master deploy falls
-      # through to the repository variable, and to 'true' when that is unset:
-      # the agent pool tracks master by default, exactly as the controller
-      # stack does. Set FLOWTREE_DEPLOY_AGENTS=false to opt the pool out.
-      DEPLOY_AGENTS: ${{ github.event.inputs.redeploy_agents || vars.FLOWTREE_DEPLOY_AGENTS || 'true' }}
+      # The agent pool is rebuilt alongside the controller stack by default;
+      # answer 'false' to the redeploy_agents input to deploy the stack alone.
+      DEPLOY_AGENTS: ${{ github.event.inputs.redeploy_agents }}
     steps:
       - name: Checkout master
         uses: actions/checkout@v4
         with:
-          # workflow_run does not check out the triggering ref by default.
+          # A deploy always ships master, whatever ref the dispatch was run from.
           ref: master
           fetch-depth: 0
 
@@ -263,13 +261,18 @@ jobs:
     needs: deploy
     if: >-
       needs.deploy.result == 'success' &&
-      (github.event.inputs.redeploy_agents || vars.FLOWTREE_DEPLOY_AGENTS || 'true') == 'true'
+      github.event.inputs.redeploy_agents == 'true'
     runs-on: [self-hosted, macos, ar-deploy-agent]
     # Same approval gate as the container deploy. Approving the run
     # approves both jobs; there is no second prompt.
     environment: production
     permissions:
       contents: read
+    # The commit this job actually installed, published so the canary can
+    # check the install against it. Re-reading master in the later job would
+    # race: master advancing between the two would look like a stale deploy.
+    outputs:
+      deployed-sha: ${{ steps.provenance.outputs.sha }}
     env:
       CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
       # Where the agent is installed, as seen by the runner's account. The
@@ -281,8 +284,9 @@ jobs:
       # The account the runner is documented to run as (see
       # tools/ci/macos/README.md, "Deploying the native macOS agent"). This
       # job never elevates or switches user, so a runner mis-registered under
-      # a different account would otherwise install and validate the launchd
-      # service there instead — silently, and reported as success.
+      # a different account would otherwise stage the install into that
+      # account's home and be unable to restart the agent — or, worse, be
+      # told to register a second daemon for it.
       EXPECTED_AGENT_ACCOUNT: ${{ vars.FLOWTREE_MACOS_AGENT_ACCOUNT || 'worker' }}
     steps:
       - name: Checkout master
@@ -318,20 +322,28 @@ jobs:
           ACCOUNT="$(id -un)"
           echo "::notice::Installing the native agent as ${ACCOUNT} on $(hostname)"
           if [ "${ACCOUNT}" != "${EXPECTED_AGENT_ACCOUNT}" ]; then
-            echo "::error::This runner is registered as '${ACCOUNT}', not the documented service account '${EXPECTED_AGENT_ACCOUNT}'. Installing here would put the launchd service in the wrong account's home. See tools/ci/macos/README.md, 'Deploying the native macOS agent'." >&2
+            echo "::error::This runner is registered as '${ACCOUNT}', not the documented service account '${EXPECTED_AGENT_ACCOUNT}'. Installing here would stage the agent in the wrong account's home, and that account cannot restart the agent's process. See tools/ci/macos/README.md, 'Deploying the native macOS agent'." >&2
             exit 1
           fi
 
       # install.sh builds the JARs, swaps them into FLOWTREE_AGENT_HOME/lib,
-      # re-renders the launchd plist, reloads the service, and fails unless
-      # the new process opens its connection to the controller. Empty
-      # FLOWTREE_AGENT_HOME / FLOWTREE_AGENT_ENV fall through to the
+      # re-renders the daemon plist and checks it against the registered
+      # copy, restarts the agent (signal the JVM; launchd's KeepAlive starts
+      # it on the new classpath), and fails unless the new process opens its
+      # connection to the controller. On a host where the daemon was never
+      # registered it fails with the one-time `sudo register-daemon.sh` instead — that
+      # step is an administrator's, and the runner account cannot do it.
+      # Empty FLOWTREE_AGENT_HOME / FLOWTREE_AGENT_ENV fall through to the
       # script's defaults under the runner account's home.
       - name: Build, install and restart the native agent
         run: |
           [ -n "${FLOWTREE_AGENT_HOME}" ] || unset FLOWTREE_AGENT_HOME
           [ -n "${FLOWTREE_AGENT_ENV}" ] || unset FLOWTREE_AGENT_ENV
           ./flowtree/runtime/agent/macos/install.sh
+
+      - name: Record the commit that was installed
+        id: provenance
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Resume accepting agent jobs
         if: always() && steps.quiesce.outputs.reopen == 'true'
@@ -340,3 +352,85 @@ jobs:
             -H 'Content-Type: application/json' -d '{"accept":true}' >/dev/null \
             && echo "::notice::Job intake reopened" \
             || echo "::error::FAILED to reopen job intake — do this manually: POST {\"accept\":true} to $CONTROLLER_URL/api/config/accept-automated-jobs"
+
+  # Runs one real job, on the real fleet, and checks the git remote for the
+  # result. Everything else that verifies agent behaviour runs against a fake
+  # agent inside a unit test; this is the only step that exercises the thing
+  # that was actually deployed.
+  #
+  # It exists because of a specific failure: a policy change made every job in
+  # the fleet die before publishing anything, the whole test suite stayed
+  # green, a large change was merged and deployed against the outage, and the
+  # outage continued unchanged for a full working day. No layer of testing
+  # short of running a real job could have caught it, and none did.
+  #
+  # Separate from deploy-macos-agent rather than a step inside it, because
+  # that job closes job intake for the duration of the install. The canary has
+  # to submit after intake reopens, which is only true once that job is done.
+  verify-agent-canary:
+    needs: deploy-macos-agent
+    if: needs.deploy-macos-agent.result == 'success'
+    runs-on: [self-hosted, macos, ar-deploy-agent]
+    permissions:
+      contents: read
+    env:
+      CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
+      CANARY_BRANCH: ${{ vars.FLOWTREE_CANARY_BRANCH || 'agent-canary' }}
+      CANARY_BASE_BRANCH: master
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      # Before trusting the canary's verdict, establish that its verdict can
+      # be negative. The check builds a scratch repository and requires the
+      # verifier to accept a nonce that is present and reject one that is
+      # not. A verifier that says yes unconditionally would certify a dead
+      # fleet on every deploy, which is worse than having no canary at all.
+      - name: Prove the canary verifier discriminates
+        run: ./tools/ci/agent-e2e/post-deploy-canary.sh selftest
+
+      - name: Prove the deployed-build check discriminates
+        run: ./tools/ci/agent-e2e/verify-deployed-build.sh selftest
+
+      # Before asking whether the fleet works, establish that the fleet is
+      # running what was merged. A host on last week's build can pass the
+      # canary perfectly well and still not contain the change the deploy
+      # was run for — which is exactly what "merged and deployed and nothing
+      # changed" looks like from outside.
+      - name: Verify the deployed build is the one that was installed
+        env:
+          EXPECTED_SHA: ${{ needs.deploy-macos-agent.outputs.deployed-sha }}
+          FLOWTREE_AGENT_HOME: ${{ vars.FLOWTREE_MACOS_AGENT_HOME || '' }}
+        run: |
+          [ -n "${FLOWTREE_AGENT_HOME}" ] || unset FLOWTREE_AGENT_HOME
+          ./tools/ci/agent-e2e/verify-deployed-build.sh verify
+
+      # The oracle is the git remote, never the job's own status. A job that
+      # reports success while publishing nothing is reported as its own
+      # distinct failure, because that combination is the outage signature.
+      #
+      # A canary still waiting for a worker when its hour runs out (typically
+      # queued behind the rounds submitted when intake reopened) is reported
+      # as UNVERIFIED, not as a broken fleet: the step still fails, because
+      # the deploy has not been proven, but the alert says which it was.
+      - name: Run one real job on the deployed fleet
+        id: canary
+        run: ./tools/ci/agent-e2e/post-deploy-canary.sh run
+
+      - name: Report a broken or unverified fleet
+        if: failure()
+        env:
+          OUTCOME: ${{ steps.canary.outputs.outcome }}
+        run: |
+          if [ "$OUTCOME" = "queued" ]; then
+            message="Post-deploy agent canary UNVERIFIED — the canary job was still queued, waiting for a worker, when its wait ran out. The fleet has not been shown broken or working; check the queue and re-run the canary. See the Deploy Controller Stack run."
+          else
+            message="Post-deploy agent canary FAILED — the deployed fleet did not publish a commit. Agent jobs are likely broken fleet-wide. See the Deploy Controller Stack run."
+          fi
+          curl -fsS -X POST "$CONTROLLER_URL/api/alerts" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg m "$message" '{message: $m}')" \
+            >/dev/null || echo "::warning::Could not reach the controller to raise an alert"

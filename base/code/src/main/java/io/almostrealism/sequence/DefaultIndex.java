@@ -22,7 +22,10 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A named {@link Index} with an optional numeric limit (exclusive upper bound).
@@ -39,8 +42,16 @@ import java.util.OptionalLong;
  * @see io.almostrealism.kernel.KernelIndex
  */
 public class DefaultIndex extends StaticReference<Integer> implements Index {
-	/** The exclusive upper bound of this index, or empty if unbounded. */
-	private OptionalLong limit;
+	/** Counter shared across all temporary indices to keep their names unique. */
+	private static final AtomicLong temporaryCount = new AtomicLong();
+
+	/**
+	 * The exclusive upper bound of this index, or empty if unbounded. It is fixed at
+	 * construction because a composite {@link Expression} memoizes its bounds (see
+	 * {@link Expression#upperBound(KernelStructureContext)}): a limit that changed after an
+	 * expression containing this index had been bounded would leave those bounds stale.
+	 */
+	private final OptionalLong limit;
 
 	/**
 	 * Creates an unbounded index with the given name.
@@ -73,18 +84,24 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	}
 
 	/**
-	 * Sets the limit (exclusive upper bound) for this index.
+	 * Creates a new unbounded temporary index with a unique name of the form "ci_N",
+	 * for constructing intermediate expressions that require a fresh index variable.
 	 *
-	 * @param limit the new limit as an {@code int}
+	 * @return a new {@link DefaultIndex} with a unique name
 	 */
-	public void setLimit(int limit) { this.limit = OptionalLong.of(limit); }
+	public static DefaultIndex temporary() {
+		return new DefaultIndex("ci_" + temporaryCount.getAndIncrement());
+	}
 
 	/**
-	 * Sets the limit (exclusive upper bound) for this index.
+	 * Creates a new bounded temporary index with a unique name of the form "ci_N".
 	 *
-	 * @param limit the new limit as a {@code long}
+	 * @param limit the exclusive upper bound for valid index values
+	 * @return a new {@link DefaultIndex} with a unique name and the specified limit
 	 */
-	public void setLimit(long limit) { this.limit = OptionalLong.of(limit); }
+	public static DefaultIndex temporary(int limit) {
+		return new DefaultIndex("ci_" + temporaryCount.getAndIncrement(), limit);
+	}
 
 	/**
 	 * {@inheritDoc}
@@ -107,12 +124,64 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return limit.stream().map(i -> i - 1).findFirst();
 	}
 
 	@Override
-	public boolean isPossiblyNegative() { return false; }
+	protected boolean computePossiblyNegative() { return false; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index contains the given index when the two have the same name.</p>
+	 */
+	@Override
+	public boolean containsIndex(Index idx) {
+		return Objects.equals(getName(), idx.getName()) || super.containsIndex(idx);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index is replaced by the given expression when the index being replaced
+	 * has its name.</p>
+	 */
+	@Override
+	public Expression<Integer> withIndex(Index index, Expression<?> e) {
+		if (Objects.equals(getName(), index.getName())) return (Expression) e;
+		return super.withIndex(index, e);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index references itself.</p>
+	 */
+	@Override
+	public Set<Index> getIndices() {
+		return Set.of(this);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index answers for itself, as described by {@link Index#getIndexOptions(Index)}.</p>
+	 */
+	@Override
+	public Optional<Set<Integer>> getIndexOptions(Index index) {
+		return Index.super.getIndexOptions(index);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index is already the series of its own values, so it is never a target.</p>
+	 */
+	@Override
+	public boolean isSeriesSimplificationTarget(int depth) {
+		return false;
+	}
 
 	@Override
 	public boolean isValue(IndexValues values) {

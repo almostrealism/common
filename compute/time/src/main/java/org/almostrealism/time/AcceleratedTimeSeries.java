@@ -329,9 +329,8 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
 
-		// TODO(review): writes at the post-increment index, unlike add(TemporalScalar); pre-existing, out of scope here.
-		setEndCursorIndex(getEndCursorIndex() + 1);
 		set(getEndCursorIndex(), time, value);
+		setEndCursorIndex(getEndCursorIndex() + 1);
 	}
 
 	/**

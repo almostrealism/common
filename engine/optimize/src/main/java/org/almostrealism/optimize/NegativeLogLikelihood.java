@@ -37,11 +37,18 @@ import java.util.stream.IntStream;
  *
  * <h2>Gradient</h2>
  * <p>
- * The gradient is sparse: -1 at the target class index, 0 elsewhere.
+ * The gradient is that of the averaged loss: for an output with {@code rows} rows (the
+ * leading dimension after padding to two dimensions, the same rows {@link #loss} averages
+ * over), it is {@code -1 / rows} at the target class of each row and 0 elsewhere.
  * </p>
  * <pre>
- * dL/dOutput[i] = -1 if i == target_class, 0 otherwise
+ * dL/dOutput[r, i] = -1 / rows if i == target_class(r), 0 otherwise
  * </pre>
+ * <p>
+ * For a single-row output this is -1 at the target class. The loss and the gradient agree
+ * only for one-hot targets: the loss scores the argmax of each target row, while the gradient
+ * is {@code -target / rows} over every non-zero target position.
+ * </p>
  *
  * <h2>When to Use</h2>
  * <ul>
@@ -105,21 +112,23 @@ public class NegativeLogLikelihood implements LossProvider, CollectionFeatures {
 	}
 
 	/**
-	 * Computes the gradient of NLL loss.
+	 * Computes the gradient of the averaged NLL loss reported by {@link #loss}.
 	 * <p>
-	 * The gradient is -1 at the target class position and 0 elsewhere. For the one-hot
-	 * encoded targets this loss requires, that is exactly the negation of the target
-	 * itself, so the gradient is the computation {@code -target} and is produced on the
-	 * device rather than assembled on the host.
+	 * For the one-hot encoded targets this loss requires, the gradient of the mean over
+	 * {@code rows} rows is {@code -target / rows}, where {@code rows} is the leading dimension of
+	 * the output after padding its shape to two dimensions (the rows {@link #loss} averages
+	 * over). It is produced on the device rather than assembled on the host.
 	 * </p>
 	 *
-	 * @param output producer for the model's log-probability outputs
+	 * @param output producer for the model's log-probability outputs, whose shape determines
+	 *               the number of rows
 	 * @param target producer for the one-hot encoded target labels
-	 * @return a producer for the sparse gradient (-1 at target index)
+	 * @return a producer for the gradient ({@code -1 / rows} at each row's target index)
 	 */
 	@Override
 	public Producer<PackedCollection> gradient(Producer<PackedCollection> output,
 												  Producer<PackedCollection> target) {
-		return minus(target);
+		int rows = padDimensions(shape(output), 2).length(0);
+		return c(target).multiply(-1.0 / rows);
 	}
 }

@@ -27,8 +27,8 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.model.AccumulationBlock;
 import org.almostrealism.model.Block;
-import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
@@ -234,64 +234,19 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * @param inputShape   the input tensor shape
 	 * @param blocks       the sub-blocks to apply in parallel and sum
 	 * @param requirements optional compute requirements
-	 * @return a CellularLayer whose output is the element-wise sum of all block outputs
+	 * @return an {@link AccumulationBlock} whose output is the element-wise sum of all block
+	 *         outputs and whose backward pass reaches every sub-block
+	 * @throws IllegalArgumentException if no blocks are given, or the blocks do not all accept
+	 *                                  {@code inputShape} and share an output shape
 	 */
 	default Block accumBlocks(TraversalPolicy inputShape,
 							  List<Block> blocks,
 							  ComputeRequirement... requirements) {
-		if (blocks.isEmpty()) {
-			throw new IllegalArgumentException("accumBlocks requires at least one block");
+		AccumulationBlock accum = new AccumulationBlock(inputShape, blocks);
+		if (requirements.length > 0) {
+			accum.setComputeRequirements(List.of(requirements));
 		}
-		TraversalPolicy outputShape = blocks.get(0).getOutputShape();
-		for (Block b : blocks) {
-			if (b.getOutputShape().getTotalSize() != outputShape.getTotalSize()) {
-				throw new IllegalArgumentException(
-						"accumBlocks requires all blocks to share an output shape; got "
-								+ outputShape + " and " + b.getOutputShape());
-			}
-		}
-
-		Cell<PackedCollection> forward = Cell.of((input, next) -> {
-			List<Cell.CaptureReceptor<PackedCollection>> receptors = new ArrayList<>();
-			for (Block b : blocks) {
-				Cell.CaptureReceptor<PackedCollection> receptor = new Cell.CaptureReceptor<>();
-				b.getForward().setReceptor(receptor);
-				receptors.add(receptor);
-			}
-
-			OperationList ops = new OperationList("accum_blocks");
-			for (Block b : blocks) {
-				ops.add(b.getForward().push(input));
-			}
-
-			if (next != null) {
-				CollectionProducer sum = c(receptors.get(0).getReceipt())
-						.reshape(outputShape);
-				for (int i = 1; i < blocks.size(); i++) {
-					sum = sum.add(c(receptors.get(i).getReceipt())
-							.reshape(outputShape));
-				}
-				ops.add(next.push(sum));
-			}
-
-			return ops;
-		});
-
-		// Backward of an element-wise sum is gradient pass-through to every branch.
-		// The upstream input gradient is the sum of each branch's input-gradient,
-		// which the framework handles via the per-branch backward chain wiring.
-		// For now this is a structural stub that satisfies the compile-time backward
-		// chain construction; full gradient flow through accum_blocks is not yet
-		// required by any test or production caller.
-		Cell<PackedCollection> backward = Cell.of((gradient, next) -> {
-			OperationList ops = new OperationList("accum_blocks-backward");
-			if (next != null) {
-				ops.add(next.push(gradient));
-			}
-			return ops;
-		});
-
-		return new DefaultBlock(inputShape, outputShape, forward, backward);
+		return accum;
 	}
 
 	/**
@@ -400,8 +355,7 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * @throws IllegalArgumentException if the block's input and output shapes have different total sizes
 	 */
 	default Block residual(Block block) {
-		if (block.getInputShape().getTotalSize() != block.getOutputShape().getTotalSize())
-			throw new IllegalArgumentException();
+		block.getInputShape().requireReshape(block.getOutputShape());
 
 		SequentialBlock residual = new SequentialBlock(block.getInputShape());
 		residual.accum(block);
@@ -506,6 +460,20 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * to {@code operator} whenever the main forward cell is pushed. The backward pass propagates
 	 * gradients through both branches.</p>
 	 *
+	 * <p>The auxiliary branch must be reached by the same compiled pass as this layer, so that its
+	 * forward output is available when the main forward cell is pushed and its backward cell is driven
+	 * when gradients flow. A branch computed on an auxiliary input of the same
+	 * {@link org.almostrealism.model.Model} (added with
+	 * {@link org.almostrealism.model.Model#addInput(Block)}) satisfies this and trains normally.</p>
+	 *
+	 * <p>When the main forward cell is pushed before the auxiliary branch has been reached — the
+	 * branch belongs to a model that is compiled after this layer's — the operator reads the
+	 * auxiliary input record instead: the same buffer the branch writes its output into whenever it
+	 * runs, and the same one the backward pass reads, so that model must run before this layer's.
+	 * The backward pass is wired identically in both cases and still pushes the auxiliary gradient
+	 * into the branch's backward cell. The record exists only while
+	 * {@link Layer#ioTracking IO tracking} is enabled; without it, an unreached branch is an error.</p>
+	 *
 	 * @param name         a human-readable label for the composed layer
 	 * @param inputShape   the main input shape
 	 * @param auxShape     the shape of data from the auxiliary branch
@@ -546,8 +514,22 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 		}
 
 		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape,
-				Cell.of((input, next) -> next == null ? new OperationList() :
-						next.push(operator.compose(input, auxReceptor.getReceipt()))),
+				Cell.of((input, next) -> {
+					if (next == null) return new OperationList();
+
+					Producer<PackedCollection> auxOutput = auxReceptor.getReceipt();
+					// Branch not reached by this pass: read the record it fills when its model runs,
+					// which (per this method's javadoc) must be before this one.
+					if (auxOutput == null && auxInput != null) {
+						auxOutput = p(auxInput);
+					} else if (auxOutput == null) {
+						throw new IllegalStateException(name + " cannot read its auxiliary branch: the branch"
+								+ " has not been reached and AR_GRAPH_IO_TRACKING is disabled, so no record"
+								+ " of its output exists");
+					}
+
+					return next.push(operator.compose(input, auxOutput));
+				}),
 				null, Collections.emptyList(), setup);
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 

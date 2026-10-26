@@ -18,6 +18,8 @@ package io.flowtree.jobs;
 
 import io.almostrealism.uml.Named;
 
+import java.util.Set;
+
 /**
  * Defines a rule that is evaluated after an agent completes its primary work.
  * When a violation is detected, a correction session is run using the rule's
@@ -104,12 +106,34 @@ public interface EnforcementRule extends Named {
      * <p>When the attempt limit is reached and the violation is still present,
      * the framework logs a warning and moves on to the next rule.</p>
      *
+     * <p>Read at the start of each enforcement pass, so a rule may return a
+     * shrinking value to make its cap a budget for the whole job rather than
+     * for one pass. A rule that returns 0 runs no correction and is retired.</p>
+     *
      * <p>Defaults to {@link CodingAgentJob#DEFAULT_MAX_RULE_RETRIES}.</p>
      *
-     * @return the maximum retry count (must be positive)
+     * @return the maximum retry count; 0 means no correction is attempted
      */
     default int getMaxRetries() {
         return CodingAgentJob.DEFAULT_MAX_RULE_RETRIES;
+    }
+
+    /**
+     * Returns the scratch-space paths whose changes count as progress toward
+     * resolving this rule.
+     *
+     * <p>{@link EnforcementRunner} retires a rule whose correction attempts
+     * repeatedly leave the working tree unchanged. That comparison ignores
+     * scratch space ({@link GitOperations#isExcludedPath(String)}: session
+     * output, build output, {@code commit.txt}), since a session that only
+     * rewrites its own notes has not moved any rule closer to resolution. A rule
+     * that is resolved by writing one of those files names it here, so that
+     * writing it is not mistaken for standing still.</p>
+     *
+     * @return repository-relative paths; empty by default
+     */
+    default Set<String> getProgressPaths() {
+        return Set.of();
     }
 
     /**

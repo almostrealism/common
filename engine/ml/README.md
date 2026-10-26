@@ -9,17 +9,23 @@ This module exists to:
 1. **Load Transformer Models** - Support for loading weights from HuggingFace/protobuf formats
 2. **Implement Attention Mechanisms** - Multi-head, grouped-query, and cross-attention
 3. **Enable Text Generation** - Autoregressive token generation with sampling strategies
-4. **Provide Tokenization** - Byte-level BPE tokenizers for text encoding/decoding
+4. **Provide Tokenization** - Byte-level and SentencePiece BPE tokenizers for text encoding/decoding
 5. **Support Hardware Acceleration** - GPU/CPU execution via ar-hardware backends
 
 ## What It Provides
 
 ### 1. Model Loading with StateDictionary
 
-StateDictionary loads model weights from **protobuf format** (`.pb` files), NOT safetensors or PyTorch checkpoints. Weights must be exported to protobuf format first using the provided Python extraction scripts.
+StateDictionary loads model weights from either **protobuf format** (`.pb` files) or
+**safetensors checkpoints** (`.safetensors` files, including sharded checkpoints). When the
+source holds any `.safetensors` file it is read as a published checkpoint — its safetensors
+files are the weights and its other files (configuration, tokenizer) are ignored for weight
+loading; otherwise every file is read as a protobuf library. PyTorch (`.pt`/`.bin`) and GGUF
+checkpoints are not read directly; export those to one of the supported formats first using the
+provided Python extraction scripts.
 
-**Supported Format:** Protobuf (`CollectionLibraryData`)
-**NOT Supported:** safetensors, PyTorch checkpoints (`.pt`/`.bin`), GGUF
+**Supported Formats:** Protobuf (`CollectionLibraryData`), safetensors (`.safetensors`)
+**NOT Supported:** PyTorch checkpoints (`.pt`/`.bin`), GGUF
 
 ```java
 import org.almostrealism.ml.StateDictionary;
@@ -70,35 +76,59 @@ host before any kernel runs.
 
 ### 2. Transformer Attention
 
+`attention`, `feedForward`, and `transformer` are default instance methods on
+`AttentionFeatures`, so a caller implements the interface (as model classes such
+as `Qwen3` do) rather than importing them statically:
+
 ```java
-import org.almostrealism.layers.AttentionFeatures;
-import static org.almostrealism.layers.LayerFeatures.*;
+import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.model.Block;
 
-// Multi-Head Attention with GQA and QK-Norm
-Block attnBlock = attention(
-    nHeads,           // Number of query heads (e.g., 32)
-    kvHeads,          // Number of KV heads (e.g., 8 for GQA)
-    headSize,         // Dimension per head
-    wq, wk, wv, wo,   // Weight matrices
-    qkNormQ, qkNormK, // Optional QK normalization weights
-    freqCis,          // RoPE frequencies
-    requirements      // Computation requirements
-);
+class TransformerLayerBuilder implements AttentionFeatures {
+    Block buildLayer(int nHeads, int kvHeads,
+                      PackedCollection rmsAttWeight,
+                      PackedCollection wk, PackedCollection wv,
+                      PackedCollection wq, PackedCollection wo,
+                      PackedCollection bk, PackedCollection bv, PackedCollection bq,
+                      PackedCollection qkNormQ, PackedCollection qkNormK,
+                      CollectionProducer freqCis,
+                      PackedCollection rmsFfnWeight,
+                      PackedCollection w1, PackedCollection w2, PackedCollection w3,
+                      Producer<PackedCollection> position,
+                      ComputeRequirement... requirements) {
+        // Multi-Head Attention with GQA and QK-Norm
+        Block attnBlock = attention(
+            nHeads, kvHeads,          // Query heads, KV heads (GQA when kvHeads < nHeads)
+            rmsAttWeight,             // Pre-attention RMSNorm weights
+            wk, wv, wq, wo,           // Key/Value/Query/Output projection weights
+            bk, bv, bq,               // Optional bias terms (null if unused)
+            qkNormQ, qkNormK,         // Optional QK-Norm weights (null to skip)
+            freqCis,                  // RoPE frequencies
+            position,                 // Current position in sequence
+            requirements              // Computation requirements
+        );
 
-// Feed-Forward Network with SwiGLU activation
-Block ffnBlock = feedForward(
-    wGate,  // Gate projection (W1)
-    wUp,    // Up projection (W3)
-    wDown   // Down projection (W2)
-);
+        // Feed-Forward Network with SwiGLU activation
+        Block ffnBlock = feedForward(
+            rmsFfnWeight,  // Pre-FFN RMSNorm weights
+            w1,            // Gate projection
+            w2,            // Down projection
+            w3             // Up projection
+        );
 
-// Complete transformer block
-Block transformerLayer = transformer(
-    attnBlock,
-    ffnBlock,
-    attnNormWeights,
-    ffnNormWeights
-);
+        // Complete transformer block (attention + feed-forward in one call)
+        return transformer(
+            nHeads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+            bk, bv, bq, qkNormQ, qkNormK,
+            freqCis, rmsFfnWeight, w1, w2, w3, position,
+            requirements
+        );
+    }
+}
 ```
 
 ### 3. Qwen3 Model Implementation
@@ -128,11 +158,13 @@ model.run(
 ```java
 import org.almostrealism.ml.AutoregressiveModel;
 
-// Wrap compiled model for token generation
-AutoregressiveModel generator = AutoregressiveModel.of(
+// Wrap compiled model for token generation. `position` is a single-element
+// collection the compiled model reads to index its KV cache and apply RoPE;
+// AutoregressiveModel maintains it on the device via reset()/advance().
+AutoregressiveModel<Integer> generator = AutoregressiveModel.of(
     compiledModel,
-    step -> log("Step: " + step),
-    tokenId -> tokenEmbeddings.get(tokenId)
+    position,
+    tokenId -> tokenEmbeddings.range(shape(dim), tokenId * dim)
 );
 
 // Set sampling temperature
@@ -199,51 +231,108 @@ public class StateDictionary implements Destroyable {
 
 ### AttentionFeatures
 
+The attention, transformer and feed-forward structures are PDSL assets under
+`src/main/resources/pdsl/`. The [PDSL Language Reference](../../docs/internals/pdsl-language.md)
+describes the language they are written in: its grammar, the blocks each statement builds, and
+the built-in catalog with each built-in's shapes and gradient behavior.
+
+The signatures below are a reference summary, not compilable Java — each `default` method
+body is omitted (shown as `;`) since these are the real implementations' parameter shapes,
+not a copy-pasteable interface:
+
 ```java
-public interface AttentionFeatures extends LayerFeatures {
-    // Multi-head attention with optional GQA and QK-Norm
-    default Block attention(int heads, int kvHeads, int headSize,
-                           PackedCollection<?> wq, wk, wv, wo,
-                           PackedCollection<?> qkNormQ, qkNormK,
-                           PackedCollection<?> freqCis,
+public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
+    // Multi-head attention with optional GQA, bias terms, and QK-Norm
+    default Block attention(int heads, int kvHeads,
+                           PackedCollection rmsAttWeight,
+                           PackedCollection wk, PackedCollection wv,
+                           PackedCollection wq, PackedCollection wo,
+                           PackedCollection bk, PackedCollection bv, PackedCollection bq,
+                           PackedCollection qkNormQ, PackedCollection qkNormK,
+                           CollectionProducer freqCis,
+                           Producer<PackedCollection> position,
                            ComputeRequirement... requirements);
 
-    // Feed-forward with SwiGLU activation
-    default Block feedForward(PackedCollection<?> wGate,
-                             PackedCollection<?> wUp,
-                             PackedCollection<?> wDown);
+    // Feed-forward with SwiGLU activation (from FeedForwardFeatures)
+    default Block feedForward(PackedCollection rms,
+                             PackedCollection w1, PackedCollection w2, PackedCollection w3,
+                             ComputeRequirement... requirements);
 
-    // Complete transformer layer
-    default Block transformer(Block attention, Block ffn,
-                             PackedCollection<?> attnNorm,
-                             PackedCollection<?> ffnNorm);
+    // Complete transformer layer (residual attention + residual feed-forward),
+    // built from the transformer.pdsl asset
+    default Block transformer(int heads, int kvHeads,
+                             PackedCollection rmsAttWeight,
+                             PackedCollection wk, PackedCollection wv,
+                             PackedCollection wq, PackedCollection wo,
+                             PackedCollection bk, PackedCollection bv, PackedCollection bq,
+                             PackedCollection qkNormQ, PackedCollection qkNormK,
+                             CollectionProducer freqCis,
+                             PackedCollection rmsFfnWeight,
+                             PackedCollection w1, PackedCollection w2, PackedCollection w3,
+                             Producer<PackedCollection> position,
+                             ComputeRequirement... requirements);
 }
+```
+
+### TransformerBlockFeatures
+
+`TransformerBlockFeatures` (extends `AttentionFeatures`) assembles complete pre-norm
+transformer blocks — self-attention, optional cross-attention, and a gated feed-forward,
+each in a residual branch — for the sequence-based (non-KV-cached) models such as
+`DiffusionTransformer` and `CausalLanguageModel`. Every overload delegates to one fully
+specified `transformerBlock(...)` that accepts an `AttentionVariant`, optional adaLN
+modulation, optional per-position additive conditioning, and a `NormalizationType`, so
+all callers share one block assembly:
+
+```java
+Block block = transformerBlock(
+    batchSize, dim, seqLen, heads, crossAttend,
+    contextSeqLen, context,
+    preNormWeight, preNormBias,
+    selfQkv, selfWo,
+    selfQNormWeight, selfQNormBias, selfKNormWeight, selfKNormBias,
+    invFreq,
+    crossAttPreNormWeight, crossAttPreNormBias,
+    crossWq, crossKv, crossWo,
+    crossQNormWeight, crossQNormBias, crossKNormWeight, crossKNormBias,
+    ffnNormWeight, ffnNormBias, w1, w2, w1Bias, w2Bias,
+    attentionScores,       // optional Receptor to capture cross-attention scores, or null
+    projectionFactory,     // ProjectionFactory.dense() or a LoRA-wrapped factory
+    AttentionVariant.STANDARD,
+    diffLambda,            // learned lambda for variants that need it, or null
+    modulation,            // adaLN scale/shift/gate, shape [batch, 6, dim], or null for prepend-style conditioning
+    localAddition,         // per-position additive conditioning, shape [batch, seqLen, dim], or null
+    NormalizationType.RMS,
+    paddingMask            // per-position validity, or null for no masking
+);
 ```
 
 ### AutoregressiveModel
 
 ```java
-public class AutoregressiveModel {
-    public static AutoregressiveModel of(CompiledModel model,
-                                         IntConsumer stepConsumer,
-                                         IntFunction<PackedCollection<?>> tokenEmbed);
+public class AutoregressiveModel<T> implements Destroyable {
+    public static AutoregressiveModel<Integer> of(CompiledModel model,
+                                                  PackedCollection position,
+                                                  IntFunction<PackedCollection> tokenEmbed);
 
     public void setTemperature(double temperature);
-    public int next();  // Generate next token
+    public T next();  // Generate next token
 }
 ```
 
 ### ByteLevelBPETokenizer
 
 ```java
-public abstract class ByteLevelBPETokenizer implements Tokenizer {
-    public int[] encodeAsInt(String text);
-    public String decodeAsInt(int[] tokens);
+public abstract class ByteLevelBPETokenizer {
+    public ByteLevelBPETokenizer(PreTokenizer preTokenizer);
 
-    public abstract int getBOSToken();
-    public abstract int getEOSToken();
-    public abstract int getPADToken();
-    public abstract int getUNKToken();
+    public int[] encode(String text, boolean addSpecialTokens);
+    public String decode(int[] tokenIds);
+
+    protected abstract int getBOSToken();
+    protected abstract int getEOSToken();
+    protected abstract int getPADToken();
+    protected abstract int getUNKToken();
 }
 ```
 
@@ -367,22 +456,22 @@ int token = generator.next();
 
 ```java
 public class MyTokenizer extends ByteLevelBPETokenizer {
-    @Override
-    public int getBOSToken() { return 1; }
-
-    @Override
-    public int getEOSToken() { return 2; }
-
-    @Override
-    public int getPADToken() { return 0; }
-
-    @Override
-    public int getUNKToken() { return 3; }
-
-    @Override
-    protected void loadVocabulary(String path) {
-        // Load vocabulary from file
+    public MyTokenizer(String tokenizerPath) throws IOException {
+        super(PreTokenizer.WHOLE_TEXT);
+        // load the vocabulary and merges from tokenizerPath
     }
+
+    @Override
+    protected int getBOSToken() { return 1; }
+
+    @Override
+    protected int getEOSToken() { return 2; }
+
+    @Override
+    protected int getPADToken() { return 0; }
+
+    @Override
+    protected int getUNKToken() { return 3; }
 }
 ```
 
@@ -485,7 +574,9 @@ loraModel.mergeAllLoraWeights();
 
 ### ProjectionFactory
 
-Abstracts projection layer creation for LoRA vs dense selection:
+Abstracts projection layer creation for LoRA vs dense selection. The static factories
+return the named `DenseProjectionFactory` and `LoRAProjectionFactory` implementations
+(both in `org.almostrealism.layers`):
 
 ```java
 // Standard dense projections
@@ -497,6 +588,22 @@ ProjectionFactory factory = ProjectionFactory.lora(config, loraLayers);
 // Pass to attention methods
 Block attention = sequenceAttention(shape, weights, factory);
 ```
+
+The fully specified `sequenceAttention` overload additionally accepts a `NormalizationType`
+for query/key normalization, an optional per-position `paddingMask` (zeroes masked value
+vectors), an optional `keyMask` (excludes masked keys from softmax entirely via
+`AttentionFeatures.MASKED_LOGIT_PENALTY`), and a `logitSoftcap` (`0` to disable). Every
+shorter overload, including the one above, delegates to it with `NormalizationType.LAYER`
+and no masking. Query/key normalization takes both weights or neither. The structure itself is
+the `sequence_attention.pdsl` asset: `sequenceAttention` builds the two projections from the
+factory, binds them with the weights and masks, and builds the asset layer for the requested
+query/key normalization, soft-cap and causal masking. A PDSL program can build the same layers
+directly with the two projection layers bound as arguments. The keys and values are branches of
+the layer that the attention products read as operands, so the backward pass trains the key and
+value projections as well as the query projection. Differential attention
+(`DifferentialAttentionFeatures.differentialSequenceAttention`) takes the same arguments, bound by
+the shared `sequenceAttentionArguments`, plus a per-head lambda, and builds a layer of the
+`differential_attention.pdsl` asset.
 
 ### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
 
@@ -538,6 +645,92 @@ block projects it to the transformer width and adds it to the hidden state betwe
 and feed-forward sub-layers; positions occupied by prepended or memory tokens receive no local
 conditioning. The buffer starts zero-filled, which is the value plain generation supplies.
 
+`DiffusionTransformerConfig.withNormalization(NormalizationType)` selects LayerNorm (default) or
+RMSNorm for every block norm and query/key norm; `withPaddingMask(true)` adds a per-position latent
+padding mask (`DiffusionTransformer.getPaddingMask()`), initially all valid; a caller generating less
+than the full sequence marks the padded tail with `DiffusionTransformer.setValidLength(int)` before
+`forward()`, and self-attention ignores those positions' values.
+
+### Stable Audio 3 Conditioning and Codec
+
+`StableAudio3Conditioner` (package `org.almostrealism.ml.audio`) builds the cross-attention and
+global conditioning that `DiffusionTransformer` expects, from pre-tokenized prompt IDs and a
+duration:
+
+```java
+import org.almostrealism.ml.audio.AudioAttentionConditioner.ConditionerOutput;
+import org.almostrealism.ml.audio.StableAudio3Conditioner;
+import org.almostrealism.ml.t5gemma.T5GemmaEncoder;
+
+StableAudio3Conditioner conditioner = new StableAudio3Conditioner(
+        t5GemmaEncoder,      // T5GemmaEncoder — encodes the prompt
+        paddingEmbedding,    // learned embedding substituted at padded prompt positions
+        durationConditioner  // NumberConditioner — embeds the requested duration
+);
+
+ConditionerOutput conditioning = conditioner.runConditioners(tokenIds, durationSeconds);
+```
+
+The prompt itself is encoded by `T5GemmaEncoder` (package `org.almostrealism.ml.t5gemma`), a
+T5Gemma text encoder configured by `T5GemmaConfig` and loaded from a `StateDictionary` the same
+way as the other model weights in this module. The structure of each of its layers is the
+`t5gemma_encoder_layer` of `engine/ml/src/main/resources/pdsl/t5gemma_encoder.pdsl`: the
+self-attention and the GELU-gated feed-forward of `sequence_attention.pdsl` and `feed_forward.pdsl`,
+each between two RMS norms and added back to the residual stream. `T5GemmaEncoder` binds each
+layer's weights and the prompt mask and builds that layer once per layer; the token embedding
+before the layers and the final norm after them are built in Java.
+
+`StableAudio3` (package `org.almostrealism.ml.audio`) is the end-to-end text-to-audio generator
+that wires these pieces together: the conditioner, a `DiffusionSampler` driving the
+`DiffusionTransformer` with the ping-pong schedule of the released models, and a `SAMEAutoEncoder`
+decoder. `StableAudio3.small(...)` builds the released small model from the `dit`, `conditioner`
+and `ae` weight sets extracted by `engine/ml/scripts/extract_sa3_weights.py` plus the T5Gemma
+encoder weights:
+
+```java
+StableAudio3 sa3 = StableAudio3.small(transformerWeights, conditionerWeights,
+        promptEncoderWeights, autoencoderWeights, maxSeconds);
+PackedCollection audio = sa3.generate(seed, tokenIds, seconds).evaluate();  // [channels, samples]
+```
+
+The transformer and decoder are compiled once for the longest clip the instance generates; a
+shorter request is generated at that length with the padding mask covering the requested duration
+plus headroom, then truncated. Classifier-free guidance is off by default and is enabled with
+`setGuidance(scale, negativePrompt)`, whose negative prompt is pre-tokenized ids.
+
+`generate` takes pre-tokenized prompt ids. To generate directly from prompt text, supply a
+`Tokenizer` (the released models use a SentencePiece BPE tokenizer from
+`org.almostrealism.ml.tokenization`) and call `generateFromText`, which encodes the text and
+delegates to `generate`:
+
+```java
+sa3.setTokenizer(tokenizer);
+sa3.setTextGuidance(scale, "negative prompt");   // text counterpart of setGuidance
+PackedCollection audio = sa3.generateFromText(seed, "a prompt", seconds).evaluate();
+```
+
+`generateFromText` and `setTextGuidance` require a tokenizer to have been set when given a
+non-empty prompt; without one such a call is rejected, asking for `setTokenizer` or pre-tokenized
+ids. A `null` or empty prompt needs no tokenizer — it yields no tokens and selects the
+unconditional prompt.
+
+Other Stable Audio 3 building blocks:
+- **`ClassifierFreeGuidance`** — combines a conditional and unconditional denoiser prediction
+  (with optional adaptive projected guidance); wired into sampling via
+  `DiffusionSampler#setGuidance(ClassifierFreeGuidance, PackedCollection, PackedCollection)`.
+- **`DistributionShift`** (`LogSNRShift`, `FluxDistributionShift`, `LogitDistributionShift`) —
+  warps the rectified-flow sampler's uniform timestep schedule so more steps land at the noise
+  levels where structure emerges. Some implementations and configurations shift with the
+  generated sequence length (`isLengthDependent()` reports which); `DistributionShift.identity()`
+  and a `FluxDistributionShift` constructed with a single constant `alpha` ignore sequence length
+  entirely.
+- **`OobleckCodec`** (`OobleckEncoder`/`OobleckDecoder`) and **`SAMEAutoEncoder`** — latent audio
+  autoencoders that compress waveforms to and from the diffusion model's latent space.
+- **`PatchedPretransform`** — a parameter-free pretransform, used by `SAMEAutoEncoder`, that folds
+  runs of consecutive samples into the channel axis before encoding and unfolds them after decoding.
+  The fold and unfold are the `patch_encode` and `patch_decode` layers of the PDSL asset
+  `pdsl/audio/patch_transform.pdsl`.
+
 ## Integration with Other Modules
 
 ### Graph Module
@@ -564,7 +757,9 @@ conditioning. The buffer starts zero-filled, which is the value plain generation
 - **KV Caching** - Attention keys/values cached to avoid recomputation
 - **Grouped-Query Attention** - Reduces KV cache size by 4x
 - **Hardware Compilation** - JIT compilation to native/GPU code
-- **Memory Efficiency** - Zero-initialized caches prevent numerical issues
+- **Memory Efficiency** - KV caches rely on zero-fill at allocation to avoid numerical issues;
+  see [ml-inference-pipeline.md](../../docs/internals/ml-inference-pipeline.md#zero-initialization)
+  for which memory providers this currently holds for
 - **Batch Processing** - Support for processing multiple sequences
 
 ## Testing
@@ -656,7 +851,7 @@ The 12 attention heads are partitioned into 6 groups of 2. Each group applies Ro
 
 ### GRU Decoder
 
-A 4-layer GRU that autoregressively decodes 7 tokens per note from the transformer's hidden states. Implemented in `GRUDecoder.java` as a single `CompiledModel` using the Producer pattern — no separate GRU cell class, no imperative Java loops in the decode path.
+A stacked GRU (4 layers in the paper configuration, 2 in the 309M checkpoint) that autoregressively decodes 7 tokens per note from the transformer's hidden state. Its structure is the PDSL asset `pdsl/midi/gru_decoder.pdsl`: a start model (the summary projection, written into every layer's row of the hidden state) run once per note, and a step model (per layer: read the layer's hidden-state row, GRU cell, write the row back; then the logits head) run once per token. The GRU hidden state is a `[layers, decoderHiddenSize]` state collection the two models share, like the attention KV cache. `GRUDecoder.java` binds the checkpoint weights (`GRUDecoder.load(stateDict, config)`), compiles the two models, and runs the decode loop — token selection and the embedding lookup of the chosen token happen between forward passes.
 
 ### MoonbeamMidi
 
@@ -670,7 +865,7 @@ Top-level entry point that wires together:
 | Class | Package | Role |
 |-------|---------|------|
 | `MoonbeamMidi` | `org.almostrealism.ml.midi` | Top-level model |
-| `GRUDecoder` | `org.almostrealism.ml.midi` | 4-layer GRU, single CompiledModel |
+| `GRUDecoder` | `org.almostrealism.ml.midi` | GRU decoder built from `gru_decoder.pdsl` |
 | `CompoundMidiEmbedding` | `org.almostrealism.ml.midi` | 6-attribute compound embedding |
 | `FundamentalMusicEmbedding` | `org.almostrealism.ml.midi` | Sinusoidal embedding, single attribute |
 | `MidiTokenizer` | `org.almostrealism.music.midi` | MIDI → compound token conversion |

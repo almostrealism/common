@@ -50,18 +50,17 @@ import java.util.function.Consumer;
  *
  * <p>A factory additionally has to keep the serialized property store in step
  * with this state, because its configuration travels to a worker over the
- * wire. That is what the optional <em>property sink</em> is for: a mutation
- * publishes the wire keys it changed, and an owner that does not serialize
- * simply supplies no sink. The decode direction is the {@code apply*} methods,
- * which assign without publishing, so that reading a property back off the
- * wire does not re-emit it.</p>
+ * wire; {@link WireConfig} describes the optional property sink that does so.
+ * The decode direction is the {@code apply*} methods, which assign without
+ * publishing, so that reading a property back off the wire does not re-emit
+ * it.</p>
  *
  * @author Michael Murray
  * @see CodingAgentJob
  * @see CodingAgentJobFactory
  * @see PhaseConfigBundle
  */
-class PhaseRunnerConfig {
+class PhaseRunnerConfig extends WireConfig {
 
     /** Wire key carrying {@link #defaultRunner}. */
     static final String DEFAULT_RUNNER_KEY = "defaultRunner";
@@ -71,12 +70,6 @@ class PhaseRunnerConfig {
 
     /** Wire key carrying the encoded {@link #phaseConfigBundle}. */
     static final String PHASE_CONFIG_BUNDLE_KEY = "phaseConfigBundle";
-
-    /**
-     * Receives {@code (key, value)} for each wire property a mutation changed,
-     * or {@code null} when this configuration is not serialized.
-     */
-    private final BiConsumer<String, String> propertySink;
 
     /**
      * Legacy single-runner field retained for backwards source compatibility.
@@ -115,7 +108,7 @@ class PhaseRunnerConfig {
      *                     configuration is not serialized
      */
     PhaseRunnerConfig(BiConsumer<String, String> propertySink) {
-        this.propertySink = propertySink;
+        super(propertySink);
     }
 
     /**
@@ -236,10 +229,7 @@ class PhaseRunnerConfig {
      */
     void setPhaseConfigBundle(PhaseConfigBundle bundle) {
         applyPhaseConfigBundle(bundle);
-        publishDefaultRunner();
-        publishRunnerMap();
-        publish(PHASE_CONFIG_BUNDLE_KEY,
-                CodingAgentJobCodec.encodePhaseConfigBundle(phaseConfigBundle));
+        publishWireProperties();
     }
 
     /**
@@ -273,24 +263,27 @@ class PhaseRunnerConfig {
      * {@code wireValue}. Syncs both {@link #runnerByPhase} and
      * {@link #phaseConfigBundle} so {@link #resolveRunner(Phase)} sees them.
      *
-     * @param wireValue the encoded runner map from {@link CodingAgentJobCodec}
+     * @param wireValue the encoded runner map from {@link #appendEncoded(StringBuilder)}
      * @param warn       receives a message when a wire entry cannot be decoded
      */
     void applyRunnerMap(String wireValue, Consumer<String> warn) {
         runnerByPhase.clear();
-        Map<Phase, String> decoded = Phase.decodeRunnerMap(wireValue, warn);
-        runnerByPhase.putAll(decoded);
+        if (wireValue != null) {
+            for (String entry : wireValue.split(",")) {
+                applyRunnerEntry(entry.trim(), warn);
+            }
+        }
 
         // Ensure the bundle's runner overrides match the decoded map.
         for (Map.Entry<Phase, PhaseConfig> e : phaseConfigBundle.phaseConfigs().entrySet()) {
             Phase phase = e.getKey();
             String runner = e.getValue().runner();
-            if (!decoded.containsKey(phase) && runner != null && !runner.isEmpty()) {
+            if (!runnerByPhase.containsKey(phase) && runner != null && !runner.isEmpty()) {
                 phaseConfigBundle = phaseConfigBundle.withPhase(phase, e.getValue().withRunner(null));
             }
         }
 
-        for (Map.Entry<Phase, String> entry : decoded.entrySet()) {
+        for (Map.Entry<Phase, String> entry : runnerByPhase.entrySet()) {
             PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(entry.getKey());
             PhaseConfig updated = (existing != null ? existing : PhaseConfig.EMPTY)
                     .withRunner(entry.getValue());
@@ -358,25 +351,80 @@ class PhaseRunnerConfig {
         applyDefaultRunner(value);
     }
 
+    /**
+     * Hands this configuration's wire keys ({@link #DEFAULT_RUNNER_KEY},
+     * {@link #RUNNER_MAP_KEY}, {@link #PHASE_CONFIG_BUNDLE_KEY}) to
+     * {@code sink}, with a {@code null} value for each key at its default.
+     *
+     * <p>The bundle is the sole carrier of model, effort, and provider; the
+     * runner keys carry only runner identity for runner-resolution callers.</p>
+     *
+     * @param sink receives {@code (key, value)} for each wire property
+     */
+    @Override
+    protected void writeWireProperties(BiConsumer<String, String> sink) {
+        sink.accept(DEFAULT_RUNNER_KEY, defaultRunnerWireValue());
+        sink.accept(RUNNER_MAP_KEY, encodeRunnerMap());
+        sink.accept(PHASE_CONFIG_BUNDLE_KEY, phaseConfigBundle.toWire());
+    }
+
+    /**
+     * Returns the {@link #DEFAULT_RUNNER_KEY} wire value.
+     *
+     * @return {@link #defaultRunner}, or {@code null} when it is the default runner
+     */
+    private String defaultRunnerWireValue() {
+        return AgentRunnerRegistry.CLAUDE.equals(defaultRunner) ? null : defaultRunner;
+    }
+
     /** Publishes {@link #defaultRunner}, omitting it when it is the default runner. */
     private void publishDefaultRunner() {
-        publish(DEFAULT_RUNNER_KEY,
-                AgentRunnerRegistry.CLAUDE.equals(defaultRunner) ? null : defaultRunner);
+        publish(DEFAULT_RUNNER_KEY, defaultRunnerWireValue());
+    }
+
+    /**
+     * Decodes one {@code phase=runner} entry of the {@link #RUNNER_MAP_KEY}
+     * wire value into {@link #runnerByPhase}. Malformed entries and unknown
+     * phase names are reported to {@code warn} and skipped, so a future
+     * producer cannot brick a current consumer.
+     *
+     * @param entry the trimmed entry; empty entries are ignored
+     * @param warn  receives a message when the entry cannot be decoded
+     */
+    private void applyRunnerEntry(String entry, Consumer<String> warn) {
+        if (entry.isEmpty()) return;
+        int eq = entry.indexOf('=');
+        if (eq <= 0 || eq == entry.length() - 1) {
+            warn.accept("Ignoring malformed runner entry: " + entry);
+            return;
+        }
+        String phaseName = entry.substring(0, eq);
+        try {
+            runnerByPhase.put(Phase.fromWireName(phaseName), entry.substring(eq + 1));
+        } catch (IllegalArgumentException e) {
+            warn.accept("Ignoring unknown phase '" + phaseName + "' in runners map");
+        }
+    }
+
+    /**
+     * Encodes {@link #runnerByPhase} as the {@link #RUNNER_MAP_KEY} wire value:
+     * a CSV of {@code phase=runner} pairs in {@link Phase} declaration order,
+     * the format {@link #applyRunnerMap(String, Consumer)} decodes.
+     *
+     * @return the encoded map, or {@code null} when there are no overrides
+     */
+    private String encodeRunnerMap() {
+        if (runnerByPhase.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<Phase, String> entry : runnerByPhase.entrySet()) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(entry.getKey().wireName()).append('=').append(entry.getValue());
+        }
+        return sb.toString();
     }
 
     /** Publishes {@link #runnerByPhase}, omitting it when there are no overrides. */
     private void publishRunnerMap() {
-        publish(RUNNER_MAP_KEY,
-                runnerByPhase.isEmpty() ? null : Phase.encodeRunnerMap(runnerByPhase));
-    }
-
-    /**
-     * Publishes one wire property, when there is anywhere to publish it to.
-     *
-     * @param key   the wire key
-     * @param value the value, or {@code null} to clear the key
-     */
-    private void publish(String key, String value) {
-        if (propertySink != null) propertySink.accept(key, value);
+        publish(RUNNER_MAP_KEY, encodeRunnerMap());
     }
 }

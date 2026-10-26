@@ -4,7 +4,8 @@ Reference for the PDSL audio DSP substrate — the primitives, multi-channel con
 and argument forms used when writing new PDSL audio DSL. PDSL `layer` bodies compile to
 `Block`/`Model` graphs backed by the same `Producer`/`CollectionProducer` framework as the
 rest of the project; the audio primitives add stateful and multi-channel block factories on
-top of the interpreter core.
+top of the interpreter core. The language itself (grammar, statements, name resolution and the
+core built-in catalog) is described in the [PDSL Language Reference](pdsl-language.md).
 
 The production consumer of this substrate is the `AudioScene` real-time mixdown
 (`AudioSceneRealtimeRunner.createPdsl` driving `mixdown_master_wet`); in-progress work
@@ -42,10 +43,13 @@ PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 
 ## Audio DSL files
 
-All four files live in `engine/ml/src/main/resources/pdsl/audio/`.
+These files live in `engine/ml/src/main/resources/pdsl/audio/`.
 
 | File | What it defines |
 |------|-----------------|
+| `oobleck_residual_block.pdsl` | The Oobleck codec's residual unit — `oobleck_residual_block`: `accum` around Snake → `conv1d` (kernel 7) → Snake → `conv1d` (kernel 1). Loaded by `OobleckCodec.buildResidualBlock`. |
+| `oobleck_codec.pdsl` | The Oobleck codec's stages, which call the residual unit: `oobleck_input_projection`, `oobleck_encoder_block` (three residual units → Snake → strided `conv1d`), `oobleck_encoder_output`, `oobleck_decoder_block` (Snake → `conv_transpose1d` → three residual units) and `oobleck_decoder_output`. `OobleckEncoder` and `OobleckDecoder` build one layer per stage through the `OobleckCodec` stage builders. Because `oobleck_codec.pdsl` imports `oobleck_residual_block.pdsl`, parsing it alone (via `PdslLoader.parseResource`) resolves the residual unit into the same program. |
+| `patch_transform.pdsl` | The parameter-free patched pretransform — `patch_encode` (fold runs of `patch_size` samples into the channel axis: `reshape` → `permute` → `reshape`) and its exact inverse `patch_decode`. Uses only core primitives, so `PatchedPretransform.encode`/`decode` build these layers with a plain `PdslLoader`. |
 | `efx_channel.pdsl` | EFX channel layers — `efx_wet_chain`, `efx_lowpass_wet`, `efx_highpass_wet`, `efx_dry_path`, `efx_delay`, `efx_wet_dry_mix`, the composite `efx_channel` (dry + filtered/scaled/delayed wet via `accum_blocks`), and the `feedback_comb` closed-loop comb. States: `efx_delay_state`, `feedback_comb_state`. |
 | `mixdown_channel.pdsl` | Single-channel mixdown — `mixdown_main` (HP → `scale` → LP) and `mixdown_channel` (full path with wet/delay). State: `mixdown_delay_state`. |
 | `delay_feedback_bank.pdsl` | Multi-channel delay bank — `delay_feedback_bank`: `repeat` → per-channel `delay` → `route` → `sum_channels`. State: `delay_bank_state`. |
@@ -78,20 +82,14 @@ frame):
 
 ### Core/domain-agnostic primitives (interpreter core)
 
-Supplied by `PdslBuiltins` regardless of audio registration — pure tensor ops with no
-audio-domain assumption:
-
-| Primitive | Signature | Behavior |
-|-----------|-----------|----------|
-| `identity` | `identity()` | Pass-through (zero computation). |
-| `scale` | `scale(factor)` | Element-wise multiply; `factor` accepts `producer([1])`. |
-| `repeat` | `repeat(n)` | Axis-0 replication, `[1, S]` → `[n, S]` (`CollectionProducer.repeat(0, n)`). |
-| `sum_channels` | `sum_channels()` | Axis-0 reduction, `[C, S]` → `[1, S]`. |
-| `capture` | `capture(slot)` | Copies the stage input into a same-sized caller-owned producer slot, then passes the input through unchanged. The copy is part of the compiled operation order, allowing a runner to export intermediate signals such as channel and effects stems after each forward pass. |
-
-(`PdslBuiltins` also supplies the ML primitives — `dense`, `rmsnorm`, `softmax`, the
-activations, `slice`, `reshape`, `range`, `lerp`, `capture`, `rope_rotation`, `attention`,
-`transformer`, `feed_forward` — usable in the same layer bodies.)
+`PdslBuiltins` supplies the domain-agnostic built-ins whether or not the audio primitives are
+registered, and they are usable in the same layer bodies. The ones audio layers use most are
+`identity`, `scale` (which also takes a `producer([1])` factor, and a per-channel bank under
+vectorized `for each channel`), `repeat`, `sum_channels` and `capture`. The complete catalog is
+in the [PDSL Language Reference](pdsl-language.md#builtin-catalog): each built-in's call forms,
+input and output shapes, the method it lowers to, and its gradient behavior. That page also
+covers name resolution (a program's own layers shadow registered primitives and built-ins), how a
+layer called from another layer gets its input shape, and imports.
 
 There is **no `choice()` primitive.** A `Choice` cannot be code-generated inside a compiled
 PDSL model. Gene-driven HP/LP filter selection is performed host-side in the genome→args
@@ -123,7 +121,7 @@ layer delay_feedback_bank(channels: int, signal_size: int, delay_samples: int,
 | `for each channel { }` | `[C, S]` → `[C, S]` | Applies the body per channel; `channel` is bound to the index. State and producer rows are sliced with `expr[channel]`. |
 | `route(matrix)` | `[in, S]` → `[out, S]` | `out[i] = sum_j matrix[i,j] * in[j]`. Matrix must be 2D and its first axis must equal the upstream channel count. Square and rectangular both supported; a rectangular route updates the downstream channel count via the primitive context. |
 | `sum_channels()` | `[C, S]` → `[1, S]` | Within-tensor channel-axis reduction. |
-| `accum_blocks(a, b, …)` | branches → sum | Each brace-delimited sub-block receives the same input; the output is the element-wise sum of their outputs. This is heterogeneous branching (e.g. dry + wet). Distinct from `sum_channels()`, which reduces one tensor's channel axis. |
+| `accum_blocks(a, b, …)` | branches → sum | Each brace-delimited sub-block receives the same input; the output is the element-wise sum of their outputs. This is heterogeneous branching (e.g. dry + wet). The backward pass delivers the full output gradient to every sub-block and sums their input-gradients, so each summed path trains. Distinct from `sum_channels()`, which reduces one tensor's channel axis. |
 
 ### Vectorized `for each channel`
 
@@ -188,3 +186,11 @@ The caller owns and supplies the backing `PackedCollection`s; they persist acros
 `forward()` calls. State is written inside the primitive's `push()` via `into(...)` — a
 `CollectionProducer` write, never `setMem()`/`toDouble()` — so a stateful PDSL block behaves
 like a `CachedStateCell` from the cell graph's perspective without any adapter code.
+
+## Imports
+
+A `.pdsl` file declares the assets it depends on with `import "/absolute/path.pdsl"` statements
+before its first definition, and `PdslLoader.parseResource` resolves them transitively.
+`oobleck_codec.pdsl`, for example, imports `oobleck_residual_block.pdsl`. The rules are in the
+[Imports section of the language reference](pdsl-language.md#imports): resources are
+de-duplicated across diamonds, while duplicate definitions and import cycles are errors.

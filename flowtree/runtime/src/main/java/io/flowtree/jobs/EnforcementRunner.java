@@ -23,8 +23,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -41,6 +43,22 @@ import java.util.Set;
  * run primitives without widening the public API.</p>
  */
 class EnforcementRunner implements ConsoleFeatures {
+
+    /**
+     * How many consecutive correction attempts may leave the working tree
+     * exactly as they found it, with the rule still violated, before the rule
+     * is retired for as long as the tree stays that way.
+     *
+     * <p>An attempt that changes nothing and leaves the violation in place
+     * shows the agent cannot (or will not) satisfy the rule from where it is;
+     * another identical attempt is the same question asked again. One repeat
+     * is allowed, since a session can end early for reasons of its own. Without
+     * this bound a rule the agent cannot satisfy, such as a guardrail rejecting
+     * content the agent did not write, runs until the job-wide caps stop it:
+     * more than a dozen sessions on one branch in eleven minutes, each
+     * re-verifying the same impossibility.</p>
+     */
+    static final int MAX_NO_PROGRESS_ATTEMPTS = 2;
 
     /** The job whose configuration and run primitives this runner drives. */
     private final CodingAgentJob job;
@@ -63,10 +81,10 @@ class EnforcementRunner implements ConsoleFeatures {
      *
      * @return ordered list of active enforcement rules; never {@code null}
      */
-    private List<EnforcementRule> buildActiveRules() {
+    List<EnforcementRule> buildActiveRules() {
         List<EnforcementRule> rules = new ArrayList<>();
         if (job.isEnforceChanges()) {
-            rules.add(new EnforceChangesRule());
+            rules.add(job.enforceChanges().createRule());
         }
         // Review is deliberately NOT gated on the primary phase's outcome. A
         // primary phase that reports failure has still been observed to leave
@@ -97,6 +115,11 @@ class EnforcementRunner implements ConsoleFeatures {
             rules.add(new MavenDependencyProtectionRule());
         }
         rules.addAll(job.getCustomEnforcementRules());
+        if (reviewRule != null && job.isObjectOrientedReviewEnabled()) {
+            // One session per changed class: after the content-protection rules, so that a
+            // branch touching many classes cannot spend the total attempt cap before they run.
+            rules.add(new ObjectOrientedDesignRule());
+        }
         if (job.getTargetBranch() != null && !job.getTargetBranch().isEmpty()) {
             // Checked after the content rules above, right before the final
             // commit-message check -- see StagingSkipRule's class javadoc.
@@ -117,17 +140,23 @@ class EnforcementRunner implements ConsoleFeatures {
      *
      * <p>Exits early if the agent commits during a correction session — the
      * tampering-detection path in {@code GitManagedJob} handles that case.</p>
+     *
+     * <p>A rule that exhausts its retries is retired for good only when its
+     * per-rule cap exceeded the absolute ceiling (re-running would hit the
+     * ceiling again), an exhaustion fallback resolved it, or it reports no
+     * retries left (see {@link EnforceChangesRule}'s whole-job budget). Otherwise it
+     * re-enters across passes, bounded by the global total-attempt cap. A rule
+     * retired after {@link #MAX_NO_PROGRESS_ATTEMPTS} attempts that changed
+     * nothing is remembered with the working-tree fingerprint it stalled on:
+     * it is skipped while the tree still matches, and re-enters once something
+     * else, such as another rule's correction, changes the tree.</p>
      */
     void run() {
         List<EnforcementRule> rules = buildActiveRules();
         int totalAttempts = 0;
         boolean anyRuleCorrectionRan;
-        // Rules that must never be re-entered: either their per-rule cap exceeded the
-        // absolute ceiling (so re-running would only hit the ceiling again) or an
-        // exhaustion fallback has already resolved them. A chronically-violated rule
-        // with a modest per-rule cap is NOT placed here — it re-enters across passes
-        // and is bounded by the global total-attempt cap instead.
         Set<String> exhaustedRules = new HashSet<>();
+        Map<String, String> stalledRules = new HashMap<>();
         do {
             // The RestartGovernor is the universal stop: once the global session
             // cap or the job-wide dollar/turn budget is exhausted, no further
@@ -140,6 +169,10 @@ class EnforcementRunner implements ConsoleFeatures {
             for (EnforcementRule rule : rules) {
                 String ruleName = rule.getName();
                 if (exhaustedRules.contains(ruleName)) {
+                    continue;
+                }
+                if (stalledRules.containsKey(ruleName)
+                        && stalledRules.get(ruleName).equals(workingTreeFingerprint(rule))) {
                     continue;
                 }
                 if (!rule.isViolated(job)) {
@@ -156,7 +189,9 @@ class EnforcementRunner implements ConsoleFeatures {
                 int ruleCap = Math.min(rule.getMaxRetries(), CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES);
                 boolean ceilingLimited = rule.getMaxRetries() > CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES;
                 int attempts = 0;
+                int noProgressAttempts = 0;
                 while (attempts < ruleCap
+                        && noProgressAttempts < MAX_NO_PROGRESS_ATTEMPTS
                         && rule.isViolated(job)
                         && !job.hasAgentCommitted()
                         && totalAttempts < CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
@@ -166,6 +201,7 @@ class EnforcementRunner implements ConsoleFeatures {
                     anyRuleCorrectionRan = true;
                     log("Enforcement rule '" + ruleName
                             + "': correction attempt " + attempts);
+                    String treeBefore = workingTreeFingerprint(rule);
                     String correctionPrompt = rule.buildCorrectionPrompt(job);
                     if (correctionPrompt != null) {
                         job.runCorrectionSession(correctionPrompt, ruleName);
@@ -198,11 +234,20 @@ class EnforcementRunner implements ConsoleFeatures {
                     }
                     rule.onCorrectionAttempted(job);
                     if (job.hasAgentCommitted()) break;
+                    noProgressAttempts = treeBefore != null && treeBefore.equals(workingTreeFingerprint(rule))
+                            ? noProgressAttempts + 1 : 0;
                 }
 
                 if (!job.hasAgentCommitted() && rule.isViolated(job)) {
-                    if (attempts >= ruleCap) {
-                        if (ceilingLimited) {
+                    boolean stalled = noProgressAttempts >= MAX_NO_PROGRESS_ATTEMPTS;
+                    if (stalled || attempts >= ruleCap) {
+                        if (stalled) {
+                            warn("Enforcement rule '" + ruleName + "': " + noProgressAttempts
+                                    + " consecutive correction attempts left the working tree unchanged"
+                                    + " and the violation in place; retiring the rule until the tree changes");
+                            job.harnessStatus().unusual("Enforcement rule '" + ruleName + "' retired after "
+                                    + noProgressAttempts + " correction attempts that made no progress");
+                        } else if (ceilingLimited) {
                             warn("Enforcement rule '" + ruleName
                                     + "': absolute entry ceiling (" + CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES
                                     + ") reached; skipping rule to prevent runaway cost");
@@ -210,18 +255,19 @@ class EnforcementRunner implements ConsoleFeatures {
                                     + "' reached absolute entry ceiling and was skipped");
                         } else {
                             warn("Enforcement rule '" + ruleName + "': exhausted "
-                                    + rule.getMaxRetries() + " retries without resolution");
+                                    + attempts + " retries without resolution");
                             job.harnessStatus().unusual("Enforcement rule '" + ruleName
-                                    + "' exhausted " + rule.getMaxRetries() + " retries without resolution");
+                                    + "' exhausted " + attempts + " retries without resolution");
                         }
                         if ("post-completion-command".equals(ruleName)) job.setPostCompletionCapHit(true);
                         boolean fallbackApplied = applyExhaustionFallback(rule, job);
-                        // Retire the rule only when the ceiling bound it (re-running would
-                        // just hit the ceiling again) or a fallback already resolved it.
-                        // Otherwise the rule is free to re-enter on the next pass, with the
-                        // global total-attempt cap as the ultimate backstop.
-                        if (ceilingLimited || fallbackApplied) {
+                        // A rule with no retries left (a whole-job budget now spent, or a
+                        // cap of 0) has nothing to attempt on a later pass.
+                        if (ceilingLimited || fallbackApplied || rule.getMaxRetries() == 0) {
                             exhaustedRules.add(ruleName);
+                        } else if (stalled) {
+                            String stalledOn = workingTreeFingerprint(rule);
+                            if (stalledOn != null) stalledRules.put(ruleName, stalledOn);
                         }
                     } else if (totalAttempts >= CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
                         warn("Enforcement rule '" + ruleName
@@ -239,6 +285,33 @@ class EnforcementRunner implements ConsoleFeatures {
             warn("Enforcement aborted after " + totalAttempts + " total attempts (cap: "
                     + CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS + ") — giving up to"
                     + " avoid an unbounded retry loop");
+        }
+    }
+
+    /**
+     * Returns a fingerprint of the job's uncommitted working-tree state as it
+     * bears on {@code rule}: every changed file outside scratch space, plus the
+     * rule's own {@linkplain EnforcementRule#getProgressPaths() progress paths};
+     * see {@link GitOperations#fingerprintUncommittedState}.
+     *
+     * <p>A job without a working directory has no tree to judge; git would
+     * otherwise inspect the JVM's own working directory.</p>
+     *
+     * @param rule the rule whose progress is being measured
+     * @return the fingerprint, or {@code null} when it cannot be computed (no
+     *         working directory, not a git working tree, a failed status
+     *         query), in which case no attempt is ever judged to have made no
+     *         progress
+     */
+    private String workingTreeFingerprint(EnforcementRule rule) {
+        if (job.getWorkingDirectory() == null) {
+            return null;
+        }
+        try {
+            return GitOperations.fingerprintUncommittedState(job.getWorkingDirectory(),
+                    rule.getProgressPaths().toArray(new String[0]));
+        } catch (IOException e) {
+            return null;
         }
     }
 
@@ -275,7 +348,7 @@ class EnforcementRunner implements ConsoleFeatures {
 
         Path commitFile = job.resolveWorkingPath("commit.txt");
         if (commitFile == null) return false;
-        String fallback = buildFallbackCommitMessage(job);
+        String fallback = job.commitMessageBuilder().buildExhaustionFallback(job);
         try {
             Files.writeString(commitFile, fallback, StandardCharsets.UTF_8);
             log("commit-message rule: wrote fallback commit message to commit.txt");
@@ -284,29 +357,5 @@ class EnforcementRunner implements ConsoleFeatures {
             warn("Could not write fallback commit.txt: " + e.getMessage());
             return false;
         }
-    }
-
-    /**
-     * Builds the fallback commit message used when the commit-message rule exhausts
-     * its retries and needs to produce a usable message so the job can proceed.
-     * Uses, in order:
-     * <ol>
-     *   <li>The job prompt's first line, if non-empty and free of author
-     *       attribution (a prompt line that names an author would produce the
-     *       very message {@link CommitMessageBuilder} refuses to commit)</li>
-     *   <li>{@code "Job {jobId} commit"}</li>
-     * </ol>
-     */
-    private String buildFallbackCommitMessage(CodingAgentJob job) {
-        String prompt = job.getPrompt();
-        if (prompt != null && !prompt.trim().isEmpty()) {
-            String firstLine = prompt.trim().split("\n")[0].trim();
-            if (!firstLine.isEmpty() && !AuthorAttribution.containsAttribution(firstLine)) {
-                return firstLine.length() > 72
-                        ? firstLine.substring(0, 69) + "..."
-                        : firstLine;
-            }
-        }
-        return "Job " + job.getTaskId() + " commit";
     }
 }

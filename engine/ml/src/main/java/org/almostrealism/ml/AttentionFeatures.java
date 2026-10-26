@@ -26,12 +26,15 @@ import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
+import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -171,13 +174,7 @@ import java.util.function.Function;
  * @see org.almostrealism.layers.LayerFeatures
  * @see org.almostrealism.model.Block
  */
-public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
-
-	/**
-	 * Magnitude of the negative bias added to the attention logit of a masked key, large enough
-	 * that the key's softmax weight underflows to zero in single precision.
-	 */
-	double MASKED_LOGIT_PENALTY = 1e9;
+public interface AttentionFeatures extends SequenceAttentionFeatures {
 
 	/**
 	 * Creates a layer that reshapes input for split-half RoPE format.
@@ -200,6 +197,10 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @return CellularLayer that transforms to split-half format
 	 */
 	default CellularLayer reshapeToSplitHalfRope(int flatDim, int heads, int headSize) {
+		if (headSize <= 0 || headSize % 2 != 0) {
+			throw new IllegalArgumentException("headSize must be a positive even number, got " + headSize);
+		}
+
 		int freqDim = headSize / 2;
 		TraversalPolicy inputShape = shape(1, flatDim);
 		TraversalPolicy outputShape = shape(heads, freqDim, 2);
@@ -229,6 +230,10 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @return CellularLayer that transforms from split-half format to flat
 	 */
 	default CellularLayer reshapeFromSplitHalfRope(int heads, int headSize) {
+		if (headSize <= 0 || headSize % 2 != 0) {
+			throw new IllegalArgumentException("headSize must be a positive even number, got " + headSize);
+		}
+
 		int freqDim = headSize / 2;
 		TraversalPolicy inputShape = shape(heads, freqDim, 2);
 		TraversalPolicy outputShape = shape(heads, headSize);
@@ -294,14 +299,18 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		int kvDim = kvHeads * headSize;
 
 		if (kvHeads == heads) {
-			// No GQA - use simple attention
-			return layer("attentionKeys", inputShape, outputShape, input ->
-					traverse(1, keys).multiply(input)
-							.traverse(2).sum()
-							.divide(c(Math.sqrt(headSize)))
-							.reshape(shape(seqLength, heads))
-							.enumerate(1, 1)
-							.reshape(outputShape), requirements);
+			// No GQA: the query is repeated once per cached row explicitly, for the reason
+			// given in attentionScores (a (heads, headSize) query is a prefix of the
+			// (seqLength, heads, headSize) cache whenever heads == seqLength).
+			return layer("attentionKeys", inputShape, outputShape, input -> {
+				Producer<PackedCollection> query = repeat(seqLength, reshape(shape(heads, headSize), input));
+				return multiply(traverseEach(keys), traverseEach(query))
+						.traverse(2).sum()
+						.divide(c(Math.sqrt(headSize)))
+						.reshape(shape(seqLength, heads))
+						.enumerate(1, 1)
+						.reshape(outputShape);
+			}, requirements);
 		} else {
 			// GQA: Compact keys (seqLen, kvHeads, headSize), Query (heads, headSize)
 			// Compute attention scores per kvHead group using subset operations
@@ -355,12 +364,12 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	}
 
 	/**
-	 * Creates a GQA expansion layer for per-position KV data with batch dimension.
+	 * Creates a GQA expansion layer for per-position KV data.
 	 *
 	 * <p>Expands from (1, kvDim) to (1, dim) by duplicating each KV head's data
-	 * headsPerKvGroup times. This operates on per-position 2D data (with batch dim)
-	 * using explicit subset and concat to avoid traverse().repeat() which causes
-	 * compilation issues.</p>
+	 * headsPerKvGroup times: {@link org.almostrealism.layers.LayerFeatures#repeatEach repeatEach}
+	 * over runs of {@code headSize} elements, with the input and output kept as one
+	 * per-position vector each.</p>
 	 *
 	 * <p>For Qwen3 with heads=14, kvHeads=2 (7:1 ratio):
 	 * - Input: (1, 128) = (1, 2 * 64)
@@ -384,17 +393,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 					input -> c(input), requirements);
 		}
 
-		int headsPerKvGroup = heads / kvHeads;
-		TraversalPolicy inputShape = shape(1, kvDim);
-		TraversalPolicy outputShape = shape(1, dim);
-
-		CollectionProducer index = integers(0, dim);
-		CollectionProducer outputHead = floor(index.divide(headSize));
-		CollectionProducer inHeadOffset = index.mod(headSize);
-		CollectionProducer kvHead = floor(outputHead.divide(headsPerKvGroup));
-
-		return gather("gqa_expand", inputShape, outputShape,
-				kvHead.multiply(headSize).add(inHeadOffset), requirements);
+		return repeatEach(shape(1, kvDim), shape(1, dim), headSize, heads / kvHeads, requirements);
 	}
 
 	/**
@@ -525,121 +524,125 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	}
 
 	/**
-	 * Standard attention keys computation for expanded caches (no GQA).
+	 * Attention scores of one query per head against every row of a key cache.
 	 *
-	 * <p>This version expects keys in shape (seqLength, heads, headSize), which is the
-	 * expanded format where GQA expansion has already been done at cache write time.</p>
+	 * <p>The input holds one query per head, {@code (heads, headSize)}; the cache holds one
+	 * key per head for every position, {@code (seqLength, heads * headSize)} or
+	 * {@code (seqLength, heads, headSize)}. The result is
+	 * {@code scores[h, s] = q_h · k_h[s]}, the unscaled dot products: dividing by
+	 * {@code sqrt(headSize)}, masking and softmax are separate stages, so each can be
+	 * seen where the attention structure is described. The query is repeated once per cached
+	 * row, multiplied element-wise with the cache and reduced over {@code headSize}, giving
+	 * {@code (seqLength, heads)}, and the transpose orders the scores per head.</p>
+	 *
+	 * <p>The repetition is explicit rather than left to the broadcast of
+	 * {@code multiply(cache, query)}: that broadcast matches leading dimensions, so when the
+	 * head count equals the sequence length the {@code (heads, headSize)} query is a prefix of
+	 * the {@code (seqLength, heads, headSize)} cache and every query element would be spread
+	 * across a run of cache elements instead of the whole query being tiled across the rows.</p>
 	 *
 	 * @param inputShape Shape of the query input (heads, headSize)
-	 * @param keys Key tensor producer (seqLength, heads, headSize)
+	 * @param keys Key cache with {@code seqLength * heads * headSize} elements
 	 * @param requirements Compute requirements
-	 * @return Attention keys layer producing scaled dot-product attention scores
+	 * @return Layer producing the (heads, seqLength) scores
+	 * @throws IllegalArgumentException if the cache does not hold whole rows of the query size
 	 */
-	default CellularLayer attentionKeysStandard(TraversalPolicy inputShape,
-												Producer<PackedCollection> keys,
-												ComputeRequirement... requirements) {
-		TraversalPolicy keyShape = shape(keys); // (seqLength, heads, headSize)
-
-		if (inputShape.getDimensions() != 2 || keyShape.getDimensions() != 3)
-			throw new IllegalArgumentException("Expected query (heads, headSize) and keys (seqLen, heads, headSize)");
+	default CellularLayer attentionScores(TraversalPolicy inputShape,
+										  Producer<PackedCollection> keys,
+										  ComputeRequirement... requirements) {
+		if (inputShape.getDimensions() != 2)
+			throw new IllegalArgumentException("Expected query (heads, headSize), got " + inputShape);
 
 		int heads = inputShape.length(0);
 		int headSize = inputShape.length(1);
+		int total = shape(keys).getTotalSize();
+		if (total % (heads * headSize) != 0)
+			throw new IllegalArgumentException("Key cache of " + total
+					+ " elements does not hold whole rows of " + heads + " heads of " + headSize);
 
-		int seqLength = keyShape.length(0);
+		int seqLength = total / (heads * headSize);
+		TraversalPolicy cacheShape = shape(seqLength, heads, headSize);
 		TraversalPolicy outputShape = shape(heads, seqLength).traverseEach();
 
-		if (keyShape.length(1) != heads || keyShape.length(2) != headSize)
-			throw new IllegalArgumentException("Key shape must match query heads and headSize");
-
-		// Standard attention: Q @ K^T / sqrt(headSize)
-		// Use permute(1, 0) to transpose (seqLength, heads) -> (heads, seqLength)
-		// instead of enumerate(1, 1) which uses subset internally
-		return layer("attentionKeysStd", inputShape, outputShape, input ->
-				permute(
-					traverse(1, keys).multiply(input)
-						.traverse(2).sum()
-						.divide(c(Math.sqrt(headSize)))
-						.reshape(shape(seqLength, heads)),
-					1, 0
-				).reshape(outputShape), requirements);
-	}
-
-	/**
-	 * Standard attention values computation for expanded caches (no GQA).
-	 *
-	 * <p>This version expects values in shape (seqLength, heads, headSize), which is the
-	 * expanded format where GQA expansion has already been done at cache write time.</p>
-	 *
-	 * @param inputShape Shape of the attention scores input (heads, seqLength)
-	 * @param values Value tensor producer (seqLength, heads, headSize)
-	 * @param requirements Compute requirements
-	 * @return Attention values layer producing (1, dim) output
-	 */
-	default CellularLayer attentionValuesStandard(TraversalPolicy inputShape,
-												  Producer<PackedCollection> values,
-												  ComputeRequirement... requirements) {
-		TraversalPolicy valueShape = shape(values); // (seqLength, heads, headSize)
-
-		if (inputShape.getDimensions() != 2 || valueShape.getDimensions() != 3)
-			throw new IllegalArgumentException("Expected attention (heads, seqLen) and values (seqLen, heads, headSize)");
-
-		int heads = inputShape.length(0);
-		int headSize = valueShape.length(2);
-		int dim = heads * headSize;
-
-		int seqLength = inputShape.length(1);
-
-		// Preserve batch dimension in output shape for consistency with other layers
-		TraversalPolicy outputShape = shape(1, dim);
-
-		if (valueShape.length(0) != seqLength || valueShape.length(1) != heads)
-			throw new IllegalArgumentException("Value shape must match attention heads and seqLength");
-
-		// Standard attention: softmax(scores) @ V
-		// output[h, i] = sum_s(attn[h, s] * values[s, h, i])
-		//
-		// Use the same pattern as the working attentionValues method (non-GQA case):
-		// - Reshape values to (seqLen, dim), transpose to (dim, seqLen), reshape to (heads, headSize, seqLen)
-		// - Expand attention (heads, seqLen) to (heads, headSize, seqLen) via traverse+repeat
-		// - Element-wise multiply and sum over seqLen
-		return layer("attentionValuesStd", inputShape, outputShape, input -> {
-			// Reshape values from (seqLen, heads, headSize) to (seqLen, dim)
-			Producer<PackedCollection> v = reshape(shape(seqLength, dim), values);
-			// Transpose to (dim, seqLen), then reshape to (heads, headSize, seqLen)
-			v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
-
-			// input is (heads, seqLen)
-			// traverse(1, input) iterates over heads, giving (seqLen) slices
-			// repeat(headSize) expands each (seqLen) to (headSize, seqLen)
-			CollectionProducer a = traverse(1, input).repeat(headSize);
-
-			// Element-wise multiply (heads, headSize, seqLen) * (heads, headSize, seqLen)
-			// Then sum over seqLen to get (heads, headSize)
-			CollectionProducer o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
-
-			return o.reshape(shape(1, dim).traverseEach());
+		return layer("attentionScores", inputShape, outputShape, input -> {
+			Producer<PackedCollection> cache = reshape(cacheShape, keys);
+			Producer<PackedCollection> query = repeat(seqLength, reshape(shape(heads, headSize), input));
+			CollectionProducer products = multiply(traverseEach(cache), traverseEach(query));
+			return permute(products.traverse(2).sum().reshape(shape(seqLength, heads)), 1, 0)
+					.reshape(outputShape);
 		}, requirements);
 	}
 
 	/**
-	 * Expand value cache for Grouped Query Attention by repeating each KV head.
+	 * Additive causal mask for single-query attention scores: every column after the current
+	 * position receives {@code -10000}, so its softmax weight underflows to zero, and every
+	 * column up to and including the position is left unchanged. One {@code (1, seqLength)}
+	 * row is broadcast to every head; the broadcast layout is the one pinned by
+	 * {@code CausalMaskIsolationTest}.
 	 *
-	 * Same logic as expandKeysForGQA - transforms (seqLength, kvHeads, headSize)
-	 * to (seqLength, heads, headSize).
+	 * @param shape Shape of the scores, (heads, seqLength)
+	 * @param position Producer of the current position, shape (1)
+	 * @param requirements Compute requirements
+	 * @return Layer adding the mask to the scores
 	 */
-	default Producer<PackedCollection> expandValuesForGQA(
-			Producer<PackedCollection> values,
-			int seqLength, int kvHeads, int heads, int headSize, int headsPerKvGroup) {
-		// Skip expansion if kvHeads == heads (no GQA)
-		if (kvHeads == heads) {
-			return values;
-		}
+	default CellularLayer causalMask(TraversalPolicy shape, Producer<PackedCollection> position,
+									 ComputeRequirement... requirements) {
+		if (shape.getDimensions() != 2)
+			throw new IllegalArgumentException("Expected scores (heads, seqLength), got " + shape);
 
-		// Use traverse(2) to iterate over (seqLength, kvHeads), then repeat each (headSize) vector
-		TraversalPolicy outputShape = shape(seqLength, heads, headSize);
-		Producer<PackedCollection> repeated = traverse(2, values).repeat(headsPerKvGroup);
-		return reshape(outputShape, repeated);
+		int heads = shape.length(0);
+		int seqLength = shape.length(1);
+		TraversalPolicy each = shape(heads, seqLength).traverseEach();
+
+		CollectionProducer indices = integers(0, seqLength);
+		CollectionProducer maskRow = greaterThan(indices, position, c(-10000.0), c(0.0), false);
+		CollectionProducer mask = maskRow.reshape(1, 1, seqLength).repeat(heads);
+		return layer("causalMask", shape, each, input -> add(reshape(each, input), mask), requirements);
+	}
+
+	/**
+	 * Weighted sum of a value cache by per-head attention weights.
+	 *
+	 * <p>The input holds one distribution over positions per head, {@code (heads, seqLength)};
+	 * the cache holds one value per head for every position, {@code (seqLength, heads * headSize)}
+	 * or {@code (seqLength, heads, headSize)}. The result is
+	 * {@code output[h * headSize + i] = sum_s weights[h, s] * values[s, h, i]}, returned as
+	 * {@code (1, heads * headSize)} so it feeds the output projection directly. The cache is
+	 * transposed to {@code (heads, headSize, seqLength)} and the weights expanded to the same
+	 * shape, so their product reduces over the sequence axis.</p>
+	 *
+	 * @param inputShape Shape of the attention weights (heads, seqLength)
+	 * @param values Value cache with {@code seqLength * heads * headSize} elements
+	 * @param requirements Compute requirements
+	 * @return Layer producing the (1, heads * headSize) context
+	 * @throws IllegalArgumentException if the cache does not hold {@code seqLength} whole rows
+	 */
+	default CellularLayer weightedValues(TraversalPolicy inputShape,
+										 Producer<PackedCollection> values,
+										 ComputeRequirement... requirements) {
+		if (inputShape.getDimensions() != 2)
+			throw new IllegalArgumentException("Expected attention weights (heads, seqLength), got " + inputShape);
+
+		int heads = inputShape.length(0);
+		int seqLength = inputShape.length(1);
+		int total = shape(values).getTotalSize();
+		if (total % (seqLength * heads) != 0)
+			throw new IllegalArgumentException("Value cache of " + total
+					+ " elements does not hold " + seqLength + " rows of " + heads + " heads");
+
+		int headSize = total / (seqLength * heads);
+		int dim = heads * headSize;
+		TraversalPolicy outputShape = shape(1, dim);
+
+		return layer("weightedValues", inputShape, outputShape, input -> {
+			Producer<PackedCollection> v = reshape(shape(seqLength, dim), values);
+			v = enumerate(1, 1, v).reshape(shape(heads, headSize, seqLength));
+
+			CollectionProducer a = traverse(1, input).repeat(headSize);
+			CollectionProducer o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
+
+			return o.reshape(shape(1, dim).traverseEach());
+		}, requirements);
 	}
 
 	/**
@@ -701,6 +704,12 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	/**
 	 * Multi-head attention with optional QK-Norm, GQA, and configurable RMSNorm epsilon.
 	 *
+	 * <p>The structure is the {@code attention} layer of {@link #ATTENTION_ASSET} (or
+	 * {@code attention_qk_norm} when normalization weights are given); this method only
+	 * allocates the key and value caches, binds the arguments and builds the layer. QK-Norm
+	 * weights are {@code (heads, headSize)} and {@code (kvHeads, headSize)}: each head is
+	 * normalized by its own root mean square, as in Qwen3.</p>
+	 *
 	 * @param heads Number of query attention heads
 	 * @param kvHeads Number of key/value heads (for GQA, use heads for standard MHA)
 	 * @param rmsAttWeight Pre-attention RMSNorm weights
@@ -716,8 +725,9 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @param freqCis RoPE frequency embeddings
 	 * @param position Current position in sequence
 	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
-	 * @param requirements Compute requirements
+	 * @param requirements compute requirements, applied to every layer the attention asset builds
 	 * @return Attention block
+	 * @throws IllegalArgumentException if only one of the QK-Norm weights is given
 	 */
 	default Block attention(int heads, int kvHeads,
 							PackedCollection rmsAttWeight,
@@ -730,9 +740,10 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 							Producer<PackedCollection> position,
 							double epsilon,
 							ComputeRequirement... requirements) {
-		return attentionImpl(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				bk, bv, bq, qkNormQ, qkNormK,
-				freqCis, null, position, epsilon, requirements);
+		return attentionLayer(qkNormQ == null ? "attention" : "attention_qk_norm",
+				attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+						bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon),
+				requirements);
 	}
 
 	/**
@@ -762,7 +773,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @param headGroups per-head-group RoPE configuration (freqCis + position per group)
 	 * @param position sequential position for KV cache indexing and causal masking
 	 * @param epsilon RMSNorm epsilon
-	 * @param requirements compute requirements
+	 * @param requirements compute requirements, applied to every layer the attention asset builds
 	 * @return attention block with MRA
 	 */
 	default Block attention(int heads, int kvHeads,
@@ -773,336 +784,198 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 							Producer<PackedCollection> position,
 							double epsilon,
 							ComputeRequirement... requirements) {
-		return attentionImpl(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				null, null, null, null, null,
-				null, headGroups, position, epsilon, requirements);
+		return attentionLayer("attention_mra",
+				attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo, headGroups, position, epsilon),
+				requirements);
 	}
 
 	/**
-	 * Unified attention implementation supporting both standard RoPE and
-	 * Multidimensional Relative Attention (MRA).
-	 *
-	 * <p>When {@code headGroups} is non-null, MRA mode is active and per-group
-	 * {@link #mraRopeRotation} is used for Q and K. Otherwise standard
-	 * {@link RotationFeatures#ropeRotation} is applied using {@code freqCis}.
-	 * Optional bias ({@code bk}, {@code bv}, {@code bq}) and QK-Norm
-	 * ({@code qkNormQ}, {@code qkNormK}) parameters are applied only when non-null,
-	 * and are ignored in MRA mode.</p>
+	 * Classpath location of the asset describing the autoregressive attention structure. Its
+	 * {@code attention}, {@code attention_qk_norm} and {@code attention_mra} layers are what the
+	 * {@link #attention} methods build; the asset is the single definition of how the token
+	 * vector flows through normalization, projections, rotation, the KV cache, scores, mask,
+	 * softmax, weighted values and the output projection.
 	 */
-	private Block attentionImpl(int heads, int kvHeads,
-								PackedCollection rmsAttWeight,
-								PackedCollection wk, PackedCollection wv,
-								PackedCollection wq, PackedCollection wo,
-								PackedCollection bk, PackedCollection bv, PackedCollection bq,
-								PackedCollection qkNormQ, PackedCollection qkNormK,
-								CollectionProducer freqCis,
-								HeadGroupConfig[] headGroups,
-								Producer<PackedCollection> position,
-								double epsilon,
-								ComputeRequirement... requirements) {
-		boolean useMRA = headGroups != null;
+	String ATTENTION_ASSET = "/pdsl/attention.pdsl";
 
+	/**
+	 * Binds the arguments every layer of {@link #ATTENTION_ASSET} takes: the head geometry,
+	 * the normalization and projection weights, the position, the RMSNorm epsilon, and a
+	 * freshly allocated key cache and value cache of {@code (seqLen, heads * headSize)} rows —
+	 * the state the block writes on every forward pass and reads on every later one.
+	 *
+	 * @param heads number of query heads
+	 * @param kvHeads number of key/value heads
+	 * @param rmsAttWeight pre-attention RMSNorm weights, whose length is the model dimension
+	 * @param wk key projection weights
+	 * @param wv value projection weights
+	 * @param wq query projection weights
+	 * @param wo output projection weights
+	 * @param seqLen number of cache rows (the maximum sequence length)
+	 * @param position producer of the current position
+	 * @param epsilon RMSNorm epsilon
+	 * @return the argument bindings, to be completed with the layer-specific weights
+	 * @throws IllegalArgumentException if the head count is not positive, the model dimension
+	 *         is not a multiple of the head count, or the query head count is not a positive
+	 *         multiple of the KV head count
+	 */
+	default Map<String, Object> attentionArguments(int heads, int kvHeads,
+												   PackedCollection rmsAttWeight,
+												   PackedCollection wk, PackedCollection wv,
+												   PackedCollection wq, PackedCollection wo,
+												   int seqLen, Producer<PackedCollection> position,
+												   double epsilon) {
 		int dim = rmsAttWeight.getShape().length(0);
-		int headSize = useMRA ? headGroups[0].freqCis.getShape().length(1) * 2
-							  : freqCis.getShape().length(1) * 2;
-		int seqLen = useMRA ? headGroups[0].freqCis.getShape().length(0)
-							: freqCis.getShape().length(0);
-		int kvDim = dim * kvHeads / heads;
-		int headsPerKvGroup = heads / kvHeads;
-		boolean useGQA = kvHeads != heads;
-
-		// For MRA: compute per-group head counts for keys and queries
-		int numGroups = useMRA ? headGroups.length : 0;
-		int[] kvHeadsPerGroup = null;
-		int[] queryHeadsPerGroup = null;
-		if (useMRA) {
-			kvHeadsPerGroup = new int[numGroups];
-			queryHeadsPerGroup = new int[numGroups];
-			for (int g = 0; g < numGroups; g++) {
-				kvHeadsPerGroup[g] = headGroups[g].headCount / headsPerKvGroup;
-				queryHeadsPerGroup[g] = headGroups[g].headCount;
-			}
+		if (heads <= 0) {
+			throw new IllegalArgumentException("Heads must be positive, got " + heads);
+		} else if (dim % heads != 0) {
+			throw new IllegalArgumentException("Model dimension " + dim
+					+ " is not a multiple of " + heads + " heads");
+		} else if (kvHeads <= 0 || heads % kvHeads != 0) {
+			throw new IllegalArgumentException(heads + " query heads is not a positive multiple of "
+					+ kvHeads + " KV heads");
 		}
 
-		TraversalPolicy inputShape = shape(1, dim);
-		SequentialBlock attention = new SequentialBlock(inputShape);
+		PackedCollection keyCache = new PackedCollection(shape(seqLen, dim));
+		PackedCollection valueCache = new PackedCollection(shape(seqLen, dim));
+		keyCache.clear();
+		valueCache.clear();
 
-		// Use EXPANDED caches (seqLen, heads, headSize) to avoid GQA subset/reshape issues during attention
-		// GQA expansion is done at cache write time instead of read time
-		PackedCollection keyCache = new PackedCollection(seqLen, heads, headSize);
-		PackedCollection valueCache = new PackedCollection(seqLen, heads, headSize);
+		Map<String, Object> args = new HashMap<>();
+		args.put("heads", heads);
+		args.put("kv_heads", kvHeads);
+		args.put("head_size", dim / heads);
+		args.put("rms_att_weight", rmsAttWeight);
+		args.put("wq", wq);
+		args.put("wk", wk);
+		args.put("wv", wv);
+		args.put("wo", wo);
+		args.put("position", position);
+		args.put("epsilon", epsilon);
+		args.put("key_cache", keyCache);
+		args.put("value_cache", valueCache);
+		return args;
+	}
 
-		// Zero-initialize caches to prevent garbage values from causing numerical explosions
-
-		attention.add(rmsnorm(inputShape, rmsAttWeight, epsilon, requirements));
-
-		SequentialBlock keys = attention.branch();
-		SequentialBlock values = attention.branch();
-
-		TraversalPolicy kvHeadShapeComplex = shape(kvHeads, headSize / 2, 2);
-		TraversalPolicy kvHeadShape = shape(kvHeads, headSize);
-
-		/* KEYS **/
-		keys.add(bk != null ? dense(wk, bk) : dense(wk));
-		if (qkNormK != null) {
-			// QK-Norm: RMSNorm applied per-head before RoPE (NOT LayerNorm!)
-			// Flatten the norm weights from (kvHeads, headSize) to (kvDim) since rmsnorm requires 1D weights
-			PackedCollection flatQkNormK = qkNormK.reshape(shape(kvDim));
-			keys.add((Function<TraversalPolicy, CellularLayer>) (s -> rmsnorm(s, flatQkNormK, 1e-6, requirements)));
+	/**
+	 * Binds the arguments of the {@code attention} layer of {@link #ATTENTION_ASSET}, or of its
+	 * {@code attention_qk_norm} layer when QK-Norm weights are given, for every layer that contains
+	 * that attention stage: the common bindings and caches of the overload above, completed with
+	 * the projection biases ({@code null} when the model has none), the rotary frequency table
+	 * (one row per cache row) and the {@code (heads, headSize)} and {@code (kvHeads, headSize)}
+	 * QK-Norm weights ({@code null} without QK-Norm). Parameters are as in {@link #attention}.
+	 *
+	 * @return the argument bindings
+	 * @throws IllegalArgumentException if only one of the QK-Norm weights is given, or the head
+	 *         geometry is invalid
+	 */
+	default Map<String, Object> attentionArguments(int heads, int kvHeads,
+												   PackedCollection rmsAttWeight,
+												   PackedCollection wk, PackedCollection wv,
+												   PackedCollection wq, PackedCollection wo,
+												   PackedCollection bk, PackedCollection bv,
+												   PackedCollection bq,
+												   PackedCollection qkNormQ, PackedCollection qkNormK,
+												   CollectionProducer freqCis,
+												   Producer<PackedCollection> position,
+												   double epsilon) {
+		if ((qkNormQ == null) != (qkNormK == null)) {
+			throw new IllegalArgumentException("QK-Norm requires both query and key weights");
 		}
-		// Use split-half reshape for RoPE (matches PyTorch's Qwen/Llama)
-		keys.add(reshapeToSplitHalfRope(kvDim, kvHeads, headSize));
-		if (useMRA) {
-			keys.add(mraRopeRotation(kvHeads, headSize, kvHeadsPerGroup, headGroups, requirements));
-		} else {
-			keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position));
-		}
-		// Reshape back to (kvHeads, headSize) then flatten to (kvDim)
-		keys.add(reshapeFromSplitHalfRope(kvHeads, headSize));
-		keys.add(reshape(kvHeadShape, shape(kvDim)));
-		// GQA expand: duplicate each KV head's data for all query heads it serves
-		// This expands from (1, kvDim) -> (1, dim) at write time
-		if (useGQA) {
-			keys.add(reshape(shape(kvDim), shape(1, kvDim)));  // Add batch dim for gqaExpand
-			keys.add(gqaExpand(kvDim, dim, kvHeads, heads, headSize, requirements));
-		} else {
-			keys.add(reshape(shape(kvDim), shape(1, dim)));  // Add batch dim
-		}
-		keys.andThen(into(keyCache.reshape(shape(seqLen, dim)), position));
-		/* ---- **/
 
-		/* VALUES **/
-		values.add(bv != null ? dense(wv, bv) : dense(wv));
-		// GQA expand: duplicate each KV head's data for all query heads it serves
-		// Values go from (kvDim) -> (dim) by duplicating each KV head's values
-		if (useGQA) {
-			values.add(reshape(shape(kvDim), shape(1, kvDim)));  // Add batch dim for gqaExpand
-			values.add(gqaExpand(kvDim, dim, kvHeads, heads, headSize, requirements));
-		} else {
-			values.add(reshape(shape(kvDim), shape(1, dim)));  // Add batch dim
-		}
-		values.andThen(into(valueCache.reshape(shape(seqLen, dim)), position));
-		/* ---- **/
-
-		/* QUERY **/
-		TraversalPolicy headShapeComplex = shape(heads, headSize / 2, 2);
-		TraversalPolicy headShape = shape(heads, headSize);
-		TraversalPolicy attentionShape = shape(heads, seqLen).traverseEach(); // (heads, 1, seqLen)
-
-		attention.add(bq != null ? dense(wq, bq) : dense(wq));
+		Map<String, Object> args = attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				freqCis.getShape().length(0), position, epsilon);
+		args.put("bq", bq);
+		args.put("bk", bk);
+		args.put("bv", bv);
+		args.put("freq_cis", freqCis);
 		if (qkNormQ != null) {
-			// QK-Norm: RMSNorm applied per-head before RoPE (NOT LayerNorm!)
-			// Flatten the norm weights from (heads, headSize) to (dim) since rmsnorm requires 1D weights
-			PackedCollection flatQkNormQ = qkNormQ.reshape(shape(dim));
-			attention.add((Function<TraversalPolicy, CellularLayer>) (s -> rmsnorm(s, flatQkNormQ, 1e-6, requirements)));
+			args.put("qk_norm_q", qkNormQ);
+			args.put("qk_norm_k", qkNormK);
 		}
-		// Use split-half reshape for RoPE (matches PyTorch's Qwen/Llama)
-		attention.add(reshapeToSplitHalfRope(dim, heads, headSize));
-		if (useMRA) {
-			attention.add(mraRopeRotation(heads, headSize, queryHeadsPerGroup, headGroups, requirements));
-		} else {
-			attention.add(ropeRotation(headShapeComplex, freqCis, position));
-		}
-		// Reshape back to (heads, headSize) for attention computation
-		attention.add(reshapeFromSplitHalfRope(heads, headSize));
-		// Expanded keys cache (seqLen, heads, headSize) - use standard non-GQA attention
-		attention.add(attentionKeysStandard(headShape, p(keyCache)));
-
-		// Add dynamic causal mask: mask[i] = -10000 if i > position, else 0
-		// This prevents attention from seeing future positions in the KV cache
-		CollectionProducer indices = integers(0, seqLen);
-		CollectionProducer maskRow =
-			greaterThan(indices, position, c(-10000.0), c(0.0), false);
-		// Reshape to (1, 1, seqLen) then repeat to get (heads, 1, seqLen)
-		// This pattern is verified in CausalMaskIsolationTest to correctly broadcast
-		CollectionProducer causalMask = maskRow.reshape(1, 1, seqLen).repeat(heads);
-
-		// Create a block to add the causal mask to the attention scores
-		// The mask broadcasts from (heads, 1, seqLen) to match the attention shape
-		attention.add(layer("causal_mask", attentionShape, attentionShape,
-		                   input -> add(input, causalMask),
-		                   requirements));
-
-		attention.add(softmax(attentionShape, true));
-		// Expanded values cache (seqLen, heads, headSize) - use standard non-GQA attention
-		attention.add(attentionValuesStandard(attentionShape, p(valueCache)));
-		attention.add(dense(wo));
-
-		// Restore the (1, dim) shape for the transformer layer output
-		attention.reshape(inputShape);
-		/* ---- **/
-
-		return attention;
+		return args;
 	}
 
 	/**
-	 * Creates a sequence-based multi-head attention block with fused QKV projection.
+	 * Binds the arguments of the {@code attention_mra} layer of {@link #ATTENTION_ASSET}, for every
+	 * layer that contains that attention stage: the common bindings and caches, completed with the
+	 * query head groups and the KV head groups derived from them. The first group's frequency
+	 * table sets the cache length. Parameters are as in the head-group {@link #attention}.
 	 *
-	 * <p>This implements full-sequence attention (not autoregressive) with:
-	 * <ul>
-	 *   <li>Fused QKV projection for efficiency</li>
-	 *   <li>QK normalization for stability</li>
-	 *   <li>Rotary positional embeddings (RoPE)</li>
-	 *   <li>Scaled dot-product attention</li>
-	 * </ul></p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param seqLen Sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQkvWeight Fused QKV projection weights
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights
-	 * @param qNormBias Query normalization biases
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases
-	 * @param invFreq RoPE inverse frequencies
-	 * @return Sequence attention block
+	 * @return the argument bindings
 	 */
-	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
-									PackedCollection toQkvWeight, PackedCollection toOutWeight,
-									PackedCollection qNormWeight, PackedCollection qNormBias,
-									PackedCollection kNormWeight, PackedCollection kNormBias,
-									PackedCollection invFreq) {
-		return sequenceAttention(batchSize, seqLen, dim, heads,
-				toQkvWeight, toOutWeight,
-				qNormWeight, qNormBias, kNormWeight, kNormBias,
-				invFreq, ProjectionFactory.dense());
+	default Map<String, Object> attentionArguments(int heads, int kvHeads,
+												   PackedCollection rmsAttWeight,
+												   PackedCollection wk, PackedCollection wv,
+												   PackedCollection wq, PackedCollection wo,
+												   HeadGroupConfig[] headGroups,
+												   Producer<PackedCollection> position,
+												   double epsilon) {
+		Map<String, Object> args = attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				headGroups[0].freqCis.getShape().length(0), position, epsilon);
+		args.put("q_head_groups", headGroups);
+		args.put("kv_head_groups", HeadGroupConfig.forKvHeads(headGroups, heads / kvHeads));
+		return args;
 	}
 
 	/**
-	 * Creates a sequence-based multi-head attention block with fused QKV projection
-	 * and customizable projection layers.
+	 * Builds one layer of {@link #ATTENTION_ASSET} for a {@code (1, dim)} token vector.
 	 *
-	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
-	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param seqLen Sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQkvWeight Fused QKV projection weights
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights
-	 * @param qNormBias Query normalization biases
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases
-	 * @param invFreq RoPE inverse frequencies
-	 * @param projectionFactory Factory for creating projection layers
-	 * @return Sequence attention block
+	 * @param layer the layer name: {@code attention}, {@code attention_qk_norm} or
+	 *              {@code attention_mra}
+	 * @param args the bindings from {@link #attentionArguments}, completed with the
+	 *             layer's own weights
+	 * @param requirements compute requirements, applied to every layer {@link #ATTENTION_ASSET}
+	 *                     constructs for {@code layer}
+	 * @return the attention block
 	 */
-	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
-									PackedCollection toQkvWeight, PackedCollection toOutWeight,
-									PackedCollection qNormWeight, PackedCollection qNormBias,
-									PackedCollection kNormWeight, PackedCollection kNormBias,
-									PackedCollection invFreq,
-									ProjectionFactory projectionFactory) {
-		return sequenceAttention(batchSize, seqLen, dim, heads,
-				toQkvWeight, toOutWeight,
-				qNormWeight, qNormBias, kNormWeight, kNormBias,
-				invFreq, projectionFactory, NormalizationType.LAYER, null, null, 0.0);
+	default Block attentionLayer(String layer, Map<String, Object> args, ComputeRequirement... requirements) {
+		int dim = ((PackedCollection) args.get("rms_att_weight")).getShape().length(0);
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(ATTENTION_ASSET), layer, shape(1, dim), args, requirements);
 	}
 
 	/**
-	 * Creates a sequence-based multi-head attention block with a selectable query/key
-	 * normalization family, an optional value padding mask, an optional key mask and optional
-	 * logit soft-capping.
-	 *
-	 * <p>This is the fully specified overload; every other {@code sequenceAttention} routes here
-	 * with {@link NormalizationType#LAYER}, no masks and no soft-cap. The two masks serve two
-	 * conventions for padded sequences: the padding mask zeroes the value vectors at masked
-	 * positions so they contribute nothing to any output while still occupying their softmax
-	 * slots (value masking), whereas the key mask removes masked keys from the softmax entirely
-	 * (logit masking). Query/key normalization is skipped when {@code qNormWeight} is
-	 * {@code null}.</p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param seqLen Sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQkvWeight Fused QKV projection weights
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights ({@code null} for no query/key normalization)
-	 * @param qNormBias Query normalization biases ({@code null} for none)
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases ({@code null} for none)
-	 * @param invFreq RoPE inverse frequencies
-	 * @param projectionFactory Factory for creating projection layers
-	 * @param qkNorm Family of the query/key normalization
-	 * @param paddingMask Per-position validity, shape {@code (batch, seqLen)} with one for a
-	 *                    valid position and zero for padding, or {@code null} for no value masking
-	 * @param keyMask Per-key validity, shape {@code (batch, seqLen)}, or {@code null} for no
-	 *                logit masking
-	 * @param logitSoftcap Soft-cap applied to the scaled attention logits, or {@code 0} for none
-	 * @return Sequence attention block
+	 * Classpath location of the asset describing the pre-norm transformer layer: a residual
+	 * attention stage followed by a residual SwiGLU feed-forward stage. Its {@code transformer},
+	 * {@code transformer_qk_norm} and {@code transformer_mra} layers are what the
+	 * {@link #transformer} methods build. They call the layers of {@link #ATTENTION_ASSET} and
+	 * {@link #FEED_FORWARD_ASSET}, which this asset imports, so parsing it alone resolves all
+	 * three into one program.
 	 */
-	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
-									PackedCollection toQkvWeight, PackedCollection toOutWeight,
-									PackedCollection qNormWeight, PackedCollection qNormBias,
-									PackedCollection kNormWeight, PackedCollection kNormBias,
-									PackedCollection invFreq,
-									ProjectionFactory projectionFactory,
-									NormalizationType qkNorm,
-									Producer<PackedCollection> paddingMask,
-									Producer<PackedCollection> keyMask,
-									double logitSoftcap) {
-		int dimHead = dim / heads;
-		TraversalPolicy inputShape = shape(batchSize, seqLen, dim);
-		TraversalPolicy headShape = shape(batchSize, heads, seqLen, dimHead);
+	String TRANSFORMER_ASSET = "/pdsl/transformer.pdsl";
 
-		SequentialBlock attention = new SequentialBlock(inputShape);
+	/**
+	 * Builds one layer of {@link #TRANSFORMER_ASSET} for a {@code (1, dim)} token vector. That
+	 * asset imports {@link #ATTENTION_ASSET} and {@link #FEED_FORWARD_ASSET}, whose layers it
+	 * composes, so parsing it alone yields the program that holds all three.
+	 *
+	 * @param layer the layer name: {@code transformer}, {@code transformer_qk_norm} or
+	 *              {@code transformer_mra}
+	 * @param attentionArgs the bindings of the layer's attention stage, from
+	 *                      {@link #attentionArguments}
+	 * @param rmsFfnWeight pre-FFN RMSNorm weights
+	 * @param w1 FFN gate projection weights, shape {@code [hidden_dim, dim]}
+	 * @param w2 FFN down projection weights, shape {@code [dim, hidden_dim]}
+	 * @param w3 FFN up projection weights, shape {@code [hidden_dim, dim]}
+	 * @param requirements compute requirements, applied to every layer the assets construct for
+	 *                     {@code layer}
+	 * @return the transformer layer block
+	 */
+	default Block transformerLayer(String layer, Map<String, Object> attentionArgs,
+								   PackedCollection rmsFfnWeight,
+								   PackedCollection w1, PackedCollection w2, PackedCollection w3,
+								   ComputeRequirement... requirements) {
+		Map<String, Object> args = new HashMap<>(attentionArgs);
+		args.put("rms_ffn_weight", rmsFfnWeight);
+		args.put("w1", w1);
+		args.put("w2", w2);
+		args.put("w3", w3);
 
-		// 1. Fused QKV projection
-		attention.add(projectionFactory.create(inputShape, toQkvWeight,
-				AdapterConfig.TargetLayer.SELF_ATTENTION_QKV));
-
-		// 2. Split QKV and reshape to multi-head format
-		attention.reshape(batchSize, seqLen, 3, dim);
-		List<Block> qkv = attention.split(shape(batchSize, seqLen, 1, dim), 0);
-		SequentialBlock q = (SequentialBlock) qkv.get(0).reshape(batchSize, seqLen, heads, dimHead);
-		SequentialBlock k = (SequentialBlock) qkv.get(1).reshape(batchSize, seqLen, heads, dimHead);
-		SequentialBlock v = (SequentialBlock) qkv.get(2).reshape(batchSize, seqLen, heads, dimHead);
-
-		// 3. Permute to (batch, heads, seqLen, dimHead)
-		// This matches Python's rearrange(t, 'b n (h d) -> b h n d', h = h)
-		q.permute(0, 2, 1, 3);
-		k.permute(0, 2, 1, 3);
-		v.permute(0, 2, 1, 3);
-
-		// 4. Apply QK normalization
-		if (qNormWeight != null) {
-			q.add(norm(qkNorm, qNormWeight, qNormBias, 1e-6));
-			k.add(norm(qkNorm, kNormWeight, kNormBias, 1e-6));
-		}
-
-		// 5. Apply rotary embeddings to Q and K
-		q.add(applyRotaryPositionEmbedding(headShape, invFreq));
-		k.add(applyRotaryPositionEmbedding(headShape, invFreq));
-
-		// 6. Store K and V tensors for use in attention computation, masking padded values
-		if (paddingMask != null) {
-			v.add(scale(headShape, 2, paddingMask));
-		}
-
-		PackedCollection kTensor = new PackedCollection(headShape);
-		PackedCollection vTensor = new PackedCollection(headShape);
-
-		k.andThen(into(kTensor));
-		v.andThen(into(vTensor));
-
-		// 7. Compute scaled dot-product attention using stored tensors
-		q.add(scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, kTensor, vTensor,
-				null, logitSoftcap, keyMask));
-
-		// Rearrange back to (batch, seqLen, dim)
-		q.permute(0, 2, 1, 3)
-			.reshape(batchSize, seqLen, dim);
-
-		// 8. Output projection
-		q.add(projectionFactory.create(shape(batchSize, seqLen, dim), toOutWeight,
-				AdapterConfig.TargetLayer.SELF_ATTENTION_OUT));
-
-		return attention;
+		int dim = ((PackedCollection) args.get("rms_att_weight")).getShape().length(0);
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(TRANSFORMER_ASSET),
+				layer, shape(1, dim), args, requirements);
 	}
 
 	/**
@@ -1151,11 +1024,8 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 
 	/**
 	 * Creates the self-attention sub-block for the requested variant, with a selectable query/key
-	 * normalization family and an optional padding mask.
-	 *
-	 * <p>This is the overload that sub-interfaces override to supply a variant; the shorter
-	 * {@code selfAttention} overload routes here with {@link NormalizationType#LAYER} and no
-	 * mask, so an override receives every call.</p>
+	 * normalization family and an optional padding mask, without causal masking. Routes to the
+	 * causal overload with {@code causal = false}.
 	 *
 	 * @param batchSize         batch dimension
 	 * @param seqLen            sequence length
@@ -1189,187 +1059,66 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 								ProjectionFactory projectionFactory,
 								NormalizationType qkNorm,
 								Producer<PackedCollection> paddingMask) {
+		return selfAttention(batchSize, seqLen, dim, heads, variant,
+				toQkvWeight, toOutWeight,
+				qNormWeight, qNormBias, kNormWeight, kNormBias,
+				invFreq, diffLambda, projectionFactory, qkNorm, paddingMask, false);
+	}
+
+	/**
+	 * Creates the self-attention sub-block for the requested variant, with a selectable query/key
+	 * normalization family, an optional padding mask and optional causal masking.
+	 *
+	 * <p>This is the overload that sub-interfaces override to supply a variant; every shorter
+	 * {@code selfAttention} overload routes here, so an override receives every call. An override
+	 * must either honour {@code causal} or reject {@code causal = true} explicitly; it must never
+	 * build non-causal attention when causal attention was requested.</p>
+	 *
+	 * @param batchSize         batch dimension
+	 * @param seqLen            sequence length
+	 * @param dim               model dimension
+	 * @param heads             number of attention heads
+	 * @param variant           the attention variant to construct ({@code null} is treated as
+	 *                          {@link AttentionVariant#STANDARD})
+	 * @param toQkvWeight       fused projection weights ({@code dim*3} for STANDARD, wider variants
+	 *                          define their own width)
+	 * @param toOutWeight       output projection weights
+	 * @param qNormWeight       query normalization weights
+	 * @param qNormBias         query normalization biases ({@code null} for none)
+	 * @param kNormWeight       key normalization weights
+	 * @param kNormBias         key normalization biases ({@code null} for none)
+	 * @param invFreq           RoPE inverse frequencies
+	 * @param diffLambda        learned lambda for variants that require it (unused by STANDARD,
+	 *                          may be {@code null})
+	 * @param projectionFactory factory for creating projection layers
+	 * @param qkNorm            family of the query/key normalization
+	 * @param paddingMask       per-position validity, shape {@code (batch, seqLen)}, or
+	 *                          {@code null} for no masking
+	 * @param causal            whether each position may attend only to itself and earlier
+	 *                          positions
+	 * @return the self-attention block for the requested variant
+	 */
+	default Block selfAttention(int batchSize, int seqLen, int dim, int heads,
+								AttentionVariant variant,
+								PackedCollection toQkvWeight, PackedCollection toOutWeight,
+								PackedCollection qNormWeight, PackedCollection qNormBias,
+								PackedCollection kNormWeight, PackedCollection kNormBias,
+								PackedCollection invFreq,
+								Producer<PackedCollection> diffLambda,
+								ProjectionFactory projectionFactory,
+								NormalizationType qkNorm,
+								Producer<PackedCollection> paddingMask,
+								boolean causal) {
 		if (variant == null || variant == AttentionVariant.STANDARD) {
 			return sequenceAttention(batchSize, seqLen, dim, heads,
 					toQkvWeight, toOutWeight,
 					qNormWeight, qNormBias, kNormWeight, kNormBias,
-					invFreq, projectionFactory, qkNorm, paddingMask, null, 0.0);
+					invFreq, projectionFactory, qkNorm, paddingMask, null, 0.0, causal);
 		}
 
 		throw new UnsupportedOperationException("Attention variant " + variant +
 				" is not available on the base AttentionFeatures; implement DifferentialAttentionFeatures" +
 				" (or another sub-interface) to use it");
-	}
-
-	/**
-	 * Creates a cross-attention block for attending over external context.
-	 *
-	 * <p>Cross-attention allows the model to attend to a different sequence (context) than
-	 * the main input. This is used in encoder-decoder architectures where the decoder
-	 * attends to encoder outputs.</p>
-	 *
-	 * <p>Implementation details:
-	 * <ul>
-	 *   <li>Queries (Q) come from the main input</li>
-	 *   <li>Keys (K) and Values (V) come from the context input</li>
-	 *   <li>QK normalization for stability</li>
-	 *   <li>No rotary embeddings (context positions are independent)</li>
-	 * </ul></p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param querySeqLen Query sequence length
-	 * @param contextSeqLen Context sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQWeight Query projection weights
-	 * @param toKvWeight Fused KV projection weights for context
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights
-	 * @param qNormBias Query normalization biases
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases
-	 * @param contextInput Context block to attend over
-	 * @param attentionScores Optional receptor to capture attention weights
-	 * @return Cross-attention block
-	 */
-	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
-										 int dim, int heads,
-										 PackedCollection toQWeight, PackedCollection toKvWeight,
-										 PackedCollection toOutWeight,
-										 PackedCollection qNormWeight, PackedCollection qNormBias,
-										 PackedCollection kNormWeight, PackedCollection kNormBias,
-										 Block contextInput, Receptor<PackedCollection> attentionScores) {
-		return sequenceCrossAttention(batchSize, querySeqLen, contextSeqLen, dim, heads,
-				toQWeight, toKvWeight, toOutWeight,
-				qNormWeight, qNormBias, kNormWeight, kNormBias,
-				contextInput, attentionScores, ProjectionFactory.dense());
-	}
-
-	/**
-	 * Creates a cross-attention block with customizable projection layers, using layer
-	 * normalization for the query/key norms.
-	 *
-	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
-	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param querySeqLen Query sequence length
-	 * @param contextSeqLen Context sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQWeight Query projection weights
-	 * @param toKvWeight Fused KV projection weights for context
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights
-	 * @param qNormBias Query normalization biases
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases
-	 * @param contextInput Context block to attend over
-	 * @param attentionScores Optional receptor to capture attention weights
-	 * @param projectionFactory Factory for creating projection layers
-	 * @return Cross-attention block
-	 */
-	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
-										 int dim, int heads,
-										 PackedCollection toQWeight, PackedCollection toKvWeight,
-										 PackedCollection toOutWeight,
-										 PackedCollection qNormWeight, PackedCollection qNormBias,
-										 PackedCollection kNormWeight, PackedCollection kNormBias,
-										 Block contextInput, Receptor<PackedCollection> attentionScores,
-										 ProjectionFactory projectionFactory) {
-		return sequenceCrossAttention(batchSize, querySeqLen, contextSeqLen, dim, heads,
-				toQWeight, toKvWeight, toOutWeight,
-				qNormWeight, qNormBias, kNormWeight, kNormBias,
-				contextInput, attentionScores, projectionFactory, NormalizationType.LAYER);
-	}
-
-	/**
-	 * Creates a cross-attention block with customizable projection layers and query/key
-	 * normalization family, so that a block builder can be parameterized by the normalization
-	 * its checkpoint was trained with.
-	 *
-	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
-	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param querySeqLen Query sequence length
-	 * @param contextSeqLen Context sequence length
-	 * @param dim Model dimension
-	 * @param heads Number of attention heads
-	 * @param toQWeight Query projection weights
-	 * @param toKvWeight Fused KV projection weights for context
-	 * @param toOutWeight Output projection weights
-	 * @param qNormWeight Query normalization weights
-	 * @param qNormBias Query normalization biases
-	 * @param kNormWeight Key normalization weights
-	 * @param kNormBias Key normalization biases
-	 * @param contextInput Context block to attend over
-	 * @param attentionScores Optional receptor to capture attention weights
-	 * @param projectionFactory Factory for creating projection layers
-	 * @param normType Family of the query/key normalization
-	 * @return Cross-attention block
-	 */
-	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
-										 int dim, int heads,
-										 PackedCollection toQWeight, PackedCollection toKvWeight,
-										 PackedCollection toOutWeight,
-										 PackedCollection qNormWeight, PackedCollection qNormBias,
-										 PackedCollection kNormWeight, PackedCollection kNormBias,
-										 Block contextInput, Receptor<PackedCollection> attentionScores,
-										 ProjectionFactory projectionFactory,
-										 NormalizationType normType) {
-		int dimHead = dim / heads;
-		TraversalPolicy queryShape = shape(batchSize, querySeqLen, dim);
-
-		SequentialBlock crossAttention = new SequentialBlock(queryShape);
-
-		// 1. Project main input to queries
-		crossAttention.add(projectionFactory.create(queryShape, toQWeight,
-				AdapterConfig.TargetLayer.CROSS_ATTENTION_Q));
-		crossAttention.reshape(batchSize, querySeqLen, heads, dimHead);
-		crossAttention.permute(0, 2, 1, 3); // (batch, heads, querySeqLen, dimHead)
-
-		// 2. Apply Q normalization
-		crossAttention.add(norm(normType, qNormWeight, qNormBias, 1e-6));
-
-		// 3. Process context input through separate branch for K and V
-		SequentialBlock contextBranch = contextInput.branch();
-		contextBranch.add(projectionFactory.create(contextInput.getOutputShape(), toKvWeight,
-				AdapterConfig.TargetLayer.CROSS_ATTENTION_KV));
-		contextBranch.reshape(batchSize, contextSeqLen, 2, dim);
-
-		List<Block> kv = contextBranch.split(shape(batchSize, contextSeqLen, 1, dim), 0);
-		SequentialBlock k = (SequentialBlock) kv.get(0).reshape(batchSize, contextSeqLen, heads, dimHead);
-		SequentialBlock v = (SequentialBlock) kv.get(1).reshape(batchSize, contextSeqLen, heads, dimHead);
-
-		// 4. Permute K and V to (batch, heads, contextSeqLen, dimHead)
-		k.permute(0, 2, 1, 3);
-		v.permute(0, 2, 1, 3);
-
-		// 5. Apply K normalization (no rotary for context keys/values)
-		k.add(norm(normType, kNormWeight, kNormBias, 1e-6));
-
-		// 6. Store K and V tensors for use in attention computation
-		PackedCollection kTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
-		PackedCollection vTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
-
-		k.andThen(into(kTensor));
-		v.andThen(into(vTensor));
-
-		// 7. Apply attention to values
-		crossAttention.add(scaledDotProductAttention(
-				batchSize, querySeqLen, contextSeqLen,
-				heads, dimHead, kTensor, vTensor, attentionScores));
-
-		// 8. Rearrange back to (batch, querySeqLen, dim)
-		crossAttention.permute(0, 2, 1, 3)
-				.reshape(batchSize, querySeqLen, dim);
-
-		// 9. Output projection
-		crossAttention.add(projectionFactory.create(queryShape, toOutWeight,
-				AdapterConfig.TargetLayer.CROSS_ATTENTION_OUT));
-
-		return crossAttention;
 	}
 
 	/**
@@ -1435,6 +1184,11 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	/**
 	 * Transformer layer with configurable RMSNorm epsilon.
 	 *
+	 * <p>The structure is the {@code transformer} layer of {@link #TRANSFORMER_ASSET} (or
+	 * {@code transformer_qk_norm} when normalization weights are given): a residual attention
+	 * stage and a residual SwiGLU feed-forward stage. This method only binds the arguments
+	 * (allocating the attention caches) and builds the layer.</p>
+	 *
 	 * @param heads Number of query attention heads
 	 * @param kvHeads Number of key/value heads (for GQA, use heads for standard MHA)
 	 * @param rmsAttWeight Pre-attention RMSNorm weights
@@ -1454,8 +1208,9 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @param w3 FFN up projection
 	 * @param position Current position in sequence
 	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
-	 * @param requirements Compute requirements
+	 * @param requirements compute requirements, applied to every layer the assets build
 	 * @return Complete transformer layer block
+	 * @throws IllegalArgumentException if only one of the QK-Norm weights is given
 	 */
 	default Block transformer(int heads, int kvHeads,
 							  PackedCollection rmsAttWeight,
@@ -1470,21 +1225,18 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 							  Producer<PackedCollection> position,
 							  double epsilon,
 							  ComputeRequirement... requirements) {
-		int dim = rmsAttWeight.getShape().length(0);
-
-		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
-		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon, requirements), requirements);
-		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
-		return transformer;
+		return transformerLayer(qkNormQ == null ? "transformer" : "transformer_qk_norm",
+				attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+						bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon),
+				rmsFfnWeight, w1, w2, w3, requirements);
 	}
 
 	/**
 	 * Transformer layer with Multidimensional Relative Attention (MRA).
 	 *
-	 * <p>Combines MRA attention (per-head-group RoPE) with a standard SwiGLU
-	 * feed-forward block. This is the building block for the Moonbeam MIDI
-	 * transformer.</p>
+	 * <p>The structure is the {@code transformer_mra} layer of {@link #TRANSFORMER_ASSET}: MRA
+	 * attention (per-head-group RoPE) and a standard SwiGLU feed-forward stage, each residual.
+	 * This is the building block for the Moonbeam MIDI transformer.</p>
 	 *
 	 * @param heads number of query attention heads
 	 * @param kvHeads number of key/value heads (for GQA)
@@ -1513,13 +1265,9 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 							  Producer<PackedCollection> position,
 							  double epsilon,
 							  ComputeRequirement... requirements) {
-		int dim = rmsAttWeight.getShape().length(0);
-
-		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
-		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				headGroups, position, epsilon, requirements), requirements);
-		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
-		return transformer;
+		return transformerLayer("transformer_mra",
+				attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo, headGroups, position, epsilon),
+				rmsFfnWeight, w1, w2, w3, requirements);
 	}
 
 	/**
@@ -1639,132 +1387,6 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		}
 
 		return attention;
-	}
-
-	/**
-	 * Builds a scaled dot-product attention block using the same sequence length for queries and context.
-	 *
-	 * @param batchSize Batch dimension
-	 * @param seqLen    Sequence length for both queries and context
-	 * @param heads     Number of attention heads
-	 * @param dimHead   Dimension per head
-	 * @param k         Key tensor (batch, heads, seqLen, dimHead)
-	 * @param v         Value tensor (batch, heads, seqLen, dimHead)
-	 * @return Block computing softmax(Q @ K^T / sqrt(dimHead)) @ V
-	 */
-	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
-											PackedCollection k, PackedCollection v) {
-		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, null);
-	}
-
-	/**
-	 * Builds a scaled dot-product attention block with optional attention score capture.
-	 *
-	 * @param batchSize       Batch dimension
-	 * @param seqLen          Sequence length for both queries and context
-	 * @param heads           Number of attention heads
-	 * @param dimHead         Dimension per head
-	 * @param k               Key tensor (batch, heads, seqLen, dimHead)
-	 * @param v               Value tensor (batch, heads, seqLen, dimHead)
-	 * @param attentionScores Optional receptor to receive the attention weight matrix; may be null
-	 * @return Block computing softmax(Q @ K^T / sqrt(dimHead)) @ V
-	 */
-	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
-											PackedCollection k, PackedCollection v,
-											Receptor<PackedCollection> attentionScores) {
-		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, attentionScores);
-	}
-
-	/**
-	 * Computes scaled dot-product attention: softmax(Q @ K^T / sqrt(d_k)) @ V
-	 * This implementation properly handles K and V as tensor data rather than computational blocks.
-	 *
-	 * @param batchSize batch dimension
-	 * @param querySeqLen sequence length for queries
-	 * @param contextSeqLen sequence length for context (keys/values)
-	 * @param heads number of attention heads
-	 * @param dimHead dimension per head
-	 * @param k key tensor data (batch, heads, seqLenK, dimHead)
-	 * @param v value tensor data (batch, heads, seqLenV, dimHead)
-	 */
-	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
-											PackedCollection k, PackedCollection v,
-											Receptor<PackedCollection> attentionScores) {
-		return scaledDotProductAttention(batchSize, querySeqLen, contextSeqLen, heads, dimHead,
-				k, v, attentionScores, 0.0, null);
-	}
-
-	/**
-	 * Computes scaled dot-product attention with optional logit soft-capping and key masking:
-	 * {@code softmax(mask(softcap(Q @ K^T / sqrt(d_k)))) @ V}. Soft-capping squashes the scaled
-	 * logits to {@code cap * tanh(logit / cap)}; the key mask adds a large negative bias to the
-	 * logits of masked keys so they receive no attention. This is the fully specified overload;
-	 * the others route here with no soft-cap and no mask.
-	 *
-	 * @param batchSize batch dimension
-	 * @param querySeqLen sequence length for queries
-	 * @param contextSeqLen sequence length for context (keys/values)
-	 * @param heads number of attention heads
-	 * @param dimHead dimension per head
-	 * @param k key tensor data (batch, heads, seqLenK, dimHead)
-	 * @param v value tensor data (batch, heads, seqLenV, dimHead)
-	 * @param attentionScores Optional receptor to receive the attention weight matrix; may be null
-	 * @param logitSoftcap the soft-cap applied to the scaled logits, or {@code 0} for none
-	 * @param keyMask per-key validity, shape {@code (batch, contextSeqLen)} with one for a key that
-	 *                may be attended and zero for one that may not, or {@code null} for no masking
-	 * @return Block computing the attention output
-	 */
-	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
-											PackedCollection k, PackedCollection v,
-											Receptor<PackedCollection> attentionScores,
-											double logitSoftcap, Producer<PackedCollection> keyMask) {
-		if (batchSize != 1) {
-			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
-		}
-
-		TraversalPolicy scoresShape = shape(batchSize, heads, querySeqLen, contextSeqLen);
-		SequentialBlock attnBlock = new SequentialBlock(shape(batchSize, heads, querySeqLen, dimHead));
-
-		// Q @ K^T: (batch, heads, querySeqLen, dimHead) @ (batch, heads, dimHead, contextSeqLen)
-		//         = (batch, heads, querySeqLen, contextSeqLen)
-		attnBlock.add(layer("qkMatmul",
-				shape(batchSize, heads, querySeqLen, dimHead),
-				scoresShape,
-				q -> scaledDotProduct(c(q), cp(k), true)));
-
-		// Scale by 1/sqrt(dimHead)
-		attnBlock.add(scale(1.0 / Math.sqrt(dimHead)));
-
-		if (logitSoftcap > 0.0) {
-			attnBlock.add(layer("logitSoftcap", scoresShape, scoresShape,
-					logits -> tanh(c(logits).multiply(1.0 / logitSoftcap)).multiply(logitSoftcap)));
-		}
-
-		if (keyMask != null) {
-			CollectionProducer bias = c(keyMask).add(-1.0).multiply(MASKED_LOGIT_PENALTY);
-			attnBlock.add(layer("keyMask", scoresShape, scoresShape,
-					logits -> add(c(logits), broadcast(scoresShape, 3, bias))));
-		}
-
-		// Apply softmax over last dimension (key positions) - capture these attention weights
-		SequentialBlock softmaxBlock = new SequentialBlock(scoresShape);
-		softmaxBlock.add(softmax(scoresShape, true));
-
-		// Capture attention weights if requested
-		if (attentionScores != null) {
-			softmaxBlock.branch().andThen(attentionScores);
-		}
-
-		attnBlock.add(softmaxBlock);
-
-		// Attention @ V: (batch, heads, querySeqLen, contextSeqLen) @ (batch, heads, contextSeqLen, dimHead)
-		//              = (batch, heads, querySeqLen, dimHead)
-		attnBlock.add(layer("attnValues",
-				scoresShape,
-				shape(batchSize, heads, querySeqLen, dimHead),
-				attnWeights -> scaledDotProduct(c(attnWeights), cp(v))));
-
-		return attnBlock;
 	}
 
 	/**

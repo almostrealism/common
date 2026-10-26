@@ -19,6 +19,7 @@ package org.almostrealism.ui;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.profile.OperationSource;
 import org.almostrealism.io.Console;
+import org.almostrealism.io.JsonString;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -60,9 +61,25 @@ public class ProfileAnalyzerCLI {
      * @param args command-line arguments: {@code <command> <file> [args...]}
      */
     public static void main(String[] args) {
+        System.exit(run(args));
+    }
+
+    /**
+     * Parses the command-line arguments, dispatches to the appropriate analysis
+     * routine, and prints results as JSON to standard output.
+     *
+     * <p>This is the testable core of {@link #main(String[])}: it never calls
+     * {@link System#exit(int)}, instead returning the process exit code so the
+     * usage, unknown-command and analysis-error paths can be exercised without
+     * terminating the JVM.</p>
+     *
+     * @param args command-line arguments: {@code <command> <file> [args...]}
+     * @return {@code 0} on success, or {@code 1} on bad arguments or an analysis error
+     */
+    public static int run(String... args) {
         if (args.length < 2) {
             printUsage();
-            System.exit(1);
+            return 1;
         }
 
         String command = args[0];
@@ -87,50 +104,48 @@ public class ProfileAnalyzerCLI {
                     break;
                 case "children":
                     String nodeKey = args.length > 2 ? args[2] : null;
-                    printChildren(filePath, nodeKey);
-                    break;
+                    return printChildren(filePath, nodeKey) ? 0 : 1;
                 case "search":
                     if (args.length < 3) {
                         Console.root().warn("Error: search requires a pattern argument", null);
-                        System.exit(1);
+                        return 1;
                     }
                     searchOperations(filePath, args[2]);
                     break;
                 case "breakdown":
                     if (args.length < 3) {
                         Console.root().warn("Error: breakdown requires a node_key argument", null);
-                        System.exit(1);
+                        return 1;
                     }
-                    printBreakdown(filePath, args[2]);
-                    break;
+                    return printBreakdown(filePath, args[2]) ? 0 : 1;
                 case "source":
                     if (args.length < 3) {
                         Console.root().warn("Error: source requires a node_key argument", null);
-                        System.exit(1);
+                        return 1;
                     }
                     int maxLines = 200;
                     if (args.length > 3) {
                         maxLines = Integer.parseInt(args[3]);
                     }
-                    printSource(filePath, args[2], maxLines);
-                    break;
+                    return printSource(filePath, args[2], maxLines) ? 0 : 1;
                 case "source-summary":
                     if (args.length < 3) {
                         Console.root().warn("Error: source-summary requires a node_key argument", null);
-                        System.exit(1);
+                        return 1;
                     }
-                    printSourceSummary(filePath, args[2]);
-                    break;
+                    return printSourceSummary(filePath, args[2]) ? 0 : 1;
                 default:
                     Console.root().warn("Unknown command: " + command, null);
                     printUsage();
-                    System.exit(1);
+                    return 1;
             }
         } catch (Exception e) {
-            Console.root().println("{\"error\": \"" + escapeJson(e.getMessage()) + "\", " +
+            Console.root().println("{\"error\": " + new JsonString(e.getMessage()) + ", " +
                     "\"type\": \"" + e.getClass().getSimpleName() + "\"}");
-            System.exit(1);
+            return 1;
         }
+
+        return 0;
     }
 
     /**
@@ -159,7 +174,7 @@ public class ProfileAnalyzerCLI {
 
         StringBuilder json = new StringBuilder();
         json.append("{\n");
-        json.append("  \"name\": \"").append(escapeJson(root.getName())).append("\",\n");
+        json.append("  \"name\": ").append(new JsonString(root.getName())).append(",\n");
         List<OperationProfileNode> allNodes = new ArrayList<>();
         collectNodes(root, allNodes);
 
@@ -174,7 +189,7 @@ public class ProfileAnalyzerCLI {
         int nodeCount = allNodes.size();
         json.append("  \"node_count\": ").append(nodeCount).append(",\n");
 
-        int compiledCount = countCompiledNodes(root);
+        int compiledCount = countCompiledNodes(root, root);
         json.append("  \"compiled_operations\": ").append(compiledCount).append(",\n");
 
         List<OperationProfileNode> topOps = allNodes.stream()
@@ -190,9 +205,9 @@ public class ProfileAnalyzerCLI {
             double pct = totalDuration > 0 ? (nodeDuration / totalDuration * 100) : 0;
             String metadataDetail = root.getMetadataDetail(n.getKey());
             json.append("    {");
-            json.append("\"key\": \"").append(escapeJson(n.getKey())).append("\", ");
-            json.append("\"name\": \"").append(escapeJson(n.getName())).append("\", ");
-            json.append("\"detail\": \"").append(escapeJson(metadataDetail)).append("\", ");
+            json.append("\"key\": ").append(new JsonString(n.getKey())).append(", ");
+            json.append("\"name\": ").append(new JsonString(n.getName())).append(", ");
+            json.append("\"detail\": ").append(new JsonString(metadataDetail)).append(", ");
             json.append("\"duration\": ").append(round(nodeDuration, 6)).append(", ");
             json.append("\"duration_formatted\": \"").append(formatDuration(nodeDuration)).append("\", ");
             json.append("\"percentage\": ").append(round(pct, 1));
@@ -233,7 +248,7 @@ public class ProfileAnalyzerCLI {
         StringBuilder json = new StringBuilder();
         json.append("{\n");
         json.append("  \"total_profile_duration\": ").append(round(totalDuration, 4)).append(",\n");
-        json.append("  \"category\": \"").append(escapeJson(category)).append("\",\n");
+        json.append("  \"category\": ").append(new JsonString(category)).append(",\n");
         json.append("  \"slowest\": [\n");
 
         for (int i = 0; i < slowest.size(); i++) {
@@ -243,9 +258,9 @@ public class ProfileAnalyzerCLI {
             String metadataDetail = root.getMetadataDetail(n.getKey());
 
             json.append("    {");
-            json.append("\"key\": \"").append(escapeJson(n.getKey())).append("\", ");
-            json.append("\"name\": \"").append(escapeJson(n.getName())).append("\", ");
-            json.append("\"detail\": \"").append(escapeJson(metadataDetail)).append("\", ");
+            json.append("\"key\": ").append(new JsonString(n.getKey())).append(", ");
+            json.append("\"name\": ").append(new JsonString(n.getName())).append(", ");
+            json.append("\"detail\": ").append(new JsonString(metadataDetail)).append(", ");
             json.append("\"duration\": ").append(round(nodeDuration, 6)).append(", ");
             json.append("\"duration_formatted\": \"").append(formatDuration(nodeDuration)).append("\", ");
             json.append("\"percentage\": ").append(round(pct, 1)).append(", ");
@@ -259,7 +274,7 @@ public class ProfileAnalyzerCLI {
                 }
             }
 
-            json.append("\"has_source\": ").append(hasSource(n));
+            json.append("\"has_source\": ").append(hasSource(root, n));
             json.append("}");
             if (i < slowest.size() - 1) json.append(",");
             json.append("\n");
@@ -275,15 +290,16 @@ public class ProfileAnalyzerCLI {
      *
      * @param filePath path to the serialized profile file
      * @param nodeKey  the key of the node to report on
+     * @return {@code true} if the breakdown was printed, {@code false} if the node was not found
      * @throws IOException if the file cannot be read
      */
-    private static void printBreakdown(String filePath, String nodeKey) throws IOException {
+    private static boolean printBreakdown(String filePath, String nodeKey) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
         OperationProfileNode node = findByKey(root, nodeKey);
         if (node == null) {
-            Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
-            return;
+            Console.root().println("{\"error\": " + new JsonString("Node not found: " + nodeKey) + "}");
+            return false;
         }
 
         double compileTime = 0;
@@ -315,9 +331,9 @@ public class ProfileAnalyzerCLI {
 
         StringBuilder json = new StringBuilder();
         json.append("{\n");
-        json.append("  \"node_key\": \"").append(escapeJson(nodeKey)).append("\",\n");
-        json.append("  \"node_name\": \"").append(escapeJson(node.getName())).append("\",\n");
-        json.append("  \"node_detail\": \"").append(escapeJson(metadataDetail)).append("\",\n");
+        json.append("  \"node_key\": ").append(new JsonString(nodeKey)).append(",\n");
+        json.append("  \"node_name\": ").append(new JsonString(node.getName())).append(",\n");
+        json.append("  \"node_detail\": ").append(new JsonString(metadataDetail)).append(",\n");
         json.append("  \"compile_time\": ").append(round(compileTime, 6)).append(",\n");
         json.append("  \"compile_time_formatted\": \"").append(formatDuration(compileTime)).append("\",\n");
         json.append("  \"compile_count\": ").append(compileCount).append(",\n");
@@ -336,7 +352,7 @@ public class ProfileAnalyzerCLI {
                 for (int i = 0; i < keys.size(); i++) {
                     String key = keys.get(i);
                     double value = stageEntries.get(key);
-                    json.append("    \"").append(escapeJson(key)).append("\": ").append(round(value, 6));
+                    json.append("    ").append(new JsonString(key)).append(": ").append(round(value, 6));
                     if (i < keys.size() - 1) json.append(",");
                     json.append("\n");
                 }
@@ -353,6 +369,7 @@ public class ProfileAnalyzerCLI {
         json.append("}");
 
         Console.root().println(String.valueOf(json));
+        return true;
     }
 
     /**
@@ -361,15 +378,16 @@ public class ProfileAnalyzerCLI {
      *
      * @param filePath path to the serialized profile file
      * @param nodeKey  the key of the parent node, or {@code null} for the root
+     * @return {@code true} if the children were printed, {@code false} if the node was not found
      * @throws IOException if the file cannot be read
      */
-    private static void printChildren(String filePath, String nodeKey) throws IOException {
+    private static boolean printChildren(String filePath, String nodeKey) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
         OperationProfileNode parent = nodeKey == null ? root : findByKey(root, nodeKey);
         if (parent == null) {
-            Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
-            return;
+            Console.root().println("{\"error\": " + new JsonString("Node not found: " + nodeKey) + "}");
+            return false;
         }
 
         List<OperationProfileNode> children = parent.getChildren() != null ?
@@ -384,9 +402,9 @@ public class ProfileAnalyzerCLI {
 
         StringBuilder json = new StringBuilder();
         json.append("{\n");
-        json.append("  \"parent_key\": \"").append(escapeJson(parent.getKey())).append("\",\n");
-        json.append("  \"parent_name\": \"").append(escapeJson(parent.getName())).append("\",\n");
-        json.append("  \"parent_detail\": \"").append(escapeJson(parentDetail)).append("\",\n");
+        json.append("  \"parent_key\": ").append(new JsonString(parent.getKey())).append(",\n");
+        json.append("  \"parent_name\": ").append(new JsonString(parent.getName())).append(",\n");
+        json.append("  \"parent_detail\": ").append(new JsonString(parentDetail)).append(",\n");
         json.append("  \"total_children\": ").append(children.size()).append(",\n");
         json.append("  \"showing\": ").append(sortedChildren.size()).append(",\n");
         json.append("  \"children\": [\n");
@@ -398,14 +416,14 @@ public class ProfileAnalyzerCLI {
             String childDetail = root.getMetadataDetail(c.getKey());
 
             json.append("    {");
-            json.append("\"key\": \"").append(escapeJson(c.getKey())).append("\", ");
-            json.append("\"name\": \"").append(escapeJson(c.getName())).append("\", ");
-            json.append("\"detail\": \"").append(escapeJson(childDetail)).append("\", ");
+            json.append("\"key\": ").append(new JsonString(c.getKey())).append(", ");
+            json.append("\"name\": ").append(new JsonString(c.getName())).append(", ");
+            json.append("\"detail\": ").append(new JsonString(childDetail)).append(", ");
             json.append("\"duration\": ").append(round(c.getTotalDuration(), 6)).append(", ");
             json.append("\"duration_formatted\": \"").append(formatDuration(c.getTotalDuration())).append("\", ");
             json.append("\"percentage\": ").append(round(pct, 1)).append(", ");
             json.append("\"has_children\": ").append(c.getChildren() != null && !c.getChildren().isEmpty()).append(", ");
-            json.append("\"has_source\": ").append(hasSource(c));
+            json.append("\"has_source\": ").append(hasSource(root, c));
             json.append("}");
             if (i < sortedChildren.size() - 1) json.append(",");
             json.append("\n");
@@ -414,6 +432,7 @@ public class ProfileAnalyzerCLI {
         json.append("}");
 
         Console.root().println(String.valueOf(json));
+        return true;
     }
 
     /**
@@ -446,7 +465,7 @@ public class ProfileAnalyzerCLI {
 
         StringBuilder json = new StringBuilder();
         json.append("{\n");
-        json.append("  \"pattern\": \"").append(escapeJson(pattern)).append("\",\n");
+        json.append("  \"pattern\": ").append(new JsonString(pattern)).append(",\n");
         json.append("  \"match_count\": ").append(matches.size()).append(",\n");
         json.append("  \"matches\": [\n");
 
@@ -454,12 +473,12 @@ public class ProfileAnalyzerCLI {
             OperationProfileNode n = matches.get(i);
             String metadataDetail = root.getMetadataDetail(n.getKey());
             json.append("    {");
-            json.append("\"key\": \"").append(escapeJson(n.getKey())).append("\", ");
-            json.append("\"name\": \"").append(escapeJson(n.getName())).append("\", ");
-            json.append("\"detail\": \"").append(escapeJson(metadataDetail)).append("\", ");
+            json.append("\"key\": ").append(new JsonString(n.getKey())).append(", ");
+            json.append("\"name\": ").append(new JsonString(n.getName())).append(", ");
+            json.append("\"detail\": ").append(new JsonString(metadataDetail)).append(", ");
             json.append("\"duration\": ").append(round(n.getTotalDuration(), 6)).append(", ");
             json.append("\"duration_formatted\": \"").append(formatDuration(n.getTotalDuration())).append("\", ");
-            json.append("\"has_source\": ").append(hasSource(n));
+            json.append("\"has_source\": ").append(hasSource(root, n));
             json.append("}");
             if (i < matches.size() - 1) json.append(",");
             json.append("\n");
@@ -476,14 +495,25 @@ public class ProfileAnalyzerCLI {
      * <p>Source code is stored on the root profile node's
      * {@code operationSources} map, keyed by operation name.  This method
      * looks up the target node's name in the root's sources.</p>
+     *
+     * <p>A node with no matching source is not an error: a well-formed document
+     * carrying a hint and the available source keys is printed and {@code true}
+     * is returned. Only a node key that resolves to no node at all produces an
+     * error document and {@code false}.</p>
+     *
+     * @param filePath path to the serialized profile file
+     * @param nodeKey  the key of the node whose source is requested
+     * @param maxLines the maximum number of source lines to include before truncating
+     * @return {@code true} if a source or no-source document was printed, {@code false} if the node was not found
+     * @throws IOException if the file cannot be read
      */
-    private static void printSource(String filePath, String nodeKey, int maxLines) throws IOException {
+    private static boolean printSource(String filePath, String nodeKey, int maxLines) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
         OperationProfileNode node = findByKey(root, nodeKey);
         if (node == null) {
-            Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
-            return;
+            Console.root().println("{\"error\": " + new JsonString("Node not found: " + nodeKey) + "}");
+            return false;
         }
 
         // Sources are stored on the root node, keyed by operation name
@@ -491,8 +521,8 @@ public class ProfileAnalyzerCLI {
 
         StringBuilder json = new StringBuilder();
         json.append("{\n");
-        json.append("  \"node_key\": \"").append(escapeJson(nodeKey)).append("\",\n");
-        json.append("  \"node_name\": \"").append(escapeJson(node.getName())).append("\",\n");
+        json.append("  \"node_key\": ").append(new JsonString(nodeKey)).append(",\n");
+        json.append("  \"node_name\": ").append(new JsonString(node.getName())).append(",\n");
 
         // Try matching by node name, then by node key
         List<OperationSource> matched = null;
@@ -523,7 +553,7 @@ public class ProfileAnalyzerCLI {
         }
 
         if (matched != null && !matched.isEmpty()) {
-            json.append("  \"source_key\": \"").append(escapeJson(matchedKey)).append("\",\n");
+            json.append("  \"source_key\": ").append(new JsonString(matchedKey)).append(",\n");
             json.append("  \"source_count\": ").append(matched.size()).append(",\n");
             json.append("  \"sources\": [\n");
 
@@ -551,7 +581,7 @@ public class ProfileAnalyzerCLI {
                         truncatedSource.append("\n// ... ").append(totalLines - maxLines).append(" more lines ...");
                     }
 
-                    json.append("      \"source\": \"").append(escapeJson(truncatedSource.toString())).append("\",\n");
+                    json.append("      \"source\": ").append(new JsonString(truncatedSource.toString())).append(",\n");
                 } else {
                     json.append("      \"source\": null,\n");
                 }
@@ -563,9 +593,9 @@ public class ProfileAnalyzerCLI {
                     json.append("      \"arguments\": [");
                     for (int i = 0; i < argKeys.size(); i++) {
                         if (i > 0) json.append(", ");
-                        json.append("{\"key\": \"").append(escapeJson(argKeys.get(i))).append("\"");
+                        json.append("{\"key\": ").append(new JsonString(argKeys.get(i)));
                         if (argNames != null && i < argNames.size()) {
-                            json.append(", \"name\": \"").append(escapeJson(argNames.get(i))).append("\"");
+                            json.append(", \"name\": ").append(new JsonString(argNames.get(i)));
                         }
                         json.append("}");
                     }
@@ -591,7 +621,7 @@ public class ProfileAnalyzerCLI {
                 json.append("  \"available_source_keys\": [");
                 for (int i = 0; i < availableKeys.size(); i++) {
                     if (i > 0) json.append(", ");
-                    json.append("\"").append(escapeJson(availableKeys.get(i))).append("\"");
+                    json.append(new JsonString(availableKeys.get(i)));
                 }
                 json.append("],\n");
                 json.append("  \"total_available_sources\": ").append(rootSources.size()).append(",\n");
@@ -602,20 +632,27 @@ public class ProfileAnalyzerCLI {
 
         json.append("}");
         Console.root().println(String.valueOf(json));
+        return true;
     }
 
     /**
      * Prints a structural summary of the generated source code for an operation,
      * including function counts by type, loop counts, math operations, and total
      * lines — without dumping the full source.
+     *
+     * @param filePath path to the serialized profile file
+     * @param nodeKey  the key of the node whose source is summarized
+     * @return {@code true} if the summary was printed, {@code false} if the node was not found or
+     *         has no (non-null) source
+     * @throws IOException if the file cannot be read
      */
-    private static void printSourceSummary(String filePath, String nodeKey) throws IOException {
+    private static boolean printSourceSummary(String filePath, String nodeKey) throws IOException {
         OperationProfileNode root = OperationProfileNode.load(filePath);
 
         OperationProfileNode node = findByKey(root, nodeKey);
         if (node == null) {
-            Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
-            return;
+            Console.root().println("{\"error\": " + new JsonString("Node not found: " + nodeKey) + "}");
+            return false;
         }
 
         Map<String, List<OperationSource>> rootSources = root.getOperationSources();
@@ -630,14 +667,14 @@ public class ProfileAnalyzerCLI {
         }
 
         if (matched == null || matched.isEmpty()) {
-            Console.root().println("{\"error\": \"No source found for node: " + escapeJson(nodeKey) + "\"}");
-            return;
+            Console.root().println("{\"error\": " + new JsonString("No source found for node: " + nodeKey) + "}");
+            return false;
         }
 
         String sourceCode = matched.get(0).getSource();
         if (sourceCode == null) {
-            Console.root().println("{\"error\": \"Source is null for node: " + escapeJson(nodeKey) + "\"}");
-            return;
+            Console.root().println("{\"error\": " + new JsonString("Source is null for node: " + nodeKey) + "}");
+            return false;
         }
 
         String[] lines = sourceCode.split("\n");
@@ -710,8 +747,8 @@ public class ProfileAnalyzerCLI {
 
         StringBuilder json = new StringBuilder();
         json.append("{\n");
-        json.append("  \"node_key\": \"").append(escapeJson(nodeKey)).append("\",\n");
-        json.append("  \"node_name\": \"").append(escapeJson(node.getName())).append("\",\n");
+        json.append("  \"node_key\": ").append(new JsonString(nodeKey)).append(",\n");
+        json.append("  \"node_name\": ").append(new JsonString(node.getName())).append(",\n");
         json.append("  \"total_lines\": ").append(lines.length).append(",\n");
         json.append("  \"argument_count\": ").append(
                 matched.get(0).getArgumentKeys() != null ? matched.get(0).getArgumentKeys().size() : 0
@@ -729,7 +766,7 @@ public class ProfileAnalyzerCLI {
         sortedTypes.sort(Map.Entry.<String, Integer>comparingByValue().reversed());
         for (int i = 0; i < sortedTypes.size(); i++) {
             Map.Entry<String, Integer> entry = sortedTypes.get(i);
-            json.append("    \"").append(escapeJson(entry.getKey())).append("\": ").append(entry.getValue());
+            json.append("    ").append(new JsonString(entry.getKey())).append(": ").append(entry.getValue());
             if (i < sortedTypes.size() - 1) json.append(",");
             json.append("\n");
         }
@@ -749,7 +786,7 @@ public class ProfileAnalyzerCLI {
             String funcType = firstLine.contains("(") ? firstLine.split("\\(")[0] : firstLine;
             funcType = funcType.replaceAll("_N", "_*");
             int bodyLines = group.getKey().split("\n").length;
-            json.append("    {\"pattern\": \"").append(escapeJson(funcType.trim())).append("\", ");
+            json.append("    {\"pattern\": ").append(new JsonString(funcType.trim())).append(", ");
             json.append("\"copies\": ").append(group.getValue()).append(", ");
             json.append("\"lines_per_copy\": ").append(bodyLines).append("}");
             if (i < dupGroups.size() - 1) json.append(",");
@@ -775,6 +812,7 @@ public class ProfileAnalyzerCLI {
 
         json.append("}");
         Console.root().println(String.valueOf(json));
+        return true;
     }
 
     /**
@@ -828,14 +866,15 @@ public class ProfileAnalyzerCLI {
     /**
      * Counts the number of nodes in the subtree rooted at {@code node} that have associated source code.
      *
-     * @param node the root of the subtree
+     * @param root the root of the profile tree, which holds the operation sources map
+     * @param node the root of the subtree being counted
      * @return the number of nodes with at least one {@code OperationSource} entry
      */
-    private static int countCompiledNodes(OperationProfileNode node) {
-        int count = hasSource(node) ? 1 : 0;
+    private static int countCompiledNodes(OperationProfileNode root, OperationProfileNode node) {
+        int count = hasSource(root, node) ? 1 : 0;
         if (node.getChildren() != null) {
             for (OperationProfileNode child : node.getChildren()) {
-                count += countCompiledNodes(child);
+                count += countCompiledNodes(root, child);
             }
         }
         return count;
@@ -866,11 +905,16 @@ public class ProfileAnalyzerCLI {
     /**
      * Returns {@code true} if the given node has at least one associated {@code OperationSource} entry.
      *
+     * <p>Operation sources are stored on the root of the profile, keyed by node key, so the lookup
+     * must consult the root rather than the node itself (whose own source map is empty for every
+     * non-root node). This mirrors {@link OperationProfileNodeInfo#isCompiled()}.</p>
+     *
+     * @param root the root of the profile tree, which holds the operation sources map
      * @param node the node to inspect
-     * @return {@code true} if node-level source code is available
+     * @return {@code true} if source code is registered for the node under its key
      */
-    private static boolean hasSource(OperationProfileNode node) {
-        Map<String, List<OperationSource>> sources = node.getOperationSources();
+    private static boolean hasSource(OperationProfileNode root, OperationProfileNode node) {
+        Map<String, List<OperationSource>> sources = root.getOperationSources();
         if (sources == null || sources.isEmpty()) {
             return false;
         }
@@ -970,20 +1014,5 @@ public class ProfileAnalyzerCLI {
     private static double round(double value, int places) {
         double scale = Math.pow(10, places);
         return Math.round(value * scale) / scale;
-    }
-
-    /**
-     * Escapes special characters in a string for safe embedding in a JSON value.
-     *
-     * @param s the string to escape; {@code null} is treated as an empty string
-     * @return the escaped string
-     */
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 }

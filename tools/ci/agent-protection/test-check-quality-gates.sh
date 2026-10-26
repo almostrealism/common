@@ -3,9 +3,10 @@
 #
 # check-quality-gates.sh turns a set of pass/fail environment variables
 # (job outputs from analysis.yaml) into a human-readable failure list for
-# the auto-resolve prompt. The test-integrity-check job runs three
+# the auto-resolve prompt. The test-integrity-check job runs four
 # sequential detectors under one boolean output (enforcement tampering,
-# the exfiltration guard, then test-hiding) and stops at the first
+# the exfiltration guard, Java test-hiding, then Python test-hiding) and
+# stops at the first
 # failure, so TEST_INTEGRITY_PASSED=false alone does not say which one
 # failed — or even whether one reached a verdict at all.
 #
@@ -89,6 +90,10 @@ run_case "test-hiding reports the test-hiding message" "true" \
     "Existing test files were modified in ways that hide failures" "" \
     TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=test-hiding
 
+run_case "python-test-hiding reports the Python message, not the Java one" "true" \
+    "Python tests that exist on the base branch were removed" "Existing test files were modified" \
+    TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=python-test-hiding
+
 # ── Nothing is reported when nothing was established ────────────────
 #
 # Each of these is a failing test-integrity-check job that reached no
@@ -140,6 +145,24 @@ run_case "deception audit findings are still reported when there is no audit err
 run_case "an audit error takes precedence over a stale findings flag" "false" \
     "" "deception pattern(s) detected" \
     DECEPTION_AUDIT_ERROR=true DECEPTION_AUDIT_FINDINGS=true DECEPTION_FINDING_COUNT=3
+
+# ── agent-commit-validation: one finding, and nothing else ─────────
+#
+# The validator also sets blocked=true when it could not run, and a head
+# from before its rules were split reports rules that are no longer its own.
+# Only a change set that merely edits base-branch tests is a finding.
+
+run_case "a base-branch-test-only change set is reported" "true" \
+    "only edits tests that exist on the base branch" "" \
+    AGENT_COMMIT_BLOCKED=true AGENT_BLOCK_REASON=only_base_test_edits
+
+run_case "a validator that could not run is not reported" "false" \
+    "" "agent-commit-validation" \
+    AGENT_COMMIT_BLOCKED=true AGENT_BLOCK_REASON=merge_base_unavailable
+
+run_case "a retired rule from an older validator is not reported" "false" \
+    "" "agent-commit-validation" \
+    AGENT_COMMIT_BLOCKED=true AGENT_BLOCK_REASON=test_file_modification
 
 echo ""
 echo "Passed: $PASS  Failed: $FAIL"

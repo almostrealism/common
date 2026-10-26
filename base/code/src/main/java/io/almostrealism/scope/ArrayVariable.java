@@ -25,6 +25,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.SizeValue;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Multiple;
 
@@ -261,6 +262,20 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	public Expression<Integer> getDelegateOffset() { return delegateOffset; }
 
 	/**
+	 * Returns the {@link TraversableExpression} through which the elements of this
+	 * variable can be accessed by index. A plain array variable is not traversable
+	 * itself, so it answers with the traversable expression of its delegate, if it
+	 * has one; subclasses that are traversable answer with themselves.
+	 *
+	 * @return the traversable expression for this variable, or {@code null} if neither
+	 *         this variable nor any variable in its delegate chain is traversable
+	 */
+	public TraversableExpression<?> getTraversableExpression() {
+		if (getDelegate() == null || getDelegate() == this) return null;
+		return getDelegate().getTraversableExpression();
+	}
+
+	/**
 	 * Sets the offset expression used when accessing the delegate array.
 	 *
 	 * @param delegateOffset an expression representing the offset into the delegate array
@@ -380,6 +395,31 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 
 		InstanceReference<?, T> ref = new InstanceReference<>(this, pos, index);
 		return ScopeSettings.enableInstanceReferenceMasking ? Mask.of(condition, ref) : ref;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Without a position the reference is to the whole array. With one, it is
+	 * to the element at that position, shifted by this array's
+	 * {@link #getOffsetValue() offset} unless offsets are
+	 * {@link #isDisableOffset() disabled} or the language does not
+	 * {@link LanguageOperations#isVariableOffsetSupported() support} them.</p>
+	 *
+	 * @throws UnsupportedOperationException if this variable delegates to another,
+	 *                                       which must be referenced instead
+	 */
+	@Override
+	public String referenceExpression(LanguageOperations lang, Expression<?> position) {
+		if (getDelegate() != null) {
+			throw new UnsupportedOperationException();
+		} else if (position == null) {
+			return getName();
+		} else if (isDisableOffset() || !lang.isVariableOffsetSupported()) {
+			return lang.dereference(getName(), position.toInt().getExpression(lang));
+		} else {
+			return lang.dereference(getName(), position.add(getOffsetValue()).toInt().getExpression(lang));
+		}
 	}
 
 	/**

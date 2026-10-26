@@ -77,6 +77,21 @@ public interface Memory {
 	}
 
 	/**
+	 * Reads a single element from this memory region.
+	 *
+	 * <p>The default reads the element through {@link #toArray(int, int)}, which allocates a
+	 * one-element array on every call. Memory whose elements are host-addressable overrides this
+	 * to read the value directly, so a caller inspecting a result one element at a time — the
+	 * common case for host-side readback — does not generate an array per element.</p>
+	 *
+	 * @param offset the position of the element within this memory region
+	 * @return the value at that position
+	 */
+	default double toDouble(int offset) {
+		return toArray(offset, 1)[0];
+	}
+
+	/**
 	 * Returns the raw bytes for the first {@code length} double values in this memory region.
 	 *
 	 * @param length the number of double values to read

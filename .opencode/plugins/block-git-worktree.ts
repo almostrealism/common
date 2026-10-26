@@ -1,6 +1,7 @@
 // .opencode/plugins/block-git-worktree.ts
 //
-// opencode adapter for the "block git worktree add" policy.
+// opencode adapter for the "block git worktree add" policy, which holds only
+// in a FlowTree job session (see .claude/hooks/lib/agent_session.py).
 //
 // The decision logic lives in the shared core
 //   .claude/hooks/lib/git_command_check.py

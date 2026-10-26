@@ -192,6 +192,7 @@ public class Shell {
 	 * @return a new Shell representing the L shell
 	 */
 	public static Shell second(int s, int px, int py, int pz) {
+		if (px == 0 && py == 0 && pz == 0) return s2(s);
 		return s2(s).merge(p2(px, py, pz));
 	}
 
@@ -513,11 +514,11 @@ public class Shell {
 	 * @param y  electrons in the 2py orbital (0-2)
 	 * @param z  electrons in the 2pz orbital (0-2)
 	 * @return   a new shell for the 2p subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p2(int x, int y, int z) {
-		return new Shell(Orbital.p2x().populate(x),
-						Orbital.p2y().populate(y),
-						Orbital.p2z().populate(z));
+		return occupied(new Orbital[] { Orbital.p2x(), Orbital.p2y(), Orbital.p2z() },
+						new int[] { x, y, z });
 	}
 	
 	/**
@@ -527,11 +528,11 @@ public class Shell {
 	 * @param y  electrons in the 3py orbital (0-2)
 	 * @param z  electrons in the 3pz orbital (0-2)
 	 * @return   a new shell for the 3p subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p3(int x, int y, int z) {
-		return new Shell(Orbital.p3x().populate(x),
-						Orbital.p3y().populate(y),
-						Orbital.p3z().populate(z));
+		return occupied(new Orbital[] { Orbital.p3x(), Orbital.p3y(), Orbital.p3z() },
+						new int[] { x, y, z });
 	}
 	
 	/**
@@ -541,11 +542,11 @@ public class Shell {
 	 * @param y  electrons in the 4py orbital (0-2)
 	 * @param z  electrons in the 4pz orbital (0-2)
 	 * @return   a new shell for the 4p subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p4(int x, int y, int z) {
-		return new Shell(Orbital.p4x().populate(x),
-						Orbital.p4y().populate(y),
-						Orbital.p4z().populate(z));
+		return occupied(new Orbital[] { Orbital.p4x(), Orbital.p4y(), Orbital.p4z() },
+						new int[] { x, y, z });
 	}
 
 	/**
@@ -555,11 +556,11 @@ public class Shell {
 	 * @param y  electrons in the 5py orbital (0-2)
 	 * @param z  electrons in the 5pz orbital (0-2)
 	 * @return   a new shell for the 5p subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p5(int x, int y, int z) {
-		return new Shell(Orbital.p5x().populate(x),
-						Orbital.p5y().populate(y),
-						Orbital.p5z().populate(z));
+		return occupied(new Orbital[] { Orbital.p5x(), Orbital.p5y(), Orbital.p5z() },
+						new int[] { x, y, z });
 	}
 	
 	/**
@@ -569,11 +570,11 @@ public class Shell {
 	 * @param y  electrons in the 6py orbital (0-2)
 	 * @param z  electrons in the 6pz orbital (0-2)
 	 * @return   a new shell for the 6p subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p6(int x, int y, int z) {
-		return new Shell(Orbital.p6x().populate(x),
-						Orbital.p6y().populate(y),
-						Orbital.p6z().populate(z));
+		return occupied(new Orbital[] { Orbital.p6x(), Orbital.p6y(), Orbital.p6z() },
+						new int[] { x, y, z });
 	}
 	
 	/**
@@ -583,11 +584,11 @@ public class Shell {
 	 * @param y  electrons in the 7py orbital (0-2)
 	 * @param z  electrons in the 7pz orbital (0-2)
 	 * @return   a new shell for the 7p subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell p7(int x, int y, int z) {
-		return new Shell(Orbital.p7x().populate(x),
-						Orbital.p7y().populate(y),
-						Orbital.p7z().populate(z));
+		return occupied(new Orbital[] { Orbital.p7x(), Orbital.p7y(), Orbital.p7z() },
+						new int[] { x, y, z });
 	}
 	
 	/**
@@ -599,15 +600,11 @@ public class Shell {
 	 * @param d  electrons in the 3dd orbital (0-2)
 	 * @param e  electrons in the 3de orbital (0-2)
 	 * @return   a new shell for the 3d subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell d3(int a, int b, int c, int d, int e) {
-		List<SubShell> s = new ArrayList<>();
-		if (a > 0) s.add(Orbital.d3a().populate(a));
-		if (b > 0) s.add(Orbital.d3b().populate(b));
-		if (c > 0) s.add(Orbital.d3c().populate(c));
-		if (d > 0) s.add(Orbital.d3d().populate(d));
-		if (e > 0) s.add(Orbital.d3e().populate(e));
-		return new Shell(s.toArray(new SubShell[0]));
+		return occupied(new Orbital[] { Orbital.d3a(), Orbital.d3b(), Orbital.d3c(), Orbital.d3d(), Orbital.d3e() },
+						new int[] { a, b, c, d, e });
 	}
 	
 	/**
@@ -619,13 +616,11 @@ public class Shell {
 	 * @param d  electrons in the 4dd orbital (0-2)
 	 * @param e  electrons in the 4de orbital (0-2)
 	 * @return   a new shell for the 4d subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell d4(int a, int b, int c, int d, int e) {
-		return new Shell(Orbital.d4a().populate(a),
-						Orbital.d4b().populate(b),
-						Orbital.d4c().populate(c),
-						Orbital.d4d().populate(d),
-						Orbital.d4e().populate(e));
+		return occupied(new Orbital[] { Orbital.d4a(), Orbital.d4b(), Orbital.d4c(), Orbital.d4d(), Orbital.d4e() },
+						new int[] { a, b, c, d, e });
 	}
 	
 	/**
@@ -637,13 +632,11 @@ public class Shell {
 	 * @param d  electrons in the 5dd orbital (0-2)
 	 * @param e  electrons in the 5de orbital (0-2)
 	 * @return   a new shell for the 5d subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell d5(int a, int b, int c, int d, int e) {
-		return new Shell(Orbital.d5a().populate(a),
-						Orbital.d5b().populate(b),
-						Orbital.d5c().populate(c),
-						Orbital.d5d().populate(d),
-						Orbital.d5e().populate(e));
+		return occupied(new Orbital[] { Orbital.d5a(), Orbital.d5b(), Orbital.d5c(), Orbital.d5d(), Orbital.d5e() },
+						new int[] { a, b, c, d, e });
 	}
 	
 	/**
@@ -655,13 +648,11 @@ public class Shell {
 	 * @param d  electrons in the 6dd orbital (0-2)
 	 * @param e  electrons in the 6de orbital (0-2)
 	 * @return   a new shell for the 6d subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell d6(int a, int b, int c, int d, int e) {
-		return new Shell(Orbital.d6a().populate(a),
-						Orbital.d6b().populate(b),
-						Orbital.d6c().populate(c),
-						Orbital.d6d().populate(d),
-						Orbital.d6e().populate(e));
+		return occupied(new Orbital[] { Orbital.d6a(), Orbital.d6b(), Orbital.d6c(), Orbital.d6d(), Orbital.d6e() },
+						new int[] { a, b, c, d, e });
 	}
 	
 	/**
@@ -673,13 +664,11 @@ public class Shell {
 	 * @param d  electrons in the 7dd orbital (0-2)
 	 * @param e  electrons in the 7de orbital (0-2)
 	 * @return   a new shell for the 7d subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell d7(int a, int b, int c, int d, int e) {
-		return new Shell(Orbital.d7a().populate(a),
-						Orbital.d7b().populate(b),
-						Orbital.d7c().populate(c),
-						Orbital.d7d().populate(d),
-						Orbital.d7e().populate(e));
+		return occupied(new Orbital[] { Orbital.d7a(), Orbital.d7b(), Orbital.d7c(), Orbital.d7d(), Orbital.d7e() },
+						new int[] { a, b, c, d, e });
 	}
 	
 	/**
@@ -693,15 +682,12 @@ public class Shell {
 	 * @param f  electrons in the 4ff orbital (0-2)
 	 * @param g  electrons in the 4fg orbital (0-2)
 	 * @return   a new shell for the 4f subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell f4(int a, int b, int c, int d, int e, int f, int g) {
-		return new Shell(Orbital.f4a().populate(a),
-						Orbital.f4b().populate(b),
-						Orbital.f4c().populate(c),
-						Orbital.f4d().populate(d),
-						Orbital.f4e().populate(e),
-						Orbital.f4f().populate(f),
-						Orbital.f4g().populate(g));
+		return occupied(new Orbital[] { Orbital.f4a(), Orbital.f4b(), Orbital.f4c(), Orbital.f4d(),
+						Orbital.f4e(), Orbital.f4f(), Orbital.f4g() },
+						new int[] { a, b, c, d, e, f, g });
 	}
 	
 	/**
@@ -715,15 +701,12 @@ public class Shell {
 	 * @param f  electrons in the 5ff orbital (0-2)
 	 * @param g  electrons in the 5fg orbital (0-2)
 	 * @return   a new shell for the 5f subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell f5(int a, int b, int c, int d, int e, int f, int g) {
-		return new Shell(Orbital.f5a().populate(a),
-						Orbital.f5b().populate(b),
-						Orbital.f5c().populate(c),
-						Orbital.f5d().populate(d),
-						Orbital.f5e().populate(e),
-						Orbital.f5f().populate(f),
-						Orbital.f5g().populate(g));
+		return occupied(new Orbital[] { Orbital.f5a(), Orbital.f5b(), Orbital.f5c(), Orbital.f5d(),
+						Orbital.f5e(), Orbital.f5f(), Orbital.f5g() },
+						new int[] { a, b, c, d, e, f, g });
 	}
 	
 	/**
@@ -737,15 +720,12 @@ public class Shell {
 	 * @param f  electrons in the 6ff orbital (0-2)
 	 * @param g  electrons in the 6fg orbital (0-2)
 	 * @return   a new shell for the 6f subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell f6(int a, int b, int c, int d, int e, int f, int g) {
-		return new Shell(Orbital.f6a().populate(a),
-						Orbital.f6b().populate(b),
-						Orbital.f6c().populate(c),
-						Orbital.f6d().populate(d),
-						Orbital.f6e().populate(e),
-						Orbital.f6f().populate(f),
-						Orbital.f6g().populate(g));
+		return occupied(new Orbital[] { Orbital.f6a(), Orbital.f6b(), Orbital.f6c(), Orbital.f6d(),
+						Orbital.f6e(), Orbital.f6f(), Orbital.f6g() },
+						new int[] { a, b, c, d, e, f, g });
 	}
 	
 	/**
@@ -759,15 +739,12 @@ public class Shell {
 	 * @param f  electrons in the 7ff orbital (0-2)
 	 * @param g  electrons in the 7fg orbital (0-2)
 	 * @return   a new shell for the 7f subshell
+	 * @throws IllegalArgumentException if any count is negative or greater than 2, or if every count is zero
 	 */
 	public static Shell f7(int a, int b, int c, int d, int e, int f, int g) {
-		return new Shell(Orbital.f7a().populate(a),
-						Orbital.f7b().populate(b),
-						Orbital.f7c().populate(c),
-						Orbital.f7d().populate(d),
-						Orbital.f7e().populate(e),
-						Orbital.f7f().populate(f),
-						Orbital.f7g().populate(g));
+		return occupied(new Orbital[] { Orbital.f7a(), Orbital.f7b(), Orbital.f7c(), Orbital.f7d(),
+						Orbital.f7e(), Orbital.f7f(), Orbital.f7g() },
+						new int[] { a, b, c, d, e, f, g });
 	}
 	
 	/**
@@ -778,28 +755,9 @@ public class Shell {
 	 * @return   an array of three values {@code [px, py, pz]}
 	 */
 	private static int[] p(int p) {
-		int px = 0;
-		int py = 0;
-		int pz = 0;
-		
-		switch (p) {
-			case 1:
-				px = 1; break;
-			case 2:
-				px = 1; py = 1; break;
-			case 3:
-				px = 1; py = 1; pz = 1; break;
-			case 4:
-				px = 2; py = 1; pz = 1; break;
-			case 5:
-				px = 2; py = 2; pz = 1; break;
-			case 6:
-				px = 2; py = 2; pz = 2; break;
-		}
-		
-		return new int[] { px, py, pz };
+		return distribute(p, 3);
 	}
-	
+
 	/**
 	 * Distributes a total d electron count across the five d orbitals (da-de)
 	 * using Hund's rule: one electron per orbital before pairing.
@@ -808,37 +766,9 @@ public class Shell {
 	 * @return   an array of five values {@code [da, db, dc, dd, de]}
 	 */
 	private static int[] d(int d) {
-		int da = 0;
-		int db = 0;
-		int dc = 0;
-		int dd = 0;
-		int de = 0;
-		
-		switch (d) {
-			case 1:
-				da = 1; break;
-			case 2:
-				da = 1; db = 1; break;
-			case 3:
-				da = 1; db = 1; dc = 1; break;
-			case 4:
-				da = 1; db = 1; dc = 1; dd = 1; break;
-			case 5:
-				da = 1; db = 1; dc = 1; dd = 1; de = 1; break;
-			case 6:
-				da = 2; db = 1; dc = 1; dd = 1; de = 1; break;
-			case 7:
-				da = 2; db = 2; dc = 1; dd = 1; de = 1; break;
-			case 8:
-				da = 2; db = 2; dc = 2; dd = 1; de = 1; break;
-			case 9:
-				da = 2; db = 2; dc = 2; dd = 2; de = 1; break;
-			case 10:
-				da = 2; db = 2; dc = 2; dd = 2; de = 2; break;
-		}
-		
-		return new int[] { da, db, dc, dd, de };
+		return distribute(d, 5);
 	}
+
 	/**
 	 * Distributes a total f electron count across the seven f orbitals (fa-fg)
 	 * using Hund's rule: one electron per orbital before pairing.
@@ -847,46 +777,72 @@ public class Shell {
 	 * @return   an array of seven values {@code [fa, fb, fc, fd, fe, ff, fg]}
 	 */
 	private static int[] f(int f) {
-		int fa = 0;
-		int fb = 0;
-		int fc = 0;
-		int fd = 0;
-		int fe = 0;
-		int ff = 0;
-		int fg = 0;
-		
-		switch (f) {
-			case 1:
-				fa = 1; break;
-			case 2:
-				fa = 1; fb = 1; break;
-			case 3:
-				fa = 1; fb = 1; fc = 1; break;
-			case 4:
-				fa = 1; fb = 1; fc = 1; fd = 1; break;
-			case 5:
-				fa = 1; fb = 1; fc = 1; fd = 1; fe = 1; break;
-			case 6:
-				fa = 1; fb = 1; fc = 1; fd = 1; fe = 1; ff = 1; break;
-			case 7:
-				fa = 1; fb = 1; fc = 1; fd = 1; fe = 1; ff = 1; fg = 1; break;
-			case 8:
-				fa = 2; fb = 1; fc = 1; fd = 1; fe = 1; ff = 1; fg = 1; break;
-			case 9:
-				fa = 2; fb = 2; fc = 1; fd = 1; fe = 1; ff = 1; fg = 1; break;
-			case 10:
-				fa = 2; fb = 2; fc = 2; fd = 1; fe = 1; ff = 1; fg = 1; break;
-			case 11:
-				fa = 2; fb = 2; fc = 2; fd = 2; fe = 1; ff = 1; fg = 1; break;
-			case 12:
-				fa = 2; fb = 2; fc = 2; fd = 2; fe = 2; ff = 1; fg = 1; break;
-			case 13:
-				fa = 2; fb = 2; fc = 2; fd = 2; fe = 2; ff = 2; fg = 1; break;
-			case 14:
-				fa = 2; fb = 2; fc = 2; fd = 2; fe = 2; ff = 2; fg = 2; break;
+		return distribute(f, 7);
+	}
+
+	/**
+	 * Distributes a total electron count across the orbitals of a subshell using
+	 * Hund's rule: a single electron is placed in each orbital before any orbital
+	 * receives a second. For an in-range total {@code count} (1 to {@code 2 * orbitals}),
+	 * the first {@code count - orbitals} orbitals hold two electrons, the remaining
+	 * occupied orbitals hold one, and any orbital beyond {@code count} holds none. A
+	 * count outside that range (zero, negative, or above the subshell capacity)
+	 * distributes nothing, leaving every orbital unoccupied; callers that supply such
+	 * a total therefore contribute no subshell for this angular momentum.
+	 *
+	 * @param count    the total number of electrons in the subshell
+	 * @param orbitals the number of orbitals in the subshell (3 for p, 5 for d, 7 for f)
+	 * @return an array of per-orbital electron counts, ordered from the first orbital filled
+	 */
+	private static int[] distribute(int count, int orbitals) {
+		int[] occupancy = new int[orbitals];
+		if (count < 1 || count > 2 * orbitals) return occupancy;
+
+		for (int i = 0; i < orbitals; i++) {
+			if (i < count - orbitals) {
+				occupancy[i] = 2;
+			} else if (i < count) {
+				occupancy[i] = 1;
+			}
 		}
-		
-		return new int[] { fa, fb, fc, fd, fe, ff, fg };
+
+		return occupancy;
+	}
+
+	/**
+	 * Builds a shell from the supplied orbitals, populating only those assigned a
+	 * positive electron count. An orbital with zero electrons is unoccupied and
+	 * contributes no {@link SubShell}. This keeps a partially filled subshell (for
+	 * example a lone {@code 2p1}) from attempting to create a subshell with zero
+	 * electrons, which {@link SubShell#SubShell(Orbital, int)} rejects.
+	 *
+	 * @param orbitals the candidate orbitals for the subshell, in order
+	 * @param counts   the electron count for each orbital, parallel to {@code orbitals}
+	 * @return a shell containing a subshell for each occupied orbital
+	 * @throws IllegalArgumentException if {@code orbitals} and {@code counts} differ in
+	 *         length, if any count is negative, or if every count is zero, since an
+	 *         empty shell has no meaningful energy level and callers are expected to
+	 *         skip invoking this method for a fully unoccupied subshell
+	 */
+	private static Shell occupied(Orbital orbitals[], int counts[]) {
+		if (orbitals.length != counts.length) {
+			throw new IllegalArgumentException("orbitals and counts must have the same length");
+		}
+
+		List<SubShell> s = new ArrayList<>();
+		for (int i = 0; i < orbitals.length; i++) {
+			if (counts[i] < 0) {
+				throw new IllegalArgumentException("Electron counts must not be negative");
+			}
+
+			if (counts[i] > 0) s.add(orbitals[i].populate(counts[i]));
+		}
+
+		if (s.isEmpty()) {
+			throw new IllegalArgumentException("At least one orbital must have a positive electron count");
+		}
+
+		return new Shell(s.toArray(new SubShell[0]));
 	}
 
 	/**

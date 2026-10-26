@@ -19,21 +19,33 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.kernel.KernelWork;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.profile.OperationWithInfo;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.kernel.KernelWork;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Abstract base class for compiled hardware operators (kernels/native functions) that execute on accelerators.
@@ -182,7 +194,7 @@ import java.util.List;
  * @see KernelWork
  * @see Execution
  */
-public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named, ConsoleFeatures {
+public abstract class HardwareOperator implements Execution, OperationInfo, Named, ConsoleFeatures {
 	/** If true, emit basic log messages on each kernel execution. */
 	public static boolean enableLog;
 	/** If true, emit detailed log messages for every kernel invocation. Controlled by {@code AR_HARDWARE_KERNEL_LOG}. */
@@ -228,6 +240,9 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 
 	/** Counter used to assign unique identifiers to each {@link HardwareOperator} instance. */
 	protected static long idCount;
+
+	/** Counter used to name the files written by {@link #recordInstructionSet(String, String, String)}. */
+	private static int monitorOutputCount;
 
 	/** Number of parallel work items for the next kernel dispatch. */
 	private volatile long globalWorkSize = 1;
@@ -338,6 +353,66 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	protected abstract int getArgCount();
 
 	/**
+	 * Runs {@code dispatch} once {@code dependsOn} has completed, for a dependency the backend's
+	 * own ordering mechanism cannot express, and returns its completion without waiting for
+	 * either on the calling thread.
+	 *
+	 * <p>The whole dispatch is deferred, not only the launch: argument preparation may copy an
+	 * input into device memory, and the dependency may still be writing that input, so preparing
+	 * early would be as wrong as launching early.</p>
+	 *
+	 * <p>Because nothing is prepared until the dependency has completed, a {@link KernelMemoryGuard}
+	 * scheduling lease is held over the argument memory from the moment this returns until
+	 * {@code dispatch} has run and taken its own execution reservation, or until the deferred
+	 * completion settles without running, on a dependency failure. Without it an argument freed
+	 * while the dependency is still pending would be prepared or launched against released memory.
+	 * A lease, rather than a plain execution reservation, is used because the dependency may remain
+	 * pending longer than the deferred-release backstop, which a lease is exempt from. It is given
+	 * back as soon as {@code dispatch} returns, handing the memory to the dispatch's own execution
+	 * reservation, so a long-running (or hung) kernel is subject to the execution-guard backstop
+	 * exactly as a non-deferred dispatch is. The lease keeps the memory alive, but destroying an
+	 * argument still clears that object's reference to it, so {@code dispatch} receives its
+	 * arguments through the lease's
+	 * {@link KernelMemoryGuard.Reservation#deferredArguments deferred arguments}: an argument
+	 * destroyed in the meantime is dispatched against the memory the lease holds for it, exactly as
+	 * it would have been had the dispatch happened then, and an argument that has moved to other
+	 * memory has the lease extended to that memory before it is used. Once the deferred completion
+	 * has settled, any allocation a destroyed argument's view was given when it was moved to a
+	 * supported provider is freed.</p>
+	 *
+	 * @param dependsOn the completion the dispatch must follow, which the backend cannot order
+	 *                  after by itself
+	 * @param args      the raw arguments
+	 * @param dispatch  prepares the arguments it is given, takes its own execution reservation,
+	 *                  dispatches, and returns the dispatch's completion
+	 * @return the completion of the deferred dispatch
+	 */
+	protected Semaphore dispatchAfter(Semaphore dependsOn, Object[] args,
+									  Function<Object[], Semaphore> dispatch) {
+		KernelMemoryGuard.Reservation lease = Hardware.getLocalHardware().getKernelMemoryGuard().leaseArguments(args);
+		AtomicBoolean leased = new AtomicBoolean(true);
+		Runnable releaseLease = () -> {
+			if (leased.compareAndSet(true, false)) lease.release();
+		};
+		Supplier<Object[]> deferred = lease.deferredArguments(args);
+		AtomicReference<Object[]> resolved = new AtomicReference<>();
+		Semaphore dispatched = dependsOn.then(() -> {
+			try {
+				resolved.set(deferred.get());
+				return dispatch.apply(resolved.get());
+			} finally {
+				releaseLease.run();
+			}
+		});
+		// Covers the dependency-failure path, where the dispatch never runs
+		dispatched.whenSettled(() -> {
+			releaseLease.run();
+			lease.releaseResolvedViews(args, resolved.get());
+		});
+		return dispatched;
+	}
+
+	/**
 	 * Prepares arguments for execution by validating and converting to {@link MemoryData}.
 	 *
 	 * <p>Performs automatic memory migration if an argument's memory provider is not
@@ -374,6 +449,11 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 
 		MemoryData data[] = new MemoryData[argCount];
 
+		// The supported providers are fixed for this operator, so resolve them once rather
+		// than once per argument: getSupportedMemory() allocates a fresh filtered list on
+		// every call, and this method runs on every dispatch.
+		List<MemoryProvider<? extends Memory>> supported = getSupportedMemory();
+
 		for (int i = 0; i < argCount; i++) {
 			if (args[i] == null) {
 				throw new NullPointerException("argument " + i + " to function " + getName());
@@ -394,7 +474,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 								: " refers to memory that has already been released"));
 			}
 
-			reassignMemory(data[i]);
+			reassignMemory(data[i], supported);
 
 			if (!data[i].isWithinBounds()) {
 				throw new HardwareException("argument " + i + " to function " +
@@ -416,10 +496,10 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	 * Otherwise, the data is reallocated in the first supported provider.</p>
 	 *
 	 * @param data The memory data to potentially relocate
+	 * @param supported The providers this operator supports, resolved once by the caller
 	 * @throws RuntimeException if no memory providers are supported by this operator
 	 */
-	private void reassignMemory(MemoryData data) {
-		List<MemoryProvider<? extends Memory>> supported = getSupportedMemory();
+	private void reassignMemory(MemoryData data, List<MemoryProvider<? extends Memory>> supported) {
 		if (supported.isEmpty())
 			throw new RuntimeException("No memory providers are supported by " + getName());
 
@@ -522,6 +602,36 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	 */
 	@Override
 	public Console console() { return Hardware.console; }
+
+	/**
+	 * Writes the generated source of an instruction set to {@link #instructionSetOutputDir}
+	 * for instruction-set monitoring, as {@code <prefix>_instruction_set_<N>.<extension>}
+	 * where {@code N} is unique within the JVM.
+	 *
+	 * @param prefix    identifies the backend, such as {@code mtl} or {@code cuda}
+	 * @param extension the file extension for the source language
+	 * @param source    the generated source
+	 * @return the path of the file written
+	 */
+	public static String recordInstructionSet(String prefix, String extension, String source) {
+		int index;
+		synchronized (HardwareOperator.class) {
+			index = monitorOutputCount++;
+		}
+
+		Path file = Path.of(instructionSetOutputDir)
+				.resolve(prefix + "_instruction_set_" + index + "." + extension);
+
+		try {
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, source);
+		} catch (IOException ex) {
+			throw new RuntimeException(ex);
+		}
+
+		ScopeSettings.printStats();
+		return file.toString();
+	}
 
 	/**
 	 * Records a compilation event for global statistics tracking.

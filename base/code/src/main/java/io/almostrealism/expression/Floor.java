@@ -58,7 +58,7 @@ public class Floor extends Expression<Double> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalLong v = getChildren().get(0).upperBound(context);
 		if (v.isPresent()) return v;
 		return OptionalLong.empty();

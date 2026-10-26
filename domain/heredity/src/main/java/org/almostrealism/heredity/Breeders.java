@@ -77,21 +77,14 @@ public class Breeders {
 	 * @return the perturbed value, bounded between s1 and s2
 	 */
 	public static double perturbation(double s1, double s2, double magnitude) {
-		double m = magnitude;
+		// The magnitude's sign is irrelevant: the direction is always from s1 toward s2.
+		double m = Math.abs(magnitude);
 		if (s2 > s1) {
-			if (Math.abs(m) > s2 - s1) {
-				m = m > 0 ? s2 - s1 : s1 - s2;
-			}
+			return s1 + Math.min(m, s2 - s1);
 		} else if (s1 > s2) {
-			if (Math.abs(m) > s1 - s2) {
-				m = m > 0 ? s1 - s2 : s2 - s1;
-			}
-
-			m = -m;
+			return s1 - Math.min(m, s1 - s2);
 		} else {
-			m = 0;
+			return s1;
 		}
-
-		return s1 + m;
 	}
 }

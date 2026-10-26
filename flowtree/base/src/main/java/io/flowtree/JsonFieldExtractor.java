@@ -18,6 +18,7 @@ package io.flowtree;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.almostrealism.io.JsonString;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -44,13 +45,6 @@ public final class JsonFieldExtractor {
 	 * default configuration; callers must not reconfigure this instance.
 	 */
 	public static final ObjectMapper MAPPER = new ObjectMapper();
-
-	/**
-	 * Lowercase hex digits, for the {@code \\u00xx} escapes {@link #escapeJson} emits.
-	 * Held as a table because that method runs over whole CI logs, where formatting
-	 * each escape separately is measurable.
-	 */
-	private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
 
 	/** Private constructor — all methods are static; this class is not instantiated. */
 	private JsonFieldExtractor() { }
@@ -293,6 +287,47 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Extracts a top-level field that must be a JSON array of strings, rejecting
+	 * any other shape rather than coercing it.
+	 *
+	 * <p>{@link #extractStringArray(String, String)} is lenient: a string value
+	 * reads as whatever array appears next in the document, and non-string
+	 * elements are skipped. Use this method where a malformed value must be
+	 * refused, such as a request field that grants permissions.</p>
+	 *
+	 * @param json  the JSON object string
+	 * @param field the field name
+	 * @return the array's strings in order, or {@code null} when the field is
+	 *         absent or explicitly {@code null}
+	 * @throws IllegalArgumentException if {@code json} is not a JSON object, or
+	 *         the field is neither {@code null} nor an array of strings
+	 */
+	public static List<String> extractStrictStringArray(String json, String field) {
+		JsonNode root;
+		try {
+			root = json == null ? null : MAPPER.readTree(json);
+		} catch (Exception e) {
+			throw new IllegalArgumentException("Invalid JSON body", e);
+		}
+		if (root == null || !root.isObject()) {
+			throw new IllegalArgumentException("Expected a JSON object");
+		}
+		JsonNode node = root.get(field);
+		if (node == null || node.isNull()) return null;
+		if (!node.isArray()) {
+			throw new IllegalArgumentException(field + " must be an array of strings");
+		}
+		List<String> result = new ArrayList<>();
+		for (JsonNode element : node) {
+			if (!element.isTextual()) {
+				throw new IllegalArgumentException(field + " must be an array of strings");
+			}
+			result.add(element.asText());
+		}
+		return result;
+	}
+
+	/**
 	 * Counts the number of object entries in a JSON array field.
 	 *
 	 * @param json  the JSON string
@@ -318,12 +353,16 @@ public final class JsonFieldExtractor {
 		if (arrContent.isEmpty()) return 0;
 
 		int count = 0;
-		int braceDepth = 0;
-		for (int i = 0; i < arrContent.length(); i++) {
-			char c = arrContent.charAt(i);
-			if (c == '{' && braceDepth == 0) count++;
-			if (c == '{') braceDepth++;
-			else if (c == '}') braceDepth--;
+		int pos = 0;
+		while (pos < arrContent.length()) {
+			int objStart = indexOfUnquoted(arrContent, pos, '{');
+			if (objStart < 0) break;
+
+			int objEnd = matchingDelimiter(arrContent, objStart, '{', '}');
+			if (objEnd < 0) break;
+
+			count++;
+			pos = objEnd + 1;
 		}
 
 		return count;
@@ -362,25 +401,19 @@ public final class JsonFieldExtractor {
 		String arrContent = json.substring(arrStart + 1, arrEnd);
 		int pos = 0;
 		while (pos < arrContent.length()) {
-			int objStart = arrContent.indexOf("{", pos);
+			int objStart = indexOfUnquoted(arrContent, pos, '{');
 			if (objStart < 0) break;
 
-			int objDepth = 1;
-			int objEnd = objStart + 1;
-			while (objEnd < arrContent.length() && objDepth > 0) {
-				char c = arrContent.charAt(objEnd);
-				if (c == '{') objDepth++;
-				else if (c == '}') objDepth--;
-				objEnd++;
-			}
+			int objEnd = matchingDelimiter(arrContent, objStart, '{', '}');
+			if (objEnd < 0) break;
 
-			String objBody = arrContent.substring(objStart, objEnd);
+			String objBody = arrContent.substring(objStart, objEnd + 1);
 			String value = extractString(objBody, objectField);
 			if (value != null) {
 				result.add(value);
 			}
 
-			pos = objEnd;
+			pos = objEnd + 1;
 		}
 
 		return result;
@@ -562,49 +595,16 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
-	 * Escapes a string for safe inclusion in a JSON string literal,
-	 * replacing backslash, double-quote, and every C0 control character.
-	 *
-	 * <p>The control characters without a short escape are written as
-	 * {@code \\u00xx}. JSON forbids them literally, and a strict parser —
-	 * Python's {@code json.loads} among them — rejects a document containing
-	 * one, so text that carries them has to be escaped rather than passed
-	 * through. Terminal output is the case that matters in practice: build and
-	 * CI logs are full of {@code ESC} (0x1b) from ANSI colour sequences.</p>
+	 * Escapes a string for safe inclusion in a JSON string literal. The
+	 * encoding itself is {@link JsonString#escaped()}, shared with JSON
+	 * writers outside flowtree; this entry point remains because it is where
+	 * every flowtree JSON renderer already looks for it.
 	 *
 	 * @param s the string to escape, or {@code null}
 	 * @return  the escaped string, or an empty string if {@code s} is {@code null}
 	 */
 	public static String escapeJson(String s) {
-		if (s == null) return "";
-
-		StringBuilder out = new StringBuilder(s.length() + 16);
-
-		for (int i = 0; i < s.length(); i++) {
-			char c = s.charAt(i);
-
-			switch (c) {
-				case '\\': out.append("\\\\"); break;
-				case '"':  out.append("\\\""); break;
-				case '\n': out.append("\\n"); break;
-				case '\r': out.append("\\r"); break;
-				case '\t': out.append("\\t"); break;
-				case '\b': out.append("\\b"); break;
-				case '\f': out.append("\\f"); break;
-				default:
-					if (c < 0x20) {
-						// Every remaining control character is below 0x20, so the
-						// leading two hex digits are always zero.
-						out.append("\\u00")
-							.append(HEX_DIGITS[(c >> 4) & 0xf])
-							.append(HEX_DIGITS[c & 0xf]);
-					} else {
-						out.append(c);
-					}
-			}
-		}
-
-		return out.toString();
+		return new JsonString(s).escaped();
 	}
 
 	/**
@@ -673,28 +673,109 @@ public final class JsonFieldExtractor {
 	 *         array is not closed
 	 */
 	private static int matchingBracket(CharSequence s, int openIndex) {
+		return matchingDelimiter(s, openIndex, '[', ']');
+	}
+
+	/**
+	 * Finds the index of the {@code close} delimiter that balances the
+	 * {@code open} delimiter at {@code openIndex}. Nesting is matched by depth,
+	 * and delimiters that appear inside a string literal are ignored, as are
+	 * escaped quotes within such strings — {@code {"k":"a}b"}} is a single
+	 * object whose {@code }} inside the value is not its closing brace.
+	 *
+	 * <p>Generalizes {@link #matchingBracket(CharSequence, int)} (which passes
+	 * {@code [} / {@code ]}) so object scans can share the same string-aware
+	 * balancing with {@code {} / {@code }} rather than counting braces raw,
+	 * where a brace inside a string value would corrupt the depth.</p>
+	 *
+	 * @param s         the source text
+	 * @param openIndex the index of the opening {@code open} delimiter
+	 * @param open      the opening delimiter character
+	 * @param close     the closing delimiter character
+	 * @return the index of the balancing {@code close}, or {@code -1} when it
+	 *         is not found
+	 */
+	private static int matchingDelimiter(CharSequence s, int openIndex, char open, char close) {
 		int depth = 0;
-		boolean inString = false;
 		for (int i = openIndex; i < s.length(); i++) {
 			char c = s.charAt(i);
-			if (inString) {
-				if (c == '\\') {
-					i++;
-				} else if (c == '"') {
-					inString = false;
-				}
-				continue;
-			}
 			if (c == '"') {
-				inString = true;
-			} else if (c == '[') {
+				i = skipString(s, i) - 1;
+			} else if (c == open) {
 				depth++;
-			} else if (c == ']') {
+			} else if (c == close) {
 				depth--;
 				if (depth == 0) return i;
 			}
 		}
 		return -1;
+	}
+
+	/**
+	 * Finds the index of the first {@code target} character at or after
+	 * {@code from} that lies outside a JSON string literal. Characters inside a
+	 * string literal — and the escapes within it — are skipped, so a brace that
+	 * is part of a string value is not mistaken for structural punctuation.
+	 *
+	 * <p>The object-scanning loops in {@link #countArrayEntries(String, String)}
+	 * and {@link #extractFieldFromArrayObjects(String, String, String)} use this
+	 * to locate each object's opening {@code {}, mirroring the string-awareness
+	 * that {@link #matchingDelimiter(CharSequence, int, char, char)} already
+	 * applies to the closing {@code }} via the shared {@link #skipString(CharSequence, int)}
+	 * routine. A plain {@code indexOf} would find a brace inside a string element
+	 * or field value and desynchronize the scan.
+	 * {@code from} must point at a position outside any string literal — the
+	 * loops begin at the start of the array content and resume just past a
+	 * balanced object, both of which satisfy that.</p>
+	 *
+	 * @param s      the source text
+	 * @param from   the index to begin scanning from, outside any string literal
+	 * @param target the character to find outside string literals
+	 * @return the index of the first unquoted {@code target}, or {@code -1} when
+	 *         none remains
+	 */
+	private static int indexOfUnquoted(CharSequence s, int from, char target) {
+		for (int i = from; i < s.length(); i++) {
+			char c = s.charAt(i);
+			if (c == '"') {
+				i = skipString(s, i) - 1;
+			} else if (c == target) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Advances past the JSON string literal that opens at {@code openQuoteIndex}
+	 * and returns the index of the first character after its closing quote.
+	 * Escaped characters within the string — including an escaped quote — are
+	 * consumed rather than ending the string, so {@code "a\""} is a single
+	 * literal. When the string is never closed the end of the input is returned.
+	 *
+	 * <p>This is the one JSON string/escape state machine shared by
+	 * {@link #matchingDelimiter(CharSequence, int, char, char)} and
+	 * {@link #indexOfUnquoted(CharSequence, int, char)}: both scan structural
+	 * characters while treating a {@code "} as the start of a region to skip, so
+	 * braces, brackets, and other punctuation inside a string are never mistaken
+	 * for structure. Keeping the escape handling here means a future fix to it
+	 * cannot diverge between the two scanners.</p>
+	 *
+	 * @param s              the source text
+	 * @param openQuoteIndex the index of the opening {@code "}
+	 * @return the index just past the closing {@code "}, or {@code s.length()}
+	 *         when the string is not closed
+	 */
+	private static int skipString(CharSequence s, int openQuoteIndex) {
+		for (int i = openQuoteIndex + 1; i < s.length(); i++) {
+			char c = s.charAt(i);
+			if (c == '\\') {
+				i++;
+			} else if (c == '"') {
+				return i + 1;
+			}
+		}
+		return s.length();
 	}
 
 	/**

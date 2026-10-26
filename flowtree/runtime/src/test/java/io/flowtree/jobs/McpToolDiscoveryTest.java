@@ -333,6 +333,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"send_message",
 			"github_pr_find",
 			"github_pr_review_comments",
+			"github_pr_reviews",
 			"github_pr_conversation",
 			"github_pr_reply",
 			"github_list_open_prs",
@@ -459,6 +460,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare organizational_placement_enabled in"
 			+ " signature so callers can opt in to placement review for pre-merge jobs",
 			submitParams.contains("organizational_placement_enabled"));
+		assertTrue("workstream_submit_task must declare object_oriented_review_enabled in"
+			+ " signature so callers can opt in to the per-class design review",
+			submitParams.contains("object_oriented_review_enabled"));
 		assertTrue("workstream_submit_task must declare retrospective_enabled in signature"
 			+ " so callers can opt in to the retrospective phase",
 			submitParams.contains("retrospective_enabled"));
@@ -577,6 +581,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 				+ " quality is the main determinant of whether the answer is"
 				+ " grounded in the right documents",
 			consultParams.contains("keywords"));
+		assertTrue("consult must declare conversation_id in signature; without it"
+				+ " a follow-up question cannot continue an earlier consult, and"
+				+ " the evidence IDs the caller saw on the previous turn are lost",
+			consultParams.contains("conversation_id"));
 
 		List<String> memoryNamespacesParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "memory_namespaces");
@@ -658,6 +666,30 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("github_pr_check_status must declare branch in signature",
 			prCheckParams.contains("branch"));
 
+		List<String> prReviewsParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_pr_reviews");
+		assertTrue("github_pr_reviews must declare pr_number in signature",
+			prReviewsParams.contains("pr_number"));
+		assertTrue("github_pr_reviews must declare head_only in signature; without"
+				+ " it, filtering review bodies to the PR's current head commit is"
+				+ " absent from the MCP schema",
+			prReviewsParams.contains("head_only"));
+		assertTrue("github_pr_reviews head_only must be optional (default value"
+				+ " present) so callers can omit it and get every review",
+			McpToolDiscovery.isOptionalToolParameter(
+				managerSources, "github_pr_reviews", "head_only"));
+
+		List<String> prReviewCommentsParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_pr_review_comments");
+		assertTrue("github_pr_review_comments must declare include_resolved in"
+				+ " signature; without it, resolved threads stay permanently"
+				+ " invisible to a re-checking agent",
+			prReviewCommentsParams.contains("include_resolved"));
+		assertTrue("github_pr_review_comments include_resolved must be optional"
+				+ " (default value present) so default behaviour is unchanged",
+			McpToolDiscovery.isOptionalToolParameter(
+				managerSources, "github_pr_review_comments", "include_resolved"));
+
 		List<String> listRunsParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "github_list_workflow_runs");
 		assertTrue("github_list_workflow_runs must declare workflow in signature",
@@ -676,11 +708,15 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_create_task");
 		assertTrue("tracker_create_task must declare priority in signature",
 			trackerCreateParams.contains("priority"));
+		assertTrue("tracker_create_task must declare stage in signature",
+			trackerCreateParams.contains("stage"));
 
 		List<String> trackerUpdateParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_update_task");
 		assertTrue("tracker_update_task must declare priority in signature",
 			trackerUpdateParams.contains("priority"));
+		assertTrue("tracker_update_task must declare stage in signature",
+			trackerUpdateParams.contains("stage"));
 
 		List<String> trackerListParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_list_tasks");
@@ -974,6 +1010,62 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		assertTrue("workstream_update_config must declare dispatch_capable parameter",
 			updateParams.contains("dispatch_capable"));
+	}
+
+	/**
+	 * Verifies that {@code workstream_register} and {@code workstream_update_config}
+	 * declare {@code tracker_capabilities}, the parameter operators use to grant a
+	 * workstream the {@code planner} tracker role. Without it in the signature the role
+	 * cannot be granted through MCP at all, and ar-manager would treat every workstream
+	 * as a non-planner when deciding what its tracker writes may touch.
+	 */
+	@Test(timeout = 30000)
+	public void managerRegisterAndUpdateConfigHaveTrackerCapabilities() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable", managerSources.isEmpty());
+
+		for (String tool : Arrays.asList("workstream_register", "workstream_update_config")) {
+			assertTrue(tool + " must declare tracker_capabilities",
+				McpToolDiscovery.discoverToolParameters(managerSources, tool)
+					.contains("tracker_capabilities"));
+		}
+	}
+
+	/**
+	 * Verifies that the tracker write tools every agent is given declare the
+	 * parameters planning and goal-decomposition agents rely on, now that those
+	 * agents use the general tools rather than narrow role-specific ones:
+	 * {@code tracker_create_task} must accept the provenance {@code source}, the
+	 * {@code stage}, the {@code blocked_by} dependencies and the
+	 * {@code project_id}/{@code release_id} placement, and
+	 * {@code tracker_update_task} must accept {@code source}, {@code stage} and
+	 * {@code blocked_by}. It also checks that the narrow tools those general tools
+	 * replaced are no longer registered, so the agent allowlist and the server
+	 * cannot drift back apart.
+	 */
+	@Test(timeout = 30000)
+	public void managerGoalAutomationTrackerToolsDeclareTheirParameters() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable", managerSources.isEmpty());
+
+		List<String> create =
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_create_task");
+		for (String param : Arrays.asList("source", "stage", "blocked_by",
+				"project_id", "release_id")) {
+			assertTrue("tracker_create_task must declare " + param, create.contains(param));
+		}
+		List<String> update =
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_update_task");
+		for (String param : Arrays.asList("source", "stage", "blocked_by")) {
+			assertTrue("tracker_update_task must declare " + param, update.contains(param));
+		}
+		List<String> registered = McpToolDiscovery.discoverToolNames(managerSources);
+		for (String removed : Arrays.asList("tracker_claim_next_task",
+				"tracker_list_release_tasks", "tracker_upsert_goal_task",
+				"tracker_file_follow_up_task")) {
+			assertFalse(removed + " was replaced by the general tracker tools and must"
+				+ " not be registered", registered.contains(removed));
+		}
 	}
 
 	/**

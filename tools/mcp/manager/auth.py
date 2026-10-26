@@ -88,6 +88,44 @@ def _set_scopes(scopes: list, label: str = "anonymous") -> None:
     _thread_local.token_label = label
 
 
+_UNSET = object()
+
+
+def _snapshot_scopes() -> tuple:
+    """Capture everything :func:`_set_scopes` writes, for :func:`_restore_scopes`.
+
+    An in-process caller that seeds a synthetic scope (an evaluation harness
+    driving a tool directly, outside the auth middleware) uses the pair to
+    hand the context back unchanged, so a later tool call in the same process
+    does not inherit the synthetic token label and scopes.
+    """
+    return (
+        _request_scopes.get(None),
+        _request_token_label.get(None),
+        getattr(_thread_local, "scopes", _UNSET),
+        getattr(_thread_local, "token_label", _UNSET),
+    )
+
+
+def _restore_scopes(snapshot: tuple) -> None:
+    """Restore the scope context captured by :func:`_snapshot_scopes`.
+
+    Thread-local attributes that were absent at snapshot time are deleted
+    rather than set to ``None``, so the fallback reads behave exactly as
+    before the snapshot (``_get_token_label`` defaults to ``anonymous`` only
+    when the attribute is missing).
+    """
+    scopes, label, tl_scopes, tl_label = snapshot
+    _request_scopes.set(scopes)
+    _request_token_label.set(label)
+    for attr, value in (("scopes", tl_scopes), ("token_label", tl_label)):
+        if value is _UNSET:
+            if hasattr(_thread_local, attr):
+                delattr(_thread_local, attr)
+        else:
+            setattr(_thread_local, attr, value)
+
+
 _request_workstream_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "_request_workstream_id", default=None
 )

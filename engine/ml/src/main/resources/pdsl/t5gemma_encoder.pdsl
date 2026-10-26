@@ -1,0 +1,179 @@
+/**
+ * T5Gemma encoder layer: one layer of the bidirectional text encoder of T5Gemma, the encoder half of
+ * an encoder-decoder model adapted from Gemma 2 (the prompt encoder of the Stable Audio 3
+ * conditioner). Every position of the padded prompt attends to every prompt position (padding is
+ * masked out of the keys), then passes through a GELU-gated feed-forward network; each of the two
+ * sub-layers is "sandwiched" between two RMS norms and added back to the residual stream.
+ *
+ * This file replaces the Java assembly that used to live in T5GemmaEncoder.attentionBranch,
+ * T5GemmaEncoder.feedForwardBranch and T5GemmaEncoder.buildEncoder, which built each sub-layer as a
+ * SequentialBlock (RMS norm, sub-layer, RMS norm) and wrapped it in residual(...). T5GemmaEncoder now
+ * reads one layer's weights from the checkpoint, binds them and builds t5gemma_encoder_layer once per
+ * layer; the token embedding before the layers, the final RMS norm after them and the loop over the
+ * layers stay in Java.
+ *
+ * The sub-layers are layers of two other assets, which this file imports:
+ *
+ *   sequence_attention, sequence_attention_softcapped     /pdsl/sequence_attention.pdsl
+ *   glu_feed_forward                                      /pdsl/feed_forward.pdsl
+ *
+ * Data flow of one layer. The input is the residual stream of the whole padded prompt
+ * (dim = heads * head_dim):
+ *
+ *   x                                                                      [batch, seq_len, dim]
+ *   accum   x = x + post_norm(self_attention(pre_norm(x)))
+ *             rmsnorm(pre_self_attn_layernorm)                             [batch, seq_len, dim]
+ *             sequence_attention_softcapped                                [batch, seq_len, dim]
+ *               dense(to_qkv) → per-head rows → rotary embedding
+ *               → softmax(key_mask(softcap(Q Kᵀ / √head_dim))) V → merged heads → dense(o_proj)
+ *             rmsnorm(post_self_attn_layernorm)                            [batch, seq_len, dim]
+ *   accum   x = x + post_norm(feed_forward(pre_norm(x)))
+ *             rmsnorm(pre_feedforward_layernorm)                           [batch, seq_len, dim]
+ *             glu_feed_forward                                             [batch, seq_len, dim]
+ *               dense(mlp_proj) → linear half ⊙ gelu(gate half) → dense(down_proj)
+ *             rmsnorm(post_feedforward_layernorm)                          [batch, seq_len, dim]
+ *
+ * Each accum adds its sub-layer's output to the stream the sub-layer read, so the stream itself is
+ * never normalized in place. All four norms of a layer use the checkpoint's one RMS-norm epsilon
+ * (1e-6 for the released base encoder), and each norm's scale carries the unit offset of Gemma's
+ * (1 + weight) scaling already folded in by the weight extraction.
+ *
+ * The weights are named after their checkpoint keys under encoder.layers.N: to_qkv is
+ * self_attn.to_qkv.weight, the query, key and value projections fused into one [3 * dim, dim] matrix
+ * (queries first); o_proj is self_attn.o_proj.weight; mlp_proj is mlp.proj.weight, the linear and
+ * gate projections fused into one [2 * inner_dim, dim] matrix (linear half first); down_proj is
+ * mlp.down_proj.weight; and each norm is the weight of the norm of that name.
+ *
+ * The masks. key_mask is the prompt mask, [batch, seq_len]: one at a prompt position and zero at
+ * padding. It removes the padded keys from every softmax, so a prompt position never reads padding,
+ * whatever the padded length. padding_mask is the value mask of the attention layer, [batch, seq_len];
+ * T5Gemma binds all ones, because the encoder masks attention logits only and leaves the values of
+ * padded positions as they are (a masked key's softmax weight is zero, so its value contributes
+ * nothing to any position that has a prompt key to attend to).
+ *
+ * The soft-cap. T5Gemma squashes each scaled attention logit to softcap * tanh(logit / softcap) before
+ * the mask (a cap of 50 in the released base encoder). The _softcapped layers below do this; the
+ * layers without the suffix serve a configuration that turns the soft-cap off.
+ */
+
+import "/pdsl/sequence_attention.pdsl"
+import "/pdsl/feed_forward.pdsl"
+
+/**
+ * The self-attention sub-layer with soft-capped logits, the residual branch of the first accum of
+ * t5gemma_encoder_layer_softcapped: [batch, seq_len, dim] -> [batch, seq_len, dim].
+ *
+ *   rmsnorm(pre_self_attn_layernorm)     each position's dim features divided by their root mean
+ *                                        square and scaled                   [batch, seq_len, dim]
+ *   sequence_attention_softcapped        every position attends to every prompt position: the fused
+ *                                        dense(to_qkv) projection, rotary embedding of queries and
+ *                                        keys, soft-capped and key-masked scores, the weighted values
+ *                                        and the dense(o_proj) projection    [batch, seq_len, dim]
+ *   rmsnorm(post_self_attn_layernorm)    the attention output normalized before it joins the stream
+ *                                                                            [batch, seq_len, dim]
+ */
+layer t5gemma_self_attention_softcapped(batch: int, seq_len: int, heads: int, head_dim: int,
+                                        pre_self_attn_layernorm: weight, to_qkv: weight, o_proj: weight,
+                                        post_self_attn_layernorm: weight,
+                                        inv_freq: weight, padding_mask: weight, key_mask: weight,
+                                        softcap: float, epsilon: float) {
+    rmsnorm(pre_self_attn_layernorm, epsilon)
+    sequence_attention_softcapped(batch, seq_len, heads, head_dim, dense(to_qkv), dense(o_proj),
+                                  inv_freq, padding_mask, key_mask, softcap)
+    rmsnorm(post_self_attn_layernorm, epsilon)
+}
+
+/**
+ * The self-attention sub-layer with plain logits, for a configuration without the soft-cap:
+ * [batch, seq_len, dim] -> [batch, seq_len, dim]. As t5gemma_self_attention_softcapped, with
+ * sequence_attention in place of sequence_attention_softcapped.
+ */
+layer t5gemma_self_attention(batch: int, seq_len: int, heads: int, head_dim: int,
+                             pre_self_attn_layernorm: weight, to_qkv: weight, o_proj: weight,
+                             post_self_attn_layernorm: weight,
+                             inv_freq: weight, padding_mask: weight, key_mask: weight,
+                             epsilon: float) {
+    rmsnorm(pre_self_attn_layernorm, epsilon)
+    sequence_attention(batch, seq_len, heads, head_dim, dense(to_qkv), dense(o_proj),
+                       inv_freq, padding_mask, key_mask)
+    rmsnorm(post_self_attn_layernorm, epsilon)
+}
+
+/**
+ * The feed-forward sub-layer, the residual branch of the second accum of every encoder layer:
+ * [batch, seq_len, dim] -> [batch, seq_len, dim].
+ *
+ *   rmsnorm(pre_feedforward_layernorm)   each position normalized with the layer's epsilon
+ *                                                                            [batch, seq_len, dim]
+ *   glu_feed_forward                     dense(mlp_proj) to the fused [linear | gate] halves
+ *                                        [batch, seq_len, 2 * inner_dim], the linear half times
+ *                                        gelu() of the gate half [batch, seq_len, inner_dim], and
+ *                                        dense(down_proj) back              [batch, seq_len, dim]
+ *   rmsnorm(post_feedforward_layernorm)  the feed-forward output normalized before it joins the
+ *                                        stream                             [batch, seq_len, dim]
+ */
+layer t5gemma_feed_forward(batch: int, seq_len: int, inner_dim: int,
+                           pre_feedforward_layernorm: weight, mlp_proj: weight, down_proj: weight,
+                           post_feedforward_layernorm: weight, epsilon: float) {
+    rmsnorm(pre_feedforward_layernorm, epsilon)
+    glu_feed_forward(dense(mlp_proj), dense(down_proj), gelu(), batch, seq_len, inner_dim)
+    rmsnorm(post_feedforward_layernorm, epsilon)
+}
+
+/**
+ * One encoder layer with soft-capped attention logits (the released base encoder):
+ * [batch, seq_len, dim] -> [batch, seq_len, dim].
+ *
+ *   accum   t5gemma_self_attention_softcapped    x = x + the normalized attention sub-layer
+ *   accum   t5gemma_feed_forward                 x = x + the normalized feed-forward sub-layer
+ */
+layer t5gemma_encoder_layer_softcapped(batch: int, seq_len: int, heads: int, head_dim: int,
+                                       inner_dim: int,
+                                       pre_self_attn_layernorm: weight, to_qkv: weight, o_proj: weight,
+                                       post_self_attn_layernorm: weight,
+                                       pre_feedforward_layernorm: weight, mlp_proj: weight,
+                                       down_proj: weight, post_feedforward_layernorm: weight,
+                                       inv_freq: weight, padding_mask: weight, key_mask: weight,
+                                       softcap: float, epsilon: float) {
+    // Residual self-attention: the stream plus the sandwich-normalized attention over it.
+    accum {
+        t5gemma_self_attention_softcapped(batch, seq_len, heads, head_dim,
+                                          pre_self_attn_layernorm, to_qkv, o_proj,
+                                          post_self_attn_layernorm,
+                                          inv_freq, padding_mask, key_mask, softcap, epsilon)
+    }
+
+    // Residual feed-forward: the stream plus the sandwich-normalized GELU-gated network over it.
+    accum {
+        t5gemma_feed_forward(batch, seq_len, inner_dim,
+                             pre_feedforward_layernorm, mlp_proj, down_proj,
+                             post_feedforward_layernorm, epsilon)
+    }
+}
+
+/**
+ * One encoder layer with plain attention logits, for a configuration without the soft-cap:
+ * [batch, seq_len, dim] -> [batch, seq_len, dim]. As t5gemma_encoder_layer_softcapped, with
+ * t5gemma_self_attention as its first sub-layer.
+ */
+layer t5gemma_encoder_layer(batch: int, seq_len: int, heads: int, head_dim: int, inner_dim: int,
+                            pre_self_attn_layernorm: weight, to_qkv: weight, o_proj: weight,
+                            post_self_attn_layernorm: weight,
+                            pre_feedforward_layernorm: weight, mlp_proj: weight,
+                            down_proj: weight, post_feedforward_layernorm: weight,
+                            inv_freq: weight, padding_mask: weight, key_mask: weight,
+                            epsilon: float) {
+    // Residual self-attention.
+    accum {
+        t5gemma_self_attention(batch, seq_len, heads, head_dim,
+                               pre_self_attn_layernorm, to_qkv, o_proj, post_self_attn_layernorm,
+                               inv_freq, padding_mask, key_mask, epsilon)
+    }
+
+    // Residual feed-forward.
+    accum {
+        t5gemma_feed_forward(batch, seq_len, inner_dim,
+                             pre_feedforward_layernorm, mlp_proj, down_proj,
+                             post_feedforward_layernorm, epsilon)
+    }
+}

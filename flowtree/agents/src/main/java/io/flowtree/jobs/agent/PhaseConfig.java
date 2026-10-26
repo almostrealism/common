@@ -30,7 +30,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
  *
  * @param runner the {@link AgentRunner} identifier (e.g. {@code "claude"}),
  *               or {@code null} to inherit
- * @param model  the model identifier (e.g. {@code "claude-opus-4-7"}),
+ * @param model  the model identifier (e.g. {@code "claude-opus-5-5"}),
  *               or {@code null} to inherit
  * @param effort the effort level (e.g. {@code "high"}), or {@code null} to
  *               inherit
@@ -114,7 +114,7 @@ public record PhaseConfig(String runner, String model, String effort, String pro
      * Returns the provider/model attribution key for this configuration.
      *
      * <p>Returns {@code "provider/model"} when a provider is present
-     * (e.g. {@code "openrouter/claude-opus-4-7"}) and just the model name
+     * (e.g. {@code "openrouter/claude-opus-5-5"}) and just the model name
      * otherwise. A missing or empty model is reported as {@code "unknown"}
      * so cost is never silently dropped.</p>
      *

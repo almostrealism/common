@@ -1,6 +1,6 @@
 # Hardware Module
 
-The **hardware** module is the foundational layer for hardware-accelerated computation in Almost Realism. It provides abstractions for memory management, operation compilation, and multi-backend execution (CPU, GPU, OpenCL, Metal) with zero-code configuration.
+The **hardware** module is the foundational layer for hardware-accelerated computation in Almost Realism. It provides abstractions for memory management, operation compilation, and multi-backend execution (CPU, GPU, OpenCL, Metal, and an opt-in CUDA backend) with zero-code configuration.
 
 ## Table of Contents
 
@@ -11,6 +11,7 @@ The **hardware** module is the foundational layer for hardware-accelerated compu
   - [Backend Packages](#backend-packages)
 - [Core Concepts](#core-concepts)
 - [Memory Management Patterns](#memory-management-patterns)
+  - [Ingesting Data From Outside the Process](#ingesting-data-from-outside-the-process)
 - [Environment Configuration](#environment-configuration)
 - [Common Usage Patterns](#common-usage-patterns)
 - [Performance Optimization](#performance-optimization)
@@ -22,7 +23,7 @@ The **hardware** module is the foundational layer for hardware-accelerated compu
 The hardware module enables:
 
 - **Hardware Acceleration**: Execute computations on CPU, GPU, or specialized accelerators
-- **Multi-Backend Support**: OpenCL, Metal, and JNI backends with automatic selection
+- **Multi-Backend Support**: OpenCL, Metal, and JNI backends with automatic selection, plus an opt-in CUDA backend
 - **Memory Abstraction**: Unified memory interface across heap, off-heap, and device memory
 - **Kernel Caching**: Multi-level caching to minimize compilation overhead
 - **Zero-Code Configuration**: Control behavior via environment variables
@@ -35,7 +36,7 @@ The hardware module enables:
 Before using any Almost Realism functionality, set the **required** environment variable:
 
 - `AR_HARDWARE_LIBS`: Directory for generated native libraries. **Auto-detected — do not set manually.** Setting this (especially to `/tmp/ar_libs/`) causes permission errors on shared or sandboxed systems.
-- `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). Can be set to `native`, `cl`, `mtl`, `gpu`, `cpu`, or `*` to force a specific backend.
+- `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). A named token requests a backend that must initialize or the request fails: `native`, `cl`, `mtl`, and `cuda` each name a specific concrete backend, while `cpu` and `gpu` are abstract selectors that resolve to whichever concrete backend the platform provides (`cpu` → JNI on aarch64, OpenCL elsewhere; `gpu` → Metal on macOS, OpenCL elsewhere). `*` (the default when unset) instead performs best-effort auto-detection of the best available backend. CUDA is opt-in: it is used only when `cuda` is named, never by `*`, `gpu`, or an unset value. CUDA is currently packaged only for Linux/aarch64 — the sole bundled bridge is `libARCUDA-linux-aarch64.so`, so selecting `cuda` on macOS, Windows, or any other architecture (including Linux/x86_64, for which `CU` requests the absent `libARCUDA-linux-x86_64.so`) fails to load unless you build the matching `libARCUDA-linux-<arch>.so` yourself.
 
 ### 2. Basic Usage
 
@@ -85,6 +86,7 @@ mvn test
 |    +------------------------------------+                     |
 |    |  * CLDataContext (OpenCL)          |                     |
 |    |  * MetalDataContext (Metal)        |                     |
+|    |  * CudaDataContext (CUDA, opt-in)  |                     |
 |    |  * NativeDataContext (JNI)         |                     |
 |    |                                    |                     |
 |    |  Provides:                         |                     |
@@ -136,6 +138,7 @@ The hardware module includes comprehensive implementations for multiple accelera
 |----------------|---------|-------------|
 | **[cl](src/main/java/org/almostrealism/hardware/cl/)** | OpenCL GPU/CPU acceleration | CLDataContext, CLMemoryProvider, CLOperator |
 | **[metal](src/main/java/org/almostrealism/hardware/metal/)** | Apple Metal GPU acceleration | MetalDataContext, MetalMemoryProvider, MTLDevice |
+| **[cuda](src/main/java/org/almostrealism/hardware/cuda/)** | NVIDIA CUDA GPU acceleration (NVRTC-compiled kernels; opt-in via `AR_HARDWARE_DRIVER=cuda`; bridge packaged for Linux/aarch64 only) | CudaDataContext, CudaMemoryProvider, CudaOperator |
 | **[jni](src/main/java/org/almostrealism/hardware/jni/)** | Native C execution via JNI | NativeCompiler, NativeExecution, NativeDataContext |
 | **[mem](src/main/java/org/almostrealism/hardware/mem/)** | Memory management abstractions | MemoryProvider, Heap, RAM, Bytes |
 | **[ctx](src/main/java/org/almostrealism/hardware/ctx/)** | Context management | AbstractDataContext, AbstractComputeContext |
@@ -159,7 +162,11 @@ The amalgamated metal-cpp single header is committed as
 no external metal-cpp installation is required. Both libraries are rebuilt with
 [`src/main/cpp/compile.sh`](src/main/cpp/compile.sh) (auto-discovers `JAVA_HOME`); the
 resulting `.dylib` files are written to `src/main/resources/` and packaged into the
-`ar-hardware` jar, from which `MTL`/`NIO` load them at runtime.
+`ar-hardware` jar, from which `MTL`/`NIO` load them at runtime. At load time, `MTL`
+extracts its bundled `libMTL.dylib` resource to a per-process file
+(`libMTL-<pid>.dylib`) in the OS temp directory before loading it, so that concurrent
+JVMs sharing that directory — such as parallel test forks on one CI machine — never
+delete or overwrite the file another process is mid-load on.
 
 **Command-buffer lifecycle (important).** metal-cpp factory methods such as
 `MTL::CommandQueue::commandBuffer()` and `MTL::CommandBuffer::computeCommandEncoder()`
@@ -167,11 +174,15 @@ return **autoreleased** objects. On a long-lived JNI worker thread (the single-t
 executor in `MetalCommandRunner`) there is no Objective-C autorelease pool in place, so
 without intervention these per-dispatch command buffers and encoders are never reclaimed
 and accumulate in the Metal driver until it stalls — fatal for sustained real-time
-rendering (thousands of sequential dispatches). `MTL.cpp` therefore exposes
-`autoreleasePoolPush()`/`autoreleasePoolPop(long)`, and `MetalCommandRunner.submit(...)`
-wraps every dispatch between them so the command buffer and encoder drain after each
-dispatch. Add the equivalent pool wrapping to any new code path that issues Metal
-dispatches off this thread.
+rendering (thousands of sequential dispatches). `MTL.cpp` therefore implements an
+autorelease pool push and pop, which Java reaches only through the `MTLAutoreleasePool`
+wrapper: `MTLAutoreleasePool.run(Runnable)` runs a task inside a fresh pool and drains the
+pool when the task ends, on the same thread. `MetalCommandRunner` runs every task on its
+confined thread through it, so the encoders a task creates drain when the task ends. A
+command buffer outlives the task that opens it, so `MTL.commandBuffer(long)` retains it
+explicitly and `MTLCommandBuffer.release()` drops that retain once the buffer has completed.
+Run any new code path that issues Metal dispatches off this thread through
+`MTLAutoreleasePool.run` as well.
 
 ## Core Concepts
 
@@ -210,6 +221,10 @@ call site tells them apart:
   `PackedCollection.set(int, double...)`. Serialized system-boundary ingest
   should use `read(ByteBuffer)`, which stages the values before the framework
   migrates that staging area to the compute device.
+
+Staging is not the only way values from outside the process reach a device, and
+it is not always the right one — see
+[Ingesting Data From Outside the Process](#ingesting-data-from-outside-the-process).
 
 ```java
 PackedCollection source = new PackedCollection(1000);
@@ -427,6 +442,51 @@ See [docs/INSTRUCTION_CACHING.md](docs/INSTRUCTION_CACHING.md) for the caching a
 
 The hardware module implements sophisticated memory management strategies to minimize allocation overhead, enable zero-copy operations, and automatically handle cross-provider transfers.
 
+### Ingesting Data From Outside the Process
+
+Values that enter the process from outside it — a checkpoint, a serialized
+message, a reference dump, a capture callback — reach a device by one of two
+routes. They are not interchangeable, and the choice belongs to the call site.
+
+**Staging.** Allocate from a host provider, write through the allocation's own
+buffer, and wrap the result:
+
+```java
+MemoryProvider<? extends RAM> provider =
+        Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+RAM mem = provider.allocate(count);
+ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+// ... fill staging, converting precision with ByteBufferTransfer if needed ...
+new PackedCollection(shape, shape.getTraversalAxis(), Bytes.of(mem, count), 0);
+```
+
+`ByteBufferTransfer` converts between FP32 and FP64 on the way in, so this route
+is the one to use when the source's element width differs from the provider's.
+`NativeBufferIngestTest` is the worked example. Note that
+`getNativeBufferMemoryProvider()` does **not** always return a host-side
+provider: when `AR_HARDWARE_NATIVE_DIRECT_BUFFERS` is off it returns the data
+context's own provider, and the staged values are then device-resident
+immediately — which is the wrong answer if the consuming device is not yet known.
+
+**Reference.** Implement `Memory` over the source and let the framework migrate
+it when a kernel first requires it. Nothing is materialized on the host and
+nothing reaches a device until something actually reads it. `CollectionDataMemory`
+and `MappedCollectionDataMemory` (in `engine/ml`) are the worked example: they
+serve read-only values still in the file they were written to straight out of a
+`FileMapping`. Migration is generic rather than
+special-cased: it keys off `MemoryData.isReadOnly()`, which reads through to the
+provider, so any read-only provider participates.
+
+The host-accessible RAM implementations themselves live in
+[`org.almostrealism.nio`](src/main/java/org/almostrealism/nio/package-info.java) —
+`NativeBuffer` (a direct `ByteBuffer`, in either private or shared-memory mode)
+and `NativeMemory` (a JNI `malloc` pointer). `NativeMemoryProvider.registerAdapter`
+adapts a foreign `Memory` into a `NativeBuffer` for cross-provider access.
+
+Prefer reference over staging when the values are already in memory the process
+owns and a copy would be pure overhead; prefer staging when a precision
+conversion is required or when the source buffer cannot outlive the collection.
+
 ### Zero-Copy Delegation
 
 `MemoryDataAdapter` enables zero-copy views into existing memory through delegation:
@@ -511,6 +571,11 @@ System.gc();    // Eventually: native memory freed automatically
 2. Reference registered with `ReferenceQueue`
 3. Background threads monitor queue for GC'd objects
 4. Native memory freed when reference appears in queue
+
+For the full lifecycle — including the off-heap budget and its enforcement, the exact
+use-after-free race `KernelMemoryGuard` closes (and the ones it does not), and how this
+interacts with kernel dispatch — see
+[docs/internals/native-runtime-lifecycle.md](../../docs/internals/native-runtime-lifecycle.md).
 
 **Leak Detection:**
 
@@ -691,6 +756,7 @@ export AR_HARDWARE_DRIVER=cpu     # Abstract CPU (auto-selects)
 # GPU Backends (optional overrides)
 export AR_HARDWARE_DRIVER=cl      # OpenCL (cross-platform GPU)
 export AR_HARDWARE_DRIVER=mtl     # Metal (Apple Silicon GPU)
+export AR_HARDWARE_DRIVER=cuda    # CUDA (NVIDIA GPU; opt-in, never auto-selected; Linux/aarch64 bridge only)
 export AR_HARDWARE_DRIVER=gpu     # Abstract GPU (auto-selects)
 
 # Multi-Backend (optional override)
@@ -728,8 +794,24 @@ export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB (FP32)
 # full statement.
 export AR_HARDWARE_MEMORY_LOCATION=device   # OpenCL device memory (the only honored value)
 
-# Enable shared memory (Apple Silicon unified memory)
+# Shared memory between host kernels and an accelerator.
+# Unset (the default): enabled when Metal is selected. Host kernels then allocate
+# from Metal's memory, and every backend uses FP32. CUDA is not shared by default,
+# even on a device integrated with the host whose managed memory host code can
+# address; `enabled` shares it there. Set explicitly to override the decision.
+export AR_HARDWARE_SHARED_MEMORY=disabled
+
+# Enable the NIO shared-memory bridge (Apple Silicon unified memory)
 export AR_HARDWARE_NIO_MEMORY=true
+
+# Keep released CUDA buffers (64 KB or less, the per-evaluation results of short dispatches) for
+# reuse instead of freeing them immediately. On by default; set AR_HARDWARE_ALLOCATION_CACHE to
+# false to turn it off. Reuse avoids the cost of repeatedly allocating and freeing native memory
+# (freeing synchronizes the device) that a workload such as a training loop otherwise pays on
+# every step, at the cost of holding the cached memory against the reservation (freed when an
+# allocation would exceed it). Larger released buffers are always freed at once and allocated
+# fresh; when off, every released buffer is.
+export AR_HARDWARE_ALLOCATION_CACHE=false   # CUDA released-buffer reuse (on by default)
 ```
 
 ### Development vs Production
@@ -916,6 +998,25 @@ measured and attributed directly.
 
 See [docs/COMMIT_ATTRIBUTION.md](docs/COMMIT_ATTRIBUTION.md) for the measurement pattern
 and how to interpret the results.
+
+### 7. Dispatch Hand-Off Latency (Metal)
+
+`MetalCommandRunner` encodes every dispatch on one confined thread (`ConfinedExecutor`),
+while the dispatching thread waits for the encoding to finish. Encoding a small kernel takes
+a few microseconds, which is less than the scheduler takes to wake a parked thread. A
+workload of many small kernels would therefore spend a large share of its host time on
+those wake-ups. To avoid that, both threads poll for each other for a short window (the
+executor's `HandOffWindow`) before parking, so dispatches issued back to back pass between
+them without either thread being descheduled. A longer pause still parks both threads.
+
+```bash
+# Hand-off polling window in microseconds (default 50). 0 parks at once.
+export AR_HARDWARE_METAL_HANDOFF_SPIN=50
+```
+
+The window does not change which thread a task runs on, the order tasks run in, or how
+failures and interrupts reach the caller. It only changes how soon each side notices the
+other.
 
 ## Advanced Topics
 

@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -59,15 +60,29 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * ar-manager tool names (without the {@code mcp__ar-manager__} prefix)
      * that are always included for agent jobs.
      *
-     * <p>Tracker tools are read-only for agents. Task endpoints
-     * ({@code tracker_get_task}, {@code tracker_list_tasks}, and
-     * {@code tracker_search_tasks}) are workspace-scoped on the server
-     * and only expose tasks attached to a workstream in the agent's
-     * workspace. Other included tracker read endpoints
-     * ({@code tracker_project_summary}, {@code tracker_list_projects},
-     * and {@code tracker_list_releases}) remain available for shared
-     * project and release visibility and are not documented here as
-     * strictly workspace-filtered.</p>
+     * <p>Every agent gets the same tracker tools, and ar-manager decides on
+     * the server what each call may do; this allowlist does not vary by
+     * role. Reads ({@code tracker_get_task}, {@code tracker_list_tasks},
+     * {@code tracker_search_tasks}, {@code tracker_project_summary},
+     * {@code tracker_list_projects} and {@code tracker_list_releases}) are
+     * isolated to the agent's own workspace. Writes are limited by the
+     * calling workstream's role, which ar-manager reads from
+     * {@link io.flowtree.workstream.Workstream#getTrackerCapabilities()}:</p>
+     * <ul>
+     *   <li>{@code tracker_create_task}: any agent may file a task into the
+     *       backlog; a {@code planner} workstream may also set the full
+     *       fields (release, status, stage, priority, dependencies).</li>
+     *   <li>{@code tracker_update_task}: a {@code planner} workstream may edit
+     *       any task in its workspace; any other workstream may edit only the
+     *       tasks linked to itself.</li>
+     *   <li>{@code tracker_create_release}: {@code planner} only.</li>
+     * </ul>
+     *
+     * <p>Deleting anything, and updating projects or releases, stays out of
+     * reach of agents; see {@link #EXCLUDED_AR_MANAGER_TOOLS}. Agents never
+     * claim tasks themselves: CI claims the next task through the
+     * controller's {@code POST /api/tracker/claim} and hands it to the agent
+     * in its prompt.</p>
      *
      * <p>{@code workstream_submit_task} is included so agents can
      * delegate work to other workstreams in the same workspace. The
@@ -109,6 +124,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "workstream_submit_task",
             "github_pr_find",
             "github_pr_review_comments",
+            "github_pr_reviews",
             "github_pr_conversation",
             "github_pr_reply",
             "github_list_open_prs",
@@ -125,7 +141,10 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "tracker_search_tasks",
             "tracker_project_summary",
             "tracker_list_projects",
-            "tracker_list_releases"
+            "tracker_list_releases",
+            "tracker_create_task",
+            "tracker_update_task",
+            "tracker_create_release"
         ))
     );
 
@@ -133,8 +152,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * ar-manager tool names that are deliberately NOT exposed to coding
      * agents. Each tool listed here is either an admin/orchestration
      * operation (creating workstreams, dispatching workflows, mutating
-     * controller config) or a shared-state mutation (creating, updating,
-     * or deleting tracker projects, releases, or tasks).
+     * controller config) or a shared-state mutation of the tracker that no
+     * agent role is trusted with (creating, updating or deleting projects,
+     * updating or deleting releases, deleting tasks).
      *
      * <p>Tools in this set still exist on the ar-manager server but
      * cannot be invoked by agent jobs through the
@@ -177,15 +197,12 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "project_create_branch",
             "project_verify_branch",
             "project_commit_plan",
-            // Tracker mutations (agents must not alter the shared tracker)
+            // Tracker mutations no agent role may make
             "tracker_create_project",
             "tracker_update_project",
             "tracker_delete_project",
-            "tracker_create_release",
             "tracker_update_release",
             "tracker_delete_release",
-            "tracker_create_task",
-            "tracker_update_task",
             "tracker_delete_task",
             // Workspace secrets: still callable by admin/Slack flows on the
             // controller, but agents use the in-container ar-secrets MCP
@@ -417,7 +434,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * @throws IllegalStateException when an ar-manager URL is set but no token
      *         is available
      */
-    private boolean arManagerEnabled() {
+    boolean arManagerEnabled() {
         boolean hasUrl = arManagerUrl != null && !arManagerUrl.isEmpty();
         if (!hasUrl) {
             return false;
@@ -428,6 +445,47 @@ public class McpConfigBuilder implements ConsoleFeatures {
                 + "refusing to build an MCP configuration without a token.");
         }
         return true;
+    }
+
+    /**
+     * The servers in the configuration this builder produces that an agent
+     * session cannot do its job without.
+     *
+     * <p>ar-manager is the one: the instruction protocol — status messages,
+     * memories, pull-request review tools, alerts — exists only through it.
+     * A session it failed to connect to has every one of those instructions
+     * silently voided, and the model, finding no {@code mcp__ar-manager__*}
+     * tools, substitutes whatever else looks similar. The runner reports any
+     * of these that did not connect (see
+     * {@link io.flowtree.jobs.agent.AgentRunResult#unavailableRequiredMcpServers()})
+     * and the job fails on it rather than keep the session's work. Pushed
+     * tool servers (test runner, build validator, ...) are not required:
+     * their absence degrades a session, it does not void its instructions.</p>
+     *
+     * <p>Enforcement is off by default, because the availability detection
+     * it rests on does not yet report reliably: sessions whose ar-manager
+     * tools were in fact present have been failed by it, which costs more
+     * work than the failure mode it guards against. {@code
+     * AR_REQUIRE_MCP_SERVERS=enabled} turns it on for an operator who wants
+     * it (or a test that exercises it) without a code change; unset, or any
+     * value other than {@code enabled}, leaves it off. Turn the default back
+     * over once the detection is trustworthy — the machinery downstream of
+     * this method is complete and stays under test either way.</p>
+     *
+     * <p>A configuration error is reported whether or not enforcement is on:
+     * a URL without a token raises here exactly as it does in
+     * {@link #buildMcpConfig()}, since that is a fact about the
+     * configuration, not about this flag.</p>
+     *
+     * @return the required server names; empty when ar-manager is not
+     *         configured or enforcement is off
+     */
+    public Set<String> requiredServerNames() {
+        boolean configured = arManagerEnabled();
+        if (!SystemUtils.isEnabled("AR_REQUIRE_MCP_SERVERS").orElse(false)) {
+            return Collections.emptySet();
+        }
+        return configured ? Set.of("ar-manager") : Collections.emptySet();
     }
 
     /**

@@ -63,6 +63,8 @@ without any special infrastructure.
 | `PullRequestDetector` | Queries GitHub API for open PRs on a branch |
 | `McpConfigBuilder` | Assembles MCP server configuration for Claude Code |
 | `ManagedToolsDownloader` | Downloads and verifies pushed MCP tool files |
+| `AgentLaunchConfig` | Assembles each agent session's MCP config, allowed-tools list, environment, and `AgentRunRequest` from the job's state |
+| `JobWorkOutcome` | Decides whether a job's work was committed, dropped by staging guardrails, or left unpublished, which determines its completion status |
 | `InstructionPromptBuilder` | Constructs the full instruction prompt from job state |
 | `GitJobConfig` | Immutable configuration for git operations |
 | `FileStagingConfig` | Immutable configuration for file staging guardrails |
@@ -114,8 +116,7 @@ Job (interface)
  |               overrides: doWork() -> invokes claude CLI
  |               overrides: getCommitMessage() -> reads commit.txt or generates
  |               overrides: validateChanges() -> runs detect-test-hiding.sh
- |               overrides: createEvent() -> returns ClaudeCodeJobEvent
- |               overrides: populateEventDetails() -> adds timing/session info
+ |               overrides: createEvent() -> returns a populated CodingAgentJobEvent
  |               |
  |               +-- ClaudeCodeJob.Factory (static inner class)
  |                       extends: AbstractJobFactory
@@ -143,7 +144,11 @@ InstructionPromptBuilder -- Constructs the full instruction prompt from job stat
 McpToolDiscovery       -- Discovers tool names by parsing Python MCP server source files
 CodingAgentJobFactory  -- Constructs CodingAgentJobs from a prompt list and config
 CodingAgentJobCodec    -- Codec between Factory wire form and a built CodingAgentJob
-CodingAgentJobConfigurer -- Applies Factory/Codec values onto a CodingAgentJob instance
+WireConfig             -- Base of the config groups shared by job and factory (property sink, wire encoding;
+                          subclasses declare their keys once in writeWireProperties)
+PhaseRunnerConfig      -- Per-phase runner and model settings (a WireConfig)
+PostCompletionConfig   -- Post-completion command settings (a WireConfig)
+EnforceChangesConfig   -- The enforceChanges requirement and its re-run cap (a WireConfig)
 RestartGovernor        -- Per-job ceiling on sessions, turns, and wall-clock time
 EnforcementRunner      -- Runs post-session checks (enforce-changes, dedup, ...) with retries
 ```
@@ -591,7 +596,7 @@ fireJobCompleted(error)
     +-- createEvent(error) -> JobCompletionEvent or ClaudeCodeJobEvent
     +-- event.withGitInfo(branch, commit, staged, skipped, pushed)
     +-- event.withPullRequestUrl(url)
-    +-- populateEventDetails(event) -> adds Claude Code-specific fields
+    +-- populateEventDetails(event) -> subclass extras (CodingAgentJob's event is already populated by createEvent)
     +-- postStatusEvent(event) -> HTTP POST to workstreamUrl
 ```
 
@@ -664,7 +669,7 @@ The event is then populated with git information and Claude Code-specific detail
 ```java
 event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles, pushed);
 event.withPullRequestUrl(pullRequestUrl);
-populateEventDetails(event);  // Adds timing, session, permission denial info
+populateEventDetails(event);  // Subclass extras; CodingAgentJobEvent.forJob() already populated the event
 ```
 
 ### Event Serialization
@@ -846,11 +851,11 @@ build/, node_modules/), IDE files (.idea/, .vscode/), binaries (.exe, .dll, .so,
 media files (.png, .jpg, .mp3, .mp4), database files (.db, .sqlite), hardware acceleration
 outputs (Extensions/, .cl, .metal), and Claude Code artifacts (claude-output/, .claude/).
 
-**Protected Path Patterns** identify test and CI infrastructure:
+**Protected Path Patterns** identify test sources:
 - `**/src/test/**`
 - `**/src/it/**`
-- `.github/workflows/**`
-- `.github/actions/**`
+
+CI configuration (`.github/workflows/**`, `.github/actions/**`, `tools/ci/**`) is not in this set; it is governed by the separate CI file lock (`protectCiFiles`), which `GitCommitHandler` enables for every job except one on a `ci/...` branch or one carrying the controller-signed bypass trailer, and which blocks CI files whole-file whether branch-new or pre-existing. See [file-staging.md](file-staging.md#guardrail-2-test-file-protection).
 
 ### FileStagingConfig (Immutable)
 
@@ -870,8 +875,9 @@ FileStagingConfig config = FileStagingConfig.builder()
 |-------|---------|-------------|
 | `maxFileSizeBytes` | 1,048,576 | Maximum file size threshold |
 | `excludedPatterns` | empty | Glob patterns to exclude |
-| `protectedPathPatterns` | empty | Patterns for protected test/CI files |
+| `protectedPathPatterns` | empty | Patterns for protected test files |
 | `protectTestFiles` | `false` | Whether test file protection is active |
+| `protectCiFiles` | `false` | Whether the CI file lock is active (CI/workflow files blocked whole-file) |
 | `baseBranch` | `"master"` | Branch used for existence checks |
 
 ### StagingResult (Immutable)

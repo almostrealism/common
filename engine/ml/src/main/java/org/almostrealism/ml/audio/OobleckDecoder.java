@@ -17,10 +17,7 @@
 package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.model.Block;
-import org.almostrealism.model.SequentialBlock;
 
 /**
  * Oobleck Decoder implementation using the AR HPC framework.
@@ -51,6 +48,11 @@ import org.almostrealism.model.SequentialBlock;
  * Output: (B, 2, ~L) stereo audio
  * </pre>
  *
+ * <p>The structure of every stage lives in the {@value #CODEC_ASSET} asset (the input projection,
+ * the {@code oobleck_decoder_block} stage and the decoder's output projection). This class only
+ * supplies the stages' widths and strides above; {@link OobleckCodec#addDecoderStages} chains the
+ * stages, each built from the asset with its weights.</p>
+ *
  * @see OobleckEncoder
  * @see OobleckAutoEncoder
  */
@@ -59,20 +61,17 @@ public class OobleckDecoder extends OobleckCodec {
 	/** Upsampling strides for each of the five decoder blocks. */
 	private static final int[] STRIDES = {16, 16, 8, 8, 4};
 
-	/** Number of input channels for each decoder block. */
-	private static final int[] IN_CHANNELS = {2048, 1024, 512, 256, 128};
-
 	/** Number of output channels for each decoder block. */
 	private static final int[] OUT_CHANNELS = {1024, 512, 256, 128, 128};
 
-	/** Channel count at the final output stage before the output projection. */
-	private static final int BASE_CHANNELS = 128;
+	/** Channel count the input projection widens the latent to: the first decoder block's input. */
+	private static final int INITIAL_CHANNELS = 2048;
+
+	/** Number of audio channels the output projection produces. */
+	private static final int AUDIO_CHANNELS = 2;
 
 	/** Latent dimension expected at the decoder input. */
 	private static final int LATENT_DIM = 64;
-
-	/** Number of residual blocks within each decoder block. */
-	private static final int NUM_RES_BLOCKS = 3;
 
 	/** Batch size this decoder was configured for. */
 	private final int batchSize;
@@ -91,115 +90,8 @@ public class OobleckDecoder extends OobleckCodec {
 	public OobleckDecoder(StateDictionary stateDict, int batchSize, int latentLength) {
 		super(new TraversalPolicy(batchSize, LATENT_DIM, latentLength), stateDict);
 		this.batchSize = batchSize;
-		this.outputLength = computeOutputLength(latentLength);
-		buildDecoder(batchSize, latentLength);
-	}
-
-	/**
-	 * Computes the output audio sequence length from a given latent sequence length
-	 * by applying each decoder stride in order.
-	 *
-	 * @param latentLength Input latent sequence length
-	 * @return Corresponding output audio sequence length
-	 */
-	private static int computeOutputLength(int latentLength) {
-		int length = latentLength;
-		for (int stride : STRIDES) {
-			int kernel = stride;
-			int padding = (kernel - 1) / 2;
-			int outputPadding = stride - 1;
-			length = (length - 1) * stride - 2 * padding + kernel + outputPadding;
-		}
-		return length;
-	}
-
-	/**
-	 * Assembles the full decoder model from input projection through five decoder blocks
-	 * and final output projection, using weights from {@link #stateDict}.
-	 *
-	 * @param batchSize    Batch size for all layer shapes
-	 * @param latentLength Input latent sequence length
-	 */
-	private void buildDecoder(int batchSize, int latentLength) {
-		String l0 = "decoder.layers.0";
-		PackedCollection l0_g = stateDict.get(l0 + ".weight_g");
-		PackedCollection l0_v = stateDict.get(l0 + ".weight_v");
-		PackedCollection l0_b = stateDict.get(l0 + ".bias");
-		int initialChannels = 2048;
-		add(wnConv1d(batchSize, LATENT_DIM, initialChannels, latentLength, 7, 1, 3,
-				l0_g, l0_v, l0_b));
-
-		int currentLength = latentLength;
-
-		for (int blockIdx = 0; blockIdx < 5; blockIdx++) {
-			int inChannels = IN_CHANNELS[blockIdx];
-			int outChannels = OUT_CHANNELS[blockIdx];
-			int stride = STRIDES[blockIdx];
-			int layerIdx = blockIdx + 1;
-
-			int kernel = stride;
-			int padding = (kernel - 1) / 2;
-			int outputPadding = stride - 1;
-			int nextLength = (currentLength - 1) * stride - 2 * padding + kernel + outputPadding;
-
-			add(buildDecoderBlock(batchSize, inChannels, outChannels,
-					currentLength, nextLength, stride, layerIdx));
-
-			currentLength = nextLength;
-		}
-
-		String l6 = "decoder.layers.6";
-		PackedCollection l6_alpha = stateDict.get(l6 + ".alpha");
-		PackedCollection l6_beta = stateDict.get(l6 + ".beta");
-		add(snake(shape(batchSize, BASE_CHANNELS, currentLength), l6_alpha, l6_beta));
-
-		String l7 = "decoder.layers.7";
-		PackedCollection l7_g = stateDict.get(l7 + ".weight_g");
-		PackedCollection l7_v = stateDict.get(l7 + ".weight_v");
-		add(wnConv1d(batchSize, BASE_CHANNELS, 2, currentLength, 7, 1, 3,
-				l7_g, l7_v, null));
-	}
-
-	/**
-	 * Builds one decoder block: Snake activation, transposed convolution for upsampling,
-	 * then {@value #NUM_RES_BLOCKS} residual blocks.
-	 *
-	 * @param batchSize   Batch size
-	 * @param inChannels  Number of input channels
-	 * @param outChannels Number of output channels after transposed convolution
-	 * @param seqLength   Input sequence length
-	 * @param outLength   Output sequence length after upsampling
-	 * @param stride      Upsampling stride (also the kernel size)
-	 * @param layerIdx    Index into the {@code decoder.layers} naming scheme
-	 * @return Assembled decoder block
-	 */
-	private Block buildDecoderBlock(int batchSize, int inChannels, int outChannels,
-									int seqLength, int outLength, int stride, int layerIdx) {
-		String prefix = String.format("decoder.layers.%d", layerIdx);
-		SequentialBlock block = new SequentialBlock(shape(batchSize, inChannels, seqLength));
-
-		String snakePrefix = prefix + ".layers.0";
-		PackedCollection snakeAlpha = stateDict.get(snakePrefix + ".alpha");
-		PackedCollection snakeBeta = stateDict.get(snakePrefix + ".beta");
-		block.add(snake(shape(batchSize, inChannels, seqLength), snakeAlpha, snakeBeta));
-
-		String convPrefix = prefix + ".layers.1";
-		PackedCollection conv_g = stateDict.get(convPrefix + ".weight_g");
-		PackedCollection conv_v = stateDict.get(convPrefix + ".weight_v");
-		PackedCollection conv_b = stateDict.get(convPrefix + ".bias");
-
-		int kernel = stride;
-		int padding = (kernel - 1) / 2;
-		int outputPadding = stride - 1;
-		block.add(wnConvTranspose1d(batchSize, inChannels, outChannels, seqLength,
-				kernel, stride, padding, outputPadding, conv_g, conv_v, conv_b));
-
-		for (int resIdx = 0; resIdx < NUM_RES_BLOCKS; resIdx++) {
-			block.add(buildResidualBlock(batchSize, outChannels, outLength,
-					prefix + ".layers." + (resIdx + 2)));
-		}
-
-		return block;
+		addDecoderStages("decoder", INITIAL_CHANNELS, OUT_CHANNELS, STRIDES, AUDIO_CHANNELS);
+		this.outputLength = getOutputShape().length(2);
 	}
 
 	/**

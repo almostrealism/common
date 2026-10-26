@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "sources": [
+    ".github/CLAUDE.md",
+    "flowtree/runtime/docs/ci-integration.md",
+    "tools/ci/README.md"
+  ],
+  "html_refs": [],
+  "related_memories": [
+    {
+      "content": "Reviewer note (second-pass, .github/workflows/master-agent-dispatch.yaml + .github/CLAUDE.md ...): Reviewed the move of all seven master-agent-dispatch jobs ...",
+      "score": 0.384
+    },
+    {
+      "content": "Reviewer note (second-pass, ... ci/coverage-qa-python-env ...) ...",
+      "score": 0.44
+    },
+    {
+      "content": "Reviewed PR #477 (branch ci/consolidation-qa-job) which adds a consolidation-qa job to Master Agent Dispatch ...",
+      "score": 0.46
+    }
+  ],
+  "answer": "Master Agent Dispatch runs the following QA rounds (per `.github/CLAUDE.md:838`):\n\n- `doc-qa` (Quality Assurance)  \n- `defect-hunt`  \n- `coverage-qa`  \n- `consolidation-qa`  \n- `performance-qa`  \n- `pdsl-qa`  \n\nThe branch prefixes for these QA rounds are derived from their names: `qa/doc-qa`, `qa/defect-hunt`, `qa/coverage`, `qa/consolidation`, `qa/performance`, and `qa/pdsl` (per `qa-cadence.sh` convention and `tools/ci/README.md:23`, which documents `qa-cadence.sh` uses `BRANCH_PREFIX` to decide cadence).\n\nThe open-PR limit is controlled by `MAX_OPEN_PRS`, used by `open-pr-backlog.sh` (shared by both planning jobs per `tools/ci/README.md:23`). While the exact numeric value isn’t stated in the provided chunks, the script’s purpose is to “decide whether the open-PR backlog leaves room for a planning round” — implying it enforces a threshold before allowing dispatch.\n\nNo code example for `MAX_OPEN_PRS` is provided in the chunks, but the script usage is referenced."
+}

@@ -50,6 +50,51 @@ directory. The path each tensor takes depends on `StateDictionary.enableMaterial
 The two paths both consume the same protobuf layout; the difference is only when the
 values are read off disk.
 
+A `CollectionData` carries its values in exactly one payload, bound to the `NumberSystem`
+its values are stored as by the `CollectionDataPayload` that reads and writes it: `data`
+(FP64), `data_32` (FP32), `data_i32` (signed 32-bit integer) or `data_i64` (signed 64-bit
+integer). The integer payloads are fixed-width (`sfixed32`, `sfixed64`) so the mapped reader
+can address a value as `offset + index * width` without parsing the field. A collection
+carrying more than one payload is rejected on read.
+
+The storable and computable number systems are enumerated once by `NumberSystem`
+(`io.almostrealism.code`), which is both a `Precision` (how precise a value is) and a
+`BinaryLayout` (how its bits are laid out and decoded); the protobuf field mapping is the only
+part that lives in the ML module, on `CollectionDataPayload`, keyed off `NumberSystem`.
+
+### Integer exactness
+
+Integer values are read exactly to the framework's host-side memory: every `int32` is exact
+in a `double`, and an `int64` is exact up to ±2^53 (`NumberSystem.MAX_EXACT_INTEGER`). An
+`int64` value outside ±2^53 cannot be represented exactly, so it is rejected when read rather
+than silently rounded. Encoding a collection as an integer payload (`CollectionEncoder.encode`
+with `NumberSystem.I32`/`I64`, or `StateDictionary.encode` with a per-key encoding map) rejects
+any value that is not a whole number in range for the width rather than truncating it.
+
+Once a collection migrates to an **FP32 compute device** (such as Metal), its values are exact
+only up to 2^24 (16,777,216), as every value in an FP32 collection is. Keeping integer values
+exact past that on such a device is a separate concern from reading them in; until it lands,
+host reads carry the full range and device-side work stays below 2^24.
+
+`StateDictionary` remembers the source encoding of each entry it loads from an integer payload,
+so `save(...)` writes that entry back as the same integer payload regardless of the precision
+argument (which continues to govern floating-point entries). The connectome conversion
+"safetensors with integer arrays → `StateDictionary` → protobuf" therefore keeps its integers
+without the caller naming them; a caller that builds an index collection itself names its
+encoding through `StateDictionary.encode(weights, precision, encodings)`.
+
+### Safetensors checkpoints
+
+A directory that holds any `.safetensors` file is read as a published checkpoint: its
+safetensors files are the weights, and its other files (configuration, tokenizer) are
+ignored. Each file's JSON header is read to locate its tensors (`SafetensorsReference.locate`),
+and the values stay in the file and are read through the same mapping as the protobuf path.
+BF16, F16, F32, F64, I32 and I64 tensors are supported, the integer types with the exactness
+limits above. A file is mapped whole, so one file can be at most 2 GB.
+
+Safetensors is only read, never written: `stateDict.save(...)` writes protobuf, so a
+checkpoint read from safetensors can be kept in the project's own format.
+
 ## HuggingFace Compatibility
 
 Weights exported from HuggingFace/PyTorch models retain their original key names.

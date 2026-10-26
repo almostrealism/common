@@ -47,6 +47,14 @@ Carries everything the runner needs to launch one session:
 - `workingDirectory` — where the agent runs (a per-job git worktree)
 - `allowedTools` — CSV of permitted tool names (orchestrator-owned; see below)
 - `mcpConfigJson` — MCP server configuration as JSON
+- `requiredMcpServers` — names of servers in `mcpConfigJson` the session cannot
+  do its job without; a runner that observes MCP connection status at startup
+  reports any that are unavailable in `AgentRunResult.unavailableRequiredMcpServers`
+  (runner-dependent: `ClaudeCodeRunner` reports it, `OpencodeRunner` does not)
+- `bypassPermissionPrompts` — whether the session may bypass interactive tool
+  permission prompts (granted per job from the branch's permission policy;
+  runner-dependent: `ClaudeCodeRunner` honours it, `OpencodeRunner` always
+  launches with prompts bypassed)
 - `environment` — additional env vars (includes `AR_AGENT_ACTIVITY`)
 - `model`, `effort` — runner-specific aliases; null leaves the runner default
 - `maxTurns`, `maxBudgetUsd`, `inactivityTimeoutMillis` — limits
@@ -73,8 +81,17 @@ public record AgentRunResult(
         String stopReason,
         boolean sessionIsError,
         List<String> deniedToolNames,
-        Map<String, String> runnerMetadata) {}
+        Map<String, String> runnerMetadata,
+        List<String> unavailableRequiredMcpServers) {}
 ```
+
+`unavailableRequiredMcpServers` lists any MCP servers the session declared it
+required (see `AgentRunRequest.requiredMcpServers`) that were not available when
+the session started; `hasUnavailableRequiredMcpServer()` is true when it is
+non-empty. Only runners that observe MCP connection status populate it
+(`ClaudeCodeRunner` does; `OpencodeRunner` uses the backward-compatible
+constructor and always leaves it empty), so an empty list means "none reported
+missing", not "all confirmed connected".
 
 A runner that cannot report a value returns the zero/empty for it and
 declares the gap in `capabilities()`. See [Telemetry](PHASES.md#telemetry)
@@ -338,12 +355,15 @@ enumerate:
 
 - **`runners`** — available runner names and their `AgentCapabilities` flags.
   Use the `name` field as the `runner` value in a `PhaseConfig` object.
-- **`phases`** — the eight phase entries (each with a `name` and
+- **`phases`** — the phase entries (each with a `name` and
   `description`). The phase wire names — `"primary"`, `"deduplication"`,
-  `"organizational-placement"`, `"enforce-changes"`,
+  `"organizational-placement"`, `"enforce-changes"`, `"review"`,
   `"maven-dependency-protection"`, `"post-completion"`,
-  `"commit-message"`, `"git-tampering-restart"` — are the values of the
-  `name` field, and are used as keys in the `phase_configs` JSON object.
+  `"commit-message"`, `"git-tampering-restart"`,
+  `"push-conflict-resolution"`, `"retrospective"`, `"falsification"` — are
+  the values of the `name` field, and are used as keys in the
+  `phase_configs` JSON object. See [PHASES.md](PHASES.md) for the full
+  inventory and when each phase runs.
 - **`models`** — accepted model aliases and full identifiers.
 - **`defaultRunner`** — the current built-in default (`"claude"`).
 

@@ -16,11 +16,13 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Algebraic;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.IndexSet;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
@@ -38,6 +40,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -213,11 +216,7 @@ public class ReshapeProducer
 		this.shape = shape;
 		this.producer = (Producer<PackedCollection>) producer;
 
-		if (shape(producer).getTotalSizeLong() != shape.getTotalSizeLong()) {
-			throw new IllegalArgumentException("Cannot reshape " + shape(producer) +
-					" to " + shape + "; the total size differs (" +
-					shape(producer).getTotalSizeLong() + " vs " + shape.getTotalSizeLong() + ")");
-		}
+		shape(producer).requireReshape(shape);
 
 		init();
 	}
@@ -284,7 +283,9 @@ public class ReshapeProducer
 	 * Returns the traversal policy representing the shape of this reshaped collection.
 	 * The returned shape depends on the mode of operation:
 	 * <ul>
-	 *   <li>For explicit shape mode: returns the explicitly set shape</li>
+	 *   <li>For explicit shape mode: returns the explicitly set shape, carrying the
+	 *       {@link io.almostrealism.collect.TraversalOrdering} of the producer's shape when the
+	 *       explicit shape has none, since the elements are still read through it</li>
 	 *   <li>For traversal axis mode: returns the input shape with modified traversal axis</li>
 	 * </ul>
 	 * 
@@ -313,9 +314,34 @@ public class ReshapeProducer
 
 			TraversalPolicy inputShape = ((Shape) producer).getShape();
 			return inputShape.traverse(traversalAxis);
+		} else if (shape.getOrder() == null && producer instanceof Shape
+				&& ((Shape<?>) producer).getShape().getOrder() != null) {
+			// A reshape preserves the flat logical index, so the elements of the
+			// reshaped producer are still found through the producer's ordering
+			return shape.withOrder(((Shape<?>) producer).getShape().getOrder());
 		} else {
 			return shape;
 		}
+	}
+
+	/**
+	 * Returns the ordering through which generated code reads the elements of this reshape.
+	 * When the {@link #getShape() shape} carries the ordering of the reshaped producer, the
+	 * elements are read through that producer, so the producer's
+	 * {@link Shape#getOrdering() ordering} is returned, including any binding of it to the
+	 * kernel's arguments. An ordering of the explicit shape itself is returned as it is.
+	 *
+	 * @return the ordering applied to reads of this reshape, or {@code null} if it has none
+	 */
+	@Override
+	public TraversalOrdering getOrdering() {
+		TraversalOrdering order = getShape().getOrder();
+		if (order != null && producer instanceof Shape
+				&& order == ((Shape<?>) producer).getShape().getOrder()) {
+			return ((Shape<?>) producer).getOrdering();
+		}
+
+		return order;
 	}
 
 	/**
@@ -333,54 +359,34 @@ public class ReshapeProducer
 	public boolean isProvider() { return producer.isProvider(); }
 
 	/**
-	 * Returns whether this reshape operation represents a zero value.
-	 * For algebraic producers, delegates to the underlying producer's zero check.
+	 * Returns whether this reshape operation represents a zero value,
+	 * which is the case exactly when the underlying producer does.
 	 * 
 	 * @return true if the reshaped collection represents zero values
 	 */
 	@Override
 	public boolean isZero() {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isZero();
-		}
-
-		return TraversableExpression.super.isZero();
+		return Algebraic.isZero(producer);
 	}
 
 	@Override
 	public boolean isIdentity(int width) {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isIdentity(width);
-		}
-
-		return TraversableExpression.super.isIdentity(width);
+		return Algebraic.isIdentity(width, producer);
 	}
 
 	@Override
 	public boolean isDiagonal(int width) {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isDiagonal(width);
-		}
-
-		return TraversableExpression.super.isDiagonal(width);
+		return Algebraic.isDiagonal(width, producer);
 	}
 
 	@Override
 	public boolean isRowMonomial() {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).isRowMonomial();
-		}
-
-		return TraversableExpression.super.isRowMonomial();
+		return Algebraic.isRowMonomial(producer);
 	}
 
 	@Override
 	public Optional<Computable> getDiagonalScalar(int width) {
-		if (producer instanceof Algebraic) {
-			return ((Algebraic) producer).getDiagonalScalar(width);
-		}
-
-		return TraversableExpression.super.getDiagonalScalar(width);
+		return Algebraic.getDiagonalScalar(width, producer);
 	}
 
 	@Override
@@ -439,6 +445,17 @@ public class ReshapeProducer
 		return producer instanceof Process ? List.of((Process) producer) : Collections.emptyList();
 	}
 
+	/**
+	 * Returns the match root of the reshaped producer, since a reshape presents the
+	 * same values under a different shape.
+	 *
+	 * @return the match root of the wrapped producer
+	 */
+	@Override
+	public Producer<?> getMatchRoot() {
+		return producer.getMatchRoot();
+	}
+
 	@Override
 	public ReshapeProducer generate(List<Process<?, ?>> children) {
 		if (children.size() != 1) return this;
@@ -473,7 +490,7 @@ public class ReshapeProducer
 				}
 			}
 
-			return CollectionProducerComputation.isIsolationPermitted(this) ?
+			return isIsolationPermitted() ?
 					new CollectionProducerComputation.IsolatedProcess(this) :
 					this;
 		} else {
@@ -504,15 +521,18 @@ public class ReshapeProducer
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A reshape reads the element at the same flat index of the reshaped producer (see
+	 * {@link #getValueAt(Expression)}), so membership is the producer's, including that of any
+	 * {@link io.almostrealism.collect.TraversalOrdering} the producer's shape carries. A producer
+	 * that cannot answer membership itself is treated as defining every non-negative index.</p>
+	 */
 	@Override
 	public Expression<Boolean> containsIndex(Expression<Integer> index) {
-		if (shape != null && shape.getOrder() != null) {
-			// TODO
-			throw new UnsupportedOperationException();
-		}
-
-		return producer instanceof TraversableExpression ?
-				((TraversableExpression) producer).getValueAt(index) :
+		return producer instanceof IndexSet ?
+				((IndexSet) producer).containsIndex(index) :
 				TraversableExpression.super.containsIndex(index);
 	}
 
@@ -539,19 +559,43 @@ public class ReshapeProducer
 		return false;
 	}
 
+	/**
+	 * A reshape only reinterprets the layout of its producer's values, so its delta is that
+	 * of the underlying producer: the Jacobian and a delta that keeps the output axis are
+	 * presented in this reshape's shape, and the weight of the output axis is presented in
+	 * the underlying producer's shape. A target that this reshape cannot depend on, or is,
+	 * is left to the general implementation.
+	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		if (producer instanceof CollectionProducer) {
-			CollectionProducer deltaResult = ((CollectionProducer) producer).delta(target);
-			if (shape == null) {
-				return traverse(traversalAxis, deltaResult);
-			} else {
-				TraversalPolicy newShape = shape.append(shape(target));
-				return (CollectionProducer) reshape(newShape, deltaResult);
-			}
+	public CollectionProducer delta(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		if (!(producer instanceof CollectionProducer) || cannotMatch(target) || refersTo(target)) {
+			return CollectionProducerParallelProcess.super.delta(target, axis, weight);
 		}
 
-		return CollectionProducerParallelProcess.super.delta(target);
+		CollectionProducer underlying = (CollectionProducer) producer;
+
+		if (axis == ReduceAxis.NONE) {
+			CollectionProducer jacobian = underlying.delta(target);
+			if (shape == null) {
+				return traverse(traversalAxis, jacobian);
+			}
+
+			return (CollectionProducer) reshape(shape.append(shape(target)), jacobian);
+		} else if (axis == ReduceAxis.OUT) {
+			return underlying.delta(target, axis,
+					weight == null ? null : reshape(underlying.getShape(), weight));
+		}
+
+		return underlying.delta(target, axis, weight).reshape(getShape());
+	}
+
+	/**
+	 * A reshape only reinterprets the shape of the underlying producer, so it is a
+	 * reduction exactly when that producer is.
+	 */
+	@Override
+	public boolean isReduction() {
+		return CollectionProducer.isReduction(producer);
 	}
 
 	/**
@@ -610,6 +654,19 @@ public class ReshapeProducer
 		return new ReshapeProducer(shape, producer);
 	}
 
+	/**
+	 * Returns an evaluable that evaluates the underlying producer and re-views its result
+	 * with the configured shape, or along the configured traversal axis.
+	 *
+	 * <p>The reshape only changes the handle, never the contents, so for a kernel-backed
+	 * producer it is attached as a {@link HardwareEvaluable#setResultProcessor result
+	 * processor}: when this producer is an argument of a dependent kernel, the underlying
+	 * dispatch stays chained on the device and the reshaped handle is delivered with its
+	 * completion, instead of the kernel being completed on the host before every such
+	 * dispatch.</p>
+	 *
+	 * @return the evaluable for this reshape
+	 */
 	@Override
 	public Evaluable<PackedCollection> get() {
 		Evaluable<PackedCollection> ev = producer.get();
@@ -619,10 +676,7 @@ public class ReshapeProducer
 		}
 
 		HardwareEvaluable<PackedCollection> hev = new HardwareEvaluable<>(producer::get, null, null, false);
-		hev.setShortCircuit(args -> {
-			PackedCollection out = hev.getKernel().getValue().evaluate(args);
-			return apply(out);
-		});
+		hev.setResultProcessor(this::apply);
 		return hev;
 	}
 

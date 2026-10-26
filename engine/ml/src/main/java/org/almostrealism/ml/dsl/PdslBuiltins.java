@@ -28,13 +28,20 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.ml.RotationFeatures;
+import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
 
 import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toDouble;
 import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toInt;
+import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toInts;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -42,10 +49,13 @@ import java.util.function.Supplier;
 /**
  * The PDSL language's BUILT-IN FUNCTION LIBRARY: the standard, domain-agnostic
  * layer constructors every PDSL program can call without registering a primitive
- * (dense, rmsnorm, softmax, the activations, slice, lerp, reshape, identity,
- * scale, repeat, sum_channels, capture, rope_rotation, attention, transformer,
- * feed_forward, shape, range). {@link PdslInterpreter} evaluates a call's
- * arguments and routes the call here via {@link #call(String, List)}; domain
+ * (dense, conv1d, conv_transpose1d, rmsnorm, layernorm, softmax, the activations including snake,
+ * slice, lerp, reshape, permute, identity,
+ * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read, rope_rotation,
+ * sequence_rope, mra_rope_rotation, split_half_rope, merge_half_rope, attention_scores,
+ * causal_mask, sequence_causal_mask, key_mask, weighted_values, scaled_dot_product, sqrt,
+ * shape, range, zeros, rope_freqs). {@link PdslInterpreter} evaluates a call's
+ * arguments and routes the call here via {@link #call(String, List, Set)}; domain
  * libraries (e.g. audio DSP) register additional primitives through
  * {@link PdslInterpreter#registerPrimitive} instead of extending this class.
  *
@@ -58,41 +68,64 @@ final class PdslBuiltins {
 	/** Mixin instance providing the framework feature default methods. */
 	private static final PdslFeatures FEATURES = PdslFeatures.INSTANCE;
 
-	/** Built-ins are accessed only through {@link #call(String, List)}. */
+	/** Built-ins are accessed only through {@link #call(String, List, Set)}. */
 	private PdslBuiltins() { }
 
 
 	/**
 	 * Resolves and executes a built-in function by name.
 	 *
-	 * @param name Name of the function
-	 * @param args Evaluated arguments
+	 * @param name                   Name of the function
+	 * @param args                   Evaluated arguments
+	 * @param consumedBranchOperands the set of branch {@link Block}s already consumed as a
+	 *                               {@code scaled_dot_product} operand in the current build, to
+	 *                               which {@code scaled_dot_product} adds each branch it composes so
+	 *                               that reusing one is rejected rather than silently overwriting the
+	 *                               first product's consumer
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
-	static Object call(String name, List<Object> args) {
+	static Object call(String name, List<Object> args, Set<Block> consumedBranchOperands) {
 		switch (name) {
 			case "dense": return callDense(args);
+			case "conv1d": return callConv1d(args);
+			case "conv_transpose1d": return callConvTranspose1d(args);
 			case "rmsnorm": return callRmsnorm(args);
+			case "layernorm": return callLayernorm(args);
 			case "softmax": return callSoftmax(args);
 			case "silu": return callActivation("silu");
 			case "relu": return callActivation("relu");
 			case "gelu": return callActivation("gelu");
 			case "sigmoid": return callActivation("sigmoid");
 			case "tanh_act": return callActivation("tanh_act");
+			case "snake": return callSnake(args);
 			case "slice": return callSlice(args);
 			case "lerp": return callLerp(args);
 			case "reshape": return callReshape(args);
+			case "permute": return callPermute(args);
 			case "identity": return callIdentity(args);
 			case "scale": return callScale(args);
 			case "repeat": return callRepeat(args);
+			case "repeat_each": return callRepeatEach(args);
 			case "sum_channels": return callSumChannels(args);
 			case "capture": return callCapture(producerArg(args, 0, 1, "capture"));
+			case "cache_write": return callCacheRow("cache_write", args, FEATURES::cacheWrite);
+			case "cache_read": return callCacheRow("cache_read", args, FEATURES::cacheRead);
 			case "rope_rotation": return callRopeRotation(args);
-			case "attention": return callAttention(args);
-			case "transformer": return callTransformer(args);
-			case "feed_forward": return callFeedForward(args);
+			case "sequence_rope": return callSequenceRope(args);
+			case "mra_rope_rotation": return callMraRopeRotation(args);
+			case "split_half_rope": return callSplitHalfRope(args);
+			case "merge_half_rope": return callMergeHalfRope(args);
+			case "attention_scores": return callAttentionScores(producerArg(args, 0, 1, "attention_scores"));
+			case "causal_mask": return callCausalMask(args);
+			case "sequence_causal_mask": return callSequenceCausalMask(args);
+			case "key_mask": return callKeyMask(args);
+			case "weighted_values": return callWeightedValues(producerArg(args, 0, 1, "weighted_values"));
+			case "scaled_dot_product": return callScaledDotProduct(args, consumedBranchOperands);
+			case "sqrt": return callSqrt(args);
 			case "shape": return callShape(args);
 			case "range": return callRange(args);
+			case "zeros": return callZeros(args);
+			case "rope_freqs": return callRopeFreqs(args);
 			default: return null;
 		}
 	}
@@ -138,18 +171,23 @@ final class PdslBuiltins {
 	}
 
 	/**
-	 * Builds a scalar-scaling block factory that multiplies every element of the input
-	 * by a factor. The factor argument is normalised to a shape-{@code [1]}
-	 * producer so a numeric literal, a {@link PackedCollection}, or a
-	 * {@link Producer} are all accepted uniformly.
+	 * Builds a scaling block factory. With one argument every element of the input is multiplied
+	 * by the same factor; the factor is normalised to a shape-{@code [1]} producer so a numeric
+	 * literal, a {@link PackedCollection}, or a {@link Producer} are all accepted uniformly. With
+	 * two arguments, {@code scale(factors, axis)}, each position along {@code axis} has a factor of
+	 * its own (see {@link #callScaleAlongAxis(List)}).
 	 *
-	 * @param args one argument: the multiplicative factor
+	 * @param args the multiplicative factor, or the per-position factors and their axis
 	 * @return a factory that creates the scale layer for any input shape
 	 */
 	private static Function<TraversalPolicy, Block> callScale(List<Object> args) {
+		if (args.size() >= 2) {
+			return callScaleAlongAxis(args);
+		}
 		if (args.size() != 1) {
 			throw new PdslParseException(
-					"scale() expects 1 argument (factor), got " + args.size());
+					"scale() expects 1 argument (factor), 2 (factors, axis) or more "
+							+ "(factors, axis, weights...), got " + args.size());
 		}
 
 		if (args.get(0) instanceof PdslChannelBank) {
@@ -179,6 +217,60 @@ final class PdslBuiltins {
 		return (inputShape ->
 				FEATURES.layer("scale", inputShape, inputShape,
 						input -> FEATURES.multiply(FEATURES.c(input).each(), factor)));
+	}
+
+	/**
+	 * Builds a block factory that multiplies the input by one factor per position along an axis,
+	 * {@code scale(factors, axis)}: the factors hold one value per batch entry and position,
+	 * {@code [batch, length(axis)]}, and each value multiplies every element at that position
+	 * across the other non-batch axes. A factor of zero masks its position out, which is how a
+	 * padding mask zeroes the values of padded sequence positions.
+	 *
+	 * <p>Any trailing arguments beyond the axis, {@code scale(factors, axis, w1..wN)}, are the
+	 * collections {@code factors} is built from; the non-null ones are registered as the layer's
+	 * learnable weights so a backward pass differentiates the factors with respect to them (this
+	 * is how the differential-attention lambda re-parameterization trains). A {@code null} weight
+	 * is one the caller left out and is skipped, so a call whose weights are all null is the plain
+	 * weightless per-position scale, unchanged.</p>
+	 *
+	 * @param args the factors (a bound tensor or a producer), the integer axis, and optionally the
+	 *             weight collections {@code factors} is built from
+	 * @return a factory that creates the per-position scale for any input shape with that axis
+	 * @see org.almostrealism.layers.LayerFeatures#scale(TraversalPolicy, int, Producer, java.util.List,
+	 *      io.almostrealism.compute.ComputeRequirement...)
+	 */
+	private static Function<TraversalPolicy, Block> callScaleAlongAxis(List<Object> args) {
+		CollectionProducer factors = PdslInterpreter.normalizeToProducer(args.get(0), null,
+				"scale() factors");
+		int axis = toInt(args.get(1));
+		TraversalPolicy factorShape = FEATURES.shape(factors);
+		List<PackedCollection> weights = new ArrayList<>();
+		for (int i = 2; i < args.size(); i++) {
+			Object weight = args.get(i);
+			if (weight == null) {
+				continue;
+			}
+			if (!(weight instanceof PackedCollection)) {
+				throw new PdslParseException("scale() weight " + (i - 1)
+						+ " must be a bound tensor, got " + weight.getClass().getSimpleName());
+			}
+			weights.add((PackedCollection) weight);
+		}
+		return inputShape -> {
+			if (axis <= 0 || axis >= inputShape.getDimensions()) {
+				throw new PdslParseException("scale() axis " + axis
+						+ " is not a non-batch axis of the input shape " + inputShape);
+			}
+			if (factorShape.getDimensions() != 2
+					|| factorShape.length(0) != inputShape.length(0)
+					|| factorShape.length(1) != inputShape.length(axis)) {
+				throw new PdslParseException("scale() expects factors shaped ["
+						+ inputShape.length(0) + ", " + inputShape.length(axis)
+						+ "] (one per batch entry and position of axis " + axis + " of "
+						+ inputShape + "), got " + factorShape);
+			}
+			return FEATURES.scale(inputShape, axis, factors, weights);
+		};
 	}
 
 	/**
@@ -322,34 +414,628 @@ final class PdslBuiltins {
 	}
 
 	/**
-	 * Builds an RMSNorm layer from weight and epsilon arguments.
+	 * Builds a 1-D convolution block factory from a weight tensor, an optional bias, and the
+	 * stride and zero-padding of the convolution. The output-channel count and kernel size are
+	 * read from the weight's {@code [out_channels, in_channels, kernel]} shape, and the batch,
+	 * input-channel count and sequence length are read from the stage's
+	 * {@code [batch, in_channels, length]} input shape, so the call names only what the shapes
+	 * cannot: how far the kernel steps and how much zero padding the input is given.
 	 *
-	 * @param args Evaluated arguments: weights tensor and epsilon value
-	 * @return A shape-dependent {@link CellularLayer} factory
+	 * <p>The weight is bound already in whatever form the model uses it — a weight-normalized
+	 * codec, for example, resolves its {@code g} and {@code v} parameters into the effective
+	 * weight when it binds the argument, exactly as it resolves any other stored weight, so this
+	 * primitive is the plain convolution and carries no normalization decision.</p>
+	 *
+	 * @param args {@code (weight, bias, stride, padding)} or {@code (weight, stride, padding)}
+	 *             when the convolution has no bias
+	 * @return a factory that creates the convolution for a 3-D {@code [batch, channels, length]}
+	 *         input shape
+	 * @see org.almostrealism.layers.ConvolutionLayerFeatures#convolution1d
 	 */
-	private static Function<TraversalPolicy, CellularLayer> callRmsnorm(List<Object> args) {
-		if (args.size() == 2) {
-			PackedCollection weights = (PackedCollection) args.get(0);
-			double epsilon = toDouble(args.get(1));
-			return 
-					(shape -> FEATURES.rmsnorm(shape, weights, epsilon));
-		}
-		throw new PdslParseException(
-				"rmsnorm() expects 2 arguments (weights, epsilon), got " + args.size());
+	private static Function<TraversalPolicy, Block> callConv1d(List<Object> args) {
+		ConvolutionArguments conv = new ConvolutionArguments("conv1d", args,
+				"[out_channels, in_channels, kernel]", "stride", "padding");
+		int outChannels = conv.weightLength(0);
+		int inChannels = conv.weightLength(1);
+		int kernelSize = conv.weightLength(2);
+		return inputShape -> {
+			conv.checkInput(inputShape, inChannels);
+			return FEATURES.convolution1d(inputShape.length(0), inChannels, outChannels,
+					inputShape.length(2), kernelSize, conv.setting(0), conv.setting(1),
+					conv.weights, conv.bias);
+		};
 	}
 
 	/**
-	 * Builds a softmax activation block.
+	 * Builds a 1-D transposed convolution block factory — the upsampling counterpart of
+	 * {@code conv1d} — from a weight tensor, an optional bias, and the stride, padding and output
+	 * padding of the convolution. Every input sample adds its value times the kernel into a
+	 * {@code kernel}-long window of the output, the windows {@code stride} apart; {@code padding}
+	 * samples are then trimmed from each end and {@code output_padding} samples added to the
+	 * right, so the output is {@code (length - 1) * stride - 2 * padding + kernel + output_padding}
+	 * long. The channel counts and kernel size are read from the weight's
+	 * {@code [in_channels, out_channels, kernel]} shape (the layout of a PyTorch
+	 * {@code ConvTranspose1d} weight) and the batch and length from the stage's
+	 * {@code [batch, in_channels, length]} input shape, so the call names only what the shapes
+	 * cannot.
+	 *
+	 * @param args {@code (weight, bias, stride, padding, output_padding)} or
+	 *             {@code (weight, stride, padding, output_padding)} when the convolution has no bias
+	 * @return a factory that creates the transposed convolution for a 3-D
+	 *         {@code [batch, channels, length]} input shape
+	 * @see org.almostrealism.layers.ConvolutionLayerFeatures#convTranspose1d
+	 */
+	private static Function<TraversalPolicy, Block> callConvTranspose1d(List<Object> args) {
+		ConvolutionArguments conv = new ConvolutionArguments("conv_transpose1d", args,
+				"[in_channels, out_channels, kernel]", "stride", "padding", "output_padding");
+		int inChannels = conv.weightLength(0);
+		int outChannels = conv.weightLength(1);
+		int kernelSize = conv.weightLength(2);
+		return inputShape -> {
+			conv.checkInput(inputShape, inChannels);
+			return FEATURES.convTranspose1d(inputShape.length(0), inChannels, outChannels,
+					inputShape.length(2), kernelSize, conv.setting(0), conv.setting(1),
+					conv.setting(2), conv.weights, conv.bias);
+		};
+	}
+
+	/**
+	 * The evaluated arguments of a 1-D convolution built-in: the three-axis weight, the bias,
+	 * which a call may leave out, and the integer settings that follow them — the stride and
+	 * padding, and for a transposed convolution its output padding. A call carries the bias
+	 * exactly when it has one argument more than the weight and the settings alone.
+	 */
+	private static final class ConvolutionArguments {
+		/** The built-in name, for error messages. */
+		private final String name;
+
+		/** The weight, whose three axes give the channel counts and the kernel size. */
+		private final PackedCollection weights;
+
+		/** The bias, or {@code null} for a convolution without one. */
+		private final PackedCollection bias;
+
+		/** The integer settings, in call order. */
+		private final int[] settings;
+
+		/**
+		 * Reads a convolution call's arguments.
+		 *
+		 * @param name         the built-in name, for error messages
+		 * @param args         the evaluated arguments
+		 * @param weightLayout the weight's axes, for error messages
+		 * @param settingNames the integer settings that follow the weight and the bias, in order
+		 * @throws PdslParseException if the argument count fits neither form, or the weight does
+		 *                            not have three axes
+		 */
+		private ConvolutionArguments(String name, List<Object> args, String weightLayout,
+									 String... settingNames) {
+			String settingList = String.join(", ", settingNames);
+			if (args.size() != settingNames.length + 1 && args.size() != settingNames.length + 2) {
+				throw new PdslParseException(name + "() expects (weight, bias, " + settingList
+						+ ") or (weight, " + settingList + "), got " + args.size());
+			}
+
+			this.name = name;
+			this.weights = (PackedCollection) args.get(0);
+			this.bias = args.size() == settingNames.length + 2 ? (PackedCollection) args.get(1) : null;
+			this.settings = new int[settingNames.length];
+			int first = args.size() - settingNames.length;
+			for (int i = 0; i < settings.length; i++) {
+				settings[i] = toInt(args.get(first + i));
+			}
+
+			if (weights.getShape().getDimensions() != 3) {
+				throw new PdslParseException(name + "() weight must be " + weightLayout
+						+ ", got " + weights.getShape());
+			}
+		}
+
+		/**
+		 * Returns the weight's length along one axis.
+		 *
+		 * @param axis the axis
+		 * @return the weight's length along {@code axis}
+		 */
+		private int weightLength(int axis) {
+			return weights.getShape().length(axis);
+		}
+
+		/**
+		 * Returns one of the integer settings.
+		 *
+		 * @param index the setting's position among the settings, in call order
+		 * @return the setting
+		 */
+		private int setting(int index) {
+			return settings[index];
+		}
+
+		/**
+		 * Checks a stage's input shape: {@code [batch, channels, length]}, with as many channels as
+		 * the weight takes.
+		 *
+		 * @param inputShape the stage's input shape
+		 * @param channels   the number of input channels the weight takes
+		 * @throws PdslParseException if the shape does not have three axes or its channel count differs
+		 */
+		private void checkInput(TraversalPolicy inputShape, int channels) {
+			if (inputShape.getDimensions() != 3) {
+				throw new PdslParseException(name + "() expects a [batch, channels, length] input "
+						+ "shape, got " + inputShape);
+			}
+			if (inputShape.length(1) != channels) {
+				throw new PdslParseException(name + "() weight expects " + channels
+						+ " input channels but the input shape " + inputShape + " has " + inputShape.length(1));
+			}
+		}
+	}
+
+	/**
+	 * Builds an RMSNorm layer factory: every run of {@code n} consecutive input features, where
+	 * {@code n} is the length of the last axis of the weights, is divided by its root mean square
+	 * (with {@code epsilon} added to the mean square), then scaled by the weights and, when biases
+	 * are given, shifted by them.
+	 *
+	 * @param args {@code (weights, epsilon)}, or {@code (weights, biases, epsilon)} where the
+	 *             biases may be {@code null} for none
+	 * @return A shape-dependent {@link CellularLayer} factory
+	 * @see org.almostrealism.layers.NormalizationLayerFeatures#rmsnorm(TraversalPolicy,
+	 *      PackedCollection, PackedCollection, double, io.almostrealism.compute.ComputeRequirement...)
+	 */
+	private static Function<TraversalPolicy, CellularLayer> callRmsnorm(List<Object> args) {
+		if (args.size() != 2 && args.size() != 3) {
+			throw new PdslParseException("rmsnorm() expects (weights, epsilon) or "
+					+ "(weights, biases, epsilon), got " + args.size() + " arguments");
+		}
+		PackedCollection weights = (PackedCollection) args.get(0);
+		PackedCollection biases = args.size() == 3 ? (PackedCollection) args.get(1) : null;
+		double epsilon = toDouble(args.get(args.size() - 1));
+		return shape -> FEATURES.rmsnorm(shape, weights, biases, epsilon);
+	}
+
+	/**
+	 * Builds a LayerNorm layer factory: every run of {@code n} consecutive input features, where
+	 * {@code n} is the number of weights, is shifted to zero mean and divided by its standard
+	 * deviation (with {@code epsilon} added to the variance), then scaled by the weights and, when
+	 * biases are given, shifted by them. Binding {@code head_dim} weights normalizes each head's row
+	 * of a {@code [batch, heads, seq_len, head_dim]} query or key tensor on its own.
+	 *
+	 * @param args {@code (weights, biases, epsilon)}; the biases may be {@code null} for none
+	 * @return a factory that creates the normalization for any input made of whole runs of
+	 *         {@code n} features
+	 * @see org.almostrealism.layers.NormalizationLayerFeatures#norm(PackedCollection,
+	 *      PackedCollection, double, io.almostrealism.compute.ComputeRequirement...)
+	 */
+	private static Function<TraversalPolicy, CellularLayer> callLayernorm(List<Object> args) {
+		if (args.size() != 3) {
+			throw new PdslParseException(
+					"layernorm() expects 3 arguments (weights, biases, epsilon), got " + args.size());
+		}
+		PackedCollection weights = (PackedCollection) args.get(0);
+		PackedCollection biases = (PackedCollection) args.get(1);
+		if (weights == null) {
+			throw new PdslParseException("layernorm() weights are required; they set the length of "
+					+ "the normalized runs");
+		}
+		int size = weights.getShape().getTotalSize();
+		if (biases != null && biases.getShape().getTotalSize() != size) {
+			throw new PdslParseException("layernorm() biases " + biases.getShape()
+					+ " do not match the weights " + weights.getShape());
+		}
+		Function<TraversalPolicy, CellularLayer> norm = FEATURES.norm(weights, biases, toDouble(args.get(2)));
+		return shape -> {
+			if (shape.getTotalSize() % size != 0) {
+				throw new PdslParseException("layernorm() normalizes runs of " + size
+						+ " features, which do not tile the input shape " + shape);
+			}
+			return norm.apply(shape);
+		};
+	}
+
+	/**
+	 * Builds a softmax activation block: one distribution per row of a {@code [rows, size]}
+	 * input, computed over the last axis with the per-row maximum subtracted first so large
+	 * logits (attention scores, vocabulary logits) do not overflow.
 	 *
 	 * @param args Must be empty
-	 * @return A softmax {@link Block}
+	 * @return A factory that creates the row-wise softmax layer for any input of at least two dimensions
 	 */
 	private static Function<TraversalPolicy, CellularLayer> callSoftmax(List<Object> args) {
-		if (args.isEmpty()) {
-			return FEATURES.softmax();
+		if (!args.isEmpty()) {
+			throw new PdslParseException(
+					"softmax() expects 0 arguments, got " + args.size());
 		}
-		throw new PdslParseException(
-				"softmax() expects 0 arguments, got " + args.size());
+		return shape -> {
+			if (shape.getDimensions() < 2) {
+				throw new PdslParseException(
+						"softmax() expects a [rows, size] input shape, got " + shape);
+			}
+			return FEATURES.softmax(shape, true);
+		};
+	}
+
+	/**
+	 * Builds a block factory that duplicates every row of a {@code [rows, size]} input
+	 * {@code n} consecutive times, producing {@code [rows * n, size]}. With {@code n == 1}
+	 * the stage is a pass-through and adds no computation.
+	 *
+	 * @param args one argument: the integer copy count {@code n}
+	 * @return a factory that creates the duplication for any 2-D input shape
+	 * @see org.almostrealism.layers.LayerFeatures#repeatEach
+	 */
+	private static Function<TraversalPolicy, Block> callRepeatEach(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException(
+					"repeat_each() expects 1 argument (n), got " + args.size());
+		}
+		int n = toInt(args.get(0));
+		if (n == 1) {
+			return inputShape -> {
+				if (inputShape.getDimensions() != 2) {
+					throw new PdslParseException(
+							"repeat_each() expects a [rows, size] input shape, got " + inputShape);
+				}
+				return FEATURES.passThrough(inputShape);
+			};
+		}
+		return inputShape -> FEATURES.repeatEach(inputShape, n);
+	}
+
+	/**
+	 * Builds a block factory for one of the two row operations on a caller-owned
+	 * {@code [rows, size]} cache, from their shared arguments: the cache, which is state declared
+	 * in a {@code state} block and persists across forward passes, and the row position
+	 * (shape {@code [1]}).
+	 * <ul>
+	 *   <li>{@code cache_write(cache, position)} writes the stage input into row
+	 *       {@code position} and passes the input through unchanged, which is how a key/value
+	 *       cache is filled one token at a time.</li>
+	 *   <li>{@code cache_read(cache, position)} outputs row {@code position} as a
+	 *       {@code [size]} vector without reading the stage input, which is how a recurrent
+	 *       layer reads back the hidden state an earlier forward pass wrote.</li>
+	 * </ul>
+	 *
+	 * @param name      the built-in name, for error messages
+	 * @param args      two arguments: the cache collection and the row position
+	 * @param operation the row operation to build for the stage's input shape
+	 * @return a factory that creates the row operation for the stage's input shape
+	 * @see org.almostrealism.layers.LayerFeatures#cacheWrite
+	 * @see org.almostrealism.layers.LayerFeatures#cacheRead
+	 */
+	private static Function<TraversalPolicy, Block> callCacheRow(String name, List<Object> args,
+																 CacheRowOperation operation) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					name + "() expects 2 arguments (cache, position), got " + args.size());
+		}
+		CollectionProducer cache = PdslInterpreter.normalizeToProducer(args.get(0), null,
+				name + "() cache");
+		CollectionProducer position = PdslInterpreter.normalizeToProducer(args.get(1),
+				FEATURES.shape(1), name + "() position");
+		return inputShape -> operation.create(inputShape, cache, position);
+	}
+
+	/** A block over one row of a caller-owned cache: a cache write or a cache read. */
+	@FunctionalInterface
+	private interface CacheRowOperation {
+		/**
+		 * Builds the block.
+		 *
+		 * @param inputShape the stage's input shape
+		 * @param cache      the {@code [rows, size]} cache
+		 * @param position   the row position, shape {@code [1]}
+		 * @return the block operating on row {@code position} of {@code cache}
+		 */
+		Block create(TraversalPolicy inputShape, CollectionProducer cache, CollectionProducer position);
+	}
+
+	/**
+	 * Builds the split-half rotary layout: {@code [1, heads * head_size]} becomes
+	 * {@code [heads, head_size / 2, 2]} where element {@code i} of a head is paired with
+	 * element {@code i + head_size / 2}, the pairing {@code rope_rotation} rotates.
+	 *
+	 * @param args two integer arguments: heads, head_size
+	 * @return a factory that creates the permutation for a flat input of {@code heads * head_size}
+	 */
+	private static Function<TraversalPolicy, Block> callSplitHalfRope(List<Object> args) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"split_half_rope() expects 2 arguments (heads, head_size), got " + args.size());
+		}
+		int heads = toInt(args.get(0));
+		int headSize = toInt(args.get(1));
+		return inputShape -> {
+			if (inputShape.getTotalSize() != heads * headSize) {
+				throw new PdslParseException("split_half_rope() input " + inputShape
+						+ " does not hold " + heads + " heads of " + headSize);
+			}
+			return FEATURES.reshapeToSplitHalfRope(heads * headSize, heads, headSize);
+		};
+	}
+
+	/**
+	 * Builds the inverse of {@code split_half_rope}: {@code [heads, head_size / 2, 2]}
+	 * back to the per-head layout {@code [heads, head_size]}.
+	 *
+	 * @param args two integer arguments: heads, head_size
+	 * @return the merging permutation {@link Block}
+	 */
+	private static Block callMergeHalfRope(List<Object> args) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"merge_half_rope() expects 2 arguments (heads, head_size), got " + args.size());
+		}
+		return FEATURES.reshapeFromSplitHalfRope(toInt(args.get(0)), toInt(args.get(1)));
+	}
+
+	/**
+	 * Builds a rotary position embedding block with one frequency table and one position per
+	 * head group (multidimensional relative attention). The groups partition the heads of the
+	 * {@code [heads, head_size / 2, 2]} input in order.
+	 *
+	 * @param args two arguments: the input shape and the head groups
+	 *             ({@link HeadGroupConfig HeadGroupConfig[]}, each naming its head count,
+	 *             frequency table and position producer)
+	 * @return the rotation {@link Block}
+	 * @see org.almostrealism.ml.RotationFeatures#mraRopeRotation
+	 */
+	private static Block callMraRopeRotation(List<Object> args) {
+		if (args.size() != 2 || !(args.get(0) instanceof TraversalPolicy)
+				|| !(args.get(1) instanceof HeadGroupConfig[])) {
+			throw new PdslParseException(
+					"mra_rope_rotation() expects 2 arguments (shape, head_groups), got " + args);
+		}
+		TraversalPolicy shape = (TraversalPolicy) args.get(0);
+		if (shape.getDimensions() != 3 || shape.length(2) != 2) {
+			throw new PdslParseException(
+					"mra_rope_rotation() expects a [heads, head_size / 2, 2] shape, got " + shape);
+		}
+		HeadGroupConfig[] groups = (HeadGroupConfig[]) args.get(1);
+		int[] headsInGroup = new int[groups.length];
+		for (int g = 0; g < groups.length; g++) {
+			headsInGroup[g] = groups[g].headCount;
+		}
+		return FEATURES.mraRopeRotation(shape.length(0), shape.length(1) * 2, headsInGroup, groups);
+	}
+
+	/**
+	 * Builds the attention-score stage: the {@code [heads, head_size]} input holds one query
+	 * per head, and the result {@code [heads, seq_len]} is every query's unscaled dot product
+	 * with each row of the {@code [seq_len, heads * head_size]} key cache.
+	 *
+	 * @param keys the key cache, one {@code head_size} slice per head in every row
+	 * @return a factory that creates the score layer for the query shape
+	 * @see org.almostrealism.ml.AttentionFeatures#attentionScores
+	 */
+	private static Function<TraversalPolicy, Block> callAttentionScores(CollectionProducer keys) {
+		return inputShape -> FEATURES.attentionScores(inputShape, keys);
+	}
+
+	/**
+	 * Builds the causal-mask stage: on a {@code [heads, seq_len]} score matrix, every column
+	 * after {@code position} receives a penalty large enough that its softmax weight vanishes.
+	 *
+	 * @param args one argument: the current position (shape {@code [1]})
+	 * @return a factory that creates the mask layer for the score shape
+	 * @see org.almostrealism.ml.AttentionFeatures#causalMask
+	 */
+	private static Function<TraversalPolicy, Block> callCausalMask(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException(
+					"causal_mask() expects 1 argument (position), got " + args.size());
+		}
+		CollectionProducer position = PdslInterpreter.normalizeToProducer(args.get(0),
+				FEATURES.shape(1), "causal_mask() position");
+		return shape -> FEATURES.causalMask(shape, position);
+	}
+
+	/**
+	 * Builds the causal-mask stage of parallel (full-sequence) attention: on a
+	 * {@code [batch, heads, queries, keys]} score tensor, every key after the query's own position
+	 * (key {@code j > i} for query {@code i}) receives a large negative bias so its softmax weight
+	 * underflows to zero, and every other score is left unchanged, so each position attends only to
+	 * itself and the positions before it. It is the full-sequence counterpart of
+	 * {@code causal_mask(position)}, which masks the keys after the single query of one
+	 * autoregressive step, as {@code sequence_rope} is of {@code rope_rotation}.
+	 *
+	 * @param args must be empty
+	 * @return a factory that creates the mask layer for a {@code [batch, heads, queries, keys]}
+	 *         score shape
+	 * @see org.almostrealism.ml.SequenceAttentionFeatures#causalLogitMask
+	 */
+	private static Function<TraversalPolicy, Block> callSequenceCausalMask(List<Object> args) {
+		if (!args.isEmpty()) {
+			throw new PdslParseException(
+					"sequence_causal_mask() expects no arguments, got " + args.size());
+		}
+		return scoresShape -> {
+			if (scoresShape.getDimensions() != 4) {
+				throw new PdslParseException("sequence_causal_mask() expects a [batch, heads, queries, keys]"
+						+ " score shape, got " + scoresShape);
+			}
+			return FEATURES.layer("causalMask", scoresShape, scoresShape,
+					logits -> FEATURES.add(FEATURES.c(logits), FEATURES.causalLogitMask(scoresShape)));
+		};
+	}
+
+	/**
+	 * Builds the weighted-sum stage: the {@code [heads, seq_len]} input holds one attention
+	 * distribution per head, and the result {@code [1, heads * head_size]} is each head's
+	 * weighted sum of its slice of the {@code [seq_len, heads * head_size]} value cache.
+	 *
+	 * @param values the value cache, one {@code head_size} slice per head in every row
+	 * @return a factory that creates the weighted-sum layer for the weight shape
+	 * @see org.almostrealism.ml.AttentionFeatures#weightedValues
+	 */
+	private static Function<TraversalPolicy, Block> callWeightedValues(CollectionProducer values) {
+		return inputShape -> FEATURES.weightedValues(inputShape, values);
+	}
+
+	/**
+	 * Builds the additive key-mask stage of parallel (full-sequence) attention: on a
+	 * {@code [batch, heads, queries, keys]} score tensor, every key position marked invalid by the
+	 * mask receives a large negative bias so its softmax weight underflows to zero, and every valid
+	 * key is left unchanged. The mask is one validity value per key, {@code [batch, keys]}, with one
+	 * for a key that may be attended and zero for one that may not; it is broadcast across the head
+	 * and query axes. An all-ones mask leaves every score unchanged (adds zero), which is how a
+	 * caller with no padding disables the stage.
+	 *
+	 * <p>This is the full-sequence counterpart of {@code causal_mask}, which masks by position for
+	 * single-query autoregressive attention; here the masked positions are named by a data-driven
+	 * validity mask instead.</p>
+	 *
+	 * <p>The mask's shape is checked against the score shape when the layer is built: it must be
+	 * {@code [batch, keys]} with batch and key extents equal to the score shape's axes 0 and 3, so a
+	 * mismatched mask is rejected rather than silently reshaped by the broadcast.</p>
+	 *
+	 * @param args one argument: the {@code [batch, keys]} validity mask (a bound tensor or a producer)
+	 * @return a factory that creates the key-mask layer for a {@code [batch, heads, queries, keys]}
+	 *         score shape
+	 * @see org.almostrealism.ml.AttentionFeatures#MASKED_LOGIT_PENALTY
+	 */
+	private static Function<TraversalPolicy, Block> callKeyMask(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException(
+					"key_mask() expects 1 argument (mask), got " + args.size());
+		}
+		CollectionProducer mask = PdslInterpreter.normalizeToProducer(args.get(0), null, "key_mask() mask");
+		TraversalPolicy maskShape = FEATURES.shape(mask);
+		// bias = (mask - 1) * penalty: zero where a key is valid (mask == 1), -penalty where masked.
+		CollectionProducer bias = mask.add(-1.0).multiply(AttentionFeatures.MASKED_LOGIT_PENALTY);
+		return scoresShape -> {
+			if (scoresShape.getDimensions() != 4) {
+				throw new PdslParseException(
+						"key_mask() expects a [batch, heads, queries, keys] score shape, got " + scoresShape);
+			}
+			// Reject a mask the broadcast below would otherwise silently reshape.
+			if (maskShape.getDimensions() != 2
+					|| maskShape.length(0) != scoresShape.length(0)
+					|| maskShape.length(1) != scoresShape.length(3)) {
+				throw new PdslParseException("key_mask() expects a [batch, keys] mask matching the "
+						+ "[batch, heads, queries, keys] score shape " + scoresShape + ", got " + maskShape);
+			}
+			return FEATURES.layer("keyMask", scoresShape, scoresShape,
+					logits -> FEATURES.add(FEATURES.c(logits), FEATURES.broadcast(scoresShape, 3, bias)));
+		};
+	}
+
+	/**
+	 * Builds a batched matrix product of the stage's {@code [batch, heads, queries, dim]} input with
+	 * a second {@code [batch, heads, keys, dim]} operand, the two multiplications parallel (full-
+	 * sequence) attention is built from: the query-key scores {@code Q Kᵀ} (with {@code transpose}
+	 * true, contracting the shared {@code dim} axis to give {@code [batch, heads, queries, keys]})
+	 * and the context {@code A V} (with {@code transpose} false, the input being the attention
+	 * weights {@code [batch, heads, queries, keys]} and the operand the values, contracting the key
+	 * axis to give {@code [batch, heads, queries, dim]}).
+	 *
+	 * <p>The operand is either a tensor (a bound collection or a producer), which enters the product
+	 * as a constant, or a branch the calling layer has split off — {@code branch keys { ... }} —
+	 * whose output is the product's second operand: the branch runs before the stage that reads it,
+	 * and a backward pass carries the product's gradient with respect to the operand back into the
+	 * branch. This is how a self-attention layer computes its keys and values from its own input and
+	 * still trains them. A branch's output feeds one product: because {@code compose} wires the
+	 * branch in by replacing the branch's forward receptor, a second product reading the same branch
+	 * would silently displace the first product's consumer, so a branch already consumed as an
+	 * operand (tracked in {@code consumedBranchOperands}) is rejected rather than overwritten.</p>
+	 *
+	 * @param args                   two arguments: the second operand (a bound tensor, a producer or
+	 *                               a branch) and the boolean {@code transpose}, true to transpose the
+	 *                               operand's last two axes before the product
+	 * @param consumedBranchOperands the branches already consumed as an operand in this build; a
+	 *                               branch operand is added to it, and reuse of one is rejected
+	 * @return a factory that creates the batched-product layer for a 4-D input shape
+	 * @throws PdslParseException if the operand is a branch already consumed by another product
+	 * @see org.almostrealism.algebra.MatrixFeatures#scaledDotProduct
+	 * @see org.almostrealism.layers.LayerRoutingFeatures#compose(String, TraversalPolicy, Block,
+	 *      TraversalPolicy, io.almostrealism.relation.Composition, io.almostrealism.compute.ComputeRequirement...)
+	 */
+	private static Function<TraversalPolicy, Block> callScaledDotProduct(
+			List<Object> args, Set<Block> consumedBranchOperands) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"scaled_dot_product() expects 2 arguments (other, transpose), got " + args.size());
+		}
+		if (!(args.get(1) instanceof Boolean)) {
+			throw new PdslParseException("scaled_dot_product() transpose must be a boolean, got "
+					+ (args.get(1) == null ? "null" : args.get(1).getClass().getSimpleName()));
+		}
+		boolean transpose = (Boolean) args.get(1);
+		if (args.get(0) instanceof Block) {
+			Block branch = (Block) args.get(0);
+			if (!consumedBranchOperands.add(branch)) {
+				throw new PdslParseException("scaled_dot_product() operand is a branch already consumed"
+						+ " by another product; a branch feeds one product, so split a separate branch"
+						+ " for each product that reads it");
+			}
+			return scaledDotProductLayer(branch.getOutputShape(), transpose, (inputShape, outputShape) ->
+					FEATURES.compose("scaledDotProduct", inputShape, branch, outputShape,
+							(input, other) -> FEATURES.scaledDotProduct(
+									FEATURES.c(input), FEATURES.c(other), transpose)));
+		}
+
+		CollectionProducer other =
+				PdslInterpreter.normalizeToProducer(args.get(0), null, "scaled_dot_product() other");
+		return scaledDotProductLayer(FEATURES.shape(other), transpose, (inputShape, outputShape) ->
+				FEATURES.layer("scaledDotProduct", inputShape, outputShape,
+						input -> FEATURES.scaledDotProduct(FEATURES.c(input), other, transpose)));
+	}
+
+	/**
+	 * Builds the factory of a {@code scaled_dot_product} stage once its operand's shape is known,
+	 * checking the operand and the stage's input shape against each other before the product layer
+	 * is created.
+	 *
+	 * @param otherShape the operand's shape, {@code [batch, heads, seq, dim]}
+	 * @param transpose  true for a {@code Q Kᵀ} product, false for an {@code A V} product
+	 * @param product    creates the product layer for the checked input shape and its output shape
+	 * @return a factory that creates the product layer for a compatible 4-D input shape
+	 * @throws PdslParseException if the operand, or later the input shape, is not 4-D, or the two
+	 *                            disagree on the batch, head or contracted axis
+	 */
+	private static Function<TraversalPolicy, Block> scaledDotProductLayer(
+			TraversalPolicy otherShape, boolean transpose,
+			BiFunction<TraversalPolicy, TraversalPolicy, Block> product) {
+		if (otherShape.getDimensions() != 4) {
+			throw new PdslParseException(
+					"scaled_dot_product() other must be [batch, heads, seq, dim], got " + otherShape);
+		}
+		int cols = transpose ? otherShape.length(2) : otherShape.length(3);
+		// The input's last axis is the extent contracted against other: dim for a Q Kᵀ product
+		// (transpose true) and keys for an A V product (transpose false).
+		String expectedInput = transpose
+				? "[batch, heads, queries, dim]"
+				: "[batch, heads, queries, keys]";
+		return inputShape -> {
+			if (inputShape.getDimensions() != 4) {
+				throw new PdslParseException("scaled_dot_product() expects a " + expectedInput
+						+ " input shape, got " + inputShape);
+			}
+			// Batch/head axes and the contracted axis must agree rather than being reinterpreted.
+			int contracted = transpose ? otherShape.length(3) : otherShape.length(2);
+			if (inputShape.length(0) != otherShape.length(0)
+					|| inputShape.length(1) != otherShape.length(1)
+					|| inputShape.length(3) != contracted) {
+				throw new PdslParseException("scaled_dot_product() input " + inputShape
+						+ " is incompatible with other " + otherShape + " for transpose=" + transpose);
+			}
+			return product.apply(inputShape, FEATURES.shape(inputShape.length(0), inputShape.length(1),
+					inputShape.length(2), cols));
+		};
+	}
+
+	/**
+	 * Evaluates a square root in configuration arithmetic, for expressions such as
+	 * {@code scale(1 / sqrt(head_size))}.
+	 *
+	 * @param args one numeric argument
+	 * @return the square root as a {@link Double}
+	 */
+	private static Double callSqrt(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException("sqrt() expects 1 argument, got " + args.size());
+		}
+		return Math.sqrt(toDouble(args.get(0)));
 	}
 
 	/**
@@ -371,20 +1057,116 @@ final class PdslBuiltins {
 	}
 
 	/**
-	 * Builds a subset (slice) block from offset and size arguments.
+	 * Builds a learnable Snake activation block factory with per-channel parameters:
+	 * {@code f(x) = x + (1 / beta) * sin^2(alpha * x)}, applied element-wise with each channel's
+	 * own {@code alpha} and {@code beta}. Snake is the periodic activation the neural audio codecs
+	 * (Descript, Stable Audio) use in place of a rectifier, so its harmonics track the signal's
+	 * pitch. {@code alpha} and {@code beta} are {@code [channels]} vectors indexed by axis 1 of the
+	 * {@code [batch, channels, length]} input.
 	 *
-	 * @param args two integer arguments: offset, size
-	 * @return a factory that creates a slice block for any input shape
+	 * @param args two arguments: the per-channel {@code alpha} and {@code beta} tensors
+	 * @return a factory that creates the Snake activation for any {@code [batch, channels, length]}
+	 *         input shape
+	 * @see org.almostrealism.layers.ActivationFeatures#snake(PackedCollection, PackedCollection,
+	 *      io.almostrealism.compute.ComputeRequirement...)
+	 */
+	private static Function<TraversalPolicy, CellularLayer> callSnake(List<Object> args) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"snake() expects 2 arguments (alpha, beta), got " + args.size());
+		}
+		return FEATURES.snake((PackedCollection) args.get(0), (PackedCollection) args.get(1));
+	}
+
+	/**
+	 * Builds a block factory that takes a contiguous part of the input. Two forms:
+	 * <ul>
+	 *   <li>{@code slice(offset, size)} takes {@code size} consecutive elements of a flat input,
+	 *       starting at {@code offset}, as a {@code [size]} vector;</li>
+	 *   <li>{@code slice([shape], p0, p1, ...)} takes the sub-tensor of the given shape whose first
+	 *       element sits at position {@code (p0, p1, ...)} of an input with as many axes (see
+	 *       {@link #callSliceAt}).</li>
+	 * </ul>
+	 *
+	 * @param args {@code (offset, size)}, or a shape followed by one position per axis
+	 * @return a factory that creates the slice for the input shape where it is placed
 	 */
 	private static Function<TraversalPolicy, Block> callSlice(List<Object> args) {
+		if (!args.isEmpty() && args.get(0) instanceof TraversalPolicy) {
+			return callSliceAt((TraversalPolicy) args.get(0), toInts(args.subList(1, args.size())));
+		}
 		if (args.size() == 2) {
 			int offset = toInt(args.get(0));
 			int size = toInt(args.get(1));
-			return 
+			return
 					(inputShape -> FEATURES.subset(inputShape, FEATURES.shape(size), offset));
 		}
-		throw new PdslParseException(
-				"slice() expects 2 arguments (offset, size), got " + args.size());
+		throw new PdslParseException("slice() expects (offset, size) or ([shape], position...), got "
+				+ args.size() + " arguments");
+	}
+
+	/**
+	 * Builds a block factory that takes the sub-tensor of {@code shape} whose first element sits at
+	 * {@code position} of the input: {@code slice([batch, seq_len, 1, dim], 0, 0, 1, 0)} takes the
+	 * second of the three {@code dim}-wide sections of a {@code [batch, seq_len, 3, dim]} input, the
+	 * way a fused query/key/value projection is separated into its keys. The input must have as many
+	 * axes as the shape, and the sub-tensor must lie inside it.
+	 *
+	 * @param shape    the extent of the sub-tensor
+	 * @param position the input coordinates of the sub-tensor's first element, one per axis
+	 * @return a factory that creates the slice for the input shape where it is placed
+	 * @see org.almostrealism.layers.LayerFeatures#subset(TraversalPolicy, TraversalPolicy, int...)
+	 */
+	private static Function<TraversalPolicy, Block> callSliceAt(TraversalPolicy shape, int[] position) {
+		if (position.length != shape.getDimensions()) {
+			throw new PdslParseException("slice() of " + shape + " expects one position per axis, got "
+					+ position.length);
+		}
+		return inputShape -> {
+			if (inputShape.getDimensions() != shape.getDimensions()) {
+				throw new PdslParseException("slice() of " + shape + " expects an input with "
+						+ shape.getDimensions() + " axes, got " + inputShape);
+			}
+			for (int axis = 0; axis < position.length; axis++) {
+				if (position[axis] < 0 || position[axis] + shape.length(axis) > inputShape.length(axis)) {
+					throw new PdslParseException("slice() of " + shape + " at position "
+							+ Arrays.toString(position) + " does not lie inside the input shape " + inputShape);
+				}
+			}
+			return FEATURES.subset(inputShape, shape, position);
+		};
+	}
+
+	/**
+	 * Builds a block factory that reorders the axes of the input: output axis {@code i} is input
+	 * axis {@code order[i]}. {@code permute(0, 2, 1, 3)} turns a {@code [batch, seq_len, heads,
+	 * head_dim]} projection into one row per head, {@code [batch, heads, seq_len, head_dim]}, and the
+	 * same call turns it back.
+	 *
+	 * @param args the axis order: one integer per input axis, naming each axis exactly once
+	 * @return a factory that creates the permutation for an input with as many axes as the order names
+	 * @see org.almostrealism.layers.LayerFeatures#permute(TraversalPolicy, int...)
+	 */
+	private static Function<TraversalPolicy, Block> callPermute(List<Object> args) {
+		if (args.isEmpty()) {
+			throw new PdslParseException("permute() expects the axis order, got no arguments");
+		}
+		int[] order = toInts(args);
+		boolean[] named = new boolean[order.length];
+		for (int axis : order) {
+			if (axis < 0 || axis >= order.length || named[axis]) {
+				throw new PdslParseException("permute() expects each of the axes 0 to " + (order.length - 1)
+						+ " exactly once, got " + Arrays.toString(order));
+			}
+			named[axis] = true;
+		}
+		return inputShape -> {
+			if (inputShape.getDimensions() != order.length) {
+				throw new PdslParseException("permute() orders " + order.length
+						+ " axes but the input shape " + inputShape + " has " + inputShape.getDimensions());
+			}
+			return FEATURES.permute(inputShape, order);
+		};
 	}
 
 	/**
@@ -448,125 +1230,40 @@ final class PdslBuiltins {
 	}
 
 	/**
-	 * Builds an attention block from 8, 14, or 15 evaluated arguments.
+	 * Builds the rotary position embedding of a whole sequence: on a
+	 * {@code [batch, heads, seq_len, head_dim]} input, the row at position {@code p} has its leading
+	 * {@code 2 * n} features ({@code n} being the number of inverse frequencies) rotated pairwise,
+	 * feature {@code i} with feature {@code i + n}, by the angles {@code p * inv_freq}; the features
+	 * beyond those pass through unchanged. It is the full-sequence counterpart of
+	 * {@code rope_rotation}, which rotates the single token at one position: here every position of
+	 * the sequence is rotated by its own index in the same pass.
 	 *
-	 * @param args Evaluated arguments matching one of the supported
-	 *             {@link org.almostrealism.ml.AttentionFeatures#attention} overloads
-	 * @return An attention {@link Block}
-	 */
-	private static Block callAttention(List<Object> args) {
-		if (args.size() == 8) {
-			// attention(heads, rms_weight, wk, wv, wq, wo, freq_cis, position)
-			return FEATURES.attention(
-					toInt(args.get(0)),
-					(PackedCollection) args.get(1),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					(PackedCollection) args.get(4),
-					(PackedCollection) args.get(5),
-					toCollectionProducer(args.get(6)),
-					toProducer(args.get(7)));
-		} else if (args.size() == 14) {
-			// attention(heads, kv_heads, rms_weight, wk, wv, wq, wo,
-			//           bk, bv, bq, qk_norm_q, qk_norm_k, freq_cis, position)
-			return FEATURES.attention(
-					toInt(args.get(0)),
-					toInt(args.get(1)),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					(PackedCollection) args.get(4),
-					(PackedCollection) args.get(5),
-					(PackedCollection) args.get(6),
-					(PackedCollection) args.get(7),
-					(PackedCollection) args.get(8),
-					(PackedCollection) args.get(9),
-					(PackedCollection) args.get(10),
-					(PackedCollection) args.get(11),
-					toCollectionProducer(args.get(12)),
-					toProducer(args.get(13)));
-		} else if (args.size() == 15) {
-			// attention(heads, kv_heads, rms_weight, wk, wv, wq, wo,
-			//           bk, bv, bq, qk_norm_q, qk_norm_k, freq_cis, position, epsilon)
-			return FEATURES.attention(
-					toInt(args.get(0)),
-					toInt(args.get(1)),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					(PackedCollection) args.get(4),
-					(PackedCollection) args.get(5),
-					(PackedCollection) args.get(6),
-					(PackedCollection) args.get(7),
-					(PackedCollection) args.get(8),
-					(PackedCollection) args.get(9),
-					(PackedCollection) args.get(10),
-					(PackedCollection) args.get(11),
-					toCollectionProducer(args.get(12)),
-					toProducer(args.get(13)),
-					toDouble(args.get(14)));
-		}
-		throw new PdslParseException(
-				"attention() expects 8, 14, or 15 arguments, got " + args.size());
-	}
-
-	/**
-	 * Builds a full transformer block from evaluated arguments.
+	 * <p>The rotation is defined by the extents of its input alone, so the layer is built for the
+	 * plain {@code [batch, heads, seq_len, head_dim]} shape whatever traversal the previous stage
+	 * reports.</p>
 	 *
-	 * @param args Evaluated arguments matching the
-	 *             {@link org.almostrealism.ml.AttentionFeatures#transformer} signature
-	 * @return A transformer {@link Block}
+	 * @param args one argument: the inverse frequencies, one per rotated feature pair
+	 * @return a factory that creates the rotation for a {@code [batch, heads, seq_len, head_dim]} input
+	 * @see org.almostrealism.ml.RotationFeatures#applyRotaryPositionEmbedding(TraversalPolicy, PackedCollection)
 	 */
-	private static Block callTransformer(List<Object> args) {
-		if (args.size() == 19) {
-			return FEATURES.transformer(
-					toInt(args.get(0)),       // heads
-					toInt(args.get(1)),       // kv_heads
-					(PackedCollection) args.get(2),  // rms_att_weight
-					(PackedCollection) args.get(3),  // wk
-					(PackedCollection) args.get(4),  // wv
-					(PackedCollection) args.get(5),  // wq
-					(PackedCollection) args.get(6),  // wo
-					(PackedCollection) args.get(7),  // bk
-					(PackedCollection) args.get(8),  // bv
-					(PackedCollection) args.get(9),  // bq
-					(PackedCollection) args.get(10), // qk_norm_q
-					(PackedCollection) args.get(11), // qk_norm_k
-					toCollectionProducer(args.get(12)), // freq_cis
-					(PackedCollection) args.get(13), // rms_ffn_weight
-					(PackedCollection) args.get(14), // w1
-					(PackedCollection) args.get(15), // w2
-					(PackedCollection) args.get(16), // w3
-					toProducer(args.get(17)),         // position
-					toDouble(args.get(18)));          // epsilon
+	private static Function<TraversalPolicy, Block> callSequenceRope(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException(
+					"sequence_rope() expects 1 argument (inv_freq), got " + args.size());
 		}
-		throw new PdslParseException(
-				"transformer() expects 19 arguments, got " + args.size());
-	}
-
-	/**
-	 * Builds a feed-forward (MLP) block from 4 or 5 evaluated weight arguments.
-	 *
-	 * @param args Evaluated arguments: RMSNorm weight, w1, w2, w3, and optionally epsilon
-	 * @return A feed-forward {@link Block}
-	 */
-	private static Block callFeedForward(List<Object> args) {
-		if (args.size() == 4) {
-			// feed_forward(rms, w1, w2, w3)
-			return FEATURES.feedForward(
-					(PackedCollection) args.get(0),
-					(PackedCollection) args.get(1),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3));
-		} else if (args.size() == 5) {
-			// feed_forward(rms, w1, w2, w3, epsilon)
-			return FEATURES.feedForward(
-					(PackedCollection) args.get(0),
-					(PackedCollection) args.get(1),
-					(PackedCollection) args.get(2),
-					(PackedCollection) args.get(3),
-					toDouble(args.get(4)));
-		}
-		throw new PdslParseException(
-				"feed_forward() expects 4 or 5 arguments, got " + args.size());
+		PackedCollection invFreq = (PackedCollection) args.get(0);
+		int rotated = 2 * invFreq.getShape().getTotalSize();
+		return inputShape -> {
+			if (inputShape.getDimensions() != 4) {
+				throw new PdslParseException("sequence_rope() expects a [batch, heads, seq_len, head_dim]"
+						+ " input shape, got " + inputShape);
+			}
+			if (rotated > inputShape.length(3)) {
+				throw new PdslParseException("sequence_rope() rotates " + rotated
+						+ " features per row but the rows of " + inputShape + " hold " + inputShape.length(3));
+			}
+			return FEATURES.applyRotaryPositionEmbedding(FEATURES.shape(inputShape.extent()), invFreq);
+		};
 	}
 
 	/**
@@ -576,11 +1273,7 @@ final class PdslBuiltins {
 	 * @return The corresponding traversal policy
 	 */
 	private static TraversalPolicy callShape(List<Object> args) {
-		int[] dims = new int[args.size()];
-		for (int i = 0; i < args.size(); i++) {
-			dims[i] = toInt(args.get(i));
-		}
-		return FEATURES.shape(dims);
+		return FEATURES.shape(toInts(args));
 	}
 
 	/**
@@ -600,6 +1293,43 @@ final class PdslBuiltins {
 		throw new PdslParseException(
 				"range() expects 3 arguments (source, shape, offset), got " + args.size());
 	}
+
+	/**
+	 * Allocates a new collection of the given shape with every element zero: the storage a
+	 * stateful layer writes on one forward pass and reads on later ones, such as the key and
+	 * value caches of autoregressive attention. Each call allocates a distinct collection, so a
+	 * model that calls {@code zeros} once per layer gives every layer its own state.
+	 *
+	 * @param args [shape: TraversalPolicy]
+	 * @return the zero-filled collection
+	 */
+	private static PackedCollection callZeros(List<Object> args) {
+		if (args.size() != 1 || !(args.get(0) instanceof TraversalPolicy)) {
+			throw new PdslParseException("zeros() expects one shape argument, such as zeros([rows, size])");
+		}
+		PackedCollection storage = new PackedCollection((TraversalPolicy) args.get(0));
+		storage.clear();
+		return storage;
+	}
+
+	/**
+	 * Builds the rotary position embedding table: for each position up to {@code seq_len}, the
+	 * rotation angle of each of the {@code head_size / 2} frequency pairs, as
+	 * {@link RotationFeatures#computeRopeFreqs} defines it. The result is
+	 * the {@code freq_cis} table that {@code rope_rotation} reads.
+	 *
+	 * @param args [theta: number, head_size: int, seq_len: int]
+	 * @return the frequency table producer, shape {@code [seq_len, head_size / 2, 2]}
+	 */
+	private static CollectionProducer callRopeFreqs(List<Object> args) {
+		if (args.size() != 3) {
+			throw new PdslParseException(
+					"rope_freqs() expects 3 arguments (theta, head_size, seq_len), got " + args.size());
+		}
+		return RotationFeatures.computeRopeFreqs(
+				toDouble(args.get(0)), toInt(args.get(1)), toInt(args.get(2)));
+	}
+
 	// ---- Type conversion helpers ----
 
 

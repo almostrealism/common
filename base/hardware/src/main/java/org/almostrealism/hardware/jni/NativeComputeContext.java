@@ -180,6 +180,7 @@ public class NativeComputeContext extends AbstractComputeContext<NativeDataConte
 
 	@Override
 	public void destroy() {
+		super.destroy();
 		if (compiler != null) {
 			compiler.destroy();
 			compiler = null;

@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -24,7 +25,13 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,6 +41,12 @@ import java.util.Map;
  * real released SAME weights (the gated numerical-parity test).
  */
 public abstract class SAMEResamplingTestBase extends TestSuiteBase implements TransformerResamplingFeatures {
+
+	/** The reference directories the running test has read, each opened once. */
+	private final Map<File, ReferenceActivations> references = new HashMap<>();
+
+	/** The clones {@link #evalBlock} returned during the running test, released when it ends. */
+	private final List<PackedCollection> blockOutputs = new ArrayList<>();
 
 	/**
 	 * Evaluates a producer at the test boundary (top of the call stack), applying the optimization pass
@@ -51,15 +64,55 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * on {@code input}. This is the top-of-stack boundary at which compilation and evaluation are
 	 * permitted; the block itself never evaluates.
 	 *
+	 * <p>The {@link CompiledModel} is released before returning, so each call leaves no compiled
+	 * graph behind — otherwise every invocation would strand a full compiled graph (two large ones
+	 * per round trip in the gated parity tests). The forward output is a buffer the compiled graph
+	 * owns, so it is cloned into independent memory that outlives the release.</p>
+	 *
+	 * <p>That clone is owned by this test infrastructure, not the caller: it is registered here and
+	 * released by {@link #releaseBlockOutputs()} when the test ends, so a caller must not destroy it,
+	 * and a test that reuses one {@link StateDictionary} across many blocks (the gated parity tests,
+	 * which discard several stage outputs inline) cannot leak a clone by forgetting to.</p>
+	 *
+	 * <p>The {@link Model} is deliberately <em>not</em> destroyed. It is a throwaway wrapper around
+	 * the caller-supplied {@code block}, whose layers hold the weight {@link PackedCollection}s the
+	 * caller loaded into a {@link StateDictionary} and reuses across every block it evaluates.
+	 * {@link Model#destroy()} cascades into those layers and frees their weights, so destroying it
+	 * here would release memory the caller still owns — invalidating the dictionary for every
+	 * subsequent {@code evalBlock} built from the same weights (the encoder call followed by the
+	 * decoder call in {@code SAMEAutoEncoderParityTest}, and the repeated calls that culminate in the
+	 * full-block evaluation in {@code SAMEResamplingParityTest}). Releasing the compiled graph frees
+	 * the per-call native memory without taking ownership of the borrowed weights; the caller
+	 * destroys its {@link StateDictionary} once, when it is done with every block.</p>
+	 *
 	 * @param block the resampling block (from {@link TransformerResamplingFeatures#transformerResamplingBlock})
 	 * @param input the block input, matching {@link Block#getInputShape()}
-	 * @return the forward-pass output
+	 * @return the forward-pass output, held in memory independent of the compiled graph and released
+	 *         with the test by {@link #releaseBlockOutputs()}
 	 */
 	protected PackedCollection evalBlock(Block block, PackedCollection input) {
 		Model model = new Model(block.getInputShape());
 		model.add(block);
+
 		CompiledModel compiled = model.compile(false);
-		return compiled.forward(input);
+		try {
+			PackedCollection output = compiled.forward(input).clone();
+			blockOutputs.add(output);
+			return output;
+		} finally {
+			compiled.destroy();
+		}
+	}
+
+	/**
+	 * Releases every clone {@link #evalBlock} returned during the finished test. The clones are
+	 * independent memory (not views into the reference shards), so this runs independently of
+	 * {@link #releaseReferences()}.
+	 */
+	@After
+	public void releaseBlockOutputs() {
+		blockOutputs.forEach(PackedCollection::destroy);
+		blockOutputs.clear();
 	}
 
 	/**
@@ -95,6 +148,37 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 */
 	protected Map<String, int[]> blockWeightShapes(ResamplingConfig config, String prefix) {
 		return config.weightShapes(prefix);
+	}
+
+	/**
+	 * Generates a complete set of synthetic weights for a resampling block under the given key prefix,
+	 * using {@link #blockWeightShapes} so the synthetic key set matches the real one exactly.
+	 *
+	 * @param config the block configuration
+	 * @param prefix the weight key prefix
+	 * @return a {@link StateDictionary} holding randomly-initialized weights for every key the block reads
+	 */
+	protected StateDictionary syntheticWeights(ResamplingConfig config, String prefix) {
+		Map<String, PackedCollection> w = new HashMap<>();
+		blockWeightShapes(config, prefix).forEach((key, dims) ->
+				w.put(key, new PackedCollection(shape(dims)).randnFill()));
+		return new StateDictionary(w);
+	}
+
+	/**
+	 * Builds a small configuration that still exercises the full resampling machinery (segmentation,
+	 * learned tokens, midpoint-shifted chunking, differential attention, SwiGLU) at dimensions cheap
+	 * enough for fast, in-CI tests.
+	 *
+	 * @param encoder {@code true} for an encoder (downsampling) config
+	 * @return the small configuration
+	 */
+	public static ResamplingConfig smallConfig(boolean encoder) {
+		int inChannels = encoder ? 4 : 8;
+		int outChannels = encoder ? 8 : 4;
+		int mappingKernel = encoder ? 1 : 3;
+		return new ResamplingConfig(inChannels, outChannels, 2, 4, 2, 4, 2,
+				encoder, true, true, 2.0, mappingKernel, ResamplingConfig.AttentionWindow.CHUNKED);
 	}
 
 	/**
@@ -136,5 +220,170 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 */
 	protected double maxAbsDiff(PackedCollection actual, float[] reference) {
 		return diffStats(actual, reference)[0];
+	}
+
+	/**
+	 * The references in a dump directory, opened once per test and shared by every read from that
+	 * directory, so repeated lookups do not reparse the shards and retain another set of mappings.
+	 * They are released by {@link #releaseReferences()} when the test ends.
+	 *
+	 * @param dir the directory holding the reference shards
+	 * @return the references
+	 */
+	protected ReferenceActivations references(File dir) {
+		return references.computeIfAbsent(dir, ReferenceActivations::new);
+	}
+
+	/**
+	 * Releases the reference shards every read of the finished test opened. The collections those
+	 * reads returned are views into the shards, so they are released only once the test is over.
+	 */
+	@After
+	public void releaseReferences() {
+		references.values().forEach(ReferenceActivations::destroy);
+		references.clear();
+	}
+
+	/**
+	 * Reads one reference from a dump directory as a collection of the given shape.
+	 *
+	 * @param dir   the directory holding the reference shards
+	 * @param name  the reference key
+	 * @param shape the expected shape, checked against the shape the dump recorded
+	 * @return the loaded collection
+	 * @throws IOException if the shards cannot be read
+	 */
+	protected PackedCollection loadShaped(File dir, String name, int... shape) throws IOException {
+		return references(dir).collection(name, shape(shape));
+	}
+
+	/**
+	 * Reads one reference from a dump directory as a flat array of values.
+	 *
+	 * @param dir  the directory holding the reference shards
+	 * @param name the reference key
+	 * @return the flat float values
+	 * @throws IOException if the shards cannot be read
+	 */
+	protected float[] loadFlat(File dir, String name) throws IOException {
+		return references(dir).load(name);
+	}
+
+	/**
+	 * Returns the first directory among {@code candidates} holding {@code marker}, either as a file
+	 * of its own or as a key among its shards, or {@code null} if none do.
+	 *
+	 * @param candidates candidate directory paths (entries may be {@code null})
+	 * @param marker     a tensor that must be present within the directory
+	 * @return the resolved directory, or {@code null}
+	 */
+	protected File firstExisting(String[] candidates, String marker) {
+		return ReferenceActivations.firstExisting(candidates, marker);
+	}
+
+	/**
+	 * Logs the difference statistics for one stage.
+	 *
+	 * @param stage     the stage label
+	 * @param actual    the computed collection
+	 * @param reference the flat reference values
+	 */
+	protected void report(String stage, PackedCollection actual, float[] reference) {
+		double[] stats = diffStats(actual, reference);
+		log(String.format("%-18s maxAbs=%.3e meanAbs=%.3e rmse=%.3e (refMaxAbs=%.3e, n=%d)",
+				stage, stats[0], stats[1], stats[2], stats[3], reference.length));
+	}
+
+	/**
+	 * Asserts that a computed signal is finite, sits at the reference's level and follows its
+	 * waveform, reporting all three measures. This is the check for a stage whose per-sample
+	 * agreement is not assertable because the computation amplifies rounding differences — an
+	 * ill-conditioned stack, where any correct FP32 implementation diverges sample by sample while
+	 * still reproducing the signal. It is not a substitute for {@link #assertWithinRelative} on a
+	 * stage that can be held to a per-sample threshold.
+	 *
+	 * @param stage               the stage label
+	 * @param actual              the computed collection
+	 * @param reference           the flat reference values
+	 * @param levelTolerance      the permitted relative difference in RMS level
+	 * @param minimumCorrelation  the required correlation with the reference
+	 */
+	protected void assertTracksReference(String stage, PackedCollection actual, float[] reference,
+										 double levelTolerance, double minimumCorrelation) {
+		if (actual.getShape().getTotalSize() != reference.length) {
+			throw new AssertionError(stage + ": computed " + actual.getShape() +
+					" while the reference has " + reference.length + " values");
+		}
+
+		double actualEnergy = 0;
+		double referenceEnergy = 0;
+		double crossEnergy = 0;
+
+		for (int i = 0; i < reference.length; i++) {
+			double value = actual.toDouble(i);
+			if (!Double.isFinite(value)) {
+				throw new AssertionError(stage + ": sample " + i + " is " + value);
+			}
+
+			actualEnergy += value * value;
+			referenceEnergy += reference[i] * (double) reference[i];
+			crossEnergy += value * reference[i];
+		}
+
+		double actualRms = Math.sqrt(actualEnergy / reference.length);
+		double referenceRms = Math.sqrt(referenceEnergy / reference.length);
+		double correlation = crossEnergy / Math.sqrt(actualEnergy * referenceEnergy);
+
+		log(String.format("%-18s rms=%.3e refRms=%.3e correlation=%.6f",
+				stage, actualRms, referenceRms, correlation));
+
+		if (!(actualRms > 0)) {
+			throw new AssertionError(stage + ": produced silence (rms " + actualRms + ")");
+		} else if (!(Math.abs(actualRms - referenceRms) <= levelTolerance * referenceRms)) {
+			throw new AssertionError(stage + ": level " + actualRms +
+					" differs from the reference " + referenceRms);
+		} else if (!(correlation >= minimumCorrelation)) {
+			throw new AssertionError(stage + ": does not track the reference (correlation " +
+					correlation + ")");
+		}
+	}
+
+	/**
+	 * Asserts that the maximum absolute difference for one stage is within tolerance.
+	 *
+	 * @param stage     the stage label
+	 * @param actual    the computed collection
+	 * @param reference the flat reference values
+	 * @param tolerance the maximum permitted absolute difference
+	 */
+	protected void assertWithin(String stage, PackedCollection actual, float[] reference, double tolerance) {
+		double maxAbs = maxAbsDiff(actual, reference);
+		// maxAbs > tolerance is false when maxAbs is NaN, so a NaN result (a real computation
+		// failure) would otherwise silently pass; negating a <= comparison catches it.
+		if (!(maxAbs <= tolerance)) {
+			throw new AssertionError(stage + " parity failed: maxAbs=" + maxAbs + " > tolerance=" + tolerance);
+		}
+	}
+
+	/**
+	 * Reports one stage against its reference and asserts parity within a fraction of the
+	 * reference magnitude. A computed collection of a different size fails outright, since it
+	 * means the capture and the reference dump disagree about the layout.
+	 *
+	 * @param stage             the stage label
+	 * @param actual            the computed collection
+	 * @param reference         the flat reference values
+	 * @param relativeTolerance the permitted largest absolute error as a fraction of the largest
+	 *                          reference magnitude
+	 */
+	protected void assertWithinRelative(String stage, PackedCollection actual, float[] reference,
+										double relativeTolerance) {
+		if (actual.getShape().getTotalSize() != reference.length) {
+			throw new AssertionError(stage + ": computed " + actual.getShape() +
+					" while the reference has " + reference.length + " values");
+		}
+
+		report(stage, actual, reference);
+		assertWithin(stage, actual, reference, relativeTolerance * diffStats(actual, reference)[3]);
 	}
 }

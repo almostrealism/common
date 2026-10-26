@@ -22,7 +22,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Multiple;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryData;
@@ -177,7 +176,7 @@ public class DefaultCollectionEvaluable<T extends PackedCollection>
 	 * </ul>
 	 * 
 	 * <p>For manual shape calculation, the method delegates to
-	 * {@link CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)}
+	 * {@link TraversalPolicy#forKernelLength(int, boolean, int)}
 	 * 
 	 * @param len the total length/size of the destination collection to create.
 	 *            This represents the total number of elements the collection should accommodate
@@ -193,11 +192,8 @@ public class DefaultCollectionEvaluable<T extends PackedCollection>
 			return (Multiple<T>) destinationFactory.apply(len);
 		}
 
-		TraversalPolicy shape =
-				CollectionProducerComputation.shapeForLength(this.shape,
-						this.shape.getCount(),
-						Countable.isFixedCount(getComputation()),
-						len);
+		TraversalPolicy shape = this.shape.forKernelLength(
+				this.shape.getCount(), Countable.isFixedCount(getComputation()), len);
 		return (Multiple<T>) new PackedCollection(shape);
 	}
 

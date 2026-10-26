@@ -30,11 +30,12 @@ import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.collect.computations.Random;
+import org.almostrealism.collect.computations.RandomProducer;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.SingleConstantComputation;
 
 import java.util.List;
+import java.util.Random;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -87,6 +88,50 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 * }</pre>
 	 */
 	default PackedCollection pack(double... values) {
+		return PackedCollection.of(values);
+	}
+
+	/**
+	 * Creates a {@link PackedCollection} from an array of {@code int} values, automatically
+	 * determining the shape from the array length.
+	 *
+	 * <p>This overload is the sanctioned surface for genuine integer data — tokenizer output above
+	 * all — entering the system. Unlike {@link #pack(double...)}, an integer source carries no
+	 * computed floating-point value and therefore cannot launder host-side math onto the device:
+	 * there is nothing in an {@code int} that a producer was meant to have computed. For that
+	 * reason it sits outside the host-ingest policy's scalar allowance that caps the
+	 * double-accepting surfaces. (The lexical policy detector inspects argument <em>syntax</em>,
+	 * not type, so an array argument here may still be reported — a limitation of the detector,
+	 * not a property of this surface.)</p>
+	 *
+	 * <p>Note: This method delegates to {@link PackedCollection#of(int...)}.
+	 *
+	 * @param values the {@code int} values to pack into a collection
+	 * @return a new {@link PackedCollection} containing the specified values
+	 */
+	default PackedCollection pack(int... values) {
+		return PackedCollection.of(values);
+	}
+
+	/**
+	 * Creates a {@link PackedCollection} from an array of {@code long} values, automatically
+	 * determining the shape from the array length.
+	 *
+	 * <p>Like {@link #pack(int...)}, this overload is for genuine integer data entering the system
+	 * and sits outside the host-ingest policy's scalar allowance for the same reason.</p>
+	 *
+	 * <p><b>Precision.</b> The backing storage is {@code double}, which represents integers exactly
+	 * only within {@code [-2^53, 2^53]}. A {@code long} beyond that range is rejected with an
+	 * {@link IllegalArgumentException} rather than silently rounded; token ids and comparable
+	 * integer data are far below the limit.</p>
+	 *
+	 * <p>Note: This method delegates to {@link PackedCollection#of(long...)}.
+	 *
+	 * @param values the {@code long} values to pack into a collection
+	 * @return a new {@link PackedCollection} containing the specified values
+	 * @throws IllegalArgumentException if any value's magnitude exceeds {@code 2^53}
+	 */
+	default PackedCollection pack(long... values) {
 		return PackedCollection.of(values);
 	}
 
@@ -652,28 +697,30 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 * with the specified dimensions.
 	 *
 	 * @param dims the dimensions of the random collection
-	 * @return a Random producer with uniform distribution
+	 * @return a random producer with uniform distribution
 	 */
-	default Random rand(int... dims) { return rand(shape(dims)); }
+	default RandomProducer rand(int... dims) { return rand(shape(dims)); }
 
 	/**
 	 * Creates a producer for a collection of uniformly-distributed random values in [0, 1)
 	 * with the specified shape.
 	 *
 	 * @param shape the shape of the random collection
-	 * @return a Random producer with uniform distribution
+	 * @return a random producer with uniform distribution
 	 */
-	default Random rand(TraversalPolicy shape) { return new Random(shape); }
+	default RandomProducer rand(TraversalPolicy shape) { return rand(shape, null); }
 
 	/**
 	 * Creates a producer for uniformly-distributed random values using the given source.
 	 *
 	 * @param shape  the shape of the random collection
-	 * @param source the Java Random source to use for reproducibility
-	 * @return a Random producer with uniform distribution using the given source
+	 * @param source the source that seeds the generator, for reproducibility, or null for an
+	 *               unseeded generator
+	 * @return a random producer with uniform distribution using the given source
+	 * @see RandomProducer#create(TraversalPolicy, boolean, Random)
 	 */
-	default Random rand(TraversalPolicy shape, java.util.Random source) {
-		return new Random(shape, false, source);
+	default RandomProducer rand(TraversalPolicy shape, Random source) {
+		return RandomProducer.create(shape, false, source);
 	}
 
 	/**
@@ -681,32 +728,29 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 * with the specified dimensions.
 	 *
 	 * @param dims the dimensions of the random collection
-	 * @return a Random producer with standard normal distribution
+	 * @return a random producer with standard normal distribution
 	 */
-	default Random randn(int... dims) { return randn(shape(dims)); }
+	default RandomProducer randn(int... dims) { return randn(shape(dims)); }
 
 	/**
 	 * Creates a producer for standard normal (mean=0, std=1) random values
 	 * with the specified shape.
 	 *
 	 * @param shape the shape of the random collection
-	 * @return a Random producer with standard normal distribution
+	 * @return a random producer with standard normal distribution
 	 */
-	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
+	default RandomProducer randn(TraversalPolicy shape) { return randn(shape, null); }
 
 	/**
 	 * Creates a producer for standard normal random values using the given source.
 	 *
 	 * @param shape  the shape of the random collection
-	 * @param source the Java Random source to use, or null for the default source
-	 * @return a Random producer with standard normal distribution using the given source
+	 * @param source the source that seeds the generator, or null for an unseeded generator
+	 * @return a random producer with standard normal distribution using the given source
+	 * @see RandomProducer#create(TraversalPolicy, boolean, Random)
 	 */
-	default Random randn(TraversalPolicy shape, java.util.Random source) {
-		if (source != null) {
-			return new Random(shape, true, source);
-		}
-
-		return new Random(shape, true);
+	default RandomProducer randn(TraversalPolicy shape, Random source) {
+		return RandomProducer.create(shape, true, source);
 	}
 
 	/**
@@ -732,7 +776,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 * @param source the Java Random source to use, or null for the default source
 	 * @return a CollectionProducer for normally-distributed random values
 	 */
-	default CollectionProducer randn(TraversalPolicy shape, double mean, double std, java.util.Random source) {
+	default CollectionProducer randn(TraversalPolicy shape, double mean, double std, Random source) {
 		if (mean == 0.0 && std == 1.0) {
 			return randn(shape, source);
 		} else if (mean == 0.0) {

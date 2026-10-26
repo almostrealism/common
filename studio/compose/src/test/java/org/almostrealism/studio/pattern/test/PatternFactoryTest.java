@@ -26,9 +26,12 @@ import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.music.notes.FileNoteSource;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.music.notes.TreeNoteSource;
+import org.almostrealism.audio.tone.KeyPosition;
+import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.music.pattern.ChordProgressionManager;
 import org.almostrealism.music.pattern.NoteAudioChoiceList;
 import org.almostrealism.music.pattern.PatternLayerManager;
@@ -37,7 +40,7 @@ import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.util.TestSuiteBase;
-import org.junit.Assume;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -68,14 +71,46 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	/**
-	 * Test that pattern choices can be read from file and re-serialized.
+	 * Test that the curated pattern choices can be read with a plain mapper and re-serialized.
+	 * The curated pattern factory is required on every host meant to carry it, so this fails
+	 * rather than skips on a GPU host or a host that declares {@code AR_RINGS_PATTERNS}.
 	 */
 	@Test(timeout = 30_000)
 	public void fixChoices() throws IOException {
-		Assume.assumeTrue("pattern-factory.json required",
-				new File("pattern-factory.json").exists() || new File("pattern-factory.json.old").exists());
-		List<NoteAudioChoice> choices = readChoices();
+		File patternFactory = new File(AudioSceneTestBase.PATTERN_FACTORY);
+		requireResource("curated pattern factory " + patternFactory.getAbsolutePath(),
+				"AR_RINGS_PATTERNS", patternFactory.isFile());
+		List<NoteAudioChoice> choices = readChoices(patternFactory);
+		Assert.assertFalse("no pattern choices were read from " + patternFactory, choices.isEmpty());
 		new ObjectMapper().writeValue(new File("pattern-factory-new.json"), choices);
+	}
+
+	/**
+	 * A plain {@link ObjectMapper}, with no {@code KeyPosition} deserializer registered,
+	 * must still be able to read a note source whose {@code root} is a {@code KeyPosition}.
+	 * This reproduces the {@code fixChoices} failure on hosts that carry the pattern factory
+	 * file without depending on that host-local resource: the {@code root} field is declared
+	 * as the abstract {@link KeyPosition} interface, so {@code setRoot} must narrow it to the
+	 * concrete {@link WesternChromatic} enum for a default mapper to construct it.
+	 */
+	@Test(timeout = 30_000)
+	public void noteSourceRootDeserializes() throws IOException {
+		ObjectMapper mapper = new ObjectMapper();
+		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+		String treeJson = "{\"@type\":\"" + TreeNoteSource.class.getName() + "\",\"root\":\"C1\"}";
+		NoteAudioSource treeSource = mapper.readValue(treeJson, NoteAudioSource.class);
+		Assert.assertTrue(treeSource instanceof TreeNoteSource);
+		KeyPosition<?> treeRoot = ((TreeNoteSource) treeSource).getRoot();
+		Assert.assertTrue(treeRoot instanceof WesternChromatic);
+		Assert.assertEquals(WesternChromatic.C1, treeRoot);
+
+		String fileJson = "{\"@type\":\"" + FileNoteSource.class.getName() + "\",\"source\":\"a.wav\",\"root\":\"C1\"}";
+		NoteAudioSource fileSource = mapper.readValue(fileJson, NoteAudioSource.class);
+		Assert.assertTrue(fileSource instanceof FileNoteSource);
+		KeyPosition<?> fileRoot = ((FileNoteSource) fileSource).getRoot();
+		Assert.assertTrue(fileRoot instanceof WesternChromatic);
+		Assert.assertEquals(WesternChromatic.C1, fileRoot);
 	}
 
 	/**
@@ -127,15 +162,21 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 	 * @throws IOException if reading fails
 	 */
 	public NoteAudioChoiceList readChoices(boolean useOld) throws IOException {
+		File f = new File("pattern-factory.json.old");
+		return readChoices(useOld && f.exists() ? f : new File("pattern-factory.json"));
+	}
+
+	/**
+	 * Reads pattern choices from the given file with a plain mapper.
+	 *
+	 * @param file the pattern-factory file to read
+	 * @return the deserialized choice list
+	 * @throws IOException if reading fails
+	 */
+	public NoteAudioChoiceList readChoices(File file) throws IOException {
 		ObjectMapper mapper = new ObjectMapper();
 		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-		File f = new File("pattern-factory.json.old");
-		if (useOld && f.exists()) {
-			return mapper.readValue(f, NoteAudioChoiceList.class);
-		} else {
-			return mapper.readValue(new File("pattern-factory.json"), NoteAudioChoiceList.class);
-		}
+		return mapper.readValue(file, NoteAudioChoiceList.class);
 	}
 
 	/**
@@ -143,11 +184,14 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 	 */
 	@Test(timeout = 300_000)
 	public void runLayers() throws IOException {
-		Assume.assumeTrue("Library directory required", new File(LIBRARY).exists());
-		Assume.assumeTrue("pattern-factory.json required",
-				new File("pattern-factory.json").exists());
-		Assume.assumeTrue("scene-settings.json required",
-				new File(SystemUtils.getLocalDestination("scene-settings.json")).exists());
+		File patternFactory = new File("pattern-factory.json");
+		requireLocalResource("pattern factory " + patternFactory.getAbsolutePath(), null,
+				patternFactory.exists());
+		File sceneSettings = new File(SystemUtils.getLocalDestination("scene-settings.json"));
+		requireLocalResource("scene settings " + sceneSettings.getAbsolutePath(), null,
+				sceneSettings.exists());
+		requireResource("sample library " + new File(LIBRARY).getAbsolutePath(), "AR_RINGS_LIBRARY",
+				new File(LIBRARY).isDirectory());
 		Frequency bpm = bpm(120);
 
 		int measures = 32;

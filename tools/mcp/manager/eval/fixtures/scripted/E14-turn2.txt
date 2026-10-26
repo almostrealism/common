@@ -1,0 +1,3 @@
+Yes, the drain step does see jobs that are still in the SUBMITTED state; they appear in the `/api/jobs/pending` endpoint the drain script reads [N:drain-note-1].
+BASIS: notes
+CONFLICTS: none

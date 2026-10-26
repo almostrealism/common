@@ -80,10 +80,7 @@ public class EndToEndFineTuningTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void testLoadWeights() throws IOException {
-		if (!Files.exists(WEIGHTS_DIR)) {
-			log("Weights directory not found, skipping test");
-			return;
-		}
+		requireLocalResource("weights directory at " + WEIGHTS_DIR.toAbsolutePath(), null, Files.exists(WEIGHTS_DIR));
 
 		log("Loading weights from: " + WEIGHTS_DIR);
 		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR.toString());
@@ -111,10 +108,7 @@ public class EndToEndFineTuningTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void testCreateLoRAModel() throws IOException {
-		if (!Files.exists(WEIGHTS_DIR)) {
-			log("Weights directory not found, skipping test");
-			return;
-		}
+		requireLocalResource("weights directory at " + WEIGHTS_DIR.toAbsolutePath(), null, Files.exists(WEIGHTS_DIR));
 
 		log("Loading weights...");
 		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR.toString());
@@ -166,11 +160,8 @@ public class EndToEndFineTuningTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void testLoadAutoencoderWeights() throws IOException {
 		Path autoencoderDir = WEIGHTS_DIR.resolve("autoencoder");
-		if (!Files.exists(autoencoderDir)) {
-			log("Autoencoder weights directory not found at " + autoencoderDir);
-			log("Run extract_autoencoder_weights.py to generate these weights.");
-			return;
-		}
+		requireLocalResource("autoencoder weights at " + autoencoderDir.toAbsolutePath()
+				+ " (run extract_autoencoder_weights.py)", null, Files.exists(autoencoderDir));
 
 		log("Loading autoencoder weights from: " + autoencoderDir);
 		StateDictionary encoderDict = new StateDictionary(autoencoderDir.toString());

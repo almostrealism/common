@@ -108,8 +108,8 @@ public class RandomColorGenerator implements ProducerComputation<PackedCollectio
 			PackedCollection baseResult = this.baseRGB.get().evaluate(args);
 			PackedCollection offResult = this.offsetRGB.get().evaluate(args);
 
-			RGB base = baseResult instanceof RGB ? (RGB) baseResult : new RGB(baseResult.toDouble(0), baseResult.toDouble(1), baseResult.toDouble(2));
-			RGB off = offResult instanceof RGB ? (RGB) offResult : new RGB(offResult.toDouble(0), offResult.toDouble(1), offResult.toDouble(2));
+			RGB base = RGB.of(baseResult);
+			RGB off = RGB.of(offResult);
 
 			base.setRed(base.getRed() + Math.random() * off.getRed());
 			base.setGreen(base.getGreen() + Math.random() * off.getGreen());

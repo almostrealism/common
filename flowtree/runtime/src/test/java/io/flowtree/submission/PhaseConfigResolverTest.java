@@ -32,6 +32,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 
 import static org.junit.Assert.assertEquals;
@@ -67,6 +68,61 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
         if (phase != null && override != null) overrides.put(phase, override);
         return new PhaseConfigBundle(def == null ? PhaseConfig.EMPTY : def, overrides);
+    }
+
+    // --- Model validation ----------------------------------------------------
+
+    /**
+     * A current Claude model — Opus 5.5 among them — passes submission-time
+     * validation. This is the check a workstream update or a job submission
+     * hits first, so a model the runner can run must not be rejected here.
+     */
+    @Test(timeout = 5000)
+    public void aCurrentClaudeModelPassesValidation() {
+        for (String model : new String[] {"claude-opus-5-5", "claude-sonnet-5", "opus", "sonnet"}) {
+            PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                    bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, model, null), null, null),
+                    PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+            assertNull("model " + model + " must validate: " + r.error(), r.error());
+        }
+    }
+
+    /**
+     * A model identifier this code has not heard of passes too, as long as
+     * it is an Anthropic one: the runner decides, and it accepts anything
+     * the installed CLI might have gained since this code was written.
+     */
+    @Test(timeout = 5000)
+    public void anUnrecognisedClaudeModelPassesValidation() {
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-opus-9-3", null), null, null),
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+    }
+
+    /**
+     * A runner that cannot be instantiated — the registry's supplier throws,
+     * or yields null — cannot be asked about a model, so validation passes
+     * rather than failing on a runner nobody can question. Regression test:
+     * asking the instance without that guard threw a
+     * {@link NullPointerException} out of submission.
+     */
+    @Test(timeout = 5000)
+    public void aRunnerThatCannotBeInstantiatedDoesNotBlockValidation() {
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                bundle(new PhaseConfig(TEST_RUNNER, "any-model-at-all", null), null, null),
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+    }
+
+    /** A model from another vendor is still rejected, and the error names it. */
+    @Test(timeout = 5000)
+    public void aModelFromAnotherVendorIsRejected() {
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, "gpt-4", null), null, null),
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNotNull(r.error());
+        assertTrue(r.error(), r.error().contains("gpt-4"));
     }
 
     // --- Runner resolution (mirror SubmissionRunnerResolverTest cases) -------
@@ -629,6 +685,56 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals("anthropic", r.forPhase(Phase.REVIEW).provider());
     }
 
+    // --- A registration that says nothing about models -----------------------
+
+    /**
+     * A registration body that mentions neither {@code defaultPhaseConfig}
+     * nor {@code phaseConfigs} — which is every body the CI
+     * {@code register-workstream} job sends — leaves the workstream's bundle
+     * empty. An auto-created workstream must contribute nothing of its own
+     * about runner, model, effort, or provider, so the workspace's defaults
+     * are what every job on it resolves to until somebody adds an override
+     * deliberately.
+     */
+    @Test(timeout = 5000)
+    public void aRegistrationWithoutPhaseConfigLeavesTheWorkstreamEmpty() {
+        Workstream ws = new Workstream();
+        assertTrue("a fresh workstream starts with no phase config",
+                ws.getPhaseConfigBundle().isEmpty());
+
+        String err = PhaseConfigResolver.applyToWorkstream(ws,
+                "{\"defaultBranch\":\"feature/x\",\"baseBranch\":\"master\","
+                        + "\"repoUrl\":\"git@github.com:acme/repo.git\"}");
+
+        assertNull(err);
+        assertTrue("registration must not write a phase config",
+                ws.getPhaseConfigBundle().isEmpty());
+        PhaseConfig def = ws.getPhaseConfigBundle().defaultPhaseConfig();
+        assertNull(def.runner());
+        assertNull(def.model());
+        assertNull(def.effort());
+    }
+
+    /**
+     * The consequence of the above, through the resolver: with the workstream
+     * empty, a workspace-level model is what a job gets. This is the property
+     * the CI registration path depends on — it is asserted here rather than
+     * inferred from the emptiness alone, because emptiness only matters if it
+     * actually lets the workspace layer through.
+     */
+    @Test(timeout = 5000)
+    public void anEmptyWorkstreamLetsTheWorkspaceModelThrough() {
+        PhaseConfigBundle workspace = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, "claude-opus-5-5", "high"), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, workspace);
+        assertNull(r.error());
+        PhaseConfig resolved = r.forPhase(Phase.PRIMARY);
+        assertEquals("claude-opus-5-5", resolved.model());
+        assertEquals("high", resolved.effort());
+        assertEquals(AgentRunnerRegistry.CLAUDE, resolved.runner());
+    }
+
     // --- Clearing semantics for workstream stored configs --------------------
 
     /**
@@ -701,7 +807,7 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
      */
     @Test(timeout = 5000)
     public void clearAllPhaseOverridesOnWorkspace() {
-        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        WorkspaceEntry entry = new WorkspaceEntry();
         entry.setDefaultPhaseConfig(
                 new PhaseConfig(AgentRunnerRegistry.OPENCODE, null, null, "openrouter"));
         Map<String, PhaseConfig> pc = new LinkedHashMap<>();
@@ -723,7 +829,7 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
      */
     @Test(timeout = 5000)
     public void clearDefaultConfigOnWorkspace() {
-        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        WorkspaceEntry entry = new WorkspaceEntry();
         entry.setDefaultPhaseConfig(
                 new PhaseConfig(AgentRunnerRegistry.OPENCODE, null, null, "openrouter"));
         Map<String, PhaseConfig> pc = new LinkedHashMap<>();
@@ -745,7 +851,7 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
      */
     @Test(timeout = 5000)
     public void clearOnePhaseOverrideOnWorkspace() {
-        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        WorkspaceEntry entry = new WorkspaceEntry();
         entry.setDefaultPhaseConfig(
                 new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null));
         Map<String, PhaseConfig> pc = new LinkedHashMap<>();
@@ -904,7 +1010,7 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
                 + "      effort: \"high\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkspaceEntry wsp = config.findWorkspace("almostrealism");
+        WorkspaceEntry wsp = config.findWorkspace("almostrealism");
         assertNotNull("workspace entry must deserialize", wsp);
 
         PhaseConfigBundle workspaceBundle = wsp.toPhaseConfigBundle();

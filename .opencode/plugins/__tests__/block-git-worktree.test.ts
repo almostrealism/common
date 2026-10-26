@@ -18,6 +18,12 @@ const PLUGIN_PATH = path.resolve(HERE, "..", "block-git-worktree.ts")
 const PYTHON_HERE = path.resolve(HERE, "..", "..", "..", ".claude", "hooks", "lib")
 const PYTHON_CORE = path.join(PYTHON_HERE, "git_command_check.py")
 
+// The policy holds only in a FlowTree job session. The plugin's core inherits
+// this process's environment, so the cases below run as a job unless a case
+// clears the marker itself.
+delete process.env.AR_WORKSTREAM_URL
+process.env.AR_FLOWTREE_JOB = "1"
+
 if (!fs.existsSync(PYTHON_CORE)) {
   throw new Error(`shared core not found at ${PYTHON_CORE}`)
 }
@@ -119,6 +125,21 @@ async function run(): Promise<void> {
       threw = e as Error
     }
     expect(threw === null, "non-bash tool should be a no-op")
+  }
+
+  // 5b. Outside a FlowTree job, `git worktree add` is allowed.
+  {
+    const before = hooks["tool.execute.before"]!
+    let threw: Error | null = null
+    delete process.env.AR_FLOWTREE_JOB
+    try {
+      await before({ tool: "bash", sessionID, callID: "interactive-call" }, { args: { command: "git worktree add /tmp/wt" } })
+    } catch (e) {
+      threw = e as Error
+    } finally {
+      process.env.AR_FLOWTREE_JOB = "1"
+    }
+    expect(threw === null, "git worktree add outside a FlowTree job should be allowed")
   }
 
   // -- tool.execute.after ----------------------------------------------------

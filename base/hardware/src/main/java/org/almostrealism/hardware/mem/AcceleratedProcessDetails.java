@@ -19,7 +19,9 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -125,6 +127,10 @@ import java.util.stream.Stream;
  * // -> Listeners run on executor thread pool
  * }</pre>
  *
+ * <p>A thread that reaches {@link #awaitReady()} before an executor thread has taken the
+ * listeners runs them itself instead of parking until one does; whichever thread takes them
+ * first runs them, exactly once.</p>
+ *
  * <h2>Two-stage synchronization: readiness latch vs. completion semaphore</h2>
  *
  * <p>Because {@code apply} returns this process <em>before</em> its {@link #whenReady(Runnable)}
@@ -198,8 +204,10 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * Host-thread readiness latch for the asynchronous {@link #whenReady(Runnable)} mechanism.
 	 *
 	 * <p>This is <em>not</em> the operation's completion. It is counted down by
-	 * {@link #notifyListeners()} once the {@code whenReady} listener has finished running — i.e.
-	 * once the arguments have been processed and the dispatch has been issued (and the
+	 * {@link #runListeners(List)} (on whichever thread takes the listeners: the executor via
+	 * {@link #notifyListeners()}, or the waiter via {@link #runPendingListeners()}) once the
+	 * {@code whenReady} listener has finished running — i.e. once the arguments have been
+	 * processed and the dispatch has been issued (and the
 	 * {@link #semaphore completion semaphore} has been published). Because {@code apply} returns
 	 * the process before that listener runs (it may run later on an {@link Executor} thread),
 	 * callers use {@link #awaitReady()} to block on this latch and guarantee the dispatch has
@@ -218,6 +226,14 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * the time it is read has already fired (so it behaves as an already-completed latch).</p>
 	 */
 	private Semaphore semaphore;
+
+	/**
+	 * The failure raised by a {@link #whenReady(Runnable)} listener, if any. When listeners run
+	 * on an {@link Executor} thread, the failure would otherwise be lost there while the
+	 * {@link #readyLatch} still fires; {@link #awaitReady()} rethrows it on the waiting thread
+	 * so the caller never proceeds to read an output whose dispatch failed.
+	 */
+	private volatile Throwable listenerFailure;
 
 	/** Listeners to notify when all arguments are ready. */
 	private List<Runnable> listeners;
@@ -297,15 +313,33 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * operation's completion; {@code apply} waits on it before returning so the completion from
 	 * {@link #getSemaphore()} is available, and so a chained dependent operation is issued after
 	 * the one it depends on.
+	 *
+	 * <p>An interrupt does not end the wait early: until the latch fires,
+	 * {@link #getSemaphore()} would return the unfired latch rather than the dispatch's
+	 * completion, letting a caller chain or wait on work that has not been issued. The
+	 * interrupt status is restored once the dispatch has been issued.</p>
+	 *
+	 * <p>A listener that is ready to run but has not yet been taken by the {@link #executor} is
+	 * run here, on the waiting thread (see {@link #runPendingListeners()}), so the wait does not
+	 * depend on an executor thread being scheduled.</p>
+	 *
+	 * @throws HardwareException if a {@link #whenReady(Runnable)} listener failed, with that
+	 *                           failure as its cause
 	 */
 	public void awaitReady() {
-		if (readyLatch != null) readyLatch.waitFor();
+		runPendingListeners();
+		if (readyLatch != null) readyLatch.waitForUninterruptibly();
+
+		Throwable failure = listenerFailure;
+		if (failure != null) {
+			throw new HardwareException("Dispatch failed before completion", failure);
+		}
 	}
 
 	/**
 	 * Sets the host-thread {@link #readyLatch readiness latch} that {@link #awaitReady()} blocks
-	 * on. It is counted down by {@link #notifyListeners()} once the {@link #whenReady(Runnable)}
-	 * listener has run and the dispatch has been issued.
+	 * on. It is counted down by {@link #runListeners(List)} once the {@link #whenReady(Runnable)}
+	 * listener has run, on whichever thread took it, and the dispatch has been issued.
 	 *
 	 * @param readyLatch the readiness latch to set
 	 */
@@ -348,6 +382,68 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns true when this invocation holds anything that must be released once its
+	 * completion chain has fired: leased destination buffers, or temporary replacement
+	 * buffers created for its arguments.
+	 *
+	 * @return true when {@link #releaseResources()} has something to release
+	 */
+	public boolean hasResources() {
+		return hasDestinationLeases() || !isEmpty();
+	}
+
+	/**
+	 * Releases everything this invocation holds for the duration of its completion chain:
+	 * the leased destination buffers ({@link #releaseDestinationLeases()}) and the temporary
+	 * buffers its arguments were replaced with
+	 * ({@link MemoryReplacementManager#releaseTemporaries()}). The same condition applies as
+	 * for {@link #releaseDestinationLeases()}: call only once the completion from
+	 * {@link #getSemaphore()} has fired.
+	 *
+	 * <p>Both phases are always attempted: destination-lease callbacks are arbitrary
+	 * {@link Runnable}s and may throw, but a failure returning a lease must not leave the
+	 * temporary replacement buffers unreleased (nor vice versa). The first failure from either
+	 * phase is rethrown once both have run, with any later ones attached to it as suppressed.</p>
+	 */
+	public void releaseResources() {
+		Destroyable.releaseAll(List.<Runnable>of(this::releaseDestinationLeases,
+				replacementManager::releaseTemporaries));
+	}
+
+	/**
+	 * Releases everything this invocation holds after its dispatch failed before publishing a
+	 * completion.
+	 *
+	 * <p>Work submitted before the failure may still be running against the leased and
+	 * temporary buffers, and no completion reaches a caller who could wait for it. It is
+	 * therefore waited for here, actively, before anything is released: a passive callback is
+	 * not enough, because a backend that batches dispatches (Metal) only settles a pending
+	 * dispatch once something commits its command buffer, and on this path nothing else will.
+	 * This host wait happens only when a dispatch has failed.</p>
+	 *
+	 * @param failure  the dispatch failure; a failure of the in-flight work or of the release
+	 *                 is attached to it as suppressed rather than replacing it
+	 * @param inflight the latest work submitted before the failure, or {@code null} if none
+	 */
+	public void releaseResourcesAfterFailure(Throwable failure, Semaphore inflight) {
+		if (!hasResources()) return;
+
+		if (inflight != null) {
+			try {
+				inflight.waitFor();
+			} catch (RuntimeException | Error settled) {
+				if (settled != failure) failure.addSuppressed(settled);
+			}
+		}
+
+		try {
+			releaseResources();
+		} catch (RuntimeException | Error releaseFailure) {
+			if (releaseFailure != failure) failure.addSuppressed(releaseFailure);
+		}
+	}
+
+	/**
 	 * Releases every leased destination buffer back to its reuse slot, exactly once.
 	 *
 	 * <p>Safe to call only when nothing can still read or write the leased buffers —
@@ -356,17 +452,20 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * never called (an invocation that failed before dispatch), the leased slots stay
 	 * checked out and later invocations simply allocate fresh buffers.</p>
 	 *
-	 * <p><b>Lock-ordering hazard (known deadlock).</b> This method acquires the instance monitor,
-	 * and it is invoked from the device-completion callback — on the Metal backend, the
-	 * command-completion pool. Concurrently, {@link #notifyListeners()} holds that same monitor
-	 * while a listener may synchronously block awaiting device completion. When the completion
-	 * being awaited is the very one whose callback runs this method, the completion-pool thread
-	 * blocks on the monitor while the holder waits for that completion — a hard deadlock that
-	 * appears only under concurrent multi-channel dispatch (invisible in small single-op tests).
-	 * The lease/reuse mechanism that makes this release necessary is therefore disabled by
-	 * default; see {@code ProcessDetailsFactory.enableDestinationReuse}
-	 * ({@code AR_HARDWARE_DESTINATION_REUSE}). Re-enabling reuse requires first removing this
-	 * method from the monitor-holding path.</p>
+	 * <p><b>Former lock-ordering hazard.</b> This method acquires the instance monitor and is
+	 * invoked from the device-completion callback — on the Metal backend, the command-completion
+	 * pool. {@link #notifyListeners()} used to hold that same monitor for the entire duration of a
+	 * listener, including a listener that synchronously blocks awaiting device completion; when the
+	 * completion being awaited was the very one whose callback runs this method, the
+	 * completion-pool thread would block on the monitor while the holder waited for that
+	 * completion — a hard deadlock that appeared only under concurrent multi-channel dispatch
+	 * (invisible in small single-op tests). {@link #notifyListeners()} now releases the monitor
+	 * before running listeners, and its callers {@link #checkReady()} and {@link #whenReady(Runnable)}
+	 * likewise release it before invoking {@link #notifyListeners()} instead of holding it
+	 * reentrantly across the call, which removes this hazard on both the synchronous and
+	 * asynchronous dispatch paths; the lease/reuse mechanism remains disabled by default via
+	 * {@code ProcessDetailsFactory.enableDestinationReuse} ({@code AR_HARDWARE_DESTINATION_REUSE})
+	 * pending verification that re-enabling it is safe.</p>
 	 */
 	public void releaseDestinationLeases() {
 		List<Runnable> leases;
@@ -376,9 +475,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 			destinationLeases = null;
 		}
 
-		if (leases != null) {
-			leases.forEach(Runnable::run);
-		}
+		Destroyable.releaseAll(leases);
 	}
 
 	/**
@@ -417,26 +514,121 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * Notifies all registered listeners that arguments are ready.
 	 *
 	 * <p>Executes each listener and counts down the {@link #readyLatch readiness latch} (if set)
-	 * after each execution. This method is synchronized to prevent concurrent notification.</p>
+	 * after each execution. The pending listeners are captured and cleared under the instance
+	 * monitor, but the monitor is released before any listener runs.</p>
 	 *
-	 * <p>Because it is {@code synchronized}, the instance monitor is held for the entire duration
-	 * of every listener — including a listener that synchronously awaits device completion. Any
-	 * work that runs on the device-completion path and needs this same monitor (notably
-	 * {@link #releaseDestinationLeases()}) can therefore deadlock against it; see that method for
-	 * the full hazard.</p>
+	 * <p>A listener may synchronously await device completion (directly, or transitively through a
+	 * nested {@code request()} call chained as an argument of a dependent kernel). Device
+	 * completion is frequently delivered by a callback that itself needs this same monitor (notably
+	 * {@link #releaseDestinationLeases()}, and any completion-driven {@code result()} call on this
+	 * instance) — running listeners while still holding the monitor would block that callback behind
+	 * the very listener that is waiting for it, a hard deadlock. Capturing and clearing the listener
+	 * list under a short-lived lock keeps concurrent notification safe without holding the monitor
+	 * across listener execution.</p>
 	 */
-	private synchronized void notifyListeners() {
-		listeners.forEach(r -> {
+	private void notifyListeners() {
+		runListeners(takeListeners());
+	}
+
+	/**
+	 * Runs, on the calling thread, the listeners that are ready to run but have not yet been
+	 * taken by the {@link #executor}. Called by {@link #awaitReady()}.
+	 *
+	 * <p>With asynchronous hardware, {@link #checkReady()} hands the listeners to the
+	 * {@link #executor} as soon as the arguments are processed, and every caller of
+	 * {@code AcceleratedOperation.apply} then waits in {@link #awaitReady()} for them to have run.
+	 * The waiting thread would do nothing but wait, while an executor thread is woken to issue the
+	 * dispatch and then wakes the waiter in turn &mdash; two cross-thread hand-offs, each costing
+	 * far more than issuing a small kernel. Whichever of the two threads takes the listeners first
+	 * runs them; the other finds none left. Listeners taken here run exactly as on the executor,
+	 * outside this instance's monitor, recording a failure for {@link #awaitReady()} to report and
+	 * counting down the {@link #readyLatch readiness latch}.</p>
+	 *
+	 * <p>Nothing is run before the arguments have been processed, since a listener must never see
+	 * them otherwise (they are then still being delivered, and the delivering thread hands the
+	 * listeners to the executor once the last arrives). Nothing is run when no readiness latch is
+	 * set, since {@link #awaitReady()} then does not wait for the listeners at all, nor on an
+	 * interrupted thread, which waits for the executor exactly as before.</p>
+	 */
+	private void runPendingListeners() {
+		if (readyLatch == null || Thread.currentThread().isInterrupted()) return;
+
+		List<Runnable> pending;
+
+		synchronized (this) {
+			if (arguments == null) return;
+			pending = takeListeners();
+		}
+
+		try {
+			runListeners(pending);
+		} catch (RuntimeException | Error e) {
+			// Recorded by runListeners; awaitReady reports it as it reports an executor's failure
+		}
+	}
+
+	/**
+	 * Captures and clears the pending listeners under the instance monitor, so each listener is
+	 * taken by exactly one thread.
+	 *
+	 * @return the listeners that were pending, possibly none
+	 */
+	private synchronized List<Runnable> takeListeners() {
+		List<Runnable> pending = new ArrayList<>(listeners);
+		listeners.clear();
+		return pending;
+	}
+
+	/**
+	 * Runs the given listeners in order on the calling thread, which must not hold the instance
+	 * monitor (see {@link #notifyListeners()}). The {@link #readyLatch readiness latch} is counted
+	 * down once for each listener that runs, whether or not it completes normally. Every listener
+	 * runs even when an earlier one fails, since these listeners have been taken and no other
+	 * thread will run them; the first failure is recorded for {@link #awaitReady()} to rethrow and
+	 * is rethrown here once all of them have run.
+	 *
+	 * @param pending the listeners to run
+	 */
+	private void runListeners(List<Runnable> pending) {
+		Throwable failure = null;
+
+		for (Runnable r : pending) {
 			try {
 				r.run();
+			} catch (RuntimeException | Error e) {
+				if (failure == null) {
+					failure = e;
+					listenerFailure = e;
+				}
 			} finally {
 				if (readyLatch != null) {
 					readyLatch.countDown();
 				}
 			}
-		});
+		}
 
-		listeners.clear();
+		if (failure instanceof RuntimeException) {
+			throw (RuntimeException) failure;
+		} else if (failure != null) {
+			throw (Error) failure;
+		}
+	}
+
+	/**
+	 * Settles the pending listeners with {@code failure} instead of running them: the failure is
+	 * recorded for {@link #awaitReady()} to rethrow, and the {@link #readyLatch readiness latch}
+	 * is counted down once for each listener discarded, exactly as {@link #notifyListeners()}
+	 * counts it down for a listener that throws.
+	 *
+	 * @param failure the failure that prevents the listeners from running
+	 */
+	private void failListeners(Throwable failure) {
+		List<Runnable> pending = takeListeners();
+
+		listenerFailure = failure;
+		if (readyLatch == null) return;
+
+		pending.forEach(r -> readyLatch.countDown());
 	}
 
 	/**
@@ -448,13 +640,30 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * <li>Notifies listeners either synchronously or asynchronously based on {@link Hardware#isAsync()}</li>
 	 * </ol>
 	 *
-	 * <p>This method is synchronized to ensure atomic check-and-notify behavior.</p>
+	 * <p>The readiness check and argument processing are performed under the instance
+	 * monitor for atomicity, but that monitor is released before {@link #notifyListeners()}
+	 * is invoked &mdash; including on the synchronous ({@code Hardware.isAsync() == false})
+	 * path, where it would otherwise still be held by this method for the whole duration of
+	 * listener execution, reintroducing the same deadlock hazard {@link #notifyListeners()}
+	 * itself already avoids.</p>
+	 *
+	 * <p>If argument processing fails, the listeners can never run, so the failure is settled
+	 * in their place (see {@link #failListeners(Throwable)}) before it is rethrown: otherwise
+	 * a thread in {@link #awaitReady()} would wait for a dispatch that will never be issued,
+	 * and the failure would be lost on whichever thread delivered the last argument.</p>
 	 */
-	protected synchronized void checkReady() {
-		if (!isReady()) return;
+	protected void checkReady() {
+		synchronized (this) {
+			if (!isReady()) return;
 
-		if (arguments == null) {
-			arguments = replacementManager.processArguments(originalArguments);
+			if (arguments == null) {
+				try {
+					arguments = replacementManager.processArguments(originalArguments);
+				} catch (RuntimeException | Error e) {
+					failListeners(e);
+					throw e;
+				}
+			}
 		}
 
 		if (Hardware.getLocalHardware().isAsync()) {
@@ -549,8 +758,11 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 *
 	 * @param r the listener to execute when all arguments are ready
 	 */
-	public synchronized void whenReady(Runnable r) {
-		this.listeners.add(r);
+	public void whenReady(Runnable r) {
+		synchronized (this) {
+			this.listeners.add(r);
+		}
+
 		checkReady();
 	}
 

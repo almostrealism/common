@@ -56,7 +56,7 @@ final class JobCostTracker {
     /**
      * Records {@code costUsd} as additional cost for {@code runnerName}
      * (e.g. {@code "claude"}) and {@code modelKey} (e.g.
-     * {@code "anthropic/claude-sonnet-4-7"}).
+     * {@code "anthropic/claude-sonnet-5"}).
      *
      * @param runnerName runner identifier from {@code AgentRunnerRegistry}
      * @param modelKey   model-key produced by {@code PhaseConfig.toModelKey()}

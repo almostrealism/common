@@ -128,6 +128,22 @@ public interface VectorFeatures extends ScalarFeatures {
 	}
 
 	/**
+	 * Produces one one-hot row per position: row {@code r} is {@code 1.0} at index
+	 * {@code positions[r]} and zero elsewhere. The positions and the class indices are broadcast
+	 * against each other and compared, so the whole matrix is a single computation.
+	 *
+	 * @param length    the length of each row (the number of classes)
+	 * @param positions a producer of the indices to set, one per row
+	 * @return a producer of the one-hot rows, shape {@code (positions, length)}
+	 */
+	default CollectionProducer oneHotRows(int length, Producer<PackedCollection> positions) {
+		int count = shape(positions).getTotalSize();
+		TraversalPolicy grid = shape(1, count, length);
+		return equals(broadcast(grid, 1, positions), broadcast(grid, 2, integers(0, length)),
+				c(1.0), c(0.0)).reshape(shape(count, length));
+	}
+
+	/**
 	 * Creates a {@link CollectionProducer} that produces a constant {@link Vector} value.
 	 * This method creates a computation that returns the values from the provided {@link Vector},
 	 * effectively creating a constant computation that always returns the same values.

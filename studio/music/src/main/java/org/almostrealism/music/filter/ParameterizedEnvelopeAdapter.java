@@ -64,6 +64,12 @@ public abstract class ParameterizedEnvelopeAdapter implements ParameterizedEnvel
 	}
 
 
+	/**
+	 * Returns the operating mode that bounds the envelope times this envelope selects.
+	 * Each subclass narrows the return type to its own mode enumeration.
+	 */
+	public abstract Enum<?> getMode();
+
 	/** Returns the function that selects the attack duration. */
 	public ParameterFunction getAttackSelection() { return attackSelection; }
 

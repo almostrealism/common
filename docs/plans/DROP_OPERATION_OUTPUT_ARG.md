@@ -528,7 +528,7 @@ irreversible flip.
    `CommitCauseMeasurementTest` before and after each behavior-affecting step and
    compare the breakdown (commits/step, host vs. `MAX_OPEN`, top requesters). The
    copy-out policy is Metal-batching-sensitive; a regression here can show up as a
-   changed `mtlBlitCopy`/host-wait profile while correctness tests stay green. See
+   changed `mtlCopy`/host-wait profile while correctness tests stay green. See
    `base/hardware/docs/COMMIT_ATTRIBUTION.md`.
 4. `mcp__ar-build-validator__start_validation` — no new checkstyle/code-policy
    violations.

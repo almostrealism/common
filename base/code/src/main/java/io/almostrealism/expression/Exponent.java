@@ -62,7 +62,7 @@ public class Exponent extends Expression<Double> {
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		OptionalLong l = getChildren().get(0).upperBound(context);
 		OptionalLong r = getChildren().get(1).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {
@@ -117,7 +117,7 @@ public class Exponent extends Expression<Double> {
 	 * @return a simplified or constant-folded expression
 	 */
 	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
-		return Expression.process(create(base.toDouble(), exponent.toDouble()));
+		return create(base.toDouble(), exponent.toDouble()).process();
 	}
 
 	/**

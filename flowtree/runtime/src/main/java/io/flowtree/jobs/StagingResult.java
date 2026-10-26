@@ -58,6 +58,18 @@ public final class StagingResult {
     }
 
     /**
+     * Creates the result of an evaluation that could not run: nothing is
+     * staged, and a single skipped entry names {@code subject} and why.
+     *
+     * @param subject what could not be evaluated, in the place of a file name
+     * @param reason  why the evaluation could not run
+     * @return a result that stages nothing and reports the failure
+     */
+    public static StagingResult unavailable(String subject, String reason) {
+        return new StagingResult(List.of(), List.of(subject + " (" + reason + ")"));
+    }
+
+    /**
      * Returns the files that passed all guardrails and are eligible for staging.
      *
      * @return an unmodifiable list of staged file paths

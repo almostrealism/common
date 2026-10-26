@@ -252,10 +252,21 @@ from workspace_map import (
     _refresh_dispatch_capable_ids,
     _get_dispatch_capable_ids,
     _require_dispatch_capable,
+    _fetch_workstream_entries,
+    _tracker_capability_cache,
+    _refresh_tracker_capabilities,
+    _get_tracker_capabilities,
+    _canonical_tracker_capability,
+    _is_tracker_planner,
+    _tracker_workspace_limit,
+    _require_tracker_record_in_scope,
+    TRACKER_PLANNER,
     _filter_workstreams_by_scope,
-    _filter_tasks_by_scope,
     _pipeline_error,
     _find_workstream,
+    _find_workstream_by_branch,
+    _archived_workstream_error,
+    _archived_branch_error,
 )
 
 # ---------------------------------------------------------------------------
@@ -269,6 +280,13 @@ from prompt_linting import (  # noqa: E402
     _COMMIT_SEQUENCING_PATTERNS,
     _lint_prompt_for_commit_sequencing,
 )
+from execution_limits import (  # noqa: E402
+    POST_COMPLETION_MAX_TIMEOUT_SECONDS,
+    post_completion_gate_violations,
+    validate_post_completion_command,
+    validate_post_completion_timeout,
+)
+from prompt_test_lint import lint_prompt_for_broad_test_instructions  # noqa: E402
 import repo_config  # noqa: E402
 
 # Re-export so existing call sites (pipeline tools, memory tools, tests) work unchanged.
@@ -640,10 +658,15 @@ def _attempt_plan_writing_job(workstream_id: str, instructions: str,
         "any other code changes in this session."
     )
     try:
+        # The plan's pull request opens as a draft: it carries only a plan
+        # awaiting the owner's approval, which marking it ready for review
+        # grants, starting implementation.
         submit_result = workstream_submit_task(
             workstream_id=workstream_id,
             prompt=prompt,
             description="Write planning document",
+            auto_create_pr=True,
+            create_pr_as_draft=True,
         )
     except PermissionError as e:
         return _plan_failed("insufficient_scope", str(e),
@@ -1447,6 +1470,7 @@ from workstream_tools import (  # noqa: E402
 from github_tools import (  # noqa: E402
     github_pr_find,
     github_pr_review_comments,
+    github_pr_reviews,
     github_pr_conversation,
     github_pr_reply,
     github_list_open_prs,

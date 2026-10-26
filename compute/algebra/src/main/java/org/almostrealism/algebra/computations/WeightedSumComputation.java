@@ -24,14 +24,17 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumDeltaExpression;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -61,8 +64,8 @@ import java.util.List;
  * TraversalPolicy weightPos = shape(3, 4);  // Position policy for x
  * TraversalPolicy groupShape = shape(1, 4); // Sum over dimension 1
  *
- * WeightedSumComputation<PackedCollection> matmul =
- *     new WeightedSumComputation<>(
+ * WeightedSumComputation matmul =
+ *     new WeightedSumComputation(
  *         resultShape, inputPos, weightPos,
  *         groupShape, groupShape,
  *         matrixA, vectorX
@@ -75,6 +78,27 @@ import java.util.List;
  */
 public class WeightedSumComputation
 		extends TraversableExpressionComputation {
+
+	// TODO(review): public static mutable config is global state (tests mutate it); consider a settings/property-backed source
+	/**
+	 * Group size at or above which the kernel for a weighted sum is generated as a native
+	 * loop over the group, rather than as one expression that sums every member.
+	 *
+	 * <p>The single-expression form builds, simplifies and renders one product per group
+	 * member, so the cost of compiling it grows with the size of the group: a convolution
+	 * over 1024 channels with a kernel of 7 is a single expression of 7168 products, nearly a
+	 * megabyte of kernel source that takes tens of seconds to generate. The loop form compiles
+	 * a body of at most {@link #maxUnrolledMembers} products whatever the size of the group.
+	 * The setting is read when a weighted sum is constructed and is part of its
+	 * {@link #signature() signature}.</p>
+	 */
+	public static int loopThreshold = 256;
+
+	/**
+	 * Maximum number of group members summed by each iteration of the loop that replaces a
+	 * group of at least {@link #loopThreshold} members.
+	 */
+	public static int maxUnrolledMembers = 16;
 
 	/** The shape of the output collection produced by this computation. */
 	private final TraversalPolicy resultShape;
@@ -98,6 +122,12 @@ public class WeightedSumComputation
 	private final TraversalPolicy weightShape;
 
 	/**
+	 * Number of group members summed by each iteration of the loop the kernel is generated
+	 * as, or zero when the group is summed by a single expression.
+	 */
+	private final int loopMembers;
+
+	/**
 	 * Creates a new weighted sum computation.
 	 *
 	 * @param resultShape  the shape of the result
@@ -116,6 +146,38 @@ public class WeightedSumComputation
 								  TraversalPolicy weightGroupShape,
 								  Producer<PackedCollection> input,
 								  Producer<PackedCollection> weights) {
+		this(resultShape, inputPositions, weightPositions,
+				inputGroupShape, weightGroupShape, input, weights,
+				unrolledLoopMembers(inputGroupShape));
+	}
+
+	/**
+	 * Creates a new weighted sum computation with an explicit loop decision. This is the form
+	 * {@link #generate(List)} uses, so that optimization preserves the number of members each
+	 * loop iteration sums - and hence the kernel form and {@link #signature() signature} - of
+	 * the sum it regenerates, rather than rereading the mutable {@link #loopThreshold}, which a
+	 * concurrently constructed sum may have changed.
+	 *
+	 * @param resultShape  the shape of the result
+	 * @param inputPositions  traversal policy defining how to position input elements
+	 * @param weightPositions  traversal policy defining how to position weight elements
+	 * @param inputGroupShape  group shape for input (dimensions to sum over)
+	 * @param weightGroupShape  group shape for weights (dimensions to sum over)
+	 * @param input  producer for input values
+	 * @param weights  producer for weight values
+	 * @param loopMembers  the number of group members summed by each loop iteration, or zero
+	 *                     when the group is summed by a single expression
+	 * @throws IllegalArgumentException if the traversal policies have incompatible dimensions,
+	 *                                  or the input and weight groups have different total sizes
+	 */
+	private WeightedSumComputation(TraversalPolicy resultShape,
+								   TraversalPolicy inputPositions,
+								   TraversalPolicy weightPositions,
+								   TraversalPolicy inputGroupShape,
+								   TraversalPolicy weightGroupShape,
+								   Producer<PackedCollection> input,
+								   Producer<PackedCollection> weights,
+								   int loopMembers) {
 		super("weightedSum", resultShape.traverseEach(), input, weights);
 		this.resultShape = resultShape;
 		this.inputPositions = inputPositions;
@@ -124,6 +186,7 @@ public class WeightedSumComputation
 		this.weightGroupShape = weightGroupShape;
 		this.inShape = shape(input);
 		this.weightShape = shape(weights);
+		this.loopMembers = loopMembers;
 
 		if (inputPositions.getDimensions() != resultShape.getDimensions() ||
 				weightPositions.getDimensions() != resultShape.getDimensions()) {
@@ -134,10 +197,21 @@ public class WeightedSumComputation
 		} else if (weightPositions.getDimensions() != weightShape.getDimensions() ||
 				weightGroupShape.getDimensions() != weightShape.getDimensions()) {
 			throw new IllegalArgumentException();
+		} else if (weightGroupShape.getTotalSizeLong() != inputGroupShape.getTotalSizeLong()) {
+			// The loop form sums the input group against the weight traversal without
+			// constructing a SubsetTraversalWeightedSumExpression, so the equal-group-size
+			// contract that expression enforces is applied here for both kernel forms.
+			throw new IllegalArgumentException();
 		}
 
 		// Refresh the signature captured before the traversal policies were assigned
 		init();
+	}
+
+	/** A weighted sum reduces each group of input elements to a single output. */
+	@Override
+	public boolean isReduction() {
+		return true;
 	}
 
 	/**
@@ -145,9 +219,11 @@ public class WeightedSumComputation
 	 * that determine the generated kernel. The position and group policies are
 	 * not derivable from the input and output shapes alone, so two weighted
 	 * sums over identically shaped operands would otherwise share a signature
-	 * while generating different kernels. Position policies are constructed
-	 * with per-axis rates, which their standard descriptions omit, so the
-	 * rates are rendered explicitly here.
+	 * while generating different kernels. Each policy contributes its
+	 * {@link TraversalPolicy#signature() signature}, which includes the
+	 * per-axis rates position policies are constructed with, and the number
+	 * of members summed by each iteration is appended when the kernel is
+	 * generated as a loop.
 	 *
 	 * @return The signature string, or null when the base signature is unavailable
 	 */
@@ -168,17 +244,86 @@ public class WeightedSumComputation
 		};
 
 		for (TraversalPolicy policy : policies) {
-			detail.append("{").append(policy.toStringDetail());
+			detail.append("{").append(policy.signature()).append("}");
+		}
 
-			for (int i = 0; i < policy.getDimensions(); i++) {
-				detail.append("|").append(policy.rateNumeratorLong(i))
-						.append(":").append(policy.rateDenominatorLong(i));
-			}
-
-			detail.append("}");
+		if (isLooped()) {
+			detail.append("{loop:").append(loopMembers).append("}");
 		}
 
 		return detail.toString();
+	}
+
+	/**
+	 * Returns true when the kernel for this weighted sum is generated as a native loop over
+	 * its group rather than as a single expression; see {@link #loopThreshold}.
+	 *
+	 * @return true if the group is summed by a loop
+	 */
+	public boolean isLooped() { return loopMembers > 0; }
+
+	/**
+	 * Returns the number of iterations of the loop that sums the group, when the group has at
+	 * least {@link #loopThreshold} members, each iteration summing the members that span the
+	 * trailing dimensions of the group (at most {@link #maxUnrolledMembers} of them).
+	 *
+	 * @return the number of loop iterations, or zero when the group is summed by a single expression
+	 */
+	@Override
+	protected int getAccumulationCount() {
+		return isLooped() ? Math.toIntExact(inputGroupShape.getTotalSizeLong() / loopMembers) : 0;
+	}
+
+	/**
+	 * Returns the sum of the products of the group members that one iteration of the loop
+	 * contributes to an output element: members {@code iteration * loopMembers} through
+	 * {@code iteration * loopMembers + loopMembers - 1}, each located in the input and the
+	 * weights by the same {@link SubsetTraversalExpression traversals} that locate it in the
+	 * single-expression form.
+	 *
+	 * @param index     the index of the output element
+	 * @param iteration the index of the loop iteration
+	 * @return the partial weighted sum contributed by the iteration
+	 */
+	@Override
+	protected Expression<?> getAccumulationTerm(Expression<?> index, Expression<?> iteration) {
+		TraversableExpression[] args = getTraversableArguments(index);
+		SubsetTraversalExpression input = getInputTraversal();
+		SubsetTraversalExpression weights = getWeightsTraversal();
+
+		Expression<?> sum = e(0.0);
+		for (int m = 0; m < loopMembers; m++) {
+			Expression<?> member = iteration.multiply(loopMembers).add(m);
+			sum = sum.add(args[1].getValueAt(input.getInputIndex(member, index))
+					.multiply(args[2].getValueAt(weights.getInputIndex(member, index))));
+		}
+
+		return sum;
+	}
+
+	/**
+	 * Returns the number of group members each iteration of the loop sums, or zero when the
+	 * group is smaller than {@link #loopThreshold} and is summed by a single expression. The
+	 * members of one iteration span the trailing dimensions of the group, taken from the last
+	 * dimension backwards for as long as their product does not exceed
+	 * {@link #maxUnrolledMembers}, so the position of each member within the group is a
+	 * constant offset from the position of the iteration.
+	 *
+	 * @param inputGroupShape  the shape of one group (the dimensions summed over)
+	 * @return the members summed by each iteration, or zero for a single expression
+	 */
+	private static int unrolledLoopMembers(TraversalPolicy inputGroupShape) {
+		long size = inputGroupShape.getTotalSizeLong();
+		if (size < loopThreshold) return 0;
+
+		long members = 1;
+		for (int axis = inputGroupShape.getDimensions() - 1; axis >= 0; axis--) {
+			long extended = members * inputGroupShape.lengthLong(axis);
+			if (extended > maxUnrolledMembers) break;
+			members = extended;
+		}
+
+		return members < size ? Math.toIntExact(members) : 0;
 	}
 
 	/**
@@ -243,41 +388,172 @@ public class WeightedSumComputation
 				inputPositions, weightPositions,
 				inputGroupShape, weightGroupShape,
 				(Producer) children.get(1),
-				(Producer) children.get(2));
+				(Producer) children.get(2),
+				loopMembers);
 	}
 
 	/**
-	 * Computes the delta (gradient) of this weighted sum with respect to a target.
+	 * Differentiates this weighted sum, which is bilinear in its input and its weights.
 	 *
-	 * <p>
-	 * This method implements automatic differentiation for weighted sums:
+	 * <p>The Jacobian ({@link ReduceAxis#NONE}) with respect to an operand that the other
+	 * operand cannot depend on is that operand's {@link WeightedSumDeltaExpression}. The
+	 * {@link ReduceAxis reduced} delta is the sum of the reductions passed on to each operand
+	 * that may depend on the target:</p>
 	 * <ul>
-	 *   <li>If target matches the input and not weights: returns gradient w.r.t. input</li>
-	 *   <li>If target matches the weights and not input: returns gradient w.r.t. weights</li>
-	 *   <li>Otherwise: delegates to superclass</li>
+	 *   <li>{@link ReduceAxis#IN}: the weighted sum of each operand's own input-reduced delta
+	 *       with the other operand, by the same traversal as this one.</li>
+	 *   <li>{@link ReduceAxis#OUT}: each operand's output-reduced delta, weighted by the
+	 *       {@link #transposedSum transposed} weighted sum of the upstream gradient with the other
+	 *       operand.</li>
 	 * </ul>
-	 * </p>
-	 *
-	 * @param target  the target producer to differentiate with respect to
-	 * @return the delta computation
+	 * <p>When the input and the weights are the same producer, or the output-reduced delta
+	 * has a traversal that cannot be transposed, the general implementation is used.</p>
 	 */
 	@Override
-	public CollectionProducer delta(Producer<?> target) {
-		if (AlgebraFeatures.match(getInputs().get(1), target) && AlgebraFeatures.cannotMatch(getInputs().get(2), target)) {
-			return new DefaultTraversableExpressionComputation("weightedSumDelta",
-					getShape().append(shape(target)),
-					args ->
-							new WeightedSumDeltaExpression(getShape(), shape(target), getInputTraversal(), getWeightsTraversal(), args[1]),
-					getInputs().get(2));
-		} else if (AlgebraFeatures.match(getInputs().get(2), target) && AlgebraFeatures.cannotMatch(getInputs().get(1), target)) {
-			return new DefaultTraversableExpressionComputation("weightedSumDelta",
-					getShape().append(shape(target)),
-					args ->
-							new WeightedSumDeltaExpression(getShape(), shape(target), getWeightsTraversal(), getInputTraversal(), args[1]),
-					getInputs().get(1));
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		Producer<PackedCollection> input = getInputs().get(1);
+		Producer<PackedCollection> weights = getInputs().get(2);
+
+		if (axis == ReduceAxis.NONE) {
+			if (input.refersTo(target) && weights.cannotMatch(target)) {
+				return new DefaultTraversableExpressionComputation("weightedSumDelta",
+						getShape().append(shape(target)),
+						args ->
+								new WeightedSumDeltaExpression(getShape(), shape(target), getInputTraversal(), getWeightsTraversal(), args[1]),
+						weights);
+			} else if (weights.refersTo(target) && input.cannotMatch(target)) {
+				return new DefaultTraversableExpressionComputation("weightedSumDelta",
+						getShape().append(shape(target)),
+						args ->
+								new WeightedSumDeltaExpression(getShape(), shape(target), getWeightsTraversal(), getInputTraversal(), args[1]),
+						input);
+			}
+
+			return super.deltaDependent(target, axis, weight);
+		} else if (input.equals(weights)) {
+			return super.deltaDependent(target, axis, weight);
 		}
 
-		return super.delta(target);
+		CollectionProducer gradient = axis == ReduceAxis.IN ? null :
+				(weight == null ? constant(resultShape.extentShape().traverse(0), 1.0) :
+						c(weight).reshape(resultShape.extentShape().traverse(0)));
+		List<Producer<?>> terms = new ArrayList<>();
+
+		for (int operand = 1; operand <= 2; operand++) {
+			Producer<PackedCollection> producer = getInputs().get(operand);
+			if (producer.cannotMatch(target)) continue;
+
+			TraversalPolicy shape = operand == 1 ? inShape : weightShape;
+
+			if (axis == ReduceAxis.IN) {
+				terms.add(replaceInput(producer, reshape(shape, c(producer).delta(target, axis, weight))));
+			} else {
+				CollectionProducer local = transposedSum(operand == 1, gradient);
+				if (local == null) return super.deltaDependent(target, axis, weight);
+				terms.add(c(producer).delta(target, axis, local.reshape(shape)));
+			}
+		}
+
+		if (terms.isEmpty()) return super.deltaDependent(target, axis, weight);
+		return terms.size() == 1 ? (CollectionProducer) terms.get(0) : add(terms);
 	}
 
+	/**
+	 * Returns the vector-Jacobian product of this weighted sum with respect to one of its
+	 * operands, holding the other constant: the gradient of each element of that operand
+	 * is the sum, over every output and group member that reads it, of the upstream
+	 * gradient of the output times the matching element of the other operand.
+	 *
+	 * <p>This is itself a weighted sum, of the upstream gradient with the other operand,
+	 * when the input and weight groups have the same shape and every axis of both operands
+	 * either follows the result (a group of one, at the position of the output along that
+	 * axis) or is covered by the group (anchored at zero, the group spanning the operand).
+	 * Along an axis that the operand follows, each gradient element is reached by exactly
+	 * one output; along an axis the group covers, the gradient sums over the outputs. The
+	 * matrix multiply, broadcast sums and scaled dot products have this form; a sliding
+	 * window, such as a convolution's, does not, and no transposed sum is formed for it.</p>
+	 *
+	 * @param wrtInput true for the gradient with respect to the input, false for the weights
+	 * @param gradient the upstream gradient, in the shape of the result
+	 * @return the gradient with respect to the operand, in its shape, or null when the
+	 *         traversal cannot be transposed into a weighted sum
+	 */
+	protected CollectionProducer transposedSum(boolean wrtInput, CollectionProducer gradient) {
+		TraversalPolicy positions = wrtInput ? inputPositions : weightPositions;
+		TraversalPolicy group = wrtInput ? inputGroupShape : weightGroupShape;
+		TraversalPolicy shape = wrtInput ? inShape : weightShape;
+		TraversalPolicy otherPositions = wrtInput ? weightPositions : inputPositions;
+		TraversalPolicy otherGroup = wrtInput ? weightGroupShape : inputGroupShape;
+		TraversalPolicy otherShape = wrtInput ? weightShape : inShape;
+
+		if (positions.isPermuted() || otherPositions.isPermuted() ||
+				!Arrays.equals(group.extentLong(), otherGroup.extentLong())) {
+			return null;
+		}
+
+		TraversalPolicy result = shape.extentShape().traverse(0);
+		TraversalPolicy gradientPositions = result;
+		TraversalPolicy operandPositions = result;
+		long[] members = new long[result.getDimensions()];
+
+		for (int axis = 0; axis < members.length; axis++) {
+			boolean follows = followsResult(positions, group, shape, axis);
+			boolean otherFollows = followsResult(otherPositions, otherGroup, otherShape, axis);
+			if (!follows && !coversAxis(positions, group, shape, axis)) return null;
+			if (!otherFollows && !coversAxis(otherPositions, otherGroup, otherShape, axis)) return null;
+
+			long anchored = result.lengthLong(axis);
+
+			if (follows) {
+				members[axis] = 1;
+				if (!otherFollows) operandPositions = operandPositions.withRate(axis, 1, anchored);
+			} else {
+				members[axis] = resultShape.lengthLong(axis);
+				gradientPositions = gradientPositions.withRate(axis, 1, anchored);
+
+				if (otherFollows) {
+					operandPositions = operandPositions.withRate(axis, 1, anchored);
+				} else if (members[axis] != 1) {
+					return null;
+				}
+			}
+		}
+
+		TraversalPolicy memberShape = new TraversalPolicy(members);
+		return new WeightedSumComputation(result, gradientPositions, operandPositions,
+				memberShape, memberShape, gradient, getInputs().get(wrtInput ? 2 : 1));
+	}
+
+	/**
+	 * Indicates whether an operand follows the result along an axis: each output reads the
+	 * element of the operand at its own position along that axis, and nothing else.
+	 *
+	 * @param positions the positions of the operand's groups
+	 * @param group     the operand's group shape
+	 * @param shape     the operand's shape
+	 * @param axis      the axis
+	 * @return true if the operand follows the result along the axis
+	 */
+	private boolean followsResult(TraversalPolicy positions, TraversalPolicy group,
+								  TraversalPolicy shape, int axis) {
+		return positions.rateNumeratorLong(axis) == 1 && positions.rateDenominatorLong(axis) == 1 &&
+				group.lengthLong(axis) == 1 && shape.lengthLong(axis) == resultShape.lengthLong(axis);
+	}
+
+	/**
+	 * Indicates whether an operand's group covers an axis: every output reads all of the
+	 * operand along that axis, from a group anchored at zero.
+	 *
+	 * @param positions the positions of the operand's groups
+	 * @param group     the operand's group shape
+	 * @param shape     the operand's shape
+	 * @param axis      the axis
+	 * @return true if the group spans the operand along the axis for every output
+	 */
+	private boolean coversAxis(TraversalPolicy positions, TraversalPolicy group,
+							   TraversalPolicy shape, int axis) {
+		long furthest = (resultShape.lengthLong(axis) - 1) / positions.rateDenominatorLong(axis)
+				* positions.rateNumeratorLong(axis);
+		return furthest == 0 && group.lengthLong(axis) == shape.lengthLong(axis);
+	}
 }

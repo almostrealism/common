@@ -1,0 +1,264 @@
+name: "Goal Decomposition"
+
+# The decomposition round of goal-driven release automation, as a reusable
+# workflow. A repository that opts in calls it from its own workflow; this
+# repository holds every step, script and prompt, so no consumer keeps a copy
+# of the job-submission machinery.
+#
+# What it does: reads the calling repository's goals document and the plan
+# for its next release, and submits a FlowTree agent job that creates or
+# updates the tracker tasks that release needs — in the caller's tracker
+# project, or in the framework's when the work is a general capability.
+# Planning rounds in each repository then claim those tasks one at a time.
+#
+# The workstream holds the tracker "planner" role: the agent creates tasks
+# straight into the "ready" stage, sets their project, release, priority,
+# source and blocked_by, and creates the release when it does not exist yet,
+# all with the general tracker tools. The role would also let it edit any
+# task in the workspace; the prompt confines it to the tasks whose source
+# carries this repository's own "goals:<owner>/<repo>/" prefix, and forbids
+# changing the stage or status of an existing task.
+#
+# A consumer's caller looks like this. The caller owns the trigger: it runs on
+# a push to the default branch that changes the goals, the release plans or
+# the version file, and on a manual dispatch. This workflow refuses to run on
+# any other branch, because the tasks it creates are ready to plan at once,
+# which is only right for documents already approved into the default branch.
+#
+#   on:
+#     push:
+#       branches: [master]
+#       paths: ["docs/GOALS.md", "docs/plans/**", "version.txt"]
+#     workflow_dispatch:
+#   jobs:
+#     decompose:
+#       uses: almostrealism/common/.github/workflows/goal-decomposition.yaml@master
+#       permissions:
+#         contents: write
+#       with:
+#         project: "<tracker project>"
+#         version-file: version.txt
+#         cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+#       secrets:
+#         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+#
+# Trust: a plain checkout inside a called workflow fetches the *caller's*
+# repository. Every script here therefore runs from an explicit checkout of
+# the framework repository at framework-ref, never from the caller's tree,
+# the same rule Verify Completion follows for the scripts that hold the
+# controller credentials.
+#
+# The agent works on one standing workstream per repository
+# (workstream-branch; the orchestration/ prefix keeps it from ever being
+# archived). Each run moves that branch to the commit being reconciled, so the
+# agent reads exactly the documents that triggered it. It changes no files:
+# its output is tracker tasks and a summary message on the workstream.
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: "Tracker project of the calling repository"
+        required: true
+        type: string
+      version-file:
+        description: "File holding the next version; a pom.xml is read as its project version, anything else as plain text"
+        required: false
+        default: "pom.xml"
+        type: string
+      goals-document:
+        description: "Long-term goals document"
+        required: false
+        default: "docs/GOALS.md"
+        type: string
+      plans-directory:
+        description: "Directory holding one release-plan directory per version, each with a PLAN.md"
+        required: false
+        default: "docs/plans"
+        type: string
+      framework-project:
+        description: "Tracker project of the framework"
+        required: false
+        default: "Common"
+        type: string
+      framework-version-property:
+        description: "Property in the caller's root pom.xml that pins the framework version"
+        required: false
+        default: "common.version"
+        type: string
+      framework-repository:
+        description: "The framework repository, owner/name: where the scripts come from, and checked out beside the caller for the agent"
+        required: false
+        default: "almostrealism/common"
+        type: string
+      framework-ref:
+        description: "Framework branch the scripts are run from and the agent reads"
+        required: false
+        default: "master"
+        type: string
+      max-new-tasks:
+        description: "Most new tasks one run may create"
+        required: false
+        default: 20
+        type: number
+      workstream-branch:
+        description: "Branch of the standing workstream the agent works on"
+        required: false
+        default: "orchestration/goal-decomposition"
+        type: string
+      controller-url:
+        description: "FlowTree controller base URL"
+        required: false
+        default: "https://flowtree.almostrealism.ai"
+        type: string
+      cf-access-client-id:
+        description: "Cloudflare Access service token client ID for the controller"
+        required: false
+        default: ""
+        type: string
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET:
+        description: "Cloudflare Access service token client secret for the controller"
+        required: false
+
+jobs:
+  decompose:
+    # Only the default branch carries approved documents. ref_name alone is
+    # shared by branches and tags, so a tag named after the default branch
+    # would satisfy it; ref_type pins this to the branch.
+    if: github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    # One decomposition run at a time per repository, so two merges landing
+    # together reconcile one after the other instead of both creating the same
+    # task. Not cancelled: a run part-way through its submission should finish.
+    concurrency:
+      group: goal-decomposition-${{ github.repository }}
+      cancel-in-progress: false
+
+    env:
+      FRAMEWORK: ${{ github.workspace }}/.goal-decomposition/framework
+      # A caller passing an unset repository variable sends an empty string,
+      # which replaces the input's default rather than falling back to it.
+      CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+      CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+      WORKSTREAM_BRANCH: ${{ inputs.workstream-branch }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+    steps:
+      - name: Checkout the repository being reconciled
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The trusted copy of every script this job runs.
+      - name: Checkout the framework
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.framework-repository }}
+          ref: ${{ inputs.framework-ref }}
+          path: .goal-decomposition/framework
+          persist-credentials: false
+
+      - name: Resolve the release and its plan
+        id: scope
+        env:
+          TRACKER_PROJECT: ${{ inputs.project }}
+          VERSION_FILE: ${{ inputs.version-file }}
+          GOALS_DOCUMENT: ${{ inputs.goals-document }}
+          PLANS_DIRECTORY: ${{ inputs.plans-directory }}
+          FRAMEWORK_PROJECT: ${{ inputs.framework-project }}
+          FRAMEWORK_VERSION_PROPERTY: ${{ inputs.framework-version-property }}
+        run: bash "$FRAMEWORK/tools/ci/resolve-release-scope.sh"
+
+      # Ask before creating anything: a run the controller will refuse would
+      # move the workstream branch and register a workstream for nothing. See
+      # tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        if: steps.scope.outputs.in_scope == 'true'
+        env:
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: bash "$FRAMEWORK/tools/ci/automated-intake.sh"
+
+      # The workstream branch holds exactly the commit being reconciled.
+      - name: Move the workstream branch to this commit
+        if: steps.intake.outputs.open == 'true'
+        run: git push --force origin "HEAD:refs/heads/${WORKSTREAM_BRANCH}"
+
+      - name: Register the goal-decomposition workstream
+        if: steps.intake.outputs.open == 'true'
+        env:
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ inputs.workstream-branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          TRACKER_CAPABILITIES: "planner"
+          # The framework beside the application, so the agent can tell where
+          # a task belongs. Nothing to add when the caller is the framework.
+          DEPENDENT_REPOS: ${{ inputs.framework-repository != github.repository && format('git@github.com:{0}.git', inputs.framework-repository) || '' }}
+        run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
+
+      - name: Build the goal-decomposition prompt
+        if: steps.intake.outputs.open == 'true'
+        env:
+          BRANCH: ${{ inputs.workstream-branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPOSITORY: ${{ github.repository }}
+          TRACKER_PROJECT: ${{ inputs.project }}
+          TRACKER_RELEASE: ${{ steps.scope.outputs.release }}
+          GOALS_DOCUMENT: ${{ inputs.goals-document }}
+          PLAN_DIRECTORY: ${{ steps.scope.outputs.plan_directory }}
+          RELEASE_PLAN: ${{ steps.scope.outputs.release_plan }}
+          FRAMEWORK_PROJECT: ${{ inputs.framework-project }}
+          FRAMEWORK_RELEASE: ${{ steps.scope.outputs.framework_release }}
+          FRAMEWORK_REPOSITORY: ${{ inputs.framework-repository }}
+          FRAMEWORK_BRANCH: ${{ inputs.framework-ref }}
+          SOURCE_PREFIX: goals:${{ github.repository }}/
+          MAX_NEW_TASKS: ${{ inputs.max-new-tasks }}
+        run: bash "$FRAMEWORK/tools/ci/prompts/build-goal-decomposition-prompt.sh" "${{ runner.temp }}/agent-prompt.txt"
+
+      # No model, runner or effort settings: the job takes the workspace
+      # defaults. It changes no files, so it neither enforces changes nor
+      # opens a pull request.
+      - name: Submit the goal-decomposition job
+        if: steps.intake.outputs.open == 'true'
+        env:
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ inputs.workstream-branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          DESCRIPTION: "Reconcile release tasks with the release plan"
+          AUTO_CREATE_PR: "false"
+          ENFORCE_CHANGES: "false"
+          PROTECT_TEST_FILES: "false"
+        run: bash "$FRAMEWORK/tools/ci/submit-agent-job.sh" "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        env:
+          RELEASE: ${{ steps.scope.outputs.release }}
+          FRAMEWORK_RELEASE: ${{ steps.scope.outputs.framework_release }}
+          RELEASE_PLAN: ${{ steps.scope.outputs.release_plan }}
+          IN_SCOPE: ${{ steps.scope.outputs.in_scope }}
+          INTAKE: ${{ steps.intake.outputs.open }}
+        run: |
+          {
+            echo "## Goal Decomposition"
+            echo ""
+            echo "**Release:** ${RELEASE:-unknown}"
+            echo "**Framework release:** ${FRAMEWORK_RELEASE:-unknown}"
+            echo "**Release plan:** ${RELEASE_PLAN:-unknown} (present: ${IN_SCOPE:-not checked})"
+            echo "**Automated intake open:** ${INTAKE:-not checked}"
+            echo ""
+            if [ "$IN_SCOPE" != "true" ]; then
+              echo "Nothing to reconcile: the release has no plan yet."
+            elif [ "$INTAKE" != "true" ]; then
+              echo "No goal-decomposition job submitted: the controller is not accepting automated jobs, or could not be asked."
+            else
+              echo "Submitted a goal-decomposition job on \`${WORKSTREAM_BRANCH}\` to reconcile the release's tasks with its plan."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

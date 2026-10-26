@@ -87,7 +87,7 @@ public class OperationDispatchBatchingTests extends TestSuiteBase {
 	 * command buffer's completion forever in {@code MTL.waitUntilCompleted}, hanging the whole run. A
 	 * single operation always completed; two were the minimal trigger. The fix wraps each executor
 	 * task in its own autorelease pool and retains the command buffer explicitly across tasks (see
-	 * {@code MetalCommandRunner.runInPool} and {@code MTLCommandBuffer.release}). This test is small
+	 * {@code MTLAutoreleasePool.run} and {@code MTLCommandBuffer.release}). This test is small
 	 * and fast on purpose, and its short timeout makes any recurrence fail fast instead of hanging
 	 * the suite. (Only meaningful on the Metal backend; on synchronous backends it passes trivially.)
 	 */

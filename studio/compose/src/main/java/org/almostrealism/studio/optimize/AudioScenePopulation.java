@@ -37,6 +37,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -145,6 +146,21 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 * downstream consumers (e.g. {@code StableDurationHealthComputation}) must use this same
 	 * value as their iteration size.
 	 *
+	 * <p>A runner retained from an earlier {@code init(...)} call is destroyed before the
+	 * template genome is enabled, so its frame buffer, compiled model, and render stream are
+	 * released rather than left reachable only through the garbage collector. It is retired
+	 * before {@link #enableGenome(Genome)} — not merely before the rebuild — because enabling
+	 * the genome refreshes the scene (clearing pattern caches and automation data), and the
+	 * old runner's render-ahead producer must be stopped by its {@code destroy()} before that
+	 * refresh can run concurrently with a producer still reading those caches. It must be
+	 * retired rather than kept as a fallback because building the replacement rebuilds the
+	 * scene's single active cell graph ({@link AudioScene#getCells} and
+	 * {@link AudioScene#prepareRenderBuffers} destroy the previous {@code activeCells}),
+	 * so the old runner's captured cells cannot survive the rebuild regardless. The field
+	 * is cleared before the rebuild, so a construction failure leaves the population with
+	 * no runner (rather than a runner whose cells have already been destroyed underneath
+	 * it) and a subsequent {@code init(...)} starts clean.</p>
+	 *
 	 * @param templateGenome the genome used to configure the scene during initialization
 	 * @param output         the multi-channel audio output that receives rendered audio
 	 * @param channels       the channel indices to include, or {@code null} for all channels
@@ -152,9 +168,19 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 */
 	public void init(Genome<PackedCollection> templateGenome,
 					 MultiChannelAudioOutput output, List<Integer> channels, int bufferSize) {
+		if (temporal != null) {
+			TemporalCellular previous = temporal;
+			temporal = null;
+			previous.destroy();
+		}
+
 		enableGenome(templateGenome);
-		this.temporal = scene.runnerRealTime(output, channels, bufferSize);
-		disableGenome();
+
+		try {
+			this.temporal = scene.runnerRealTime(output, channels, bufferSize);
+		} finally {
+			disableGenome();
+		}
 	}
 
 	/**
@@ -362,7 +388,7 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	@Override
 	public void destroy() {
 		Destroyable.super.destroy();
-		if (temporal instanceof Destroyable) ((Destroyable) temporal).destroy();
+		if (temporal != null) temporal.destroy();
 		temporal = null;
 	}
 
@@ -432,51 +458,27 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 * @throws IOException if an I/O error occurs during serialization
 	 */
 	public static <G> void store(List<Genome<G>> genomes, OutputStream s) throws IOException {
-		GenomeData genomeData = new GenomeData();
-		for (Genome<G> genome : genomes) {
-			genomeData.addGenome(genome);
-		}
+		List<double[]> parameters = genomes.stream()
+				.map(genome -> ((ProjectedGenome) genome).getParameters().toArray())
+				.collect(Collectors.toList());
 
-		ObjectMapper mapper = new ObjectMapper();
-		mapper.writeValue(s, genomeData);
+		new ObjectMapper().writeValue(s, parameters);
 	}
 
 	/**
-	 * Deserializes a list of {@link Genome} instances from the given JSON input stream.
+	 * Deserializes a list of {@link Genome} instances from the given JSON input stream. Each
+	 * entry is the {@code double[]} parameter array of a {@link ProjectedGenome}, from which the
+	 * genome is reconstructed.
 	 *
 	 * @param in the input stream containing serialized genome JSON
 	 * @return the deserialized list of genomes
 	 * @throws IOException if an I/O error occurs during deserialization
 	 */
 	public static List<Genome<PackedCollection>> read(InputStream in) throws IOException {
-		ObjectMapper mapper = new ObjectMapper();
-		GenomeData data = mapper.readValue(in, GenomeData.class);
-		return data.getGenomes();
-	}
+		double[][] parameters = new ObjectMapper().readValue(in, double[][].class);
 
-	/**
-	 * JSON serialization container for genome data. Stores each genome as a {@code double[]}
-	 * array of its {@link ProjectedGenome} parameter values.
-	 */
-	static class GenomeData extends ArrayList<double[]> implements CodeFeatures {
-		/**
-		 * Appends the parameter array of the given genome to this list.
-		 *
-		 * @param genome the genome to add; must be a {@link ProjectedGenome}
-		 */
-		public void addGenome(Genome genome) {
-			this.add(((ProjectedGenome) genome).getParameters().toArray());
-		}
-
-		/**
-		 * Converts the stored {@code double[]} arrays back into a list of {@link ProjectedGenome} instances.
-		 *
-		 * @return the deserialized genome list
-		 */
-		public List<Genome<PackedCollection>> getGenomes() {
-			return stream()
-					.map(params -> new ProjectedGenome(pack(params)))
-					.collect(Collectors.toList());
-		}
+		return Arrays.stream(parameters)
+				.map(params -> (Genome<PackedCollection>) new ProjectedGenome(PackedCollection.of(params)))
+				.collect(Collectors.toList());
 	}
 }

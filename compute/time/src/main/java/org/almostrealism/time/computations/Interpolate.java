@@ -285,9 +285,41 @@ public class Interpolate extends CollectionProducerComputationBase {
 	}
 
 	/**
-	 * Returns the expression for the query time value taken from the position producer argument.
+	 * Returns the number of samples the series makes available to one kernel
+	 * instance, so that a bracketing index can be checked against the end of
+	 * the series. A variable-count series hands each kernel one series of
+	 * {@code getShape().getSize()} samples; every other form is addressed as a
+	 * whole, so its bound is the runtime size of the argument.
 	 *
-	 * @return an expression evaluating to the current kernel's time coordinate
+	 * <p>The series ends at {@code length - 1}. A position past the end has no
+	 * left sample and produces the default result of zero. A position inside
+	 * the final interval has a left sample but no right one; the series is
+	 * treated as zero-padded there, rather than reading whatever memory follows
+	 * the buffer, which is undefined and on OpenCL genuinely arbitrary (the
+	 * last frame of a pitch-down resample differed from run to run).</p>
+	 *
+	 * @return an expression for the number of samples addressable via
+	 *         {@link #getSeriesValue(Expression)}
+	 */
+	protected Expression<?> getSeriesLength() {
+		ArrayVariable<?> var = getArgument(1);
+		if (var instanceof CollectionVariable) {
+			CollectionVariable c = (CollectionVariable) var;
+			if (c.getShape().getTotalSizeLong() != 1 && !c.getShape().isFixedCount()) {
+				return e(c.getShape().getSize());
+			}
+		}
+		// The totalSize == 1 "hack" case in getSeriesValue() also falls through to here:
+		// var.length() renders as the runtime buffer size, not the declared shape size,
+		// so it still bounds the series correctly even though the shape reports 1.
+		return var.length();
+	}
+
+	/**
+	 * Returns the position (in the time domain of the cursor argument) that the
+	 * current kernel instance is interpolating at.
+	 *
+	 * @return the cursor value for this kernel instance
 	 */
 	protected Expression getTime() {
 		return getArgument(2).reference(kernel());
@@ -360,10 +392,13 @@ public class Interpolate extends CollectionProducerComputationBase {
 		// Default result; overwritten below only when a valid surrounding interval is found.
 		body.assign(res, e(0));
 
+		Expression<?> length = getSeriesLength();
+
 		// Linear interpolation between the bracketing samples (t1 / t2 == fractional position).
+		// Past the last sample the series reads as zero, see getSeriesLength().
 		Scope<PackedCollection> interp = new Scope<>();
 		interp.assign(v1, bankl_value);
-		interp.assign(v2, bankr_value);
+		interp.assign(v2, right.lessThan(length).conditional(bankr_value, e(0.0)));
 		interp.assign(t1, cursor.subtract(bankl_time));
 		interp.assign(t2, bankr_time.subtract(bankl_time));
 		interp.assign(res, t2.eq(e(0.0)).conditional(v1,
@@ -373,7 +408,7 @@ public class Interpolate extends CollectionProducerComputationBase {
 		// "left == -1 || right == -1 || bankl_time > cursor" check, so the
 		// out-of-range bank reads in the interpolation block never execute.
 		Scope<PackedCollection> ifRight = new Scope<>();
-		ifRight.addCase(bankl_time.lessThanOrEqual(cursor), interp);
+		ifRight.addCase(bankl_time.lessThanOrEqual(cursor).and(left.lessThan(length)), interp);
 
 		Scope<PackedCollection> ifLeft = new Scope<>();
 		ifLeft.addCase(right.eq(e(-1)).not(), ifRight);

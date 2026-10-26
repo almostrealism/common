@@ -20,6 +20,8 @@ import org.almostrealism.audio.filter.AudioProcessingUtils;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.music.data.ChannelInfo;
+import org.almostrealism.music.data.MultipleParameterFunction;
+import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.music.data.ParameterSet;
 import org.almostrealism.audio.notes.NoteAudioFilter;
 import org.almostrealism.collect.PackedCollection;
@@ -54,26 +56,69 @@ public class ParameterizedLayerEnvelope implements ParameterizedEnvelope {
 		this.layer = layer;
 	}
 
+	/** Returns the zero-based layer index this envelope controls. */
+	public int getLayer() { return layer; }
+
+	/** Returns the attack selection function shared by all layers. */
+	public ParameterFunction getAttackSelection() { return parent.getAttackSelection(); }
+
+	/** Returns the sustain selection function shared by all layers. */
+	public ParameterFunction getSustainSelection() { return parent.getSustainSelection(); }
+
+	/** Returns the release selection function shared by all layers. */
+	public ParameterFunction getReleaseSelection() { return parent.getReleaseSelection(); }
+
+	/** Returns the selection functions for the first volume stage. */
+	public MultipleParameterFunction getVolume0() { return parent.getVolume0(); }
+
+	/** Returns the selection functions for the second volume stage. */
+	public MultipleParameterFunction getVolume1() { return parent.getVolume1(); }
+
+	/** Returns the selection functions for the third volume stage. */
+	public MultipleParameterFunction getVolume2() { return parent.getVolume2(); }
+
+	/** Returns the selection functions for the fourth volume stage. */
+	public MultipleParameterFunction getVolume3() { return parent.getVolume3(); }
+
 	@Override
-	public NoteAudioFilter createFilter(ParameterSet params, ChannelInfo.Voicing voicing) {
+	public ParameterizedEnvelopeFilter createFilter(ParameterSet params, ChannelInfo.Voicing voicing) {
 		return new Filter(params, voicing);
 	}
 
 	/**
 	 * A concrete {@link NoteAudioFilter} that applies a per-layer multi-stage envelope.
 	 */
-	public class Filter implements NoteAudioFilter, EnvelopeFeatures {
+	public class Filter implements ParameterizedEnvelopeFilter, EnvelopeFeatures {
 		/** The parameter set controlling envelope values. */
 		private final ParameterSet params;
+
+		/** The signal path voicing; it does not affect the envelope values. */
+		private final ChannelInfo.Voicing voicing;
 
 		/**
 		 * Creates a Filter with the given parameters and voicing.
 		 *
 		 * @param params the parameter set
-		 * @param voicing the signal path voicing (reserved for future use)
+		 * @param voicing the signal path voicing
 		 */
 		public Filter(ParameterSet params, ChannelInfo.Voicing voicing) {
 			this.params = params;
+			this.voicing = voicing;
+		}
+
+		@Override
+		public ParameterizedLayerEnvelope getEnvelope() {
+			return ParameterizedLayerEnvelope.this;
+		}
+
+		@Override
+		public ParameterSet getParameters() {
+			return params;
+		}
+
+		@Override
+		public ChannelInfo.Voicing getVoicing() {
+			return voicing;
 		}
 
 		/** Returns the computed attack duration from the parent layers. */

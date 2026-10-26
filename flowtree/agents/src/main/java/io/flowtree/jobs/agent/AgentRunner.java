@@ -26,12 +26,11 @@ import java.util.concurrent.TimeUnit;
  * the resulting metrics. Implementations are stateless across calls; the
  * orchestrator threads all context through {@link AgentRunRequest}.
  *
- * <p>Phase 1 of the pluggable-agents refactor introduces this contract so the
- * job orchestrator no longer mentions Claude-specific flags, subprocess
- * construction, or NDJSON parsing in its body. The single concrete
- * implementation shipped today is
- * {@link io.flowtree.jobs.agent.ClaudeCodeRunner}; later phases add other
- * runners (e.g. opencode) without changing the orchestrator.</p>
+ * <p>This contract keeps the job orchestrator free of runner-specific flags,
+ * subprocess construction, and output parsing. The implementations are
+ * {@link io.flowtree.jobs.agent.ClaudeCodeRunner} and
+ * {@link io.flowtree.jobs.agent.OpencodeRunner}; further runners are added
+ * without changing the orchestrator.</p>
  *
  * @author Michael Murray
  */
@@ -83,6 +82,32 @@ public interface AgentRunner extends Named {
      *         not support providers (should not happen for modern runners)
      */
     default String defaultProvider() { return null; }
+
+    /**
+     * Returns whether this runner will accept {@code model}.
+     *
+     * <p>This is the question a submission-time validator asks, and it is the
+     * runner's to answer rather than the caller's to infer from
+     * {@link AgentCapabilities#supportedModels()}: that set is what the
+     * runner <em>advertises</em> — the values worth showing an operator — and
+     * a runner may legitimately accept more than it advertises. A CLI that
+     * resolves its own aliases and ships new model identifiers between
+     * releases of this code is exactly that case, and a validator that
+     * demanded set membership would reject a model the runner could in fact
+     * run (see {@link ClaudeCodeRunner#isModelSupported(String)}).</p>
+     *
+     * <p>The default keeps the historical behaviour: membership in the
+     * advertised set ({@link AgentCapabilities#advertisesModel(String)}). A null or
+     * empty model is always accepted — it means no {@code --model} flag is
+     * passed and the runner's own default applies.</p>
+     *
+     * @param model identifier from {@link AgentRunRequest#getModel()}
+     * @return {@code true} when this runner will accept the model
+     */
+    default boolean isModelSupported(String model) {
+        if (model == null || model.isEmpty()) return true;
+        return capabilities().advertisesModel(model);
+    }
 
     /**
      * Returns the stdout-silence duration, in milliseconds, after which the

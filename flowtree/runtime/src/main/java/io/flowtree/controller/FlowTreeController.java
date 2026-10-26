@@ -16,6 +16,7 @@
 
 package io.flowtree.controller;
 
+import org.almostrealism.io.SystemUtils;
 import com.slack.api.bolt.App;
 import com.slack.api.bolt.AppConfig;
 import com.slack.api.bolt.socket_mode.SocketModeApp;
@@ -55,6 +56,8 @@ import io.flowtree.github.GitHubTokenValidator;
 import io.flowtree.workstream.McpServerEntry;
 import io.flowtree.workstream.PushedToolEntry;
 import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkspaceEntry;
+import io.flowtree.workstream.WorkspaceSecretEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
@@ -101,6 +104,9 @@ import io.flowtree.slack.SlackTokens;
  * @see Workstream
  */
 public class FlowTreeController implements ConsoleFeatures {
+
+    /** ar-manager URL used by both the Slack and HTTP job paths when {@code AR_MANAGER_URL} is unset or empty. */
+    private static final String DEFAULT_AR_MANAGER_URL = "http://ar-manager:8010";
 
     /**
      * Runtime state for a single Slack workspace connection (tokens, Bolt app,
@@ -207,8 +213,7 @@ public class FlowTreeController implements ConsoleFeatures {
      * {@link #buildSecretsCache(WorkstreamConfig)} during config load and
      * passed to the API endpoint via {@link FlowTreeApiEndpoint#setSecretsCache}.
      */
-    private Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> secretsCache =
-            new HashMap<>();
+    private Map<String, Map<String, WorkspaceSecretEntry>> secretsCache = new HashMap<>();
 
     /**
      * Creates a new controller, resolving tokens from the default
@@ -342,10 +347,7 @@ public class FlowTreeController implements ConsoleFeatures {
         validateGitHubTokens(config);
 
         // Configure ar-manager URL and shared secret for agent jobs
-        String arManagerUrl = System.getenv("AR_MANAGER_URL");
-        if (arManagerUrl == null || arManagerUrl.isEmpty()) {
-            arManagerUrl = "http://ar-manager:8010";
-        }
+        String arManagerUrl = SystemUtils.getNonEmptyProperty("AR_MANAGER_URL", DEFAULT_AR_MANAGER_URL);
         String arManagerSecret = loadSharedSecret();
         listener.setArManagerUrl(arManagerUrl);
         if (arManagerSecret != null && !arManagerSecret.isEmpty()) {
@@ -406,23 +408,23 @@ public class FlowTreeController implements ConsoleFeatures {
      * Builds the in-memory secrets index from the loaded workstream config.
      *
      * <p>Iterates all {@code slackWorkspaces} entries and indexes their declared
-     * {@link WorkstreamConfig.WorkspaceSecretEntry} instances by workspace ID and name.
+     * {@link WorkspaceSecretEntry} instances by workspace ID and name.
      * Also logs a warning for any declared secrets file that is readable by group or
      * world (permissions wider than {@code 0600}).</p>
      *
      * @param config the loaded workstream configuration
      */
     private void buildSecretsCache(WorkstreamConfig config) {
-        Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache = new HashMap<>();
+        Map<String, Map<String, WorkspaceSecretEntry>> cache = new HashMap<>();
         if (config.getWorkspaces() == null) {
             this.secretsCache = cache;
             return;
         }
-        for (WorkstreamConfig.WorkspaceEntry wsEntry : config.getWorkspaces()) {
+        for (WorkspaceEntry wsEntry : config.getWorkspaces()) {
             if (wsEntry.getSecrets() == null || wsEntry.getSecrets().isEmpty()) continue;
             String workspaceId = wsEntry.getId();
-            Map<String, WorkstreamConfig.WorkspaceSecretEntry> byName = new HashMap<>();
-            for (WorkstreamConfig.WorkspaceSecretEntry entry : wsEntry.getSecrets()) {
+            Map<String, WorkspaceSecretEntry> byName = new HashMap<>();
+            for (WorkspaceSecretEntry entry : wsEntry.getSecrets()) {
                 if (entry.getName() == null || entry.getFile() == null) continue;
                 byName.put(entry.getName(), entry);
                 checkSecretFilePermissions(entry, workspaceId);
@@ -444,7 +446,7 @@ public class FlowTreeController implements ConsoleFeatures {
      * @param workspaceId workspace owning this secret (for log context only)
      */
     private void checkSecretFilePermissions(
-            WorkstreamConfig.WorkspaceSecretEntry entry, String workspaceId) {
+            WorkspaceSecretEntry entry, String workspaceId) {
         Path filePath = Path.of(entry.getFile());
         if (!Files.exists(filePath)) {
             warn("Secret file not found: " + entry.getFile()
@@ -643,9 +645,9 @@ public class FlowTreeController implements ConsoleFeatures {
      *
      * @param entries the Slack workspace entries from the YAML configuration
      */
-    private void buildWorkspaceConnections(List<WorkstreamConfig.WorkspaceEntry> entries) {
+    private void buildWorkspaceConnections(List<WorkspaceEntry> entries) {
         workspaceConnections.clear();
-        for (WorkstreamConfig.WorkspaceEntry wsEntry : entries) {
+        for (WorkspaceEntry wsEntry : entries) {
             if (wsEntry.getSlackTeamId() == null || wsEntry.getSlackTeamId().isEmpty()) {
                 // No Slack integration — register a no-op connection so
                 // multi-workspace routing stays active and start() does not
@@ -1212,7 +1214,7 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
-            apiEndpoint.setMailboxDirectory(new File(dataDir));
+            apiEndpoint.setDataDirectory(new File(dataDir));
             apiEndpoint.setAlertRecipients(AlertRecipientEntry.directory(
                     loadedConfig == null ? null : loadedConfig.getAlertRecipients()));
             stuckJobScanner = CompletionListenerFanoutWiring.wire(apiEndpoint,
@@ -1238,21 +1240,18 @@ public class FlowTreeController implements ConsoleFeatures {
                 apiEndpoint.setWorkspaceRenameHook((oldId, newId) -> loadedConfig.renameWorkspace(oldId, newId, listener.getWorkstreams().values()));
             }
 
-            // Configure memory server URL for message storage
-            String memoryUrl = System.getenv("AR_MEMORY_URL");
-            if (memoryUrl == null || memoryUrl.isEmpty()) {
-                memoryUrl = "http://localhost:8020";
-            }
+            // Sibling services: ar-memory stores messages, ar-manager issues
+            // agent tokens, and the tracker answers /api/tracker/claimable.
+            String memoryUrl = SystemUtils.getNonEmptyProperty("AR_MEMORY_URL", "http://localhost:8020");
+            String arManagerUrl = SystemUtils.getNonEmptyProperty("AR_MANAGER_URL", DEFAULT_AR_MANAGER_URL);
+            String trackerUrl = SystemUtils.getNonEmptyProperty("AR_TRACKER_URL", "http://ar-tracker:8030");
             apiEndpoint.setMemoryServerUrl(memoryUrl);
-            log("Memory server URL: " + memoryUrl);
-
-            // Configure ar-manager URL for token generation
-            String arManagerUrl = System.getenv("AR_MANAGER_URL");
-            if (arManagerUrl == null || arManagerUrl.isEmpty()) {
-                arManagerUrl = "http://ar-manager:8010";
-            }
             apiEndpoint.setArManagerUrl(arManagerUrl);
+            apiEndpoint.setTrackerService(trackerUrl, SystemUtils.getProperty("AR_TRACKER_AUTH_TOKEN"));
+            apiEndpoint.startTaskCloseOut();
+            log("Memory server URL: " + memoryUrl);
             log("AR Manager URL: " + arManagerUrl);
+            log("Tracker URL: " + trackerUrl);
 
             // Pass shared secret and secrets index for /api/secrets/* endpoints
             String apiSharedSecret = loadSharedSecret();
@@ -1265,6 +1264,7 @@ public class FlowTreeController implements ConsoleFeatures {
             int listeningPort = apiEndpoint.getListeningPort();
             listener.setApiPort(listeningPort);
             log("API endpoint started on port " + listeningPort);
+            apiEndpoint.recoverPendingJobs();
         } catch (IOException e) {
             warn("Failed to start API endpoint on port " + apiPort + ": " + e.getMessage());
         }

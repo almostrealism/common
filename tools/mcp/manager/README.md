@@ -92,7 +92,8 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | Tool | Scope | Description |
 |------|-------|-------------|
 | `github_pr_find` | github | Find a PR by branch/number |
-| `github_pr_review_comments` | github | Get unresolved review thread comments on a PR |
+| `github_pr_reviews` | github | Get review bodies on a PR (e.g. GitHub Copilot's per-round overview) |
+| `github_pr_review_comments` | github | Get review thread comments on a PR (unresolved by default; pass `include_resolved=true` for resolved threads too) |
 | `github_pr_conversation` | github | Get the issue-style conversation comments on a PR |
 | `github_pr_reply` | github | Reply to a PR review thread |
 | `github_pr_check_status` | github | Get CI/check status for a PR head commit |
@@ -103,6 +104,18 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | `github_request_copilot_review` | github | Request a Copilot automated review on a PR |
 | `github_read_file` | github | Read a file from a GitHub repo at a branch/ref |
 | `project_read_plan` | github | Read the planning document for a workstream |
+
+A PR carries three distinct comment surfaces, each read by a different tool:
+review bodies — the top-level text a reviewer (including GitHub Copilot's
+per-round "Changes recommended" / "Needs a closer look" summary) submits
+alongside a review verdict — are read by `github_pr_reviews`; inline
+review-thread comments are read by `github_pr_review_comments`; and
+issue-style top-level PR conversation comments are read by
+`github_pr_conversation`. Copilot never posts to the conversation thread, and
+once a review thread is marked resolved its comment vanishes from the
+`github_pr_review_comments` default view (`include_resolved=true` brings it
+back) — but a review body has no resolved state, so `github_pr_reviews`
+always has the full history.
 
 ### Tier 4: Memory
 
@@ -131,6 +144,87 @@ carries the original for comparison plus a `notice` about the feature's state.
 See [the Consultant README](../consultant/README.md#memory-text-original-vs-reformulated)
 for the full contract.
 
+## Optional Enforcement Phases
+
+Some post-primary enforcement phases are controlled per job through a
+`workstream_submit_task` flag. The submit response echoes the effective setting
+so the caller can confirm it.
+
+| Flag | Default | Controller field | Response echo | Phase it controls |
+|------|---------|------------------|---------------|-------------------|
+| `organizational_placement_enabled` | off | `enforceOrganizationalPlacement` | `organizationalPlacementEnabled` | Organizational placement review of new files. Forwarded only when `True`; an omitted or `False` flag leaves it off |
+| `object_oriented_review_enabled` | **on** | `objectOrientedReviewEnabled` | `objectOrientedReviewEnabled` | `ObjectOrientedDesignRule`: a single design-review session over the changed production classes a deterministic risk gate flags. Always forwarded, so `False` switches it off for a job. Takes effect only while `review_enabled` is also `True` |
+
+Both are job-level settings; there is no workstream or workspace default for them.
+Organizational placement stays off unless a submission requests it. The
+object-oriented design review is on by default, and the risk gate keeps its cost
+low by spending a session only on classes whose design it flags; a submission can
+send `object_oriented_review_enabled=False` to switch it off.
+
+**On for initial work, off for CI follow-ups.** The review belongs to the job that
+creates a branch's work — QA rounds, planning and task jobs, and jobs submitted by
+hand — which leave the field unset and get the on-by-default. The follow-up jobs CI
+submits in a loop turn it off: `auto-review` (with its code-policy and quality-gate
+routes), `auto-resolve-python` and `auto-resolve` can each fire many times on one
+branch, so each sends `objectOrientedReviewEnabled: false` and the review does not
+ride along on every pass. Those submitters set `OBJECT_ORIENTED_REVIEW_ENABLED=false`
+on the trusted submit step; `tools/ci/submit-agent-job.sh` sends the field only when
+that knob is set, so every other path inherits the default.
+
+## Test Execution Limits
+
+`workstream_submit_task` mechanically rejects submissions that would have an agent or
+job submitter run a full/whole test suite, a module's whole suite, or a CI shard —
+there is no bypass flag, unlike `allow_commit_language`. Three independent checks run
+before the submission ever reaches the controller:
+
+- **`post_completion_command` / `command`** — rejected when it runs a Maven
+  test-executing phase (`test`/`integration-test`/`verify`/`install`/`package`/`deploy`)
+  without a bounded `-Dtest` selection — at most 5 test classes and at most 40
+  named `Class#method` tests; a bare class or a few classes is fine, but no
+  selector at all, more than those caps, a Surefire wildcard (`*`, `?`), the `+`
+  method-list separator, `!` negation, a `%regex[...]` pattern, or an unresolvable
+  `$VAR` is rejected — references `AR_TEST_GROUP`/`AR_TEST_GROUPS`, or runs pytest
+  against a directory, a whole file, or more than one node id instead of exactly
+  one explicit node id. A `post_completion_command` runs unattended, so it is held
+  to one stricter rule on top of that: every `-Dtest` entry must name a
+  `Class#method`, not a bare class.
+- **`post_completion_timeout_seconds`** — rejected above 2400 (40 minutes).
+- **`prompt`** — rejected when it instructs the agent, in English, to run a
+  full/whole/entire suite, a module's tests, a shard, `mvn test` without a
+  bounded `-Dtest` selection, or `AR_TEST_GROUP`.
+
+The command validator is implemented in [`execution_limits.py`](execution_limits.py)
+(see its module docstring for the incident that made this a hard requirement) and
+the prompt linter in [`prompt_test_lint.py`](prompt_test_lint.py). The controller
+(`FlowTreeApiEndpoint#handleSubmit`) applies the same command validation independently
+via `io.flowtree.jobs.PostCompletionCommandValidator`, so a direct API call cannot
+bypass what this server rejects, and clamps `postCompletionTimeoutSeconds` to the same
+2400s ceiling. The `mcp__ar-test-runner__start_test_run` tool enforces the mirror image
+of this rule for interactive agent use: it rejects `test_group`/`test_groups` (CI-shard
+reproduction) outright and caps `timeout_minutes` at 40.
+
+## Letting a Job Edit Agent Tooling (`.claude/hooks/`)
+
+Two operator-only `workstream_submit_task` flags govern two separate gates, and a
+job that must edit `.claude/hooks/` or `.claude/settings.json` needs both of them
+lifted:
+
+| Flag | Gate it lifts | Where it acts |
+|------|---------------|---------------|
+| `sensitive_file_protection_enabled=False` | The harness's test-file and CI-file staging locks, and the controller-signed `Sensitive-File-Bypass` commit trailer | Harness side only (`GitCommitHandler`, `FileStager`); never reaches the agent subprocess |
+| `skip_agent_permission_prompts=True` | The agent runtime's own per-call refusal of writes under `.claude/`, environment and credential files ("... which is a sensitive file") | The agent subprocess: Claude Code is launched with `--permission-mode bypassPermissions` (`ClaudeCodeRunner.buildCommandLine`) |
+
+`sensitive_file_protection_enabled=False` on its own does **not** let the agent
+write under `.claude/hooks/`: every Edit, Write and Bash write there is still
+refused. `skip_agent_permission_prompts=True` is also required, unless the
+workstream's agent-permission-bypass branch prefixes already match the job's
+target branch (`Workstream.applyCapabilities`). The pipeline's CI-file lock
+(`check-ci-file-lock.sh`) covers only `.github/workflows/`, `.github/actions/` and
+`tools/ci/`, never `.claude/hooks/`, so it is not what stands in the way of such an
+edit: the permission-prompt bypass is the flag that decides whether the edit can be
+made at all. Neither flag can be set by an in-flight coding agent.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -142,8 +236,10 @@ for the full contract.
 | `AR_MANAGER_TOKEN_FILE` | `~/.config/ar/manager-tokens.json` | Bearer token config file |
 | `AR_MANAGER_TOKENS` | (none) | JSON string of token config (overrides file) |
 | `AR_MANAGER_REPO_CONFIG_FILE` | `/config/repo-config.json` | Per-repository settings (see below) |
-| `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis |
-| `AR_CONSULTANT_LLAMA_URL` | (auto-discovered) | llama.cpp server URL |
+| `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis: `llamacpp`, `ollama`, `mlx`, `openrouter`, `passthrough`, or `auto` |
+| `AR_CONSULTANT_LLAMACPP_URL` | (auto-discovered) | llama.cpp server URL |
+| `AR_CONSULTANT_OPENROUTER_API_KEY_FILE` | `/secrets/consultant__openrouter-api-key.json` (compose) | The consultant's OpenRouter secret file; other `AR_CONSULTANT_OPENROUTER_*` settings are in [the consultant README](../consultant/README.md#openrouter-hosted) |
+| `AR_SNAPSHOT_INDEX` | `/app/snapshot/snapshot-index.json` (image) | The snapshot index consult checks names and extracts facts from; unset in a checkout, which disables both |
 | `MCP_TRANSPORT` | `http` | Transport: `http` or `sse`. `stdio` is rejected (auth-only HTTP server) |
 | `MCP_PORT` | `8010` | Port for http/sse transport |
 
@@ -166,6 +262,71 @@ memories are returned unsummarized. Neither ever costs you the memories.
 
 When running from a source checkout, `AR_DOCS_DIR` can be left unset —
 `DocsRetriever` falls back to the repository layout relative to its own location.
+
+The retriever indexes every `*.md` and `*.html` under the corpus root except
+the entries in `INDEX_EXCLUSIONS` (`docs/plans/`, the root `README.md` and stray
+working files, the consult evaluation's own reports). A packaging test fails
+when a document in the repository is neither copied into the image and indexed
+nor excluded on purpose. Each retrieved chunk carries its line range and the
+heading trail above it, and a chunk that falls in a short subsection is the
+whole subsection.
+
+## Consult: Evidence, Tiers and Citations
+
+`consult` (`consult_engine.py`) answers from a single evidence list. Every item
+has an ID the model cites and a tier that says what it may supply:
+
+| ID | Kind | Tier | May supply |
+|----|------|------|------------|
+| `D1` | documentation chunk | A | present fact for the snapshot |
+| `I1` | snapshot-index fact (a script's header or exit codes, a literal constant) | A | present fact for the snapshot |
+| `N1` | note, current: on the target branch or merged into it, or on the caller's own branch, within 45 days | B | a fact the documentation lacks; the answer then opens with a fixed sentence saying it rests on notes |
+| `N1` | note, branch-local: on another open or unmerged branch | B′ | a fact qualified by its branch only |
+| `N1` | note, historical: older, closed unmerged, or of unknown branch state | C | history and rationale (`history` field) |
+| `N1` | note, stale: names a type or path the snapshot no longer contains | C✗ | history only; the absent names are listed |
+
+The target branch is the caller's workstream `baseBranch` (default `master`).
+A note's branch state comes from its branch's most recent pull request, looked
+up only when the caller's token holds `github` and its workspace may see the
+note's organization; otherwise it is `unknown` and `degraded_reasons` lists
+`branch_state`. Notes are searched in every semantic namespace (at most six,
+reported as `memory_namespaces_capped` when cut), and a scope that cannot be
+resolved stops note retrieval (`memory_scope`) rather than widening it.
+
+The model cites IDs, never file names; the server expands `[D1]` to
+`[D1: path:start-end]`. The answer basis is recomputed from the IDs actually
+cited, whatever the model's `BASIS:` line says. A deterministic verifier then
+checks each sentence against what it cites — every identifier and path must
+appear in a cited item, every number and literal verbatim, a present-tense
+claim may not rest only on historical notes, and a branch-local claim must name
+its branch. An uncited specific found in no evidence item at all is flagged
+too. A sentence making a polarity or exclusivity claim ("only", "never",
+"does not", "always", "one X per Y") must be echoed by a cited passage that
+makes a claim of the same kind about the same things; one that is not — the
+shape of a confident "it does not do X, only Y" that no evidence says — is
+flagged `polarity`. Failing sentences are marked `[unsupported]` in the answer
+and listed in `citation_warnings`. A question naming a file the snapshot does not contain is
+answered directly with `nonexistent: true`.
+
+The snapshot index is built in the Dockerfile's `docs` stage before the prune
+(`tools/mcp/common/snapshot_index.py`) and records the commit it was built from,
+passed as the `CORPUS_COMMIT` build argument (`rebuild.sh` exports it; a build
+that omits it records `unknown`). `consult` returns it as `corpus`.
+
+Every consult returns a `conversation_id`, and passing it back continues the
+consult: a follow-up keeps the evidence IDs of earlier turns and sees their
+questions and condensed answers. A conversation is bound to the token identity
+that started it — a job token's workstream and job, a static token's label —
+and to the first turn's repository. Its id is long and random, and holding it is
+the capability to continue it, so several clients sharing one static token keep
+separate conversations; an id presented by another identity is refused exactly
+like an unknown one. Conversations are in-process, expire after 30 idle minutes
+or four hours, allow 12 turns, and persist nothing.
+
+`eval/run_consult_eval.py` measures all of this against a version-controlled
+case set (`eval/consult_cases.json`): `replay` grades frozen deployed
+responses, `scripted` runs the live pipeline with canned model answers, and
+`local` runs it against a real backend.
 
 ## Per-Repository Configuration
 

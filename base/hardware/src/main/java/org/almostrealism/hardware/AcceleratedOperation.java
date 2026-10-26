@@ -29,20 +29,15 @@ import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
-import org.almostrealism.nio.NativeMemoryProvider;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.instructions.InstructionSetManager;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.jni.NativeExecution;
-import org.almostrealism.hardware.kernel.KernelWork;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.MemoryReplacementManager;
-import org.almostrealism.hardware.metal.MTLBuffer;
-import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 
@@ -73,8 +68,8 @@ import java.util.List;
  * <pre>{@code
  * // When scope is prepared:
  * prepareScope() {
- *     // Creates MemoryDataArgumentMap bound to this operation's ComputeContext
- *     argumentMap = MemoryDataArgumentMap.create(getComputeContext(), aggregateGenerator);
+ *     // Creates a MemoryDataArgumentMap bound to this operation's ComputeContext
+ *     argumentMap = createArgumentMap();
  * }
  * }</pre>
  *
@@ -179,8 +174,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	/** Timing metric for operator retrieval from instruction set managers. */
 	public static TimingMetric retrieveOperatorMetric = console.timing("retrieveOperator");
-	/** Timing metric for wrapped evaluation. */
-	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
 	/** The {@link ComputeContext} this operation executes within (OpenCL, Metal, JNI, etc.). */
 	private ComputeContext<MemoryData> context;
@@ -212,6 +205,22 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return The compute context (OpenCL, Metal, JNI, etc.)
 	 */
 	public ComputeContext<MemoryData> getComputeContext() { return context; }
+
+	/**
+	 * Fails when the compute context this operation was created under has been
+	 * destroyed. The operation was placed under that context on purpose, by the
+	 * caller's requirements and the computer's choice for the computation, and
+	 * nothing here may move it elsewhere; work that cannot run where it was put
+	 * is an error for the caller to see.
+	 *
+	 * @throws IllegalStateException if the context, or its data context, is destroyed
+	 */
+	protected void requireLiveContext() {
+		if (!context.isLive()) {
+			throw new IllegalStateException("The compute context for " + getName() +
+					" has been destroyed");
+		}
+	}
 
 	/**
 	 * Returns the {@link InstructionSetManager} responsible for compiling and caching this operation.
@@ -288,9 +297,29 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	protected abstract int getOutputArgumentIndex();
 
 	/**
+	 * Creates a {@link MemoryDataArgumentMap} bound to this operation's {@link ComputeContext}.
+	 *
+	 * <p>When this operation {@link #isArgumentAggregationSupported() supports argument
+	 * aggregation}, the map is given an aggregate-buffer factory ({@link #createAggregatedInput})
+	 * so that small input arguments can be folded into a single kernel argument, keeping the
+	 * kernel's argument count under the compute context's limit; eligibility is decided per
+	 * argument by size inside the map. An operation that opts out gets a map that folds
+	 * nothing.</p>
+	 *
+	 * <p>Every map this operation folds its arguments through comes from here, so a fold replayed
+	 * against an already compiled scope lays its aggregate out exactly as the compilation did.</p>
+	 *
+	 * @return a new argument map for this operation
+	 */
+	protected MemoryDataArgumentMap createArgumentMap() {
+		return MemoryDataArgumentMap.create(getComputeContext(),
+				isArgumentAggregationSupported() ? memLength -> createAggregatedInput(memLength, memLength) : null);
+	}
+
+	/**
 	 * Prepares the scope for compilation by creating argument mappings and input managers.
 	 *
-	 * <p>This method initializes the {@link MemoryDataArgumentMap} if argument mapping is enabled,
+	 * <p>This method initializes the {@link MemoryDataArgumentMap} (see {@link #createArgumentMap()})
 	 * and delegates to {@link #prepareScope(ArgumentProvider)} for scope-specific setup.</p>
 	 *
 	 * @throws UnsupportedOperationException if prepareScope has already been called
@@ -302,13 +331,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		resetArguments();
 
-		// Provide an aggregate-buffer factory so that small input arguments can be folded into
-		// a single kernel argument (keeping the kernel's argument count under the compute
-		// context's limit). Eligibility is decided per argument by size inside the map. Operations
-		// that opt out (see isArgumentAggregationSupported) get a map with no aggregation.
-		argumentMap = MemoryDataArgumentMap.create(getComputeContext(),
-				isArgumentAggregationSupported() ? i -> createAggregatedInput(i, i) : null);
-
+		argumentMap = createArgumentMap();
 		prepareScope(argumentMap);
 	}
 
@@ -350,6 +373,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * <p>Applies any compute requirements, dispatches the kernel with no arguments,
 	 * and waits for completion. This is the primary entry point for executing
 	 * compiled operations.</p>
+	 *
+	 * <p>This is an interruptible blocking call: an interrupted calling thread fails
+	 * rather than returning as though the work had finished (see
+	 * {@link #awaitCompletion(AcceleratedProcessDetails)}).</p>
+	 *
+	 * @throws HardwareException if the calling thread is interrupted
 	 */
 	@Override
 	public void run() {
@@ -358,13 +387,45 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
 			}
 
-			AcceleratedProcessDetails process = apply(null, new Object[0]);
-			process.awaitReady();
-			waitFor(process.getSemaphore());
+			awaitCompletion(apply(null, new Object[0]));
 		} finally {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().popRequirements();
 			}
+		}
+	}
+
+	/**
+	 * Waits until the dispatch described by {@code process} has been issued and has
+	 * completed, so that its outputs may be read.
+	 *
+	 * <p>This is an interruptible blocking call. A completion wait that observes an interrupt
+	 * returns early, with the interrupt status set, rather than throwing, so its return alone
+	 * cannot establish that the work finished. Returning normally in that case would let the
+	 * caller read outputs the kernel may still be writing, and a caller driving many
+	 * dispatches (a per-tick loop, for example) would keep issuing work it never waits for.
+	 * An interrupt is therefore reported as a failure. The status is only inspected after the
+	 * wait returns, so a thread whose interrupt status is already set on entry fails the same
+	 * way, as it would for any other interruptible blocking call; the interrupt status is left
+	 * set for the caller.</p>
+	 *
+	 * <p>Whether an interrupt cuts the wait itself short depends on the backend's
+	 * {@link Semaphore}: a wait that cannot observe interrupts (an
+	 * OpenCL event wait, for example) blocks until the dispatch completes. Either way the
+	 * interrupt is reported once the wait returns, so no caller proceeds past an interrupt
+	 * as though nothing had happened, and a dispatch loop stops at the dispatch in progress
+	 * when the interrupt arrives.</p>
+	 *
+	 * @param process the details returned by {@link #apply(MemoryBank, Object[])}
+	 * @throws HardwareException if the calling thread's interrupt status is set once the
+	 *                           completion wait returns
+	 */
+	protected void awaitCompletion(AcceleratedProcessDetails process) {
+		process.awaitReady();
+		waitFor(process.getSemaphore());
+
+		if (Thread.currentThread().isInterrupted()) {
+			throw new HardwareException("Interrupted before " + getName() + " completed");
 		}
 	}
 
@@ -471,7 +532,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				isFixedCount(), getCount(),
 				getArgumentVariables(), getOutputArgumentIndex(),
 				this::createMemoryReplacementManager,
-				getComputeContext()::runLater);
+				getComputeContext()::runLater,
+				AbstractComputeContext::isAnyExecutorThread);
 
 		if (evaluator != null) {
 			detailsFactory.setEvaluator(evaluator);
@@ -593,13 +655,34 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 *   taken to be the only result of interest); {@code output != null} with
 	 *   {@link MemoryDataArgumentMap#enableStrictSideEffects strict side-effects} copies back every
 	 *   slice except the one aliasing {@code output} (so an in-place {@code x = x + y} is not
-	 *   overwritten by the stale read copy of {@code x}).</li>
+	 *   overwritten by the stale read copy of {@code x}). Both {@code output != null} policies rely
+	 *   on the kernel having written {@code output}'s own memory, and it always has: the explicit
+	 *   {@code output} is bound directly at the output argument index (see
+	 *   {@link ProcessDetailsFactory}), and that argument is the operation's own destination,
+	 *   which is never folded. A slice of the aggregate that happens to alias {@code output} is
+	 *   therefore only ever the pre-kernel read copy of an input, and copying it back would
+	 *   discard the result &mdash; which is why the aliasing slice is skipped, never copied.</li>
 	 * </ul>
 	 *
 	 * <p>When both apply, the unwind order is correctness-critical: the replacement's
 	 * {@code postprocess} (temp&rarr;aggregate) must run BEFORE aggregation's de-aggregation
 	 * (aggregate&rarr;originals), otherwise the de-aggregation reads a stale aggregate and the
 	 * result reads as zero.</p>
+	 *
+	 * <p><strong>Thread-local propagation.</strong> The dispatch below is registered as a
+	 * {@link AcceleratedProcessDetails#whenReady(Runnable) whenReady} listener. Once every
+	 * argument is available it runs on whichever thread takes it first: the thread waiting for
+	 * it in {@link AcceleratedProcessDetails#awaitReady() awaitReady} (ordinarily the one that
+	 * called this method), or the thread it is handed to &mdash; a {@code ComputeContext}
+	 * executor thread when hardware is asynchronous, otherwise the thread that delivered the
+	 * last argument. The active {@link ComputeRequirement}s and
+	 * the active {@link Heap} are both thread-local, so both are captured on the calling
+	 * thread and re-established inside the listener. Skipping the {@link Heap} half of this
+	 * would make {@link Heap#addPendingKernel(Semaphore)} a silent no-op whenever the listener
+	 * runs on the executor thread (its {@link Heap#getDefault()} is unset there), so the
+	 * dispatched kernel's completion would never be registered with the {@link Heap.HeapStage}
+	 * that owns its argument memory, and that memory could be freed and reused while the
+	 * kernel is still running.</p>
 	 *
 	 * @param output    The destination memory bank for operation results, or null
 	 * @param args      The input arguments for the operation
@@ -608,6 +691,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @throws UnsupportedOperationException if the operation was not compiled
 	 */
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args, Semaphore dependsOn) {
+		requireLiveContext();
+
 		if (getArguments() == null) {
 			if (getInstructionSetManager() == null) {
 				throw new UnsupportedOperationException("Operation was not compiled");
@@ -623,15 +708,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		AcceleratedProcessDetails process = getProcessDetails(output, args, dependsOn);
 		process.setReadyLatch(new DefaultLatchSemaphore(getMetadata(), 1));
 
-		// Requirements are thread-local, and the listener below may run on another
-		// thread when dispatch is asynchronous; capture them here to re-establish there
+		// See the class/method javadoc above for why both of these are captured here.
 		List<ComputeRequirement> activeRequirements =
 				Hardware.getLocalHardware().getComputer().getActiveRequirements();
+		Heap.HeapStage activeHeapStage = Heap.getDefault() == null ? null : Heap.getDefault().getStage();
 
 		process.whenReady(() -> {
 			if (!activeRequirements.isEmpty()) {
 				Hardware.getLocalHardware().getComputer().pushRequirements(activeRequirements);
 			}
+
+			// Latest submitted work; the catch settles resource release after it on a synchronous failure.
+			Semaphore inflight = null;
 
 			try {
 				MemoryData input[] = process.getArguments(MemoryData[]::new);
@@ -644,45 +732,42 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 				boolean processing = !process.isEmpty();
 
-				// Copy-in groups chain on one another, and the kernel chains on the last of them.
-				// Arguments delivered asynchronously with an outstanding completion (see
-				// AcceleratedProcessDetails.getArgumentCompletions()) are merged in here, so the
-				// kernel is ordered after the work producing them without any host wait.
+				// The kernel chains on each copy-in group's merged completion (Submittable.submit)
+				// and on any asynchronously-delivered arguments merged in here, so it is ordered
+				// after every one of them with no host wait.
 				List<Semaphore> pending = process.getArgumentCompletions();
 				pending.add(dependsOn);
 				Semaphore ready = OperationSemaphore.all(getMetadata(), pending);
 
 				if (aggregating) {
 					Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);
-					if (prepared != null) ready = prepared;
+					if (prepared != null) ready = inflight = prepared;
 				}
 
 				if (processing) {
 					Semaphore prepared = Submittable.submit(process.getPrepareOperations(), ready);
-					if (prepared != null) ready = prepared;
+					if (prepared != null) ready = inflight = prepared;
 				}
 
 				// Run the operator, chaining on the last copy-in (or the caller's prior completion).
 				Semaphore nextSemaphore = operator.accept(input, ready);
+				if (nextSemaphore != null) inflight = nextSemaphore;
 
-				// Register kernel semaphore with the active heap stage so
-				// that pop() waits for kernel completion before destroying memory
-				Heap.addPendingKernel(nextSemaphore);
+				// activeHeapStage avoids Heap.addPendingKernel()'s thread-local lookup; see javadoc above.
+				if (activeHeapStage != null) activeHeapStage.addPendingKernel(nextSemaphore);
 
 				Semaphore completion = nextSemaphore;
 
 				// Copy-out unwinds in reverse order; see the method javadoc
 				if (processing) {
 					Semaphore copyBack = Submittable.submit(process.getPostprocessOperations(), completion);
-					if (copyBack != null) completion = copyBack;
+					if (copyBack != null) completion = inflight = copyBack;
 				}
 
 				if (aggregateCopyOut) {
-					Semaphore copyOut = Submittable.submit(output == null ?
-							argumentMap.getPostprocessOperations(null) :
-							argumentMap.getPostprocessOperations((MemoryData) output), completion);
+					Semaphore copyOut = Submittable.submit(argumentMap.getPostprocessOperations(output), completion);
 					if (copyOut != null) {
-						completion = copyOut;
+						completion = inflight = copyOut;
 					}
 				}
 
@@ -693,20 +778,25 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// unchanged.
 				process.setSemaphore(completion);
 
-				if (completion != null && completion != nextSemaphore) {
+				if (completion != null && completion != nextSemaphore && activeHeapStage != null) {
 					// The trailing copy-out runs after the kernel, so heap lifecycle must wait for it too.
-					Heap.addPendingKernel(completion);
+					activeHeapStage.addPendingKernel(completion);
 				}
 
-				if (process.hasDestinationLeases()) {
-					// Release at the end of the full chain, passively — an actively waiting
-					// callback (onComplete) forces a per-invocation commit on Metal.
+				if (process.hasResources()) {
+					// whenSettled also fires on the failure path, so a failed dispatch still frees
+					// its leases and temporaries; MetalSemaphore overrides it to attach passively.
 					if (completion == null) {
-						process.releaseDestinationLeases();
+						process.releaseResources();
 					} else {
-						completion.whenComplete(process::releaseDestinationLeases);
+						completion.whenSettled(process::releaseResources);
 					}
 				}
+			} catch (RuntimeException | Error e) {
+				// A synchronous failure never installs the completion-driven release above
+				process.releaseResourcesAfterFailure(e, inflight);
+
+				throw e;
 			} finally {
 				if (!activeRequirements.isEmpty()) {
 					Hardware.getLocalHardware().getComputer().popRequirements();
@@ -720,27 +810,25 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/**
 	 * Prepares the {@link Execution} operator for running the kernel with the specified process details.
 	 *
-	 * <p>This method loads the compiled kernel/native code and configures execution parameters such as
-	 * global work size based on the process details. For kernel operations, it sets up the {@link KernelWork}
-	 * interface with appropriate work dimensions.</p>
+	 * <p>This method loads the compiled kernel/native code and sets the work range it is dispatched
+	 * over (see {@link io.almostrealism.kernel.KernelWork}) to the process details' kernel size,
+	 * starting from the first work item.</p>
 	 *
 	 * @param process The process details containing kernel size and execution metadata
 	 * @return The configured {@link Execution} operator ready to accept arguments
-	 * @throws UnsupportedOperationException if the operator is not a {@link KernelWork}
-	 * @throws HardwareException if the operator has been destroyed
+	 * @throws HardwareException if the operator has been destroyed, or cannot be dispatched over
+	 *                           the kernel size
 	 */
 	protected Execution setupOperator(AcceleratedProcessDetails process) {
 		try {
 			Execution operator = load();
 
-			if (!(operator instanceof KernelWork)) {
-				throw new UnsupportedOperationException();
-			} else if (operator.isDestroyed()) {
+			if (operator.isDestroyed()) {
 				throw new HardwareException("Operator has already been destroyed");
 			}
 
-			((KernelWork) operator).setGlobalWorkOffset(0);
-			((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
+			operator.setGlobalWorkOffset(0);
+			operator.setGlobalWorkSize(process.getKernelSize());
 
 			return operator;
 		} catch (HardwareException e) {
@@ -765,31 +853,4 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/** Returns the console for logging operations. */
 	@Override
 	public Console console() { return console; }
-
-
-	/** Prints timing statistics. */
-	public static void printTimes() {
-		// Memory access
-		if (!NativeMemoryProvider.ioTime.getEntries().isEmpty()) {
-			NativeMemoryProvider.ioTime.print();
-		}
-
-		if (!MTLBuffer.ioTime.getEntries().isEmpty()) {
-			MTLBuffer.ioTime.print();
-		}
-
-		// Compilation
-		console.println("AcceleratedOperation: Retrieve operator total - " +
-				((long) AcceleratedOperation.retrieveOperatorMetric.getTotal()) + "sec");
-		console.println("AcceleratedOperation: JNI Compile - " +
-				((long) NativeCompiler.compileTime.getTotal()) + "sec");
-		console.println("AcceleratedOperation: MTL Compile - " +
-				((long) MetalProgram.compileTime.getTotal()) + "sec");
-
-		HardwareOperator.prepareArgumentsMetric.print();
-		HardwareOperator.computeDimMasksMetric.print();
-		NativeExecution.dimMaskMetric.print();
-
-		AcceleratedOperation.wrappedEvalMetric.print();
-	}
 }

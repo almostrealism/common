@@ -15,6 +15,26 @@ import server
 from server import mcp
 
 
+def _parse_tracker_capabilities(value: str) -> tuple:
+    """Split a comma-separated tracker-capability list and check each entry.
+
+    The retired ``steward`` role is accepted as ``planner``, which replaced it,
+    and repeated entries are collapsed.
+
+    Returns:
+        A ``(capabilities, error)`` tuple: the list (possibly empty) and
+        None, or None and an error dict naming the unknown entry.
+    """
+    caps = []
+    for cap in (c.strip() for c in value.split(",") if c.strip()):
+        cap = server._canonical_tracker_capability(cap)
+        if cap != server.TRACKER_PLANNER:
+            return None, {"ok": False, "error": (
+                f"Unknown tracker capability '{cap}'; expected '{server.TRACKER_PLANNER}'")}
+        if cap not in caps:
+            caps.append(cap)
+    return caps, None
+
 
 @mcp.tool()
 def workstream_register(
@@ -34,6 +54,7 @@ def workstream_register(
     default_phase_config: str = "",
     phase_configs: str = "",
     dispatch_capable: bool = False,
+    tracker_capabilities: str = "",
     default_use_tmux: bool = False,
     max_wall_clock_hours: int = -1,
     kind: str = "",
@@ -156,6 +177,13 @@ def workstream_register(
             ceilings, so the flag is the gate but not the only safety
             mechanism. Operators should enable it only on workstreams
             that genuinely orchestrate.
+        tracker_capabilities: Comma-separated tracker roles granted to agents
+            on this workstream. The one role is ``planner``: its agents may
+            create tasks with every field set, edit any task in the
+            workspace, and create releases. Without it an agent may still
+            read the workspace's tasks, file new tasks into the backlog, and
+            edit the tasks linked to its own workstream. Empty grants none,
+            which is the default.
         default_use_tmux: When ``True``, coding-agent jobs on this workstream
             launch the agent subprocess inside a tmux session (a real
             controlling tty) by default. The per-job ``use_tmux`` flag
@@ -317,6 +345,11 @@ def workstream_register(
     # boolean directly is simpler and the controller's extractBoolean
     # helper handles a missing field identically.
     payload["dispatchCapable"] = bool(dispatch_capable)
+    if tracker_capabilities:
+        caps, err = _parse_tracker_capabilities(tracker_capabilities)
+        if err:
+            return err
+        payload["trackerCapabilities"] = caps
     # defaultUseTmux follows the same unconditional-forward pattern as
     # dispatchCapable: a boolean forwarded verbatim so the controller
     # sees the operator's intent regardless of whether the field
@@ -396,6 +429,7 @@ def workstream_update_config(
     default_phase_config: str = "",
     phase_configs: str = "",
     dispatch_capable: Optional[bool] = None,
+    tracker_capabilities: Optional[str] = None,
     default_use_tmux: Optional[bool] = None,
     max_wall_clock_hours: Optional[int] = None,
     kind: str = "",
@@ -462,6 +496,9 @@ def workstream_update_config(
             the parameter entirely leaves the existing controller value
             unchanged (presence-signal semantics, same pattern as
             ``completion_listeners``). Defaults to ``None`` (no change).
+        tracker_capabilities: Comma-separated tracker roles (``planner``)
+            granted to agents on this workstream, replacing the current set. ``""`` revokes them all; omitting the parameter
+            (``None``) leaves them unchanged.
         default_use_tmux: When ``True``, coding-agent jobs on this workstream
             launch the agent subprocess inside a tmux session (a real
             controlling tty) by default. The per-job ``use_tmux`` flag
@@ -521,6 +558,13 @@ def workstream_update_config(
     parsed_phase_configs, phase_configs_err = server._parse_phase_configs_json(phase_configs)
     if phase_configs_err:
         return phase_configs_err
+    # Archived workstreams are read-only: history stays queryable but the
+    # configuration is frozen. Resolving an archived workstream's ownership
+    # now succeeds, so this explicit refusal is what keeps config edits off
+    # an archived workstream. Unarchive it first to change it.
+    archived_err = server._archived_workstream_error("update configuration", workstream_id)
+    if archived_err:
+        return archived_err
     server._require_workstream_in_scope(workstream_id)
     server._audit("workstream_update_config", workstream_id=workstream_id)
 
@@ -570,6 +614,11 @@ def workstream_update_config(
         payload["maxWallClockHours"] = int(max_wall_clock_hours)
     if dispatch_capable is not None:
         payload["dispatchCapable"] = bool(dispatch_capable)
+    if tracker_capabilities is not None:
+        caps, err = _parse_tracker_capabilities(tracker_capabilities)
+        if err:
+            return err
+        payload["trackerCapabilities"] = caps
     # default_use_tmux follows the same Optional-presence pattern as
     # dispatch_capable: omitted = no change, ``False`` = clear the
     # workstream-level tmux opt-in, ``True`` = opt the workstream in.

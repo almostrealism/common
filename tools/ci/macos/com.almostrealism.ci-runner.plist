@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd service for a self-hosted GitHub Actions runner on a macOS host.
+
+  A template: `tools/bin/fleet macos install` fills the @...@ placeholders,
+  writes the result into the runner account's stage directory, and registers
+  it with flowtree/runtime/agent/macos/register-daemon.sh (see README.md,
+  "Quick Start").
+
+  A LaunchDaemon rather than a LaunchAgent: the runner account is a service
+  account nobody logs in as, so it has no per-user launchd domain to load a
+  LaunchAgent into, while the system domain is present from boot. It runs as
+  RUNNER_USER, which is also the account every job step runs as.
+
+  runner.sh and the env file are the staged copies under STAGE_DIR, not a
+  checkout: the service does not depend on any checkout staying where it is,
+  and re-running the install is how it is updated.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>@LABEL@</string>
+    <key>UserName</key>
+    <string>@RUNNER_USER@</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>@STAGE_DIR@/bin/runner.sh</string>
+        <string>@STAGE_DIR@/runner.env</string>
+        <string>@RUNNER_DIR@</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- launchd gives a daemon almost no PATH and no HOME. runner.sh
+             needs java, mvn, curl and jq; jobs need git, mvn and lsof. -->
+        <key>PATH</key>
+        <string>@RUNNER_PATH@</string>
+        <key>HOME</key>
+        <string>@RUNNER_HOME@</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>@STAGE_DIR@</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>@STAGE_DIR@/runner.log</string>
+    <key>StandardErrorPath</key>
+    <string>@STAGE_DIR@/runner.log</string>
+</dict>
+</plist>

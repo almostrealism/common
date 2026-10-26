@@ -16,22 +16,29 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import io.almostrealism.collect.Collection;
-import io.almostrealism.collect.DefaultTraversalOrdering;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.ByteBufferTransfer;
 import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
+
+import java.nio.ByteBuffer;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -42,6 +49,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
@@ -167,8 +175,10 @@ import java.util.stream.Stream;
  * // Save to file
  * data.save(new File("tensor.dat"));
  *
- * // Load from file
- * PackedCollection loaded = PackedCollection.load(new File("tensor.dat"));
+ * // Load the saved collections back from the file
+ * for (PackedCollection loaded : PackedCollection.loadCollections(new File("tensor.dat"))) {
+ *     // ... use loaded ...
+ * }
  *
  * // Print for debugging
  * data.print();  // Pretty-printed to console
@@ -202,6 +212,24 @@ public class PackedCollection extends MemoryDataAdapter
 
 	/** How many calls a report names when asked where it came from. */
 	private static final int ORIGIN_FRAMES = 12;
+
+	/**
+	 * The largest magnitude of integer that the double-backed storage represents exactly:
+	 * {@code 2^53}. Every integer in {@code [-2^53, 2^53]} has an exact {@code double}
+	 * representation; beyond it the gap between representable doubles exceeds one, so a
+	 * {@code long} outside this range would be silently rounded when stored. The
+	 * {@code long}-accepting ingest overloads reject such values rather than corrupt them.
+	 */
+	private static final long MAX_EXACT_INTEGER = 1L << 53;
+
+	/**
+	 * The largest ratio of covering backing-memory span to requested element count for which
+	 * {@link #doubleStream(int, int)} still reads an irregular shape with a single bulk transfer.
+	 * Beyond this ratio the span is so much wider than the window that one bulk read would allocate
+	 * and transfer far more than requested (for a sparse permutation it can approach the whole
+	 * backing buffer), so the stream falls back to element-by-element reads instead.
+	 */
+	private static final int BULK_STREAM_SPAN_LIMIT = 4;
 
 	/** Shared hardware-accelerated evaluable for zeroing a single element, used by {@link #clear()}. */
 	private static final Evaluable<PackedCollection> clear;
@@ -405,11 +433,7 @@ public class PackedCollection extends MemoryDataAdapter
 
 	@Override
 	public TraversalOrdering getDelegateOrdering() {
-		if (getShape().getOrder() == null) return null;
-		return getShape().getOrder().getLength().stream()
-				.mapToObj(DefaultTraversalOrdering::new)
-				.findFirst()
-				.orElseGet(DefaultTraversalOrdering::new);
+		return getShape().getOrder();
 	}
 
 	@Override
@@ -436,8 +460,30 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	/**
+	 * Returns whether the given collection has the same shape and the same values as this one,
+	 * in logical order. Values are compared as {@link Arrays#equals(double[], double[])} does.
+	 *
+	 * @param other the collection to compare with; may be null
+	 * @return true if {@code other} has an equal shape and equal values
+	 */
+	public boolean contentEquals(PackedCollection other) {
+		if (other == this) return true;
+		if (other == null || !getShape().equals(other.getShape())) return false;
+		return Arrays.equals(doubleStream().toArray(), other.doubleStream().toArray());
+	}
+
+	/**
 	 * Returns a {@link DoubleStream} over a range of elements in this collection.
-	 * Uses a direct array read for regular (non-reordered) shapes for efficiency.
+	 * Elements are streamed in the logical order of this collection's shape. A regular shape is a
+	 * single direct read. An irregular shape (permuted, or otherwise mapped through its
+	 * {@link TraversalPolicy}) is read with a single transfer of the span of backing memory the
+	 * requested elements occupy, with each element then picked out of that span on the host &mdash;
+	 * unless that span is more than {@link #BULK_STREAM_SPAN_LIMIT} times wider than the requested
+	 * range (as it can be for a short logical range over a sparse permutation, where the mapped
+	 * endpoints may lie near opposite ends of the backing buffer), in which case the bulk read would
+	 * allocate and transfer far more than requested and the stream falls back to element-by-element
+	 * reads. A collection whose memory carries a {@link TraversalOrdering} is always read element by
+	 * element.
 	 *
 	 * @param offset the starting element index
 	 * @param length the number of elements to stream
@@ -445,11 +491,34 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	@Override
 	public DoubleStream doubleStream(int offset, int length) {
-		if (getDelegateOrdering() == null && getShape().isRegular()) {
+		if (getMemOrdering() != null) {
+			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
+		} else if (getShape().isRegular()) {
 			return DoubleStream.of(toArray(offset, length));
-		} else {
+		} else if (length == 0) {
+			return DoubleStream.empty();
+		}
+
+		// Scan the covering span without retaining one index per logical element. A negative input
+		// index lies outside the backing memory and reads as 0.0, as toDouble does.
+		int lowest = Integer.MAX_VALUE;
+		int highest = -1;
+		for (int i = offset; i < offset + length; i++) {
+			int index = getShape().inputIndex(i);
+			if (index >= 0 && index < lowest) lowest = index;
+			if (index + 1 > highest) highest = index + 1;
+		}
+		int start = lowest == Integer.MAX_VALUE ? 0 : lowest;
+		int end = highest;
+		long span = (long) end - start;
+		if (span > (long) BULK_STREAM_SPAN_LIMIT * length) {
+			// The covering span is far wider than the window, so read each element directly instead.
 			return IntStream.range(offset, offset + length).mapToDouble(this::toDouble);
 		}
+
+		double[] window = span > 0 ? toArray(start, (int) span) : new double[0];
+		return IntStream.range(offset, offset + length).map(getShape()::inputIndex)
+				.mapToDouble(i -> i < 0 ? 0.0 : window[i - start]);
 	}
 
 	/**
@@ -541,6 +610,45 @@ public class PackedCollection extends MemoryDataAdapter
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(data);
 		return this;
+	}
+
+	/**
+	 * Fills this collection with {@code int} values, cycling through them if there are fewer than
+	 * the collection holds.
+	 *
+	 * <p>This overload exists for genuine integer data — tokenizer output above all — entering the
+	 * system. Unlike {@link #fill(double...)}, an integer source carries no computed
+	 * floating-point value and so cannot launder host-side math onto the device, which is why it is
+	 * outside the host-ingest policy's scalar allowance on the double-accepting surfaces. (The
+	 * lexical policy detector inspects argument <em>syntax</em>, not type, so an array argument to
+	 * this method may still be reported; that is a limitation of the detector, not of this
+	 * surface.)</p>
+	 *
+	 * @param value the {@code int} values to cycle through; repeated if shorter than the collection
+	 * @return this collection
+	 */
+	public PackedCollection fill(int... value) {
+		return fill(doubles(value));
+	}
+
+	/**
+	 * Fills this collection with {@code long} values, cycling through them if there are fewer than
+	 * the collection holds.
+	 *
+	 * <p>Like {@link #fill(int...)}, this overload is for genuine integer data entering the system
+	 * and is outside the host-ingest policy's scalar allowance for the same reason.</p>
+	 *
+	 * <p><b>Precision.</b> The storage is {@code double}-backed, representing integers exactly only
+	 * within {@code [-2^53, 2^53]}. A {@code long} beyond that range is rejected with an
+	 * {@link IllegalArgumentException} rather than silently rounded; token ids and comparable
+	 * integer data are far below the limit.</p>
+	 *
+	 * @param value the {@code long} values to cycle through; repeated if shorter than the collection
+	 * @return this collection
+	 * @throws IllegalArgumentException if any value's magnitude exceeds {@code 2^53}
+	 */
+	public PackedCollection fill(long... value) {
+		return fill(doubles(value));
 	}
 
 	/**
@@ -931,14 +1039,14 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	/**
-	 * Returns the index of the element with the largest value in this collection.
+	 * Returns the index of the element with the largest value in this collection,
+	 * as computed by {@link #argmax(double[])}.
 	 *
-	 * @return the zero-based index of the maximum element, or -1 if the collection is empty
+	 * @return the zero-based index of the maximum element (the first one when the
+	 *         maximum is tied), or -1 if the collection is empty
 	 */
 	public int argmax() {
-		return IntStream.range(0, getMemLength())
-				.reduce((a, b) -> toDouble(a) > toDouble(b) ? a : b)
-				.orElse(-1);
+		return argmax(doubleStream(0, getMemLength()).toArray());
 	}
 
 	@Override
@@ -1106,6 +1214,86 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	/**
+	 * Creates a one-dimensional collection from the given array of {@code int} values.
+	 *
+	 * <p>This overload exists for genuine integer data — above all tokenizer output, the
+	 * {@code int[]} a tokenizer computes from text — entering the system. Unlike
+	 * {@link #of(double...)}, an integer source carries no computed floating-point value and so
+	 * cannot be used to launder host-side math onto the device: there is nothing in an
+	 * {@code int} that a producer was supposed to have computed. That is why the host-ingest
+	 * policy's scalar allowance, which caps the double-accepting surfaces, does not apply to it.
+	 * (The lexical policy detector inspects argument <em>syntax</em>, not type, so an array
+	 * argument to this method may still be reported; that is a known limitation of the detector,
+	 * not a property of this surface.)</p>
+	 *
+	 * @param values the {@code int} values to pack into a collection
+	 * @return a new {@link PackedCollection} containing the given values as doubles
+	 */
+	public static PackedCollection of(int... values) {
+		return of(doubles(values));
+	}
+
+	/**
+	 * Creates a one-dimensional collection from the given array of {@code long} values.
+	 *
+	 * <p>Like {@link #of(int...)}, this overload is for genuine integer data entering the system
+	 * and is outside the host-ingest policy's scalar allowance for the same reason: an integer
+	 * source cannot launder computed floating-point values onto the device.</p>
+	 *
+	 * <p><b>Precision.</b> The storage is {@code double}-backed, which represents integers exactly
+	 * only within {@code [-2^53, 2^53]}. A {@code long} outside that range cannot be stored without
+	 * silent rounding, so such a value is rejected with an {@link IllegalArgumentException} rather
+	 * than quietly corrupted. Token ids and comparable integer data are far below the limit.</p>
+	 *
+	 * @param values the {@code long} values to pack into a collection
+	 * @return a new {@link PackedCollection} containing the given values as doubles
+	 * @throws IllegalArgumentException if any value's magnitude exceeds {@code 2^53}
+	 */
+	public static PackedCollection of(long... values) {
+		return of(doubles(values));
+	}
+
+	/**
+	 * Widens an {@code int[]} to a {@code double[]} for storage. Every {@code int} is within the
+	 * exactly-representable range, so the conversion is lossless.
+	 *
+	 * @param values the integer values
+	 * @return the values as doubles
+	 */
+	private static double[] doubles(int... values) {
+		return IntStream.range(0, values.length).mapToDouble(i -> values[i]).toArray();
+	}
+
+	/**
+	 * Widens a {@code long[]} to a {@code double[]} for storage, rejecting any value whose magnitude
+	 * exceeds {@link #MAX_EXACT_INTEGER} because it could not be represented exactly.
+	 *
+	 * @param values the long values
+	 * @return the values as doubles
+	 * @throws IllegalArgumentException if any value's magnitude exceeds {@code 2^53}
+	 */
+	private static double[] doubles(long... values) {
+		return IntStream.range(0, values.length).mapToDouble(i -> exactDouble(values[i])).toArray();
+	}
+
+	/**
+	 * Converts a single {@code long} to a {@code double}, failing when the value cannot be
+	 * represented exactly by the double-backed storage.
+	 *
+	 * @param value the long value
+	 * @return the value as a double
+	 * @throws IllegalArgumentException if {@code |value|} exceeds {@code 2^53}
+	 */
+	private static double exactDouble(long value) {
+		if (value < -MAX_EXACT_INTEGER || value > MAX_EXACT_INTEGER) {
+			throw new IllegalArgumentException("long value " + value
+					+ " exceeds the 2^53 exact-integer limit of double-backed storage");
+		}
+
+		return value;
+	}
+
+	/**
 	 * Returns a factory that allocates collections using the default heap or standard allocation.
 	 *
 	 * @return an {@link IntFunction} that creates collections of the given size
@@ -1146,11 +1334,84 @@ public class PackedCollection extends MemoryDataAdapter
 	}
 
 	/**
-	 * Loads all collections serialized in the given file.
+	 * Creates a collection of the given shape over a native staging allocation filled from one or
+	 * more buffers of single-precision values, converting to the local hardware's precision on the
+	 * way in. With a single source this is a straight copy of the source's values; with several,
+	 * one value is drawn from each source in turn, as for a tensor stored as separate planes and
+	 * consumed interleaved.
+	 *
+	 * <p>This is for values that entered the process from outside it in a format of their own — a
+	 * foreign checkpoint, a capture callback — and arrived as bytes. It is not a route for values
+	 * computed by Java code, which belong in a {@link io.almostrealism.relation.Producer}; nor for
+	 * values this project itself serialized, which are protobuf collection data, read by
+	 * {@code CollectionEncoder} through a mapping of the file rather than staged into an allocation
+	 * of their own.</p>
+	 *
+	 * @param shape   the shape of the resulting collection
+	 * @param sources one or more buffers holding the values, positioned at the first value
+	 * @return a collection rooted over the staging allocation
+	 * @throws IllegalArgumentException if no sources are given, or the shape's size is not
+	 *                                   divisible by the source count
+	 * @throws UnsupportedOperationException if the local hardware's native buffer provider
+	 *                                        addresses values at {@link Precision#FP16}
+	 *                                        (bfloat16), which {@link ByteBufferTransfer} cannot
+	 *                                        convert into
+	 */
+	public static PackedCollection load(TraversalPolicy shape, ByteBuffer... sources) {
+		if (sources.length == 0) {
+			throw new IllegalArgumentException("At least one source is required");
+		}
+
+		int total = shape.getTotalSize();
+		if (total % sources.length != 0) {
+			throw new IllegalArgumentException("Shape size " + total +
+					" is not divisible by the " + sources.length + " sources");
+		}
+
+		MemoryProvider<? extends RAM> provider =
+				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+
+		Precision destination = Precision.ofBytes(provider.getNumberSize());
+		if (destination == Precision.FP16) {
+			throw new UnsupportedOperationException("Cannot stage values into a provider " +
+					"that addresses " + destination + " (bfloat16) precision");
+		}
+
+		RAM mem = provider.allocate(total);
+
+		try {
+			ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+
+			ByteBufferTransfer transfers[] = new ByteBufferTransfer[sources.length];
+			for (int i = 0; i < sources.length; i++) {
+				transfers[i] = new ByteBufferTransfer(sources[i], Precision.FP32, staging, destination);
+			}
+
+			if (transfers.length == 1) {
+				transfers[0].copy(total);
+			} else {
+				for (int i = 0; i < total; i += transfers.length) {
+					for (ByteBufferTransfer transfer : transfers) {
+						transfer.copyNext();
+					}
+				}
+			}
+		} catch (RuntimeException e) {
+			mem.getProvider().deallocate(total, mem);
+			throw e;
+		}
+
+		return new PackedCollection(shape, shape.getTraversalAxis(), Bytes.of(mem, total), 0);
+	}
+
+	/**
+	 * Loads all collections serialized in the given file. Collections are read
+	 * lazily as the returned {@link Iterable} is traversed; any I/O error
+	 * encountered while opening or reading the file is wrapped in a
+	 * {@link RuntimeException}.
 	 *
 	 * @param src the file to load collections from
 	 * @return an iterable of the deserialized collections
-	 * @throws IOException if an I/O error occurs while reading the file
 	 */
 	public static Iterable<PackedCollection> loadCollections(File src) {
 		try {

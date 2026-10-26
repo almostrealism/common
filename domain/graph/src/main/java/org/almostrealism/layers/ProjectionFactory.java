@@ -35,17 +35,17 @@ import java.util.List;
  * ProjectionFactory defaultFactory = ProjectionFactory.dense();
  *
  * // LoRA: create adapters based on config
- * ProjectionFactory loraFactory = (shape, weights, bias, target) -> {
- *     if (config.isTargeted(target)) {
- *         return new LoRALinear(shape, weights, bias, config.getRank(), config.getAlpha());
- *     }
- *     return dense(shape, weights, bias, false);
- * };
+ * ProjectionFactory loraFactory = ProjectionFactory.lora(config, loraLayers);
  *
  * // Use with attention methods
  * Block attn = sequenceAttention(..., loraFactory);
  * }</pre>
  *
+ * <p>These factories are the named implementations {@link DenseProjectionFactory}
+ * and {@link LoRAProjectionFactory}; the statics below return instances of them.</p>
+ *
+ * @see DenseProjectionFactory
+ * @see LoRAProjectionFactory
  * @see LoRALinear
  * @see AdapterConfig
  * @author Michael Murray
@@ -88,10 +88,7 @@ public interface ProjectionFactory extends LayerFeatures {
 	 * @return A factory that creates dense layers
 	 */
 	static ProjectionFactory dense() {
-		return (shape, weights, bias, target) -> {
-			LayerFeatures lf = new LayerFeatures() {};
-			return lf.dense(shape, weights, bias, false);
-		};
+		return new DenseProjectionFactory();
 	}
 
 	/**
@@ -105,16 +102,8 @@ public interface ProjectionFactory extends LayerFeatures {
 	 * @return A factory that conditionally creates LoRA-wrapped layers
 	 */
 	static ProjectionFactory lora(AdapterConfig config, List<LoRALinear> loraLayers) {
-		return (shape, weights, bias, target) -> {
-			LayerFeatures lf = new LayerFeatures() {};
-			if (config != null && config.isTargeted(target)) {
-				LoRALinear loraLayer = new LoRALinear(shape, weights, bias, config.getRank(), config.getAlpha());
-				if (loraLayers != null) {
-					loraLayers.add(loraLayer);
-				}
-				return loraLayer;
-			}
-			return lf.dense(shape, weights, bias, false);
-		};
+		return new LoRAProjectionFactory(config,
+				loraLayers == null ? layer -> { } : loraLayers::add,
+				dense());
 	}
 }

@@ -16,6 +16,7 @@
 
 package org.almostrealism.persist.assets;
 
+import io.almostrealism.code.NumberSystem;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -23,7 +24,6 @@ import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.protobuf.Collections;
 
 import java.io.File;
-import java.nio.ByteBuffer;
 import java.util.stream.IntStream;
 
 /**
@@ -59,19 +59,36 @@ public class CollectionEncoder {
 	 * @throws IllegalArgumentException if {@code precision} is not FP32 or FP64
 	 */
 	public static Collections.CollectionData encode(PackedCollection c, Precision precision) {
+		if (precision == Precision.FP64) {
+			return encode(c, NumberSystem.F64);
+		} else if (precision == Precision.FP32) {
+			return encode(c, NumberSystem.F32);
+		}
+
+		throw new IllegalArgumentException(precision + " has no collection data payload");
+	}
+
+	/**
+	 * Encodes a {@link PackedCollection} to protobuf format as the given number system's payload.
+	 *
+	 * <p>If {@code c} is {@code null}, the default (empty) instance of
+	 * {@link Collections.CollectionData} is returned. An integer system ({@link NumberSystem#I32}
+	 * or {@link NumberSystem#I64}) requires every value to be a whole number in range for its
+	 * width, failing rather than truncating a value that is not; a value is exact in the collection
+	 * only to the limits the system documents (an {@code int64} to &plusmn;2<sup>53</sup>).</p>
+	 *
+	 * @param c        The collection to encode
+	 * @param encoding The number system to store the values as; must have a protobuf payload
+	 * @return A {@link Collections.CollectionData} message, or the default instance if {@code c} is null
+	 * @throws IllegalArgumentException if {@code encoding} has no protobuf payload, or an integer
+	 *         system is asked to store a value that is not a whole number in range
+	 */
+	public static Collections.CollectionData encode(PackedCollection c, NumberSystem encoding) {
 		if (c == null) return Collections.CollectionData.getDefaultInstance();
 
 		Collections.CollectionData.Builder data = Collections.CollectionData.newBuilder();
 		data.setTraversalPolicy(encode(c.getShape()));
-
-		if (precision == Precision.FP64) {
-			c.doubleStream().forEach(data::addData);
-		} else if (precision == Precision.FP32) {
-			c.doubleStream().forEach(d -> data.addData32((float) d));
-		} else {
-			throw new IllegalArgumentException();
-		}
-
+		CollectionDataPayload.of(encoding).write(c, data);
 		return data.build();
 	}
 
@@ -91,8 +108,10 @@ public class CollectionEncoder {
 	/**
 	 * Decodes a {@link Collections.CollectionData} message into a new {@link PackedCollection}.
 	 *
-	 * <p>Returns {@code null} if the encoded shape has zero dimensions (i.e., the collection was null
-	 * when encoded).</p>
+	 * <p>Returns {@code null} if the encoded collection has zero total size — a shape with no
+	 * dimensions (the collection was null when encoded) or one carrying a zero-length axis (such as
+	 * an SA3 {@code [1, 0, 1]} bottleneck buffer). A {@link PackedCollection} cannot hold zero
+	 * elements, so such a collection resolves to {@code null} rather than throwing.</p>
 	 *
 	 * @param data The protobuf message to decode
 	 * @return A new {@link PackedCollection} with the encoded shape and values, or {@code null}
@@ -119,14 +138,20 @@ public class CollectionEncoder {
 	 * the normal way and the deferred collection is copied into it with
 	 * {@link PackedCollection#setFrom}, producing ordinary writable storage.</p>
 	 *
+	 * <p>A collection with zero total size — a shape with no dimensions, or one carrying a
+	 * zero-length axis — resolves to {@code null} in either mode. A {@link PackedCollection} cannot
+	 * hold zero elements, so materializing one would throw; returning {@code null} lets a caller
+	 * reading a library of tensors omit the single empty entry rather than losing the whole file.
+	 * This mirrors the deferred reader ({@link CollectionDataReference#of}).</p>
+	 *
 	 * @param data The protobuf message to decode
 	 * @param materialize whether to copy the values into freshly allocated memory
 	 * @return A collection with the encoded shape,
-	 *         or {@code null} if the encoded shape has zero dimensions
+	 *         or {@code null} if the encoded collection has zero total size
 	 */
 	public static PackedCollection decode(Collections.CollectionData data, boolean materialize) {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
-		if (shape.getDimensions() == 0) return null;
+		if (shape.getTotalSizeLong() == 0) return null;
 
 		CollectionDataMemory mem = (CollectionDataMemory)
 				CollectionDataMemoryProvider.getInstance().allocate(data);
@@ -168,14 +193,31 @@ public class CollectionEncoder {
 	private static PackedCollection decode(TraversalPolicy shape,
 										   CollectionDataMemory mem,
 										   boolean materialize) {
-		PackedCollection deferred = new PackedCollection(shape, shape.getTraversalAxis(),
-				Bytes.of(mem, mem.getLength()), 0);
-		if (!materialize) return deferred;
+		if (!materialize) {
+			return new PackedCollection(shape, shape.getTraversalAxis(),
+					Bytes.of(mem, mem.getLength()), 0);
+		}
 
 		PackedCollection result = new PackedCollection(shape);
-		result.setFrom(0, deferred, 0, mem.getLength());
-		deferred.getRootDelegate().destroy();
+		copyInto(result, shape, mem);
 		return result;
+	}
+
+	/**
+	 * Copies the values of message-backed memory into the given destination, which must already be
+	 * the shape those values fill. The deferred collection built over the memory is read through
+	 * once by {@link PackedCollection#setFrom} and then released.
+	 *
+	 * @param destination the collection to copy into, written from element 0
+	 * @param shape       the shape of the values
+	 * @param mem         the memory holding the values
+	 */
+	private static void copyInto(PackedCollection destination, TraversalPolicy shape,
+								 CollectionDataMemory mem) {
+		PackedCollection deferred = new PackedCollection(shape, shape.getTraversalAxis(),
+				Bytes.of(mem, mem.getLength()), 0);
+		destination.setFrom(0, deferred, 0, mem.getLength());
+		deferred.getRootDelegate().destroy();
 	}
 
 	/**
@@ -184,7 +226,7 @@ public class CollectionEncoder {
 	 * @param data        The protobuf message to decode
 	 * @param destination The collection to write decoded values into, starting at offset 0
 	 * @return A range view of {@code destination} shaped according to the encoded shape,
-	 *         or {@code null} if the encoded shape has zero dimensions
+	 *         or {@code null} if the encoded collection has zero total size
 	 */
 	public static PackedCollection decode(Collections.CollectionData data,
 											 PackedCollection destination) {
@@ -194,33 +236,29 @@ public class CollectionEncoder {
 	/**
 	 * Decodes a {@link Collections.CollectionData} message into an existing destination collection at the given offset.
 	 *
+	 * <p>Returns {@code null} if the encoded collection has zero total size — a shape with no
+	 * dimensions or one carrying a zero-length axis (such as an SA3 {@code [1, 0, 1]} bottleneck
+	 * buffer). A zero-size range cannot be written, so such a collection resolves to {@code null}
+	 * rather than reaching {@link PackedCollection#range} and throwing. This matches the guard on
+	 * {@link #decode(Collections.CollectionData, boolean)} and the deferred reader
+	 * ({@link CollectionDataReference#of}).</p>
+	 *
 	 * @param data              The protobuf message to decode
 	 * @param destination       The collection to write decoded values into
 	 * @param destinationOffset Element offset within {@code destination} at which writing begins
 	 * @return A range view of {@code destination} shaped according to the encoded shape,
-	 *         or {@code null} if the encoded shape has zero dimensions
+	 *         or {@code null} if the encoded collection has zero total size
 	 */
 	public static PackedCollection decode(Collections.CollectionData data,
 											 PackedCollection destination,
 											 int destinationOffset) {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
-		if (shape.getDimensions() == 0) return null;
+		if (shape.getTotalSizeLong() == 0) return null;
 
+		CollectionDataMemory mem = (CollectionDataMemory)
+				CollectionDataMemoryProvider.getInstance().allocate(data);
 		PackedCollection decoded = destination.range(shape, destinationOffset);
-
-		ByteBuffer buffer = ByteBuffer.allocate(decoded.getMemLength() * Double.BYTES);
-
-		if (data.getDataList().isEmpty()) {
-			for (int i = 0; i < data.getData32Count(); i++) {
-				buffer.putDouble(data.getData32(i));
-			}
-		} else {
-			data.getDataList().forEach(buffer::putDouble);
-		}
-
-		buffer.flip();
-		decoded.read(buffer);
-
+		copyInto(decoded, shape, mem);
 		return decoded;
 	}
 

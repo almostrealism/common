@@ -32,7 +32,8 @@ import org.almostrealism.model.SequentialBlock;
  *
  * <p>Every overload delegates to the fully specified
  * {@link #transformerBlock} that accepts an attention variant, adaLN modulation, a per-position
- * additive conditioning and the normalization type, so all callers share one block assembly.</p>
+ * additive conditioning, the normalization type, a padding mask and causal self-attention, so all
+ * callers share one block assembly.</p>
  */
 public interface TransformerBlockFeatures extends AttentionFeatures {
 	/**
@@ -362,10 +363,9 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 	/**
 	 * Creates a complete transformer block with every option: attention variant, adaLN modulation,
 	 * per-position additive conditioning, the normalization family of the block's norms, and a
-	 * padding mask.
+	 * padding mask, with non-causal self-attention.
 	 *
-	 * <p>This is the fully specified overload; every other {@code transformerBlock} routes here.
-	 * The normalization family applies to the pre-attention, cross-attention and feed-forward
+	 * <p>Routes to the causal overload with {@code causal = false}. The normalization family applies to the pre-attention, cross-attention and feed-forward
 	 * norms and to the query/key norms inside self-attention (with {@link NormalizationType#RMS}
 	 * the bias parameters may be {@code null}). The padding mask zeroes the self-attention value
 	 * vectors at padded positions, which is the value-masking form of attention padding.</p>
@@ -438,6 +438,106 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 								   Producer<PackedCollection> localAddition,
 								   NormalizationType normType,
 								   Producer<PackedCollection> paddingMask) {
+		return transformerBlock(batchSize, dim, seqLen, heads, crossAttend,
+				contextSeqLen, context,
+				preNormWeight, preNormBias,
+				selfQkv, selfWo,
+				selfQNormWeight, selfQNormBias,
+				selfKNormWeight, selfKNormBias,
+				invFreq,
+				crossAttPreNormWeight, crossAttPreNormBias,
+				crossWq, crossKv, crossWo,
+				crossQNormWeight, crossQNormBias,
+				crossKNormWeight, crossKNormBias,
+				ffnNormWeight, ffnNormBias,
+				w1, w2, w1Bias, w2Bias,
+				attentionScores, projectionFactory,
+				variant, diffLambda, modulation, localAddition,
+				normType, paddingMask, false);
+	}
+
+	/**
+	 * Creates a complete transformer block with every option: attention variant, adaLN modulation,
+	 * per-position additive conditioning, the normalization family of the block's norms, a padding
+	 * mask and causal self-attention.
+	 *
+	 * <p>This is the fully specified overload; every other {@code transformerBlock} routes here.
+	 * The normalization family applies to the pre-attention, cross-attention and feed-forward
+	 * norms and to the query/key norms inside self-attention (with {@link NormalizationType#RMS}
+	 * the bias parameters may be {@code null}). The padding mask zeroes the self-attention value
+	 * vectors at padded positions, which is the value-masking form of attention padding.</p>
+	 *
+	 * @param batchSize Batch dimension
+	 * @param dim Model dimension
+	 * @param seqLen Sequence length
+	 * @param heads Number of attention heads
+	 * @param crossAttend Whether to include cross-attention layer
+	 * @param contextSeqLen Context sequence length (for cross-attention)
+	 * @param context Context input block (for cross-attention)
+	 * @param preNormWeight Self-attention pre-normalization weights
+	 * @param preNormBias Self-attention pre-normalization biases ({@code null} for none)
+	 * @param selfQkv Self-attention fused projection weights (width depends on {@code variant})
+	 * @param selfWo Self-attention output projection weights
+	 * @param selfQNormWeight Self-attention Q normalization weights
+	 * @param selfQNormBias Self-attention Q normalization biases ({@code null} for none)
+	 * @param selfKNormWeight Self-attention K normalization weights
+	 * @param selfKNormBias Self-attention K normalization biases ({@code null} for none)
+	 * @param invFreq RoPE inverse frequencies
+	 * @param crossAttPreNormWeight Cross-attention pre-normalization weights
+	 * @param crossAttPreNormBias Cross-attention pre-normalization biases ({@code null} for none)
+	 * @param crossWq Cross-attention Q projection weights
+	 * @param crossKv Cross-attention KV projection weights
+	 * @param crossWo Cross-attention output projection weights
+	 * @param crossQNormWeight Cross-attention Q normalization weights
+	 * @param crossQNormBias Cross-attention Q normalization biases
+	 * @param crossKNormWeight Cross-attention K normalization weights
+	 * @param crossKNormBias Cross-attention K normalization biases
+	 * @param ffnNormWeight Feed-forward pre-normalization weights
+	 * @param ffnNormBias Feed-forward pre-normalization biases ({@code null} for none)
+	 * @param w1 Feed-forward gate projection weights
+	 * @param w2 Feed-forward output projection weights
+	 * @param w1Bias Feed-forward gate projection bias
+	 * @param w2Bias Feed-forward output projection bias
+	 * @param attentionScores Optional receptor to capture cross-attention scores
+	 * @param projectionFactory Factory for creating projection layers (enables LoRA support)
+	 * @param variant Attention variant for the self-attention sub-block
+	 * @param diffLambda Learned lambda supplied to variants that require it (may be {@code null})
+	 * @param modulation Optional packed adaLN modulation, shape {@code [batch, 6, dim]}, applied as
+	 *                   {@code x + sigmoid(1 - gate) * f((1 + scale) * norm(x) + shift)} per sub-layer;
+	 *                   {@code null} for the unmodulated pre-norm block
+	 * @param localAddition Optional per-position additive conditioning, shape {@code [batch, seqLen, dim]},
+	 *                      added after the attention sub-layers and before the feed-forward; {@code null} when absent
+	 * @param normType Family of the block's normalization layers
+	 * @param paddingMask Per-position validity for self-attention, shape {@code (batch, seqLen)} with
+	 *                    one for a valid position and zero for padding, or {@code null} for no masking
+	 * @param causal Whether self-attention is causal: each position attends only to itself and
+	 *               earlier positions, as next-token language modelling requires
+	 * @return Complete transformer block
+	 */
+	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
+								   boolean crossAttend,
+								   int contextSeqLen, Block context,
+								   PackedCollection preNormWeight, PackedCollection preNormBias,
+								   PackedCollection selfQkv, PackedCollection selfWo,
+								   PackedCollection selfQNormWeight, PackedCollection selfQNormBias,
+								   PackedCollection selfKNormWeight, PackedCollection selfKNormBias,
+								   PackedCollection invFreq,
+								   PackedCollection crossAttPreNormWeight, PackedCollection crossAttPreNormBias,
+								   PackedCollection crossWq, PackedCollection crossKv, PackedCollection crossWo,
+								   PackedCollection crossQNormWeight, PackedCollection crossQNormBias,
+								   PackedCollection crossKNormWeight, PackedCollection crossKNormBias,
+								   PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
+								   PackedCollection w1, PackedCollection w2,
+								   PackedCollection w1Bias, PackedCollection w2Bias,
+								   Receptor<PackedCollection> attentionScores,
+								   ProjectionFactory projectionFactory,
+								   AttentionVariant variant,
+								   Producer<PackedCollection> diffLambda,
+								   Producer<PackedCollection> modulation,
+								   Producer<PackedCollection> localAddition,
+								   NormalizationType normType,
+								   Producer<PackedCollection> paddingMask,
+								   boolean causal) {
 		TraversalPolicy blockShape = shape(batchSize, seqLen, dim);
 		SequentialBlock block = new SequentialBlock(blockShape);
 
@@ -459,7 +559,7 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 				selfQkv, selfWo,
 				selfQNormWeight, selfQNormBias,
 				selfKNormWeight, selfKNormBias,
-				invFreq, diffLambda, projectionFactory, normType, paddingMask));
+				invFreq, diffLambda, projectionFactory, normType, paddingMask, causal));
 		if (modulation != null) {
 			selfAttentionWithNorm.add(adaptiveGate(blockShape, gateSelf));
 		}

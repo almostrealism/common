@@ -23,14 +23,12 @@ import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.streams.EvaluableStreamingAdapter;
 import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
 import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
@@ -378,6 +376,8 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * </ul>
 	 */
 	protected void confirmLoad() {
+		requireLiveContext();
+
 		if (getArgumentVariables() == null &&
 				(enableRedundantCompilation || getInstructionSetManager() == null)) {
 			if (getInstructionSetManager() == null) {
@@ -407,9 +407,14 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 *   <li>Validates result (checks for NaN if monitoring enabled)</li>
 	 * </ol>
 	 *
+	 * <p>This is an interruptible blocking call: an interrupted calling thread fails
+	 * rather than returning an output the kernel may not have finished writing (see
+	 * {@link AcceleratedOperation#awaitCompletion(AcceleratedProcessDetails)}).</p>
+	 *
 	 * @param args The input arguments for the computation
 	 * @return The evaluated result of type T
-	 * @throws HardwareException if kernel execution fails
+	 * @throws HardwareException if kernel execution fails, or if the calling thread is
+	 *                           interrupted
 	 */
 	@Override
 	public T evaluate(Object... args) {
@@ -420,8 +425,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 
 		try {
 			AcceleratedProcessDetails process = apply(null, args);
-			process.awaitReady();
-			waitFor(process.getSemaphore());
+			awaitCompletion(process);
 
 			T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
 			return validate(result);
@@ -463,6 +467,38 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 */
 	@Override
 	public void request(Object[] args, Semaphore dependsOn) {
+		request(args, dependsOn, downstream);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: this evaluable compiles and dispatches a kernel that reads
+	 * its own arguments, so a non-null {@code dependsOn} must order that dispatch (or, when
+	 * wrapped for a host-side request, the wrapper's read of this evaluable's result) after
+	 * whatever wrote the memory it depends on.</p>
+	 */
+	@Override
+	public boolean isDispatchBacked() {
+		return true;
+	}
+
+	/**
+	 * Requests asynchronous evaluation exactly as {@link #request(Object[], Semaphore)} does,
+	 * delivering the result to the given consumer rather than to {@link #downstream}. Nothing
+	 * is stored on this evaluable, so a compiled kernel that is reached through several
+	 * independent wrappers (each argument of a dependent kernel, for example) can serve
+	 * every one of their requests without any of them contending for {@link #setDownstream}.
+	 *
+	 * @param args       The input arguments for the computation
+	 * @param dependsOn  completion that must fire before the dispatch (and its
+	 *                   argument preparation) reads memory, or {@code null}
+	 * @param downstream the consumer to receive the result of this request; a
+	 *                   {@link CompletionConsumer} receives it together with the
+	 *                   dispatch's completion, without any host wait
+	 */
+	@Override
+	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		confirmLoad();
 
 		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
@@ -507,26 +543,6 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 					"Cannot change downstream on AcceleratedComputationEvaluable; use async() to get a fresh wrapper");
 		}
 		this.downstream = consumer;
-	}
-
-	/**
-	 * Returns a new streaming evaluable wrapper for asynchronous execution.
-	 *
-	 * <p>This method creates a new {@link EvaluableStreamingAdapter} wrapper around
-	 * this evaluable. Each call returns a fresh wrapper with its own downstream
-	 * consumer, allowing the same underlying evaluable to be used in multiple
-	 * concurrent execution contexts without race conditions.</p>
-	 *
-	 * <p>Note: Unlike the previous implementation that returned {@code this}, this
-	 * now creates a wrapper to avoid the race condition where multiple construct()
-	 * calls would overwrite each other's downstream consumers.</p>
-	 *
-	 * @param executor The executor for asynchronous operations
-	 * @return A new streaming evaluable wrapper
-	 */
-	@Override
-	public StreamingEvaluable<T> async(Executor executor) {
-		return new EvaluableStreamingAdapter<>(this, executor);
 	}
 
 	/**

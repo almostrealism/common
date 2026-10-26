@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "answer": "ObjectOrientedDesignRule appears to record its verdicts through ClaudeCodeJob.runCorrectionSession, which re-runs the design review when it fails.",
+  "sources": [],
+  "html_refs": [],
+  "related_memories": [
+    {"content": "ClaudeCodeJob.runCorrectionSession dispatches a follow-up agent when a review fails ...", "score": 0.39},
+    {"content": "ClaudeCodeJob owns the job lifecycle and writes its artifacts under the job directory.", "score": 0.51}
+  ]
+}

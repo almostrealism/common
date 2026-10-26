@@ -16,11 +16,14 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -115,37 +118,97 @@ public class CollectionSumComputation extends AggregatedProducerComputation {
 	}
 
 	/**
-	 * Constructs a sum computation with an explicit shape specification.
+	 * Constructs a sum computation with an explicit shape specification and loop
+	 * replacement enabled.
+	 *
+	 * @param shape The {@link TraversalPolicy} of the input collection
+	 * @param input The {@link Producer} providing the collection to be summed
+	 */
+	protected CollectionSumComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
+		this(shape, true, input);
+	}
+
+	/**
+	 * Constructs a sum computation with an explicit shape and loop replacement setting.
 	 * This constructor sets up the aggregation with:
 	 * <ul>
 	 *   <li>Output shape: single element (shape.replace(shape(1)))</li>
 	 *   <li>Iteration count: total input size</li>
 	 *   <li>Initial value: 0.0</li>
 	 *   <li>Aggregation function: addition (out + arg)</li>
-	 *   <li>Loop replacement: enabled</li>
 	 * </ul>
 	 *
 	 * @param shape The {@link TraversalPolicy} of the input collection
+	 * @param replaceLoop Whether to replace the iterative aggregation loop with a direct
+	 *                    memory access pattern when applicable
 	 * @param input The {@link Producer} providing the collection to be summed
 	 */
-	protected CollectionSumComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
+	protected CollectionSumComputation(TraversalPolicy shape, boolean replaceLoop, Producer<PackedCollection> input) {
 		super("sum", shape.replace(new TraversalPolicy(1)), shape.getSize(),
 				(args, index) -> new DoubleConstant(0.0),
 				(out, arg) -> out.add(arg),
-				true, input);
+				replaceLoop, input);
 	}
 
 	/**
-	 * Generates a new sum computation with the specified child processes.
-	 * This method creates a new instance with the same configuration but using
-	 * the child process at index 1 as the input source.
+	 * Generates a new sum computation with the specified child processes, preserving the
+	 * loop replacement setting. This method creates a new instance with the same
+	 * configuration but using the child process at index 1 as the input source.
 	 *
 	 * @param children List of child {@link Process} instances where children.get(1) is the input
 	 * @return A new {@link CollectionSumComputation} for the child input
 	 */
 	@Override
 	public CollectionSumComputation generate(List<Process<?, ?>> children) {
-		return new CollectionSumComputation((Producer<PackedCollection>) children.get(1));
+		Producer<PackedCollection> input = (Producer<PackedCollection>) children.get(1);
+		return new CollectionSumComputation(shape(input), isReplaceLoop(), input);
+	}
+
+	/**
+	 * Returns a sum over the same input with the requested loop replacement setting.
+	 * {@code BatchedPatternRenderer} relies on {@code withReplaceLoop(false)} to disable the
+	 * always-failing gather probe on overlapping batched pattern windows, so the sum must
+	 * rebuild its own concrete type (preserving its {@code deltaDependent} override) rather
+	 * than fall back to a raw aggregation.
+	 *
+	 * @param replaceLoop the requested loop replacement setting
+	 * @return this computation when the setting already matches, otherwise a new
+	 *         {@link CollectionSumComputation} over the same input
+	 */
+	@Override
+	public CollectionSumComputation withReplaceLoop(boolean replaceLoop) {
+		if (isReplaceLoop() == replaceLoop) return this;
+
+		Producer<PackedCollection> input = getInputs().get(1);
+		return new CollectionSumComputation(shape(input), replaceLoop, input);
+	}
+
+	/**
+	 * Each output of the sum depends on every element of its group of the input with a
+	 * derivative of one. The {@link ReduceAxis#OUT output-reduced} delta therefore gives
+	 * every element of a group the weight of that group's output and passes it on to the
+	 * input, and, the sum being linear, the {@link ReduceAxis#IN input-reduced} delta is the
+	 * sum of the input's own input-reduced delta.
+	 */
+	@Override
+	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
+		Producer<PackedCollection> child = getInputs().get(1);
+		if (axis == ReduceAxis.NONE || !(child instanceof Shape)) {
+			return super.deltaDependent(target, axis, weight);
+		}
+
+		CollectionProducer input = c(child);
+		TraversalPolicy inputShape = input.getShape();
+
+		if (axis == ReduceAxis.IN) {
+			return replaceInput(child, reshape(inputShape, input.delta(target, axis, weight)));
+		} else if (weight == null) {
+			return input.delta(target, axis);
+		}
+
+		int groups = getShape().getTotalSize();
+		return input.delta(target, axis,
+				c(weight).reshape(shape(groups, 1)).repeat(1, inputShape.getSize()).reshape(inputShape));
 	}
 
 	/**

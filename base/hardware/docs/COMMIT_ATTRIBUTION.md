@@ -63,7 +63,14 @@ completion over this runner's own semaphores resolves by completing their whole 
 so a buffer containing both those dispatches and the bridge wait could never complete.
 Each such fresh-buffer commit increments `getBridgeCommitCount()`. A workload whose
 bridge commits approach its bridged-dispatch count is fragmenting buffers around bridges;
-grouping same-context members so bridges land at buffer starts restores batching. A zero
+grouping same-context members so bridges land at buffer starts restores batching.
+
+A dependency on several completions of the runner's *own* dispatches is not a composite and
+is never bridged: `Semaphore.all` first folds completions through `Semaphore.merge`, and
+`MetalSemaphore.merge` represents two dispatches of one runner by the later of them (the
+runner encodes and signals in order). Only composites that mix a Metal completion with a
+foreign one are bridged, and each such composite costs the commits its member waits force
+in addition to the bridge commit. A zero
 bridge count on a workload with cross-context dependencies means those dependencies never
 reach `submit` as dependencies at all — typically because non-submittable members in the
 composite force per-member waits that chop the chain first (see the composite
@@ -94,8 +101,8 @@ The requester identity travels with the completion handle: `MetalCommandRunner.s
 receives the dispatching operation's `OperationMetadata` and creates the dispatch's
 `MetalSemaphore` carrying it, so `waitFor()` can attribute the wait no matter who
 performs it or on which thread. Kernel dispatches are labelled with their compiled
-kernel name (from `MetalOperator.getMetadata()`); blit copies queued by
-`MetalComputeContext.copy` are labelled `mtlBlitCopy`.
+kernel name (from `MetalOperator.getMetadata()`); copies queued by
+`MetalComputeContext.copy` (dispatches of its copy kernel) are labelled `mtlCopy`.
 
 The distribution is **static** — one histogram across all runners and the whole JVM —
 so measurements over a window must snapshot and diff (see below).
@@ -152,11 +159,11 @@ dispatch, not the caller that performed the wait. Two consequences:
   whose completion someone required synchronously. Finding the *caller* is the follow-up
   step (a debugger breakpoint or stack capture in `MetalSemaphore.waitFor()` filtered by
   that requester).
-- `mtlBlitCopy` means the waited semaphore belonged to a blit dispatch. Because copy-out
-  blits are chained *after* kernels, a boundary that waits "for the operation" often
-  actually waits the trailing copy-out blit — so a large `mtlBlitCopy` share can reflect
+- `mtlCopy` means the waited semaphore belonged to a copy dispatch. Because copy-out
+  copies are chained *after* kernels, a boundary that waits "for the operation" often
+  actually waits the trailing copy-out — so a large `mtlCopy` share can reflect
   either synchronous copy machinery or ordinary boundary waits whose chain tail is a
-  copy. Distinguish them by whether the blit waits scale with the number of copies or
+  copy. Distinguish them by whether the copy waits scale with the number of copies or
   with the number of boundaries.
 
 ### Common Fingerprints

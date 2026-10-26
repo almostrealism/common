@@ -59,6 +59,16 @@ public class RestartGovernorTest extends TestSuiteBase {
                 "success", false, Collections.emptyList(), Collections.emptyMap());
     }
 
+    /**
+     * Builds an {@link AgentRunResult} that reports a required MCP server as
+     * unavailable, with the given inactivity-kill flag.
+     */
+    private static AgentRunResult resultWithUnavailableServer(boolean killed) {
+        return new AgentRunResult(0, killed, "out", "sid", 1000L, 0L, 0, 0.0,
+                "success", false, Collections.emptyList(), Collections.emptyMap(),
+                List.of("ar-manager"));
+    }
+
     // ── Defaults ──────────────────────────────────────────────────────────────
 
     /** The default global session cap is 30. */
@@ -549,6 +559,48 @@ public class RestartGovernorTest extends TestSuiteBase {
         });
         assertEquals(List.of(0, 1, 2), seen);
         assertEquals(0, gov.getInactivityRestartAttempt());
+    }
+
+    /**
+     * An attempt that both was killed for inactivity and reports an
+     * unavailable required MCP server must not be retried: relaunching would
+     * only spend more budget on top of the working-tree changes the tainted
+     * attempt already left behind. The loop stops immediately and the
+     * unavailable-server state is preserved on the returned result.
+     */
+    @Test(timeout = 30000)
+    public void runWithInactivityRetriesStopsOnUnavailableRequiredServerEvenWhenKilled() {
+        CodingAgentJob job = newJob();
+        RestartGovernor gov = job.restartGovernor();
+        gov.setMaxInactivityRestarts(3);
+        AtomicInteger calls = new AtomicInteger();
+        AgentRunResult r = gov.runWithInactivityRetries("claude", a -> {
+            calls.incrementAndGet();
+            return resultWithUnavailableServer(true);
+        });
+        assertEquals(1, calls.get());
+        assertNotNull(r);
+        assertTrue(r.hasUnavailableRequiredMcpServer());
+    }
+
+    /**
+     * The same abort applies when the tainted attempt was not itself killed:
+     * a later, clean retry must never overwrite the fact that an earlier
+     * attempt ran without a required tool.
+     */
+    @Test(timeout = 30000)
+    public void runWithInactivityRetriesStopsOnUnavailableRequiredServerWithoutKill() {
+        CodingAgentJob job = newJob();
+        RestartGovernor gov = job.restartGovernor();
+        gov.setMaxInactivityRestarts(3);
+        AtomicInteger calls = new AtomicInteger();
+        AgentRunResult r = gov.runWithInactivityRetries("claude", a -> {
+            calls.incrementAndGet();
+            return resultWithUnavailableServer(false);
+        });
+        assertEquals(1, calls.get());
+        assertNotNull(r);
+        assertTrue(r.hasUnavailableRequiredMcpServer());
     }
 
     /** {@code setWasKilledForInactivity} mirrors the flag for test spies. */

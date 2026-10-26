@@ -16,6 +16,8 @@
 
 package org.almostrealism.music.pattern;
 
+import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.music.arrange.AudioSceneContext;
@@ -32,11 +34,12 @@ import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.heredity.ProjectedChromosome;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -120,7 +123,7 @@ import java.util.stream.IntStream;
  *
  * @author Michael Murray
  */
-public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
+public class PatternSystemManager implements NoteSourceProvider, CodeFeatures, Destroyable {
 	/** Whether automatic volume adjustment is enabled. */
 	public static final boolean enableAutoVolume = false;
 
@@ -178,9 +181,21 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		this.chromosomes = chromosomes;
 	}
 
-	/** Initializes the volume to 1.0. */
+	/**
+	 * Initializes the volume to 1.0. Releases any previously allocated volume
+	 * collection first, so re-initializing a live manager does not leak the native
+	 * memory backing the old one.
+	 *
+	 * <p>The volume is allocated independently (via {@code new PackedCollection})
+	 * rather than through {@link PackedCollection#factory()}, which {@code pack} uses.
+	 * It is owned by this manager for its lifetime and outlives any render stage, so
+	 * it must not be an alias into an active {@link Heap}: a heap alias could not be
+	 * released by {@link #destroy()} and would be invalidated when the heap stage that
+	 * backs it is popped.</p>
+	 */
 	public void init() {
-		volume = pack(1.0);
+		if (volume != null) volume.destroy();
+		volume = new PackedCollection(1).fill(1.0);
 		volumeValue = 1.0;
 	}
 
@@ -216,10 +231,10 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	 *
 	 * @param start the inclusive start position
 	 * @param end   the exclusive end position
-	 * @return a map from choice to list of elements
+	 * @return a map from choice to list of elements, iterated in pattern order
 	 */
 	public Map<NoteAudioChoice, List<PatternElement>> getPatternElements(double start, double end) {
-		Map<NoteAudioChoice, List<PatternElement>> elements = new HashMap<>();
+		Map<NoteAudioChoice, List<PatternElement>> elements = new LinkedHashMap<>();
 
 		patterns.forEach(layer -> {
 			layer.getAllElementsByChoice(start, end).forEach((k, v) ->
@@ -227,6 +242,18 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		});
 
 		return elements;
+	}
+
+	/**
+	 * Returns this manager's volume scaling collection, or {@code null} before
+	 * {@link #init()} or after {@link #destroy()}. Package-private: it exposes the
+	 * collection so tests in this package can verify that {@link #destroy()} releases it,
+	 * without widening the public surface.
+	 *
+	 * @return the volume collection, or {@code null}
+	 */
+	PackedCollection getVolume() {
+		return volume;
 	}
 
 	/**
@@ -256,7 +283,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	 * @param settings the settings to apply
 	 */
 	public void setSettings(Settings settings) {
-		patterns.clear();
+		clear();
 		settings.getPatterns().forEach(s -> addPattern(s.getChannel(), s.getDuration(), s.isMelodic()).setSettings(s));
 	}
 
@@ -402,9 +429,62 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		return events;
 	}
 
-	/** Removes all patterns from this manager. */
+	/**
+	 * Removes all patterns from this manager, destroying each one first so its
+	 * note-audio cache is released rather than leaked.
+	 *
+	 * <p>Each {@link PatternLayerManager} owns a cache of rendered note audio backed
+	 * by native memory. Simply dropping the manager references (as a bare
+	 * {@code patterns.clear()} would) leaves that memory reachable only through the
+	 * garbage collector's reference queue, so {@link #destroy()} on the owning scene
+	 * could no longer reach it. Destroying each manager before removing it frees that
+	 * memory deterministically, which matters when settings are reloaded into a live
+	 * manager (see {@link #setSettings(Settings)}) as well as at teardown.</p>
+	 *
+	 * <p>A render operation previously returned by {@link #sum} references the managers
+	 * destroyed here. Callers that replace the patterns of a live manager must rebuild
+	 * their render operations before running them; running a stale one renders against
+	 * released memory, as it would for any object used after it is destroyed.</p>
+	 *
+	 * <p>The list is detached before any manager is destroyed, and every manager is
+	 * released through {@link Destroyable#releaseAll(Iterable)} so that one failing
+	 * teardown neither leaves the later managers allocated nor prevents the list from
+	 * being emptied; the first failure is rethrown with any later ones attached as
+	 * suppressed.</p>
+	 */
 	public void clear() {
+		List<PatternLayerManager> removed = new ArrayList<>(patterns);
 		patterns.clear();
+		Destroyable.releaseAll(removed.stream()
+				.map(manager -> (Runnable) manager::destroy)
+				.collect(Collectors.toList()));
+	}
+
+	/**
+	 * Releases the native memory held by every pattern's note-audio cache and empties
+	 * the pattern list. Delegates to {@link #clear()} so teardown and settings reloads
+	 * share one code path; the operation is idempotent, so a repeated teardown simply
+	 * finds an already-empty list.
+	 *
+	 * <p>Also releases the manager-owned {@link #volume} collection allocated by
+	 * {@link #init()} and nulls the reference, so a repeated teardown is safe and the
+	 * native memory backing it is freed deterministically rather than left for the
+	 * garbage collector's reference queue.</p>
+	 *
+	 * <p>The pattern release and the volume release are independent, so they are
+	 * aggregated with {@link Destroyable#releaseAll(Iterable)}: the volume is freed even
+	 * when {@link #clear()} reports a teardown failure, and that original failure is the
+	 * one rethrown (with any volume-release failure attached as suppressed).</p>
+	 */
+	@Override
+	public void destroy() {
+		Destroyable.super.destroy();
+		Destroyable.releaseAll(List.of(this::clear, () -> {
+			if (volume != null) {
+				volume.destroy();
+				volume = null;
+			}
+		}));
 	}
 
 	/**
@@ -414,6 +494,11 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	 * destination buffers, iterates through all patterns assigned to the
 	 * channel, sums their audio output, and optionally applies auto-volume
 	 * normalization.</p>
+	 *
+	 * <p>The returned operation is bound to the pattern managers present when it is
+	 * built. If the patterns are later replaced or destroyed (see {@link #clear()}),
+	 * build a new operation instead of running the old one, which would render against
+	 * the released managers.</p>
 	 *
 	 * @param context Supplier for the AudioSceneContext containing destination buffer
 	 * @param channel Target channel (index, voicing, audio channel)
@@ -444,7 +529,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		}
 
 		List<Integer> patternsForChannel = IntStream.range(0, patterns.size())
-				.filter(i -> channel.getPatternChannel() == patterns.get(i).getChannel())
+				.filter(i -> channel.matches(patterns.get(i).getChannel()))
 				.boxed().toList();
 
 		if (patternsForChannel.isEmpty()) {
@@ -462,7 +547,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 				throw new UnsupportedOperationException("Lazy destination not compatible with computing max");
 			}
 
-			Producer<PackedCollection> max = (Producer) cp(destination).traverse(0).max().isolate();
+			Producer<PackedCollection> max = (Producer) Process.isolated(cp(destination).traverse(0).max());
 			CollectionProducer auto = greaterThan(max, c(0.0), c(0.8).divide(max), c(1.0));
 			op.add(a(1, p(volume), auto));
 		}
@@ -488,6 +573,21 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	 * and discards the result. Call this after construction and genome assignment, before
 	 * starting the real-time loop, to populate the {@code FrequencyCache} upfront.</p>
 	 *
+	 * <p>The notes gathered for each element are transient to this warm-up: each owns a
+	 * single-element offset-argument {@link PackedCollection} nothing else references, so
+	 * they are {@link RenderedNoteAudio#destroy() destroyed} in a {@code finally} after
+	 * evaluation. The evaluated audio is discarded but deliberately not freed here: a note
+	 * whose producer is a pass-through (for example a {@code SimplePatternNote} returning
+	 * its {@code NoteAudioProvider} producer) hands back a view of shared, cached sample
+	 * memory, so destroying the result would invalidate audio reused by later renders. When
+	 * a {@link Heap} is active the evaluation runs in a heap stage that frees any transient
+	 * output on exit; otherwise the output is reclaimed by the garbage collector. This
+	 * matches the per-note render path, which copies rather than destroys the evaluated
+	 * result for the same reason. The scratch destination allocated for each pattern is
+	 * released in a {@code finally}; it exists only to satisfy
+	 * {@link PatternLayerManager#updateDestination} during warm-up and is replaced by the
+	 * real destination on the first render.</p>
+	 *
 	 * @param contextProvider a function that creates an {@link AudioSceneContext} for a channel
 	 * @return the number of notes successfully evaluated during warmup
 	 */
@@ -504,42 +604,54 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 			ctx.setDestination(warmDest);
 			plm.updateDestination(ctx);
 
-			Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
-					plm.getAllElementsByChoice(0.0, plm.getDuration());
+			try {
+				Map<NoteAudioChoice, List<PatternElement>> elementsByChoice =
+						plm.getAllElementsByChoice(0.0, plm.getDuration());
 
-			for (Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
-					elementsByChoice.entrySet()) {
-				NoteAudioChoice choice = entry.getKey();
-				List<PatternElement> elements = entry.getValue();
+				for (Map.Entry<NoteAudioChoice, List<PatternElement>> entry :
+						elementsByChoice.entrySet()) {
+					NoteAudioChoice choice = entry.getKey();
+					List<PatternElement> elements = entry.getValue();
 
-				NoteAudioContext audioContext =
-						new NoteAudioContext(
-								ChannelInfo.Voicing.MAIN,
-								ChannelInfo.StereoChannel.LEFT,
-								choice.getValidPatternNotes(),
-								pos -> pos + 1.0);
+					NoteAudioContext audioContext =
+							new NoteAudioContext(
+									ChannelInfo.Voicing.MAIN,
+									ChannelInfo.StereoChannel.LEFT,
+									choice.getValidPatternNotes(),
+									pos -> pos + 1.0);
 
-				for (PatternElement element : elements) {
-					List<RenderedNoteAudio> notes =
-							element.getNoteDestinations(melodic, 0.0, ctx, audioContext);
+					for (PatternElement element : elements) {
+						List<RenderedNoteAudio> notes =
+								element.getNoteDestinations(melodic, 0.0, ctx, audioContext);
 
-					for (RenderedNoteAudio note : notes) {
-						if (note.getExpectedFrameCount() <= 0) continue;
+						try {
+							for (RenderedNoteAudio note : notes) {
+								if (note.getExpectedFrameCount() <= 0) continue;
 
-						Producer<PackedCollection> producer =
-								note.getProducer(note.getExpectedFrameCount());
-						if (producer != null) {
-							try {
-								PackedCollection audio = traverse(1, producer).get().evaluate();
-								if (audio != null) {
-									notesEvaluated++;
+								try {
+									boolean[] rendered = {false};
+									Heap.stage(() -> {
+										Producer<PackedCollection> producer =
+												note.getProducer(note.getExpectedFrameCount());
+										if (producer == null) return;
+										PackedCollection audio = traverse(1, producer).get().evaluate();
+										if (audio == null) return;
+										rendered[0] = true;
+									});
+									if (rendered[0]) {
+										notesEvaluated++;
+									}
+								} catch (Exception e) {
+									// Skip notes that fail evaluation during warmup
 								}
-							} catch (Exception e) {
-								// Skip notes that fail evaluation during warmup
 							}
+						} finally {
+							notes.forEach(RenderedNoteAudio::destroy);
 						}
 					}
 				}
+			} finally {
+				warmDest.destroy();
 			}
 		}
 

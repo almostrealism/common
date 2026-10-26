@@ -1,0 +1,20 @@
+/**
+ * Fixtures for the conv1d and snake tensor primitives, one primitive per layer, so a test can
+ * pin each on small hand-checkable inputs independently of the Oobleck residual unit that uses
+ * them.
+ */
+
+/** [batch, in_channels, length] -> [batch, out_channels, out_length]: 1-D convolution with a bias. */
+layer conv1d_biased(w: weight, bias: weight, stride: int, padding: int) {
+    conv1d(w, bias, stride, padding)
+}
+
+/** [batch, in_channels, length] -> [batch, out_channels, out_length]: 1-D convolution, no bias. */
+layer conv1d_unbiased(w: weight, stride: int, padding: int) {
+    conv1d(w, stride, padding)
+}
+
+/** [batch, channels, length] -> [batch, channels, length]: per-channel Snake activation. */
+layer snake_channels(alpha: weight, beta: weight) {
+    snake(alpha, beta)
+}

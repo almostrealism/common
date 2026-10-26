@@ -163,7 +163,8 @@ public class Cases<T> extends Scope<T> {
 	 * children without conditions produce an "else" block.</p>
 	 *
 	 * @param w the code print writer to write to
-	 * @throws UnsupportedOperationException if a condition evaluates to literal "false"
+	 * @throws UnsupportedOperationException if a condition is known at compile time to be
+	 *         false, so that its branch could never be taken
 	 */
 	@Override
 	public void write(CodePrintWriter w) {
@@ -174,13 +175,13 @@ public class Cases<T> extends Scope<T> {
 
 		for (int i = 0; i < getChildren().size(); i++) {
 			if (i < getConditions().size()) {
-				String c = getConditions().get(i).getExpression(w.getLanguage());
-				if ("false".equals(c)) {
+				Expression<Boolean> condition = getConditions().get(i);
+				if (!condition.booleanValue().orElse(true)) {
 					throw new UnsupportedOperationException();
 				}
 
 				String pre = i > 0 ? "else if (" : "if (";
-				w.println(pre + c + ") {");
+				w.println(pre + condition.getExpression(w.getLanguage()) + ") {");
 			} else {
 				w.println(" else {");
 			}

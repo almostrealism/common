@@ -26,28 +26,36 @@ import java.util.Map;
  * Converts a stream of {@link PdslToken} instances into an AST
  * rooted at {@link PdslNode.Program}.
  *
- * <p>Grammar overview:
+ * <p>Grammar overview (the complete grammar, with the meaning of each construct, is in the
+ * language reference, {@code docs/internals/pdsl-language.md}):
  * <pre>
- * program      = definition*
- * definition   = config_def | layer_def | model_def
+ * program      = import* definition*
+ * import       = 'import' STRING
+ * definition   = config_def | data_def | state_def | layer_def | model_def
  * config_def   = 'config' IDENT '{' (IDENT '=' expr)* '}'
+ * data_def     = 'data' IDENT '{' (IDENT ':' type | IDENT '=' expr)* '}'
+ * state_def    = 'state' IDENT '{' (IDENT ':' type | IDENT '=' expr)* '}'
  * layer_def    = 'layer' IDENT '(' params ')' ('->' shape)? '{' body '}'
  * model_def    = 'model' IDENT '(' params ')' '{' body '}'
  * params       = param (',' param)*
  * param        = IDENT ':' type
- * type         = 'weight' shape? | 'scalar' | 'int' | 'float' | IDENT
+ * type         = 'weight' shape? | 'scalar' | 'producer' '(' shape ')'
+ *              | 'int' | 'float' | 'bool' | shape | IDENT
  * shape        = '[' expr (',' expr)* ']'
  * body         = statement*
- * statement    = let_stmt | return_stmt | branch_stmt | accum_stmt
- *              | product_stmt | for_stmt | expr_stmt
+ * statement    = let_stmt | return_stmt | branch_stmt | accum_stmt | product_stmt
+ *              | accum_blocks_stmt | concat_blocks_stmt | for_stmt | stack_stmt | expr_stmt
  * expr         = addition
  * addition     = multiplication (('+' | '-') multiplication)*
  * multiplication = unary (('*' | '/') unary)*
  * unary        = ('-') unary | postfix
- * postfix      = primary ('(' args ')' | '.' IDENT)*
+ * postfix      = primary ('(' args ')' | '.' FIELD ('(' args ')')? | '[' expr ']')*
  * primary      = NUMBER | STRING | 'true' | 'false' | 'null'
- *              | IDENT | shape | '(' expr ')'
+ *              | 'weight' ('(' expr ')')? | IDENT | shape | '(' expr ')'
  * </pre>
+ *
+ * <p>The keywords {@code if} and {@code else}, and the comparison operators the lexer produces,
+ * have no production here, so a program that uses them does not parse.</p>
  */
 public class PdslParser {
 
@@ -73,11 +81,33 @@ public class PdslParser {
 	 * @return the program node
 	 */
 	public PdslNode.Program parse() {
+		List<PdslNode.Import> imports = new ArrayList<>();
+		while (check(PdslToken.Type.IMPORT)) {
+			imports.add(parseImport());
+		}
 		List<PdslNode.Definition> definitions = new ArrayList<>();
 		while (!check(PdslToken.Type.EOF)) {
 			definitions.add(parseDefinition());
 		}
-		return new PdslNode.Program(definitions);
+		return new PdslNode.Program(imports, definitions);
+	}
+
+	/**
+	 * Parses an {@code import "resource"} statement. The resource must be an absolute classpath
+	 * path: a relative one would be resolved against the loader's own package rather than the
+	 * importing file, so it is rejected here with the position of the offending string.
+	 *
+	 * @return The parsed import node
+	 * @throws PdslParseException if the imported resource path is not absolute
+	 */
+	private PdslNode.Import parseImport() {
+		PdslToken kw = consume(PdslToken.Type.IMPORT);
+		if (check(PdslToken.Type.STRING) && !peek().getValue().startsWith("/")) {
+			throw error("Import of '" + peek().getValue() + "' must name an absolute classpath"
+					+ " resource beginning with '/'");
+		}
+		PdslToken resource = consume(PdslToken.Type.STRING);
+		return new PdslNode.Import(resource.getValue(), kw.getLine(), kw.getColumn());
 	}
 
 	/**
@@ -93,6 +123,8 @@ public class PdslParser {
 			case STATE:     return parseStateDef();
 			case LAYER:     return parseLayerDef();
 			case MODEL:     return parseModelDef();
+			case IMPORT:
+				throw error("Import statements must precede every definition");
 			default:
 				throw error("Expected 'config', 'data', 'state', 'layer', or 'model' but found " + token);
 		}
@@ -354,8 +386,25 @@ public class PdslParser {
 			case ACCUM_BLOCKS: return parseAccumBlocksStatement();
 			case CONCAT_BLOCKS: return parseConcatBlocksStatement();
 			case FOR: return parseForStatement();
+			case STACK: return parseStackStatement();
 			default: return parseExpressionStatement();
 		}
+	}
+
+	/**
+	 * Parses a {@code stack group as name { body }} statement.
+	 *
+	 * @return The parsed stack statement node
+	 */
+	private PdslNode.StackStatement parseStackStatement() {
+		PdslToken kw = consume(PdslToken.Type.STACK);
+		PdslNode.Expression group = parseExpression();
+		consume(PdslToken.Type.AS);
+		String name = consume(PdslToken.Type.IDENTIFIER).getValue();
+		consume(PdslToken.Type.LBRACE);
+		List<PdslNode.Statement> body = parseBody();
+		consume(PdslToken.Type.RBRACE);
+		return new PdslNode.StackStatement(group, name, body, kw.getLine(), kw.getColumn());
 	}
 
 	/**
@@ -637,7 +686,11 @@ public class PdslParser {
 						expr.getLine(), expr.getColumn());
 			} else if (check(PdslToken.Type.DOT)) {
 				consume(PdslToken.Type.DOT);
-				String field = consume(PdslToken.Type.IDENTIFIER).getValue();
+				PdslToken fieldToken = peek();
+				if (!fieldToken.isWord()) {
+					throw error("Expected a field name after '.' but found " + fieldToken);
+				}
+				String field = advance().getValue();
 				if (check(PdslToken.Type.LPAREN)) {
 					// Method call: expr.method(args)
 					consume(PdslToken.Type.LPAREN);

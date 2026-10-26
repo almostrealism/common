@@ -34,7 +34,9 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -302,17 +304,15 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @param base       the base (target) branch name
      * @param title      the pull request title
      * @param body       the pull request body text
+     * @param draft      whether to open the pull request as a draft
      * @param token      the GitHub API bearer token
      * @return the HTML URL of the created pull request, or {@code null} on failure
      */
     public String createGitHubPullRequest(String ownerRepo, String head, String base,
-                                   String title, String body, String token) {
+                                   String title, String body, boolean draft, String token) {
         try {
             String apiUrl = "https://api.github.com/repos/" + ownerRepo + "/pulls";
-            String payload = "{\"title\":\"" + JsonFieldExtractor.escapeJson(title)
-                    + "\",\"head\":\"" + JsonFieldExtractor.escapeJson(head)
-                    + "\",\"base\":\"" + JsonFieldExtractor.escapeJson(base)
-                    + "\",\"body\":\"" + JsonFieldExtractor.escapeJson(body) + "\"}";
+            String payload = pullRequestPayload(title, head, base, body, draft);
 
             URL url = URI.create(apiUrl).toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -352,6 +352,31 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     }
 
     /**
+     * Builds the JSON body of a create-pull-request request.
+     *
+     * <p>The {@code draft} member is emitted only when the pull request is
+     * opened as a draft: GitHub defaults a pull request to ready-for-review,
+     * so a {@code false} is the same as omitting it, and omitting it keeps the
+     * body byte-identical to what every non-draft caller sent before.</p>
+     *
+     * @param title the pull request title
+     * @param head  the head (source) branch name
+     * @param base  the base (target) branch name
+     * @param body  the pull request body text
+     * @param draft whether the pull request should be opened as a draft
+     * @return the request body as a JSON object string
+     */
+    static String pullRequestPayload(String title, String head, String base,
+                                   String body, boolean draft) {
+        return "{\"title\":\"" + JsonFieldExtractor.escapeJson(title)
+                + "\",\"head\":\"" + JsonFieldExtractor.escapeJson(head)
+                + "\",\"base\":\"" + JsonFieldExtractor.escapeJson(base)
+                + "\",\"body\":\"" + JsonFieldExtractor.escapeJson(body) + "\""
+                + (draft ? ",\"draft\":true" : "")
+                + "}";
+    }
+
+    /**
      * Maximum length GitHub accepts for a pull request title.
      */
     private static final int MAX_TITLE_LENGTH = 256;
@@ -381,16 +406,17 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @param base                the base (target) branch name
      * @param commitRef           commit SHA, or a branch name for its head commit
      * @param fallbackDescription description to use when no commit message is available
+     * @param draft               whether to open the pull request as a draft
      * @param token               the GitHub API bearer token
      * @return the HTML URL of the created pull request, or {@code null} on failure
      */
     public String createPullRequestFromCommit(String ownerRepo, String head, String base,
-                                   String commitRef, String fallbackDescription, String token) {
+                                   String commitRef, String fallbackDescription, boolean draft, String token) {
         String commitMessage = commitRef == null ? null
                 : fetchCommitMessage(ownerRepo, commitRef, token);
         return createGitHubPullRequest(ownerRepo, head, base,
                 pullRequestTitle(commitMessage, fallbackDescription),
-                pullRequestBody(commitMessage, fallbackDescription), token);
+                pullRequestBody(commitMessage, fallbackDescription), draft, token);
     }
 
     /**
@@ -427,6 +453,41 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     // TODO(review): single page, per_page=100, no pagination — a repo with >100 PRs
     // (state=all) can silently miss an old branch's merged/closed PR. See review-followup memory.
     public JsonNode listPullRequestsByRepo(String ownerRepo) {
+        return queryPullRequests(ownerRepo, "state=all&per_page=100&sort=updated&direction=desc");
+    }
+
+    /**
+     * Returns every pull request, open or closed, whose head is {@code branch}
+     * in {@code ownerRepo} itself (not a fork), newest first. Unlike
+     * {@link #listPullRequestsByRepo}, the branch is filtered by GitHub, so an
+     * old branch's pull request is found however many others the repository
+     * has. Missing token or transport failure returns {@code null}.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param branch    the head branch name
+     * @return the branch's pull requests (empty when it has none), or
+     *         {@code null} when GitHub could not be asked
+     */
+    public List<PullRequest> listPullRequestsForBranch(String ownerRepo, String branch) {
+        if (ownerRepo == null || branch == null || branch.isEmpty()) return null;
+        String owner = ownerRepo.substring(0, Math.max(0, ownerRepo.indexOf('/')));
+        JsonNode listing = queryPullRequests(ownerRepo, "state=all&per_page=100&head="
+                + URLEncoder.encode(owner + ":" + branch, StandardCharsets.UTF_8));
+        if (listing == null || !listing.isArray()) return null;
+        List<PullRequest> prs = new ArrayList<>();
+        listing.forEach(pr -> prs.add(new PullRequest(pr)));
+        return prs;
+    }
+
+    /**
+     * Lists pull requests on {@code ownerRepo} matching the {@code query} string
+     * of GitHub's list-pulls endpoint.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param query     the URL query, already encoded
+     * @return the parsed array, or {@code null} without a token or on failure
+     */
+    private JsonNode queryPullRequests(String ownerRepo, String query) {
         if (ownerRepo == null || ownerRepo.isEmpty()) return null;
         String org = extractOrgFromRepoUrl("https://github.com/" + ownerRepo);
         String token = resolveGithubToken(org);
@@ -435,8 +496,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
                 + "'; PR lookup for " + ownerRepo + " will be skipped");
             return null;
         }
-        String url = "https://api.github.com/repos/" + ownerRepo
-                + "/pulls?state=all&per_page=100&sort=updated&direction=desc";
+        String url = "https://api.github.com/repos/" + ownerRepo + "/pulls?" + query;
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setRequestMethod("GET");

@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.compute.ComputeRequirement;
+import org.almostrealism.hardware.cuda.CudaDataContext;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,7 +35,7 @@ import java.util.Set;
  * expectations:</p>
  *
  * <ul>
- *   <li><strong>Named</strong> — {@code cl}, {@code mtl}, {@code native},
+ *   <li><strong>Named</strong> — {@code cl}, {@code mtl}, {@code cuda}, {@code native},
  *       {@code cpu}, {@code gpu}. The caller stated which backend they want, so
  *       a backend that then fails to initialize is a failure of the request.
  *       {@link #isRequired(ComputeRequirement)} reports true for these.</li>
@@ -124,6 +125,28 @@ public class DriverSelection {
 	public boolean isSharedMemoryPreferred() { return sharedMemoryPreferred; }
 
 	/**
+	 * Whether host kernels share memory with a backend in the selection when
+	 * {@code AR_HARDWARE_SHARED_MEMORY} is not set: true when Metal, whose buffers live in the
+	 * host's unified memory, is selected.
+	 *
+	 * <p>CUDA on a device that allocates managed memory also provides memory host code can
+	 * address directly (see {@link CudaDataContext#isHostAccessibleMemoryAvailable()}), but it is
+	 * not shared by default. With host kernels running on CUDA memory, native and CUDA work come
+	 * to depend on each other, and that combination stalls: a CUDA submission held behind a native
+	 * dependency holds back the later CUDA work the native side is waiting for. Sharing can still
+	 * be requested for CUDA explicitly.</p>
+	 *
+	 * @return whether memory is shared by default for this selection
+	 */
+	public boolean sharesMemoryByDefault() {
+		for (ComputeRequirement requirement : requirements) {
+			if (requirement.resolve() == ComputeRequirement.MTL) return true;
+		}
+
+		return false;
+	}
+
+	/**
 	 * Whether the selection requires all backends to agree on precision.
 	 *
 	 * <p>True when OpenCL was named directly. The wildcard may also contribute
@@ -139,7 +162,7 @@ public class DriverSelection {
 	/**
 	 * Parses an {@code AR_HARDWARE_DRIVER} value.
 	 *
-	 * <p>The value is a comma-separated list of {@code cl}, {@code mtl},
+	 * <p>The value is a comma-separated list of {@code cl}, {@code mtl}, {@code cuda},
 	 * {@code native}, {@code cpu}, {@code gpu}, and {@code *}. Case is ignored
 	 * and surrounding whitespace is trimmed.</p>
 	 *
@@ -170,6 +193,9 @@ public class DriverSelection {
 			} else if ("mtl".equalsIgnoreCase(driver)) {
 				requirements.add(ComputeRequirement.MTL);
 				required.add(ComputeRequirement.MTL);
+			} else if ("cuda".equalsIgnoreCase(driver)) {
+				requirements.add(ComputeRequirement.CUDA);
+				required.add(ComputeRequirement.CUDA);
 			} else if ("native".equalsIgnoreCase(driver)) {
 				requirements.add(ComputeRequirement.JNI);
 				required.add(ComputeRequirement.JNI);

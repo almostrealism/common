@@ -87,8 +87,17 @@ jobs:
       studio_changed: ${{ steps.filter.outputs.studio_changed }}
       python_changed: ${{ steps.filter.outputs.python_changed }}
       exfil_guard_changed: ${{ steps.filter.outputs.exfil_guard_changed }}
+      agent_protection_changed: ${{ steps.filter.outputs.agent_protection_changed }}
       agent_isolation_changed: ${{ steps.filter.outputs.agent_isolation_changed }}
       images_changed: ${{ steps.filter.outputs.images_changed }}
+      # The branch this run is for, its base, and the commit under test, for
+      # the remediation jobs' prompts and submissions. Read from the event
+      # here once rather than recomputed in each of those jobs, and consumed
+      # through env: — the branch name is attacker-controlled on a
+      # pull_request run and must never be interpolated into a script body.
+      branch: ${{ github.head_ref || github.ref_name }}
+      base_branch: ${{ github.base_ref || 'master' }}
+      head_sha: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Record pipeline start time
         id: timing
@@ -107,6 +116,7 @@ jobs:
             done
             echo "python_changed=true" >> "$GITHUB_OUTPUT"
             echo "exfil_guard_changed=true" >> "$GITHUB_OUTPUT"
+            echo "agent_protection_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_isolation_changed=true" >> "$GITHUB_OUTPUT"
             echo "images_changed=true" >> "$GITHUB_OUTPUT"
           }
@@ -225,6 +235,20 @@ jobs:
             echo "exfil_guard_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+          # Agent-protection detection. The branch checks under
+          # tools/ci/agent-protection/ (the CI file lock, the Python
+          # test-hiding detector, the change-set validator) have shell
+          # regression suites that python-tests runs; a change to any of those
+          # scripts must run them, and none of them is a .py file.
+          AP_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            'tools/ci/agent-protection/' || true)
+          if [ -n "$AP_FILES" ]; then
+            echo "agent_protection_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Agent-protection scripts changed — running their regression suites"
+          else
+            echo "agent_protection_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
           # Agent volume isolation detection. The agent-volume-isolation job
           # validates the FlowTree agent docker-compose configuration and its
           # validator. Gate it on the specific inputs it checks so it is
@@ -262,6 +286,35 @@ jobs:
             echo "images_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # CI/workflow files (.github/workflows/, tools/ci/) change only on a
+      # ci/... branch or under a controller-signed Sensitive-File-Bypass
+      # trailer. It takes nothing but git to tell, so it is checked here and
+      # a violating branch fails before anything is built: every other job
+      # needs `changes`. check-ci-file-lock.sh is on test-integrity-check's
+      # protected list, so a branch cannot quietly weaken the copy it runs.
+      - name: Check the CI file lock
+        if: github.ref != 'refs/heads/master'
+        env:
+          # Verifies a controller-signed bypass trailer. Without the secret
+          # no commit can be granted one, which is the safe direction.
+          AR_AGENT_BYPASS_SECRET: ${{ secrets.AR_AGENT_BYPASS_SECRET }}
+        run: |
+          LOCK=tools/ci/agent-protection/check-ci-file-lock.sh
+          # The workflow comes from the merge with the base, the checkout
+          # from the PR head. A head that lacks the script either predates it
+          # (absent at the merge-base too: nothing to check) or deleted it
+          # (present there: a change to tools/ci/ in its own right).
+          if [ ! -f "$LOCK" ]; then
+            MERGE_BASE=$(git merge-base origin/master HEAD)
+            if git cat-file -e "${MERGE_BASE}:${LOCK}" 2>/dev/null; then
+              echo "::error::${LOCK} was removed on this branch — a change to tools/ci/ outside a ci/... branch"
+              exit 1
+            fi
+            echo "::notice::This branch predates ${LOCK}; the CI file lock is not checked"
+            exit 0
+          fi
+          bash "$LOCK" origin/master
+
   build:
     needs: changes
     if: needs.changes.outputs.code_changed == 'true'
@@ -280,13 +333,35 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
+      # Every job that needs the project's artifacts restores them from this
+      # job rather than running its own `mvn install` (see "Sharing the build"
+      # in .github/CLAUDE.md). The Maven cache restored above may carry
+      # artifacts installed by an earlier commit; clearing them first means the
+      # upload holds this commit's artifacts and nothing else.
+      - name: Clear previously installed project artifacts
+        run: rm -rf ~/.m2/repository/org/almostrealism
+
       - name: Build
         run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      - name: Upload installed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: maven-installed-artifacts
+          path: ~/.m2/repository/org/almostrealism
+          # Long enough for the flaky-test retries and a manual re-run.
+          retention-days: 3
+          if-no-files-found: error
 
   # ─── Code Policy Enforcement ───────────────────────────────────────
   code-policy-check:
     needs: build
     runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
@@ -304,8 +379,29 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Code Policy Enforcement
         id: check
@@ -331,16 +427,24 @@ jobs:
   # Detects modifications to existing test files that hide failures
   # (e.g., adding @Ignore, deleting assertions, weakening checks).
   # This job FAILS the build to prevent test-hiding from being merged.
+  #
+  # Every step reads git history and sources with bash and python3; none
+  # uses Java or the project's artifacts. So it needs `changes`, not `build`,
+  # and runs in parallel with `build` (see "Branch checks that need no
+  # build" in .github/CLAUDE.md). The code_changed gate is the one it used
+  # to inherit by way of `build`.
   test-integrity-check:
-    needs: build
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     outputs:
-      passed: ${{ steps.check.outcome == 'success' }}
+      passed: ${{ steps.check.outcome == 'success' && steps.python_check.outcome == 'success' }}
       violation_count: ${{ steps.check.outputs.violation_count }}
       # What this job concluded, named rather than inferred. One of
-      # enforcement-tampering, exfil-guard, test-hiding (a detector ran and
-      # found something), infrastructure (a detector could not run), or
-      # empty (nothing failed, or the job never got far enough to say).
+      # enforcement-tampering, exfil-guard, test-hiding, python-test-hiding
+      # (a detector ran and found something), infrastructure (a detector
+      # could not run), or empty (nothing failed, or the job never got far
+      # enough to say).
       #
       # It is a step output, written by the step that reached the verdict,
       # rather than a guess assembled from step outcomes downstream: only
@@ -357,7 +461,8 @@ jobs:
       failure_reason: >-
         ${{ steps.enforcement.outputs.reason ||
         steps.exfil_guard.outputs.reason ||
-        steps.check.outputs.reason }}
+        steps.check.outputs.reason ||
+        steps.python_check.outputs.reason }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -395,6 +500,8 @@ jobs:
             "tools/ci/agent-protection/detect-test-hiding.sh"
             "tools/ci/agent-protection/check-quality-gates.sh"
             "tools/ci/agent-protection/validate-agent-commit.sh"
+            "tools/ci/agent-protection/check-ci-file-lock.sh"
+            "tools/ci/agent-protection/detect-python-test-hiding.sh"
             "tools/ci/agent-protection/deception-audit.sh"
             "tools/ci/agent-protection/verify-sensitive-bypass.sh"
             "tools/ci/agent-protection/verify-memory-claim.sh"
@@ -410,6 +517,9 @@ jobs:
             ".claude/hooks/lib/exfil_bash_vcs.py"
             ".claude/hooks/lib/exfil_bash_dispatch.py"
             ".claude/hooks/lib/test_exfiltration_guard_check.py"
+            ".claude/hooks/lib/test_exfiltration_guard_transport.py"
+            ".claude/hooks/lib/test_exfiltration_guard_interpreter.py"
+            ".claude/hooks/lib/test_exfiltration_guard_worktree.py"
             ".claude/hooks/exfil-allowlist.txt"
           )
 
@@ -422,8 +532,8 @@ jobs:
           )
 
           # A branch named ci/... declares the pipeline as the subject of
-          # the change, the same declaration validate-agent-commit.sh RULE 3
-          # accepts. It unlocks the protected files that ARE the pipeline —
+          # the change, the same declaration the CI file lock
+          # (check-ci-file-lock.sh) accepts. It unlocks the protected files that ARE the pipeline —
           # those under .github/workflows/, tools/ci/ and .claude/hooks/.
           # The last of those is here because a branch permitted to rewrite
           # the workflow may equally delete the step that checks a hook, so
@@ -656,6 +766,40 @@ jobs:
             exit "$EXIT_CODE"
           }
 
+      # The Python counterpart of the detector above: every `def test_*` on
+      # the base branch must survive, and a test file's assertion count must
+      # not fall. Editing inside a Python test is otherwise allowed.
+      - name: Check for Python test-hiding modifications
+        id: python_check
+        if: github.ref != 'refs/heads/master'
+        env:
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
+        run: |
+          DETECTOR=./tools/ci/agent-protection/detect-python-test-hiding.sh
+
+          # A branch from before this detector existed has nothing for it to
+          # run; that is a pipeline gap, not a finding about the branch.
+          if [ ! -f "$DETECTOR" ]; then
+            echo "::notice::${DETECTOR} is not in this checkout — the branch predates it; rebase onto master to be checked"
+            exit 0
+          fi
+
+          bash "$DETECTOR" origin/master ${RUNNER_TEMP}/python-test-integrity-report.txt || {
+            EXIT_CODE=$?
+            if [ "$EXIT_CODE" -eq 2 ]; then
+              echo "::error::Python test integrity violations detected — base-branch tests were removed or lost assertions"
+              echo "reason=python-test-hiding" >> "$GITHUB_OUTPUT"
+              if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
+                echo "::warning::Python test integrity violations IGNORED via the override_integrity_checks input"
+                exit 0
+              fi
+              exit 1
+            fi
+            echo "::error::The Python test-hiding detector could not complete (exit ${EXIT_CODE}). This is a pipeline problem, not a finding about this branch."
+            echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
+            exit "$EXIT_CODE"
+          }
+
       - name: Summary
         if: ${{ !cancelled() }}
         run: |
@@ -663,7 +807,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           # At most one step reaches a verdict, so concatenating their
           # reasons yields that one (or the empty string when none did).
-          REASON="${{ steps.enforcement.outputs.reason }}${{ steps.exfil_guard.outputs.reason }}${{ steps.check.outputs.reason }}"
+          REASON="${{ steps.enforcement.outputs.reason }}${{ steps.exfil_guard.outputs.reason }}${{ steps.check.outputs.reason }}${{ steps.python_check.outputs.reason }}"
 
           case "$REASON" in
             enforcement-tampering)
@@ -697,6 +841,15 @@ jobs:
                 echo '```' >> "$GITHUB_STEP_SUMMARY"
               fi
               ;;
+            python-test-hiding)
+              echo "**FAILED: Base-branch Python tests were removed or lost assertions.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              if [ -f ${RUNNER_TEMP}/python-test-integrity-report.txt ]; then
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+                cat ${RUNNER_TEMP}/python-test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+              fi
+              ;;
             infrastructure)
               echo "**COULD NOT RUN: a check in this job failed to execute.**" >> "$GITHUB_STEP_SUMMARY"
               echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -705,7 +858,7 @@ jobs:
               echo "to \"fix\" a branch on this outcome; the pipeline itself needs the fix." >> "$GITHUB_STEP_SUMMARY"
               ;;
             *)
-              if [ "${{ steps.check.outcome }}" = "failure" ] || [ "${{ steps.enforcement.outcome }}" = "failure" ] || [ "${{ steps.exfil_guard.outcome }}" = "failure" ]; then
+              if [ "${{ steps.check.outcome }}" = "failure" ] || [ "${{ steps.python_check.outcome }}" = "failure" ] || [ "${{ steps.enforcement.outcome }}" = "failure" ] || [ "${{ steps.exfil_guard.outcome }}" = "failure" ]; then
                 echo "**INCONCLUSIVE: this job failed without recording why.**" >> "$GITHUB_STEP_SUMMARY"
                 echo "" >> "$GITHUB_STEP_SUMMARY"
                 echo "Treat it as a pipeline problem rather than a finding about the branch," >> "$GITHUB_STEP_SUMMARY"
@@ -726,8 +879,10 @@ jobs:
   # removing rules to make violating code pass is not allowed. Any change
   # to it relative to master fails the build. If a rule genuinely needs to
   # change, open a separate PR with justification for human review.
+  # Needs only git, so it waits for `changes`, not `build`.
   checkstyle-integrity-check:
-    needs: build
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
@@ -755,8 +910,8 @@ jobs:
           )
 
           # A branch named ci/... declares the pipeline as the subject of
-          # the change, the same declaration validate-agent-commit.sh RULE 3
-          # accepts. It unlocks the protected files that ARE the pipeline —
+          # the change, the same declaration the CI file lock
+          # (check-ci-file-lock.sh) accepts. It unlocks the protected files that ARE the pipeline —
           # those under .github/workflows/, tools/ci/ and .claude/hooks/.
           # The last of those is here because a branch permitted to rewrite
           # the workflow may equally delete the step that checks a hook, so
@@ -832,10 +987,11 @@ jobs:
   # TestDepth churn, and revert-then-reapply cycles.
   # This is an informational check — it does not block the build
   # but its findings are included in the auto-resolve prompt.
+  # Needs only git, so it waits for `changes`, not `build`.
   deception-audit:
-    needs: build
+    needs: changes
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/master'
+    if: github.ref != 'refs/heads/master' && needs.changes.outputs.code_changed == 'true'
     outputs:
       # audit_error=true when deception-audit.sh could not resolve the
       # merge-base (or its file listing) and never ran the audit --
@@ -896,11 +1052,12 @@ jobs:
   # percentage with assertion-free tests. Never a merge gate: it is
   # deliberately absent from all-checks' needs, and the script itself
   # always exits 0. Scoped to qa/coverage-* branches so every other PR's
-  # summary is unaffected.
+  # summary is unaffected. Reads test sources with git, so it waits for
+  # `changes`, not `build`.
   assertion-density-report:
-    needs: build
+    needs: changes
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/master' && startsWith(github.head_ref || github.ref_name, 'qa/coverage-')
+    if: github.ref != 'refs/heads/master' && startsWith(github.head_ref || github.ref_name, 'qa/coverage-') && needs.changes.outputs.code_changed == 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -925,13 +1082,19 @@ jobs:
           fi
 
   # ─── Agent Commit Validation ────────────────────────────────────
-  # Validates that agent commits do not modify test files or CI
-  # files. This is a hard block — agent commits that violate these
-  # rules are rejected. Only runs on non-master branches.
+  # Rejects a change set whose only content is edits to test files that
+  # already exist on master, with no new test in them: the suite passes
+  # on master, so such a change set cannot fix anything — it can only
+  # change what the suite reports. Whether an edit weakens a test is
+  # test-integrity-check's question, and the CI file lock is checked in
+  # `changes`. Fails the job when it blocks; the override_integrity_checks
+  # input lets a run through for a known false positive. Only runs on
+  # non-master branches. Needs only git, so it waits for `changes`, not
+  # `build`.
   agent-commit-validation:
-    needs: build
+    needs: changes
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/master'
+    if: github.ref != 'refs/heads/master' && needs.changes.outputs.code_changed == 'true'
     outputs:
       blocked: ${{ steps.validate.outputs.blocked }}
       block_reason: ${{ steps.validate.outputs.block_reason }}
@@ -948,31 +1111,33 @@ jobs:
       - name: Validate agent commit
         id: validate
         env:
-          # Lets the validator verify a controller-signed
-          # Sensitive-File-Bypass trailer. Absent secret means no commit
-          # can be granted a bypass, which is the safe direction to fail.
-          AR_AGENT_BYPASS_SECRET: ${{ secrets.AR_AGENT_BYPASS_SECRET }}
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
-          chmod +x ./tools/ci/agent-protection/validate-agent-commit.sh
-          chmod +x ./tools/ci/agent-protection/verify-sensitive-bypass.sh
-          ./tools/ci/agent-protection/validate-agent-commit.sh origin/master --require-production-changes || {
+          ./tools/ci/agent-protection/validate-agent-commit.sh origin/master || {
             EXIT_CODE=$?
-            if [ "$EXIT_CODE" -eq 2 ]; then
-              echo "::error::Agent commit BLOCKED: test file modifications detected"
-            elif [ "$EXIT_CODE" -eq 3 ]; then
-              echo "::warning::Agent commit flagged: no production code changes"
-            elif [ "$EXIT_CODE" -eq 4 ]; then
-              echo "::error::Agent commit BLOCKED: CI/workflow file modifications detected"
-            else
-              # The validator could not reach a verdict — an unusable base
-              # ref, a missing helper. There is no evidence either way, so
-              # the step fails rather than reporting an unvalidated branch
-              # as clean.
-              echo "::error::Agent commit validation could not run (exit ${EXIT_CODE})"
-              exit "$EXIT_CODE"
+            # A head from before the validator was reduced to this one rule
+            # carries the old script, which also exits 2 (base-branch test
+            # method changed) and 4 (CI file changed). Those rules are no
+            # longer this job's: test-integrity-check and the CI file lock in
+            # `changes` hold every branch to them now.
+            if [ "$EXIT_CODE" -eq 2 ] || [ "$EXIT_CODE" -eq 4 ]; then
+              echo "::notice::This branch carries the validator from before its rules were split (exit ${EXIT_CODE}); rebase onto master to be checked by this job"
+              exit 0
             fi
-            # Do not fail the build — the auto-resolve job checks this output
-            exit 0
+            if [ "$EXIT_CODE" -eq 3 ]; then
+              echo "::error::The change set only edits tests that exist on master"
+              if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
+                echo "::warning::Agent commit validation IGNORED via the override_integrity_checks input"
+                exit 0
+              fi
+              exit 1
+            fi
+            # The validator could not reach a verdict — an unusable base
+            # ref, a missing helper. There is no evidence either way, so
+            # the step fails rather than reporting an unvalidated branch as
+            # clean.
+            echo "::error::Agent commit validation could not run (exit ${EXIT_CODE})"
+            exit "$EXIT_CODE"
           }
 
       - name: Summary
@@ -989,6 +1154,10 @@ jobs:
   test-timeout-check:
     needs: build
     runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
@@ -1006,8 +1175,29 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Check Test Timeouts
         id: check
@@ -1032,6 +1222,10 @@ jobs:
   duplicate-code-check:
     needs: build
     runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # Critical path: failures block the test jobs and trigger auto-resolve.
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
@@ -1049,8 +1243,29 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Check Duplicate Code
         id: check
@@ -1073,77 +1288,46 @@ jobs:
           fi
 
   # ─── Early Workstream Registration ─────────────────────────────────
-  # Registers a workstream for this branch as soon as `build` succeeds,
-  # rather than waiting for auto-resolve at the end of the run.
+  # Registers a workstream for this branch as soon as `changes` has run —
+  # in parallel with `build`, not after it.
   #
-  # auto-resolve already creates a workstream on demand
-  # (createWorkstreamIfMissing in submit-agent-job.sh), but it needs
-  # `analysis`, which waits on `build`, `test`, `test-flowtree`, `test-media`,
-  # `test-mac` and `test-media-mac` (any may be skipped) — and those lanes are
-  # long. (The ROCm lane, `test-cl` and `test-media-cl`, is also self-hosted
-  # and long, but uploads no coverage, so `analysis` does not wait on it — see
-  # .github/CLAUDE.md.) That leaves a branch with no workstream for the whole
-  # wait — so no workstream ID to submit other improvement jobs against, and
-  # nothing for another session to address memory to. Registering here
-  # closes that gap.
+  # Every remediation job submits against the branch's workstream, and the
+  # submission creates one on demand (createWorkstreamIfMissing in
+  # submit-agent-job.sh) when none exists. Registering here means the
+  # workstream already exists well before any of them submit, so there is a
+  # workstream ID to submit other jobs against and to address memory to for
+  # the whole run. It also keeps registration from racing a submission:
+  # `auto-review` and `auto-resolve-python` now submit from inside this
+  # pipeline, and `auto-resolve-python` can do so as soon as python-tests
+  # fails, a few minutes in. Waiting for `build` would have put
+  # registration in the same window.
   #
-  # This job is deliberately independent of the validation gates
-  # (code-policy-check, test-timeout-check, duplicate-code-check,
-  # test-integrity-check, checkstyle). Four of those five DO gate the lanes
-  # `analysis` waits on: `test`, `test-flowtree`, `test-media`, `test-mac`
-  # and `test-media-mac` (and, for that matter, `test-cl`/`test-media-cl`)
-  # all list code-policy-check, test-timeout-check, duplicate-code-check and
-  # test-integrity-check directly in `needs` — see .github/CLAUDE.md. So a
-  # failure in any of those four already skip-fails the lanes `analysis`
-  # waits on just as fast as it would skip-fail this job if it kept the same
-  # `needs`; decoupling from them buys nothing on that failure path. What it
-  # does buy is not waiting on them when they are going to pass: those four
-  # checks run in parallel with `build` and can still take real time to
-  # finish, and this job has no functional dependency on their outcome, so
-  # there is no reason to sit idle until they report before registering.
+  # Nothing here depends on `build`: the job runs one script against the
+  # controller, and whether the branch compiles says nothing about whether
+  # the branch should have a workstream. Registration is idempotent on the
+  # controller (an existing workstream is returned with `existing: true`),
+  # so the submissions' own on-demand creation is harmless alongside it.
   #
-  # checkstyle is the actual outlier: it is NOT a prerequisite of `test`,
-  # `test-flowtree`, `test-media`, `test-mac` or `test-media-mac` — unlike
-  # the four checks above, none of the test-matrix jobs list it in `needs`.
-  # A branch that only trips checkstyle therefore runs the full matrix to
-  # completion while register-workstream — back when it still depended on
-  # checkstyle as a "fast-fail fallback" — sat skipped the whole time
-  # (observed: 90+ minutes on PR #500, still waiting on queued test-cl lanes
-  # with no workstream to submit against). Registering unconditionally once
-  # `build` succeeds removes that gap regardless of which gate, if any,
-  # eventually fails.
-  #
-  # Running both this job and auto-resolve's own registration is harmless:
-  # registration is idempotent on the controller (an existing workstream is
-  # returned with `existing: true`), so there is nothing to avoid by
-  # narrowing this job's `needs`.
-  #
-  # The code_changed check handles the docs-only case: `build` itself is
-  # gated on code_changed, so a docs-only PR skips it and therefore skips
-  # this job too. The explicit check documents that dependency rather than
-  # relying on it silently.
+  # The code_changed check keeps docs-only PRs out: they submit a verify job
+  # from `auto-review` at once, and that submission creates the workstream
+  # itself, so registering here would only race it.
   #
   # Deliberately NOT declaring `environment:`. A job with an environment in
   # a pull_request run attaches a GitHub Deployment to the PR head, and a
   # cancelled one then shows as a spurious "had a problem deploying" red X.
-  # Avoiding that is the whole reason the auto-resolve submission lives in a
-  # separate workflow_run workflow; see auto-resolve-submit.yaml.
   #
   # Never fails the pipeline. Registration is a convenience, not a quality
   # signal, so this job is excluded from all-checks and every failure path
-  # below reports a notice or warning and exits 0.
-  # TODO(review): "every failure path... exits 0" is no longer true for the
-  # "Fetch base branch" and "Verify registration script integrity" steps
-  # added below — neither has `continue-on-error` or its own failure
-  # handling, so e.g. a transient `git fetch origin master` network error
-  # fails the step (GitHub Actions default `-eo pipefail`) and the whole job
-  # goes red, contradicting this comment. See review-followup memory on
-  # workstream 3e52f5d6-13d4-45b2-93a7-a776d5af7045 for detail.
+  # below reports a notice or warning and exits 0. "Fetch base branch"
+  # wraps its `git fetch` so a transient network error is reported via
+  # ::warning:: and `failed=true` rather than failing the step; "Verify
+  # registration script integrity" treats that flag as unverifiable and
+  # skips registration (fail closed) instead of falling through to the
+  # "script is new on master" trust-as-is branch.
   register-workstream:
-    needs: [changes, build]
+    needs: [changes]
     if: >-
       github.ref != 'refs/heads/master' &&
-      needs.build.result == 'success' &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -1155,7 +1339,12 @@ jobs:
           fetch-depth: 0
 
       - name: Fetch base branch
-        run: git fetch origin master:refs/remotes/origin/master --no-tags
+        id: fetch_base
+        run: |
+          if ! git fetch origin master:refs/remotes/origin/master --no-tags; then
+            echo "::warning::failed to fetch origin/master — the script-integrity check below cannot verify tools/ci/register-workstream.sh against the trusted copy and will fail closed."
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Determine branch context
         id: ctx
@@ -1168,7 +1357,7 @@ jobs:
             echo "base=master" >> "$GITHUB_OUTPUT"
           fi
 
-      # This job no longer waits on test-integrity-check, so nothing else in
+      # This job waits on nothing but `changes`, so nothing else in
       # the pipeline has verified by this point that tools/ci/register-workstream.sh
       # is the trusted copy before it runs with FLOWTREE_CF_ACCESS_CLIENT_SECRET in
       # its environment. The checkout above is the PR's own tree, so a branch that
@@ -1193,9 +1382,19 @@ jobs:
           # attached. That would defeat the very check this step exists
           # to perform.
           BRANCH: ${{ steps.ctx.outputs.branch }}
+          # Passed via env for the same reason as BRANCH: the value is an
+          # output of an earlier step and must not be interpolated as a
+          # GitHub Actions expression into the shell script body.
+          FETCH_FAILED: ${{ steps.fetch_base.outputs.failed }}
         run: |
           if echo "$BRANCH" | grep -qE '^ci/'; then
             echo "Branch ${BRANCH} is a CI branch — tools/ci/register-workstream.sh may be modified on it."
+            exit 0
+          fi
+
+          if [ "$FETCH_FAILED" = "true" ]; then
+            echo "::warning::origin/master could not be fetched — tools/ci/register-workstream.sh cannot be verified against the trusted copy. Refusing to run it with registration credentials attached. the remediation submission will create it on demand."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -1206,7 +1405,7 @@ jobs:
           fi
 
           if git diff --name-only origin/master...HEAD -- tools/ci/register-workstream.sh | grep -q .; then
-            echo "::warning::tools/ci/register-workstream.sh differs from origin/master on a non-ci branch — refusing to run it with registration credentials attached. auto-resolve will register on its normal path."
+            echo "::warning::tools/ci/register-workstream.sh differs from origin/master on a non-ci branch — refusing to run it with registration credentials attached. the remediation submission will create it on demand."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -1244,16 +1443,24 @@ jobs:
           if [ "$STATUS" -eq 0 ]; then
             echo "::notice::Workstream registered early for branch ${BRANCH}"
           else
-            # auto-resolve still creates the workstream at the end of the run,
+            # The remediation submission still creates the workstream on demand,
             # so a failure here costs the head start and nothing else.
-            echo "::warning::Early workstream registration failed — auto-resolve will register on its normal path"
+            echo "::warning::Early workstream registration failed — the remediation submission will create it on demand"
           fi
 
   # ─── Checkstyle Check ──────────────────────────────────────────────
   # Runs the default checkstyle rules (no var, no @SuppressWarnings)
   # as a dedicated job for clear violation reporting in the PR summary.
+  #
+  # Needs no build, so it does not wait for `build` and runs in parallel with
+  # it. checkstyle.xml uses only Checkstyle's own modules, and the plugin's
+  # `check` goal resolves no project dependencies, so `mvn checkstyle:check`
+  # finds violations with none of this repository's artifacts installed
+  # (verified offline against a local repository with no org.almostrealism
+  # artifacts). The scripts before it read sources only. An `mvn install`
+  # here used to repeat the whole of `build` before the first check ran.
   checkstyle:
-    needs: [changes, build]
+    needs: [changes]
     # Intentionally NOT gated on checkstyle-integrity-check. Correctness and
     # integrity are independent concerns: integrity protects the config from
     # unauthorized *modification* (which can be overridden when a modification
@@ -1278,9 +1485,6 @@ jobs:
           java-version: '17'
           distribution: 'adopt'
           cache: 'maven'
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Check exempt file lengths
         run: bash scripts/check-exempt-file-lengths.sh
@@ -1332,15 +1536,25 @@ jobs:
   #   - the exfiltration guard's Python and CI-verifier regression suites
   # These are pure Python — no Maven build needed, so this job only depends
   # on `changes` and runs in parallel with build/checkstyle. Fails the PR
-  # when any test fails. Gated on python_changed OR exfil_guard_changed so
-  # the guard suites still run when only its shell adapter, allowlist, or
-  # settings.json registration changed — none of which set python_changed.
+  # when any test fails, and a failure is submitted straight away by
+  # auto-resolve-python, which quotes the output this job uploads. Gated on
+  # python_changed, exfil_guard_changed or agent_protection_changed, so the
+  # guard suites still run when only its shell adapter, allowlist, or
+  # settings.json registration changed, and the branch-check suites run when
+  # an agent-protection script changed — none of which set python_changed.
   python-tests:
     needs: changes
     if: >-
       needs.changes.outputs.code_changed == 'true' &&
-      (needs.changes.outputs.python_changed == 'true' || needs.changes.outputs.exfil_guard_changed == 'true')
+      (needs.changes.outputs.python_changed == 'true' ||
+       needs.changes.outputs.exfil_guard_changed == 'true' ||
+       needs.changes.outputs.agent_protection_changed == 'true')
     runs-on: ubuntu-latest
+    # `bash` (rather than the default shell) runs every step with pipefail, so
+    # piping a suite through `tee` still fails the step when the suite fails.
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1363,25 +1577,40 @@ jobs:
           python3 -m pip install -r tools/mcp/requirements.txt pyyaml
 
       - name: Run ar-manager MCP tests
-        run: python3 -m unittest discover -v -s tools/mcp/manager -p "test_*.py"
+        run: python3 -m unittest discover -v -s tools/mcp/manager -p "test_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       - name: Run shared MCP library tests
-        run: python3 -m unittest discover -v -s tools/mcp/common -p "test_*.py"
+        run: python3 -m unittest discover -v -s tools/mcp/common -p "test_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       - name: Run migration tool tests
-        run: python3 -m unittest discover -v -s tools/tests -p "test_*.py"
+        run: python3 -m unittest discover -v -s tools/tests -p "test_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The exfiltration guard's decision logic is Python under
       # .claude/hooks/lib; its tests build scratch git repositories and
       # drive the --stdin adapter contract, so they need git and a HOME.
       - name: Run exfiltration guard hook tests
-        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_check.py"
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # The interface-bypass hook decides whether an edit is refused outright,
+      # so its tests drive the same --stdin contract end to end, and need git to
+      # resolve type names the way the hook does.
+      - name: Run interface bypass hook tests
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_block_interface_bypass.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # Worktrees are allowed in interactive sessions and refused in FlowTree
+      # jobs, whose harness captures only the job's own working tree. These
+      # cover both git policy adapters and the job-only worktree hook, which
+      # builds scratch repositories with a real linked worktree.
+      - name: Run worktree policy hook tests
+        run: |
+          python3 -m unittest discover -v -s .claude/hooks/lib -p "test_git_command_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s .claude/hooks/lib -p "test_job_worktree_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       - name: Run exfiltration guard CI-verifier tests
-        run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh
+        run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       - name: Run exfiltration guard registration helper tests
-        run: python3 -m unittest discover -v -s tools/ci/agent-protection -p "test_exfil_guard_registration.py"
+        run: python3 -m unittest discover -v -s tools/ci/agent-protection -p "test_exfil_guard_registration.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # check-quality-gates.sh selects the test-integrity-check failure
       # message from that job's failure_reason output, and — more
@@ -1389,7 +1618,24 @@ jobs:
       # says a detector could not run. This pins both halves down
       # independently of the guard's own regression suite above.
       - name: Run quality-gate messaging regression tests
-        run: bash tools/ci/agent-protection/test-check-quality-gates.sh
+        run: bash tools/ci/agent-protection/test-check-quality-gates.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # The CI file lock, the Python test-hiding detector and the change-set
+      # validator, each against a throwaway repository.
+      - name: Run branch-check regression tests
+        run: bash tools/ci/agent-protection/test-branch-checks.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # auto-resolve-python quotes this output in the prompt it submits, so the
+      # agent starts from the actual failure rather than a bare job status.
+      - name: Upload test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: python-tests-output
+          path: ${{ runner.temp }}/python-tests.log
+          retention-days: 7
+          if-no-files-found: ignore
 
   # ─── Agent Volume Isolation ────────────────────────────────────────
   # Enforces the hard invariant that FlowTree agent containers can never
@@ -1432,7 +1678,7 @@ jobs:
   # ─── Container Image Build ─────────────────────────────────────────
   # Builds the controller-stack images so a packaging break surfaces on the PR
   # rather than at deploy time. Build only — nothing is pushed or started here;
-  # deployment lives in deploy.yaml, which runs only on master.
+  # deployment lives in deploy.yaml, which runs only when dispatched by hand.
   #
   # This matters most for ar-manager, whose image bakes in the documentation
   # corpus that grounds memory_recall. A corpus that fails to reach the image
@@ -1507,15 +1753,31 @@ jobs:
   # Extracted from `build` so that slow flowtree tests do not block the
   # rest of the pipeline.
   test-flowtree:
-    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, python-tests, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # Gated on python-tests success-or-skipped: the flowtree runtime drives the Python
+    # tooling (ar-manager, the fleet scripts, the CI helpers), so when the Python suite ran
+    # and failed there is nothing sound for this job to prove, only runner time to spend.
+    # That is also why this job is not gated on Java changes the way the layer lanes are.
+    # The gate keeps the remediation paths apart: a python-tests failure is submitted at
+    # once by auto-resolve-python, and this job — a long-running, retry-eligible test job
+    # whose failures are auto-resolve's — never runs alongside it (see "Remediation Jobs").
+    # python-tests is skipped only by its own path gate (no .py change, off master), never
+    # by an upstream failure, so its `skipped` is unambiguous and tolerated. `!cancelled()`
+    # is required for that tolerance to take effect — see test-media.
     if: >-
+      !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
+      (needs.python-tests.result == 'success' || needs.python-tests.result == 'skipped') &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1530,8 +1792,29 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Flowtree Tests
         # Every module of the flowtree family, not just runtime. api and python carry no
@@ -1551,6 +1834,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-flowtree
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -1567,10 +1851,109 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: coverage-flowtree
           path: coverage-data/
           retention-days: 1
           if-no-files-found: ignore
+
+  # ─── Agent end-to-end: proof the tests can fail ────────────────────
+  # `test-flowtree` runs AgentJobEndToEndTest and reports it green. This job
+  # answers the question that a green result does not: green for what reason?
+  #
+  # It installs each defect in tools/ci/agent-e2e/faults/ and requires the
+  # scenario named for that defect to fail. The need is not hypothetical —
+  # during the outage this tooling was built after, the end-to-end test named
+  # for the live defect passed, because the job it constructed never configured
+  # the credentials that make the failing policy reachable. The test was green
+  # and covered nothing, and the entire pipeline agreed with it.
+  #
+  # The defects are test-side doubles in AgentJobFaultCatalogue, not patches,
+  # so every fault runs in one Maven invocation against `build`'s shared
+  # artifacts. One catalogue entry is a control that must PASS, so a runner
+  # that reported "detected" unconditionally fails here rather than certifying
+  # everything forever. No coverage is produced, so this job is not in
+  # `analysis` needs.
+  agent-e2e-faults:
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
+
+      # Cheap, offline, and it runs here rather than only at deploy time: the
+      # post-deploy canary's verifier is the thing that decides whether a
+      # deploy broke the fleet, and a PR that breaks that verifier must not
+      # reach master and find out later.
+      - name: Prove the post-deploy canary verifier discriminates
+        run: ./tools/ci/agent-e2e/post-deploy-canary.sh selftest
+
+      - name: Prove the deployed-build check discriminates
+        run: ./tools/ci/agent-e2e/verify-deployed-build.sh selftest
+
+      - name: Prove the seam check discriminates
+        run: ./tools/ci/agent-e2e/check-seam.sh selftest
+
+      # The cheapest way to turn a red end-to-end test green is to stub one
+      # more thing, and in a diff that looks like a test being fixed. Every
+      # substitution has to be declared in seam.txt, so growing the seam
+      # shows up next to the test it excuses.
+      - name: Every substitution must be declared
+        run: ./tools/ci/agent-e2e/check-seam.sh
+
+      # Offline, no build: the verdict reader must tell a pass, a failure, an
+      # error and a missing method apart before its verdicts are trusted.
+      - name: Prove the fault-catalogue runner discriminates
+        run: ./tools/ci/agent-e2e/run-fault-catalogue.sh selftest
+
+      # One Maven invocation for the whole catalogue. Maven may reach the
+      # network: the restored artifacts cover this project's modules, not
+      # every third-party plugin and dependency.
+      - name: Every fault must break its scenario
+        env:
+          MVN_OFFLINE: ""
+        run: ./tools/ci/agent-e2e/run-fault-catalogue.sh
 
   test:
     needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
@@ -1586,21 +1969,16 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
-    # Direct ByteBuffers are GC-reclaimed, so a group can spike past the 4 GiB default before reclamation catches up.
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
+    # Direct ByteBuffers are GC-reclaimed, so the suite can spike past the 4 GiB default before reclamation catches up.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
-    strategy:
-      # Let every group in the matrix run to completion even when a peer fails.
-      # A failure in one group must not cancel the others: a simpler group often
-      # reproduces the same problem, and cancelling hides that cheaper signal.
-      # Cross-OS gating (don't run mac when linux fails) is handled by test-mac's
-      # needs/if, not by fail-fast.
-      fail-fast: false
-      # Cap concurrent groups so all eight completing doesn't overrun runner
-      # capacity; the remaining groups queue and run as slots free up.
-      max-parallel: 4
-      matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+    # No matrix: the native CPU suite runs as a single job rather than sharding
+    # engine/utils and engine/ml across groups. Driven by native RAM (not the
+    # GPU memory ceiling the accelerator lanes split around), it fits one JVM.
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1615,11 +1993,31 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Hardware Tests
-        if: matrix.group == 0
         run: |
           set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
@@ -1630,16 +2028,17 @@ jobs:
            2>&1 | tee "${{ runner.temp }}/mvn-hardware-test.log"
 
       - name: Upload Hardware Surefire Reports
-        if: always() && matrix.group == 0
+        if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-hardware
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Run Utils Tests (Group ${{ matrix.group }})
+      - name: Run Utils Tests
         run: |
           set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
@@ -1647,21 +2046,20 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-utils-test.log"
 
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-utils-group-${{ matrix.group }}
+          overwrite: true
+          name: surefire-utils
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Run ML Tests (Group ${{ matrix.group }})
+      - name: Run ML Tests
         run: |
           set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
@@ -1670,22 +2068,20 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-ml-test.log"
 
       - name: Upload ML Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-ml-group-${{ matrix.group }}
+          overwrite: true
+          name: surefire-ml
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: ignore
 
       - name: Run Render Tests
-        if: matrix.group == 0
         run: |
           set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
@@ -1696,10 +2092,9 @@ jobs:
            2>&1 | tee "${{ runner.temp }}/mvn-render-test.log"
 
       # base/io and engine/utils-http hold one test class each and had no CI job at all.
-      # Grouped into a single Maven invocation on group 0 (as Render is) so covering them
-      # costs one reactor start rather than two per matrix group.
+      # Grouped into a single Maven invocation (as Render is) so covering them costs
+      # one reactor start rather than two.
       - name: Run IO and HTTP Tests
-        if: matrix.group == 0
         run: |
           set -o pipefail
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
@@ -1711,9 +2106,10 @@ jobs:
            2>&1 | tee "${{ runner.temp }}/mvn-io-http-test.log"
 
       - name: Upload Render Surefire Reports
-        if: always() && matrix.group == 0
+        if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-render
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -1731,7 +2127,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: crash-reports-group-${{ matrix.group }}
+          overwrite: true
+          name: crash-reports-cpu
           path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
@@ -1746,7 +2143,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-group-${{ matrix.group }}
+          overwrite: true
+          name: coverage-cpu
           path: coverage-data/
           retention-days: 1
 
@@ -1775,20 +2173,16 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
-    # Cap direct memory at 8g: enough for one split group, but below runner RAM so an overshoot is a catchable limit, not an OOM kill.
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
+    # Direct ByteBuffers are GC-reclaimed, so the suite can spike past the 4 GiB default before reclamation catches up.
     env:
-      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
-    strategy:
-      # Split the (growing) media test set across eight groups: each group runs an eighth
-      # of every module's tests (AR_TEST_GROUPS=8 on the steps below). Self-hosted runners
-      # run one job at a time, so each group lands on its own runner with an eighth of the
-      # tests, cutting peak memory per runner and shrinking the retry unit — a flaky
-      # failure re-runs only that group, not the whole suite. max-parallel bounds how many
-      # groups run at once on the fleet, so eight groups queue in ceil(8/max-parallel) waves.
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
+    # No matrix: like `test`, the native media suite runs as a single job rather than
+    # sharding each module across groups. Driven by native RAM (not the GPU memory
+    # ceiling the accelerator lanes split around), it fits one JVM per module.
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1803,8 +2197,29 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Audio Tests
         run: |
@@ -1815,8 +2230,6 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-audio-test.log"
 
       - name: Run Music Tests
@@ -1828,8 +2241,6 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-music-test.log"
 
       - name: Run Compose Tests
@@ -1841,8 +2252,6 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-compose-test.log"
 
       - name: Run Spatial Tests
@@ -1854,8 +2263,6 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-spatial-test.log"
 
       # extern/ml-onnx and studio/experiments had no CI job at all. Both are small, and both
@@ -1872,15 +2279,14 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-extern-experiments-test.log"
 
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-media-${{ matrix.group }}
+          overwrite: true
+          name: surefire-media
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
@@ -1897,7 +2303,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: crash-reports-media-${{ matrix.group }}
+          overwrite: true
+          name: crash-reports-media
           path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
@@ -1912,7 +2319,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-media-${{ matrix.group }}
+          overwrite: true
+          name: coverage-media
           path: coverage-data/
           retention-days: 1
 
@@ -1921,9 +2329,9 @@ jobs:
   test-mac:
     needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # GPU lane, first stage. The GPU lane (test-mac -> test-media-mac) runs in parallel with
-    # the CPU lane (test -> test-media) and the CL lane (test-cl -> test-media-cl): all three
-    # use different runner fleets (macOS ar-ci, linux ar-ci, linux ar-ci-cl), so there is no
-    # reason to serialise across them. Within the GPU lane the stages are serialised so only
+    # the CPU lane (test -> test-media), the CL lane (test-cl -> test-media-cl) and the CUDA
+    # lane (test-cuda -> test-media-cuda): all four use different runner fleets, so there is
+    # no reason to serialise across them. Within the GPU lane the stages are serialised so only
     # one GPU-heavy suite runs on the macOS fleet at a time. This stage gates on the
     # validation checks directly (it no longer inherits them by depending on `test`).
     # Layer gate: engine tests only run when engine-or-below layers are modified.
@@ -1938,13 +2346,17 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     strategy:
       # Let every group finish even when a peer fails (see the test job above); this only
       # affects cancellation among the mac groups themselves.
       fail-fast: false
       max-parallel: 3
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1967,11 +2379,36 @@ jobs:
         # preserved while cross-worker pollution is eliminated. $HOME and
         # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
         # not expand $HOME), and spaces in the runner name are sanitized so the
-        # -D argument stays a single token.
-        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+        # -D argument stays a single token. MAVEN_REPO is exported too, so
+        # "Restore build artifacts" copies into this repository.
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Hardware Tests
         if: matrix.group == 0
@@ -1988,7 +2425,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=3
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -1998,7 +2435,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=3
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -2019,11 +2456,12 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
       # Metal (mac) surefire reports so auto-resolve can parse Metal-specific test failures
-      # a Linux run would not surface. Named distinctly from the CL jobs, which are not resolved.
+      # a Linux run would not surface.
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-mac-group-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -2044,14 +2482,18 @@ jobs:
     # integrated GPU, whose FP64 rate is poor enough that raising the lane to FP64 would cost
     # more than it is worth.
     #
-    # Runs on the ROCm fleet (tools/ci/rocm), not the macOS fleet, so it no longer gates on
-    # test-mac/test-media-mac: those gates existed only to serialise the *macOS* GPUs, and
-    # keeping them would leave this lane idle waiting on unrelated Metal work. The CL lane is
-    # now an independent third lane, serialised internally as test-cl -> test-media-cl because
-    # the ROCm host has a single GPU. Gates on the validation checks directly.
-    # `!cancelled()` is retained for consistency with the other lane stages — see test-media.
+    # Runs on the ROCm fleet (tools/ci/rocm), not the macOS fleet, and is serialised internally
+    # as test-cl -> test-media-cl because the ROCm host has a single GPU.
+    #
+    # Admission: test-cl is admitted exactly as test-mac and test-cuda are, on build and the
+    # four validation checks alone, so all three accelerator first stages start together
+    # without waiting for the Linux `test` stage. It no longer gates on the CPU lane at all:
+    # the fleets are different machines, so there is no reason to hold the ROCm host until the
+    # Linux CPU suite is green. The cost is that a branch that fails only the Linux CPU suite
+    # still spends the ROCm fleet on the CL lane: test-media-cl waits only for test-cl. It does
+    # NOT gate on the macOS GPU lane either: test-cl runs alongside test-mac, and test-media-cl
+    # alongside test-media-mac.
     if: >-
-      !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -2062,9 +2504,13 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci-cl]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # Same as test: native,cl runs the compute tests on direct-ByteBuffer native RAM
     # (no Metal), so raise the forked test JVM's direct-memory ceiling without changing
-    # heap. See the test-media job for the full rationale.
+    # heap. See the test job for the full rationale.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
     concurrency:
@@ -2072,14 +2518,14 @@ jobs:
       cancel-in-progress: true
     strategy:
       fail-fast: false
-      # Cap concurrency at 3 so the eight groups do not monopolize the self-hosted
+      # Cap concurrency at 3 so the groups do not monopolize the self-hosted
       # runners when several pipelines run at once; remaining groups queue behind.
       max-parallel: 3
       matrix:
         # The CL backend reaches its memory ceiling under large per-group test loads
         # (AR_HARDWARE_MEMORY_SCALE is already at 7, the highest scale used anywhere),
-        # so spreading the tests across eight JVMs keeps each group's load small.
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        # so the tests are spread across three JVMs to keep each group's load small.
+        group: [0, 1, 2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -2095,10 +2541,34 @@ jobs:
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
-        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Hardware Tests
         if: matrix.group == 0
@@ -2117,7 +2587,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=3
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -2128,7 +2598,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=3
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -2149,6 +2619,159 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline
+
+      # OpenCL surefire reports so auto-resolve can parse CL-specific test failures that
+      # neither the Linux CPU lane nor the Metal lane would surface.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: surefire-cl-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-cuda:
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # CUDA lane, first stage: the CUDA duplicate of test-cl, with AR_HARDWARE_DRIVER=native,cuda
+    # so GPU-eligible work routes through the CUDA backend. Every step mirrors test-cl; see
+    # there for the FP32 precision, memory scale and direct-memory settings, which carry over
+    # unchanged (CudaDataContext is FP32, so the native context must match it).
+    #
+    # Runs on the NVIDIA fleet (tools/ci/cuda), in parallel with the other lanes: they all
+    # use different machines. It is admitted exactly as test-mac and test-cl are, on build
+    # and the validation checks alone, so the first stages of all four lanes start together.
+    # Its second stage, test-media-cuda, waits only for this job, never for another lane.
+    #
+    # Required, like every other test lane: it is in analysis.needs, all-checks and
+    # auto-resolve, which tools/tests/test_auto_resolve_test_job_coverage.py checks.
+    if: >-
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
+    runs-on: [self-hosted, linux, ar-ci-cuda]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
+    concurrency:
+      group: test-cuda-${{ github.ref }}-${{ matrix.group }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        group: [0, 1, 2, 3]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Isolate Maven repository per runner
+        # See the identical step in test-mac for the rationale.
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
+
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run (see test-cl).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
+
+      - name: Run Hardware Tests
+        if: matrix.group == 0
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl base/hardware \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
+      - name: Run Utils Tests (Group ${{ matrix.group }})
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/utils \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
+
+      - name: Run ML Tests (Group ${{ matrix.group }})
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/ml \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
+
+      - name: Run Render Tests
+        if: matrix.group == 0
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/render \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
+      # See the identical step in test for why these two modules share one invocation.
+      - name: Run IO and HTTP Tests
+        if: matrix.group == 0
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline
+
+      # CUDA surefire reports so auto-resolve can parse CUDA-specific test failures.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: surefire-cuda-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
   test-media-mac:
     needs: [changes, build, test-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
@@ -2175,22 +2798,48 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
+    # The curated sample library this fleet keeps at /Users/Shared/Music (see
+    # tools/ci/macos/README.md, "Test Data"). Declared explicitly, as on the CL and CUDA
+    # lanes, so tests and the "Verify curated sample library" step treat it as required here.
+    env:
+      AR_RINGS_LIBRARY: /Users/Shared/Music/Samples
+      AR_RINGS_PATTERNS: /Users/Shared/Music/pattern-factory.json
     strategy:
-      # Run the media set in four groups, up to two at a time (max-parallel 2): each group runs
-      # a quarter of every module's tests via AR_TEST_GROUPS=4, on its own runner. Gating the
+      # Run the media set in two groups, both at once (max-parallel 2): each group runs
+      # half of every module's tests via AR_TEST_GROUPS=2, on its own runner. Gating the
       # whole job behind test-mac keeps other GPU-heavy Metal stages off the fleet while this
       # runs; allowing two groups to run concurrently trades some GPU contention for wall-clock
       # time. This job uses the Metal provider (driver *), so no direct-memory ceiling is needed.
       fail-fast: false
       max-parallel: 2
       matrix:
-        group: [0, 1, 2, 3]
+        group: [0, 1]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+
+      # Every test that needs the curated sample library fails without it on this GPU lane
+      # (TestFeatures.requireResource via AudioSceneTestBase.requireCuratedLibrary). This step
+      # names the cause once, before any test runs, so a runner provisioned without the library
+      # (or with an empty mount) is reported as that rather than as dozens of test failures,
+      # and no test can pass here by quietly falling back to synthetic samples.
+      - name: Verify curated sample library
+        run: |
+          if [ ! -d "$AR_RINGS_LIBRARY" ] || [ -z "$(ls -A "$AR_RINGS_LIBRARY")" ]; then
+            echo "::error::Curated sample library missing or empty at AR_RINGS_LIBRARY=$AR_RINGS_LIBRARY; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
+          if [ ! -f "$AR_RINGS_PATTERNS" ]; then
+            echo "::error::Curated pattern factory missing at AR_RINGS_PATTERNS=$AR_RINGS_PATTERNS; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -2207,11 +2856,36 @@ jobs:
         # preserved while cross-worker pollution is eliminated. $HOME and
         # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
         # not expand $HOME), and spaces in the runner name are sanitized so the
-        # -D argument stays a single token.
-        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+        # -D argument stays a single token. MAVEN_REPO is exported too, so
+        # "Restore build artifacts" copies into this repository.
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Audio Tests
         run: |
@@ -2221,7 +2895,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=2
 
       - name: Run Music Tests
         run: |
@@ -2230,7 +2904,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=2
 
       - name: Run Compose Tests
         run: |
@@ -2240,7 +2914,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=2
 
       - name: Run Spatial Tests
         run: |
@@ -2250,7 +2924,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=2
 
       # See the identical step in test-media for why these two modules share one invocation.
       - name: Run Extern and Experiments Tests
@@ -2261,15 +2935,15 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=4
+           -DAR_TEST_GROUPS=2
 
       # Metal (mac) media surefire reports so auto-resolve can parse Metal-specific test
-      # failures a Linux run would not surface. Named distinctly from the CL jobs, which
-      # are not resolved.
+      # failures a Linux run would not surface.
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: surefire-media-mac-group-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
@@ -2282,12 +2956,15 @@ jobs:
     # with AR_HARDWARE_DRIVER=native,cl where test-media-mac uses * (Metal preferred), so
     # GPU-eligible work routes through CL.
     #
-    # Runs on the ROCm fleet (tools/ci/rocm). The former gates on test-mac/test-media-mac
-    # serialised the macOS GPUs and no longer apply; the gate on test-cl remains, because the
-    # ROCm host has a single GPU and the two CL stages must not contend for it. test-cl is
-    # gated success-or-skipped, so a failure there skips this stage (fail-chain) while a stage
-    # skipped by its own layer gate is tolerated. Gates on the validation checks directly.
-    # `!cancelled()` is required for that tolerance to take effect — see test-media.
+    # Runs on the ROCm fleet (tools/ci/rocm). Gates on test-cl because the ROCm host has a
+    # single GPU and the two CL stages must not contend for it, and on no other lane: like
+    # test-media after test and test-media-mac after test-mac, it starts as soon as its own
+    # lane's first stage is done, so the four lanes run side by side as test -> media pairs.
+    #
+    # test-cl's `skipped` is tolerated because test-cl waits only for build and the
+    # validation checks, which this stage also reads directly — so a skipped test-cl here
+    # can only mean its own (narrower) layer gate. `!cancelled()` is required for that
+    # tolerance to take effect — see test-media.
     if: >-
       !cancelled() &&
       needs.build.result == 'success' &&
@@ -2303,10 +2980,14 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci-cl]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
     # native,cl media tests with the native provider on JNI malloc blocks
     # (AR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled, matching the other CL jobs) so the
     # 8g direct-memory cap is spent on CL's own reservations rather than shared with
-    # the native provider. Split into eight groups (see test-media); the small per-group
+    # the native provider. Split into five groups; the small per-group
     # load keeps CL within the 8g cap.
     #
     # AR_RINGS_LIBRARY / AR_RINGS_PATTERNS point at the curated audio sample library staged on
@@ -2322,16 +3003,32 @@ jobs:
       AR_RINGS_PATTERNS: /opt/ar-samples/pattern-factory.json
     strategy:
       fail-fast: false
-      # Cap at 2 even with eight groups so the job does not monopolize the runners.
-      max-parallel: 2
+      # Cap at 3 even with five groups so the job does not monopolize the runners.
+      max-parallel: 3
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+
+      # Every test that needs the curated sample library fails without it on this GPU lane
+      # (TestFeatures.requireResource via AudioSceneTestBase.requireCuratedLibrary). This step
+      # names the cause once, before any test runs, so a runner provisioned without the library
+      # (or with an empty mount) is reported as that rather than as dozens of test failures,
+      # and no test can pass here by quietly falling back to synthetic samples.
+      - name: Verify curated sample library
+        run: |
+          if [ ! -d "$AR_RINGS_LIBRARY" ] || [ -z "$(ls -A "$AR_RINGS_LIBRARY")" ]; then
+            echo "::error::Curated sample library missing or empty at AR_RINGS_LIBRARY=$AR_RINGS_LIBRARY; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
+          if [ ! -f "$AR_RINGS_PATTERNS" ]; then
+            echo "::error::Curated pattern factory missing at AR_RINGS_PATTERNS=$AR_RINGS_PATTERNS; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -2341,10 +3038,34 @@ jobs:
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
-        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
 
-      - name: Build (skip tests)
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      # Into the repository Maven reads: the per-runner one where the job
+      # isolates it (MAVEN_REPO), the default one otherwise. Resolved by the
+      # shell, where both are plain environment variables.
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
 
       - name: Run Audio Tests
         run: |
@@ -2356,7 +3077,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=5
 
       - name: Run Music Tests
         run: |
@@ -2367,7 +3088,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=5
 
       - name: Run Compose Tests
         run: |
@@ -2379,7 +3100,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=5
 
       - name: Run Spatial Tests
         run: |
@@ -2391,7 +3112,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=5
 
       # See the identical step in test-media for why these two modules share one invocation.
       - name: Run Extern and Experiments Tests
@@ -2404,16 +3125,198 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=8
+           -DAR_TEST_GROUPS=5
+
+      # OpenCL media surefire reports so auto-resolve can parse CL-specific test failures
+      # that neither the Linux CPU lane nor the Metal lane would surface.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: surefire-media-cl-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-media-cuda:
+    needs: [changes, build, test-cuda, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # CUDA lane, second (final) stage: the CUDA duplicate of test-media-cl, with
+    # AR_HARDWARE_DRIVER=native,cuda. Every step and setting mirrors test-media-cl, including the
+    # five-group split; see there.
+    #
+    # Runs on the NVIDIA fleet (tools/ci/cuda). Gates on test-cuda because the host has a
+    # single GPU, and on no other lane, for the same reasons as test-media-cl.
+    #
+    # AR_RINGS_LIBRARY / AR_RINGS_PATTERNS point at the curated sample library the fleet's
+    # compose file bind-mounts read-only at /opt/ar-samples (see tools/ci/cuda).
+    #
+    # Required, like test-cuda: in analysis.needs, all-checks and auto-resolve.
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.test-cuda.result == 'success' || needs.test-cuda.result == 'skipped') &&
+      (needs.changes.outputs.studio_changed == 'true' ||
+       needs.changes.outputs.extern_changed == 'true' ||
+       needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
+    runs-on: [self-hosted, linux, ar-ci-cuda]
+    # actions: read lets "Download build artifacts" use the REST route.
+    permissions:
+      contents: read
+      actions: read
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
+      AR_RINGS_LIBRARY: /opt/ar-samples/Samples
+      AR_RINGS_PATTERNS: /opt/ar-samples/pattern-factory.json
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        group: [0, 1, 2, 3, 4]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      # Every test that needs the curated sample library fails without it on this GPU lane
+      # (TestFeatures.requireResource via AudioSceneTestBase.requireCuratedLibrary). This step
+      # names the cause once, before any test runs, so a runner provisioned without the library
+      # (or with an empty mount) is reported as that rather than as dozens of test failures,
+      # and no test can pass here by quietly falling back to synthetic samples.
+      - name: Verify curated sample library
+        run: |
+          if [ ! -d "$AR_RINGS_LIBRARY" ] || [ -z "$(ls -A "$AR_RINGS_LIBRARY")" ]; then
+            echo "::error::Curated sample library missing or empty at AR_RINGS_LIBRARY=$AR_RINGS_LIBRARY; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
+          if [ ! -f "$AR_RINGS_PATTERNS" ]; then
+            echo "::error::Curated pattern factory missing at AR_RINGS_PATTERNS=$AR_RINGS_PATTERNS; stage it with tools/ci/sync-music-samples.sh"
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Isolate Maven repository per runner
+        # See the identical step in test-mac for the rationale.
+        run: |
+          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
+          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
+          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
+
+      # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
+      # in .github/CLAUDE.md.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/maven-installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run (see test-cl).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+
+      - name: Restore build artifacts
+        run: |
+          REPO="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          mkdir -p "$REPO"
+          cp -R "${RUNNER_TEMP}/maven-installed-artifacts/." "$REPO/"
+
+      - name: Run Audio Tests
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/audio \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=5
+
+      - name: Run Music Tests
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/music \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=5
+
+      - name: Run Compose Tests
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/compose \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=5
+
+      - name: Run Spatial Tests
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=5
+
+      # See the identical step in test-media for why these two modules share one invocation.
+      - name: Run Extern and Experiments Tests
+        run: |
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
+           -DAR_HARDWARE_DRIVER=native,cuda \
+           -DAR_HARDWARE_PRECISION=FP32 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=5
+
+      # CUDA media surefire reports so auto-resolve can parse CUDA-specific failures.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: surefire-media-cuda-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
   analysis:
-    # Coverage jobs (build, test, test-flowtree, test-media) plus the mac test jobs
-    # (test-mac, test-media-mac) that the all-checks gate also waits on. auto-resolve depends
-    # on analysis, so waiting for the mac jobs here means auto-resolve does not proceed until
-    # the same set of jobs that decide all-checks has reported — the input to analysis is not
-    # narrower than the input to all-checks. The mac jobs upload no coverage; they are here for
-    # ordering only, and `if: !cancelled()` keeps analysis running when any of them fail or skip.
-    needs: [build, test, test-flowtree, test-media, test-mac, test-media-mac]
+    # Coverage jobs (build, test, test-flowtree, test-media) plus the mac, CL and CUDA test
+    # jobs (test-mac, test-media-mac, test-cl, test-media-cl, test-cuda, test-media-cuda)
+    # that the all-checks gate also waits on. auto-resolve depends on analysis, so waiting
+    # for those jobs here means auto-resolve does not proceed until the same set of jobs that
+    # decide all-checks has reported — the input to analysis is not narrower than the input
+    # to all-checks. The accelerator jobs upload no coverage; they are here for ordering
+    # only, and `if: !cancelled()` keeps analysis running when any of them fail or skip.
+    needs: [build, test, test-flowtree, test-media, test-mac, test-media-mac, test-cl, test-media-cl, test-cuda, test-media-cuda]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -2437,8 +3340,22 @@ jobs:
           distribution: 'adopt'
           cache: 'maven'
 
-      - name: Build for Analysis
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
+      # JaCoCo reads the class files from `build`'s installed jars, so nothing
+      # is rebuilt here. Without a successful build no test job ran, so there
+      # is no coverage to report and nothing to download.
+      - name: Download build artifacts
+        if: needs.build.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: maven-installed-artifacts
+          path: ${{ runner.temp }}/installed-artifacts
+          # Through the REST API, which also finds an artifact uploaded in an
+          # earlier attempt of this run: on a retry `build` does not re-run, and
+          # the default lookup 404s across attempts (see the coverage download
+          # in `analysis`).
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       # github-token/repository/run-id route the download through the REST API,
       # which can fetch artifacts uploaded during a previous attempt of this run.
@@ -2482,9 +3399,12 @@ jobs:
               --destfile merged-jacoco.exec
 
             # Generate XML report for Qodana
-            # Need to specify all class directories (each as separate --classfiles arg)
+            # Every module's main jar, each as a separate --classfiles arg. The
+          # pattern leaves out classifier jars (-tests, -proto, …), whose classes
+          # would be reported twice or are not production code.
             java -jar jacoco-cli/lib/jacococli.jar report merged-jacoco.exec \
-              $(find . -path "*/target/classes" -type d -exec echo --classfiles {} \;) \
+              $(find "${RUNNER_TEMP}/installed-artifacts" -regextype posix-extended \
+                -regex '.*/[a-z-]+-[0-9.]+\.jar' -exec echo --classfiles {} \;) \
               $(find . -path "*/src/main/java" -type d -exec echo --sourcefiles {} \;) \
               --xml .qodana/code-coverage/coverage.xml \
               --html .qodana/code-coverage/html
@@ -2538,20 +3458,509 @@ jobs:
       #   with:
       #     sarif_file: ${{ runner.temp }}/qodana/results/qodana.sarif.json
 
-  # ─── Auto-Resolve Job ─────────────────────────────────────────────────
-  # Downloads Surefire reports from all test jobs, parses them for failures,
-  # decides which prompt to build, and STAGES a FlowTree coding-agent request
-  # as an artifact. The environment-gated controller submission happens in the
-  # separate "Auto-Resolve Submit" workflow
-  # (.github/workflows/auto-resolve-submit.yaml).
+  # ─── Remediation Jobs ─────────────────────────────────────────────────
+  # Three jobs decide what, if anything, a FlowTree coding agent is sent to do
+  # about this pipeline. Each attempt of a run submits AT MOST ONE of them:
+  # two agents working the same branch at once make conflicting edits, and at
+  # least one of them fails.
   #
-  # Why the submission is not performed here: it is gated on the `worker`
-  # GitHub Environment (required-reviewers). A job carrying `environment:` in a
-  # pull_request run attaches a deployment status to the PR head commit; an
-  # abandoned/cancelled `worker` deployment then surfaces as a spurious "had a
-  # problem deploying" red X on the PR. Submitting from a workflow_run workflow
-  # keeps that deployment status off the pull request while preserving the
-  # approval gate.
+  #   auto-resolve-python  python-tests failed. Submits at once, from inside
+  #                        this run, without waiting for anything else.
+  #   auto-review          Every other case, on attempt 1 only: a build
+  #                        failure, code policy violations, other quality gate
+  #                        failures, a docs-only review, or — when every gate
+  #                        passed — the general review. Submits as soon as the
+  #                        gates report, from inside this run, while the
+  #                        long-running test jobs are still going. The gates
+  #                        are deterministic, so there is nothing to retry.
+  #   auto-resolve         The slow path: long-running test jobs (test,
+  #                        test-flowtree, test-media, the mac and CL lanes)
+  #                        still failing after the flaky-test retries. Runs
+  #                        only on attempt 3 or later, and only STAGES its
+  #                        request; "Auto-Resolve Submit"
+  #                        (.github/workflows/auto-resolve-submit.yaml)
+  #                        submits it once the run completes and the retries
+  #                        are spent.
+  #
+  # Exclusivity comes from two facts rather than from a handoff between jobs:
+  #   - auto-review and auto-resolve are split by attempt number: auto-review
+  #     runs on attempt 1 only, auto-resolve on attempt 3 or later, and
+  #     attempt 2 submits nothing. 3 is MAX_ATTEMPTS in
+  #     auto-resolve-submit.yaml: rerun-flaky-tests.sh re-runs a failed run
+  #     until attempt 3, so attempt 3 is the first one whose test failures
+  #     are handed to an agent. tools/tests/test_remediation_job_exclusivity.py
+  #     holds the two numbers together.
+  #     auto-review is held to attempt 1 because a retry re-runs it whenever
+  #     one of its inputs failed (checkstyle, say) — and its agent, submitted
+  #     minutes into attempt 1, is very likely still working when a test
+  #     failure brings attempt 2 around.
+  #   - A python-tests failure skips both of them (and test-flowtree, which
+  #     gates on python-tests), and rerun-flaky-tests.sh never retries such a
+  #     run, so auto-resolve-python is the only submission it gets.
+  #
+  # auto-review and auto-resolve-python run the pull request's own scripts
+  # (the prompt builders), so they hold no controller credentials: each only
+  # stages its request as an artifact. The submission happens in a separate
+  # *-submit job that checks out the DEFAULT branch and runs
+  # tools/ci/submit-staged-request.sh from there, which loads the staged
+  # submit.env through a key allowlist. No pull request code runs in a job
+  # that holds FLOWTREE_CF_ACCESS_CLIENT_SECRET.
+  #
+  # None of these jobs declares `environment:`: in a pull_request run that
+  # attaches a deployment status to the PR head, and a cancelled deployment
+  # shows as a spurious "had a problem deploying" red X.
+
+  auto-resolve-python:
+    needs: [changes, python-tests]
+    if: >-
+      !cancelled() &&
+      github.ref != 'refs/heads/master' &&
+      needs.python-tests.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      staged: ${{ steps.upload.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.changes.outputs.head_sha }}
+
+      - name: Download test output
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: python-tests-output
+          path: python-tests-output
+
+      - name: Build prompt (python test failures)
+        id: prompt
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          # The workflow comes from the merge with the base, the checkout from
+          # the PR head, which may predate this builder.
+          if [ ! -f ./tools/ci/prompts/build-python-failure-prompt.sh ]; then
+            echo "::warning::This branch predates build-python-failure-prompt.sh — no python-tests remediation is staged. Merge master to enable it."
+            exit 0
+          fi
+          bash ./tools/ci/prompts/build-python-failure-prompt.sh python-tests-output/python-tests.log "${{ runner.temp }}/agent-prompt.txt"
+          echo "built=true" >> "$GITHUB_OUTPUT"
+
+      - name: Stage submit request (python test failures)
+        if: steps.prompt.outputs.built == 'true'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "true"
+          ENFORCE_CHANGES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Resolve Python test failures"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-python-request
+
+      - name: Upload staged request
+        id: upload
+        if: ${{ inputs.auto_resolve != 'false' && hashFiles('auto-resolve-python-request/submit.env') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: auto-resolve-python-request
+          path: auto-resolve-python-request/
+          retention-days: 1
+
+  auto-resolve-python-submit:
+    needs: [changes, auto-resolve-python]
+    # `!cancelled()` is required, not cosmetic: without a status function the
+    # implicit success() covers every job upstream, not just `needs`, and
+    # auto-resolve-python runs precisely when an upstream job was skipped or failed
+    # (python-tests), so the submission would be skipped with it.
+    if: >-
+      !cancelled() &&
+      needs.auto-resolve-python.result == 'success' &&
+      needs.auto-resolve-python.outputs.staged == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Download staged request
+        uses: actions/download-artifact@v4
+        with:
+          name: auto-resolve-python-request
+          path: staged-request
+
+      - name: Submit agent job
+        env:
+          # The target comes from this run's event, never from the staged
+          # request, which pull request code wrote.
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          ENFORCE_CHANGES: "true"
+          # Sent to make failing tests pass. The harness's test lock covers
+          # Java tests under src/test/ (and CI files), not the Python suites
+          # under tools/; those are held by detect-python-test-hiding.sh and
+          # this job's prompt, which forbid removing a test or its assertions.
+          PROTECT_TEST_FILES: "true"
+          # A follow-up job CI runs in a loop; the object-oriented design review
+          # belongs to a branch's initial work, not each remediation pass.
+          OBJECT_ORIENTED_REVIEW_ENABLED: "false"
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          # The script is read from the default branch, which lacks it until
+          # the change that added it has merged; submit nothing rather than fail.
+          if [ ! -f ./tools/ci/submit-staged-request.sh ]; then
+            echo "::warning::The default branch has no tools/ci/submit-staged-request.sh yet — the staged request is not submitted"
+            exit 0
+          fi
+          bash ./tools/ci/submit-staged-request.sh staged-request
+
+  auto-review:
+    needs: [changes, build, python-tests, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle]
+    # Attempt 1 only — see "Remediation Jobs" above. A python-tests failure
+    # belongs to auto-resolve-python.
+    if: >-
+      !cancelled() &&
+      github.ref != 'refs/heads/master' &&
+      fromJSON(github.run_attempt) == 1 &&
+      needs.changes.result == 'success' &&
+      needs.python-tests.result != 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      staged: ${{ steps.upload.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.changes.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Check for docs-only changes
+        id: docs-check
+        env:
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          HEAD_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          CHANGED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}...${HEAD_SHA}" || true)
+          NON_DOCS=$(echo "$CHANGED_FILES" | grep -v '^docs/' || true)
+          if [ -n "$CHANGED_FILES" ] && [ -z "$NON_DOCS" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::All changes are under docs/ — will use the docs review prompt"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check quality gates
+        if: needs.changes.outputs.code_changed == 'true' && needs.build.result == 'success' && needs.code-policy-check.outputs.passed == 'true'
+        id: quality
+        env:
+          TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
+          DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
+          TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
+          TEST_INTEGRITY_REASON: ${{ needs.test-integrity-check.outputs.failure_reason }}
+          AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
+          AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
+          DECEPTION_AUDIT_ERROR: ${{ needs.deception-audit.outputs.audit_error }}
+          DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
+          DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
+          CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
+        run: |
+          ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
+
+      # auto-review always submits: the first matching prompt below, falling
+      # through to the general review when no gate reported a finding. That
+      # includes a gate that failed without recording a cause
+      # (check-quality-gates.sh's `unattributed`): it is never reported to an
+      # agent as a finding, but the branch still gets its review, with a note
+      # that the failure is not the agent's to chase. Nothing else would pick
+      # it up — auto-resolve only handles long-running test failures. The
+      # long-running test jobs play no part here; their failures are
+      # auto-resolve's, on attempt 3.
+      - name: Select prompt
+        id: route
+        env:
+          CODE_CHANGED: ${{ needs.changes.outputs.code_changed }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          CODE_POLICY_PASSED: ${{ needs.code-policy-check.outputs.passed }}
+          QUALITY_HAS_FAILURES: ${{ steps.quality.outputs.has_failures }}
+          DOCS_ONLY: ${{ steps.docs-check.outputs.docs_only }}
+        run: |
+          # docs-review is checked first: a docs-only branch has no code, so
+          # the build is skipped and BUILD_RESULT would otherwise route it to
+          # build-failure. Its prompt only edits under docs/, so it is reserved
+          # for genuinely docs-only changes — other non-code changes (CI files,
+          # a root README, a JSON config) cannot be reviewed under that
+          # constraint and fall back to the general review.
+          if [ "$DOCS_ONLY" = "true" ]; then
+            ROUTE=docs-review
+          elif [ "$CODE_CHANGED" != "true" ]; then
+            ROUTE=general-review
+          elif [ "$BUILD_RESULT" != "success" ]; then
+            ROUTE=build-failure
+          elif [ "$CODE_POLICY_PASSED" != "true" ]; then
+            ROUTE=code-policy
+          elif [ "$QUALITY_HAS_FAILURES" = "true" ]; then
+            ROUTE=quality-gates
+          else
+            ROUTE=general-review
+          fi
+          echo "route=${ROUTE}" >> "$GITHUB_OUTPUT"
+          echo "::notice::auto-review prompt: ${ROUTE}"
+
+      # ── Build failure path ──────────────────────────────────────
+      - name: Build prompt (build failure)
+        if: steps.route.outputs.route == 'build-failure'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Stage submit request (build failure)
+        if: steps.route.outputs.route == 'build-failure'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "false"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Resolve build failure"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
+
+      # ── Code policy violation path ──────────────────────────────
+      # A dedicated prompt that explains the policies and forbids
+      # circumvention.
+      - name: Build prompt (code policy violations)
+        if: steps.route.outputs.route == 'code-policy'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
+          ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Stage submit request (code policy violations)
+        if: steps.route.outputs.route == 'code-policy'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "false"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Resolve code policy violations"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
+
+      # ── Other quality gate path ─────────────────────────────────
+      - name: Upload quality gate summary
+        if: steps.route.outputs.route == 'quality-gates'
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: quality-gate-summary
+          path: ${{ runner.temp }}/quality-gate-failures.txt
+          retention-days: 7
+
+      - name: Build prompt (quality gates)
+        if: steps.route.outputs.route == 'quality-gates'
+        env:
+          FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Stage submit request (quality gates)
+        if: steps.route.outputs.route == 'quality-gates'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "false"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Resolve quality gate failures"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
+
+      # ── Docs-only review path ───────────────────────────────────
+      # Docs-only changes are usually a plan awaiting approval, so they get a
+      # review that improves the documents and never implements the plan. A
+      # plan branch's first commit is always docs-only; this route once sent
+      # the verify-completion prompt, which implemented every plan the moment
+      # it was proposed. Implementation is started by hand, with the Verify
+      # Completion workflow, once a person has approved the plan.
+      - name: Build prompt (docs-only review)
+        if: steps.route.outputs.route == 'docs-review'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          chmod +x ./tools/ci/prompts/build-docs-review-prompt.sh
+          ./tools/ci/prompts/build-docs-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Stage submit request (docs-only review)
+        if: steps.route.outputs.route == 'docs-review'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "false"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Review docs changes"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
+
+      # ── General review path ─────────────────────────────────────
+      # No gate reported a finding: review design, test quality, correctness,
+      # documentation, and consistency with existing patterns.
+      - name: Build prompt (general review)
+        if: steps.route.outputs.route == 'general-review'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
+          QUALITY_UNATTRIBUTED: ${{ steps.quality.outputs.unattributed }}
+        run: |
+          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+          if [ "$QUALITY_UNATTRIBUTED" = "true" ]; then
+            echo "::warning::A quality gate failed without recording a cause — submitting the general review; a human should read that gate's job log"
+            cat >> "${{ runner.temp }}/agent-prompt.txt" <<'NOTE'
+
+          ## A note on this pipeline
+
+          One quality gate failed without recording a cause: a detector could not
+          run, which says nothing about this branch. It is not yours to fix, and
+          you should not change CI or enforcement files to make it pass. A human
+          will look at that job's log. Review the branch as described above.
+          NOTE
+          fi
+
+      - name: Stage submit request (general review)
+        if: steps.route.outputs.route == 'general-review'
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          # The harness's per-job test lock is for jobs sent to make failing
+          # tests pass; a review may improve an existing test, and
+          # test-integrity-check is what stops it weakening one.
+          PROTECT_TEST_FILES: "false"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          DESCRIPTION: "Review branch changes"
+        run: |
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
+
+      - name: Upload staged request
+        id: upload
+        if: ${{ !cancelled() && inputs.auto_resolve != 'false' && hashFiles('auto-review-request/submit.env') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: auto-review-request
+          path: auto-review-request/
+          retention-days: 1
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        env:
+          ROUTE: ${{ steps.route.outputs.route }}
+          QUALITY_FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
+        run: |
+          {
+            echo "## Auto-Review"
+            echo ""
+            case "$ROUTE" in
+              docs-review)    echo "**Docs-only change** — submitted a job to review the docs changes (it does not implement a plan)." ;;
+              build-failure)  echo "**Build failed** — submitted a job to fix the build." ;;
+              code-policy)    echo "**Code policy violations detected** — submitted a job with the dedicated policy violation prompt." ;;
+              quality-gates)
+                echo "Found **${QUALITY_FAILURE_COUNT}** quality gate failure(s) — submitted a job to resolve them."
+                echo ""
+                echo "### Failing quality gates"
+                echo '```'
+                cat "${{ runner.temp }}/quality-gate-failures.txt" 2>/dev/null || echo "(no failure file)"
+                echo '```'
+                ;;
+              general-review) echo "All quality gates passed — submitted a job for general review." ;;
+              *)              echo "No prompt was selected." ;;
+            esac
+            echo ""
+            echo "_Long-running test failures are not considered here: they are auto-resolve's, once the flaky-test retries are spent._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  auto-review-submit:
+    needs: [changes, auto-review]
+    # `!cancelled()` is required, not cosmetic: without a status function the
+    # implicit success() covers every job upstream, not just `needs`, and
+    # auto-review runs precisely when an upstream job was skipped or failed
+    # (python-tests), so the submission would be skipped with it.
+    if: >-
+      !cancelled() &&
+      needs.auto-review.result == 'success' &&
+      needs.auto-review.outputs.staged == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Download staged request
+        uses: actions/download-artifact@v4
+        with:
+          name: auto-review-request
+          path: staged-request
+
+      - name: Submit agent job
+        env:
+          # The target comes from this run's event, never from the staged
+          # request, which pull request code wrote.
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # auto-review submits as soon as the gates report, which can be
+          # before GitHub Copilot's review of the same push (about eight
+          # minutes) has posted. The controller holds the job this long before
+          # dispatching it, so the agent starts with that review to act on.
+          DELAY_SECONDS: "300"
+          # No auto-review prompt is sent to make a failing test pass, so the
+          # harness's per-job test lock stays off; test-integrity-check holds.
+          PROTECT_TEST_FILES: "false"
+          # A follow-up job CI runs in a loop; the object-oriented design review
+          # belongs to a branch's initial work, not each remediation pass.
+          OBJECT_ORIENTED_REVIEW_ENABLED: "false"
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          # The script is read from the default branch, which lacks it until
+          # the change that added it has merged; submit nothing rather than fail.
+          if [ ! -f ./tools/ci/submit-staged-request.sh ]; then
+            echo "::warning::The default branch has no tools/ci/submit-staged-request.sh yet — the staged request is not submitted"
+            exit 0
+          fi
+          bash ./tools/ci/submit-staged-request.sh staged-request
+
+  # ─── Auto-Resolve Job ─────────────────────────────────────────────────
+  # The slow path: downloads Surefire reports from the long-running test jobs,
+  # parses them for failures, and STAGES a request as the
+  # `auto-resolve-request` artifact. Runs only on attempt 3 or later (see
+  # "Remediation Jobs" above); "Auto-Resolve Submit" submits the request once
+  # the run completes, if rerun-flaky-tests.sh has no retry left to spend.
+  # Stages nothing when no test failed — the review for this commit was
+  # auto-review's, on attempt 1. Its requests carry no STARTED_AFTER: the
+  # submit workflow sets it to the start of this attempt, since the pipeline
+  # start would make auto-review's own submission look like newer work.
   #
   # Concurrency note: GitHub Actions does not natively support "skip if
   # already running" semantics. The concurrency group below ensures only
@@ -2561,100 +3970,35 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [changes, build, test, test-flowtree, test-media, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
-    if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
+    needs: [changes, build, python-tests, test, test-flowtree, test-media, test-mac, test-media-mac, test-cl, test-media-cl, test-cuda, test-media-cuda, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, analysis]
+    if: >-
+      !cancelled() &&
+      github.ref != 'refs/heads/master' &&
+      fromJSON(github.run_attempt) >= 3 &&
+      needs.build.result == 'success' &&
+      needs.python-tests.result != 'failure'
     runs-on: ubuntu-latest
     concurrency:
       group: auto-resolve-${{ github.ref }}
       cancel-in-progress: true
     permissions:
       contents: read
+      actions: read
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ needs.changes.outputs.head_sha }}
           fetch-depth: 0
 
-      - name: Check build result
-        id: build-check
-        run: |
-          if [ "${{ needs.changes.outputs.code_changed }}" = "false" ]; then
-            echo "build_failed=false" >> "$GITHUB_OUTPUT"
-            echo "docs_only_skip=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Build skipped — docs-only change"
-          elif [ "${{ needs.build.result }}" != "success" ]; then
-            echo "build_failed=true" >> "$GITHUB_OUTPUT"
-            echo "docs_only_skip=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Build failed — treating as total test failure"
-          else
-            echo "build_failed=false" >> "$GITHUB_OUTPUT"
-            echo "docs_only_skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Determine branch context
-        id: ctx
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "branch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
-            echo "base=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
-            echo "head_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-            echo "base=master" >> "$GITHUB_OUTPUT"
-            echo "head_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Check for docs-only changes
-        id: docs-check
-        run: |
-          CHANGED_FILES=$(git diff --name-only origin/${{ steps.ctx.outputs.base }}...${{ steps.ctx.outputs.head_sha }} || true)
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          NON_DOCS=$(echo "$CHANGED_FILES" | grep -v '^docs/' || true)
-          if [ -z "$NON_DOCS" ]; then
-            echo "docs_only=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::All changes are under docs/ — will use verify prompt instead of review"
-          else
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # ── Build failure path ──────────────────────────────────────
-      # When the build itself fails, no tests run. Submit an agent
-      # job to fix the compilation error directly.
-
-      - name: Build prompt (build failure)
-        if: steps.build-check.outputs.build_failed == 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
-        run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Stage submit request (build failure)
-        if: steps.build-check.outputs.build_failed == 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Resolve build failure"
-        run: |
-          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
-
-      # ── Test failure path ───────────────────────────────────────
-      # When the build succeeded, download and parse Surefire reports.
-      # Linux (test, test-media) and Metal mac (test-mac, test-media-mac) results are
-      # considered — a Metal-specific failure a Linux run would not surface is still
-      # auto-resolved. The CL jobs (test-cl, test-media-cl) upload no surefire and remain the
-      # only test results NOT treated as requiring auto-resolution.
+      # Every test lane is considered: Linux (test, test-media), flowtree,
+      # Metal (test-mac, test-media-mac), OpenCL (test-cl, test-media-cl) and
+      # CUDA (test-cuda, test-media-cuda).
+      # A failure specific to one accelerator backend, which the other lanes
+      # would not surface, is still auto-resolved.
 
       - name: Clean stale surefire reports
-        if: steps.build-check.outputs.build_failed != 'true'
         run: |
           # Defensive cleanup so locally-produced surefire reports cannot
           # contaminate the artifact download directory. On the ephemeral
@@ -2663,39 +4007,48 @@ jobs:
           find . -path "*/target/surefire-reports" -type d -exec rm -rf {} + 2>/dev/null || true
           rm -rf all-surefire-reports
 
+      # auto-resolve runs only on attempt 3 or later, so the reports of every
+      # test job that did not re-run were uploaded in an earlier attempt; the
+      # REST route is the one that can fetch those (see the coverage download
+      # in `analysis`).
       - name: Download Surefire Reports
-        if: steps.build-check.outputs.build_failed != 'true'
         uses: actions/download-artifact@v4
         with:
           pattern: surefire-*
           path: all-surefire-reports
           merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       - name: Download Crash Reports
-        if: steps.build-check.outputs.build_failed != 'true'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           pattern: crash-reports-*
           path: all-crash-reports
           merge-multiple: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       - name: Filter to resolvable surefire reports
-        if: steps.build-check.outputs.build_failed != 'true'
         run: |
           # Keep artifacts from every required test job (the set `analysis.needs`
           # minus `build` — see tools/tests/test_auto_resolve_test_job_coverage.py,
           # which fails a new test lane until it is added here):
-          #   surefire-utils-group-*, surefire-ml-group-* (test),
-          #   surefire-media-* (test-media), surefire-flowtree (test-flowtree),
-          #   surefire-mac-group-* (test-mac), surefire-media-mac-group-* (test-media-mac)
-          # Remove anything else. The CL jobs (test-cl, test-media-cl) upload no surefire,
-          # so CL results are never parsed here — CL remains the only ignored case.
+          #   surefire-utils, surefire-ml (test, a single non-matrix job),
+          #   surefire-media (test-media, a single non-matrix job), surefire-flowtree (test-flowtree),
+          #   surefire-mac-group-* (test-mac), surefire-media-mac-group-* (test-media-mac),
+          #   surefire-cl-group-* (test-cl), surefire-media-cl-group-* (test-media-cl),
+          #   surefire-cuda-group-* (test-cuda), surefire-media-cuda-group-* (test-media-cuda)
+          # Remove anything else. test-media's arm is an exact name so it cannot match
+          # another lane's media artifact.
           mkdir -p all-surefire-reports
           for dir in all-surefire-reports/*/; do
             base=$(basename "$dir")
             case "$base" in
-              surefire-utils-group-*|surefire-ml-group-*|surefire-media-*|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*)
+              surefire-utils|surefire-ml|surefire-media|surefire-flowtree|surefire-mac-group-*|surefire-media-mac-group-*|surefire-cl-group-*|surefire-media-cl-group-*|surefire-cuda-group-*|surefire-media-cuda-group-*)
                 echo "::notice::Keeping surefire artifact: $base"
                 ;;
               *)
@@ -2706,7 +4059,6 @@ jobs:
           done
 
       - name: Parse test failures
-        if: steps.build-check.outputs.build_failed != 'true'
         id: failures
         run: |
           eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports "${{ runner.temp }}/test-failures.txt")"
@@ -2719,7 +4071,7 @@ jobs:
           fi
 
       - name: Check for incomplete test execution
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true'
+        if: steps.failures.outputs.has_failures != 'true'
         id: test-completeness
         run: |
           # A job result of "failure" means the job ran and hit a real error
@@ -2743,14 +4095,18 @@ jobs:
           MAC_RESULT="${{ needs.test-mac.result }}"
           MEDIA_MAC_RESULT="${{ needs.test-media-mac.result }}"
           TEST_FLOWTREE_RESULT="${{ needs.test-flowtree.result }}"
-          echo "::notice::test=${TEST_RESULT} test-media=${MEDIA_RESULT} test-mac=${MAC_RESULT} test-media-mac=${MEDIA_MAC_RESULT} test-flowtree=${TEST_FLOWTREE_RESULT}"
+          CL_RESULT="${{ needs.test-cl.result }}"
+          MEDIA_CL_RESULT="${{ needs.test-media-cl.result }}"
+          CUDA_RESULT="${{ needs.test-cuda.result }}"
+          MEDIA_CUDA_RESULT="${{ needs.test-media-cuda.result }}"
+          echo "::notice::test=${TEST_RESULT} test-media=${MEDIA_RESULT} test-mac=${MAC_RESULT} test-media-mac=${MEDIA_MAC_RESULT} test-flowtree=${TEST_FLOWTREE_RESULT} test-cl=${CL_RESULT} test-media-cl=${MEDIA_CL_RESULT} test-cuda=${CUDA_RESULT} test-media-cuda=${MEDIA_CUDA_RESULT}"
 
           # Check for genuine failures (job ran but failed without surefire XML).
           # Every job in `analysis.needs` other than `build` (the required
           # test-execution jobs; see tools/tests/test_auto_resolve_test_job_coverage.py)
           # must be checked here: this is the invariant that keeps a required job's
-          # "failure" result from ever falling through to the quality-gate or
-          # general-review paths, which report that all tests passed.
+          # "failure" result from ever going unresolved once the flaky-test
+          # retries are spent — nothing after this step would stage anything.
           if [ "$TEST_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
             echo "::warning::test job failed without producing parseable surefire failures — treating as build failure"
@@ -2771,6 +4127,22 @@ jobs:
             HAS_REAL_FAILURE="true"
             echo "::warning::test-media-mac job failed without producing parseable surefire failures — treating as build failure"
           fi
+          if [ "$CL_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-cl job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$MEDIA_CL_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-media-cl job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$CUDA_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-cuda job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$MEDIA_CUDA_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-media-cuda job failed without producing parseable surefire failures — treating as build failure"
+          fi
 
           # If a real failure occurred, route to the build-failure path
           # (not the incomplete path) by setting build_failed retroactively
@@ -2783,9 +4155,8 @@ jobs:
           # Check whether any validation gate that "test" depends on has
           # failed.  When a gate fails the test job is skipped by GitHub
           # Actions (dependency not met).  That skip is *explained* — it
-          # is not an infrastructure-level incompleteness.  The validation
-          # failures have their own resolution paths downstream (code
-          # policy, quality gates).
+          # is not an infrastructure-level incompleteness.  Validation
+          # failures are auto-review's to resolve, not this job's.
           VALIDATION_FAILED="false"
           if [ "${{ needs.code-policy-check.outputs.passed }}" != "true" ]; then
             VALIDATION_FAILED="true"
@@ -2847,34 +4218,91 @@ jobs:
               fi
             fi
           fi
+
+          # Every lane is two stages, and each second stage waits only for its own lane's
+          # first stage: test-media-cl for test-cl, test-media-cuda for test-cuda. Such a
+          # stage skipped or cancelled after its own first stage failed or was cancelled is
+          # expected; another lane's failure never explains it. The first stages (test-cl,
+          # test-cuda) wait for no other lane. Any other skip of a stage whose layer gate was
+          # met is unexplained.
+          if [ "$CL_RESULT" = "cancelled" ] || [ "$CL_RESULT" = "skipped" ]; then
+            # test-cl, like test-mac and test-cuda, waits for no other lane, so an upstream
+            # lane's failure does not explain its skip.
+            if [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-cl job was ${CL_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
+              echo "::notice::test-cl job was ${CL_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
+            else
+              echo "::warning::test-cl job was ${CL_RESULT} without an upstream failure"
+              INCOMPLETE="true"
+            fi
+          fi
+          if [ "$MEDIA_CL_RESULT" = "cancelled" ] || [ "$MEDIA_CL_RESULT" = "skipped" ]; then
+            # A skipped test-cl is NOT an excuse, for the same reason as test-media above:
+            # test-media-cl has the wider layer gate and runs on studio/extern-only changes.
+            if [ "$CL_RESULT" = "failure" ] || [ "$CL_RESULT" = "cancelled" ]; then
+              echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} because its lane's first stage failed — not treating as incomplete"
+            elif [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
+              echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
+            else
+              echo "::warning::test-media-cl job was ${MEDIA_CL_RESULT} without an upstream failure"
+              INCOMPLETE="true"
+            fi
+          fi
+          if [ "$CUDA_RESULT" = "cancelled" ] || [ "$CUDA_RESULT" = "skipped" ]; then
+            # test-cuda, like test-mac, waits for no other lane, so an upstream lane's
+            # failure does not explain its skip.
+            if [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-cuda job was ${CUDA_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
+              echo "::notice::test-cuda job was ${CUDA_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
+            else
+              echo "::warning::test-cuda job was ${CUDA_RESULT} without an upstream failure"
+              INCOMPLETE="true"
+            fi
+          fi
+          if [ "$MEDIA_CUDA_RESULT" = "cancelled" ] || [ "$MEDIA_CUDA_RESULT" = "skipped" ]; then
+            # A skipped test-cuda is NOT an excuse, for the same reason as test-media-cl above.
+            if [ "$CUDA_RESULT" = "failure" ] || [ "$CUDA_RESULT" = "cancelled" ]; then
+              echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} because its lane's first stage failed — not treating as incomplete"
+            elif [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
+              echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
+            else
+              echo "::warning::test-media-cuda job was ${MEDIA_CUDA_RESULT} without an upstream failure"
+              INCOMPLETE="true"
+            fi
+          fi
           echo "incomplete=$INCOMPLETE" >> "$GITHUB_OUTPUT"
 
       - name: Upload failure summary
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
+        if: steps.failures.outputs.has_failures == 'true'
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: test-failure-summary
           path: ${{ runner.temp }}/test-failures.txt
           retention-days: 7
 
       - name: Build prompt (test failures)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
+        if: steps.failures.outputs.has_failures == 'true'
         env:
           FAILURE_COUNT: ${{ steps.failures.outputs.failure_count }}
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
           ./tools/ci/prompts/build-resolve-prompt.sh "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Stage submit request (test failures)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
+        if: steps.failures.outputs.has_failures == 'true'
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
@@ -2885,22 +4313,20 @@ jobs:
       # crash-specific prompt with Maven output and dumpstream details.
 
       - name: Build prompt (test job crash)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
           ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Stage submit request (test job crash)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve JVM crash in test execution"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
@@ -2912,159 +4338,20 @@ jobs:
       # are NOT considered incomplete — that's expected fail-fast.
 
       - name: Build prompt (incomplete tests)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
           ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Stage submit request (incomplete tests)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
         env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          PROTECT_TEST_FILES: "false"
           DESCRIPTION: "Investigate incomplete test execution"
-        run: |
-          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
-
-      # ── Quality gate fallback ──────────────────────────────────────
-      # When no test failures exist, check quality gates and submit
-      # those for auto-resolution instead. This ensures style and
-      # reusability issues are addressed only after correctness.
-
-      # ── Code policy violation path ────────────────────────────────
-      # When code policy enforcement failed, use the dedicated prompt
-      # that explains the policies and forbids circumvention.
-
-      - name: Build prompt (code policy violations)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed != 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
-        run: |
-          chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
-          ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Stage submit request (code policy violations)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed != 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Resolve code policy violations"
-        run: |
-          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
-
-      # ── Other quality gate fallback ──────────────────────────────
-      # When no test failures or policy violations exist, check
-      # remaining quality gates.
-
-      - name: Check quality gates
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true'
-        id: quality
-        env:
-          TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
-          DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
-          TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
-          TEST_INTEGRITY_REASON: ${{ needs.test-integrity-check.outputs.failure_reason }}
-          AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
-          AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
-          DECEPTION_AUDIT_ERROR: ${{ needs.deception-audit.outputs.audit_error }}
-          DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
-          DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
-          CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
-        run: |
-          ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
-
-      - name: Upload quality gate summary
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: quality-gate-summary
-          path: ${{ runner.temp }}/quality-gate-failures.txt
-          retention-days: 7
-
-      - name: Build prompt (quality gates)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
-        env:
-          FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-
-        run: |
-          ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Stage submit request (quality gates)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Resolve quality gate failures"
-        run: |
-          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
-
-      # ── Docs-only verify path ──────────────────────────────────
-      # When all changes are under docs/, skip the general review
-      # and use the verify-completion prompt instead, since these
-      # are typically plan documents for a workstream.
-
-      - name: Build prompt (docs-only verify)
-        if: (steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-        run: |
-          chmod +x ./tools/ci/prompts/build-verify-prompt.sh
-          ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Stage submit request (docs-only verify)
-        if: (steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Verify docs changes"
-        run: |
-          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
-
-      # ── General review fallback ─────────────────────────────────
-      # When all tests and quality gates pass, submit a general
-      # review job covering design, test quality, correctness,
-      # documentation, and consistency with existing patterns.
-
-      - name: Build prompt (general review)
-        if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
-        run: |
-          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
-
-      - name: Stage submit request (general review)
-        if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
-        env:
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
-          # This is the all-checks-green path: PR #492 reached CI because a
-          # job here ran without this flag, added new test methods to an
-          # existing base-branch file, and one of them was broken. Test-file
-          # protection now permits branch-introduced test methods (see
-          # flowtree/runtime/docs/file-staging.md), so there is no longer a
-          # tradeoff between protection and adding tests here.
-          PROTECT_TEST_FILES: "true"
-          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          DESCRIPTION: "Review branch changes"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
 
@@ -3072,6 +4359,7 @@ jobs:
         if: ${{ !cancelled() && inputs.auto_resolve != 'false' && hashFiles('auto-resolve-request/submit.env') != '' }}
         uses: actions/upload-artifact@v4
         with:
+          overwrite: true
           name: auto-resolve-request
           path: auto-resolve-request/
           retention-days: 1
@@ -3081,17 +4369,11 @@ jobs:
         run: |
           echo "## Auto-Resolve" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "_The request below is staged as an artifact; the \`Auto-Resolve Submit\` workflow submits it to the controller after the \`worker\` environment approval._" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Any request below is staged as an artifact; the \`Auto-Resolve Submit\` workflow submits it once this run completes and no flaky-test retry is left._" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.build-check.outputs.docs_only_skip }}" = "true" ]; then
-            echo "**Docs-only change** — test pipeline was skipped." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to verify docs changes." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.build-check.outputs.build_failed }}" = "true" ]; then
-            echo "**Build failed** — no tests were able to run." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to fix the build." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
+          if [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
             echo "Found **${{ steps.failures.outputs.failure_count }}** test failure(s)." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to attempt automatic resolution." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was staged to attempt automatic resolution." >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Failing tests" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -3099,35 +4381,21 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.test-completeness.outputs.build_failed_in_tests }}" = "true" ]; then
             echo "**Test job failed** without producing surefire results (JVM crash, OOM, or build error within test step)." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to resolve the failure." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was staged to resolve the failure." >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.test-completeness.outputs.incomplete }}" = "true" ]; then
             echo "**Test execution incomplete** — some test jobs were cancelled or skipped without an upstream failure to explain it." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to investigate." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ needs.code-policy-check.outputs.passed }}" != "true" ]; then
-            echo "**Code policy violations detected.**" >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted with a dedicated policy violation prompt." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.quality.outputs.has_failures }}" = "true" ]; then
-            echo "No test failures. Found **${{ steps.quality.outputs.failure_count }}** quality gate failure(s)." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to resolve quality issues." >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "### Failing quality gates" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat "${{ runner.temp }}/quality-gate-failures.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.docs-check.outputs.docs_only }}" = "true" ]; then
-            echo "All changes are under \`docs/\` — docs-only PR detected." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to verify docs changes." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was staged to investigate." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "All tests and quality gates passed." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted for general review." >> "$GITHUB_STEP_SUMMARY"
+            echo "No test failure to resolve — nothing was staged." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ─── Merge Gate ───────────────────────────────────────────────────────
   # Single required branch-protection check. Passes when every job that
   # ran for this pipeline completed successfully. Skipped jobs (due to
   # layer filtering or docs-only optimisation) are treated as passing.
-  # auto-resolve is intentionally excluded — it is a background automation
-  # task, not a quality signal.
+  # The remediation jobs (auto-review, auto-resolve-python, auto-resolve, and
+  # the *-submit jobs) are intentionally excluded — they are background
+  # automation, not quality signals.
   #
   # Configure this as the ONLY required status check under:
   #   Settings → Branches → Branch protection rules → Require status checks
@@ -3149,10 +4417,15 @@ jobs:
       - agent-volume-isolation
       - docker-build
       - test-flowtree
+      - agent-e2e-faults
       - test
       - test-media
       - test-mac
       - test-media-mac
+      - test-cl
+      - test-media-cl
+      - test-cuda
+      - test-media-cuda
       - analysis
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -3174,10 +4447,15 @@ jobs:
           AGENT_VOLUME_ISOLATION_RESULT: ${{ needs.agent-volume-isolation.result }}
           DOCKER_BUILD_RESULT: ${{ needs.docker-build.result }}
           TEST_FLOWTREE_RESULT: ${{ needs.test-flowtree.result }}
+          AGENT_E2E_FAULTS_RESULT: ${{ needs.agent-e2e-faults.result }}
           TEST_RESULT: ${{ needs.test.result }}
           TEST_MEDIA_RESULT: ${{ needs.test-media.result }}
           TEST_MAC_RESULT: ${{ needs.test-mac.result }}
           TEST_MEDIA_MAC_RESULT: ${{ needs.test-media-mac.result }}
+          TEST_CL_RESULT: ${{ needs.test-cl.result }}
+          TEST_MEDIA_CL_RESULT: ${{ needs.test-media-cl.result }}
+          TEST_CUDA_RESULT: ${{ needs.test-cuda.result }}
+          TEST_MEDIA_CUDA_RESULT: ${{ needs.test-media-cuda.result }}
           ANALYSIS_RESULT: ${{ needs.analysis.result }}
         run: |
           FAILED=""
@@ -3211,10 +4489,15 @@ jobs:
           check_job "agent-volume-isolation"  "$AGENT_VOLUME_ISOLATION_RESULT"
           check_job "docker-build"            "$DOCKER_BUILD_RESULT"
           check_job "test-flowtree"           "$TEST_FLOWTREE_RESULT"
+          check_job "agent-e2e-faults"        "$AGENT_E2E_FAULTS_RESULT"
           check_job "test"                    "$TEST_RESULT"
           check_job "test-media"              "$TEST_MEDIA_RESULT"
           check_job "test-mac"                "$TEST_MAC_RESULT"
           check_job "test-media-mac"          "$TEST_MEDIA_MAC_RESULT"
+          check_job "test-cl"                 "$TEST_CL_RESULT"
+          check_job "test-media-cl"           "$TEST_MEDIA_CL_RESULT"
+          check_job "test-cuda"               "$TEST_CUDA_RESULT"
+          check_job "test-media-cuda"         "$TEST_MEDIA_CUDA_RESULT"
           check_job "analysis"                "$ANALYSIS_RESULT"
 
           # checkstyle now fails hard (no continue-on-error), so its job result
@@ -3248,8 +4531,13 @@ jobs:
           echo "| agent-volume-isolation | ${{ needs.agent-volume-isolation.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| docker-build | ${{ needs.docker-build.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-flowtree | ${{ needs.test-flowtree.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| agent-e2e-faults | ${{ needs.agent-e2e-faults.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test | ${{ needs.test.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media | ${{ needs.test-media.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-mac | ${{ needs.test-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media-mac | ${{ needs.test-media-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-cl | ${{ needs.test-cl.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-media-cl | ${{ needs.test-media-cl.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-cuda | ${{ needs.test-cuda.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-media-cuda | ${{ needs.test-media-cuda.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| analysis | ${{ needs.analysis.result }} |" >> "$GITHUB_STEP_SUMMARY"

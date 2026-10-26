@@ -102,4 +102,43 @@ public class HeadGroupConfig {
 		}
 		return groups;
 	}
+
+	/**
+	 * The same group — frequency table and position — as seen by the key/value heads of a
+	 * grouped-query model, where each KV head serves {@code headsPerKvGroup} query heads:
+	 * the group covers {@code headCount / headsPerKvGroup} KV heads.
+	 *
+	 * @param headsPerKvGroup number of query heads served by each KV head
+	 * @return the group's key/value-side configuration
+	 * @throws IllegalArgumentException if {@code headsPerKvGroup} is not positive, is larger
+	 *         than the group's head count, or the group's heads do not divide into whole KV heads
+	 */
+	public HeadGroupConfig forKvHeads(int headsPerKvGroup) {
+		if (headsPerKvGroup <= 0) {
+			throw new IllegalArgumentException("Heads served per KV head must be positive, not "
+					+ headsPerKvGroup);
+		} else if (headsPerKvGroup > headCount) {
+			throw new IllegalArgumentException("A group of " + headCount
+					+ " heads cannot serve KV heads with a ratio of " + headsPerKvGroup);
+		} else if (headCount % headsPerKvGroup != 0) {
+			throw new IllegalArgumentException("A group of " + headCount
+					+ " heads does not divide into KV heads serving " + headsPerKvGroup + " each");
+		}
+		return new HeadGroupConfig(headCount / headsPerKvGroup, freqCis, position);
+	}
+
+	/**
+	 * The key/value-side configuration of every group, see {@link #forKvHeads(int)}.
+	 *
+	 * @param groups the query-side head groups
+	 * @param headsPerKvGroup number of query heads served by each KV head
+	 * @return the groups covering the KV heads, in the same order
+	 */
+	public static HeadGroupConfig[] forKvHeads(HeadGroupConfig[] groups, int headsPerKvGroup) {
+		HeadGroupConfig[] kvGroups = new HeadGroupConfig[groups.length];
+		for (int g = 0; g < groups.length; g++) {
+			kvGroups[g] = groups[g].forKvHeads(headsPerKvGroup);
+		}
+		return kvGroups;
+	}
 }

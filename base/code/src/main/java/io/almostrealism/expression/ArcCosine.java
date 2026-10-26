@@ -53,7 +53,7 @@ public class ArcCosine extends Expression<Double> {
 	}
 
 	@Override
-	public OptionalLong upperBound(KernelStructureContext context) {
+	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return OptionalLong.of(4);
 	}
 

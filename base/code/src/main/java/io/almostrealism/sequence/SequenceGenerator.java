@@ -121,6 +121,22 @@ public interface SequenceGenerator {
 	OptionalLong lowerBound(KernelStructureContext context);
 
 	/**
+	 * Checks whether the bounds of this generator prove that it can never
+	 * produce the given value.
+	 *
+	 * @param value  the value to test against the bounds of this generator
+	 * @return {@code true} if the value lies outside the known bounds;
+	 *         {@code false} if the bounds are insufficient to rule it out
+	 */
+	default boolean excludesValue(long value) {
+		OptionalLong high = upperBound();
+		if (high.isPresent() && high.getAsLong() < value) return true;
+
+		OptionalLong low = lowerBound();
+		return low.isPresent() && low.getAsLong() > value;
+	}
+
+	/**
 	 * Computes the numeric value at a specific index position.
 	 *
 	 * <p>The index position is specified via {@link IndexValues}, which maps

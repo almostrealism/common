@@ -21,6 +21,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -44,11 +45,18 @@ import java.util.Set;
  * </ol>
  *
  * <h2>Merge-in-progress path</h2>
- * <p>When {@code synchronizeWithBaseBranch()} left the repository with a
+ * <p>When {@link GitRepositorySetup} left the repository with a
  * {@code MERGE_HEAD} present (conflict left for the agent to resolve),
  * {@link #handle(boolean)} detects this and takes a special path: it verifies
  * all conflicts are resolved, stages any additional agent changes, and
  * produces a merge commit rather than an ordinary commit.</p>
+ *
+ * <p>The merge path cannot begin with {@code git reset HEAD} as the normal
+ * path does, because that would abort the merge, so the index arrives holding
+ * whatever the merge and the agent staged. Every path a guardrail rejects is
+ * therefore put back in the index explicitly (see {@link #restoreRejected}).
+ * Without that, anything the agent staged itself during a merge would be
+ * committed past the CI-file and test locks.</p>
  *
  * @author Michael Murray
  * @see GitManagedJob
@@ -56,6 +64,16 @@ import java.util.Set;
  * @see PullRequestDetector
  */
 class GitCommitHandler implements ConsoleFeatures {
+
+    /**
+     * Attempts for a commit that fails transiently — most often an
+     * {@code index.lock} held by a concurrent git process — before it is
+     * reported as an infrastructure failure rather than an agent failure.
+     */
+    private static final int COMMIT_ATTEMPTS = 3;
+
+    /** Backoff unit between commit retries; the wait grows linearly per attempt. */
+    private static final long COMMIT_BACKOFF_MILLIS = 500L;
 
     /** The job that owns this handler. */
     private final GitManagedJob job;
@@ -74,6 +92,15 @@ class GitCommitHandler implements ConsoleFeatures {
 
     /** Set to {@code true} when all git operations complete without error. */
     private boolean successful;
+
+    /** Dependent repository paths this handler committed to; see {@link #hasAnyCommit()}. */
+    private final List<String> dependentRepoCommits = new ArrayList<>();
+
+    /**
+     * Dependent repositories that had changes but did not publish them, each
+     * with the reason; see {@link #getDependentRepoFailures()}.
+     */
+    private final List<String> dependentRepoFailures = new ArrayList<>();
 
     /**
      * Repository-relative paths under {@link FlowtreeArtifacts#DIRECTORY} that
@@ -116,8 +143,10 @@ class GitCommitHandler implements ConsoleFeatures {
      *       {@link GitManagedJob#ensureOnTargetBranch()}, throwing if it fails.</li>
      *   <li>Detect whether a merge is in progress ({@code MERGE_HEAD} present).</li>
      *   <li><b>Merge path</b>: verify no unresolved conflicts remain, stage any
-     *       additional agent changes, and skip commit if the index is already
-     *       clean (nothing for us to add).</li>
+     *       additional agent changes, and restore any rejected path in the
+     *       index. The merge is committed even when its resolution equals the
+     *       target branch's own tree: an uncommitted merge leaves the base
+     *       branch unmerged, and the next job would meet the same conflict.</li>
      *   <li><b>Normal path</b>: unstage anything the agent staged directly
      *       ({@code git reset HEAD}), discover changed files, and stage them
      *       through the {@link FileStager} guardrails.</li>
@@ -143,8 +172,9 @@ class GitCommitHandler implements ConsoleFeatures {
         }
 
         // Step 2: Detect whether a merge is in progress.
-        boolean mergeInProgress = !job.executeGitWithOutput(
-                "rev-parse", "--verify", "--quiet", "MERGE_HEAD").trim().isEmpty();
+        String mergeHead = job.executeGitWithOutput(
+                "rev-parse", "--verify", "--quiet", "MERGE_HEAD").trim();
+        boolean mergeInProgress = !mergeHead.isEmpty();
 
         if (mergeInProgress) {
             log("Merge in progress -- will commit as merge commit");
@@ -159,18 +189,17 @@ class GitCommitHandler implements ConsoleFeatures {
 
             // Stage any additional changes the agent made (through guardrails),
             // but do NOT reset HEAD — that would abort the in-progress merge.
-            List<String> changedFiles = findChangedFiles();
-            if (!changedFiles.isEmpty()) {
-                stageFiles(changedFiles);
+            // Rejected paths are restored in the index instead.
+            FileStager.GitOperations gitOps = job.asGitOperations();
+            boolean trusted = FileStager.trustedMergeParent(buildStagingConfig(job), gitOps) != null;
+            List<String> candidates = stagingCandidates(findChangedFiles(), mergeHead, gitOps);
+            if (!candidates.isEmpty()) {
+                stageFiles(candidates);
+                restoreRejected(candidates, mergeHead, trusted);
             }
 
-            // There may already be staged merge content even if the agent made
-            // no extra working-tree changes.  If the index is entirely empty,
-            // there is nothing for us to commit.
             if (job.executeGitWithOutput("diff", "--name-only", "--cached").trim().isEmpty()) {
-                log("No changes to commit");
-                successful = true;
-                return;
+                log("Merge resolved to the target branch's own tree; committing it to record the merge");
             }
 
         } else {
@@ -239,6 +268,196 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
+     * Returns the files a commit must evaluate: those {@code git status}
+     * reports as changed and, while a merge is in progress, every file the
+     * merged commit changed since its merge-base with {@code HEAD}.
+     *
+     * <p>The second set matters because {@code git status} compares against
+     * {@code HEAD}. A file the merge brought in from the base branch, which the
+     * agent then put back to the target branch's version, matches {@code HEAD}
+     * and is invisible to it, yet committing it would silently revert the base
+     * branch's change inside the merge commit.</p>
+     *
+     * <p>The merged commit is whatever {@code MERGE_HEAD} names, trusted or not:
+     * it is the commit the merge commit will record as merged, so its changes
+     * are the ones the commit must not silently revert. Whether content equal
+     * to it may be committed is a separate question, answered by
+     * {@link FileStager#trustedMergeParent}.</p>
+     *
+     * @param changedFiles the files {@code git status} reports as changed
+     * @param mergedCommit the commit {@code MERGE_HEAD} names, or {@code null}
+     *                     when no merge is in progress
+     * @param gitOps       git operations for the working tree
+     * @return the files to evaluate, without duplicates
+     * @throws IOException if the merged commit's changes cannot be listed
+     * @throws InterruptedException if a git command is interrupted
+     */
+    static List<String> stagingCandidates(List<String> changedFiles, String mergedCommit,
+                                          FileStager.GitOperations gitOps)
+            throws IOException, InterruptedException {
+        if (mergedCommit == null || mergedCommit.isEmpty()) {
+            return changedFiles;
+        }
+        Set<String> baseChanges = gitOps.executeForPaths(
+                "diff", "--name-only", "--no-renames", "HEAD..." + mergedCommit);
+        if (baseChanges == null) {
+            throw new IOException("Could not list the files " + mergedCommit
+                    + " changed since its merge-base with HEAD");
+        }
+        Set<String> candidates = new LinkedHashSet<>(changedFiles);
+        candidates.addAll(baseChanges);
+        return new ArrayList<>(candidates);
+    }
+
+    /**
+     * Previews what a commit of the working tree would stage and skip, without
+     * changing anything; see {@link GitManagedJob#previewStaging()}. Uses the
+     * same candidates and configuration as {@link #handle(boolean)}, so the
+     * preview the enforcement rules act on cannot disagree with the commit.
+     *
+     * <p>When the candidates cannot be listed, the commit would fail before
+     * staging anything, so the preview reports exactly that: nothing staged,
+     * and one skipped entry naming the failure. Evaluating only the
+     * {@code git status} paths instead would show a clean preview for a commit
+     * that is certain to fail.</p>
+     *
+     * @param job the job whose working tree is previewed
+     * @return the staging result a commit would produce now
+     */
+    static StagingResult previewStaging(GitManagedJob job) {
+        List<String> changedFiles = GitOperations.getChangedFiles(job.getWorkingDirectory());
+        FileStagingConfig config = buildStagingConfig(job);
+        FileStager.GitOperations gitOps = job.asGitOperations();
+        File workDir = job.getWorkingDirectory() != null
+                ? new File(job.getWorkingDirectory())
+                : new File(".");
+        List<String> candidates;
+        try {
+            String mergeHead = gitOps.executeOrNull("rev-parse", "--verify", "--quiet", "MERGE_HEAD");
+            candidates = stagingCandidates(changedFiles,
+                    mergeHead != null ? mergeHead.trim() : null, gitOps);
+        } catch (IOException e) {
+            job.warn("Staging preview could not list the merged commit's changes: " + e.getMessage());
+            // TODO(review): StagingSkipRule surfaces this entry with its "find another way" file-guardrail prompt, which misdescribes an infrastructure failure
+            return StagingResult.unavailable("MERGE_HEAD",
+                    "staging candidates unavailable: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return StagingResult.unavailable("MERGE_HEAD",
+                    "staging candidates unavailable: interrupted");
+        }
+        return new FileStager().evaluateFiles(candidates, config, workDir, gitOps);
+    }
+
+    /**
+     * Puts every candidate that was not staged back to the version a clean
+     * merge would have given it, so that nothing reaches the merge commit
+     * without passing the guardrails.
+     *
+     * <p>A path the merged commit did not change returns to {@code HEAD}. A
+     * path only the merged commit changed returns to that commit, but only
+     * when it is the trusted merge parent the harness recorded (see
+     * {@link FileStager#trustedMergeParent}). Every other rejected path has no
+     * version the harness can choose on the agent's behalf, and the commit
+     * fails and names it rather than commit the rejected content or silently
+     * drop a change the merge commit records as merged:</p>
+     * <ul>
+     *   <li>a path both sides changed, whose resolution only the agent (or a
+     *       human) can choose; and</li>
+     *   <li>while the merge is untrusted (the harness did not start it, or
+     *       {@code MERGE_HEAD} no longer names the commit it merged), a path
+     *       the merged commit changed. Its content cannot be trusted, yet
+     *       reverting it to {@code HEAD} inside a commit that records the
+     *       merge would leave the branch reverting the base branch's change,
+     *       which the pipeline's own locks reject on every later run.</li>
+     * </ul>
+     *
+     * @param candidates   every file that was evaluated for staging
+     * @param mergedCommit the commit {@code MERGE_HEAD} names
+     * @param trusted      whether {@code mergedCommit} is the merge parent the
+     *                     harness recorded
+     * @throws IOException if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     * @throws RuntimeException if a rejected path has no version to restore
+     */
+    private void restoreRejected(List<String> candidates, String mergedCommit, boolean trusted)
+            throws IOException, InterruptedException {
+        Set<String> rejected = new LinkedHashSet<>(candidates);
+        stagedFiles.forEach(rejected::remove);
+        if (rejected.isEmpty()) {
+            return;
+        }
+
+        String mergeBase = job.executeGitWithOutput("merge-base", "HEAD", mergedCommit).trim();
+        if (mergeBase.isEmpty()) {
+            throw new IOException("Could not find the merge-base of HEAD and " + mergedCommit);
+        }
+        Set<String> branchChanges = changedPaths(mergeBase, "HEAD");
+        Set<String> baseChanges = changedPaths(mergeBase, mergedCommit);
+
+        List<String> unresolvable = new ArrayList<>();
+        for (String file : rejected) {
+            String source = !baseChanges.contains(file) ? "HEAD"
+                    : trusted && !branchChanges.contains(file) ? mergedCommit
+                    : null;
+            if (source == null) {
+                unresolvable.add(file);
+            } else if (job.executeGit("diff", "--cached", "--quiet", source, "--", file) != 0) {
+                if (job.isDryRun()) {
+                    log("DRY RUN: Would restore " + file + " to " + source);
+                } else if (job.executeGit("reset", "-q", source, "--", file) != 0) {
+                    throw new RuntimeException("Could not restore rejected file "
+                            + file + " to " + source + " in the merge index");
+                } else {
+                    log("Restored rejected file to " + source + ": " + file);
+                }
+            }
+        }
+
+        if (unresolvable.isEmpty()) {
+            return;
+        }
+        // Name each file with the guardrail that rejected it (protection, size,
+        // binary content, or an excluded pattern), as recorded in skippedFiles.
+        List<String> described = new ArrayList<>();
+        for (String file : unresolvable) {
+            described.add(skippedFiles.stream()
+                    .filter(entry -> entry.startsWith(file + " ("))
+                    .findFirst().orElse(file));
+        }
+        String reasons = String.join(", ", described);
+        if (!trusted) {
+            throw new RuntimeException("The merge of " + TestMethodProtection.shortSha(mergedCommit)
+                    + " in progress is not the one the harness started, so files it changes that"
+                    + " the staging guardrails rejected cannot be committed, and reverting them"
+                    + " inside a merge commit would silently drop them: " + reasons
+                    + ". The merge needs a human.");
+        }
+        throw new RuntimeException("The merge changes files that both "
+                + job.getTargetBranch() + " and the base branch changed, and the"
+                + " staging guardrails rejected their resolution: " + reasons
+                + ". The harness cannot pick a side for them; they need a human.");
+    }
+
+    /**
+     * Lists the paths that differ between two commits.
+     *
+     * @param from the starting commit
+     * @param to   the ending commit
+     * @return the changed paths
+     * @throws IOException if git cannot list them
+     * @throws InterruptedException if the command is interrupted
+     */
+    private Set<String> changedPaths(String from, String to) throws IOException, InterruptedException {
+        Set<String> paths = job.asGitOperations().executeForPaths(
+                "diff", "--name-only", "--no-renames", from, to);
+        if (paths == null) {
+            throw new IOException("Could not list the files changed between " + from + " and " + to);
+        }
+        return paths;
+    }
+
+    /**
      * Evaluates each candidate file through the {@link FileStager} guardrails
      * and issues {@code git add} for each file that passes.
      *
@@ -252,19 +471,7 @@ class GitCommitHandler implements ConsoleFeatures {
      * @throws InterruptedException if a git command is interrupted
      */
     private void stageFiles(List<String> files) throws IOException, InterruptedException {
-        FileStagingConfig config = FileStagingConfig.builder()
-                .excludedPatterns(job.getAllExcludedPatterns())
-                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
-                // The harness-side test-file staging guardrail is gated on
-                // BOTH the legacy protectTestFiles flag AND the new
-                // sensitiveFileProtectionEnabled flag. Either one being off
-                // disables the guardrail — they are ANDed, not ORed, so a
-                // default-default job (both true) gets the full protection.
-                .protectTestFiles(job.isProtectTestFiles()
-                        && GitCommitHandler.isSensitiveFileProtectionEnabled(job))
-                .baseBranch(job.getBaseBranch())
-                .maxFileSizeBytes(job.getMaxFileSizeBytes())
-                .build();
+        FileStagingConfig config = buildStagingConfig(job);
 
         FileStager stager = new FileStager();
         File workDir = job.getWorkingDirectory() != null
@@ -369,9 +576,14 @@ class GitCommitHandler implements ConsoleFeatures {
                 + (gitUserName != null ? gitUserName : "(default)") + " <"
                 + (gitUserEmail != null ? gitUserEmail : "(default)") + ">");
 
-        int result = job.executeGit(args.toArray(new String[0]));
+        // Retry a transient commit (e.g. an index.lock race with a concurrent
+        // git process) with bounded backoff; staging already found non-empty
+        // changes, so an exhausted failure here is infrastructure, not the agent.
+        String[] commitArgs = args.toArray(new String[0]);
+        int result = GitOperations.retryTransient(COMMIT_ATTEMPTS, COMMIT_BACKOFF_MILLIS,
+                () -> job.executeGit(commitArgs));
         if (result != 0) {
-            throw new RuntimeException(
+            throw new TransientGitException(
                     "Git commit failed after staging " + stagedFiles.size() + " files");
         }
 
@@ -454,6 +666,39 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
+     * Returns whether this handler committed anything at all, in the primary
+     * repository or in a dependent one.
+     *
+     * <p>{@link #getCommitHash()} answers only for the primary repository, so
+     * a job whose changes live entirely in a dependent repo commits, pushes,
+     * and still reports a {@code null} hash. Anything deciding whether the
+     * job published its work has to ask this instead, or it will read a
+     * successful dependent-repo job as having published nothing.</p>
+     *
+     * @return {@code true} when a commit was made in any repository
+     */
+    boolean hasAnyCommit() {
+        return (commitHash != null && !commitHash.isEmpty()) || !dependentRepoCommits.isEmpty();
+    }
+
+    /**
+     * Returns the dependent repositories that had changes but did not publish
+     * them, each with the reason.
+     *
+     * <p>{@link #hasAnyCommit()} says only that something was committed
+     * somewhere. A job whose primary repository commits cleanly while a
+     * dependent repository's commit fails, or has every file skipped, has
+     * published some of its work and abandoned the rest — and the abandoned
+     * part leaves no other trace, since the primary commit satisfies every
+     * other check.</p>
+     *
+     * @return the unpublished dependent repositories; empty when all published
+     */
+    List<String> getDependentRepoFailures() {
+        return new ArrayList<>(dependentRepoFailures);
+    }
+
+    /**
      * Returns the URL of an open pull request detected after push, or
      * {@code null} if no PR was found or PR detection was not attempted.
      *
@@ -483,11 +728,7 @@ class GitCommitHandler implements ConsoleFeatures {
      */
     void handleDependentRepos(List<String> depPaths) throws IOException, InterruptedException {
         for (String depPath : depPaths) {
-            GitOperations gitOps = new GitOperations(depPath, job.getTaskId());
-            String name = job.getGitUserName();
-            String email = job.getGitUserEmail();
-            if (name != null && !name.isEmpty()) gitOps.setGitUserName(name);
-            if (email != null && !email.isEmpty()) gitOps.setGitUserEmail(email);
+            GitOperations gitOps = job.gitOperations(depPath);
 
             String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
             List<String> changedFiles = new ArrayList<>();
@@ -505,10 +746,12 @@ class GitCommitHandler implements ConsoleFeatures {
             log("Committing " + changedFiles.size() + " changes in dependent repo: " + depPath);
 
             boolean anyStagedInDep = false;
+            List<String> skippedInDep = new ArrayList<>();
             for (String file : changedFiles) {
                 File f = new File(depPath, file);
                 if (f.exists() && f.length() > job.getMaxFileSizeBytes()) {
                     log("Skipping (size) in dependent repo: " + file);
+                    skippedInDep.add(file);
                     continue;
                 }
                 gitOps.execute("add", file);
@@ -516,13 +759,23 @@ class GitCommitHandler implements ConsoleFeatures {
             }
             if (!anyStagedInDep) {
                 log("No files staged in dependent repo (all skipped): " + depPath);
+                dependentRepoFailures.add(depPath + " (every changed file was skipped: "
+                        + String.join(", ", skippedInDep) + ")");
                 continue;
             }
 
             int commitExitCode = gitOps.execute("commit", "-m", job.getCommitMessage());
             if (commitExitCode != 0) {
                 log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
+                dependentRepoFailures.add(depPath + " (commit exited " + commitExitCode + ")");
                 continue;
+            }
+            dependentRepoCommits.add(depPath);
+            // A commit here publishes what was staged, not what changed: an
+            // oversized file was dropped on the way and leaves no other trace.
+            if (!skippedInDep.isEmpty()) {
+                dependentRepoFailures.add(depPath + " (committed, but these files were skipped: "
+                        + String.join(", ", skippedInDep) + ")");
             }
 
             if (job.isPushToOrigin() && !job.isDryRun()) {
@@ -550,6 +803,39 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
+     * Builds the {@link FileStagingConfig} that governs which of a job's
+     * changed files may be staged. This is the single source of truth for the
+     * two locks so that {@link #stageFiles(List)} and
+     * {@link GitManagedJob#previewStaging()} cannot drift apart: a preview that
+     * showed a file as stageable while the commit silently dropped it would
+     * cost the agent its correction turn.
+     *
+     * <p>The test-file lock is gated on BOTH the legacy {@code protectTestFiles}
+     * flag AND {@code sensitiveFileProtectionEnabled} — ANDed, not ORed, so a
+     * default job (both true) gets the full protection and either being off
+     * disables it. The CI file lock is independent of the test lock: it is on
+     * for every job whose sensitive-file protection is enabled, except one on a
+     * {@code ci/...} branch, matching the exemptions
+     * {@code check-ci-file-lock.sh} applies in CI.</p>
+     *
+     * @param job the job whose staging configuration is being built
+     * @return the immutable staging configuration for the job
+     */
+    static FileStagingConfig buildStagingConfig(GitManagedJob job) {
+        return FileStagingConfig.builder()
+                .excludedPatterns(job.getAllExcludedPatterns())
+                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+                .protectTestFiles(job.isProtectTestFiles()
+                        && isSensitiveFileProtectionEnabled(job))
+                .protectCiFiles(isSensitiveFileProtectionEnabled(job)
+                        && !isCiBranch(job.getTargetBranch()))
+                .baseBranch(job.getBaseBranch())
+                .maxFileSizeBytes(job.getMaxFileSizeBytes())
+                .mergeParent(job.getHarnessMergeParent())
+                .build();
+    }
+
+    /**
      * Returns whether the broader per-job sensitive-file protections are
      * active. {@link CodingAgentJob} (the only job type that runs an
      * agent) implements the flag explicitly; for any other job type we
@@ -564,5 +850,25 @@ class GitCommitHandler implements ConsoleFeatures {
             return caj.isSensitiveFileProtectionEnabled();
         }
         return true;
+    }
+
+    /**
+     * Returns whether {@code branch} is a CI branch ({@code ci/...}), whose
+     * declared subject is the pipeline itself.
+     *
+     * <p>The harness applies the repository's CI file lock to every job,
+     * independently of the job's test lock: a CI/workflow file (branch-new or
+     * pre-existing) is not staged unless the controller authorised the
+     * job to change sensitive files (its commit then carries the signed
+     * bypass trailer) or the job works on a CI branch. These are the same
+     * exemptions {@code tools/ci/agent-protection/check-ci-file-lock.sh}
+     * applies in CI, so an edit the harness would stage is never one the
+     * pipeline rejects.</p>
+     *
+     * @param branch the target branch, or {@code null}
+     * @return {@code true} when the branch name starts with {@code ci/}
+     */
+    static boolean isCiBranch(String branch) {
+        return branch != null && branch.startsWith("ci/");
     }
 }

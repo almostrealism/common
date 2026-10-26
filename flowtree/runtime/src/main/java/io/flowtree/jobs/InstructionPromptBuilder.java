@@ -64,6 +64,12 @@ public class InstructionPromptBuilder {
      */
     private int enforcementAttempt;
 
+    /**
+     * Whole-job cap on enforce-changes re-runs; decides whether the agent is told
+     * that exiting without changes restarts it or ends the job DEGRADED.
+     */
+    private int maxEnforceChangesRetries = CodingAgentJob.DEFAULT_MAX_RULE_RETRIES;
+
     /** Base branch name used in merge conflict and test protection instructions. */
     private String baseBranch;
 
@@ -214,15 +220,28 @@ public class InstructionPromptBuilder {
      * Sets the enforcement attempt counter for retry-loop mode.
      *
      * <p>When greater than zero, a prominent message is prepended warning
-     * the agent that it has already refused to fix the failures this many
-     * times, and that the session will keep restarting until it produces
-     * code changes or successfully runs the CI command.</p>
+     * the agent that its previous sessions ended this many times without
+     * producing any change.</p>
      *
      * @param enforcementAttempt the number of prior failed attempts (0 for first try)
      * @return this builder for chaining
      */
     public InstructionPromptBuilder setEnforcementAttempt(int enforcementAttempt) {
         this.enforcementAttempt = enforcementAttempt;
+        return this;
+    }
+
+    /**
+     * Sets the whole-job cap on enforce-changes re-runs. Together with
+     * {@link #setEnforcementAttempt(int)} it decides what the agent is told
+     * happens if it exits without changes: another re-run while any remain,
+     * otherwise a DEGRADED result.
+     *
+     * @param maxEnforceChangesRetries the cap; 0 means the job is never re-run
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setMaxEnforceChangesRetries(int maxEnforceChangesRetries) {
+        this.maxEnforceChangesRetries = maxEnforceChangesRetries;
         return this;
     }
 
@@ -626,17 +645,17 @@ public class InstructionPromptBuilder {
         // that may legitimately accept "no changes needed" as resolution.
         if (enforcementAttempt > 0 && !correctionSession) {
             sb.append("## !! SESSION RESTARTED -- RETRY ").append(enforcementAttempt).append(" !!\n\n");
-            sb.append("This job was submitted because CI was failing on this branch. ");
+            sb.append("This job requires changes to files in the repository. ");
             sb.append("Your previous ").append(enforcementAttempt).append(" session");
             if (enforcementAttempt > 1) sb.append("s");
-            sb.append(" ended without producing any code changes.\n\n");
-            sb.append("You MUST investigate the current CI status and produce code changes. ");
-            sb.append("Run the failing CI command (via the MCP test runner, using the exact ");
-            sb.append("CI command — not an individual test, not an alternative you invented) ");
-            sb.append("to determine what is failing. Then fix the production code. ");
+            sb.append(" ended without producing any.\n\n");
+            sb.append("You MUST produce the changes the task asks for. When the task is to ");
+            sb.append("fix failing CI, run the failing CI command (via the MCP test runner, ");
+            sb.append("using the exact CI command — not an individual test, not an alternative ");
+            sb.append("you invented) to determine what is failing, then fix the production code. ");
             sb.append("Leave the changes uncommitted — the harness commits them.\n\n");
             sb.append("Simply stating that you do not see a problem, or that tests seem to ");
-            sb.append("pass in your view, is not acceptable. Produce code changes.\n\n");
+            sb.append("pass in your view, is not acceptable. Produce the changes.\n\n");
             sb.append("---\n\n");
         }
 
@@ -743,13 +762,14 @@ public class InstructionPromptBuilder {
                 // valid outcome, and the outer change-required pressure would
                 // contradict the rule prompt.
                 sb.append("## Code Changes Are Required\n");
-                sb.append("This task was submitted because CI was failing on this branch. ");
-                sb.append("You MUST produce code changes. Run the failing CI command ");
-                sb.append("(via the MCP test runner — the exact CI command, not an individual ");
+                sb.append("This task requires changes to files in the repository; ending ");
+                sb.append("without any is not an acceptable outcome. Produce the changes the ");
+                sb.append("task asks for. When the task is to fix failing CI, run the failing CI ");
+                sb.append("command (via the MCP test runner — the exact CI command, not an individual ");
                 sb.append("test or an alternative you invented) to determine what is failing, ");
                 sb.append("then fix the production code. Leave the changes uncommitted — the ");
                 sb.append("harness commits them. Do NOT commit yourself.\n\n");
-                sb.append("Exiting without code changes will cause this session to be restarted.\n\n");
+                appendEmptyResultConsequence(sb);
             } else {
                 sb.append("## Non-Code Requests\n");
                 sb.append("If the user's request does not require code changes (e.g., a question about ");
@@ -774,8 +794,29 @@ public class InstructionPromptBuilder {
         // GitHub and memory tools — available via ar-manager
         if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
             sb.append("You can read and respond to GitHub PR review comments using ");
-            sb.append("github_pr_find, github_pr_review_comments, github_pr_conversation, and github_pr_reply. ");
-            sb.append("Use these to check for code review feedback and address it.\n\n");
+            sb.append("github_pr_find, github_pr_review_comments, github_pr_reviews, ");
+            sb.append("github_pr_conversation, and github_pr_reply. ");
+            sb.append("Use these to check for code review feedback and address it. ");
+            sb.append("Pass include_resolved=true to github_pr_review_comments to also see ");
+            sb.append("comments on threads that have already been marked resolved -- the default ");
+            sb.append("view only returns unresolved threads. Use github_pr_reviews to read the ");
+            sb.append("top-level review verdicts and their bodies (a reviewer's overview text, or ");
+            sb.append("GitHub Copilot's per-round summary) -- that content is invisible to ");
+            sb.append("github_pr_review_comments and github_pr_conversation.\n\n");
+
+            sb.append("## Out-of-Scope Review Points\n");
+            sb.append("Fix an in-scope defect on this branch. But when a review comment is valid ");
+            sb.append("and out of scope for this branch -- an edge case the branch does not need ");
+            sb.append("to cover, a related improvement, a larger refactor -- do NOT extend the ");
+            sb.append("branch through more review rounds to address it. Instead file a follow-up ");
+            sb.append("task with tracker_create_task (pass the project_id, a title and a ");
+            sb.append("description, and put the PR number and the URL of the review comment that ");
+            sb.append("prompted it in the description); the task lands in the backlog for a person ");
+            sb.append("to triage. First look for a follow-up task already filed with tracker_list_tasks or ");
+            sb.append("tracker_search_tasks so you do not file a duplicate. Then reply in the ");
+            sb.append("review thread with the task id instead of changing the code, following ");
+            sb.append("the reply rules above on who to reply to and when. List the ids of every ");
+            sb.append("follow-up task you filed in your final summary.\n\n");
 
             sb.append("## When to Post PR Replies\n");
             sb.append("Do NOT post a `github_pr_reply` claiming a fix is landed until the change is ");
@@ -975,18 +1016,40 @@ public class InstructionPromptBuilder {
         sb.append("and run THOSE before declaring done.\n\n");
         sb.append("Concrete heuristic:\n");
         sb.append("1. For each modified Java file `Foo.java`, look for `FooTest.java`, ");
-        sb.append("`FooTests.java`, or `FooIT.java` in the same module's `src/test/java` ");
-        sb.append("and run them.\n");
+        sb.append("`FooTests.java`, or `FooIT.java` in the same module's `src/test/java`, ");
+        sb.append("then run the test(s) that exercise your change -- a class, a few ");
+        sb.append("classes, or named methods, up to the caps below.\n");
         sb.append("2. Look for any tests in the same package that import the file you ");
-        sb.append("changed and run those too.\n");
-        sb.append("3. For Python changes in `tools/`, run the corresponding pytest module ");
-        sb.append("(e.g., `python -m pytest tools/mcp/manager/test_server.py`).\n");
-        sb.append("4. Use `mcp__ar-test-runner__start_test_run` with `test_classes` to run ");
-        sb.append("a specific class quickly; full module runs only when you've touched many ");
-        sb.append("files in one module.\n\n");
+        sb.append("changed and run the relevant ones too, within the same caps.\n");
+        sb.append("3. For Python changes in `tools/`, run the specific test node id(s) that ");
+        sb.append("exercise your change (e.g., `python -m pytest ");
+        sb.append("tools/mcp/manager/test_server.py::test_name`), never the whole module.\n");
+        sb.append("4. Use `mcp__ar-test-runner__start_test_run` with `test_classes`/");
+        sb.append("`test_methods` to run a bounded selection (a class, a few classes, or ");
+        sb.append("named methods, up to the caps); never a full module run -- see \"Test ");
+        sb.append("Execution Limits\" below.\n\n");
         sb.append("Do NOT use `-DskipTests` to declare a refactor or bug fix complete. If a ");
         sb.append("test fails, fix the underlying cause. Do NOT add `@Disabled`, comment ");
         sb.append("out assertions, or weaken tests to make them green.\n\n");
+
+        // Test execution limits -- always included for coding tasks
+        sb.append("## Test Execution Limits\n");
+        sb.append("Run only a bounded selection per invocation. For Java via ");
+        sb.append("`-Dtest=` / `mcp__ar-test-runner__start_test_run`, that is at most 5 test ");
+        sb.append("classes and 40 named `Class#method` tests — a bare class or a few classes ");
+        sb.append("is an ordinary check, not a broad run. For Python, a single pytest node id ");
+        sb.append("(`path/test_x.py::test_name`). Refused is any selection with no ceiling: ");
+        sb.append("more classes or methods than those caps, a Surefire wildcard (`*`, `?`), ");
+        sb.append("the `+`/`!`/`%regex[...]` selectors, a module's whole suite, or ");
+        sb.append("`AR_TEST_GROUP`/`AR_TEST_GROUPS` — that is CI-shard partitioning, reserved ");
+        sb.append("for the CI workflow matrix. Broad verification belongs to CI, not to this ");
+        sb.append("session.\n\n");
+        sb.append("Every test or build invocation needs an explicit timeout of at most 40 ");
+        sb.append("minutes (2400s). Never leave a background build or test run active when ");
+        sb.append("you end your turn: this session is killed for inactivity — stdout ");
+        sb.append("silence, not total runtime — so an unattended background process either ");
+        sb.append("gets killed mid-run or, worse, outlives the session as orphaned state the ");
+        sb.append("next session has to diagnose before it can trust the build tree.\n\n");
 
         // Budget and turn limits
         if (maxBudgetUsd > 0 || maxTurns > 0) {
@@ -1053,6 +1116,11 @@ public class InstructionPromptBuilder {
             sb.append("what you changed and why.\n\n");
             sb.append("The message must describe the actual work you did — do NOT copy ");
             sb.append("the task description into `commit.txt`, and do NOT leave it empty.\n\n");
+            sb.append("Write it only if you changed files. If you deliberately changed ");
+            sb.append("nothing — you reviewed and found no defect, or you investigated and ");
+            sb.append("only reported — do NOT create `commit.txt`. Its absence is how you ");
+            sb.append("report that there was nothing to commit, and the harness fails a job ");
+            sb.append("that wrote a commit message but produced no changes to go with it.\n\n");
             sb.append("Do NOT attribute authorship of the commit. No `Co-Authored-By` ");
             sb.append("trailer, no \"Generated with\" or \"Created by\" tool credit, no ");
             sb.append("agent name, e-mail address, or product URL — anywhere in the ");
@@ -1069,6 +1137,23 @@ public class InstructionPromptBuilder {
         sb.append("\n--- END USER REQUEST ---");
 
         return sb.toString();
+    }
+
+    /**
+     * Appends what happens if an enforce-changes session exits with no change:
+     * a restart while the re-run cap leaves one, otherwise a DEGRADED result.
+     * Telling the agent it will be restarted when it will not would be false,
+     * and with a cap of 0 the first session is the only one.
+     *
+     * @param sb the prompt under construction
+     */
+    private void appendEmptyResultConsequence(StringBuilder sb) {
+        if (enforcementAttempt < maxEnforceChangesRetries) {
+            sb.append("Exiting without code changes will cause this session to be restarted.\n\n");
+        } else {
+            sb.append("Exiting without code changes will not restart this session: the job ");
+            sb.append("will end DEGRADED and be reported as having produced nothing.\n\n");
+        }
     }
 
     /**

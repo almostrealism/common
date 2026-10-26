@@ -4,6 +4,8 @@
 // using only primitive operations. Higher-level constructs like "attention"
 // and "swiglu_ffn" are composed from these primitives within the DSL.
 
+import "/pdsl/attention.pdsl"
+
 // ----- SwiGLU Feed-Forward Network -----
 // Composed from: rmsnorm, dense, silu, product
 //
@@ -29,19 +31,26 @@ layer swiglu_ffn(
     dense(w2)
 }
 
-// ----- Transformer Block -----
-// Composed from: attention (built-in) + swiglu_ffn (user-defined)
-// with residual connections (accum).
-//
-// Architecture:
-//   input -> accum(attention(...)) -> accum(swiglu_ffn(...)) -> output
-//
-// The attention built-in maps to AttentionFeatures.attention() which
-// internally composes: rmsnorm, Q/K/V dense projections, RoPE rotation,
-// KV caching, scaled dot-product attention, output projection.
-//
-// The swiglu_ffn is fully defined above from primitives.
-
+/*
+ * ----- Transformer Block -----
+ * Composed from the decomposed `attention` layer imported from /pdsl/attention.pdsl
+ * and the swiglu_ffn layer defined above, with residual connections (accum):
+ *
+ *   input -> accum(attention(...)) -> accum(swiglu_ffn(...)) -> output
+ *
+ * The imported `attention` layer writes out the stages the removed `attention`
+ * built-in used to assemble in Java: rmsnorm, the Q/K/V projections, rotary
+ * embedding, the KV cache, scores, causal mask, softmax, weighted values and the
+ * output projection.
+ *
+ * The dimensions are fixed to the values the loader tests bind: 4 query heads of
+ * 16 (model dimension 64) over a sequence of 32. Multi-head attention passes the
+ * query head count as the kv-head count (so the kv_heads parameter is retained for
+ * the test's argument map but unused in the body); the projections have no biases
+ * (null) and the attention RMSNorm epsilon is 1e-5, the value the built-in used to
+ * hardcode. Each forward pass is one token at `position`, and the key and value
+ * caches are freshly allocated here, one pair per build.
+ */
 layer transformer_block(
     heads: int,
     kv_heads: int,
@@ -58,14 +67,12 @@ layer transformer_block(
     w3: weight,
     epsilon: float
 ) -> [1, 64] {
-    // Residual attention: output = input + attention(input)
     accum {
-        attention(heads, rms_att_weight,
-                  wk, wv, wq, wo,
-                  freq_cis, position)
+        attention(heads, heads, 16, rms_att_weight, wq, wk, wv, wo,
+                  null, null, null, freq_cis, position, 1e-5,
+                  zeros([32, 64]), zeros([32, 64]))
     }
 
-    // Residual feed-forward: output = output + ffn(output)
     accum {
         swiglu_ffn(rms_ffn_weight, w1, w2, w3, epsilon)
     }

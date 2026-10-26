@@ -17,9 +17,7 @@
 package org.almostrealism.ml.dsl;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Lexer for the Producer DSL (.pdsl) language.
@@ -28,37 +26,6 @@ import java.util.Map;
  * strings, operators, and delimiters.
  */
 public class PdslLexer {
-
-	/** Mapping from reserved word strings to their corresponding token types. */
-	private static final Map<String, PdslToken.Type> KEYWORDS = new HashMap<>();
-
-	static {
-		KEYWORDS.put("layer", PdslToken.Type.LAYER);
-		KEYWORDS.put("model", PdslToken.Type.MODEL);
-		KEYWORDS.put("config", PdslToken.Type.CONFIG);
-		KEYWORDS.put("data", PdslToken.Type.DATA);
-		KEYWORDS.put("state", PdslToken.Type.STATE);
-		KEYWORDS.put("let", PdslToken.Type.LET);
-		KEYWORDS.put("return", PdslToken.Type.RETURN);
-		KEYWORDS.put("if", PdslToken.Type.IF);
-		KEYWORDS.put("else", PdslToken.Type.ELSE);
-		KEYWORDS.put("for", PdslToken.Type.FOR);
-		KEYWORDS.put("in", PdslToken.Type.IN);
-		KEYWORDS.put("branch", PdslToken.Type.BRANCH);
-		KEYWORDS.put("accum", PdslToken.Type.ACCUM);
-		KEYWORDS.put("product", PdslToken.Type.PRODUCT);
-		KEYWORDS.put("accum_blocks", PdslToken.Type.ACCUM_BLOCKS);
-		KEYWORDS.put("concat_blocks", PdslToken.Type.CONCAT_BLOCKS);
-		KEYWORDS.put("weight", PdslToken.Type.WEIGHT);
-		KEYWORDS.put("scalar", PdslToken.Type.SCALAR);
-		KEYWORDS.put("producer", PdslToken.Type.PRODUCER);
-		KEYWORDS.put("int", PdslToken.Type.INT_TYPE);
-		KEYWORDS.put("float", PdslToken.Type.FLOAT_TYPE);
-		KEYWORDS.put("bool", PdslToken.Type.BOOL_TYPE);
-		KEYWORDS.put("true", PdslToken.Type.TRUE);
-		KEYWORDS.put("false", PdslToken.Type.FALSE);
-		KEYWORDS.put("null", PdslToken.Type.NULL_LITERAL);
-	}
 
 	/** The complete PDSL source text being lexed. */
 	private final String source;
@@ -166,7 +133,7 @@ public class PdslLexer {
 			advance();
 		}
 		String word = sb.toString();
-		PdslToken.Type type = KEYWORDS.getOrDefault(word, PdslToken.Type.IDENTIFIER);
+		PdslToken.Type type = PdslToken.Type.forWord(word);
 		return new PdslToken(type, word, startLine, startCol);
 	}
 

@@ -1,0 +1,529 @@
+{
+  "_comment": "Version-controlled consult evaluation cases. Each case has a baseline 'expect' describing today's bar and, where behaviour is gated on an implementation milestone, a 'milestones' map of per-milestone overrides. 'stepN' milestones are cumulative: running at stepN applies every stepM override with M <= N, in order (an override replaces the keys it names). 'answerable' records whether the question has an answer in the snapshot/notes at all, so an abstention can be counted as a false abstention. 'observed' records a deployed consult's behaviour; the frozen response is in fixtures/observed/<id>.json (replay mode). 'scripted' names a canned model answer (fixtures/scripted/) that scripted mode runs through the live pipeline: for E1-E3 a correct answer written from the evidence retrieval now presents, for E5-E6 and E8 the answer the tier contract allows, and for E7 and E9-E12 a reproduction of an observed wrong answer, whose expectation is that the pipeline flags it. 'now', 'branch_states' and 'caller' freeze what tiering reads. A case with a 'turns' list is a multi-turn conversation: its turns run in order on one conversation (each turn has its own question, keywords and scripted answer), and the case is graded on the last turn's response.",
+  "cases": [
+    {
+      "id": "E1",
+      "question": "Which QA rounds does Master Agent Dispatch run, their branch prefixes, and the open-PR limit?",
+      "keywords": [
+        "Master Agent Dispatch",
+        "QA rounds",
+        "BRANCH_PREFIX",
+        "MAX_OPEN_PRS"
+      ],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-17",
+        "summary": "'Not documented' even though three relevant memories were retrieved; .github/CLAUDE.md was not in the corpus."
+      },
+      "memories": "fixtures/memories/E1.json",
+      "observed_response": "fixtures/observed/E1.json",
+      "expect": {
+        "outcome": "abstain"
+      },
+      "milestones": {
+        "step2": {
+          "outcome": "answer",
+          "must_cite_any": [
+            ".github/CLAUDE.md"
+          ],
+          "must_include": [
+            "qa/docs-",
+            "qa/defect-",
+            "qa/coverage-",
+            "qa/consolidate-",
+            "qa/performance-",
+            "qa/pdsl-",
+            "qa/retro-",
+            "MAX_OPEN_PRS"
+          ],
+          "must_include_any": [
+            [
+              "\\b7\\b",
+              "seven"
+            ]
+          ]
+        },
+        "step7": {
+          "max_citation_warnings": 0
+        },
+        "step8": {
+          "basis_in": [
+            "documentation",
+            "documentation+notes"
+          ]
+        }
+      },
+      "scripted": "fixtures/scripted/E1.txt",
+      "branch_states": {
+        "qa/retro-20261015": {
+          "state": "merged",
+          "merged_at": "2026-10-16T00:00:00Z",
+          "base": "master"
+        }
+      }
+    },
+    {
+      "id": "E2",
+      "question": "What does validate-agent-commit.sh block and what exit code does it use?",
+      "keywords": [
+        "validate-agent-commit.sh",
+        "agent-commit-validation"
+      ],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-17",
+        "summary": "Right description; 'exit 2' cited to claude-code-job.md:330 (the detect-test-hiding.sh section). Real value is 'exit 3', in the script alone."
+      },
+      "memories": "fixtures/memories/E2.json",
+      "observed_response": "fixtures/observed/E2.json",
+      "expect": {
+        "outcome": "answer",
+        "must_include": [
+          "test files",
+          "base branch",
+          "no new test"
+        ],
+        "must_include_any": [
+          [
+            "exits?\\s+3",
+            "exit code 3",
+            "not documented",
+            "does not state",
+            "not stated"
+          ]
+        ],
+        "must_not_include": [
+          "exits?\\s+2",
+          "exit code 2"
+        ],
+        "must_not_cite": [
+          {
+            "file": "flowtree/runtime/docs/claude-code-job.md",
+            "lines": [
+              320,
+              345
+            ],
+            "with": "validate-agent-commit"
+          }
+        ]
+      },
+      "scripted": "fixtures/scripted/E2.txt",
+      "milestones": {
+        "step12": {
+          "must_include": [
+            "test files",
+            "base branch",
+            "no new test",
+            "exits?\\s+3"
+          ],
+          "must_cite_any": [
+            "tools/ci/agent-protection/validate-agent-commit.sh"
+          ],
+          "max_citation_warnings": 0,
+          "basis_in": [
+            "documentation",
+            "documentation+notes"
+          ]
+        }
+      }
+    },
+    {
+      "id": "E3",
+      "question": "Where does ObjectOrientedDesignRule record its verdicts?",
+      "keywords": [
+        "ObjectOrientedDesignRule",
+        "VERDICT_PATH",
+        "oop-review"
+      ],
+      "answerable": false,
+      "observed": {
+        "date": "2026-10-17",
+        "summary": "Guessed from an unrelated April memory about runCorrectionSession; surfaced April memories naming ClaudeCodeJob (deleted 2026-05-16). Real answer .flowtree/oop-review.md is in no document."
+      },
+      "memories": "fixtures/memories/E3.json",
+      "observed_response": "fixtures/observed/E3.json",
+      "expect": {
+        "outcome": "abstain",
+        "must_not_include": [
+          "runCorrectionSession"
+        ]
+      },
+      "milestones": {
+        "step9": {
+          "must_not_include": [
+            "runCorrectionSession"
+          ],
+          "must_flag_stale": [
+            "ClaudeCodeJob"
+          ]
+        },
+        "step12": {
+          "outcome": "answer",
+          "must_include": [
+            "\\.flowtree/oop-review\\.md"
+          ],
+          "must_not_include": [
+            "runCorrectionSession"
+          ],
+          "must_flag_stale": [
+            "ClaudeCodeJob"
+          ],
+          "max_citation_warnings": 0
+        }
+      },
+      "scripted": "fixtures/scripted/E3.txt"
+    },
+    {
+      "id": "E4",
+      "question": "How does check-branch-entropy.sh decide drift?",
+      "keywords": [
+        "check-branch-entropy.sh",
+        "branch entropy",
+        "drift"
+      ],
+      "answerable": false,
+      "observed": {
+        "date": "2026-10-17",
+        "summary": "'Not documented' — correct abstention. No such script exists anywhere in the tree."
+      },
+      "memories": "fixtures/memories/E4.json",
+      "observed_response": "fixtures/observed/E4.json",
+      "expect": {
+        "outcome": "abstain",
+        "must_not_include": [
+          "entropy is computed",
+          "computes drift",
+          "measures drift by"
+        ]
+      },
+      "milestones": {
+        "step9": {
+          "outcome": "nonexistent",
+          "must_not_include": [
+            "entropy is computed",
+            "computes drift",
+            "measures drift by"
+          ]
+        }
+      }
+    },
+    {
+      "id": "E5",
+      "question": "Why can't ar-secrets secret_render_file render the openrouter-api-key secret?",
+      "keywords": [
+        "secret_render_file",
+        "openrouter-api-key"
+      ],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-19",
+        "summary": "Namespace widening: the fact is only in a 'decisions' namespace note, which a default-only search never reaches."
+      },
+      "memories": "fixtures/memories/E5.json",
+      "scripted": "fixtures/scripted/E5.txt",
+      "branch_states": {
+        "qa/defect-20261018-090000": {
+          "state": "merged",
+          "merged_at": "2026-10-18T12:00:00Z",
+          "base": "master"
+        }
+      },
+      "expect": {
+        "outcome": "answer"
+      },
+      "milestones": {
+        "step4": {
+          "max_citation_warnings": 0
+        },
+        "step8": {
+          "basis_in": [
+            "notes",
+            "documentation+notes"
+          ],
+          "must_include": [
+            "rests on agent notes",
+            "hyphen"
+          ]
+        }
+      }
+    },
+    {
+      "id": "E6",
+      "question": "How long does a consult conversation stay open when it is idle?",
+      "keywords": [
+        "ConversationStore",
+        "idle conversation"
+      ],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-19",
+        "summary": "Conflict: two branch-local notes from different open branches give different idle expiries; the answer must report both, not pick one."
+      },
+      "memories": "fixtures/memories/E6.json",
+      "scripted": "fixtures/scripted/E6.txt",
+      "branch_states": {
+        "feature/conversation-ttl-a": {
+          "state": "open",
+          "base": "master"
+        },
+        "feature/conversation-ttl-b": {
+          "state": "open",
+          "base": "master"
+        }
+      },
+      "expect": {
+        "outcome": "answer",
+        "must_include": [
+          "30",
+          "15"
+        ]
+      },
+      "milestones": {
+        "step5": {
+          "min_conflicts": 1
+        },
+        "step7": {
+          "max_citation_warnings": 0
+        }
+      }
+    },
+    {
+      "id": "E7",
+      "question": "Does consult support streaming partial answers on master?",
+      "keywords": [
+        "consult streaming",
+        "stream=true"
+      ],
+      "answerable": false,
+      "observed": {
+        "date": "2026-10-19",
+        "summary": "Branch-local: the feature exists only on an unmerged branch. The scripted answer asserts it without naming the branch, which must be flagged."
+      },
+      "memories": "fixtures/memories/E7.json",
+      "scripted": "fixtures/scripted/E7.txt",
+      "branch_states": {
+        "feature/consult-streaming": {
+          "state": "open",
+          "base": "master"
+        }
+      },
+      "expect": {
+        "must_mark_unsupported": [
+          "streams partial answers"
+        ]
+      }
+    },
+    {
+      "id": "E8",
+      "question": "Why was ClaudeCodeJob replaced?",
+      "keywords": [
+        "ClaudeCodeJob",
+        "CodingAgentJob",
+        "Pluggable agents"
+      ],
+      "answerable": false,
+      "observed": {
+        "date": "2026-10-19",
+        "summary": "History: the rationale is only in a five-month-old note naming a deleted class. It belongs in 'history', never as present-tense fact. No present-tense answer exists in the snapshot or in a current note, so a full answer is an abstention with the rationale in 'history' (answerable: false)."
+      },
+      "memories": "fixtures/memories/E8.json",
+      "scripted": "fixtures/scripted/E8.txt",
+      "expect": {
+        "outcome": "abstain"
+      },
+      "milestones": {
+        "step8": {
+          "history_must_include": [
+            "runners other than Claude Code"
+          ],
+          "basis_in": [
+            "none"
+          ]
+        },
+        "step9": {
+          "must_flag_stale": [
+            "ClaudeCodeJob"
+          ]
+        }
+      }
+    },
+    {
+      "id": "E9",
+      "question": "Which QA rounds does Master Agent Dispatch run, their branch prefixes, and the open-PR limit?",
+      "keywords": [
+        "Master Agent Dispatch",
+        "QA rounds",
+        "BRANCH_PREFIX",
+        "MAX_OPEN_PRS"
+      ],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-19",
+        "summary": "After .github/ was indexed, consult answered but invented the branch prefixes (deployed response: qa/doc-qa, qa/defect-hunt, ...; reported on 2026-10-19: project/doc-*, project/defect-*, ...). The real ones are qa/docs-, qa/defect-, ... The scripted answer reproduces the reported variant, attributed to the chunk that lists the real prefixes."
+      },
+      "memories": "fixtures/memories/E1.json",
+      "observed_response": "fixtures/observed/E9.json",
+      "scripted": "fixtures/scripted/E9.txt",
+      "branch_states": {
+        "qa/retro-20261015": {
+          "state": "merged",
+          "merged_at": "2026-10-16T00:00:00Z",
+          "base": "master"
+        }
+      },
+      "expect": {
+        "must_mark_unsupported": [
+          "project/doc-"
+        ],
+        "min_citation_warnings": 1
+      }
+    },
+    {
+      "id": "E10",
+      "question": "Which files need a ci/ branch to change, and how can another branch be authorised to change them?",
+      "keywords": [
+        "CI-file lock",
+        "check-ci-file-lock.sh",
+        "Sensitive-File-Bypass"
+      ],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-19",
+        "summary": "Lock paths and bypass concept right, but the reported answer invented an example trailer 'Sensitive-File-Bypass: signed-by-controller'; the real format is 'Sensitive-File-Bypass: <job-id>=<signature>' (check-ci-file-lock.sh header). Note: .github/actions/ IS in check-ci-file-lock.sh's LOCKED_PATH_PATTERN, although the script's header comment and tools/ci/README.md name only .github/workflows/ and tools/ci/, so naming it is not penalised."
+      },
+      "memories": "fixtures/memories/E10.json",
+      "observed_response": "fixtures/observed/E10.json",
+      "scripted": "fixtures/scripted/E10.txt",
+      "expect": {
+        "must_mark_unsupported": [
+          "signed-by-controller"
+        ],
+        "min_citation_warnings": 1
+      }
+    },
+    {
+      "id": "E11",
+      "question": "What does validate-agent-commit.sh block and what exit code does it use?",
+      "keywords": [
+        "validate-agent-commit.sh",
+        "agent-commit-validation"
+      ],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-19",
+        "summary": "Still 'exit 2', now justified by a 2026-09-16 note that was true when written: the script moved to exit 3 on 2026-09-24. The note is 33 days old and on a merged branch, so it tiers as current; only the snapshot index's exit-code fact contradicts it."
+      },
+      "memories": "fixtures/memories/E11.json",
+      "observed_response": "fixtures/observed/E11.json",
+      "scripted": "fixtures/scripted/E11.txt",
+      "branch_states": {
+        "ci/test-protection-consistency": {
+          "state": "merged",
+          "merged_at": "2026-09-17T03:35:46Z",
+          "base": "master"
+        }
+      },
+      "expect": {
+        "must_mark_unsupported": [
+          "exits with code .?2"
+        ],
+        "min_conflicts": 1
+      }
+    },
+    {
+      "id": "E12",
+      "question": "Where does ObjectOrientedDesignRule record its verdicts?",
+      "keywords": [
+        "ObjectOrientedDesignRule",
+        "VERDICT_PATH",
+        "oop-review"
+      ],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-19",
+        "summary": "Reported: 'one class per job' (it is one session per changed class, up to 12) and a guessed verdict location (real: .flowtree/oop-review.md). The exact guessed path was not recorded; the scripted answer uses a representative one. 'one class per job' carries no checkable name, so the token verifier cannot catch it; that expectation records the gap."
+      },
+      "memories": "fixtures/memories/E12.json",
+      "scripted": "fixtures/scripted/E12.txt",
+      "expect": {
+        "must_mark_unsupported": [
+          "review-verdicts",
+          "one class per job"
+        ]
+      }
+    },
+    {
+      "id": "E13",
+      "question": "Why does the controller stack sometimes deploy automatically?",
+      "keywords": [
+        "Deploy Controller Stack",
+        "deploy.yaml",
+        "workflow_run"
+      ],
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-20",
+        "summary": "Correctly cited .github/CLAUDE.md for 'triggered by a successful Build and Test on master', then stated 'it does not deploy automatically after every merge — only when explicitly triggered', which contradicts that sentence and deploy.yaml (every green master run deploys; workflow_dispatch adds manual deploys). The claim names no identifier, path or number, so the token verifier passed it. The scripted answer reproduces both sentences."
+      },
+      "memories": "fixtures/memories/E13.json",
+      "scripted": "fixtures/scripted/E13.txt",
+      "expect": {
+        "outcome": "answer",
+        "must_cite_any": [
+          ".github/CLAUDE.md"
+        ],
+        "must_mark_unsupported": [
+          "does not deploy automatically"
+        ],
+        "must_not_mark_unsupported": [
+          "successful master run"
+        ]
+      }
+    },
+    {
+      "id": "E14",
+      "question": "does the drain step see jobs still in the SUBMITTED state? (turn 2 of a conversation)",
+      "answerable": true,
+      "observed": {
+        "date": "2026-10-21",
+        "summary": "Two-turn conversation. Turn 1 asked why the controller stack sometimes deploys automatically (answered correctly). Turn 2, on the same conversation with no keywords, asked whether the drain step sees jobs still in the SUBMITTED state. Turn 2's retrieval used only the new question's words, never reached tools/ci/drain-agent-jobs.sh, and the model answered a confident 'Yes ... they appear in the /api/jobs/pending endpoint' resting only on a note whose central claim the verifier flagged unsupported. The real script reads /api/jobs and counts only running/in_progress/started/pending/queued, so SUBMITTED is not counted. This case replays both turns; the scripted turn 2 reproduces the wrong answer, and passes only if (a) the follow-up carries the conversation's context so the drain script's behavior fact is retrieved into the evidence, and (b) the notes-only answer whose central claim is unsupported does not lead with a confident yes."
+      },
+      "now": "2026-10-21T00:00:00Z",
+      "memories": "fixtures/memories/E14.json",
+      "turns": [
+        {
+          "question": "Why does the controller stack sometimes deploy automatically?",
+          "keywords": [
+            "Deploy Controller Stack",
+            "deploy.yaml",
+            "workflow_run",
+            "drain-agent-jobs"
+          ],
+          "scripted": "fixtures/scripted/E14-turn1.txt"
+        },
+        {
+          "question": "And now that it's manual-only, does the drain step actually see jobs that are still in the SUBMITTED state?",
+          "scripted": "fixtures/scripted/E14-turn2.txt"
+        }
+      ],
+      "expect": {
+        "outcome": "answer",
+        "basis_in": [
+          "notes"
+        ],
+        "must_cite_any": [
+          "tools/ci/drain-agent-jobs.sh"
+        ],
+        "must_mark_unsupported": [
+          "drain step does see"
+        ],
+        "must_not_include": [
+          "(?i)^\\s*yes\\b"
+        ],
+        "must_include": [
+          "(?i)unclear"
+        ]
+      }
+    }
+  ]
+}

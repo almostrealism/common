@@ -13,16 +13,53 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from store import UNSET
+from store import (
+    CLOSE_OUT_OUTCOMES,
+    FOLLOW_UP_SOURCE_PREFIX,
+    GOAL_SOURCE_PREFIX,
+    UNSET,
+)
 
 log = logging.getLogger(__name__)
 
 # Allowed status values
 _VALID_STATUSES = {"open", "closed"}
 
+# Allowed stage values; the database CHECK constraint mirrors this set.
+_VALID_STAGES = {"backlog", "ready", "declined"}
+
+# Allowed task provenance: a person, or a task an agent derived from a named
+# goal document ("goals:<document>"). The database CHECK constraint mirrors
+# this, so a value that never reaches the API cannot be persisted either.
+_PERSON_SOURCE = "person"
+
+
+def _valid_source(value: object) -> bool:
+    """Return True when *value* is a recognised task provenance.
+
+    A source is the literal ``person``, ``goals:<document>`` naming a non-empty
+    document, or ``follow-up:<...>`` naming a non-empty filing job. A bare
+    prefix and free-form strings are rejected. This mirrors the database CHECK
+    constraint (see ``migrate._SCHEMA_V3`` and ``migrate._SCHEMA_V4``).
+    """
+    if not isinstance(value, str):
+        return False
+    source = value.strip()
+    if source == _PERSON_SOURCE:
+        return True
+    return any(source.startswith(prefix) and len(source) > len(prefix)
+               for prefix in (GOAL_SOURCE_PREFIX, FOLLOW_UP_SOURCE_PREFIX))
+
 # Priority is a signed integer; database CHECK constraint mirrors this range.
 _MIN_PRIORITY = -2
 _MAX_PRIORITY = 2
+
+# Optional free-text and foreign-key task fields. Each accepts a string or
+# null; any other JSON type (a number, boolean, list or object) is refused
+# with a 400 before it reaches the store, where create_task and update_task
+# bind it straight to sqlite and a list or dict raises sqlite3.ProgrammingError
+# — turning ordinary client input into a 500.
+_NULLABLE_TEXT_FIELDS = ("description", "project_id", "release_id", "workstream_id")
 
 
 def _validate_priority(value: object) -> tuple:
@@ -56,6 +93,95 @@ def _validate_priority(value: object) -> tuple:
     return priority, None
 
 
+def _one_of(value: object, allowed: set) -> bool:
+    """Return True when *value* is a string in *allowed*.
+
+    JSON can carry a list or an object where a string is expected, and those
+    are unhashable, so a bare ``value in allowed`` raises ``TypeError`` (a 500)
+    instead of reporting the invalid value.
+    """
+    return isinstance(value, str) and value in allowed
+
+
+def _text_field(body, key: str) -> Optional[str]:
+    """Return the string at ``body[key]`` with surrounding whitespace removed.
+
+    An absent or null field reads as the empty string. A field holding any
+    other JSON type (a number, list or object) returns None, so the caller
+    refuses it with a 400 rather than failing on ``.strip()`` with a 500.
+    """
+    value = body.get(key)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        return None
+    return value.strip()
+
+
+def _workspace_ids(params) -> Optional[list]:
+    """Return the workspaces a list request is limited to, or None for no limit.
+
+    The ``workspace_id`` query parameter holds one or more comma-separated
+    workspace ids. A parameter that is present but names none limits the
+    request to nothing rather than lifting the limit, so a caller that meant
+    to restrict a query can never widen it by sending an empty value.
+    """
+    if "workspace_id" not in params:
+        return None
+    return [w.strip() for w in params.get("workspace_id", "").split(",") if w.strip()]
+
+
+# Every project is owned by a workspace. The column is nullable only because
+# projects created before workspaces existed have none until a person assigns
+# one; nothing written through the API may create or restore that state.
+_WORKSPACE_REQUIRED = "workspace_id is required: every project is owned by a workspace"
+
+
+def _bad_request(message: str) -> JSONResponse:
+    """Return a 400 response carrying *message*."""
+    return JSONResponse({"ok": False, "error": message}, status_code=400)
+
+
+def _task_field_error(store, body: dict, task_id: Optional[str] = None,
+                      pending_ids: frozenset = frozenset()) -> Optional[str]:
+    """Check the stage, source, blocked_by and optional text/id fields of a task body.
+
+    Only fields present in *body* are checked. The optional free-text and
+    foreign-key fields (see :data:`_NULLABLE_TEXT_FIELDS`) must each be a string
+    or null.
+
+    Args:
+        store: The TrackerStore, used to confirm blocking tasks exist.
+        body: The parsed JSON body.
+        task_id: The task being updated, or None when creating one.
+        pending_ids: Ids of tasks written by the same request, which a
+            blocker may name even though they are not stored yet.
+
+    Returns:
+        A message describing the first problem, or None when the fields are
+        valid.
+    """
+    if "stage" in body and not _one_of(body["stage"], _VALID_STAGES):
+        return f"stage must be one of: {sorted(_VALID_STAGES)}"
+    if "source" in body and not _valid_source(body["source"]):
+        return "source must be 'person', 'goals:<document>' or 'follow-up:<...>'"
+    for key in _NULLABLE_TEXT_FIELDS:
+        if key in body and body[key] is not None and not isinstance(body[key], str):
+            return f"{key} must be a string or null"
+    if "blocked_by" in body:
+        blockers = body["blocked_by"]
+        if blockers is None:
+            return None
+        if not isinstance(blockers, list) or not all(isinstance(b, str) for b in blockers):
+            return "blocked_by must be a list of task ids"
+        for blocker in blockers:
+            if blocker == task_id:
+                return "a task cannot block itself"
+            if blocker not in pending_ids and not store.get_task(blocker):
+                return f"blocked_by names an unknown task: {blocker}"
+    return None
+
+
 def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
     """Create the Starlette application for ar-tracker.
 
@@ -80,12 +206,16 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         )
 
     async def _json_body(request: Request):
+        # Every endpoint reads named fields, so a well-formed body that is not
+        # a JSON object ([] or null) is refused here rather than failing with
+        # an AttributeError (500) at the first body.get(...).
         try:
-            return await request.json(), None
+            body = await request.json()
         except (json.JSONDecodeError, ValueError):
-            return None, JSONResponse(
-                {"ok": False, "error": "Invalid JSON body"}, status_code=400
-            )
+            return None, _bad_request("Invalid JSON body")
+        if not isinstance(body, dict):
+            return None, _bad_request("JSON body must be an object")
+        return body, None
 
     # ------------------------------------------------------------------
     # Health
@@ -103,11 +233,12 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
     # ------------------------------------------------------------------
 
     async def list_projects(request: Request) -> JSONResponse:
-        """GET /v1/projects"""
+        """GET /v1/projects[?workspace_id=<id>[,<id>...]]"""
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
-        return JSONResponse({"ok": True, "projects": store.list_projects()})
+        return JSONResponse({"ok": True, "projects": store.list_projects(
+            workspace_ids=_workspace_ids(request.query_params))})
 
     async def create_project(request: Request) -> JSONResponse:
         """POST /v1/projects"""
@@ -117,12 +248,15 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        name = (body.get("name") or "").strip()
+        name = _text_field(body, "name")
         if not name:
             return JSONResponse(
                 {"ok": False, "error": "name is required"}, status_code=400
             )
-        project = store.create_project(name)
+        workspace_id = _text_field(body, "workspace_id")
+        if not workspace_id:
+            return _bad_request(_WORKSPACE_REQUIRED)
+        project = store.create_project(name, workspace_id)
         return JSONResponse({"ok": True, "project": project}, status_code=201)
 
     async def get_project(request: Request) -> JSONResponse:
@@ -138,19 +272,31 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         return JSONResponse({"ok": True, "project": project})
 
     async def update_project(request: Request) -> JSONResponse:
-        """PUT /v1/projects/{id}"""
+        """PUT /v1/projects/{id}
+
+        Body: ``{"name", "workspace_id"}``, each optional; an absent field is
+        left unchanged. A project's workspace can be changed but never
+        cleared.
+        """
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
         body, err = await _json_body(request)
         if err:
             return err
-        name = (body.get("name") or "").strip()
-        if not name:
-            return JSONResponse(
-                {"ok": False, "error": "name is required"}, status_code=400
-            )
-        project = store.update_project(request.path_params["id"], name)
+        name: object = UNSET
+        if "name" in body:
+            name = _text_field(body, "name")
+            if not name:
+                return JSONResponse(
+                    {"ok": False, "error": "name cannot be empty"}, status_code=400
+                )
+        workspace_id: object = UNSET
+        if "workspace_id" in body:
+            workspace_id = _text_field(body, "workspace_id")
+            if not workspace_id:
+                return _bad_request(_WORKSPACE_REQUIRED)
+        project = store.update_project(request.path_params["id"], name, workspace_id)
         if not project:
             return JSONResponse(
                 {"ok": False, "error": "Project not found"}, status_code=404
@@ -174,12 +320,13 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
     # ------------------------------------------------------------------
 
     async def list_releases(request: Request) -> JSONResponse:
-        """GET /v1/releases"""
+        """GET /v1/releases[?project_id=<id>][&workspace_id=<id>[,<id>...]]"""
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
         project_id = request.query_params.get("project_id")
-        return JSONResponse({"ok": True, "releases": store.list_releases(project_id)})
+        return JSONResponse({"ok": True, "releases": store.list_releases(
+            project_id, workspace_ids=_workspace_ids(request.query_params))})
 
     async def create_release(request: Request) -> JSONResponse:
         """POST /v1/releases"""
@@ -189,7 +336,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        name = (body.get("name") or "").strip()
+        name = _text_field(body, "name")
         if not name:
             return JSONResponse(
                 {"ok": False, "error": "name is required"}, status_code=400
@@ -272,6 +419,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Accepts an optional ``fields`` query parameter:
         - ``full`` (default) — returns all fields including description.
         - ``headlines`` — omits description; use when scanning large backlogs.
+
+        ``workspace_id`` (comma-separated) limits the result to tasks whose
+        project one of those workspaces owns.
         """
         auth_err = await _check_auth(request)
         if auth_err:
@@ -302,7 +452,11 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 {"ok": False, "error": "fields must be 'full' or 'headlines'"},
                 status_code=400,
             )
+        stage = qp.get("stage")
+        if stage and stage not in _VALID_STAGES:
+            return _bad_request(f"stage must be one of: {sorted(_VALID_STAGES)}")
         result = store.list_tasks(
+            stage=stage or None,
             project_id=qp.get("project_id") or None,
             release_id=qp.get("release_id") or None,
             workstream_id=qp.get("workstream_id") or None,
@@ -312,6 +466,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             sort=qp.get("sort", "created_at"),
             order=qp.get("order", "desc"),
             headlines_only=(fields == "headlines"),
+            workspace_ids=_workspace_ids(qp),
         )
         return JSONResponse({"ok": True, **result})
 
@@ -323,13 +478,13 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        title = (body.get("title") or "").strip()
+        title = _text_field(body, "title")
         if not title:
             return JSONResponse(
                 {"ok": False, "error": "title is required"}, status_code=400
             )
         status = body.get("status", "open")
-        if status not in _VALID_STATUSES:
+        if not _one_of(status, _VALID_STATUSES):
             return JSONResponse(
                 {"ok": False, "error": f"status must be one of: {sorted(_VALID_STATUSES)}"},
                 status_code=400,
@@ -339,6 +494,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             priority, err_resp = _validate_priority(body["priority"])
             if err_resp:
                 return err_resp
+        field_error = _task_field_error(store, body)
+        if field_error:
+            return _bad_request(field_error)
         task = store.create_task(
             title=title,
             description=body.get("description") or None,
@@ -347,6 +505,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             project_id=body.get("project_id") or None,
             release_id=body.get("release_id") or None,
             workstream_id=body.get("workstream_id") or None,
+            stage=body.get("stage") or "backlog",
+            source=(body.get("source") or "person").strip(),
+            blocked_by=body.get("blocked_by") or None,
         )
         return JSONResponse({"ok": True, "task": task}, status_code=201)
 
@@ -379,16 +540,20 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             )
 
         status = body.get("status")
-        if status is not None and status not in _VALID_STATUSES:
+        if status is not None and not _one_of(status, _VALID_STATUSES):
             return JSONResponse(
                 {"ok": False, "error": f"status must be one of: {sorted(_VALID_STATUSES)}"},
                 status_code=400,
             )
 
-        if "title" in body and not (body.get("title") or "").strip():
+        if "title" in body and not _text_field(body, "title"):
             return JSONResponse(
                 {"ok": False, "error": "title cannot be empty"}, status_code=400
             )
+
+        field_error = _task_field_error(store, body, task_id=task_id)
+        if field_error:
+            return _bad_request(field_error)
 
         priority_field: object = UNSET
         if "priority" in body:
@@ -415,7 +580,14 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             project_id=_field("project_id"),
             release_id=_field("release_id"),
             workstream_id=_field("workstream_id"),
+            stage=_field("stage"),
+            source=_field("source", coerce=lambda v: v.strip()),
+            blocked_by=_field("blocked_by"),
         )
+        if task is None:
+            return JSONResponse(
+                {"ok": False, "error": "Task not found"}, status_code=404
+            )
         return JSONResponse({"ok": True, "task": task})
 
     async def delete_task(request: Request) -> JSONResponse:
@@ -440,6 +612,9 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Accepts an optional ``fields`` query parameter:
         - ``full`` (default) — returns all fields including description.
         - ``headlines`` — omits description; use when scanning large backlogs.
+
+        ``workspace_id`` (comma-separated) limits the result to tasks whose
+        project one of those workspaces owns.
         """
         auth_err = await _check_auth(request)
         if auth_err:
@@ -476,6 +651,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             limit=limit,
             offset=offset,
             headlines_only=(fields == "headlines"),
+            workspace_ids=_workspace_ids(qp),
         )
         return JSONResponse({"ok": True, **result})
 
@@ -507,9 +683,39 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        projects = body.get("projects") or []
-        releases = body.get("releases") or []
-        tasks = body.get("tasks") or []
+        # Only an absent collection defaults to empty; a supplied one of the
+        # wrong type ({} or "" included) is refused rather than coerced.
+        projects = body.get("projects", [])
+        releases = body.get("releases", [])
+        tasks = body.get("tasks", [])
+        for key, entries in (("projects", projects), ("releases", releases), ("tasks", tasks)):
+            if not isinstance(entries, list):
+                return _bad_request(f"{key} must be a list")
+        for key, entries in (("projects", projects), ("releases", releases)):
+            for idx, entry in enumerate(entries):
+                if not isinstance(entry, dict):
+                    return _bad_request(f"{key}[{idx}] must be an object")
+        # Every task is checked before anything is written, with the same
+        # rules as a single create or update; a blocker may name any task in
+        # this import, since the store links blockers after all are written.
+        imported_ids = frozenset(
+            t["id"] for t in tasks if isinstance(t, dict) and isinstance(t.get("id"), str))
+        for idx, t in enumerate(tasks):
+            if not isinstance(t, dict):
+                return _bad_request(f"tasks[{idx}] must be an object")
+            if "status" in t and not _one_of(t["status"], _VALID_STATUSES):
+                return _bad_request(
+                    f"tasks[{idx}]: status must be one of: {sorted(_VALID_STATUSES)}")
+            if "priority" in t:
+                priority = t["priority"]
+                if (isinstance(priority, bool) or not isinstance(priority, int)
+                        or priority < _MIN_PRIORITY or priority > _MAX_PRIORITY):
+                    return _bad_request(
+                        f"tasks[{idx}]: priority must be an integer in [-2, 2]")
+            field_error = _task_field_error(
+                store, t, task_id=t.get("id"), pending_ids=imported_ids)
+            if field_error:
+                return _bad_request(f"tasks[{idx}]: {field_error}")
         result = store.bulk_import(projects, releases, tasks)
         if "error" in result:
             return JSONResponse({"ok": False, "error": result["error"]}, status_code=400)
@@ -582,6 +788,196 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         )
         return JSONResponse({"ok": True, **result})
 
+    # ------------------------------------------------------------------
+    # Claiming work
+    # ------------------------------------------------------------------
+
+    def _named_release(params) -> tuple:
+        """Resolve the ``project`` and ``release`` names in *params*.
+
+        Returns:
+            A (release_or_None, error_response_or_None) tuple. A release that
+            does not exist is not an error: it is returned as None.
+        """
+        project = _text_field(params, "project")
+        release = _text_field(params, "release")
+        if not project or not release:
+            return None, _bad_request("project and release names are required")
+        return store.find_release(project, release), None
+
+    async def lookup_release(request: Request) -> JSONResponse:
+        """GET /v1/releases/lookup?project=<name>&release=<name>"""
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        release, err = _named_release(request.query_params)
+        if err:
+            return err
+        if not release:
+            return JSONResponse(
+                {"ok": False, "error": "Release not found"}, status_code=404
+            )
+        return JSONResponse({"ok": True, "release": release})
+
+    async def ensure_release(request: Request) -> JSONResponse:
+        """POST /v1/releases/ensure  {"project", "release"}
+
+        Returns the named release, creating it in the named project when it
+        does not exist yet. Unlike a lookup followed by ``POST /v1/releases``,
+        concurrent callers can never create duplicate releases for the same
+        names. The project is never created: a missing project is a 404.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await _json_body(request)
+        if err:
+            return err
+        project = _text_field(body, "project")
+        name = _text_field(body, "release")
+        if not project or not name:
+            return _bad_request("project and release names are required")
+        release, created = store.ensure_release(project, name)
+        if not release:
+            return JSONResponse(
+                {"ok": False, "error": "Project not found"}, status_code=404
+            )
+        return JSONResponse({"ok": True, "release": release, "created": created},
+                            status_code=201 if created else 200)
+
+    async def claimable(request: Request) -> JSONResponse:
+        """GET /v1/claimable?project=<name>&release=<name>
+
+        Counts the tasks an agent could claim in the named release right now.
+        A release that does not exist has nothing to claim, so it reports a
+        count of zero rather than an error.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        release, err = _named_release(request.query_params)
+        if err:
+            return err
+        count = store.count_claimable(release["id"]) if release else 0
+        return JSONResponse({
+            "ok": True,
+            "release_id": release["id"] if release else None,
+            "count": count,
+        })
+
+    async def claim(request: Request) -> JSONResponse:
+        """POST /v1/claim  {"project", "release", "workstream_id"}
+
+        Links the next claimable task in the named release to the workstream
+        and returns it, or returns ``"task": null`` when there is none.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await _json_body(request)
+        if err:
+            return err
+        workstream_id = _text_field(body, "workstream_id")
+        if not workstream_id:
+            return _bad_request("workstream_id is required")
+        release, err = _named_release(body)
+        if err:
+            return err
+        task = store.claim_next(release["id"], workstream_id) if release else None
+        return JSONResponse({"ok": True, "task": task})
+
+    async def close_out_pending(request: Request) -> JSONResponse:
+        """GET /v1/close-out
+
+        Lists the workstreams that have a claimed task still open and ready,
+        i.e. the branches whose pull-request outcome is yet to be applied.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        return JSONResponse({"ok": True,
+                             "workstream_ids": store.workstreams_awaiting_close_out()})
+
+    async def close_out(request: Request) -> JSONResponse:
+        """POST /v1/close-out  {"workstream_id", "outcome"}
+
+        Applies a branch's pull-request outcome to the claimed tasks linked to
+        the workstream: ``merged`` closes them, ``closed`` declines and unlinks
+        them. Tasks no longer open and ready are left alone, so a repeated
+        call changes nothing. Returns the ids of the tasks changed.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await _json_body(request)
+        if err:
+            return err
+        workstream_id = _text_field(body, "workstream_id")
+        if not workstream_id:
+            return _bad_request("workstream_id is required")
+        outcome = body.get("outcome")
+        if not _one_of(outcome, set(CLOSE_OUT_OUTCOMES)):
+            return _bad_request(f"outcome must be one of: {sorted(CLOSE_OUT_OUTCOMES)}")
+        changed = store.close_out(workstream_id, outcome)
+        return JSONResponse({"ok": True, "outcome": outcome, "task_ids": changed})
+
+    async def file_follow_up_task(request: Request) -> JSONResponse:
+        """POST /v1/follow-up-tasks
+
+        Body: ``{"project_id", "title", "source", "description", "release_id"}``.
+
+        Files a coding agent's follow-up task into the project's backlog. The
+        task is always open, in stage ``backlog``, with no workstream link and
+        priority 0, so it is never claimable and survives the merge of the
+        branch that raised it. ``source`` must start with ``follow-up:``; it is
+        the filing job's provenance and the count of the job's existing
+        follow-up tasks is capped. The project must exist; the release, when
+        given, is used as-is.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await _json_body(request)
+        if err:
+            return err
+        project_id = _text_field(body, "project_id")
+        if not project_id:
+            return _bad_request("project_id is required")
+        title = _text_field(body, "title")
+        if not title:
+            return _bad_request("title is required")
+        source = _text_field(body, "source") or ""
+        if (not source.startswith(FOLLOW_UP_SOURCE_PREFIX)
+                or len(source) <= len(FOLLOW_UP_SOURCE_PREFIX)):
+            return _bad_request("source must be 'follow-up:<...>'")
+        # Validate the optional free-text/id fields as the other task endpoints
+        # do, so a non-string value is refused with a 400 rather than binding
+        # straight to sqlite and surfacing as a 500.
+        for key in ("description", "release_id"):
+            if key in body and body[key] is not None and not isinstance(body[key], str):
+                return _bad_request(f"{key} must be a string or null")
+        result = store.file_follow_up_task(
+            title=title,
+            source=source,
+            project_id=project_id,
+            description=(body.get("description") or None),
+            release_id=(body.get("release_id") or None),
+        )
+        status = result["status"]
+        if status == "project_not_found":
+            return JSONResponse({"ok": False, "error": "Project not found"}, status_code=404)
+        if status == "cap_reached":
+            return JSONResponse(
+                {"ok": False,
+                 "error": f"This job has already filed its maximum of {result['cap']} "
+                          "follow-up tasks",
+                 "count": result["count"], "cap": result["cap"]},
+                status_code=429,
+            )
+        if status == "db_error":
+            return _bad_request(f"write rejected by the database: {result['error']}")
+        return JSONResponse({"ok": True, "task": result["task"]}, status_code=201)
+
     routes = [
         Route("/api/health", health),
         Route("/v1/projects", list_projects, methods=["GET"]),
@@ -593,6 +989,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/projects/{id}/tasks", project_tasks, methods=["GET"]),
         Route("/v1/releases", list_releases, methods=["GET"]),
         Route("/v1/releases", create_release, methods=["POST"]),
+        Route("/v1/releases/lookup", lookup_release, methods=["GET"]),
+        Route("/v1/releases/ensure", ensure_release, methods=["POST"]),
         Route("/v1/releases/{id}", get_release, methods=["GET"]),
         Route("/v1/releases/{id}", update_release, methods=["PUT"]),
         Route("/v1/releases/{id}", delete_release, methods=["DELETE"]),
@@ -604,6 +1002,11 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/tasks/{id}", delete_task, methods=["DELETE"]),
         Route("/v1/workstreams/{id}/tasks", workstream_tasks, methods=["GET"]),
         Route("/v1/search/tasks", search_tasks, methods=["GET"]),
+        Route("/v1/claimable", claimable, methods=["GET"]),
+        Route("/v1/claim", claim, methods=["POST"]),
+        Route("/v1/close-out", close_out_pending, methods=["GET"]),
+        Route("/v1/close-out", close_out, methods=["POST"]),
+        Route("/v1/follow-up-tasks", file_follow_up_task, methods=["POST"]),
         Route("/v1/import", bulk_import, methods=["POST"]),
     ]
 

@@ -661,7 +661,7 @@ public class Repeated<T> extends Scope<T> {
 				if (isSubstantialForExtraction(child, minDepth)) {
 					StaticReference<?> ref = extracted.get(child);
 					if (ref == null) {
-						Class<?> type = child.promoteIfOverflows();
+						Class<?> type = child.getDeclarationType();
 						ref = new StaticReference<>(type,
 								"f_licm_" + extractIdx[0]++);
 						extracted.put(child, ref);

@@ -147,4 +147,28 @@ public interface ComputeContext<MEM> {
 	 * After calling this method, the context should not be used.
 	 */
 	void destroy();
+
+	/**
+	 * Returns whether {@link #destroy()} has begun. A kernel compiled under this
+	 * context dispatches through its resources, so a holder of such a kernel
+	 * consults this before reusing it.
+	 *
+	 * @return {@code true} once this context is being or has been destroyed
+	 */
+	default boolean isDestroyed() {
+		return false;
+	}
+
+	/**
+	 * Returns whether work can still run under this context: neither this context nor
+	 * the {@link #getDataContext() data context} whose resources its kernels dispatch
+	 * against has been destroyed. A value derived under this context, such as a compiled
+	 * kernel, is usable only while this holds, so a holder of one consults this before
+	 * reusing it.
+	 *
+	 * @return {@code false} once this context or its data context has been destroyed
+	 */
+	default boolean isLive() {
+		return !isDestroyed() && !getDataContext().isDestroyed();
+	}
 }

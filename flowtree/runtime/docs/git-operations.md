@@ -27,6 +27,7 @@ branch state, and clone repositories through a uniform interface.
    - [`cloneRepository`](#clonerepository)
    - [`repositorySlug`](#repositoryslug)
    - [`isSameRepository`](#issamerepository)
+   - [`repositoryHost`](#repositoryhost)
    - [`executeCommand`](#executecommand)
    - [`executeCommandWithOutput`](#executecommandwithoutput)
    - [`formatMessage`](#formatmessage)
@@ -372,6 +373,49 @@ boolean same = GitOperations.isSameRepository(
         "git@github.com:almostrealism/common.git",
         "https://github.com/almostrealism/common");
 // same == true — same repository, different schemes
+```
+
+---
+
+### `repositoryHost`
+
+```java
+public static String repositoryHost(String repoUrl)
+```
+
+Extracts the host of a repository URL, so a caller that will act on a
+particular service can reject URLs pointing elsewhere. Because
+[`repositorySlug`](#repositoryslug) deliberately drops the host, a caller
+that will query a service (for example the GitHub API) with the slug cannot
+tell from the slug alone whether the URL named that service — this method
+supplies the host to check.
+
+**Parameter:**
+
+| Parameter | Type     | Description |
+|-----------|----------|-------------|
+| `repoUrl` | `String` | The repository URL in SSH (`git@host:owner/repo.git`), HTTP(S), or `git://` form. May be `null`. |
+
+**Returns:** the host with its original case, or `null` when `repoUrl` is
+`null`, blank, or not a recognised repository URL.
+
+**Behavior:** The host is reported only for a URL that also parses as a
+repository — the same SSH, HTTP(S), and `git://` forms `repositorySlug`
+recognises — so an input that is not a repository URL yields `null`. A
+substring check against the raw URL is **not** a host check: it accepts a
+look-alike host such as `github.com.evil.example`. Comparing the returned
+host for exact equality does not. An optional `:port` in the authority is
+excluded from the host, so `https://github.com:443/owner/repo.git` reports
+`github.com` — the same host as the port-less form, which `repositorySlug`
+also accepts. A bracketed IPv6 literal host (`https://[2001:db8::1]/owner/repo.git`)
+is returned whole, brackets included.
+
+**Example:**
+
+```java
+String url = "https://github.com.evil.example/owner/repo.git";
+boolean isGitHub = "github.com".equalsIgnoreCase(GitOperations.repositoryHost(url));
+// isGitHub == false — the host is "github.com.evil.example", not "github.com"
 ```
 
 ---
@@ -996,11 +1040,13 @@ String branch = git.executeWithOutput("rev-parse", "--abbrev-ref", "HEAD").trim(
 ### Output Stream Handling
 
 All process output (stdout and stderr combined) is read through a
-`BufferedReader` in the private `readProcessOutput()` method. The method
-reads line by line and joins with newline characters.
+`BufferedReader` in the public static `GitOperations.readProcessOutput()`
+method. The method reads line by line and joins with newline characters. It
+uses no instance state, so it is exposed as a static helper that every command
+this class runs shares instead of duplicating the read loop.
 
 ```java
-private String readProcessOutput(Process process) throws IOException {
+public static String readProcessOutput(Process process) throws IOException {
     StringBuilder output = new StringBuilder();
     try (BufferedReader reader = new BufferedReader(
             new InputStreamReader(process.getInputStream()))) {
@@ -1096,13 +1142,16 @@ chain to apply.
 `prepareWorkingDirectory` / `handleGitOperations` lifecycle), while
 `GitOperations` provides the low-level command execution.
 
-`GitManagedJob` still has its own private `executeGit()` and
-`executeGitWithOutput()` methods that mirror the behavior of
-`GitOperations.execute()` and `GitOperations.executeWithOutput()`. These
-exist because `GitManagedJob` predates `GitOperations` and has not yet been
-fully refactored to delegate to it. Both implementations configure processes
-identically: same working directory, same SSH command, same identity
-injection.
+`GitManagedJob` still has its own package-private `executeGit()`,
+`executeGitWithOutput()`, and `executeCommandWithOutput()` methods, but they
+are now thin delegates to a `GitOperations` instance built per call through the
+package-private factory `GitManagedJob.gitOperations(String workingDirectory)`.
+That factory stamps the instance with the job's task id and git identity, so
+every repository the job drives — its own working directory, each dependent
+repository, and each clone target — runs git under the same identity. A fresh
+instance is built per call, so it always reflects the job's current
+configuration (same working directory, same SSH command, same identity
+injection via `GIT_AUTHOR_*`/`GIT_COMMITTER_*`).
 
 `FileStager` defines its own `GitOperations` interface (a functional interface
 with a single `execute` method) to decouple file staging from the concrete
@@ -1112,7 +1161,8 @@ implementation.
 ### Class Hierarchy Summary
 
 ```
-GitOperations              -- Standalone process executor (reusable)
+GitOperations              -- Standalone process executor (reusable); a job
+                              builds one per call via GitManagedJob.gitOperations
 GitManagedJob              -- Abstract job with git lifecycle
   +-- ClaudeCodeJob        -- Concrete job that runs Claude Code agent
 FileStager                 -- Stateless file evaluation utility

@@ -22,6 +22,7 @@ import io.flowtree.jobs.agent.PhaseConfigBundle;
 import java.util.function.Consumer;
 import io.flowtree.submission.SubmissionConfigResolver;
 import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkstreamConfig;
 
 /**
@@ -74,7 +75,7 @@ final class SlackSubmissionConfig {
                          WorkstreamConfig workstreamConfig,
                          SlackNotifier notifier,
                          Consumer<String> diagnostic) {
-        WorkstreamConfig.WorkspaceEntry wsEntry = null;
+        WorkspaceEntry wsEntry = null;
         if (workstreamConfig != null) {
             String wsId = workstream.getWorkspaceId();
             if (wsId != null && !wsId.isEmpty()) {

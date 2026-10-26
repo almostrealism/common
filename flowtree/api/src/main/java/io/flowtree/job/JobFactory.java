@@ -16,6 +16,7 @@
 
 package io.flowtree.job;
 
+import org.almostrealism.io.Console;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.io.OutputHandler;
 
@@ -115,6 +116,86 @@ public interface JobFactory {
      */
     String encode();
     
+    /**
+     * Reconstructs a {@link JobFactory} from its {@link #encode() encoded} form.
+     * The first {@link #ENTRY_SEPARATOR}-delimited token is the fully-qualified
+     * implementation class name, instantiated through its no-argument
+     * constructor; each subsequent {@code key:=value} pair is applied through
+     * {@link #set(String, String)}.
+     *
+     * <p>This is the inverse of {@link #encode()} and the single decoder for
+     * the wire format. The node cluster uses it to rebuild a task that arrives
+     * from a peer, and controller-side recovery uses it to rehydrate a persisted
+     * {@code SUBMITTED} job across a restart. The entry scan tolerates
+     * {@code ENTRY_SEPARATOR} sequences that fall inside a value (a leading
+     * {@code /} after the separator, or a {@code \}-escaped separator), matching
+     * what {@link #encode()} emits. Returns {@code null} when {@code data} is
+     * {@code null} or carries no {@link #ENTRY_SEPARATOR}, when the class
+     * cannot be found, instantiated, or cast to {@link JobFactory}, and when
+     * any entry fails to parse or apply (an entry without
+     * {@link #KEY_VALUE_SEPARATOR}, a dangling trailing separator, or a
+     * {@link #set(String, String)} that throws). A partially-configured factory
+     * is never returned: it would lack every entry after the failure point,
+     * and dispatching it would run a job missing part of its definition.</p>
+     *
+     * @param data the encoded factory string produced by {@link #encode()}
+     * @return the reconstructed factory, or {@code null} on failure
+     */
+    static JobFactory decode(String data) {
+        if (data == null) return null;
+        int index = data.indexOf(ENTRY_SEPARATOR);
+        if (index < 0) return null;
+        String className = data.substring(0, index);
+
+        JobFactory j;
+
+        try {
+            j = (JobFactory) Class.forName(className).newInstance();
+
+            boolean end = false;
+
+            while (!end) {
+                data = data.substring(index + ENTRY_SEPARATOR.length());
+                index = data.indexOf(ENTRY_SEPARATOR);
+
+                // index < 0 means this is the last entry; re-searching would
+                // restart from the beginning and never terminate.
+                while (index >= 0 && (data.charAt(index + ENTRY_SEPARATOR.length()) == '/'
+                        || index > 0 && data.charAt(index - 1) == '\\')) {
+                    index = data.indexOf(ENTRY_SEPARATOR, index + 1);
+                }
+
+                String s;
+
+                if (index <= 0) {
+                    s = data;
+                    end = true;
+                } else {
+                    s = data.substring(0, index);
+                }
+
+                int k = s.indexOf(KEY_VALUE_SEPARATOR);
+                String key = s.substring(0, k);
+                String value = s.substring(k + KEY_VALUE_SEPARATOR.length());
+
+                j.set(key, value);
+            }
+        } catch (ClassNotFoundException cnf) {
+            Console.root().warn("JobFactory: class not found: " + className, cnf);
+            return null;
+        } catch (ClassCastException cce) {
+            Console.root().warn("JobFactory: " + className + " is not a JobFactory", cce);
+            return null;
+        } catch (Exception e) {
+            // A factory missing the entries after the failure point (prompt,
+            // branch, ...) must never be dispatched, so discard it entirely.
+            Console.root().warn("JobFactory: failed to decode factory " + className, e);
+            return null;
+        }
+
+        return j;
+    }
+
     /**
      * Returns a human-readable name for the task represented by this factory.
      *

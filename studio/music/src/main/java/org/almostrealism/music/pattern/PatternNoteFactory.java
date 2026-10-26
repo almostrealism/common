@@ -99,10 +99,16 @@ public class PatternNoteFactory {
 	 * @param params  the parameter set
 	 * @param voicing the signal path voicing
 	 * @param blend   whether to apply layer envelope blending
-	 * @param choices the audio selection values, one per layer
+	 * @param choices the audio selection values, exactly one per layer
 	 * @return the created pattern note
+	 * @throws IllegalArgumentException if {@code choices} does not supply exactly
+	 *         one selection per layer ({@link #getLayerCount()})
 	 */
 	public PatternNote apply(ParameterSet params, ChannelInfo.Voicing voicing, boolean blend, double... choices) {
+		if (choices.length != getLayerCount()) {
+			throw new IllegalArgumentException("Exactly one selection is required per layer");
+		}
+
 		List<PatternNoteAudio> layers = new ArrayList<>();
 
 		for (int i = 0; i < getLayerCount(); i++) {
@@ -110,9 +116,6 @@ public class PatternNoteFactory {
 
 			if (blend) {
 				l = layerEnvelopes.getEnvelope(i).apply(params, voicing, l);
-			} else {
-//				l = volumeEnvelope.apply(params, l);
-//				l = filterEnvelope.apply(params, l);
 			}
 
 			layers.add(l);

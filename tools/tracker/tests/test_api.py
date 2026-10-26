@@ -82,7 +82,7 @@ class TestProjects(unittest.TestCase):
         self.assertEqual(resp.json()["projects"], [])
 
     def test_create_and_get(self):
-        resp = self.client.post("/v1/projects", json={"name": "Rings"})
+        resp = self.client.post("/v1/projects", json={"name": "Rings", "workspace_id": "W1"})
         self.assertEqual(resp.status_code, 201)
         body = resp.json()
         self.assertTrue(body["ok"])
@@ -97,7 +97,7 @@ class TestProjects(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
 
     def test_update_project(self):
-        create_resp = self.client.post("/v1/projects", json={"name": "Old"})
+        create_resp = self.client.post("/v1/projects", json={"name": "Old", "workspace_id": "W1"})
         project_id = create_resp.json()["project"]["id"]
 
         resp = self.client.put(f"/v1/projects/{project_id}", json={"name": "New"})
@@ -105,7 +105,7 @@ class TestProjects(unittest.TestCase):
         self.assertEqual(resp.json()["project"]["name"], "New")
 
     def test_delete_project(self):
-        create_resp = self.client.post("/v1/projects", json={"name": "ToDelete"})
+        create_resp = self.client.post("/v1/projects", json={"name": "ToDelete", "workspace_id": "W1"})
         project_id = create_resp.json()["project"]["id"]
 
         resp = self.client.delete(f"/v1/projects/{project_id}")
@@ -124,7 +124,7 @@ class TestReleases(unittest.TestCase):
 
     def setUp(self):
         self.client, self.store, self.db_path = _make_client()
-        proj_resp = self.client.post("/v1/projects", json={"name": "Rings"})
+        proj_resp = self.client.post("/v1/projects", json={"name": "Rings", "workspace_id": "W1"})
         self.project_id = proj_resp.json()["project"]["id"]
 
     def tearDown(self):
@@ -172,7 +172,7 @@ class TestTasks(unittest.TestCase):
 
     def setUp(self):
         self.client, self.store, self.db_path = _make_client()
-        proj_resp = self.client.post("/v1/projects", json={"name": "Rings"})
+        proj_resp = self.client.post("/v1/projects", json={"name": "Rings", "workspace_id": "W1"})
         self.project_id = proj_resp.json()["project"]["id"]
 
     def tearDown(self):
@@ -412,7 +412,7 @@ class TestProjectSummary(unittest.TestCase):
 
     def setUp(self):
         self.client, self.store, self.db_path = _make_client()
-        proj_resp = self.client.post("/v1/projects", json={"name": "Rings"})
+        proj_resp = self.client.post("/v1/projects", json={"name": "Rings", "workspace_id": "W1"})
         self.project_id = proj_resp.json()["project"]["id"]
         rel_resp = self.client.post(
             "/v1/releases", json={"name": "0.38", "project_id": self.project_id}
@@ -520,7 +520,7 @@ class TestBulkImport(unittest.TestCase):
         resp = self.client.post(
             "/v1/import",
             json={
-                "projects": [{"id": project_id, "name": "Imported Project"}],
+                "projects": [{"id": project_id, "name": "Imported Project", "workspace_id": "W1"}],
                 "releases": [],
                 "tasks": [
                     {
@@ -542,7 +542,7 @@ class TestBulkImport(unittest.TestCase):
         import uuid
         project_id = str(uuid.uuid4())
         payload = {
-            "projects": [{"id": project_id, "name": "Idempotent"}],
+            "projects": [{"id": project_id, "name": "Idempotent", "workspace_id": "W1"}],
             "releases": [],
             "tasks": [],
         }

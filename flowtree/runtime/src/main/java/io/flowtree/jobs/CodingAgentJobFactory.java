@@ -27,6 +27,7 @@ import io.flowtree.workstream.Workstream;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.KeyUtils;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -121,6 +122,16 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean enforceOrganizationalPlacement = false;
 
     /**
+     * When {@code true} (the default), jobs created by this factory activate the
+     * {@link ObjectOrientedDesignRule} (only while review is also enabled). The
+     * risk gate keeps the review cheap by spending a session only on changed
+     * classes whose design the gate flags. Switch it off per job via
+     * {@code objectOrientedReviewEnabled=false} on the submit request, or by
+     * calling {@link #setObjectOrientedReviewEnabled(boolean)} directly.
+     */
+    private boolean objectOrientedReviewEnabled = true;
+
+    /**
      * When {@code true}, jobs created by this factory launch the agent
      * subprocess inside a tmux session (a real controlling tty) instead of a
      * direct child process. Defaults to {@code false}; the runner additionally
@@ -132,8 +143,8 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     /**
      * Job-wide wall-clock ceiling in hours, or {@code null} when the job
      * inherits {@link RestartGovernor#DEFAULT_MAX_WALL_CLOCK}. Zero disables
-     * the ceiling. Resolved from the per-job value and the workstream default
-     * by {@link #resolveMaxWallClockHours}.
+     * the ceiling. Seeded from the workstream default by
+     * {@link Workstream#newJobFactory(String, String)}; a per-job value overrides it.
      */
     private Integer maxWallClockHours = null;
 
@@ -196,29 +207,19 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private int maxReviewPasses = CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES;
 
     /**
-     * Shell command run after the agent's primary work to verify the result.
-     * Propagated to jobs via {@link CodingAgentJob#setPostCompletionCommand(String)}.
-     * Empty or {@code null} disables the post-completion check.
+     * Post-completion verification command propagated to jobs created by this
+     * factory. The same type backs {@link CodingAgentJob}; constructed with
+     * {@link #set(String, String)} as its property sink so every mutation
+     * travels to the worker.
      */
-    private String postCompletionCommand;
+    private final PostCompletionConfig postCompletion = new PostCompletionConfig(this::set);
 
     /**
-     * Working directory for the post-completion command.
-     * {@code null} means the job's working directory is used.
+     * Change requirement propagated to jobs created by this factory. The same
+     * type backs {@link CodingAgentJob}; constructed with {@link #set(String, String)}
+     * as its property sink so every mutation travels to the worker.
      */
-    private String postCompletionWorkingDir;
-
-    /**
-     * Timeout in seconds for the post-completion command.
-     * Defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}.
-     */
-    private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
-
-    /**
-     * Per-job cap on post-completion correction sessions propagated to jobs created by this
-     * factory. Defaults to {@link CodingAgentJob#DEFAULT_MAX_POST_COMPLETION_PASSES}.
-     */
-    private int maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
+    private final EnforceChangesConfig enforceChanges = new EnforceChangesConfig(this::set);
 
     /**
      * Runner and per-phase model configuration propagated to jobs created by
@@ -327,6 +328,21 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setDescription(String description) {
         this.description = description;
         set("desc", GitManagedJob.base64Encode(description));
+    }
+
+    /**
+     * Returns the short label used for this factory's jobs in submission
+     * notifications: the description when one is set, otherwise the prompt
+     * itself when it is at most 80 characters, otherwise its character count.
+     *
+     * @return the display summary; never {@code null}
+     */
+    public String getDisplaySummary() {
+        String desc = getDescription();
+        if (desc != null && !desc.isEmpty()) return desc;
+        if (getPrompts().isEmpty()) return "(no prompt)";
+        String prompt = String.join("\n", getPrompts());
+        return prompt.length() <= 80 ? prompt : String.format("%,d character prompt", prompt.length());
     }
 
     /**
@@ -606,6 +622,35 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Grants this factory's jobs the agent-runtime permission-prompt bypass,
+     * so their sessions may write the files the runtime reserves for a human
+     * to approve — its own configuration and hooks, environment files,
+     * credentials.
+     *
+     * <p>Set by the controller at submission time from the workstream's own
+     * policy ({@link io.flowtree.workstream.Workstream#permitsAgentPermissionBypass(String)}),
+     * never by the agent. Stored in the inherited {@link AbstractJobFactory}
+     * properties map for the same reason as {@code dispatchCapable}: a plain
+     * field is dropped on the wire round-trip that ships a factory to a remote
+     * agent node.</p>
+     *
+     * @param bypassAgentPermissionPrompts {@code true} to grant the bypass
+     */
+    public void setBypassAgentPermissionPrompts(boolean bypassAgentPermissionPrompts) {
+        set("bypassAgentPermissionPrompts", String.valueOf(bypassAgentPermissionPrompts));
+    }
+
+    /**
+     * Returns whether this factory's jobs carry the permission-prompt bypass.
+     *
+     * @return {@code true} when the bypass should be granted
+     * @see #setBypassAgentPermissionPrompts(boolean)
+     */
+    public boolean isBypassAgentPermissionPrompts() {
+        return "true".equals(get("bypassAgentPermissionPrompts"));
+    }
+
+    /**
      * Returns the pushed-tools configuration JSON. May be {@code null}.
      */
     public String getPushedToolsConfig() {
@@ -643,17 +688,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
-     * Returns the serialized agent-environment JSON, or {@code null} when none
-     * was set. Used by {@link CodingAgentJobConfigurer} to propagate the
-     * environment onto a created job.
-     *
-     * @return the agent-environment JSON object string, or {@code null}
-     */
-    String getAgentEnvJson() {
-        return agentEnvJson;
-    }
-
-    /**
      * Returns the planning document path for jobs.
      */
     public String getPlanningDocument() {
@@ -687,22 +721,43 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
-     * Returns whether enforcement mode is enabled for jobs.
-     * When enabled, jobs will loop until code changes are produced.
+     * Returns whether jobs created by this factory must produce a change.
+     * A job that leaves none is re-run up to {@link #getMaxEnforceChangesRetries()}
+     * times, and is reported DEGRADED if it still commits nothing.
      */
     public boolean isEnforceChanges() {
-        return "true".equals(get("enforceChanges"));
+        return enforceChanges.isEnabled();
     }
 
     /**
-     * Sets whether enforcement mode is enabled for jobs.
-     * When enabled, the agent session restarts with escalating warnings
-     * if it finishes without producing any code changes.
+     * Sets whether jobs created by this factory must produce a change.
      *
-     * @param enforceChanges true to require code changes for completion
+     * @param enforceChanges true to require a change for completion
      */
     public void setEnforceChanges(boolean enforceChanges) {
-        set("enforceChanges", String.valueOf(enforceChanges));
+        this.enforceChanges.setEnabled(enforceChanges);
+    }
+
+    /**
+     * Returns the whole-job cap on enforce-changes re-runs for jobs created by
+     * this factory.
+     *
+     * @return the re-run cap; defaults to {@link CodingAgentJob#DEFAULT_MAX_RULE_RETRIES}
+     */
+    public int getMaxEnforceChangesRetries() {
+        return enforceChanges.getMaxRetries();
+    }
+
+    /**
+     * Sets the whole-job cap on enforce-changes re-runs for jobs created by this
+     * factory. Once the cap is spent with nothing committed, the job ends DEGRADED.
+     *
+     * @param maxEnforceChangesRetries the cap; 0 means report an empty result
+     *                                 without re-running
+     * @throws IllegalArgumentException if the value is negative
+     */
+    public void setMaxEnforceChangesRetries(int maxEnforceChangesRetries) {
+        enforceChanges.setMaxRetries(maxEnforceChangesRetries);
     }
 
     /**
@@ -799,6 +854,27 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns whether jobs created by this factory activate the
+     * {@link ObjectOrientedDesignRule}.
+     *
+     * @return {@code true} if object-oriented design review is enabled; {@code false} by default
+     */
+    public boolean isObjectOrientedReviewEnabled() {
+        return objectOrientedReviewEnabled;
+    }
+
+    /**
+     * Sets whether jobs created by this factory activate the
+     * {@link ObjectOrientedDesignRule}.
+     *
+     * @param objectOrientedReviewEnabled {@code true} to enable object-oriented design review
+     */
+    public void setObjectOrientedReviewEnabled(boolean objectOrientedReviewEnabled) {
+        this.objectOrientedReviewEnabled = objectOrientedReviewEnabled;
+        set("objectOrientedReviewEnabled", String.valueOf(objectOrientedReviewEnabled));
+    }
+
+    /**
      * Returns whether jobs created by this factory launch the agent subprocess
      * inside a tmux session.
      *
@@ -841,63 +917,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             set("maxWallClockHours", "");
         } else {
             set("maxWallClockHours", String.valueOf(maxWallClockHours.intValue()));
-        }
-    }
-
-    /**
-     * Resolves the per-job wall-clock ceiling against the workstream default
-     * and applies the result to the factory.
-     *
-     * <p>Same precedence as {@link #resolveUseTmux}: an explicit per-job value
-     * wins, otherwise the workstream's
-     * {@link Workstream#getMaxWallClockHours()} applies, otherwise the job
-     * inherits {@link RestartGovernor#DEFAULT_MAX_WALL_CLOCK}. Zero is a
-     * meaningful value at either level and disables the ceiling, so it is
-     * carried rather than treated as absent.</p>
-     *
-     * @param factory        the factory to mutate; must not be {@code null}
-     * @param hasPerJobValue whether the per-job field was present on the body
-     * @param perJobHours    the per-job value (only when {@code hasPerJobValue})
-     * @param workstream     the workstream supplying the default; may be {@code null}
-     */
-    public static void resolveMaxWallClockHours(CodingAgentJobFactory factory,
-                                                boolean hasPerJobValue, int perJobHours,
-                                                Workstream workstream) {
-        if (factory == null) return;
-        if (hasPerJobValue) {
-            factory.setMaxWallClockHours(perJobHours);
-        } else if (workstream != null && workstream.getMaxWallClockHours() != null) {
-            factory.setMaxWallClockHours(workstream.getMaxWallClockHours());
-        }
-    }
-
-    /**
-     * Resolves the per-job {@code use_tmux} flag against the workstream
-     * default and applies the result to the factory. An explicit per-job
-     * value (with the body field actually present) always wins;
-     * otherwise the workstream's
-     * {@link Workstream#isUseTmux() defaultUseTmux} applies. A
-     * {@code null} workstream is treated as no default (false). Extracted
-     * from {@code FlowTreeApiEndpoint.handleSubmit} so the
-     * workstream-default rule is unit-testable; the caller is responsible
-     * for extracting the per-job flag from the body so the
-     * schema-alignment scanner can see the body consumption. The
-     * {@code AR_AGENT_USE_TMUX} env var is an independent enable
-     * unaffected by this helper.
-     *
-     * @param factory        the factory to mutate; must not be {@code null}
-     * @param hasPerJobFlag  whether the per-job field was present on the body
-     * @param perJobUseTmux  the per-job value (only when {@code hasPerJobFlag})
-     * @param workstream     the workstream supplying the default; may be {@code null}
-     */
-    public static void resolveUseTmux(CodingAgentJobFactory factory,
-                                      boolean hasPerJobFlag, boolean perJobUseTmux,
-                                      Workstream workstream) {
-        if (factory == null) return;
-        if (hasPerJobFlag) {
-            factory.setUseTmux(perJobUseTmux);
-        } else if (workstream != null && workstream.isUseTmux()) {
-            factory.setUseTmux(true);
         }
     }
 
@@ -1061,31 +1080,17 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      *
      * @return the command string, or {@code null}/empty if disabled
      */
-    public String getPostCompletionCommand() {
-        return postCompletionCommand;
-    }
+    public String getPostCompletionCommand() { return postCompletion.getCommand(); }
 
     /**
      * Sets the post-completion command for jobs created by this factory.
-     *
-     * <p>When the command is cleared (set to {@code null} or empty), the
-     * dependent {@code postCmdDir} and {@code postCmdTimeout} property keys
-     * are also cleared so that a serialize/deserialize round-trip cannot
-     * silently re-enable the feature with stale dependent values.</p>
+     * Clearing it also clears the working directory and timeout, so a
+     * round-trip cannot re-enable the check with stale dependent values.
      *
      * @param postCompletionCommand the shell command, or {@code null}/empty to disable
      */
     public void setPostCompletionCommand(String postCompletionCommand) {
-        this.postCompletionCommand = postCompletionCommand;
-        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
-            set("postCmd", GitManagedJob.base64Encode(postCompletionCommand));
-        } else {
-            set("postCmd", null);
-            set("postCmdDir", null);
-            set("postCmdTimeout", null);
-            this.postCompletionWorkingDir = null;
-            this.postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
-        }
+        postCompletion.setCommand(postCompletionCommand);
     }
 
     /**
@@ -1093,26 +1098,15 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      *
      * @return the directory path, or {@code null} to use the job's working directory
      */
-    public String getPostCompletionWorkingDir() {
-        return postCompletionWorkingDir;
-    }
+    public String getPostCompletionWorkingDir() { return postCompletion.getWorkingDir(); }
 
     /**
      * Sets the working directory for the post-completion command.
      *
-     * <p>Passing {@code null} clears the corresponding {@code postCmdDir}
-     * property key so that a serialize/deserialize round-trip does not
-     * silently re-apply a previously-set working directory.</p>
-     *
      * @param postCompletionWorkingDir the path, or {@code null} for the job's working dir
      */
     public void setPostCompletionWorkingDir(String postCompletionWorkingDir) {
-        this.postCompletionWorkingDir = postCompletionWorkingDir;
-        if (postCompletionWorkingDir != null) {
-            set("postCmdDir", GitManagedJob.base64Encode(postCompletionWorkingDir));
-        } else {
-            set("postCmdDir", null);
-        }
+        postCompletion.setWorkingDir(postCompletionWorkingDir);
     }
 
     /**
@@ -1120,9 +1114,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      *
      * @return timeout seconds; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}
      */
-    public int getPostCompletionTimeoutSeconds() {
-        return postCompletionTimeoutSeconds;
-    }
+    public int getPostCompletionTimeoutSeconds() { return postCompletion.getTimeoutSeconds(); }
 
     /**
      * Sets the timeout in seconds for the post-completion command.
@@ -1130,8 +1122,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @param postCompletionTimeoutSeconds timeout in seconds (must be positive)
      */
     public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) {
-        this.postCompletionTimeoutSeconds = postCompletionTimeoutSeconds;
-        set("postCmdTimeout", String.valueOf(postCompletionTimeoutSeconds));
+        postCompletion.setTimeoutSeconds(postCompletionTimeoutSeconds);
     }
 
     /**
@@ -1140,9 +1131,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      *
      * @return the pass cap; defaults to {@link CodingAgentJob#DEFAULT_MAX_POST_COMPLETION_PASSES}
      */
-    public int getMaxPostCompletionPasses() {
-        return maxPostCompletionPasses;
-    }
+    public int getMaxPostCompletionPasses() { return postCompletion.getMaxPasses(); }
 
     /**
      * Sets the maximum number of post-completion correction sessions for jobs created
@@ -1153,12 +1142,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @throws IllegalArgumentException if the value is not positive
      */
     public void setMaxPostCompletionPasses(int maxPostCompletionPasses) {
-        if (maxPostCompletionPasses <= 0) {
-            throw new IllegalArgumentException(
-                    "maxPostCompletionPasses must be positive, got: " + maxPostCompletionPasses);
-        }
-        this.maxPostCompletionPasses = maxPostCompletionPasses;
-        set("maxPostCmdPasses", String.valueOf(maxPostCompletionPasses));
+        postCompletion.setMaxPasses(maxPostCompletionPasses);
     }
 
     /**
@@ -1285,6 +1269,26 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns whether an auto-created pull request should be opened as a draft.
+     * A draft pull request means the branch carries only a plan awaiting the
+     * owner's approval; marking it ready for review is what approves it. Has no
+     * effect unless {@link #isAutoCreatePr()} is also set.
+     */
+    public boolean isCreatePrAsDraft() {
+        return "true".equals(get("createPrAsDraft"));
+    }
+
+    /**
+     * Sets whether an auto-created pull request is opened as a draft rather
+     * than ready for review.
+     *
+     * @param createPrAsDraft true to open the auto-created PR as a draft
+     */
+    public void setCreatePrAsDraft(boolean createPrAsDraft) {
+        set("createPrAsDraft", String.valueOf(createPrAsDraft));
+    }
+
+    /**
      * Returns the Python requirements for the managed venv.
      *
      * @return pip requirements.txt content, or null
@@ -1356,8 +1360,74 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         if (index >= p.size()) return null;
 
         CodingAgentJob job = new CodingAgentJob(getTaskId(), p.get(index++));
-        CodingAgentJobConfigurer.applyConfiguration(this, job);
+        configure(job);
         return job;
+    }
+
+    /**
+     * Applies this factory's configuration to a freshly created {@code job}:
+     * tools, budget, git coordinates, enforcement flags, post-completion
+     * command, dependent repos, required labels, and the per-phase config
+     * bundle, which is the single source of runner, model, effort, and provider.
+     *
+     * @param job the job to populate
+     */
+    private void configure(CodingAgentJob job) {
+        job.setAllowedTools(allowedTools);
+        job.setWorkingDirectory(getWorkingDirectory());
+        job.setMaxTurns(maxTurns);
+        job.setMaxBudgetUsd(maxBudgetUsd);
+        if (getDescription() != null) job.setDescription(getDescription());
+
+        if (getRepoUrl() != null) job.setRepoUrl(getRepoUrl());
+        if (getDefaultWorkspacePath() != null) job.setDefaultWorkspacePath(getDefaultWorkspacePath());
+        if (getTargetBranch() != null) {
+            job.setTargetBranch(getTargetBranch());
+            job.setPushToOrigin(isPushToOrigin());
+        }
+        if (getBaseBranch() != null) job.setBaseBranch(getBaseBranch());
+        if (getGitUserName() != null) job.setGitUserName(getGitUserName());
+        if (getGitUserEmail() != null) job.setGitUserEmail(getGitUserEmail());
+        if (getWorkstreamUrl() != null) job.setWorkstreamUrl(getWorkstreamUrl());
+
+        if (arManagerUrl != null) job.setArManagerUrl(arManagerUrl);
+        if (arManagerToken != null) job.setArManagerToken(arManagerToken);
+        job.setDispatchCapable(isDispatchCapable());
+        job.setBypassAgentPermissionPrompts(isBypassAgentPermissionPrompts());
+        if (pushedToolsConfig != null) {
+            job.setPushedToolsConfig(pushedToolsConfig);
+        } else {
+            warn("no pushedToolsConfig to propagate to " + job.getTaskId());
+        }
+        if (agentEnvJson != null) job.setAgentEnv(JsonFieldExtractor.parseStringObject(agentEnvJson));
+        if (planningDocument != null) job.setPlanningDocument(planningDocument);
+
+        job.setProtectTestFiles(isProtectTestFiles());
+        enforceChanges.applyTo(job.enforceChanges());
+        job.setDeduplicationMode(deduplicationMode);
+        job.setMaxDeduplicationPasses(maxDeduplicationPasses);
+        job.setEnforceMavenDependencies(enforceMavenDependencies);
+        job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
+        job.setObjectOrientedReviewEnabled(objectOrientedReviewEnabled);
+        job.setUseTmux(useTmux);
+        if (maxWallClockHours != null) {
+            job.restartGovernor().setMaxWallClock(Duration.ofHours(maxWallClockHours.intValue()));
+        }
+        job.setReviewEnabled(reviewEnabled);
+        job.setMaxReviewPasses(maxReviewPasses);
+        job.setRetrospectiveEnabled(retrospectiveEnabled);
+        job.setFalsificationEnabled(falsificationEnabled);
+        job.setCollaborative(collaborative);
+        job.setSensitiveFileProtectionEnabled(sensitiveFileProtectionEnabled);
+        job.setSensitiveFileBypassSignature(sensitiveFileBypassSignature);
+        postCompletion.applyTo(job.postCompletion());
+
+        if (getPythonRequirements() != null) job.setPythonRequirements(getPythonRequirements());
+        List<String> depRepos = getDependentRepos();
+        if (depRepos != null) job.setDependentRepos(depRepos);
+        getRequiredLabels().forEach(job::setRequiredLabel);
+
+        if (!getPhaseConfigBundle().isEmpty()) job.setPhaseConfigBundle(getPhaseConfigBundle());
     }
 
     /**
@@ -1424,8 +1494,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             case "planDoc":
                 this.planningDocument = GitManagedJob.base64Decode(value);
                 break;
-            case "enforceChanges":
-                break;
             case "runner":
                 phaseRunners.applyLegacyRunner(value);
                 break;
@@ -1437,7 +1505,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 break;
             case PhaseRunnerConfig.PHASE_CONFIG_BUNDLE_KEY:
                 phaseRunners.applyPhaseConfigBundle(
-                        CodingAgentJobCodec.decodePhaseConfigBundle(value));
+                        PhaseConfigBundle.fromWire(value));
                 break;
             default:
                 setEnforcementFlag(key, value);
@@ -1461,7 +1529,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 this.deduplicationMode = value;
                 return;
             case "maxDedupPasses":
-                this.maxDeduplicationPasses = CodingAgentJobCodec.parsePositiveOrDefault(
+                this.maxDeduplicationPasses = WireConfig.parsePositiveOrDefault(
                         value, CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES);
                 return;
             case "enforceMavenDeps":
@@ -1469,6 +1537,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 return;
             case "enforceOrgPlacement":
                 this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                return;
+            case "objectOrientedReviewEnabled":
+                this.objectOrientedReviewEnabled = Boolean.parseBoolean(value);
                 return;
             case "useTmux":
                 this.useTmux = Boolean.parseBoolean(value);
@@ -1496,26 +1567,16 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 this.sensitiveFileBypassSignature = GitManagedJob.base64Decode(value);
                 return;
             case "maxReviewPasses":
-                this.maxReviewPasses = CodingAgentJobCodec.parsePositiveOrDefault(
+                this.maxReviewPasses = WireConfig.parsePositiveOrDefault(
                         value, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES);
                 return;
-            case "postCmd":
-                this.postCompletionCommand = GitManagedJob.base64Decode(value);
-                return;
-            case "postCmdDir":
-                this.postCompletionWorkingDir = GitManagedJob.base64Decode(value);
-                return;
-            case "postCmdTimeout":
-                this.postCompletionTimeoutSeconds = (value == null)
-                        ? PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS
-                        : Integer.parseInt(value);
-                return;
-            case "maxPostCmdPasses":
-                this.maxPostCompletionPasses = CodingAgentJobCodec.parsePositiveOrDefault(
-                        value, CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES);
-                return;
             default:
-                // Unknown key; already stored in properties map by AbstractJobFactory.set().
+                // Post-completion and change-requirement keys are decoded by their
+                // owners; any other key is already stored in the properties map by
+                // AbstractJobFactory.set().
+                if (!enforceChanges.applySetting(key, value)) {
+                    postCompletion.applySetting(key, value);
+                }
         }
     }
 
