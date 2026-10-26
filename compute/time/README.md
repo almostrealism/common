@@ -94,6 +94,51 @@ TemporalRunner runner = new TemporalRunner(setup, tick, iterations);
 TemporalRunner runner = new TemporalRunner(setup, tick, iterations, true);
 ```
 
+**`iter > 1` fuses ticks inside one kernel.** When the tick is a `Computation`, `iter > 1` (and
+`Temporal.buffer(n)`) builds a hardware `Loop`, which repeats the tick inside a single kernel with
+no barrier between iterations. That is correct only for element-local steps, where each element
+reads only its own previous value. For a globally coupled step (a matmul over the state, a
+population whose elements read each other) use `SimulationRunner`.
+
+#### SimulationRunner
+
+`SimulationRunner extends TemporalRunner` and **owns the simulation loop** for recurrent
+dynamical systems, as `ModelOptimizer` owns training and `DiffusionSampler` owns sampling. It
+always constructs its supertype with `iter = 1` and dispatches one compiled step per iteration of
+a host loop, so a globally coupled step gets a global synchronization every step.
+
+**What it adds:**
+- `run(long steps)` - the one simulation loop (no `.evaluate()` and no host read inside it)
+- `getStep()` / `time()` - a device-resident step counter (and `step * dt`) that the system's graph
+  can consume; reset and advanced by compiled operations, never written by the host
+- `addInput(interval, operation)` - a compiled operation dispatched before every `interval`-th step
+- `addBoundaryListener(interval, listener)` - the one host hook in the loop, for closed loops
+- `record(producer, interval, capacity)` - a device-resident recording; overflow fails before the run
+- `reset()` - back to the initial condition without recompiling
+
+**The step contract:** every top-level operation of the system's flattened tick is dispatched on
+its own, and each boundary between them is a global synchronization. A coupled update writes a
+next-state collection and copies it back in a later operation of the same step.
+
+```java
+Temporal system = () -> {
+    OperationList tick = new OperationList("Oscillators");
+    tick.add(a(cp(next), matmul(cp(propagator), cp(state))));  // coupled: next-state buffer
+    tick.add(a(cp(state), cp(next)));                           // copy back: later operation
+    return tick;
+};
+
+SimulationRunner runner = new SimulationRunner(system, dt);
+SimulationRunner.Recording positions = runner.record(cp(state), 100, 100);
+runner.run(10000);
+PackedCollection samples = positions.getBuffer();  // read after run returns
+runner.destroy();
+```
+
+The inherited `get()`, `getContinue()` and `tick()` all run one step through `run(1)`, so the
+counter, schedules and recordings stay consistent however the runner is driven. See
+[docs/internals/simulation-loop-examples.md](../../docs/internals/simulation-loop-examples.md).
+
 ### Time-Series Data
 
 #### TemporalScalar
