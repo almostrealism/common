@@ -60,6 +60,19 @@ public class Less extends Comparison {
 
 	@Override
 	protected boolean compare(double left, double right) {
+		return holds(left, right, orEqual);
+	}
+
+	/**
+	 * Evaluates this comparison on two numeric values without constructing a node, so that
+	 * {@link #of(Expression, Expression, boolean)} can fold constant operands.
+	 *
+	 * @param left    the left value
+	 * @param right   the right value
+	 * @param orEqual {@code true} for {@code <=}, {@code false} for {@code <}
+	 * @return whether {@code left < right}, or {@code left <= right} when {@code orEqual}
+	 */
+	private static boolean holds(double left, double right, boolean orEqual) {
 		return orEqual ? left <= right : left < right;
 	}
 
@@ -101,6 +114,7 @@ public class Less extends Comparison {
 	 * @return a boolean constant if both operands are constant, otherwise a {@link Less}
 	 */
 	public static Expression<Boolean> of(Expression<?> left, Expression<?> right, boolean orEqual) {
-		return new Less(left, right, orEqual).foldConstantOperands();
+		return Comparison.of(left, right, (l, r) -> holds(l, r, orEqual),
+				() -> new Less(left, right, orEqual));
 	}
 }

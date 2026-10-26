@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -97,26 +98,51 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	}
 
 	/**
-	 * Folds this comparison to a {@link BooleanConstant} when both of its operands are
-	 * compile-time constants, applying this comparison's own {@link #compare(double, double)}
-	 * semantics; otherwise returns this comparison unchanged.
+	 * A comparison of two {@code double} values, applied by {@link #of} to fold constant
+	 * operands without constructing a comparison node.
+	 */
+	@FunctionalInterface
+	protected interface DoubleComparison {
+		/**
+		 * Applies this comparison to two operand values.
+		 *
+		 * @param left  the left operand value
+		 * @param right the right operand value
+		 * @return {@code true} if the comparison holds, {@code false} otherwise
+		 */
+		boolean holds(double left, double right);
+	}
+
+	/**
+	 * Creates a relational comparison, folding to a {@link BooleanConstant} when both operands
+	 * are compile-time constants and constructing a node otherwise. When the operands are
+	 * constant no node is built: {@code comparison} is applied directly to their values, which
+	 * keeps the constant-folding decision on the type it concerns while avoiding the cost of
+	 * constructing (and immediately discarding) a comparison node — a path exercised millions
+	 * of times during kernel compilation through {@link ExpressionArithmetic#greaterThan} and
+	 * {@link ExpressionArithmetic#lessThan}.
 	 *
 	 * <p>Invoked by the {@code of} factories of the relational subclasses (such as
-	 * {@link Less} and {@link Greater}) on the node they have just constructed, so that the
-	 * constant-folding decision lives on the type it concerns rather than being copied into
-	 * each factory.</p>
+	 * {@link Less} and {@link Greater}), passing their own operator as {@code comparison} and
+	 * their constructor as {@code node}.</p>
 	 *
-	 * @return a {@link BooleanConstant} when both operands are constant, otherwise {@code this}
+	 * @param left       the left operand
+	 * @param right      the right operand
+	 * @param comparison the operator applied when both operands are constant
+	 * @param node       builds the comparison node when folding does not apply
+	 * @return a {@link BooleanConstant} when both operands are constant, otherwise {@code node}
 	 */
-	protected Expression<Boolean> foldConstantOperands() {
-		OptionalDouble left = getLeft().doubleValue();
-		OptionalDouble right = getRight().doubleValue();
+	protected static Expression<Boolean> of(Expression<?> left, Expression<?> right,
+											DoubleComparison comparison,
+											Supplier<? extends Expression<Boolean>> node) {
+		OptionalDouble ld = left.doubleValue();
+		OptionalDouble rd = right.doubleValue();
 
-		if (left.isPresent() && right.isPresent()) {
-			return new BooleanConstant(compare(left.getAsDouble(), right.getAsDouble()));
+		if (ld.isPresent() && rd.isPresent()) {
+			return new BooleanConstant(comparison.holds(ld.getAsDouble(), rd.getAsDouble()));
 		}
 
-		return this;
+		return node.get();
 	}
 
 	/**
