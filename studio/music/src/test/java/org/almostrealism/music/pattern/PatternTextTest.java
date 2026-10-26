@@ -238,6 +238,56 @@ public class PatternTextTest extends TestSuiteBase {
 		assertParseFails("element {\n  position 1.0\n}\nelement { }\n");
 	}
 
+	/** The same voicing declared twice in one element is rejected rather than overwritten. */
+	@Test(timeout = 60000)
+	public void duplicateVoicingIsRejected() {
+		PatternText.ParseException e = assertParseFails(
+				"element {\n  note MAIN { choices [0.3] }\n  note MAIN none\n}\n");
+		assertEquals(3, e.getLine());
+		assertTrue(e.getMessage().contains("duplicate note voicing 'MAIN'"));
+	}
+
+	/** A note that mixes the layer form with the delegate form is rejected as ambiguous. */
+	@Test(timeout = 60000)
+	public void layersWithDelegateAreRejected() {
+		PatternText.ParseException e = assertParseFails(
+				"element {\n  note MAIN {\n    choices [0.3]\n    delegate { choice 0.5 }\n  }\n}\n");
+		assertTrue(e.getMessage().contains("both layers and a delegate"));
+	}
+
+	/** A filter block with no envelope definition cannot be rebuilt and is rejected. */
+	@Test(timeout = 60000)
+	public void filterWithoutEnvelopeIsRejected() {
+		PatternText.ParseException e = assertParseFails(
+				"element {\n  note MAIN {\n    delegate { choice 0.5 }\n"
+						+ "    filter { params none voicing MAIN }\n  }\n}\n");
+		assertTrue(e.getMessage().contains("filter has no envelope"));
+	}
+
+	/** Automation whose value count disagrees with its declared shape is rejected. */
+	@Test(timeout = 60000)
+	public void automationSizeMismatchIsRejected() {
+		PatternText.ParseException e =
+				assertParseFails("element {\n  automation [2, 3] [0.1, 0.2]\n}\n");
+		assertTrue(e.getMessage().contains("automation shape 6 does not match 2 values"));
+	}
+
+	/** An enum field naming a constant that does not exist is rejected with the enum's name. */
+	@Test(timeout = 60000)
+	public void unknownEnumValueIsRejected() {
+		PatternText.ParseException e = assertParseFails("element {\n  direction SIDEWAYS\n}\n");
+		assertEquals(2, e.getLine());
+		assertTrue(e.getMessage().contains("'SIDEWAYS' is not a value of PatternDirection"));
+	}
+
+	/** A fractional repeat count is rejected where an integer is required. */
+	@Test(timeout = 60000)
+	public void fractionalRepeatCountIsRejected() {
+		PatternText.ParseException e =
+				assertParseFails("element {\n  repeat 1.5 every 1.0\n}\n");
+		assertTrue(e.getMessage().contains("expected an integer but found '1.5'"));
+	}
+
 	/** A filter the format cannot represent is rejected on format rather than silently dropped. */
 	@Test(timeout = 60000)
 	public void unsupportedFilterIsRejected() {
