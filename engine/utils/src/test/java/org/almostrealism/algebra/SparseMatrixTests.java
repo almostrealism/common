@@ -266,6 +266,36 @@ public class SparseMatrixTests extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * The constructor over pre-built collections rejects non-positive dimensions, row offsets
+	 * with the wrong number of lanes, columns that are not split lanes, and fewer values than
+	 * columns (which would let the kernel read past the values); it accepts values with spare
+	 * capacity. The product rejects an operand of rank three even when its leading dimension
+	 * matches the column count.
+	 */
+	@Test(timeout = 30000)
+	public void constructorRejectsInconsistentCollections() {
+		assertRejected(() -> new SparseMatrix(0, 2, PackedCollection.ofSplitIndices(0),
+				PackedCollection.ofSplitIndices(0), PackedCollection.of(1.0)));
+		assertRejected(() -> new SparseMatrix(1, 0, PackedCollection.ofSplitIndices(0, 1),
+				PackedCollection.ofSplitIndices(0), PackedCollection.of(1.0)));
+		assertRejected(() -> new SparseMatrix(2, 2, PackedCollection.ofSplitIndices(0, 1),
+				PackedCollection.ofSplitIndices(0), PackedCollection.of(1.0)));
+		assertRejected(() -> new SparseMatrix(1, 2, PackedCollection.ofSplitIndices(0, 2),
+				new PackedCollection(3), PackedCollection.of(1.0, 2.0, 3.0)));
+		assertRejected(() -> new SparseMatrix(1, 2, PackedCollection.ofSplitIndices(0, 2),
+				PackedCollection.ofSplitIndices(0, 1), PackedCollection.of(1.0)));
+
+		try (SparseMatrix a = new SparseMatrix(1, 2, PackedCollection.ofSplitIndices(0, 2),
+				PackedCollection.ofSplitIndices(0, 1), PackedCollection.of(3.0, -1.0, 99.0));
+			 PackedCollection vector = PackedCollection.of(2.0, 5.0);
+			 PackedCollection cube = new PackedCollection(shape(2, 2, 2))) {
+			Assert.assertEquals(2, a.getRows() * a.getCols());
+			assertMatches(new double[] { 1.0 }, a.multiply(cp(vector)).evaluate(), 1e-6);
+			assertRejected(() -> a.multiply(cp(cube)));
+		}
+	}
+
+	/**
 	 * Asserts that an action is rejected with an {@link IllegalArgumentException}.
 	 *
 	 * @param action the action

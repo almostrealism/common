@@ -118,7 +118,7 @@ public class SparseMatrix implements MatrixFeatures, Destroyable {
 	 * @param values     the value of each entry
 	 * @throws IllegalArgumentException if a dimension is not positive, an index collection is
 	 *         not in the split layout, {@code rowOffsets} does not have {@code rows + 1} lanes,
-	 *         or {@code values} is empty
+	 *         or {@code values} holds fewer elements than {@code columns} has lanes
 	 */
 	public SparseMatrix(int rows, int cols, PackedCollection rowOffsets,
 						PackedCollection columns, PackedCollection values) {
@@ -140,8 +140,9 @@ public class SparseMatrix implements MatrixFeatures, Destroyable {
 					+ " must have shape (m, " + SplitIndexTraversalOrdering.LANES + ")");
 		}
 
-		if (values.getMemLength() == 0) {
-			throw new IllegalArgumentException("Values must not be empty");
+		if (values.getMemLength() < columnShape.length(0)) {
+			throw new IllegalArgumentException(values.getMemLength() + " values given for "
+					+ columnShape.length(0) + " columns");
 		}
 
 		this.rows = rows;
