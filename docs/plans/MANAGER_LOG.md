@@ -81,12 +81,14 @@ the existing series. That is what a human reaches for first and what a model lea
 worked examples learns from best, so it is simultaneously human onboarding and training material for
 the self-understanding aim. Crucially it is **reachable today on any backend**: it stays inside what
 already ships — the parser, `PdslLoader`, and the already-tested `.pdsl` assets — and depends on none
-of the unbuilt `PDSL_FOR_RESEARCH_AND_EDUCATION.md` features (token-embedding primitive, runner,
-weight resolution, a Qwen checkpoint the agent cannot download).
+of the unbuilt `PDSL_FOR_RESEARCH_AND_EDUCATION.md` features (`embed` token-embedding primitive,
+`transformer(block, position)`, stack slicing, runner, a Qwen checkpoint the agent cannot download).
+Hierarchical weight paths and `stack weights.model.layers as block` already ship and are taught.
 
 To hold the project's standard that shipped doc examples cannot drift, the plan pairs the page with
 `PdslTutorialExamplesTest`, modeled on the reference's examples test: it extracts every PDSL program
-the page shows as complete and asserts each parses (the final model also loads via `PdslLoader`). Any
+the page shows as complete and asserts each parses (the final model also builds via
+`PdslLoader.buildModel` from a synthetic `StateDictionary`). Any
 rough edge the tutorial surfaces in the language is recorded as a follow-up, not fixed here — this is
 a documentation cycle, not a language change.
 

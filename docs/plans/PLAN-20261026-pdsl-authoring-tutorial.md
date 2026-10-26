@@ -41,11 +41,16 @@ that ingests the docs) benefits.
 
 The task is also **reachable on any backend right now.** It depends on nothing that is
 unbuilt. The ambitious research/education programme in
-`docs/plans/PDSL_FOR_RESEARCH_AND_EDUCATION.md` is blocked on unimplemented features
-(a token-embedding primitive, a standalone runner, weight-key resolution, a real Qwen
-checkpoint the agent cannot download). This tutorial deliberately stays inside what already
-works and ships: the parser, `PdslLoader`, and the already-shipped, already-tested `.pdsl`
-assets. It is the teaching asset that programme will eventually want, written against
+`docs/plans/PDSL_FOR_RESEARCH_AND_EDUCATION.md` is blocked on unimplemented features (its
+"Resume here" list: the `embed(table, token)` token-embedding primitive, the one-line
+`transformer(block, position)` call, stack slicing `stack weights.model.layers[..18]`, the
+Phase 2 runner, and a real Qwen checkpoint plus tokenizer the agent cannot download). Note
+that hierarchical weight paths are *not* on that list: a `checkpoint` parameter,
+`weights.model.norm.weight`-style paths and `stack weights.model.layers as block { }` are
+implemented and are exactly what `qwen2.pdsl`, `qwen3.pdsl` and the reference's
+`tiny_decoder` use, so the tutorial can and should teach them. This tutorial deliberately
+stays inside what already works and ships: the parser, `PdslLoader`, and the
+already-shipped, already-tested `.pdsl` assets. It is the teaching asset that programme will eventually want, written against
 today's language rather than tomorrow's.
 
 ## Scope
@@ -60,24 +65,53 @@ Concrete, actionable deliverables:
      model computes* is written, so the text can look like the picture of the data flow.
      One short paragraph, linking to `docs/internals/pdsl-language.md` as the full reference
      so the tutorial never tries to be a second reference.
-   - **Reading a layer** — walk through a real shipped asset
-     (`engine/ml/src/main/resources/pdsl/feed_forward.pdsl` is the smallest self-contained
-     one), line by line, naming each construct (`dense`, `rmsnorm`, `product` as a gate,
-     `accum { }` as a residual, `branch { }` as a side path) and pointing at the shape
-     annotations that make the file readable. Keep every construct's description to one
-     sentence and defer the formal semantics to the reference.
-   - **Reading attention** — a guided read of `attention.pdsl` / `sdpa.pdsl`: the QKV
-     projections, RoPE, the per-head structure, and the KV-cache parameters, with shapes.
-   - **Composing a layer** — how `transformer.pdsl` assembles norm + attention + feed-forward
-     into one `transformer` definition, and how a model file loops over layers.
+   - **Reading a layer** — walk through the `swiglu_ffn` layer of
+     `engine/ml/src/main/resources/pdsl/feed_forward.pdsl` (six lines of body), naming each
+     construct it uses: typed parameters (`weight`, `float`), `rmsnorm(norm_weights, epsilon)`,
+     `product({ dense(w1); silu() }, { dense(w3) })` as the SwiGLU gate (two block arguments
+     reading the same input, multiplied element-wise), and the final `dense(w2)`. The file's
+     doc comment already draws the data flow with shapes (`[1, dim]` → `[1, hidden_dim]` →
+     `[1, dim]`), which is the "text looks like the picture" point to make. `swiglu_ffn` has
+     no `accum`, no `branch` and no `-> [shape]` annotation — those are introduced in the
+     next two steps, where they actually occur. The file's second layer, `glu_feed_forward`,
+     takes `projection`/`activation` parameters and `slice`s; leave it out of this step or
+     mention it only as a pointer. Keep every construct's description to one sentence and
+     defer the formal semantics to the reference.
+   - **Reading attention** — a guided read of the `attend` and `attention` layers of
+     `attention.pdsl`: the `-> [1, heads * head_size]` return-shape annotation, the opening
+     `rmsnorm`, the `branch keys { }` / `branch values { }` side paths (projection,
+     `rotate_heads` for RoPE, `repeat_each(heads / kv_heads)` for grouped-query attention,
+     `cache_write(key_cache, position)` into the KV cache), the query path, and `attend`
+     (`attention_scores`, `scale(1 / sqrt(head_size))`, `causal_mask(position)`, `softmax`,
+     `weighted_values`). `sdpa.pdsl` is a different thing — full-sequence score layers built
+     on `scaled_dot_product` with a `key_mask`, with no RoPE and no KV cache — so if it
+     appears at all it is as a short contrast, not as part of this read.
+   - **Composing a layer** — how the `transformer` layer of `transformer.pdsl` uses
+     `import "/pdsl/attention.pdsl"` / `import "/pdsl/feed_forward.pdsl"` and two `accum { }`
+     residual blocks to assemble attention and `swiglu_ffn` into one pre-norm decoder layer.
+     `transformer.pdsl` itself does not repeat over layers; the repetition lives in the
+     `model` definitions of `qwen2.pdsl` / `qwen3.pdsl`, which bind a `checkpoint` parameter
+     and use `stack weights.model.layers as block { transformer...(...) }` followed by the
+     final `rmsnorm` and vocabulary `dense`. Teach `stack` (index-free, the owner's preferred
+     form), not `for i in 0..n` with string keys. Mention the rule the reference states: a
+     `model` body cannot hold `accum`, which is why the residual composition lives in a `layer`.
    - **Writing your own small model** — build up, step by step, a minimal **complete**
-     decoder definition that *parses* (and, where it needs no unbuilt primitive, loads via
-     `PdslLoader`), ending in a single on-page `.pdsl` program the reader has watched grow.
-     This mirrors the `tiny_decoder` worked example at the end of the reference but arrives
-     at it progressively rather than presenting it whole.
-   - **Running it from Java** — the minimal `PdslLoader` snippet that loads a `.pdsl` file
-     and the one-line reminder that the embedding lookup, the generation loop and sampling
-     stay in Java (the `AutoregressiveModel` family), exactly as the real models do.
+     program that *parses* and *builds* via `PdslLoader.buildModel(program, name, inputShape,
+     stateDict, extraArgs)` against a small synthetic `StateDictionary`, ending in a single
+     on-page `.pdsl` program the reader has watched grow. The reference's `tiny_decoder`
+     worked example (a `residual_projection` layer plus a `model` that `stack`s it) is the
+     shape to aim at; the tutorial should arrive at something of that size progressively and
+     should differ from it enough (see Open questions) not to be a copy. The final program
+     must be **self-contained** — no `import` — because imports are resolved only by
+     `PdslLoader.parseResource`/`parseResources`; `parse(String)` and `parse(Path)` do not
+     resolve them (`pdsl-language.md`, "Imports").
+   - **Running it from Java** — the minimal snippet: `PdslLoader loader = new PdslLoader();`,
+     `loader.parse(path)` (or `parseResource("/pdsl/...")` for a classpath asset with
+     imports), then `loader.buildModel(program, "my_model", shape(1, dim), stateDict,
+     extraArgs)`. Then the one-line reminder that the embedding lookup, the generation loop
+     and sampling stay in Java (`AutoregressiveModel` and its subclasses
+     `KeyValueCacheAutoregressiveModel` / `SlidingWindowAutoregressiveModel`), exactly as the
+     real models do.
    - **Where to go next** — links to the reference, to `pdsl-audio-dsp.md`, to the shipped
      assets, and a short "common first mistakes" list (shape mismatches, forgetting a norm),
      framed as learning aids.
@@ -87,14 +121,26 @@ Concrete, actionable deliverables:
    `PdslLanguageReferenceExamplesTest`. It locates `docs/tutorials/10-pdsl-model-definitions.html`
    by walking up from `user.dir` (the same mechanism the reference test uses), extracts every
    PDSL program the page presents as complete, and asserts each one **parses** with
-   `PdslParser` (and, for the final complete model, loads via `PdslLoader` and has the shape
-   the prose claims). This makes the tutorial's code physically unable to drift away from a
-   language the parser still accepts — the project's standard for shipped doc examples
-   ("every snippet shown publicly must be a file that a test loads and runs").
+   `PdslLoader.parse(String)` (and, for the final complete model, builds via
+   `PdslLoader.buildModel` from a synthetic `StateDictionary` and has the output shape the
+   prose claims — the same check the reference test makes for `tiny_decoder`). This makes
+   the tutorial's code unable to drift away from a language the parser still accepts, the
+   same guarantee `PdslLanguageReferenceExamplesTest` gives the reference page.
    - To make extraction unambiguous in HTML, each complete on-page program is wrapped in a
      stable, greppable marker (e.g. a `<pre class="pdsl-program">` class or an HTML comment
-     delimiter the test keys on), decided during implementation to match whatever the
-     existing reference test's fenced-block convention maps to most cleanly in HTML.
+     delimiter the test keys on). The reference test's convention is a Markdown fence
+     (`PDSL_BLOCK` matches a fenced block tagged `pdsl`): a complete program is fenced as
+     `pdsl`, a fragment as `text`. The HTML marker should carry the same meaning — marked =
+     complete and must parse; unmarked = fragment.
+   - The extractor must **decode HTML entities** before parsing. PDSL return-shape
+     annotations are written `->`, which must appear as `-&gt;` in HTML, and `<`/`&` likewise
+     need escaping; a test that parses the raw HTML text would fail on every annotated layer
+     (or pass only because the page avoided them). Any syntax-highlighting markup inside the
+     `<pre>` (spans) must also be stripped, or the page must not use any.
+   - Shipped assets the page quotes (rather than programs it writes) should be asserted
+     against the asset itself — e.g. that the quoted `swiglu_ffn` body appears verbatim in
+     `feed_forward.pdsl` — or shown only as excerpts and not marked as complete programs;
+     otherwise an edit to the asset silently leaves a stale copy on the page.
 
 3. **Index + cross-link wiring:**
    - Add the tutorial to the `#tutorials` list in `docs/index.html`.
@@ -107,15 +153,16 @@ Concrete, actionable deliverables:
 - No changes to the PDSL language, parser, interpreter, or any `.pdsl` asset. If the tutorial
   surfaces a defect or a rough edge, it is **recorded** (memory + a follow-up tracker task),
   not fixed here.
-- None of the unbuilt `PDSL_FOR_RESEARCH_AND_EDUCATION.md` features (token-embedding
-  primitive, runner, weight resolution, steering/probe/LoRA interventions). The tutorial
+- None of the unbuilt `PDSL_FOR_RESEARCH_AND_EDUCATION.md` features (`embed` token-embedding
+  primitive, `transformer(block, position)`, stack slicing, the runner,
+  steering/probe/LoRA interventions). The tutorial
   teaches today's language; the research programme is a separate track.
 - No real-checkpoint parity work (needs a Qwen download the agent cannot perform).
 
 ## Approach
 
 1. **Ground every claim in source first.** Read the chosen assets (`feed_forward.pdsl`,
-   `attention.pdsl`, `sdpa.pdsl`, `transformer.pdsl`) and the reference's grammar/builtin
+   `attention.pdsl`, `transformer.pdsl`, `qwen3.pdsl`) and the reference's grammar/builtin
    catalog. Every construct the tutorial names must be verified against `PdslBuiltins` and
    the parser, not described from memory. Consult `pdsl-language.md` for the normative
    wording and *link* to it rather than restating it.
@@ -137,8 +184,14 @@ Concrete, actionable deliverables:
 - `docs/tutorials/10-pdsl-model-definitions.html` exists, renders in the same style as the
   series, and takes a reader from "never seen PDSL" to a complete small model they have
   watched being written — reading real shipped assets along the way.
-- Every PDSL program shown as complete on the page is parsed by `PdslTutorialExamplesTest`;
-  the final model program also loads via `PdslLoader`. The test passes.
+- Every PDSL program shown as complete on the page is parsed by `PdslTutorialExamplesTest`
+  (after HTML-entity decoding); the final model program also builds via
+  `PdslLoader.buildModel` from a synthetic `StateDictionary` with the output shape the page
+  states. The test counts the marked programs and fails if it finds none, so a changed marker
+  cannot turn it into a vacuous pass. The test passes.
+- Every construct the tutorial attributes to a shipped asset actually occurs in that asset
+  (e.g. `accum` is taught from `transformer.pdsl`, `branch` from `attention.pdsl`, `stack`
+  from `qwen3.pdsl`).
 - The tutorial is linked from `docs/index.html`, from `pdsl-language.md`, from the `engine/ml`
   README, and from `llms.txt`.
 - The tutorial restates none of the reference's normative grammar/builtin tables; it links to
@@ -152,6 +205,54 @@ None blocking. Builds on the already-merged PDSL language reference
 (`docs/internals/pdsl-language.md`) and the shipped `.pdsl` assets. The drift-guard test
 reuses the mechanism already proven by `PdslLanguageReferenceExamplesTest`. Runs on any
 backend — no Metal, no workspace settings file.
+
+## Existing work this builds on
+
+Nothing in `docs/tutorials/` mentions PDSL today, and no other plan proposes a PDSL
+tutorial. Closest existing material, which the tutorial should link to rather than repeat:
+
+- `docs/internals/pdsl-language.md`, "Worked examples" — six complete programs
+  (`residual_mlp`, `gated_ffn`, `two_heads`, `config tiny` + `split_weights` +
+  `sum_of_halves`, `scaled`/`halved`/`gain`, `self_scores`) and the `tiny_decoder` model,
+  all parsed and built by `PdslLanguageReferenceExamplesTest`. `gated_ffn` is already a
+  stripped-down `swiglu_ffn`.
+- `docs/internals/ml-inference-pipeline.md` — where `attention.pdsl`, `transformer.pdsl`
+  and `feed_forward.pdsl` sit in the inference pipeline.
+- `docs/tutorials/05-ml-inference.html` — the Java side (`AutoregressiveModel`) the
+  "Running it from Java" step hands off to.
+
+## Open questions
+
+Raised in review for the person approving the plan; none has been decided.
+
+1. **How the final model differs from `tiny_decoder`.** The reference already ends in a
+   complete, tested `stack`-based model of exactly the size this tutorial targets. If the
+   tutorial's final program is `tiny_decoder` with renamed identifiers, the page duplicates
+   the reference and the drift test duplicates the reference test. Options: (a) make the
+   final model a real decoder layer (norm + a small attention + `swiglu_ffn`-style gate,
+   self-contained, built against a synthetic checkpoint with KV-cache weights supplied the
+   way `qwen3.pdsl` does with `zeros(...)`), which is more instructive but needs
+   `position`/`rope_freqs` bindings that make the Java snippet longer; or (b) keep it small
+   and make the progression itself (adding one construct per step) the value. The plan
+   should pick one before implementation.
+2. **Teaching the 20-argument `transformer(...)` call.** `qwen2.pdsl` calls `transformer`
+   with twenty positional arguments (`qwen3.pdsl` calls `transformer_qk_norm` with twenty-two),
+   a form the owner has said must not
+   spread and which `PDSL_FOR_RESEARCH_AND_EDUCATION.md` ("Resume here" item 3) plans to
+   replace with `transformer(block, position)`. A tutorial that teaches readers to write that
+   call will be out of date when item 3 lands, and the drift test will not notice (the old
+   form keeps parsing). Should the tutorial show the call only as something to read, not to
+   write, and should landing item 3 be listed as a trigger to revise the tutorial?
+3. **`for i in a..b`.** The language still accepts index loops and string-keyed weights, but
+   the owner's direction is that they not spread. The plan assumes the tutorial teaches only
+   `stack`; confirm that it should not mention `for` at all, or mention it only with a
+   pointer to the reference.
+4. **Deliverables outside `docs/`.** The test (`engine/ml`), the `engine/ml` README link
+   and the `llms.txt` entry are outside `docs/`, so the implementation is a code change,
+   not a documentation-only branch, and goes through code review and CI accordingly.
+5. **Tutorial numbering.** `docs/tutorials/` already has two pages numbered `08`
+   (`08-flowtree-stack-setup.html`, `08-process-optimization.html`); `10` is the next free
+   number and this plan does not propose renumbering them.
 
 ## Estimated Complexity
 
