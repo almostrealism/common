@@ -467,6 +467,27 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * numerator additionally drops remainder terms that cannot reach the next multiple
 	 * of the divisor; see {@link #tryBoundedRemainderSimplify(Sum, long)}.</p>
 	 *
+	 * <p>The sum-numerator folds that distribute the quotient across each term (dividing an
+	 * exactly-divisible term plus the lone remainder source separately) apply only to a positive
+	 * divisor. An exactly-divisible term contributes no remainder regardless of its sign, so its
+	 * sign is exempt; a remainder source — the combined constant total, or the lone non-divisible
+	 * term — must not truncate toward zero in the opposite direction from the combined value. When
+	 * every term is exactly divisible or constant, that holds iff the combined total is
+	 * non-negative or the divisor divides it exactly. For the single-remainder fold it holds iff
+	 * that term and every stray constant are non-negative. Otherwise distributing is unsound: for
+	 * example {@code (4*i + (-i)) / 4} is {@code trunc(3*i / 4)}, which is {@code 0} at
+	 * {@code i == 1}, not {@code i + (-i) / 4 == 1}, so the {@code -i} remainder source leaves the
+	 * sum unfolded, as does a negative, non-divisible constant total such as {@code (2*i - 5) / 2};
+	 * the division is then evaluated on the combined value.</p>
+	 *
+	 * <p>The sign-exemption of an exactly-divisible term is not complete: a divisible term whose
+	 * value is negative (its coefficient is divisible but its remaining factor can go negative, as
+	 * in {@code 4 * (j - 5)}) can still truncate in the opposite direction from the combined value
+	 * when it and the total straddle zero — for example {@code (4 * (j - 5) + 2) / 4} is
+	 * {@code trunc(-2 / 4) == 0} at {@code j == 4}, not {@code (j - 5) + trunc(2 / 4) == -1}. The
+	 * guards above inspect only the remainder sources, so neither fold detects a negative-valued
+	 * divisible term; this is a known limitation tracked for a separate fix.</p>
+	 *
 	 * @param values the numerator followed by denominator expression(s)
 	 * @return the simplified expression or a new {@link Quotient}
 	 * @throws IllegalArgumentException if no operands are provided
@@ -595,30 +616,33 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				}
 			}
 		} else if (numerator instanceof Sum && d.isPresent()) {
-			if (!(numerator instanceof Index) && !numerator.isFP()) {
+			// Soundness of the per-term folds below is explained in the method javadoc
+			if (!(numerator instanceof Index) && !numerator.isFP() && d.getAsLong() > 0) {
 				List<Expression<?>> products = new ArrayList<>();
 				long total = 0;
 				int unknown = 0;
+				boolean negativeConstant = false;
+				Expression<?> remainderTerm = null;
 
-				// Identify all products which include a term that is a multiple
-				// of the divisor, and all constant terms
-				c: for (Expression<?> child : numerator.getChildren()) {
+				for (Expression<?> child : numerator.getChildren()) {
 					if (child.isFP()) {
 						throw new IllegalArgumentException("Floating point term discovered in an integer sum");
 					}
 
 					if (child.longValue().isPresent()) {
 						total += child.longValue().getAsLong();
+						if (child.longValue().getAsLong() < 0) negativeConstant = true;
 					} else if (child instanceof Product && findDivisibleTerm(child, d.getAsLong()) != null) {
 						products.add(child);
 					} else {
 						unknown++;
+						remainderTerm = child;
 					}
 				}
 
-				// If all children are integer multiples of the divisor (or constant values)
-				// then it is safe to apply the division to each term in the sum
-				if (unknown == 0) {
+				// Known limitation (see method javadoc): a negative-valued divisible product
+				// can still mis-fold here.
+				if (unknown == 0 && (total >= 0 || total % d.getAsLong() == 0)) {
 					List<Expression<?>> newChildren = new ArrayList<>();
 					newChildren.addAll(products.stream()
 							.map(e -> e.divide(d.getAsLong()))
@@ -627,11 +651,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 					return Sum.of(newChildren.toArray(new Expression[0]));
 				}
 
-				// If there is only one term that may not be an integer multiple of the divisor,
-				// then it is also safe to apply division to each term in the sum (that term
-				// is the only possible source of a remainder, which will be discarded without
-				// the chance to combine with other values to exceed the divisor)
-				if (unknown == 1 && total == 0.0) {
+				if (unknown == 1 && total == 0 && !negativeConstant
+						&& !remainderTerm.isPossiblyNegative()) {
 					return Sum.of(numerator.getChildren().stream()
 							.map(e -> e.divide(d.getAsLong()))
 							.toArray(Expression[]::new));
