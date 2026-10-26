@@ -31,14 +31,17 @@ import org.junit.Test;
  * Regression tests for the sum-numerator folds in {@link Quotient#create(Expression[])} that
  * distribute a truncating integer quotient across the terms of a sum.
  *
- * <p>Distributing {@code (a + b) / d} as {@code a / d + b / d} is only valid when no term is
- * negative. An exactly-divisible term (for example {@code 4 * i}, which divides to the integer
- * {@code i}) absorbs the remainder of a negative sibling term in the wrong direction, because
- * truncation rounds that sibling's quotient toward zero while the combined value rounds the other
- * way. Before the guard was added, {@code (4 * i + (-i)) / 4} folded to {@code i + (-i) / 4} and
- * evaluated to {@code 1} at {@code i == 1}, whereas the true value {@code trunc(3 / 4)} is
- * {@code 0}. These tests pin the evaluated value against plain truncating integer arithmetic so a
- * reintroduced distribution is caught regardless of the simplified structure.</p>
+ * <p>Distributing {@code (a + b) / d} as {@code a / d + b / d} is only valid when no remainder
+ * source is negative. An exactly-divisible term contributes no remainder and so is sign-exempt
+ * (for example {@code 4 * i}, which divides to the integer {@code i}); it absorbs the remainder of
+ * a negative sibling term in the wrong direction, because truncation rounds that sibling's quotient
+ * toward zero while the combined value rounds the other way. Before the guard was added,
+ * {@code (4 * i + (-i)) / 4} folded to {@code i + (-i) / 4} and evaluated to {@code 1} at
+ * {@code i == 1}, whereas the true value {@code trunc(3 / 4)} is {@code 0}. The exact rule the
+ * guards enforce — and the known gap for a negative-valued divisible term — is documented on
+ * {@link Quotient#create(Expression[])}. These tests pin the evaluated value against plain
+ * truncating integer arithmetic so a reintroduced distribution is caught regardless of the
+ * simplified structure.</p>
  */
 public class QuotientNegativeTermDistributionTest extends TestSuiteBase implements ExpressionFeatures {
 
