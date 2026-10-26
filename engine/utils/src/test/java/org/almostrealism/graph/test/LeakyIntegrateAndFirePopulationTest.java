@@ -358,6 +358,118 @@ public class LeakyIntegrateAndFirePopulationTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A Poisson drive restricted to an input set fires only the neurons the mask selects: with the
+	 * first half of the population masked in and a drive strong enough to fire them, every spike comes
+	 * from a masked-in neuron and no masked-out neuron ever spikes.
+	 */
+	@Test(timeout = 120000)
+	public void poissonDriveRespectsInputMask() {
+		int count = 64;
+		int half = count / 2;
+		double rate = 0.5;
+		int steps = 200;
+
+		LeakyIntegrateAndFirePopulation pop = new LeakyIntegrateAndFirePopulation(
+				count, DT, TAU_M, TAU_SYN, 0.0, 0.0, 1.0, 0.0, 0, 1);
+		PackedCollection mask = lessThan(integers(0, count), c((double) half), c(1.0), c(0.0)).evaluate();
+		pop.setPoissonDrive(rate, mask, 7);
+		pop.reset();
+
+		PackedCollection zeros = new PackedCollection(shape(count));
+		PackedCollection total = new PackedCollection(shape(count));
+
+		OperationList full = new OperationList("lif-mask-count");
+		full.addAll(pop.step(cp(zeros)));
+		full.add(a(cp(total), add(cp(total), cp(pop.getSpikes()))));
+		Runnable step = full.get();
+
+		for (int t = 0; t < steps; t++) {
+			step.run();
+		}
+
+		double[] totals = total.toArray();
+		double drivenSpikes = 0.0;
+		for (int i = 0; i < half; i++) {
+			drivenSpikes += totals[i];
+		}
+		for (int i = half; i < count; i++) {
+			Assert.assertEquals("neuron " + i + " outside the input set must not spike", 0.0, totals[i], 0.0);
+		}
+		Assert.assertTrue("input-set neurons should spike under the drive", drivenSpikes > 0.0);
+
+		pop.destroy();
+		zeros.destroy();
+		total.destroy();
+		mask.destroy();
+	}
+
+	/**
+	 * The constructor rejects every out-of-range argument with an {@link IllegalArgumentException}: a
+	 * non-positive count, a non-positive time step, a non-positive membrane or synaptic time constant,
+	 * a negative refractory period, and a synaptic delay below one step.
+	 */
+	@Test(timeout = 60000)
+	public void constructorRejectsInvalidArguments() {
+		assertConstructorRejects("count must be positive",
+				() -> new LeakyIntegrateAndFirePopulation(0, DT, TAU_M, TAU_SYN, 0.0, 0.0, 1.0, 1.0, 0, 1));
+		assertConstructorRejects("dt must be positive",
+				() -> new LeakyIntegrateAndFirePopulation(1, 0.0, TAU_M, TAU_SYN, 0.0, 0.0, 1.0, 1.0, 0, 1));
+		assertConstructorRejects("membrane time constant must be positive",
+				() -> new LeakyIntegrateAndFirePopulation(1, DT, 0.0, TAU_SYN, 0.0, 0.0, 1.0, 1.0, 0, 1));
+		assertConstructorRejects("synaptic time constant must be positive",
+				() -> new LeakyIntegrateAndFirePopulation(1, DT, TAU_M, 0.0, 0.0, 0.0, 1.0, 1.0, 0, 1));
+		assertConstructorRejects("refractorySteps must not be negative",
+				() -> new LeakyIntegrateAndFirePopulation(1, DT, TAU_M, TAU_SYN, 0.0, 0.0, 1.0, 1.0, -1, 1));
+		assertConstructorRejects("delaySteps must be at least one",
+				() -> new LeakyIntegrateAndFirePopulation(1, DT, TAU_M, TAU_SYN, 0.0, 0.0, 1.0, 1.0, 0, 0));
+	}
+
+	/**
+	 * Asserts that constructing a population rejects an out-of-range argument by throwing an
+	 * {@link IllegalArgumentException}, failing the test with the given message when it does not.
+	 *
+	 * @param message      the failure message when no exception is thrown
+	 * @param construction the construction expected to be rejected
+	 */
+	private void assertConstructorRejects(String message, Runnable construction) {
+		try {
+			construction.run();
+			Assert.fail(message);
+		} catch (IllegalArgumentException expected) {
+			// the argument was rejected, as required
+		}
+	}
+
+	/**
+	 * {@link LeakyIntegrateAndFirePopulation#setPoissonDrive} rejects a negative rate and a mask whose
+	 * length is not one value per neuron, each with an {@link IllegalArgumentException}.
+	 */
+	@Test(timeout = 60000)
+	public void setPoissonDriveRejectsInvalidArguments() {
+		LeakyIntegrateAndFirePopulation pop = new LeakyIntegrateAndFirePopulation(
+				4, DT, TAU_M, TAU_SYN, 0.0, 0.0, 1.0, 1.0, 0, 1);
+		PackedCollection wrongMask = new PackedCollection(shape(3));
+		try {
+			try {
+				pop.setPoissonDrive(-1.0, null, 7);
+				Assert.fail("a negative rate must be rejected");
+			} catch (IllegalArgumentException expected) {
+				// the rate was rejected, as required
+			}
+
+			try {
+				pop.setPoissonDrive(0.1, wrongMask, 7);
+				Assert.fail("a mask of the wrong length must be rejected");
+			} catch (IllegalArgumentException expected) {
+				// the mask was rejected, as required
+			}
+		} finally {
+			pop.destroy();
+			wrongMask.destroy();
+		}
+	}
+
+	/**
 	 * Creates a population with a Poisson drive whose membrane never crosses threshold on its own, so
 	 * that every emitted spike comes from the drive.
 	 *
