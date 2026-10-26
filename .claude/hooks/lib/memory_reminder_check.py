@@ -40,7 +40,7 @@ The Decision shape (always JSON, no trailing newline required):
       "new_state": {...}    # the state the adapter must persist for the next call
     }
 
-Design summary (see docs/plans/MEMORY_REMINDER_HOOK.md for the full
+Design summary (see docs/internals/agent-hooks.md for the full
 design):
 
   - Trigger: hybrid of side-effect-call count and wall-clock time,
@@ -140,7 +140,7 @@ REMINDER_TEXT = (
     "learned a project-specific gotcha, or changed direction, store it "
     "now via `mcp__ar-manager__memory_store`. This is a soft "
     "nudge; the threshold is tuned to fire on long dry spells, not to "
-    "nag. See docs/plans/MEMORY_REMINDER_HOOK.md for the design."
+    "nag. See docs/internals/agent-hooks.md for the design."
 )
 
 

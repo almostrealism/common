@@ -1,3 +1,10 @@
+---
+status: proposed
+created: 2026-10-21
+closed:
+tracker: []
+---
+
 # A Connectome Model Organism for Brain–Computer Interface Research
 
 **Status:** Proposal. Nothing here is implemented. The tracker tasks for Phase 1 are filed in the
@@ -84,7 +91,7 @@ What the connectome does **not** give, and the simulation must therefore assume:
    is probably the finding that transfers best to real intelligence augmentation.
 3. **The work is general.** Sparse matrices, integer-exact indexing and recurrent simulation are
    missing capabilities that many other workloads also need: graph models, sparse attention, and
-   sparse Jacobians in automatic differentiation (`SPARSE_GRADIENTS.md`).
+   sparse Jacobians in automatic differentiation.
 
 ## Where the platform is today
 
@@ -105,7 +112,7 @@ or recurrent-training parts.
   plus `exp`, `max`, `min`, `bound` and `rectify`.
 - **Backends.** Metal, OpenCL (including the AMD Halo runner), native, and CUDA on the DGX Spark.
   CUDA has its native bridge, code generation and an asynchronous runner. Breadth, performance and
-  CI are still open (`CUDA_BACKEND.md`).
+  CI are still open (tracker tasks for the CUDA backend).
 - **Trainable transformers, partially.** A small byte-level causal transformer trains end to end
   and beats its unigram baseline (`docs/internals/training-a-language-model.md`). Gradients reach
   the keys and values of sequence and differential attention. Matrix-multiply weight gradients are

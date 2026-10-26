@@ -19,33 +19,44 @@ CONTROLLER_URL="${CONTROLLER_URL:-http://localhost:7780}"
 DRAIN_TIMEOUT_SECONDS="${DRAIN_TIMEOUT_SECONDS:-1800}"
 DRAIN_POLL_SECONDS="${DRAIN_POLL_SECONDS:-30}"
 
-# Statuses that mean "this job still holds an ar-manager connection".
-# An unrecognised status is NOT counted as running: the failure mode to avoid
-# is blocking every deploy forever on a status nobody remembers adding.
+# The controller's GET /api/jobs/in-flight reports {"active":N,"pending":N,
+# "total":N}: STARTED plus SUBMITTED jobs across every workstream, read from the
+# same job-state views the operator's listings use. Counting is the
+# controller's job, so a new non-terminal status is counted there rather than
+# dropped by a list of status strings kept here.
 #
 # The controller being unreachable counts as zero. The workflow already skips
 # the drain when the controller is down before it starts; this covers it going
 # away mid-wait, where there is no longer a connection left to protect.
 count_running() {
     local body
-    if ! body=$(curl -fsS "${CONTROLLER_URL}/api/jobs?limit=100" 2>/dev/null); then
+    if ! body=$(curl -fsS "${CONTROLLER_URL}/api/jobs/in-flight" 2>/dev/null); then
         echo 0
         return 0
     fi
 
     # python3 reports 0 for any payload it cannot make sense of, so this
-    # emits exactly one integer on every path.
+    # emits exactly one integer on every path. The controller normally reports
+    # "total"; when it omits it but still breaks out the in-flight counts, the
+    # running total is their sum, so a missing "total" never reads as drained.
     printf '%s' "${body}" | python3 -c 'import json, sys
-ACTIVE = {"running", "in_progress", "started", "pending", "queued"}
+# The in-flight count fields the controller breaks out: active (STARTED) and
+# pending (SUBMITTED) jobs. A new non-terminal status is folded into one of
+# these by the controller, so this set tracks the response shape, not a status
+# list that would go stale here.
+ACTIVE_FIELDS = ("active", "pending")
 try:
-    jobs = json.load(sys.stdin)
+    data = json.load(sys.stdin)
+    total = data.get("total")
+    if not isinstance(total, int):
+        total = 0
+        for field in ACTIVE_FIELDS:
+            value = data.get(field)
+            if isinstance(value, int):
+                total += value
 except Exception:
-    jobs = []
-if not isinstance(jobs, list):
-    jobs = []
-print(sum(1 for j in jobs
-          if isinstance(j, dict)
-          and str(j.get("status", "")).lower() in ACTIVE))'
+    total = 0
+print(total if isinstance(total, int) and total > 0 else 0)'
 }
 
 deadline=$(( $(date +%s) + DRAIN_TIMEOUT_SECONDS ))

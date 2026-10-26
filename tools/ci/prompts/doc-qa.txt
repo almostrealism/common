@@ -66,6 +66,26 @@ Look specifically for:
 - When you fix a dependency/module-structure claim, verify it against the relevant `pom.xml`
   files in both directions (what the module depends on, and what depends on it).
 
+## Sweep docs/plans
+
+Plans in `docs/plans/` carry a lifecycle header (rules in `docs/plans/CLAUDE.md`), so
+finished ones can be removed without reading them. Run
+`python3 tools/ci/sweep-plans.py --delete` and act on its report:
+
+- `expired` plans were closed past the retention window; the script has already
+  `git rm`ed them. Remove any references to them it leaves dangling.
+- `invalid` plans have a missing or malformed header. Add or correct it from the plan's
+  content and git history.
+- `tracked` plans list tracker task ids. Check each with `tracker_get_task`; when every
+  task is closed, read the plan and set `status: completed` (or `abandoned`, if the work
+  was dropped) with today's `closed` date.
+- `stale` plans have had no commit for a long time. Read each and decide whether it is
+  still wanted. Close it as `abandoned` if it is not, and say why in your summary; when
+  in doubt, leave it open and list it in your summary for a person to decide.
+
+Do not delete a plan by hand: close it, and the sweep removes it once the retention window
+has passed.
+
 ## Scope and guardrails
 
 - This is a staleness pass, not a documentation rewrite. Fix what recent changes made wrong or

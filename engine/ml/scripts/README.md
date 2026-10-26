@@ -133,6 +133,43 @@ python generate_residual_block_references.py
 - `reference/decoder_block1_resN_after_conv2.bin`
 - `reference/decoder_block1_resN_output.bin`
 
+## Regenerating Stable Audio 3 (SAME) reference dumps
+
+`dump_same_references.py` produces per-stage reference tensors for the SAME autoencoder
+(`[uint32 count][float32...]` `.bin` files) that `SAMEResamplingParityTest` compares against.
+Regenerating them needs no GPU, no `transformers` and no T5Gemma stack:
+
+```bash
+# Environment: CPU-only torch. Always use the CPU wheel index; the default index pulls
+# gigabytes of GPU wheels even on a CPU-only machine.
+python3 -m venv /tmp/sa3-venv && source /tmp/sa3-venv/bin/activate
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install numpy safetensors einops huggingface_hub ml_dtypes
+
+# Clone the upstream source and point the script at it with --sa3-src.
+# Do NOT pip install the stable_audio_3 package: it pins torch and pulls a large
+# dependency set the dump does not need.
+git clone https://github.com/Stability-AI/stable-audio-3 /tmp/sa3-src
+
+# Gated weights: needs a Hugging Face token with access (HF_TOKEN, or the token file
+# under ~/.cache/huggingface). Downloads are cached under $HF_HOME.
+python -c "from huggingface_hub import hf_hub_download as d; \
+  d('stabilityai/SAME-S','model_config.json'); d('stabilityai/SAME-S','model.safetensors')"
+
+# Seeded forward pass and per-stage dump.
+python engine/ml/scripts/dump_same_references.py \
+  --sa3-src /tmp/sa3-src \
+  --config  <hf-cache>/model_config.json \
+  --weights <hf-cache>/model.safetensors \
+  --seed 1234 --samples 24576
+```
+
+`--out` defaults to the git-ignored build directory
+`engine/ml/target/test-classes/same-s-references`, one of the locations the parity test
+searches. Never write the dumps to a tracked path such as `src/test/resources`: they are
+regenerable and must not be committed. The model load dominates the cost of a rerun (a few
+seconds), so regenerating many times is cheap once the environment and cache exist.
+
 ## Workflow for Comparison Tests
 
 1. **Extract weights and generate high-level references:**

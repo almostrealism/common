@@ -221,9 +221,10 @@ public interface CollectionTraversalFeatures extends TraversalPolicyFeatures {
 	 * @return the {@link TraversalPolicy} that describes the output shape of a combined operation
 	 */
 	default <PackedCollection> TraversalPolicy outputShape(Producer<PackedCollection>... producers) {
-		TraversalPolicy result = largestTotalSize(List.of(producers));
+		List<Producer<PackedCollection>> args = List.of(producers);
+		TraversalPolicy result = largestTotalSize(args);
 
-		long count = highestCount(List.of(producers));
+		long count = highestCount(args);
 
 		if (count != result.getCountLong()) {
 			for (int i = 0; i <= result.getDimensions(); i++) {

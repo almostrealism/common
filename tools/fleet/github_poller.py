@@ -126,8 +126,8 @@ def classify_labels(labels: Optional[List[str]]) -> LabelClass:
     """Project a runner label set onto the fleet's ``lane`` and ``platform``.
 
     The fleet names the kind of work a runner is for with ``ar-*`` labels
-    (``ar-ci``, ``ar-ci-cl``, ``ar-deploy``, ``ar-deploy-agent`` — see
-    ``docs/plans/RUNNER_FLEET_MONITORING.md`` §2.1), and those are what a
+    (``ar-ci``, ``ar-ci-cl``, ``ar-deploy``, ``ar-deploy-agent``, assigned by
+    the ``runs-on:`` lanes in ``.github/workflows/``), and those are what a
     capacity decision is about: a job waited for an ``ar-ci`` runner, not
     for "a macOS machine". ``lane`` is that label; if a runner somehow
     carries several they are joined with ``+`` in sorted order so the key

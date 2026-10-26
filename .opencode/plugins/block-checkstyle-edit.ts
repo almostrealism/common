@@ -29,7 +29,7 @@
 // Block semantics: a thrown Error is propagated by opencode as the
 // tool's failure message, which is exactly what the model sees as
 // the block reason — matching Claude Code's "exit 2 + stderr"
-// semantics.  See docs/plans/OPENCODE_HOOKS.md for the harness
+// semantics.  See docs/internals/agent-hooks.md for the harness
 // contract differences.
 
 import type { Plugin } from "@opencode-ai/plugin"

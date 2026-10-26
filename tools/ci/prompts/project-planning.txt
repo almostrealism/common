@@ -129,7 +129,18 @@ hardware, the settings file described under "The Machine the Work Needs"):
 
 Create a new file: `docs/plans/PLAN-<YYYYMMDD>-<short-slug>.md`
 
-The plan document should contain:
+It must start with the lifecycle front matter described in `docs/plans/CLAUDE.md`:
+`status: proposed`, today's date as `created`, an empty `closed`, and in `tracker`
+the ids of any tracker tasks the plan carries (`[]` if none):
+
+    ---
+    status: proposed
+    created: <YYYY-MM-DD>
+    closed:
+    tracker: []
+    ---
+
+After the front matter, the plan document should contain:
 - **Title**: A clear, descriptive title for the task
 - **Category**: Which of the four categories this falls under
 - **Motivation**: Why this task matters and how it connects to the larger vision

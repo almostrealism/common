@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-25
+closed: 2026-10-25
+tracker: []
+---
+
 # Expose nucleus (top-p) sampling through the autoregressive generators
 
 **Category:** Proof of Value (self-hosted LM generation)
