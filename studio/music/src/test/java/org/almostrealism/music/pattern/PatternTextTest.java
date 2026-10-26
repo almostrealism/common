@@ -303,6 +303,19 @@ public class PatternTextTest extends TestSuiteBase {
 		}
 	}
 
+	/** A {@link PatternElement} subclass the format cannot represent is rejected on format. */
+	@Test(timeout = 60000)
+	public void unsupportedElementSubclassIsRejected() {
+		PatternElement subclass = new PatternElement(new PatternNote(0.3), 0.0) { };
+
+		try {
+			subclass.toText();
+			Assert.fail("Formatting a PatternElement subclass should fail");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage().contains("pattern element"));
+		}
+	}
+
 	/** The exception methods report the same location that the message names. */
 	@Test(timeout = 60000)
 	public void parseExceptionCarriesLocation() {
