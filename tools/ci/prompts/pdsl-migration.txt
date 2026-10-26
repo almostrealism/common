@@ -120,7 +120,7 @@ Do not read files at random. Look where structure is assembled in Java:
   `OobleckEncoder`/`OobleckDecoder`/`OobleckCodec`, `GRUDecoder`, `MoonbeamMidi`, the
   bottlenecks and conditioners in `engine/ml/.../audio`.
 - Audio signal paths still assembled as `CellList` chains or Java-side `Cell` composition in
-  `engine/audio` and `studio/` — `docs/plans/audio-scene-redesign/PDSL_DIFFERENCES.md` maps
+  `engine/audio` and `studio/` — `docs/internals/pdsl-audio-dsp.md` describes
   what has moved and what has not.
 - **Existing `.pdsl` assets that lean on a monolith built-in.** Decomposing
   `attention(...)` in `skytnt_block.pdsl` or `transformer_block.pdsl` into the normalization,

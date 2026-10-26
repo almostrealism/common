@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-22
+closed: 2026-10-22
+tracker: []
+---
+
 # Document the PDSL language: grammar, semantics, primitives and the Java boundary
 
 - **Category:** Documentation

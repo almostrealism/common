@@ -36,6 +36,7 @@ at once.
 |---|---|
 | `RETRO-<YYYYMMDD>.md` | One run's findings report |
 | `ledger.tsv` | One row per run: window, counts, newest activity seen, proposal slugs, report path |
+| `ASSESSMENT-<YYYYMMDD>-<slug>.md` | A one-off investigation of a single automation incident, written outside the retrospective round; its open questions are tracked as tracker tasks, not carried out from the file |
 
 ### The survey ledger
 

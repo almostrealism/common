@@ -312,16 +312,13 @@ longer holds should be dropped from this list, not restated.
    products. For a traversal that cannot (a sliding window such as a convolution's) it contracts its
    full Jacobian through `jacobianContraction` instead. Correct, but it is the Jacobian-fallback
    cost a reduced form would remove for those windowed cases.
-2. **Cross-attention keys and values enter as constants.** The `scaledDotProductAttention` of
-   `SequenceAttentionFeatures` (used by `sequenceCrossAttention`) binds the keys and values as
-   constants, so — as its own Javadoc states — "no gradient flows to whatever produced them."
-   Attention that trains its own keys and values (`sequenceAttention`) reads them from branches of
-   its asset layer instead.
-3. **Buffered cross-attention drops gradients to the fused projection.** Inside
-   `sequenceCrossAttention`, `SequenceAttentionFeatures` carries the marker
-   `// TODO(review): K/V buffering drops gradients to toKvWeight; feed K and V to the products as
-   branch operands, as sequence_attention.pdsl does`: the context branch's buffered K/V path does
-   not wire gradients back to the fused `toKvWeight` projection that produced them.
+2. **The transformer resampling block buffers its sections.** `TransformerResamplingFeatures`
+   (the resampling layer block used by the Stable Audio 3 autoencoder) materializes its K1, V, Q2
+   and K2 sections with `into(...)` so the differential attention reads stored tensors. The
+   buffering cuts those projections out of the gradient graph, so they do not train.
+3. **A learned differential-attention lambda is read as a constant.** In
+   `differential_attention.pdsl`, `scale(lambda, 1)` reads lambda as a constant (each site carries a
+   `TODO(review)` marker), so the parameters of a learned lambda receive no gradient.
 
 ---
 

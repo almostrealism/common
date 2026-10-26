@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-23
+closed: 2026-10-24
+tracker: [18c76a7a-f289-4807-bb07-1c362e563220]
+---
+
 # Plan: Counter-based random numbers generated inside kernels
 
 - **Tracker task:** 18c76a7a-f289-4807-bb07-1c362e563220 — "Counter-based random numbers generated inside kernels"

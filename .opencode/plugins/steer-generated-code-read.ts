@@ -20,7 +20,7 @@
 // context that a raw grep/cat discards. Build/run commands and source reads
 // under src/ pass through (the core's `decide()` returns "allow").
 //
-// See docs/plans/OPENCODE_HOOKS.md for the harness contract.
+// See docs/internals/agent-hooks.md for the harness contract.
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { spawnSync } from "node:child_process"

@@ -2,8 +2,7 @@
 # PostToolUse (matcher "*"): occasionally interrupt the work with a short
 # poem and ask for a brief response.
 #
-# See item 10 of docs/plans/AR_MANAGER_TOOL_ERGONOMICS.md for the design
-# and the argument behind it. The premise is that training on narrow
+# The premise is that training on narrow
 # success signals selects for a persona organised entirely around passing
 # or failing a check, and that a long session of nothing but pass/fail
 # signal settles into that persona. The interlude widens it slightly.

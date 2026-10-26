@@ -45,6 +45,7 @@
   },
   "plugin": [
     "./plugins/block-mvn-test-direct.ts",
+    "./plugins/block-pytest-broad-run.ts",
     "./plugins/block-git-commit.ts",
     "./plugins/block-git-worktree.ts",
     "./plugins/warn-git-log.ts",

@@ -22,7 +22,7 @@ of their own.
 The backing store is deliberately behind :func:`repo_setting`: moving these
 settings into a ``repos:`` section of ``workstreams.yaml`` (served by the
 controller, editable through a tool) only has to change this module, not
-any caller. See docs/plans/MANAGER_CONSULTANT_CONSOLIDATION.md §3.3.
+any caller.
 """
 
 import json
