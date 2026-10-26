@@ -202,6 +202,44 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * POST /api/workstreams/{id}/update persists planInstructions on an
+     * existing workstream, mirroring the registration path.
+     */
+    @Test(timeout = 10000)
+    public void testApiUpdateWorkstreamWithPlanInstructions() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream workstream = new Workstream(null, "w-test-plan-update");
+        workstream.setDefaultBranch("project/plan-update");
+        notifier.registerWorkstream(workstream);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"planInstructions\":\"Refactor the ingestion pipeline.\"}";
+
+            URL url = URI.create("http://localhost:" + port
+                + "/api/workstreams/" + workstream.getWorkstreamId() + "/update").toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+            conn.getOutputStream().write(body.getBytes(StandardCharsets.UTF_8));
+
+            assertEquals(200, conn.getResponseCode());
+
+            assertEquals("Refactor the ingestion pipeline.",
+                    workstream.getPlanInstructions());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
     /** POST /api/workstreams/{id}/update returns 400 for an unknown workstream ID. */
     @Test(timeout = 10000)
     public void testApiUpdateWorkstreamNotFound() throws Exception {
