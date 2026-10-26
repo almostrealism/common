@@ -240,7 +240,7 @@ it can move as a unit: no dependencies from other `engine/ml` code onto it.
 | Counter-based device random | `compute/algebra` (next to `Random`) or `compute/stats` | General |
 | Integer dtypes in safetensors and protobuf | `engine/ml` | Where both readers live today |
 | Spiking and rate neuron population dynamics | `domain/graph` | Neural computation graphs; no format knowledge |
-| Simulation loop owner | Where the type it extends lives (decided in its task) | General, not connectome-specific |
+| Simulation loop owner | `compute/time`: `SimulationRunner extends TemporalRunner` (`org.almostrealism.time`) | General, not connectome-specific; the lowest module holding `Temporal`, reachable from `domain/physics` and `domain/graph` |
 | Connectome loading | `engine/ml` for now; possibly a future `engine/` module | Depends on third-party formats |
 | Feather → safetensors conversion | a Python script under `tools/` | Reading Arrow from Java would need a new third-party dependency |
 

@@ -221,6 +221,10 @@ public interface Temporal extends TemporalFeatures {
 	 * buffered.getContinue().run();
 	 * }</pre>
 	 *
+	 * <p>For a tick that compiles to a computation, {@code frames > 1} fuses the ticks inside one
+	 * kernel with no barrier between them, which is correct only for element-local steps. A
+	 * globally coupled step is run with {@link SimulationRunner} instead.</p>
+	 *
 	 * @param frames The number of frames (ticks) to execute per invocation
 	 * @return A {@link TemporalRunner} configured to run this operation for the specified frames
 	 *
