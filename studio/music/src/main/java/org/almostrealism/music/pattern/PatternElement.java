@@ -431,4 +431,30 @@ public class PatternElement implements CodeFeatures {
 						? other.automationParameters == null
 						: automationParameters.contentEquals(other.automationParameters));
 	}
+
+	/**
+	 * Returns the text representation of this element, in the grammar defined by
+	 * {@link PatternText}.
+	 *
+	 * @return the serialized form of this element
+	 * @throws IllegalArgumentException if this element contains a type the format cannot represent
+	 * @see PatternText#format(PatternElement)
+	 */
+	@JsonIgnore
+	public String toText() {
+		return PatternText.format(this);
+	}
+
+	/**
+	 * Parses an element from its text representation, in the grammar defined by
+	 * {@link PatternText}.
+	 *
+	 * @param text the serialized form of an element
+	 * @return the parsed element
+	 * @throws PatternText.ParseException if the text is not a well-formed element
+	 * @see PatternText#parseElement(String)
+	 */
+	public static PatternElement fromText(String text) {
+		return PatternText.parseElement(text);
+	}
 }

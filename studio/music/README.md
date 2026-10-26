@@ -467,6 +467,95 @@ PatternSystemManager
             └── PackedCollection (rendered audio buffer)
 ```
 
+## Text Representation of Patterns
+
+`PatternText` serializes a pattern — an ordered list of `PatternElement`s and everything
+they aggregate — to human-readable text, and parses the same text back into the model. It is
+the text counterpart of the protobuf codec `PatternElementPersistence` in the compose module:
+the two formats describe the same closed set of types and carry the same state, so a pattern
+converted through either comes back equal. This lets a client application or a connected agent
+write an exact pattern by hand, hand it to the framework to render, and read back any pattern
+the framework holds.
+
+The entry points are `PatternElement.toText()` / `PatternElement.fromText(String)` for a single
+element, and `PatternText.format(List)` / `PatternText.parse(String)` for a whole pattern.
+
+```java
+List<PatternElement> pattern = ...;
+String text = PatternText.format(pattern);          // model -> text
+List<PatternElement> restored = PatternText.parse(text);  // text -> model
+```
+
+### Grammar
+
+The format is brace-delimited and whitespace-insensitive; `#` begins a comment that runs to
+the end of the line. A pattern is a `pattern` block of `element` blocks. Numbers are written
+with `Double.toString` and read with `Double.parseDouble`, which round-trip every finite double
+exactly. The keyword `none` denotes a null value (a null strategy, direction, voicing, note,
+selection function, parameter set or automation) and is distinct from the enumeration constant
+`NONE` of `NoteDurationStrategy`. Enumeration values are written as their Java constant names,
+which the protobuf enums share, so the mapping between the two formats stays mechanical. Omitted
+element fields take `PatternElement`'s constructor defaults, so a hand-written element is playable
+without boilerplate; the serializer nonetheless writes every element field explicitly.
+
+```
+pattern {
+  element {
+    position 2.25
+    duration FIXED 0.375
+    scale SEQUENCE [0.0, 0.25, 0.625]
+    direction BACKWARD
+    repeat 4 every 0.5
+    automation [2, 3] [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    note MAIN {
+      aggregation 0.0
+      choices [0.2, 0.65]
+    }
+    note WET none
+  }
+}
+```
+
+A note is either in layer mode (`choices [...]` when every layer is a plain selection, otherwise
+`layers [ ... ]` of audio blocks) or delegate mode (`delegate { ... }` and `filter { ... }`). An
+audio source is `choice <selection>`, a nested `note { ... }`, or a `layer { delegate ... filter ... }`.
+A filter is an envelope block (`volume_envelope <mode> { ... }`, `filter_envelope <mode> { ... }`
+or `layer_envelope <index> { ... }`) together with the `params` and `voicing` it was created with;
+it is rebuilt the way the protobuf decoder rebuilds it — the envelope is reconstructed from its
+definition and asked to create the filter again.
+
+### Keyword-to-field mapping
+
+Three keywords bundle a fixed pair of fields that always travel together; the rest map to a
+single field each.
+
+| Keyword | Model field(s) |
+|---|---|
+| `position <d>` | `PatternElement.position` |
+| `duration <strategy> <d>` | `durationStrategy` + `noteDurationSelection` |
+| `scale <strategy> [d, ...]` | `scaleTraversalStrategy` + `scalePositions` |
+| `direction <dir>` | `direction` |
+| `repeat <n> every <d>` | `repeatCount` + `repeatDuration` |
+| `automation [dims] [values]` | `automationParameters` (shape + FP64 values) |
+| `note <voicing> { ... }` | an entry of `notes` (`none` voicing = null key; `none` body = null note) |
+| `aggregation <d>` | `PatternNote.aggregationChoice` |
+| `choices [d, ...]` / `layers [ ... ]` | `PatternNote.layers` |
+| `delegate { ... }` / `filter { ... }` | `PatternNote.delegate` / `PatternNote.filter` |
+| `choice <d>` | `PatternNoteAudioChoice.noteAudioSelection` |
+| `layer { ... }` | a `PatternNoteLayer` (`delegate` + `filter`) |
+| `volume_envelope <mode>` / `filter_envelope <mode>` | `ParameterizedVolumeEnvelope` / `ParameterizedFilterEnvelope` + mode |
+| `attack`/`decay`/`sustain`/`release <(x, y, z, c)>` | the envelope's ADSR `ParameterFunction`s |
+| `layer_envelope <index>` | `ParameterizedLayerEnvelope` for that layer |
+| `volume0`..`volume3 [(...), ...]` | the layer envelope's `MultipleParameterFunction`s |
+| `params <(x, y, z)>` | the filter's `ParameterSet` |
+| `voicing <voicing>` | the filter's `ChannelInfo.Voicing` |
+
+A type the format cannot represent (any other `PatternNoteAudio`, `NoteAudioFilter` or
+`ParameterizedEnvelope` implementation, or a `PatternElement` subclass) makes the serializer
+throw `IllegalArgumentException` rather than drop state, matching the protobuf codec. Malformed
+input — an unknown keyword, a bad number, an unbalanced brace, a duplicate field or trailing
+input — throws `PatternText.ParseException`, which names the line and column where parsing failed.
+
 ## Dependencies
 
 The music module depends on:

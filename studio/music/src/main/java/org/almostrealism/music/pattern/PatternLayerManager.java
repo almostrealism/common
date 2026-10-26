@@ -987,6 +987,15 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * repetitions overlap, checks section activity for each, and calls the unified
 	 * {@link PatternFeatures#render} for each choice's elements.</p>
 	 *
+	 * <p>This method runs once per buffer tick on a streaming render, so values that are
+	 * fixed for the whole call are hoisted out of the repetition and choice loops rather
+	 * than rebuilt on every iteration (and so on every tick): the {@link ChannelInfo}
+	 * destination key and the target {@link PackedCollection} destination are computed once,
+	 * and each choice's {@link NoteAudioContext} — which depends only on the choice, not the
+	 * repetition — is built once per choice and reused across every overlapping repetition
+	 * instead of reconstructed (together with its {@code getValidPatternNotes()} gather) each
+	 * time. This changes no rendered output; it only removes redundant per-repetition work.</p>
+	 *
 	 * @param ctx the audio scene context
 	 * @param voicing target voicing
 	 * @param audioChannel target stereo channel
@@ -1031,6 +1040,11 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 		// survives the per-buffer Heap.stage() pop that frees the evaluation intermediates.
 		NoteAudioCache effectiveCache = (frameCount < ctx.getFrames()) ? cache : null;
 
+		// Per-render invariants hoisted out of the repetition/choice loops (see method javadoc).
+		ChannelInfo renderChannel = new ChannelInfo(voicing, audioChannel);
+		PackedCollection renderDestination = ctx.getDestination();
+		Map<NoteAudioChoice, NoteAudioContext> audioContexts = new HashMap<>();
+
 		IntStream.range(firstRepetition, lastRepetition).forEach(rep -> {
 			double repStart = rep * duration;
 
@@ -1052,14 +1066,13 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 
 			// Render each choice's elements for this repetition
 			elements.keySet().forEach(choice -> {
-				NoteAudioContext audioContext = new NoteAudioContext(
-						voicing, audioChannel,
-						choice.getValidPatternNotes(),
-						this::nextNotePosition);
-
-				if (destination.get(new ChannelInfo(voicing, audioChannel)) != ctx.getDestination()) {
+				if (destination.get(renderChannel) != renderDestination) {
 					throw new IllegalArgumentException("Destination buffer mismatch");
 				}
+
+				NoteAudioContext audioContext = audioContexts.computeIfAbsent(choice,
+						c -> new NoteAudioContext(voicing, audioChannel,
+								c.getValidPatternNotes(), this::nextNotePosition));
 
 				render(ctx, audioContext, elements.get(choice), melodic,
 						repStart, startFrame, frameCount, effectiveCache);
