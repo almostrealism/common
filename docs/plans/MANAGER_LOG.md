@@ -28,6 +28,173 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-26 — Decode the self-hosted LM one token at a time with a key/value cache
+
+**Category:** Proof of Value (self-hosted LM generation)
+**Branch:** `project/plan-20261026-022005`
+**Plan:** [`PLAN-20261026-kv-cache-single-position-decode.md`](PLAN-20261026-kv-cache-single-position-decode.md)
+
+#### What changed since last cycle
+
+The nucleus-sampling plan landed (PR #741, merged): `AutoregressiveModel` now carries a
+`getTopP`/`setTopP` threshold (validated `(0, 1]`, default `1.0`), both generators route the same
+tempered logits through `sampleToken` once, and the `of(...)` double-softmax is gone — so
+`SlidingWindowAutoregressiveModel` and `AutoregressiveModel.of(...)` sample identically at a given
+temperature, top-p and seed. The nucleus implementation that shipped unreachable is now reachable,
+and the two internals pages describe it. That cashes the first "what comes next" item of the last
+five entries. The sampling strategy for short continuations is settled.
+
+#### Category assessment (priority order)
+
+- **Documentation — excellent.** The internals corpus is 40 pages and current at `master`; the
+  PDSL reference (2026-10-24) closed the last flagship gap, and I re-read `training-a-language-model.md`
+  and `ml-inference-pipeline.md` this cycle — both are accurate and current, the training doc even
+  states the exact blocker this task removes. `consult` finds no durable gap. The one standing item
+  — a PDSL *tutorial* in `docs/tutorials/` (01–09 never mention PDSL) — is a real teaching asset but
+  has been the low-priority, continuous-QA item for several cycles; it is not a missing reference and
+  does not outrank cashing a proof-of-value step. Moved on.
+- **Code quality — strong and owned by continuous QA.** The three-cycle attention-correctness arc is
+  closed; enforcement is mechanical. The standing minor item (`io.almostrealism.collect` split) is
+  unchanged and not a flagship. Moved on.
+- **Performance — no blocker.** The named lever (the weighted-sum `matmul` reduced form for outputs
+  wider than 1000) is real but blocks nothing. Note that *this* task is itself a performance step
+  dressed as proof of value: a KV-cache decode is how generation stops being an order of magnitude
+  too slow to use. Moved on from the standalone perf item.
+- **Proof of value — the category, and a sharp instance.** Generation re-runs a full
+  `(seqLen, vocabSize)` forward pass per byte (~35–45 bytes/s), so the model cannot speak at length
+  about itself in reasonable time, and the long-sample sampling comparisons the last cycle set up are
+  gated behind it. The fix is the standard KV cache.
+
+#### Why this task
+
+It is the disciplined next step the log has telegraphed five times running, now reachable: with
+sampling unified, the remaining ceiling on generation is the full-forward-per-byte decode. The gap is
+precise and evidenced, not vague. The cached single-position `attention(...)` family and
+`causalMask(shape, position)` already exist and are exercised by the SkyTnt MIDI model's per-layer
+cache tests — so the platform is not missing a KV cache in general. What it lacks is a decode path for
+the self-hosted LM's **weight layout**: the training doc names it, and the config confirms it — each
+block stores a fused `qkv` `(3·dim, dim)` weight and the model stores `rope_inv_freq` once, while the
+cached overloads want separate `wq`/`wk`/`wv` and a position-indexed `freqCis`. Bridging those two
+shapes (fused→split projection, inverse-frequencies→position-indexed rotary) is the whole of the
+missing capability.
+
+Because this touches a numerically exact path, the plan is evidence-led: establish that the decode's
+rotary at position `p` equals the full-sequence path's rotary at row `p` before building on it, pin
+one decoded row against one full-forward row before decoding a sequence, then bring up the
+byte-identical correctness test modeled on `slidingWindowGenerationMatchesFullForward`. The committed
+proof is that **every** greedily decoded byte matches the full forward — the one honest way to show a
+KV cache is correct. Weakening that assertion to go green is out of bounds and the plan says so.
+
+#### Balance across categories
+
+The last five cycles were proof-of-value (nucleus sampling), documentation (PDSL reference), two
+correctness cycles (differential lambda, cross-attention K/V) and proof-of-value (readable
+generation). Both foundation arcs are closed and the sampling API is complete, so staying on the
+proof-of-value track to remove the decode ceiling is the move the "what comes next" lists have been
+building toward, not a jump to the exciting category. It is a medium–large capability task whose
+committed deliverable is correctness-pinned and **runs on any backend** — no Metal, no workstream
+settings file. The throughput *measurement* is a deliberate Metal follow-up, exactly as the
+nucleus-sampling cycle deferred its measurement.
+
+#### What comes next
+
+1. This plan: bridge the fused-QKV + `rope_inv_freq` layout to the cached single-position attention,
+   build a decode model over the same `StateDictionary`, wire it into an `AutoregressiveModel` so it
+   shares the top-p sampling path, add the byte-identical correctness and cache-causality tests, and
+   rewrite the training-doc generation-cost paragraph.
+2. **Measure** on a macOS/Metal node: the throughput improvement over full-forward decode, and a
+   greedy-vs-top-p comparison over long samples now that decoding is cheap enough to run at length.
+3. **Proof of value:** conditional diffusion training, on an attention backward pass that is now
+   honest end to end for both conditioning (K/V) and differential cancellation (λ).
+4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
+5. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2 (with the SAME fine-tune); the
+   `io.almostrealism.collect` package split; a PDSL tutorial in `docs/tutorials/`; letting a trained
+   model read the platform's own *source*.
+
+### 2026-10-25 — Expose nucleus (top-p) sampling through the autoregressive generators
+
+**Category:** Proof of Value (self-hosted LM generation)
+**Branch:** `project/plan-20261025-022810`
+**Plan:** [`PLAN-20261025-nucleus-sampling-generators.md`](PLAN-20261025-nucleus-sampling-generators.md)
+
+#### What changed since last cycle
+
+The PDSL language reference landed (merged 2026-10-24): `docs/internals/pdsl-language.md` is the
+single complete reference (grammar, definition kinds, name resolution, import semantics, and a
+40-builtin catalog with a per-operand gradient column), `PdslLanguageReferenceExamplesTest` reads
+the page and parses every fenced example so it cannot drift from the parser, the
+`org.almostrealism.ml.dsl` Javadoc is complete, and `pdsl-audio-dsp.md` no longer duplicates the
+core table. That closes the flagship documentation gap the last cycle opened. With it, both
+foundation arcs the recent cycles were on are closed: the attention backward pass is honest end to
+end (K/V projections, then the differential lambda), and the language the models are written in is
+documented.
+
+#### Category assessment (priority order)
+
+- **Documentation — excellent, and the one flagship gap just closed.** `consult` finds no durable
+  gap: the internals corpus is current at `master` and now includes the PDSL reference. The one
+  standing item — a PDSL *tutorial* in `docs/tutorials/` (01–09 never mention PDSL) — is real but
+  has been the low-priority, continuous-QA item for several cycles; it is a teaching asset, not a
+  missing reference, and does not outrank cashing a proof-of-value step. Moved on.
+- **Code quality — strong and owned by continuous QA.** The correctness arc (three cycles) is
+  closed; enforcement is mechanical. The standing minor item (`io.almostrealism.collect` split) is
+  unchanged and not a flagship. Moved on.
+- **Performance — no blocker.** The named lever (the weighted-sum `matmul` reduced form for outputs
+  wider than 1000) is real but blocks nothing and ranks below cashing the proof-of-value step.
+  Moved on.
+- **Proof of value — the category.** The self-hosted LM can decode greedily or with
+  full-distribution temperature, and neither is good: greedy collapses to the most-frequent byte,
+  temperature draws from the unreliable tail. Nucleus (top-p) sampling is the standard remedy and
+  is the first "what comes next" item of the last four entries.
+
+#### Why this task
+
+The survey turned up a sharp, high-confidence instance of the category. `AutoregressiveModel.sampleToken`
+**already implements nucleus filtering in full**, but **no public API lets a caller set `topP`** —
+both generator call sites hardcode it to `1.0`. The platform ships a nucleus-sampling implementation
+that is unreachable from a consumer. Reading the two paths together also surfaced a second defect in
+the same code: `AutoregressiveModel.of(...)` pre-applies `rescale` (`logits / temperature`) and
+`softmax` on the device — so the configured temperature *is* applied — and then calls `sampleToken`
+with a **hardcoded temperature of `1.0`**, which re-exponentiates and renormalizes the
+already-softmaxed values: a redundant second softmax that flattens the already-tempered distribution.
+It therefore samples from a different (flatter) distribution than `SlidingWindowAutoregressiveModel`,
+which passes raw logits and the configured temperature straight through for a single softmax. The
+fix for both is one unification: route raw logits through `sampleToken` once, with the configured
+temperature and configured top-p, from both generators. It is the smallest change that
+materially improves what the self-hosted LM can produce, and a prerequisite for the sampling-quality
+comparison the training doc already promises.
+
+Because the change touches a documented sampling path, the plan is evidence-led: step one is a host
+test that *measures* the two distributions the two paths sample from today, turning the
+double-softmax reading from inspection into an asserted fact before anything changes. Top-p defaults
+to `1.0`, so behavior is unchanged unless a caller opts in; the only intended default-case change is
+`of(...)` ceasing to double-softmax, which a new two-generators-agree test pins. Existing acceptance
+assertions are untouched; the new behavior is pinned by new tests, never by weakening an existing
+one.
+
+#### Balance across categories
+
+The last four cycles were correctness (three) then documentation (the PDSL reference). Both
+foundation arcs are now closed, so returning to proof of value is the disciplined move the log has
+been telegraphing, not a jump to the exciting category. It is a small–medium task whose committed
+deliverable is a host-side API change plus deterministic sampling tests — **no training, no Metal,
+runs on any backend, no workstream settings file.**
+
+#### What comes next
+
+1. This plan: `getTopP`/`setTopP` on `AutoregressiveModel`, wire top-p through both generators,
+   unify the `of(...)` path with the `SlidingWindow` path, add the nucleus and cross-generator
+   tests, and update the two internals pages.
+2. **Measure** generation quality under top-p on a macOS/Metal node (a separate cycle: re-run the
+   documented training run and compare greedy vs. top-p decoding), then a single-position KV-cache
+   decode, which would make per-token sampling cheap enough to compare at length.
+3. **Proof of value:** conditional diffusion training, now that both its conditioning (K/V) and its
+   differential cancellation (λ) train honestly.
+4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
+5. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2 (with the SAME fine-tune); the
+   `io.almostrealism.collect` package split; a PDSL tutorial in `docs/tutorials/`; letting a trained
+   model read the platform's own *source*.
+
 ### 2026-10-23 — Document the PDSL language
 
 **Category:** Documentation
@@ -367,83 +534,23 @@ training run and runs on a macOS/Metal node.
 5. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
    trained model read the platform's own *source*, the deeper self-understanding aim.
 
-### 2026-10-18 — Fix the nondeterministic full-Jacobian weight gradient for the output projection
+### 2026-10-18 — Fix the nondeterministic full-Jacobian weight gradient for the output projection (condensed)
 
-**Category:** Code Quality (correctness — a silent wrong-gradient defect in the autodiff engine)
-**Branch:** `project/plan-20261018-174738`
+**Category:** Code Quality (correctness) · **Branch:** `project/plan-20261018-174738` ·
 **Plan:** `PLAN-20261018-full-jacobian-gradient-correctness.md` (since removed; see git history)
 
-#### What changed since last cycle
-
-The autodiff internals page landed (PR #670, with follow-ups #667/#673): the backward half of the
-execution story is now documented end to end, and the prior entry named that page as the
-**prerequisite** for the correctness work below. So the gate it set is now open. Everything else the
-last entry promised is still queued behind it: non-degenerate LM generation (greedy decoding still
-repeats one byte), the weighted-sum `matmul` reduced form, the `io.almostrealism.collect` split.
-
-#### Category assessment (priority order)
-
-- **Documentation — excellent, and newly complete where it mattered.** The internals corpus is 38
-  pages and now includes `automatic-differentiation.md`; `consult` finds no flagship gap. The only
-  standing items (the ONNX-pressure note, line-number hygiene) are low-priority and owned by
-  continuous QA. Moved on.
-- **Code quality — the category, because of a specific, evidenced correctness defect.** It is not a
-  style or coverage gap: `GradientFeatures.jacobianGradient`, the full-Jacobian fallback that is the
-  *reference every reduced-delta test is checked against*, produces a **nondeterministically wrong**
-  weight gradient for the 256×64 output projection over 64 rows — ~1/10 of 16,384 entries, 1,728 on
-  one profiled Metal run and 1,536 on another, always from weight row 64 onward. It is recorded
-  honestly today (a `TODO(review)`, the "known limits" prose, and
-  `DenseVectorJacobianProductTest.outputProjection` logging the disagreement instead of asserting
-  it), and it was explicitly deferred to "its own plan" by the VJP review. This is that plan.
-
-#### Why this task
-
-A learning system whose *reference gradient* is silently, intermittently wrong is the most
-consequential kind of foundation defect: the platform's first self-hosted training runs trained the
-output projection from this path, every operator without a structural reduced form still falls back
-to it, and it is the ground truth the whole reduced-delta suite trusts. Correctness of the
-differentiation engine sits in the second category and ranks above performance and proof of value —
-and this is a concrete, falsifiable instance of it, now unblocked by the documentation it needed.
-
-The plan follows evidence, not the first hypothesis. The `TODO(review)` guesses a 32-bit index
-overflow (2³⁴ iteration space, errors beginning at flat index 2³²), but the profiling already done
-*contradicts* that: a deterministic overflow would miscompute the same entries every run, and this
-does not. The nondeterminism, and the ~1M-element `(64,256,64)` repeat buffer the sum kernel reads,
-point instead at argument binding / aggregation or at the ordering of the kernel that writes that
-buffer and the kernel that reads it. The layernorm "invalid kernel" journal
-(`INVALID_KERNEL_AGGREGATION.md`) is cited only as an untrusted lead: `docs/journals/CONCESSION.md`
-retracts its central claim (the "divergent" kernels were a mismatched comparison), so no aggregation
-defect is established and the plan does not reason from one. So the plan separates the leads with
-cheap single-variable experiments — disabling aggregation via `AR_HARDWARE_ARGUMENT_AGGREGATION`,
-then forcing the write/read ordering — reads the generated kernel with `ar-profile-analyzer` before
-theorizing, fixes the general mechanism (not the one shape), and tightens the existing test to
-*assert* agreement on repeated evaluation. Weakening the test to go green is out of bounds and the
-plan says so.
-
-#### Balance across categories
-
-The last several cycles alternated foundation documentation with proof-of-value milestones, and the
-proof-of-value track (a trained LM that beats its baseline, PR #628) is one honest step from
-speaking. But it cannot speak on a gradient that is sometimes wrong — and the degenerate single-byte
-generation may itself be a symptom of an output projection trained on this very defect. Fixing the
-reference gradient is the right move before the next generation push: it is cheaper now (the
-failing kernel is already profiled and the candidate mechanisms named), it protects every later LM
-step, and it keeps the platform honest about its own learning machinery.
-
-#### What comes next
-
-1. This plan: diagnose the nondeterministic output-projection fallback on Metal via
-   `ar-profile-analyzer`, fix it at the general argument-mapping/ordering (or index-typing) layer,
-   assert the agreement in `DenseVectorJacobianProductTest`, check convolution for the same defect
-   with a new test against a host reference (the existing convolution-delta tests only log shapes),
-   and update the "known limits" docs and the `TODO(review)`.
-2. **Proof of value — non-degenerate generation**, revisited with a now-trustworthy gradient:
-   temperature/top-p in the sliding-window generator, a KV-cache decode, more steps/larger context.
-   Re-run `trainOnDocumentation` to see whether the corrected gradient moves the held-out score.
-3. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000),
-   the last Jacobian-contracting path on a dense layer.
-4. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
-   trained model read the platform's own *source*.
+Once the autodiff internals page landed (the prerequisite the prior entry set), this cycle fixed the
+most consequential foundation defect of its moment: `GradientFeatures.jacobianGradient` — the
+full-Jacobian fallback that is the *reference every reduced-delta test is checked against* — produced
+a nondeterministically wrong weight gradient for the 256×64 output projection from row 64 onward
+(~1/10 of entries, varying run to run). The plan refused the `TODO(review)`'s 32-bit-overflow guess
+(a deterministic overflow would miscompute the same entries every run; this did not) and followed
+evidence with single-variable experiments and `ar-profile-analyzer` on the generated kernel. The fix
+landed as PR #675 (hoisted kernel-index variables now take a 64-bit type via
+`Expression.getDeclarationType`), and `DenseVectorJacobianProductTest.outputProjection` now asserts
+agreement over repeated evaluations, with a new `ConvolutionJacobianGradientTest` for the same class
+of path. That made the reference gradient trustworthy — the explicit gate for the readable-generation
+push that followed.
 
 ### 2026-10-17 — Document automatic differentiation from `delta` to the backward pass (condensed)
 

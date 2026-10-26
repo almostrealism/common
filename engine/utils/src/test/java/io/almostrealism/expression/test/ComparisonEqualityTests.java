@@ -27,6 +27,8 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Optional;
+
 /**
  * Verifies that structural equality of comparison expressions distinguishes strict
  * from inclusive comparisons, so that caches keyed by {@link Expression} never hand
@@ -77,5 +79,46 @@ public class ComparisonEqualityTests extends TestSuiteBase implements Expression
 		Assert.assertNotSame(strict, inclusive);
 		Assert.assertTrue(((Greater) inclusive).getExpression(lang).contains(">="));
 		Assert.assertFalse(((Greater) strict).getExpression(lang).contains(">="));
+	}
+
+	/**
+	 * {@link Less#of} folds two constant operands to a {@link io.almostrealism.expression.BooleanConstant},
+	 * and the strict and inclusive forms disagree exactly at equality: {@code 5 < 5} is false while
+	 * {@code 5 <= 5} is true.
+	 */
+	@Test(timeout = 30000)
+	public void lessFoldsConstantOperands() {
+		Assert.assertEquals(Optional.of(Boolean.TRUE), Less.of(e(3), e(5)).booleanValue());
+		Assert.assertEquals(Optional.of(Boolean.FALSE), Less.of(e(5), e(3)).booleanValue());
+		Assert.assertEquals(Optional.of(Boolean.FALSE), Less.of(e(5), e(5)).booleanValue());
+		Assert.assertEquals(Optional.of(Boolean.TRUE), Less.of(e(5), e(5), true).booleanValue());
+	}
+
+	/**
+	 * {@link Greater#of} folds two constant operands to a {@link io.almostrealism.expression.BooleanConstant},
+	 * and the strict and inclusive forms disagree exactly at equality: {@code 5 > 5} is false while
+	 * {@code 5 >= 5} is true.
+	 */
+	@Test(timeout = 30000)
+	public void greaterFoldsConstantOperands() {
+		Assert.assertEquals(Optional.of(Boolean.TRUE), Greater.of(e(5), e(3)).booleanValue());
+		Assert.assertEquals(Optional.of(Boolean.FALSE), Greater.of(e(3), e(5)).booleanValue());
+		Assert.assertEquals(Optional.of(Boolean.FALSE), Greater.of(e(5), e(5)).booleanValue());
+		Assert.assertEquals(Optional.of(Boolean.TRUE), Greater.of(e(5), e(5), true).booleanValue());
+	}
+
+	/**
+	 * When an operand is not a compile-time constant the factories build the comparison node
+	 * rather than folding it, preserving the strict or inclusive operator in the rendered form.
+	 */
+	@Test(timeout = 30000)
+	public void nonConstantComparisonsAreNotFolded() {
+		Expression<?> less = Less.of(kernel(), e(5));
+		Expression<?> greaterInclusive = Greater.of(kernel(), e(5), true);
+
+		Assert.assertTrue(less instanceof Less);
+		Assert.assertTrue(greaterInclusive instanceof Greater);
+		Assert.assertTrue(((Less) less).getExpression(lang).contains("<"));
+		Assert.assertTrue(((Greater) greaterInclusive).getExpression(lang).contains(">="));
 	}
 }

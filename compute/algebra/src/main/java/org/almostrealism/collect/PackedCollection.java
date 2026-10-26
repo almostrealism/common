@@ -49,6 +49,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
@@ -456,6 +457,19 @@ public class PackedCollection extends MemoryDataAdapter
 	@Override
 	public DoubleStream doubleStream() {
 		return doubleStream(0, getShape().getTotalSize());
+	}
+
+	/**
+	 * Returns whether the given collection has the same shape and the same values as this one,
+	 * in logical order. Values are compared as {@link Arrays#equals(double[], double[])} does.
+	 *
+	 * @param other the collection to compare with; may be null
+	 * @return true if {@code other} has an equal shape and equal values
+	 */
+	public boolean contentEquals(PackedCollection other) {
+		if (other == this) return true;
+		if (other == null || !getShape().equals(other.getShape())) return false;
+		return Arrays.equals(doubleStream().toArray(), other.doubleStream().toArray());
 	}
 
 	/**
@@ -1040,6 +1054,13 @@ public class PackedCollection extends MemoryDataAdapter
 		return reshape(getShape().traverse(axis));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>If the new shape carries the ordering through which this collection reads its delegate,
+	 * the result views the delegate through that ordering; nesting it in this collection would
+	 * apply the ordering twice.</p>
+	 */
 	@Override
 	public PackedCollection reshape(TraversalPolicy shape) {
 		if (shape.getTotalSize() != getMemLength()) {
@@ -1049,20 +1070,24 @@ public class PackedCollection extends MemoryDataAdapter
 			return this;
 		}
 
+		boolean sameOrderedView = getDelegate() != null && getDelegateOrdering() != null
+				&& shape.getOrder() == getDelegateOrdering();
+		MemoryData target = sameOrderedView ? getDelegate() : this;
+		int offset = sameOrderedView ? getDelegateOffset() : 0;
 		int axis = shape.getTraversalAxis();
 
 		if (axis <= 0) {
-			return new PackedCollection(shape, axis, this, 0);
+			return new PackedCollection(shape, axis, target, offset);
 		} else if (axis == 1) {
 			return new PackedCollection(shape, axis,
 					delegateSpec ->
 							new PackedCollection(shape.subset(1), 0,
 									delegateSpec.getDelegate(), delegateSpec.getOffset()),
-					this, 0);
+					target, offset);
 		} else {
 			// TODO  This could also provide the supply argument, so that PackedCollection::get is supported
 			// TODO  it's just a little more complicated to implement
-			return new PackedCollection(shape, axis, this, 0);
+			return new PackedCollection(shape, axis, target, offset);
 		}
 	}
 
@@ -1237,6 +1262,19 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	public static PackedCollection of(long... values) {
 		return of(doubles(values));
+	}
+
+	/**
+	 * Uploads the given integer positions, in one transfer, as the {@code (n, 2)} lane collection
+	 * of a {@link SplitIndexTraversalOrdering} (see {@link SplitIndexTraversalOrdering#encode(int...)}).
+	 * Unlike {@link #of(int...)}, positions above {@code 2^24} stay exact in FP32 memory.
+	 *
+	 * @param values the integer positions to store
+	 * @return a new {@link PackedCollection} of shape {@code (values.length, 2)}
+	 */
+	public static PackedCollection ofSplitIndices(int... values) {
+		return of(SplitIndexTraversalOrdering.encode(values))
+				.reshape(new TraversalPolicy(values.length, SplitIndexTraversalOrdering.LANES));
 	}
 
 	/**

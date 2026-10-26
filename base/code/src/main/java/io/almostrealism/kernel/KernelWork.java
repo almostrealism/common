@@ -14,13 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware.kernel;
+package io.almostrealism.kernel;
 
 /**
  * Interface for configuring GPU/CPU kernel work dimensions.
  *
  * <p>Defines the parallelization parameters for hardware-accelerated operations:
- * global work size (total items), workgroup size (items per group), and work offset.</p>
+ * global work size (total items), workgroup size (items per group), and work offset.
+ * Every {@link io.almostrealism.code.Execution} is dispatched over the work range
+ * described here, so whatever dispatches one sets its range without knowing which
+ * backend compiled it.</p>
  *
  * <h2>Work Dimensions</h2>
  *
@@ -41,15 +44,12 @@ package org.almostrealism.hardware.kernel;
  * <h2>Usage Example</h2>
  *
  * <pre>{@code
- * class MyOperation implements KernelWork {
- *     private long globalWorkSize;
- *     private long globalWorkOffset;
+ * Execution execution = instructions.get("function", 2);
  *
- *     public long getGlobalWorkSize() { return globalWorkSize; }
- *     public void setGlobalWorkSize(long size) { this.globalWorkSize = size; }
- *     public long getGlobalWorkOffset() { return globalWorkOffset; }
- *     public void setGlobalWorkOffset(long offset) { this.globalWorkOffset = offset; }
- * }
+ * // Dispatch over 1000 work items, starting from the first
+ * execution.setGlobalWorkOffset(0);
+ * execution.setGlobalWorkSize(1000);
+ * Semaphore done = execution.accept(new Object[] { output, input }, null);
  * }</pre>
  *
  * <h2>Implementation Notes</h2>
@@ -59,11 +59,17 @@ package org.almostrealism.hardware.kernel;
  *   <li><strong>OpenCL:</strong> Maps to global_work_size, local_work_size, global_work_offset</li>
  *   <li><strong>Metal:</strong> Maps to grid size and threadgroup size</li>
  *   <li><strong>JNI:</strong> Used for loop parallelization bounds</li>
+ *   <li><strong>External process:</strong> A single work item, since the executable is
+ *       given no work-item index</li>
  * </ul>
  *
- * @see org.almostrealism.hardware.HardwareOperator
- * @see org.almostrealism.hardware.cl.CLOperator
- * @see org.almostrealism.hardware.metal.MetalOperator
+ * <p>An implementation never dispatches over a range other than the one it was given. A range
+ * it cannot dispatch over is refused, either by the setter, when the range it can perform is
+ * fixed (an external process performs one work item), or when it is dispatched, when the limit
+ * depends on the dispatch (the JNI backend's parallelism, or the size a Metal grid can
+ * describe).</p>
+ *
+ * @see io.almostrealism.code.Execution
  */
 public interface KernelWork {
 	/**
@@ -77,6 +83,7 @@ public interface KernelWork {
 	 * Sets the total number of work items to execute.
 	 *
 	 * @param globalWorkSize Global work size (total threads/items)
+	 * @throws UnsupportedOperationException if this work cannot be dispatched over that many items
 	 */
 	void setGlobalWorkSize(long globalWorkSize);
 
@@ -103,6 +110,7 @@ public interface KernelWork {
 	 * Sets the starting index offset for the work range.
 	 *
 	 * @param globalWorkOffset Global work offset (starting index)
+	 * @throws UnsupportedOperationException if this work cannot be dispatched from that index
 	 */
 	void setGlobalWorkOffset(long globalWorkOffset);
 }

@@ -116,17 +116,21 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 	/**
 	 * Determines if the specified index is contained in this expression's valid index set.
 	 *
-	 * <p>The default implementation throws {@link UnsupportedOperationException}.
-	 * Subclasses should override to provide index bounds checking.
+	 * <p>Membership means that the index addresses an element this expression defines: for
+	 * an ordered collection, an element with a physical position. It does not depend on the
+	 * value of the element, so a member may hold zero; an index that is not a member reads
+	 * as zero.</p>
+	 *
+	 * <p>A traversable expression defines a value at every non-negative index, so the default
+	 * returns {@code index >= 0}. Types that know their extent, or that carry a
+	 * {@link TraversalOrdering}, override this to say more (see {@link Shape}).</p>
 	 *
 	 * @param index an {@link Expression} representing the index to test
 	 * @return an {@link Expression} evaluating to true if the index is valid
-	 * @throws UnsupportedOperationException by default
 	 */
 	@Override
 	default Expression<Boolean> containsIndex(Expression<Integer> index) {
-		// TODO  exploit unique non-zero offset to determine this?
-		throw new UnsupportedOperationException();
+		return index.greaterThanOrEqual(0);
 	}
 
 	/**

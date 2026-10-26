@@ -17,7 +17,7 @@ with pluggable native acceleration.
 </h5>
 
   <p align="center">
-    Currently supporting OpenCL (X86/ARM) and Metal (Aarch64), CUDA support in progress.
+    Currently supporting OpenCL (X86/ARM), Metal (Aarch64) and CUDA.
     <br />
     <a href="https://github.com/almostrealism/common/issues">Report Bug</a>
     ·

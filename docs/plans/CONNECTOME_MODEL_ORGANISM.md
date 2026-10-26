@@ -128,7 +128,11 @@ or recurrent-training parts.
   for 50–125 million edges.
 - **`PackedCollection` with a sparse `TraversalOrdering`** is the better design, but it is not
   reliably usable, because `TraversalOrdering` and `TraversableExpression` are poorly integrated:
-  - `CollectionOrderingTests.compactOrdering` and `maskOrdering` are marked `knownIssue`;
+  - an ordered collection cannot be the input to a kernel: any `ExplicitIndexTraversalOrdering`
+    (even a full permutation) or `IndexMaskTraversalOrdering` input fails at compile time
+    (reproduced 2026-10-23; see `PLAN-20261023-sparse-traversal-ordering.md`). The host-path tests
+    `CollectionOrderingTests.compactOrdering`, `maskOrdering` and `repeatOrdering` are still marked
+    `knownIssue`, but they now pass;
   - `ReshapeProducer.containsIndex` and `SlicingFeatures.pad` throw for an ordered shape;
   - `IndexMaskTraversalOrdering.indexOf` needs a constant index and scans the mask on the host, so
     it can never appear in generated code;
@@ -243,7 +247,7 @@ it can move as a unit: no dependencies from other `engine/ml` code onto it.
 | Counter-based device random | `compute/algebra` (next to `Random`) or `compute/stats` | General |
 | Integer dtypes in safetensors and protobuf | `engine/ml` | Where both readers live today |
 | Spiking and rate neuron population dynamics | `domain/graph` | Neural computation graphs; no format knowledge |
-| Simulation loop owner | Where the type it extends lives (decided in its task) | General, not connectome-specific |
+| Simulation loop owner | `compute/time`: `SimulationRunner extends TemporalRunner` (`org.almostrealism.time`) | General, not connectome-specific; the lowest module holding `Temporal`, reachable from `domain/physics` and `domain/graph` |
 | Connectome loading | `engine/ml` for now; possibly a future `engine/` module | Depends on third-party formats |
 | Feather → safetensors conversion | a Python script under `tools/` | Reading Arrow from Java would need a new third-party dependency |
 

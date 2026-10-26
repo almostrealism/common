@@ -16,6 +16,7 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 
 import java.util.OptionalInt;
@@ -45,9 +46,30 @@ public class RepeatTraversalOrdering implements TraversalOrdering {
 		return idx.imod(length);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Every logical index has a position within the period, so every index is a member
+	 * and reads of a repeated collection need no membership test.</p>
+	 */
+	@Override
+	public Expression<Boolean> containsIndex(Expression<Integer> index) {
+		return new BooleanConstant(true);
+	}
+
 	/** {@inheritDoc} Returns the repeat period. */
 	@Override
 	public OptionalInt getLength() {
 		return OptionalInt.of(length);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The mapping is determined entirely by the period, so it identifies the ordering.</p>
+	 */
+	@Override
+	public String signature() {
+		return "repeat:" + length;
 	}
 }

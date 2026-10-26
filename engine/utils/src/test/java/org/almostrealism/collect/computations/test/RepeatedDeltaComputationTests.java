@@ -300,6 +300,54 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests the delta of a convolution with respect to its input, at a size whose
+	 * intermediate results are too large to isolate, against the analytic derivative of the
+	 * convolution. As in {@link #convDeltaMedium()}, the whole Jacobian is then produced by
+	 * one kernel whose index arithmetic follows each output and input element through every
+	 * reshape, enumeration and repetition of the convolution, so this checks the values
+	 * that kernel computes.
+	 */
+	@Test(timeout = 4 * 60000)
+	@TestDepth(2)
+	public void convDeltaInlinedMatchesAnalyticJacobian() {
+		int c = 20;
+		int d = 15;
+		int f = 10;
+		int s = 3;
+		int o = d - s + 1;
+
+		PackedCollection input = new PackedCollection(shape(1, c, d, d)).randFill();
+		PackedCollection filters = new PackedCollection(shape(f, c, s, s)).randFill();
+		CollectionProducer result = conv(s, cp(input), cp(filters.reshape(-1, c, s * s)));
+
+		double[] actual;
+		try (PackedCollection jacobian = Process.optimized(result.delta(cp(input))).get().evaluate()) {
+			actual = jacobian.toArray();
+		}
+
+		double[] weights = filters.toArray();
+		int inputSize = c * d * d;
+		int mismatches = 0;
+
+		for (int out = 0; out < f * o * o; out++) {
+			int filter = out / (o * o);
+			int row = (out / o) % o;
+			int col = out % o;
+
+			for (int in = 0; in < inputSize; in++) {
+				int a = (in / d) % d - row;
+				int b = in % d - col;
+				double expected = a >= 0 && a < s && b >= 0 && b < s
+						? weights[((filter * c + in / (d * d)) * s + a) * s + b] : 0.0;
+
+				if (Math.abs(expected - actual[out * inputSize + in]) > 1e-5) mismatches++;
+			}
+		}
+
+		assertEquals(0, mismatches);
+	}
+
+	/**
 	 * Tests small convolution delta with gradient.
 	 */
 	@Test(timeout = 60000)
