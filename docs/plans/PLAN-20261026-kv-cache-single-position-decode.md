@@ -105,8 +105,9 @@ throughput measurement is an explicit follow-up (see Machine).
 3. **Wire it into a generator.** The decode must drive an `AutoregressiveModel` so it shares the
    sampling path unified in PR #741 (greedy, temperature, and top-p via `getTopP`/`setTopP`). Two
    routes, decided in Approach: extend the existing `AutoregressiveModel.of(...)` factory (which is
-   already the "one token's embedding → one vocabulary row" shape, advancing a `position` and
-   owning a cache), or a dedicated `AutoregressiveModel` subclass mirroring
+   already the "one token's embedding → one vocabulary row" shape, advancing a `position` on the
+   device and owning its input buffer, temperature and sampling ops — the KV cache would live in
+   the compiled decode model it wraps), or a dedicated `AutoregressiveModel` subclass mirroring
    `SlidingWindowAutoregressiveModel` (which overrides `load`/`forward`/`sample` and owns its
    buffers). The generator advances `position`, writes the new token into the cache, and samples the
    returned row — **no Java loop over tokens outside the generator**, consistent with the
