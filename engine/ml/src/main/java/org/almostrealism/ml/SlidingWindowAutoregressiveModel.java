@@ -42,7 +42,8 @@ import java.util.Random;
  *
  * <p>Sampling uses {@link AutoregressiveModel#sampleToken}: a temperature of zero (the initial
  * value) selects the most probable token, and a positive temperature samples from the tempered
- * distribution.</p>
+ * distribution, restricted to the nucleus (top-p) of most probable tokens when
+ * {@link #setTopP(double)} has lowered the threshold below its default of {@code 1.0}.</p>
  *
  * <h2>Lifecycle</h2>
  * <p>The generator compiles the model it is given for inference and owns that compilation,
@@ -189,13 +190,13 @@ public class SlidingWindowAutoregressiveModel extends AutoregressiveModel<Intege
 
 	/**
 	 * Selects the next token from the log-probabilities of the previous step at the current
-	 * temperature.
+	 * temperature and nucleus (top-p) threshold.
 	 *
 	 * @param logProbabilities the {@code (vocabSize)} log-probabilities
 	 * @return the selected token id
 	 */
 	@Override
 	protected Integer sample(PackedCollection logProbabilities) {
-		return sampleToken(logProbabilities, vocabSize, getTemperature(), 1.0, random);
+		return sampleToken(logProbabilities, vocabSize, getTemperature(), getTopP(), random);
 	}
 }

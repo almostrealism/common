@@ -25,8 +25,8 @@ Producer<PackedCollection> ref = p(weights);
 
 // zeros() / rand() / randn() — create filled producers directly.
 CollectionProducerComputation z = zeros(shape(10));
-Random r = rand(shape(3, 4));
-Random n = randn(shape(3, 4));
+RandomProducer r = rand(shape(3, 4));
+RandomProducer n = randn(shape(3, 4));
 ```
 
 ## Element-wise Arithmetic
