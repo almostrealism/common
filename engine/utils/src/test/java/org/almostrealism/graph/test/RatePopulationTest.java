@@ -16,13 +16,16 @@
 
 package org.almostrealism.graph.test;
 
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.RatePopulation;
 import org.almostrealism.time.SimulationRunner;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -208,5 +211,95 @@ public class RatePopulationTest extends TestSuiteBase {
 		runner.destroy();
 		population.destroy();
 		weights.destroy();
+	}
+
+	/**
+	 * One step of the default activation from zero rates equals
+	 * {@code (1 - decay) * rMax * tanh(max(g * W r + b, 0) / rMax)} computed on the host, for a
+	 * negative drive (rectified to zero), a small drive (nearly linear) and a drive far above
+	 * {@code rMax} (saturated at rMax). With zero rates the coupling contributes nothing,
+	 * so the expected value depends only on the drive.
+	 */
+	@Test(timeout = 120000)
+	public void defaultActivation() {
+		int n = 3;
+		double rMax = 10.0;
+		PackedCollection weights = new PackedCollection(shape(n, n)).fill(
+				1.0, 2.0, 3.0,
+				-1.0, 0.5, 0.0,
+				0.0, 0.0, 4.0);
+		RatePopulation population = new RatePopulation(weights, null, 2.0, DT, TAU, rMax);
+		population.getRates().clear();
+		population.getInput().fill(-3.0, 0.5, 1000.0);
+		assertEquals(Math.exp(-DT / TAU), population.getDecay(), 1e-12);
+		assertEquals(rMax, population.getMaxRate(), 0.0);
+		assertEquals(2.0, population.getGain(), 0.0);
+		assertEquals(n, population.getCount());
+		Assert.assertSame(weights, population.getWeights());
+
+		SimulationRunner runner = new SimulationRunner(population, DT);
+		runner.run(1);
+
+		double[] b = { -3.0, 0.5, 1000.0 };
+		double[] rates = population.getRates().toArray();
+		for (int i = 0; i < n; i++) {
+			double expected = (1.0 - population.getDecay()) * rMax * Math.tanh(Math.max(b[i], 0.0) / rMax);
+			assertEquals(expected, rates[i], 1e-5);
+		}
+
+		assertEquals(0.0, rates[0], 0.0);
+		assertTrue(rates[2] > 0.999 * (1.0 - population.getDecay()) * rMax);
+		assertTrue(rates[2] <= (1.0 - population.getDecay()) * rMax * (1.0 + 1e-6));
+
+		runner.destroy();
+		population.destroy();
+		weights.destroy();
+	}
+
+	/**
+	 * The constructor rejects a matrix that is not square or not two-dimensional, a row scale of
+	 * the wrong size, and a time step, time constant or maximum rate that is zero, negative or
+	 * NaN.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsInvalidArguments() {
+		PackedCollection square = new PackedCollection(shape(3, 3));
+		PackedCollection rectangular = new PackedCollection(shape(3, 4));
+		PackedCollection vector = new PackedCollection(shape(9));
+		PackedCollection shortScale = new PackedCollection(shape(2));
+
+		assertThrowsIllegalArgument(() -> new RatePopulation(rectangular, null, 1.0, DT, TAU, 1.0));
+		assertThrowsIllegalArgument(() -> new RatePopulation(vector, null, 1.0, DT, TAU, 1.0));
+		assertThrowsIllegalArgument(() -> new RatePopulation(square, cp(shortScale), 1.0, DT, TAU, 1.0));
+		assertThrowsIllegalArgument(() -> new RatePopulation(square, null, 1.0, 0.0, TAU, 1.0));
+		assertThrowsIllegalArgument(() -> new RatePopulation(square, null, 1.0, -DT, TAU, 1.0));
+		assertThrowsIllegalArgument(() -> new RatePopulation(square, null, 1.0, Double.NaN, TAU, 1.0));
+		assertThrowsIllegalArgument(() -> new RatePopulation(square, null, 1.0, DT, 0.0, 1.0));
+		assertThrowsIllegalArgument(() -> new RatePopulation(square, null, 1.0, DT, Double.NaN, 1.0));
+		assertThrowsIllegalArgument(() -> new RatePopulation(square, null, 1.0, DT, TAU, 0.0));
+		assertThrowsIllegalArgument(() -> new RatePopulation(square, null, 1.0, DT, TAU, -1.0));
+		assertThrowsIllegalArgument(() -> new RatePopulation(square, null, 1.0, DT, TAU, Double.NaN));
+
+		RatePopulation valid = new RatePopulation(square, null, 1.0, DT, TAU, 1.0);
+		assertEquals(3, valid.getCount());
+		assertEquals(3, valid.getRates().getMemLength());
+		assertEquals(3, valid.getInput().getMemLength());
+		valid.destroy();
+
+		Destroyable.releaseAll(List.of(square::destroy, rectangular::destroy, vector::destroy, shortScale::destroy));
+	}
+
+	/**
+	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
+	 *
+	 * @param action the action expected to throw
+	 */
+	private static void assertThrowsIllegalArgument(Runnable action) {
+		try {
+			action.run();
+			Assert.fail("Expected an IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
 	}
 }

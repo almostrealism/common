@@ -126,7 +126,7 @@ public class RatePopulation implements Temporal, LayerFeatures, Destroyable {
 		TraversalPolicy shape = weights.getShape();
 		if (shape.getDimensions() != 2 || shape.length(0) != shape.length(1)) {
 			throw new IllegalArgumentException("weights must be a square matrix, not " + shape);
-		} else if (dt <= 0.0 || tau <= 0.0) {
+		} else if (!(dt > 0.0) || !(tau > 0.0)) {
 			throw new IllegalArgumentException("dt and tau must be positive");
 		} else if (!(rMax > 0.0)) {
 			throw new IllegalArgumentException("rMax must be positive");
