@@ -346,7 +346,14 @@ Decoding uses a sliding window over the full-sequence model the weights were tra
 is written as a single value, and the window slides by device-to-device copies, so the window is
 never staged on the host. Each step runs one forward pass and samples from the log-probabilities of the last filled row with
 `AutoregressiveModel.sampleToken`: the most probable byte at temperature zero, a tempered sample
-otherwise. Positions after the filled prefix hold padding, which the causal mask keeps from
+otherwise, restricted to the nucleus (top-p) of most probable bytes when `setTopP` has lowered the
+threshold below its default of `1.0`. Nucleus sampling draws only from the smallest set of most
+probable bytes whose cumulative probability reaches `p`, renormalized over that set, which keeps the
+varied quality of tempered sampling while cutting off the low-probability tail that otherwise
+derails a weakly-generalizing model; `getTopP`/`setTopP` carry the threshold (valid range
+`(0, 1]`), and `SlidingWindowAutoregressiveModel` and the `AutoregressiveModel.of(...)` factory now
+route the same tempered logits through `sampleToken` once, so the two generators sample identically
+at a given temperature, top-p and seed. Positions after the filled prefix hold padding, which the causal mask keeps from
 affecting the filled rows; once the text is longer than `seqLen` the window slides, so every pass
 sees its tokens at positions `0..seqLen-1`, as every training window did. The window is cleared
 (padding zeroed, so every position is a valid token id) by `reset()`, which begins a new sequence.
@@ -388,7 +395,10 @@ a sentence. The choice of the first byte is narrow (`a` at p = 0.124 against `t`
 the text is specific to this backend's arithmetic, although the run itself is deterministic.
 The model now beats the count-based bigram on held-out text but not the trigram (3.07), and
 greedy decoding locks onto whatever short loop the model ranks highest, so readable sentences
-need the model to close more of that gap. The next levers are those this round left untried:
-more steps at the lower rate (the held-out curve was still falling in the last epochs), batch
-sizes above 1, and a single-position decode with a key/value cache, which would make sampling
-with a temperature or top-p cheap enough to compare against greedy decoding.
+need the model to close more of that gap. Nucleus (top-p) sampling is now reachable through the
+generator (`setTopP`), which cuts off the unreliable tail that full-distribution temperature
+sampling can draw from; measuring whether it reads better than greedy decoding on this model is a
+separate run. The next levers are those this round left untried: more steps at the lower rate (the
+held-out curve was still falling in the last epochs), batch sizes above 1, and a single-position
+decode with a key/value cache, which would make that top-p-versus-greedy comparison cheap enough
+to run at length.
