@@ -153,9 +153,7 @@ public interface Block extends Component, CellularPropagation<PackedCollection>,
 	 * @throws IllegalArgumentException if total size does not match
 	 */
 	default Block reshape(TraversalPolicy shape) {
-		if (getOutputShape().getTotalSize() != shape.getTotalSize()) {
-			throw new IllegalArgumentException("Cannot reshape " + getOutputShape() + " to " + shape);
-		}
+		getOutputShape().requireReshape(shape);
 
 		if (enableAlignCountReshape) {
 			shape = shape.alignCount(getOutputShape());

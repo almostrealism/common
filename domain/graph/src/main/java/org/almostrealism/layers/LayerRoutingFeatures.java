@@ -355,8 +355,7 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * @throws IllegalArgumentException if the block's input and output shapes have different total sizes
 	 */
 	default Block residual(Block block) {
-		if (block.getInputShape().getTotalSize() != block.getOutputShape().getTotalSize())
-			throw new IllegalArgumentException();
+		block.getInputShape().requireReshape(block.getOutputShape());
 
 		SequentialBlock residual = new SequentialBlock(block.getInputShape());
 		residual.accum(block);

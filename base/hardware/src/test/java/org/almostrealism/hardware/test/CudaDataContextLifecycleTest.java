@@ -178,4 +178,42 @@ public class CudaDataContextLifecycleTest {
 			context.destroy();
 		}
 	}
+
+	/**
+	 * An allocation larger than {@link CudaMemoryProvider#maxCachedAllocation}, which the provider
+	 * frees on release rather than keeping for reuse, reads as zeros when allocated again after a
+	 * block of the same size was written and released.
+	 */
+	@Test(timeout = 60000)
+	public void largeReallocationIsZeroed() {
+		int count = (int) (2 * CudaMemoryProvider.maxCachedAllocation / Float.BYTES);
+		CudaDataContext context = newContext();
+
+		try {
+			CudaMemoryProvider provider;
+
+			try {
+				provider = context.getMemoryProvider();
+			} catch (LinkageError | HardwareException e) {
+				Assume.assumeNoException("CUDA is unavailable", e);
+				return;
+			}
+
+			double[] written = new double[count];
+			Arrays.fill(written, 7.0);
+
+			CudaMemory released = provider.allocate(count);
+			provider.setMem(released, 0, written, 0, count);
+			provider.deallocate(count, released);
+
+			CudaMemory reallocated = provider.allocate(count);
+			double[] read = new double[count];
+			provider.getMem(reallocated, 0, read, 0, count);
+			provider.deallocate(count, reallocated);
+
+			Assert.assertArrayEquals(new double[count], read, 0.0);
+		} finally {
+			context.destroy();
+		}
+	}
 }
