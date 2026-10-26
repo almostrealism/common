@@ -113,6 +113,9 @@ For the broader project layer map, see the top-level
 - [docs/operations/SETUP.md](docs/operations/SETUP.md) — Operator setup
   index: where workstreams, secrets, Slack, GitHub, and tracker
   integration are configured.
+- [docs/operations/COLIMA_DEPLOY_HOST.md](docs/operations/COLIMA_DEPLOY_HOST.md) —
+  Checklist (not yet carried out) for moving the controller stack from a personal
+  Docker Desktop to a service-account Colima daemon on the deploy host.
 - [docs/operations/OPENCODE.md](docs/operations/OPENCODE.md) — Opencode
   runner setup: environment variables, binary discovery, recommended
   starter setup (`./flowtree/runtime/rebuild.sh --with-llm`), alternative

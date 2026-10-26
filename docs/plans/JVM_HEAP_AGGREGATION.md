@@ -1,3 +1,10 @@
+---
+status: proposed
+created: 2026-10-07
+closed:
+tracker: [0567f45f-c7fd-4b75-856b-d17c4e4f17ae]
+---
+
 # Small Values on the JVM Heap, Aggregated Once Per Kernel Program
 
 ## Why this exists
@@ -169,12 +176,26 @@ current code breaks it.
    program's aggregate slice when it is on the same provider. Otherwise the value is
    reconciled out of the first aggregate before it is adopted by the second.
 
-7. **Retirement writes back before the aggregate is freed.**
+7. **Compiling the same graph twice gives the same kernels.**
+   Broken today whenever aggregation is on. The compile-determinism investigation
+   (`docs/journals/COMPILE_DETERMINISM.md`) traced a cross-compile numeric divergence to
+   aggregation, not to instruction-set reuse. `isAggregationTarget` only targets JVM-heap
+   memory, so weights shared between two compiles are heap-resident, and therefore
+   aggregated, on the cold compile. By the warm compile they are device-resident and not
+   aggregated. The two compiles emit different kernels and diverge by ~1e-5 or more.
+   Setting `AR_HARDWARE_OFF_HEAP_SIZE` to 0 (the current default) removes the divergence.
+   Before step 6 raises the threshold again, fold eligibility must not depend on a value's
+   residency *at compile time*. It must also not leave one compiled program with a mix of
+   aggregated operations and reused, non-aggregated ones. Two compiles of the same graph
+   with the same shared weights must produce identical kernels, verified with
+   ar-profile-analyzer `get_source` and a cross-compile numeric diff of 0.0.
+
+8. **Retirement writes back before the aggregate is freed.**
    Broken: `resetArguments()` / `MemoryDataArgumentMap.destroy()` free the aggregate and
    assume the original is already current, which is only true because of the per-dispatch
    copy-out.
 
-8. **Reconciliation is ordered against in-flight kernels.**
+9. **Reconciliation is ordered against in-flight kernels.**
    Partly in place. Copies are already Semaphore-chained (`451b25951`, `a3b20e285`) and
    protected by `KernelMemoryGuard` leases. A host access to a lent slice must wait for (or
    be ordered after) the kernels that write it, which is the same as the existing
@@ -230,8 +251,8 @@ Each step is useful on its own and can be measured before the next one starts.
    adopts it, and the first program's dispatch fails fast if it is still live. This has to
    be settled before step 2 is enabled by default.
 
-6. **Raise `AR_HARDWARE_OFF_HEAP_SIZE` back to 1024**, once steps 1 to 3 are in and
-   measured. Measure `SyntheticDenseTrainingTest.denseClassification`,
+6. **Raise `AR_HARDWARE_OFF_HEAP_SIZE` back to 1024**, once steps 1 to 3 are in, the
+   determinism constraint (7) holds, and the change is measured. Measure `SyntheticDenseTrainingTest.denseClassification`,
    `SimilarityOverheadTest.pairwiseSimilarityAtScale` and an audio rendering test on each
    backend (`native`, `cl`, `mtl`, `native,cuda`), with shared memory on and off.
 

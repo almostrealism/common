@@ -1,3 +1,10 @@
+---
+status: proposed
+created: 2026-10-25
+closed:
+tracker: [b68f70bc-b19e-4955-b236-82fd0ebb48a5, af42d29a-f221-4a38-a873-99e2250ce9fc, 87f6b019-fea1-4a1d-9b45-65290d63b2bc]
+---
+
 # Proposal: hooks and CI checks against computations that bypass a TraversalOrdering
 
 **Prompted by:** owner review of PR #724 (branch `project/task-20261023-135029`), comment on

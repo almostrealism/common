@@ -103,7 +103,7 @@ data through string-typed parameters that the tool then parses locally:
 - `default_phase_config: str = ""` — JSON object with optional
   `runner` / `model` / `effort` / `provider` keys. Sets the container's
   default `PhaseConfig` (the `defaultPhaseConfig` of the bundle described
-  in `docs/plans/UNIFIED_PHASE_CONFIG.md`), applied to every phase that has
+  in `flowtree/docs/architecture/PHASES.md`), applied to every phase that has
   no dedicated `phase_configs` entry. Parsed by
   `_parse_default_phase_config_json`, which checks runners against the known
   set and efforts against `VALID_EFFORT_LEVELS`; `provider` is opaque and

@@ -57,14 +57,28 @@ CMD_PREFIXES = {"!", "time", "nohup", "sudo", "env", "command", "exec",
 
 ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
-SKIP = re.compile(r"-DskipTests|-Dmaven\.test\.skip(=true)?$|-Dmaven\.test\.skip\b")
+# Anchored to the whole argument token, so "-DskipTests=false" and
+# "-Dmaven.test.skip=false" (which re-enable tests) are not mistaken for skip
+# flags. Matches tools/mcp/manager/execution_limits.py's _SKIP_TESTS_PATTERN.
+SKIP = re.compile(r"^-DskipTests(=true)?$|^-Dmaven\.test\.skip(=true)?$")
 
-TEST_PHASES = {"test", "integration-test"}
+# Every default-lifecycle phase at or after "test" runs tests unless skipped.
+# Matches tools/mcp/manager/execution_limits.py's _MVN_TEST_RUNNING_PHASES.
+TEST_PHASES = {"test", "integration-test", "verify", "install", "package", "deploy"}
 
 DASH_C = re.compile(r"^-[a-z]*c$")
 
+# CI-shard partitioning, reserved for the CI workflow matrix. Setting the
+# variable — as an environment assignment ("AR_TEST_GROUP=2 mvn ...",
+# "export AR_TEST_GROUP=2") or a system property ("-DAR_TEST_GROUP=2") —
+# blocks the command whatever the mvn phase. Only a token that assigns a value
+# counts, so reading or searching for the name ("grep AR_TEST_GROUP ...") and
+# editing a file that mentions it are not blocked.
+AR_TEST_GROUP = re.compile(r"^(?:-D)?AR_TEST_GROUPS?=\S")
+
 BLOCK_REASON = (
-    "BLOCKED: Direct 'mvn test' is not permitted for agents.\n\n"
+    "BLOCKED: Direct 'mvn test' (or verify/install/package/deploy, which "
+    "also run tests unless -DskipTests is set) is not permitted for agents.\n\n"
     "Use the MCP test runner:\n"
     "  mcp__ar-test-runner__start_test_run\n"
     "    module: \"<module>\"\n"
@@ -80,12 +94,32 @@ BLOCK_REASON = (
     "runs at the wrong test depth, and produces unreliable results.\n"
 )
 
+AR_TEST_GROUP_BLOCK_REASON = (
+    "BLOCKED: This command references AR_TEST_GROUP/AR_TEST_GROUPS.\n\n"
+    "CI-shard partitioning reproduces a whole test-matrix group in one JVM\n"
+    "and is reserved for the CI workflow matrix. Agents must never run a\n"
+    "shard, with or without mvn. Use\n"
+    "  mcp__ar-test-runner__start_test_run\n"
+    "    test_classes: [\"MyTest#myMethod\"]\n"
+    "to select the specific test(s) you need instead. There is no bypass\n"
+    "for this rule.\n"
+)
+
 WARN_NOTE = (
     "This command couldn't be parsed well enough to confirm whether it "
     "launches `mvn test`. If you intend to run tests, use "
     "mcp__ar-test-runner__start_test_run instead of invoking mvn "
     "directly (it sets up the environment and correct test depth)."
 )
+
+
+def assigns_test_shard(cmd):
+    """True if any shell word of the command sets AR_TEST_GROUP(S)."""
+    try:
+        tokens = shlex.split(cmd, comments=False, posix=True)
+    except ValueError:
+        tokens = cmd.split()
+    return any(AR_TEST_GROUP.match(t) for t in tokens)
 
 
 def runs_tests(args):
@@ -148,6 +182,14 @@ def decide(command):
     """
     if not command or not command.strip():
         return {"action": "allow", "reason": "", "context": "", "stderr": ""}
+
+    if assigns_test_shard(command):
+        return {
+            "action": "block",
+            "reason": AR_TEST_GROUP_BLOCK_REASON,
+            "context": "",
+            "stderr": AR_TEST_GROUP_BLOCK_REASON,
+        }
 
     status = analyze(command)
 

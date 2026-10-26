@@ -1,3 +1,10 @@
+---
+status: proposed
+created: 2026-09-22
+closed:
+tracker: []
+---
+
 # Authenticating agent capability grants at the factory boundary
 
 Recorded during review of the per-job agent permission-prompt grant. Not an
@@ -113,6 +120,29 @@ Y while job B holds Y and wants X. The shape that works is to resolve every
 participating path from job configuration before acquiring anything, then take
 all of them in a deterministic order, releasing all on exit. That is a change to
 the job startup sequence with deadlock stakes and deserves its own pass.
+
+## Related gap: services that do not require caller identity
+
+The same weakness exists one layer down: several services that hold controlled
+state accept requests without a per-caller identity. Closing tokenless access to
+ar-manager (it now requires a token; there is no stdio mode) did not close these:
+
+- **ar-tracker** authenticates with a single shared bearer token
+  (`AR_TRACKER_AUTH_TOKEN`), and when it is unset the API is open (see
+  `tools/tracker/README.md`). There is no per-caller identity at all.
+- **ar-memory** treats `AR_MEMORY_AUTH_TOKEN` as optional
+  (`tools/mcp/memory/server.py`); unset means open.
+- **The FlowTree controller API** has never been audited endpoint by endpoint for
+  mandatory caller identity on the private network (the no-secret admin bypass in
+  `SecretsRequestHandler` was removed, nothing more).
+
+The principle is the one established for ar-manager: optional identity is an
+escape hatch. The fix is an audit of every path into the controller, memory and
+tracker asking "does the callee know who is calling, and is that identity
+mandatory?", followed by either mandatory per-caller tokens on each service or
+routing those paths only through ar-manager's token-scoped tools. It belongs with
+grant signing because both change the same trust model: today possession of
+network access or of one shared secret is treated as authorization.
 
 ## Why it is not being done now
 

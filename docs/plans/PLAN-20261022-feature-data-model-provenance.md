@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-22
+closed: 2026-10-23
+tracker: [add9061c-8c30-4571-b321-a5cfb0246aed]
+---
+
 # Record which model produced a library item's feature data
 
 **Tracker task:** `add9061c-8c30-4571-b321-a5cfb0246aed` — *Record which model produced a library item's feature data*

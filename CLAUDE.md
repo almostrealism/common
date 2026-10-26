@@ -476,15 +476,14 @@ running everything, which is the pipeline's job. They are not meant to stop you 
 code you just touched, so a class, or a few classes, or a list of methods is an ordinary
 invocation. The caps below are where "a targeted check" stops and "the suite" begins.
 
-A `PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also blocks a direct
-`mvn test`/`mvn integration-test` invocation, but it does not yet cover the full rule above:
-it does not block `verify`/`install`/`package`/`deploy` (which also run tests unless
-`-DskipTests` is set), does not block a bare `AR_TEST_GROUP`/`AR_TEST_GROUPS` reference, and
-has no equivalent hook for a broad `pytest`/`python -m pytest` invocation. The exact diff to
-close this gap has been recorded for a human to apply by hand — coding-agent sessions cannot
-write under `.claude/hooks/` or `.claude/settings.json`. Until that diff lands, a direct agent Bash command can still slip a
-broad Maven phase, `AR_TEST_GROUP`, or a broad pytest run past the hook layer; the three
-surfaces above remain the only ones with no bypass.
+Two `PreToolUse` Bash hooks apply the same rule to commands an agent runs directly.
+`.claude/hooks/block-mvn-test-direct.sh` blocks `mvn test`/`integration-test`, and
+`verify`/`install`/`package`/`deploy` unless `-DskipTests` (or `-Dmaven.test.skip`) is set,
+and any command that assigns `AR_TEST_GROUP`/`AR_TEST_GROUPS` (reading or searching for the
+name is not blocked). `.claude/hooks/block-pytest-broad-run.sh` blocks a `pytest`/`python -m
+pytest` run that is not a bounded selection: one with no path, with a directory, or with
+more than 5 test files or 40 node ids. Both are backstops, parsed from the command text, so
+the three surfaces above remain the only ones with no bypass.
 
 - **A bounded selection per invocation: at most 5 test classes and at most 40 named methods.**
   Naming a class is fine — `-Dtest=FooTest`, or `test_classes: ["FooTest"]` — and so is naming

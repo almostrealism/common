@@ -1,3 +1,10 @@
+---
+status: proposed
+created: 2026-05-24
+closed:
+tracker: []
+---
+
 # GitHub App Credentials for FlowTree Workspaces
 
 Status: Proposal — not yet started
@@ -34,7 +41,7 @@ This unlocks three things FlowTree needs across use-cases:
 - `workstreams.yaml` has a top-level `githubOrgs:` map: `org -> { token: <PAT> }`.
 - A workstream selects one via the optional `githubOrg:` field.
 - `GitHubTokenValidator`
-  (`flowtree/runtime/src/main/java/io/flowtree/slack/GitHubTokenValidator.java`)
+  (`flowtree/runtime/src/main/java/io/flowtree/github/GitHubTokenValidator.java`)
   validates each PAT at controller startup (`GET /user`, `GET /repos/{owner}/{repo}`).
 - Agents do not hold the PAT directly. GitHub **API** calls are proxied:
   agent → ar-manager → controller (`FlowTreeApiEndpoint` GitHub proxy) → GitHub,
@@ -156,7 +163,7 @@ All in the `almostrealism/common` repo:
 
 - `flowtree/runtime/src/main/resources/workstreams-example.yaml` — document
   `githubApps` and the per-workstream `githubApp` / `scopeToRepos` fields.
-- `flowtree/runtime/src/main/java/io/flowtree/slack/GitHubTokenValidator.java`
+- `flowtree/runtime/src/main/java/io/flowtree/github/GitHubTokenValidator.java`
   — validate App config; build the App-vs-PAT credential context.
 - `FlowTreeController` — load `githubApps`, render the private key from
   ar-secrets, own the `InstallationTokenProvider`.
