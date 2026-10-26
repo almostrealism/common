@@ -78,7 +78,7 @@ Concrete, actionable deliverables:
      mention it only as a pointer. Keep every construct's description to one sentence and
      defer the formal semantics to the reference.
    - **Reading attention** — a guided read of the `attend` and `attention` layers of
-     `attention.pdsl`: the `-> [1, heads * head_size]` return-shape annotation, the opening
+     `attention.pdsl`: the `-> [1, heads * head_size]` shape annotation, the opening
      `rmsnorm`, the `branch keys { }` / `branch values { }` side paths (projection,
      `rotate_heads` for RoPE, `repeat_each(heads / kv_heads)` for grouped-query attention,
      `cache_write(key_cache, position)` into the KV cache), the query path, and `attend`
@@ -86,6 +86,14 @@ Concrete, actionable deliverables:
      `weighted_values`). `sdpa.pdsl` is a different thing — full-sequence score layers built
      on `scaled_dot_product` with a `key_mask`, with no RoPE and no KV cache — so if it
      appears at all it is as a short contrast, not as part of this read.
+     The annotation must be taught as the reference defines it, which is *not* what the arrow
+     suggests: `layer f(...) -> [s]` declares the **input** shape `f` is built for when another
+     layer or model calls it, and it is ignored by a direct `buildLayer` from Java
+     (`pdsl-language.md`, "The shape annotation" and "Known limits"). The asset bears this out:
+     `attend` is annotated `-> [heads, head_size]` because it is called on the rotated query of
+     that shape, and its doc comment gives its mapping as
+     `[heads, head_size] -> [1, heads * head_size]`. Reading the arrow as a return shape is the
+     most likely first misreading, so it belongs in the "common first mistakes" list as well.
    - **Composing a layer** — how the `transformer` layer of `transformer.pdsl` uses
      `import "/pdsl/attention.pdsl"` / `import "/pdsl/feed_forward.pdsl"` and two `accum { }`
      residual blocks to assemble attention and `swiglu_ffn` into one pre-norm decoder layer.
@@ -113,8 +121,11 @@ Concrete, actionable deliverables:
      `KeyValueCacheAutoregressiveModel` / `SlidingWindowAutoregressiveModel`), exactly as the
      real models do.
    - **Where to go next** — links to the reference, to `pdsl-audio-dsp.md`, to the shipped
-     assets, and a short "common first mistakes" list (shape mismatches, forgetting a norm),
-     framed as learning aids.
+     assets, and a short "common first mistakes" list (shape mismatches, forgetting a norm,
+     reading `-> [shape]` as an output shape, putting `accum` in a `model` body, expecting
+     `parse(String)` to resolve an `import`), framed as learning aids. Each item should name
+     the error message or symptom the reader will actually see, taken from the reference's
+     "Errors and diagnostics" and "Known limits" sections, not paraphrased from memory.
 
 2. **A drift-guard test** in `engine/ml` — `PdslTutorialExamplesTest` (extends
    `TestSuiteBase`, `@Test(timeout = ...)`), modeled directly on the existing
@@ -128,11 +139,14 @@ Concrete, actionable deliverables:
    same guarantee `PdslLanguageReferenceExamplesTest` gives the reference page.
    - To make extraction unambiguous in HTML, each complete on-page program is wrapped in a
      stable, greppable marker (e.g. a `<pre class="pdsl-program">` class or an HTML comment
-     delimiter the test keys on). The reference test's convention is a Markdown fence
+     delimiter the test keys on). The existing tutorials mark code as
+     `<pre><code class="language-java">` / `language-bash`, so the natural choice is
+     `<code class="language-pdsl">` for a complete program and a different class (for example
+     `language-text`) for a fragment, keeping the page in the series' existing markup. The reference test's convention is a Markdown fence
      (`PDSL_BLOCK` matches a fenced block tagged `pdsl`): a complete program is fenced as
      `pdsl`, a fragment as `text`. The HTML marker should carry the same meaning — marked =
      complete and must parse; unmarked = fragment.
-   - The extractor must **decode HTML entities** before parsing. PDSL return-shape
+   - The extractor must **decode HTML entities** before parsing. PDSL shape
      annotations are written `->`, which must appear as `-&gt;` in HTML, and `<`/`&` likewise
      need escaping; a test that parses the raw HTML text would fail on every annotated layer
      (or pass only because the page avoided them). Any syntax-highlighting markup inside the
@@ -242,7 +256,12 @@ Raised in review for the person approving the plan; none has been decided.
    replace with `transformer(block, position)`. A tutorial that teaches readers to write that
    call will be out of date when item 3 lands, and the drift test will not notice (the old
    form keeps parsing). Should the tutorial show the call only as something to read, not to
-   write, and should landing item 3 be listed as a trigger to revise the tutorial?
+   write, and should landing item 3 be listed as a trigger to revise the tutorial? The same
+   applies to the `-> [shape]` annotation: `PDSL_FOR_RESEARCH_AND_EDUCATION.md` proposes to
+   "fix the meaning of `-> [shape]`" (rename it to say input shape, or make it actually check
+   the output).
+   The tutorial teaches today's input-shape meaning; if that proposal lands, the page must be
+   revised with it, and the drift test will again not notice if only the meaning changes.
 3. **`for i in a..b`.** The language still accepts index loops and string-keyed weights, but
    the owner's direction is that they not spread. The plan assumes the tutorial teaches only
    `stack`; confirm that it should not mention `for` at all, or mention it only with a

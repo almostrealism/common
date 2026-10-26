@@ -108,8 +108,12 @@ pages and the tests read the same files, so a page cannot drift away from code t
 This section is the survey of 2026-10-04, kept as the baseline the plan was written against.
 Citations are against that tree. Since then, the model-level structure has moved to
 `qwen2.pdsl` / `qwen3.pdsl` (only the embedding lookup and sampling remain in Java). Weight
-binding, `zeros`, `rope_freqs` and per-layer KV caches exist. The `weight("key")` and
-`state_dict` stubs are gone. The phase notes below are the current state.
+binding, `zeros`, `rope_freqs` and per-layer KV caches exist. The `state_dict` stub is gone:
+`buildModel(..., StateDictionary, ...)` binds the dictionary to every `checkpoint` parameter.
+`weight("key")` still evaluates to the string `"weight:<key>"` and nothing resolves it, but it
+is superseded rather than blocking, since a model now names its weights by `checkpoint` field
+path (`weights.model.norm.weight`); `pdsl-language.md` lists it under "Known limits". The
+phase notes below are the current state.
 
 ### Already expressed in PDSL
 
@@ -134,6 +138,10 @@ The model-level structure of every LLM is still in Java (`Qwen3.model()`, `Qwen3
 No shipped `.pdsl` file defines a `model`.
 
 ### Gaps that block this plan
+
+This table is part of the 2026-10-04 baseline. The first two rows are closed by `checkpoint`
+parameters and field paths (see above). The others were open at the survey; the phase notes and
+"Resume here" give their current state.
 
 | Gap | Where | Consequence |
 |-----|-------|-------------|
