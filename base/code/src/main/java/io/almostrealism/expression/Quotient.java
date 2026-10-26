@@ -467,6 +467,15 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * numerator additionally drops remainder terms that cannot reach the next multiple
 	 * of the divisor; see {@link #tryBoundedRemainderSimplify(Sum, long)}.</p>
 	 *
+	 * <p>The sum-numerator folds that distribute the quotient across each term (dividing an
+	 * exactly-divisible term plus the lone remainder source separately) apply only when no
+	 * term of the sum can be negative. Distributing a truncating quotient over a sum that can
+	 * go negative is unsound: an exactly-divisible term yields an integer quotient that
+	 * truncation rounds toward zero while the combined value rounds the other way. For example
+	 * {@code (4*i + (-i)) / 4} is {@code trunc(3*i / 4)}, which is {@code 0} at {@code i == 1},
+	 * not {@code i + (-i) / 4 == 1}. When any term may be negative the sum is left unfolded so
+	 * the division is evaluated on the combined value.</p>
+	 *
 	 * @param values the numerator followed by denominator expression(s)
 	 * @return the simplified expression or a new {@link Quotient}
 	 * @throws IllegalArgumentException if no operands are provided
@@ -595,7 +604,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				}
 			}
 		} else if (numerator instanceof Sum && d.isPresent()) {
-			if (!(numerator instanceof Index) && !numerator.isFP()) {
+			// Distributing the quotient across terms is only sound when no term is negative
+			if (!(numerator instanceof Index) && !numerator.isFP()
+					&& numerator.getChildren().stream().noneMatch(Expression::isPossiblyNegative)) {
 				List<Expression<?>> products = new ArrayList<>();
 				long total = 0;
 				int unknown = 0;
