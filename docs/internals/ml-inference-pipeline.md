@@ -281,44 +281,74 @@ compile a distinct operation for every position in the sequence.
 
 ### Factory Method
 
-The `of()` factory wraps a compiled text model and constructs the sampling function
-inline:
+The `of()` factory wraps a compiled text model in an anonymous `AutoregressiveModel`
+subclass that implements the generation steps by overriding `load`, `forward` and
+`sample` (the same pattern `SlidingWindowAutoregressiveModel` uses):
 
 ```java
 // AutoregressiveModel.of()
 public static AutoregressiveModel<Integer> of(CompiledModel model,
                                              PackedCollection position,
                                              IntFunction<PackedCollection> tokenEmbed) {
+    return of(model, position, tokenEmbed, new Random());
+}
+
+public static AutoregressiveModel<Integer> of(CompiledModel model,
+                                             PackedCollection position,
+                                             IntFunction<PackedCollection> tokenEmbed,
+                                             Random random) {
     PackedCollection in = new PackedCollection(model.getInputShape());
     int vocabSize = model.getOutputShape().getTotalSize();
 
     PackedCollection temperature = new PackedCollection(1);
 
     Evaluable<PackedCollection> indexOfMax = Ops.o().indexOfMax(Ops.o().x(vocabSize)).get();
-    Evaluable<PackedCollection> rescale = Ops.o().x(vocabSize).divide(Ops.o().cp(temperature)).get();
-    Evaluable<? extends PackedCollection> softmax =
-            Process.optimized(DIST.softmax(Ops.o().x(vocabSize))).get();
 
-    Random random = new Random();
-    Function<PackedCollection, Integer> sample = logits -> {
-        if (temperature.toDouble(0) == 0.0) {
-            return (int) indexOfMax.evaluate(logits).toDouble(0);
-        } else {
-            rescale.into(logits).evaluate(logits);
-            softmax.into(logits).evaluate(logits);
-            return sampleToken(logits, vocabSize, 1.0, 1.0, random);
+    // Greedy selection reads the argmax back from the device; kept a factory-local lambda
+    // so that device read stays at the `of` pipeline boundary, not in the sample override.
+    ToIntFunction<PackedCollection> greedy =
+            logits -> (int) indexOfMax.evaluate(logits).toDouble(0);
+
+    return new AutoregressiveModel<>(position, temperature) {
+        @Override
+        protected void load(Integer t) {
+            in.setFrom(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize());
         }
-    };
 
-    return new AutoregressiveModel<>(
-            position,
-            t -> in.setFrom(0, tokenEmbed.apply(t), 0,
-                            model.getInputShape().getTotalSize()),
-            () -> model.forward(in),
-            sample,
-            temperature);
+        @Override
+        protected PackedCollection forward() {
+            return model.forward(in);
+        }
+
+        @Override
+        protected Integer sample(PackedCollection logits) {
+            if (getTemperature() == 0.0) {
+                return greedy.applyAsInt(logits);
+            }
+
+            return sampleToken(logits, vocabSize, getTemperature(), getTopP(), random);
+        }
+
+        @Override
+        public void destroy() { /* releases indexOfMax, in and temperature */ }
+    };
 }
 ```
+
+The factory samples through the same `sampleToken` path as
+`SlidingWindowAutoregressiveModel`: at a positive temperature the raw logits are
+tempered, softmaxed and (when `topP < 1.0`) nucleus-filtered exactly once, with the
+generator's configured temperature and top-p, so both generators sample identically
+from the same logits under the same temperature, top-p and seed. The three-argument
+factory delegates to a four-argument overload that accepts a caller-supplied
+`Random`, so sampling can be made reproducible. Because the anonymous subclass
+overrides `sample`, it reads `getTemperature()` and `getTopP()` through `this` — no
+self-reference holder is needed; the top-p threshold is host-only state and never
+enters the computation graph. Earlier the factory tempered and softmaxed on the device and
+then called `sampleToken(logits, vocabSize, 1.0, 1.0, random)`, which re-softmaxed
+the already-softmaxed distribution — a double transform that made the two generators
+sample differently for the same logits and temperature. Greedy decoding
+(temperature `0`) is unchanged: it still reduces on the device via `indexOfMax`.
 
 Note the use of `setFrom` for the token-embedding copy — the recent
 `setmem-policy-phases` work retired the `setMem(int, double[], int, int)` bulk-host-array
@@ -430,33 +460,40 @@ different program for every distinct token — the cost every step would otherwi
 
 ### Temperature Sampling
 
-The `sample` function constructed inside `of()`
+The `sample` override inside `of()`
 handles both greedy and sampling modes. `temperature` is a host-writable single-element
-collection updated by `setTemperature`:
+collection updated by `setTemperature`, read back through `getTemperature()`:
 
 ```java
-// Reading (greedy path)
-if (temperature.toDouble(0) == 0.0) {
-    return (int) indexOfMax.evaluate(logits).toDouble(0);
+// Greedy path
+if (getTemperature() == 0.0) {
+    return greedy.applyAsInt(logits);   // (int) indexOfMax.evaluate(logits).toDouble(0)
 }
 
-// Sampling path
-rescale.into(logits).evaluate(logits);   // logits / temperature
-softmax.into(logits).evaluate(logits);   // softmax(scaled_logits)
-return sampleToken(logits, vocabSize, 1.0, 1.0, random);
+// Sampling path — temper, softmax and (when topP < 1.0) nucleus-filter once
+return sampleToken(logits, vocabSize, getTemperature(), getTopP(), random);
 ```
 
 `sampleToken` is the static, host-side sampling
 helper. It reads the logits once with `toArray(0, vocabSize)` — a single
 sanctioned device-to-host transfer at the step boundary — and operates on the
-resulting host array. The recent `setmem-policy-phases` work changed sampling from
-per-element `toDouble(i)` calls to this single bulk read after the same per-element
-pattern produced ~17 million native readbacks during
-`MoonbeamValueDistributionTest.testSoftmaxAndSampling` (10.3s → 0.14s).
+resulting host array, applying temperature scaling, a stable softmax, optional
+nucleus (top-p) filtering, and categorical sampling. The recent
+`setmem-policy-phases` work changed sampling from per-element `toDouble(i)` calls to
+this single bulk read after the same per-element pattern produced ~17 million native
+readbacks during `MoonbeamValueDistributionTest.testSoftmaxAndSampling`
+(10.3s → 0.14s).
 
 - **Temperature = 0:** Greedy decoding — always picks the highest-probability token
 - **Temperature > 0:** Divides logits by temperature before softmax, then samples
   from the resulting probability distribution. Higher temperature = more random.
+- **Top-p < 1.0 (nucleus sampling):** Applied on top of temperature sampling, it
+  restricts each draw to the smallest set of most probable tokens whose cumulative
+  probability reaches `p`, renormalizes over that set, and samples within it, cutting
+  off the unreliable low-probability tail. `getTopP()`/`setTopP(double)` on
+  `AutoregressiveModel` carry the threshold (default `1.0`, meaning no filtering;
+  valid range `(0, 1]`); both `SlidingWindowAutoregressiveModel` and the `of(...)`
+  factory route it through `sampleToken`.
 
 ---
 
