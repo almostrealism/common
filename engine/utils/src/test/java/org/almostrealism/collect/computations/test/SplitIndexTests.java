@@ -107,6 +107,18 @@ public class SplitIndexTests extends TestSuiteBase {
 	}
 
 	/**
+	 * An ordering whose positions are all absent addresses no positions, however far below
+	 * {@code -1} those positions are, rather than reporting a negative length.
+	 */
+	@Test(timeout = 60000)
+	public void lengthIsZeroWhenEveryPositionIsAbsent() {
+		Assert.assertEquals(0, SplitIndexTraversalOrdering.of(-5).getLength().getAsInt());
+		Assert.assertEquals(0, SplitIndexTraversalOrdering.of(-4097, -2).getLength().getAsInt());
+		Assert.assertEquals(0, SplitIndexTraversalOrdering.of(Integer.MIN_VALUE).getLength().getAsInt());
+		Assert.assertEquals(1, SplitIndexTraversalOrdering.of(-5, 0).getLength().getAsInt());
+	}
+
+	/**
 	 * The length is computed without {@code int} overflow: the largest position whose length is
 	 * an {@code int} yields {@link Integer#MAX_VALUE}, and {@link Integer#MAX_VALUE} itself, which
 	 * would address {@code 2^31} positions, is reported as an error rather than a negative length.

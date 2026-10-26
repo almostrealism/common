@@ -218,6 +218,7 @@ See `SplitIndexTests.java`:
 - `negativePositionIsAbsent` - Negative positions keep their sign in the high lane and read as zero
 - `storageRoundTripsIntExtremes` - `Integer.MAX_VALUE` and `Integer.MIN_VALUE` round-trip with a high lane of magnitude at most 2^19
 - `lengthCoversLargestPosition` - The ordering addresses one more position than the largest stored
+- `lengthIsZeroWhenEveryPositionIsAbsent` - An ordering whose positions are all negative addresses no positions rather than reporting a negative length
 - `lengthDoesNotOverflowAtIntLimit` - The length is computed without `int` overflow; a stored `Integer.MAX_VALUE` is rejected
 - `rejectsIndexWithoutTwoLanes` - The ordering refuses a lane collection whose last dimension is not 2
 

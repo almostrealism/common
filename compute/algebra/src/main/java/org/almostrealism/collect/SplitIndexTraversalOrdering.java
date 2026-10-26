@@ -144,7 +144,7 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 
 	/**
 	 * Returns the number of physical positions addressed: one more than the largest stored
-	 * position, or 0 if no position is stored or every position is negative.
+	 * position, or 0 if every position is negative.
 	 *
 	 * @return the number of physical positions
 	 * @throws ArithmeticException if a stored position is {@link Integer#MAX_VALUE}, whose length
@@ -152,12 +152,11 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	 */
 	@Override
 	public OptionalInt getLength() {
-		// TODO(review): of(-5) yields a negative length; the javadoc promises 0 when all are absent
 		double[] values = lanes.toArray();
 		long max = IntStream.range(0, values.length / LANES)
 				.mapToLong(i -> (long) values[LANES * i] * BASE + (long) values[LANES * i + 1])
 				.max().orElse(-1);
-		return OptionalInt.of(Math.toIntExact(max + 1));
+		return OptionalInt.of(Math.toIntExact(Math.max(max, -1) + 1));
 	}
 
 	/**
