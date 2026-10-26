@@ -196,6 +196,35 @@ already exist and are exercised by the SkyTnt tests; the unified sampling path (
 honest attention backward pass (the prior correctness cycles) are on `master`. This task bridges the
 self-hosted LM's weight layout to that existing cache machinery.
 
+## Open questions
+
+These are decisions or risks the approver should see; they are to be resolved by evidence in the
+Approach, not pre-judged here.
+
+- **Clearing the cache on `reset()` is the deciding constraint between the two generator routes.**
+  The per-layer key and value caches are allocated inside the attention layer itself —
+  `AttentionFeatures.attentionArguments(...)` creates and clears a `(seqLen, dim)` key cache and
+  value cache and binds them as layer arguments, "the state the block writes on every forward pass
+  and reads on every later one." They therefore live in the compiled decode model, not in any
+  `AutoregressiveModel` wrapper. `AutoregressiveModel.of(...)` owns only its input buffer,
+  `position`, temperature and sampling ops; it runs the model with `model.forward(in)` and has no
+  handle on those caches, so `of(...).reset()` returns `position` to the start but leaves the
+  previous sequence's keys and values in the model — which contradicts Scope step 3's requirement
+  that `reset()` start a new sequence clean. Whichever route is chosen, `reset()` must reach into
+  the decode model to re-clear its layer caches; `of(...)` as it stands offers no such hook, while
+  a dedicated subclass (mirroring how `SlidingWindowAutoregressiveModel.reset()` clears its window)
+  can drive a model-level cache-clear it exposes. Cache clearing, not just the sampling path, is
+  what picks between the two routes, and the cache-isolation test (Scope step 4) is what proves the
+  chosen route actually clears on reset.
+- **The single-step pin compares the selected byte, not exact row values.** Single-position
+  attention sums over the cached past while the full forward sums over the whole masked window, so
+  the two softmax rows are mathematically equal but need not be bit-identical in floating point
+  (summation order differs). The committed assertion is byte-identical *greedy output* — the argmax
+  byte of each row — which is robust to that difference and is what
+  `slidingWindowGenerationMatchesFullForward` already compares; the single-step pin in Approach step
+  2 should likewise compare the selected byte (or use a tolerance on row values), not assert exact
+  row equality, or a correct decode could fail on summation-order noise alone.
+
 ## Machine
 
 The committed deliverable — the decode capability and its correctness test — **runs on any
