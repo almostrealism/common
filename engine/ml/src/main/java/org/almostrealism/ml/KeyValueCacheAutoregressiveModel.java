@@ -40,6 +40,11 @@ import java.util.Random;
  * because the cached attention scores the same keys and values and applies the same rotary rotation
  * at each position as the trained full-window path.</p>
  *
+ * <p>The per-layer caches are fixed {@code (seqLen, dim)} buffers, so this generator decodes the
+ * first {@code seqLen} positions of a sequence; {@link #load(Integer)} refuses a step at or beyond
+ * {@code seqLen} rather than index past the cache. Generating more than {@code seqLen} tokens is the
+ * {@link SlidingWindowAutoregressiveModel sliding-window generator}'s role.</p>
+ *
  * <p>The sequence position is kept on the device, as in the base class: {@link #reset()} returns it
  * to zero and {@link #advance()} adds one, both as compiled operations, so no position value is
  * staged from the host. {@link #reset()} additionally clears every layer's key and value cache, so a
@@ -74,6 +79,12 @@ public class KeyValueCacheAutoregressiveModel extends AutoregressiveModel<Intege
 
 	/** Model dimension; the length of one token's embedding. */
 	private final int dim;
+
+	/**
+	 * The number of positions the decode caches hold; decoding a position at or beyond this would
+	 * index past each layer's fixed {@code (seqLen, dim)} key and value cache.
+	 */
+	private final int seqLen;
 
 	/** The source of randomness for positive temperatures; null when only greedy decoding is used. */
 	private final Random random;
@@ -121,6 +132,7 @@ public class KeyValueCacheAutoregressiveModel extends AutoregressiveModel<Intege
 		super(position, temperature);
 		this.vocabSize = model.getConfig().vocabSize;
 		this.dim = model.getConfig().dim;
+		this.seqLen = model.getConfig().seqLen;
 		this.random = random;
 		this.temperature = temperature;
 		this.embedding = model.getWeights().get(CausalLanguageModel.EMBEDDING_KEY);
@@ -173,11 +185,23 @@ public class KeyValueCacheAutoregressiveModel extends AutoregressiveModel<Intege
 	/**
 	 * Copies the given token's embedding into the model input for the current step.
 	 *
+	 * <p>The decode caches hold {@code seqLen} positions, so this generator can decode positions
+	 * {@code 0} through {@code seqLen - 1}; decoding at {@code seqLen} or beyond would index past each
+	 * layer's fixed {@code (seqLen, dim)} key and value cache. Such a step is refused here rather than
+	 * left to corrupt memory or read a stale cache entry: a caller that needs to generate more than
+	 * {@code seqLen} tokens uses the sliding-window generator instead.</p>
+	 *
 	 * @param id the token id
+	 * @throws IllegalStateException if the current step is at or beyond {@code seqLen}
 	 */
 	@Override
 	protected void load(Integer id) {
-		// TODO(review): no guard prevents decoding past config.seqLen; position >= seqLen indexes beyond each layer's fixed (seqLen, dim) cache.
+		if (getCurrentStep() >= seqLen) {
+			throw new IllegalStateException("cannot decode position " + getCurrentStep()
+					+ "; the key/value cache holds " + seqLen
+					+ " positions (use the sliding-window generator for longer sequences)");
+		}
+
 		input.setFrom(0, embedding.range(new TraversalPolicy(dim), id * dim), 0, dim);
 	}
 

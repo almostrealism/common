@@ -836,7 +836,8 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	 */
 	@Test(timeout = 15 * 60000)
 	public void keyValueCacheResetClearsCacheAcrossSequences() {
-		int seq = 12;
+		// seq must hold the longer prompt and its generated tokens, since the cache is bounded by it.
+		int seq = 20;
 		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 2, 8, ROPE_BASE, new Random(5));
 
 		try {
@@ -967,6 +968,42 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 			try (AutoregressiveModel<Integer> next = new KeyValueCacheAutoregressiveModel(
 					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
 				Assert.assertArrayEquals(before, generate(next, prompt, 2));
+			}
+		} finally {
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * The key/value-cache generator decodes the first {@code seqLen} positions without error and then
+	 * refuses to decode further: its per-layer caches are fixed {@code (seqLen, dim)} buffers, so a step
+	 * at or beyond {@code seqLen} would index past them, and is rejected with an
+	 * {@link IllegalStateException} rather than left to corrupt memory. A generator advanced to exactly
+	 * {@code seqLen} positions is the boundary, and the next step is the one that throws.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void keyValueCacheRefusesDecodingPastSeqLen() {
+		int seq = 4;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+
+		try {
+			int[] prompt = new ByteTokenizer().encodeAsInt("Pr");
+			try (AutoregressiveModel<Integer> generator = new KeyValueCacheAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
+				generator.reset();
+				generator.setPrompt(IntStream.of(prompt).boxed().toArray(Integer[]::new), prompt.length);
+				for (int i = 0; i < seq; i++) {
+					generator.next();
+				}
+				Assert.assertEquals(seq, generator.getCurrentStep());
+
+				try {
+					generator.next();
+					Assert.fail("decoding at seqLen must throw rather than index past the cache");
+				} catch (IllegalStateException expected) {
+					Assert.assertTrue("message should name the cache size",
+							expected.getMessage().contains(String.valueOf(seq)));
+				}
 			}
 		} finally {
 			lm.getWeights().destroy();
