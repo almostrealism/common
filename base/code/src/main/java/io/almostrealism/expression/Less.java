@@ -19,7 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalDouble;
 
 /**
  * A less-than ({@code <}) or less-than-or-equal ({@code <=}) comparison expression.
@@ -65,8 +64,8 @@ public class Less extends Comparison {
 	}
 
 	/**
-	 * Evaluates this comparison on two numeric values without constructing a node, so
-	 * that {@link #of(Expression, Expression, boolean)} can fold constant operands.
+	 * Evaluates this comparison on two numeric values without constructing a node, so that
+	 * {@link #of(Expression, Expression, boolean)} can fold constant operands.
 	 *
 	 * @param left    the left value
 	 * @param right   the right value
@@ -115,13 +114,7 @@ public class Less extends Comparison {
 	 * @return a boolean constant if both operands are constant, otherwise a {@link Less}
 	 */
 	public static Expression<Boolean> of(Expression<?> left, Expression<?> right, boolean orEqual) {
-		OptionalDouble ld = left.doubleValue();
-		OptionalDouble rd = right.doubleValue();
-
-		if (ld.isPresent() && rd.isPresent()) {
-			return new BooleanConstant(holds(ld.getAsDouble(), rd.getAsDouble(), orEqual));
-		}
-
-		return new Less(left, right, orEqual);
+		return Comparison.of(left, right, (l, r) -> holds(l, r, orEqual),
+				() -> new Less(left, right, orEqual));
 	}
 }
