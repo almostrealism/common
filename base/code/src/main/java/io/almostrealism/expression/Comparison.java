@@ -97,6 +97,29 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	}
 
 	/**
+	 * Folds this comparison to a {@link BooleanConstant} when both of its operands are
+	 * compile-time constants, applying this comparison's own {@link #compare(double, double)}
+	 * semantics; otherwise returns this comparison unchanged.
+	 *
+	 * <p>Invoked by the {@code of} factories of the relational subclasses (such as
+	 * {@link Less} and {@link Greater}) on the node they have just constructed, so that the
+	 * constant-folding decision lives on the type it concerns rather than being copied into
+	 * each factory.</p>
+	 *
+	 * @return a {@link BooleanConstant} when both operands are constant, otherwise {@code this}
+	 */
+	protected Expression<Boolean> foldConstantOperands() {
+		OptionalDouble left = getLeft().doubleValue();
+		OptionalDouble right = getRight().doubleValue();
+
+		if (left.isPresent() && right.isPresent()) {
+			return new BooleanConstant(compare(left.getAsDouble(), right.getAsDouble()));
+		}
+
+		return this;
+	}
+
+	/**
 	 * Determines whether this comparison can be evaluated to a concrete value
 	 * given the specified index values. Returns true if both operands can be
 	 * evaluated with the given index values.
