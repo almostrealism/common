@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-10-26
-closed:
+closed: 2026-10-26
 tracker: [186697ce-3498-4aef-806d-9b6fc57cfce8]
 ---
 
@@ -257,6 +257,43 @@ The task's "done when", made checkable:
    costs are already recorded.
 8. **Memory on native.** Native runs in FP64, so `W` is 1.1 GB. The default memory scale (about
    4 GB) should hold it; if not, the test documents the `AR_HARDWARE_MEMORY_SCALE` it needs.
+
+## Outcome
+
+Implemented on 2026-10-26. Where the implementation departs from the plan, or settles an open
+question:
+
+- **Output location (question 5).** `/Users/Shared/models/male-cns-v1.0/` is not writable by the
+  node's worker account, so the matrix was written to
+  `/Users/Shared/models-derived/male-cns/cell-type-matrix/`. The real-data tests read the
+  directory from `AR_MALE_CNS_CELL_TYPES` (system property or environment variable) and default to
+  that path. The top-level `README.md` of the source directory could not be written for the same
+  reason; the derived directory's `README.md` carries the provenance and attribution.
+- **Data.** 164,506 typed bodies in 11,751 types (not 11,710); 25,135,616 of the 151,856,684 edges
+  join two typed bodies; max |W| = 414,893. The sign comes from `consensus_nt` (fewest `unclear`
+  among typed bodies). The script also writes `cell-type-annotations.tsv` (superclass and class of
+  each type, by member majority), which the matched control needs.
+- **Sign rule (question 3).** Shiu et al.'s connectivity table has only the signs +1 and -1:
+  GABA and glutamate are inhibitory and everything else, histamine included, is excitatory. That
+  rule is applied as is. The owner should confirm histamine.
+- **Sugar GRNs and MN9 (question 4).** MN9 is the MaleCNS type `MN9`. The sugar GRNs are taken to
+  be `LB3a`-`LB3d` (labellar bristle, FlyWire type `LB3`), because their multi-hop signed influence
+  on MN9 is the most excitatory among the labellar types, while `LB1a`-`LB1d` are inhibitory. The
+  owner should confirm this. Result on both backends: MN9 rises to 84.2 under GRN drive and to 47.7
+  under the matched control (`GNG642`, `JO-B1_a`, `SAxx01`, `BM_Vt_PoOc`), and stays at 0 with no
+  drive.
+- **Large operands on Metal (question 6).** No defect. Device `matmul` columns equal host columns,
+  the last column included.
+- **A defect found in `SimulationRunner`.** The runner compiled its step without
+  `Process.optimize()`. As a result the matrix-vector reduction was generated as one unrolled
+  expression per row, and Metal rejected the 11,751-row step with "Compute function exceeds
+  available stack space". The runner now optimizes each top-level operation of the step on its own,
+  which keeps the dispatch contract. `SimulationRunnerTest.largeDenseStep` crashes without the fix
+  and passes with it.
+- **Time per step (question 7).** Native FP64 14,527 µs and Metal FP32 11,380 µs, recorded in
+  `simulation-loop-examples.md` and in `CellTypeRateModelTest`.
+- **Missing data (question 1).** As proposed: the real-data tests are new `@TestDepth(2)` tests that
+  are skipped where the derived directory is absent.
 
 ## The machine the work needs
 

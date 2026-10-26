@@ -16,6 +16,7 @@
 
 package org.almostrealism.time;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.lifecycle.Setup;
@@ -223,6 +224,14 @@ public class SimulationRunner extends TemporalRunner {
 	 * Builds the step: the system's tick followed by the counter advance, flattened and marked
 	 * so that every top-level operation is dispatched on its own (see the step contract).
 	 *
+	 * <p>Each top-level operation is optimized on its own before it is compiled, as every
+	 * process must be. Optimization is what isolates a reduction such as a large
+	 * {@code matmul} into a looped kernel; compiled unoptimized, the reduction is generated as
+	 * one unrolled expression per output element, which for rows of about ten thousand terms
+	 * exceeds the stack space a Metal kernel may use. Optimizing the operations separately,
+	 * rather than the step as a whole, keeps the boundary between two operations a global
+	 * synchronization.</p>
+	 *
 	 * @param system the system being stepped
 	 * @param step   the step counter
 	 * @return the step operations
@@ -232,7 +241,10 @@ public class SimulationRunner extends TemporalRunner {
 		OperationList op = new OperationList("Simulation Step", false);
 		op.add(system.tick());
 		op.add(f.a("Advance Simulation Step", f.cp(step), f.add(f.cp(step), f.c(1.0))));
-		return op.flatten();
+
+		OperationList optimized = new OperationList("Simulation Step", false);
+		op.flatten().forEach(operation -> optimized.add(Process.optimized(operation)));
+		return optimized;
 	}
 
 	/**

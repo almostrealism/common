@@ -161,6 +161,25 @@ the system's tick and the counter advance.
 | Dense 1,024 x 1,024 `matmul` + copy-back | native | 413.5 | 412.6 |
 | Dense 1,024 x 1,024 `matmul` + copy-back | mtl | 440.0 | 440.1 |
 
+A dense type-level step at connectome scale, from `CellTypeRateModelTest.timePerStep` (in
+`engine/ml`): a `RatePopulation` on the 11,751 x 11,751 MaleCNS cell-type matrix, with row scale and
+saturating rectifier, timed over 1,000 steps after a 100-step warm-up, on the same node. It needs
+the derived matrix, which is not in the repository, so it runs only where that data is present.
+
+| Step | Backend | perStepMicros |
+|---|---|---|
+| Dense 11,751 x 11,751 rate update + copy-back | native (FP64) | 14,527 |
+| Dense 11,751 x 11,751 rate update + copy-back | mtl (FP32) | 11,380 |
+
+On Metal the step reads the 0.55 GB matrix at about 48 GB/s, far below the device's memory
+bandwidth, so it is the looped reduction kernel, not dispatch, that sets the cost.
+
+The runner optimizes every operation of the step on its own before compiling it. That is what
+isolates a reduction such as a large `matmul` into a looped kernel. Compiled without optimization,
+each output element's dot product is generated as one unrolled expression, and at about ten
+thousand terms Metal rejects the kernel for exceeding its stack space
+(`SimulationRunnerTest.largeDenseStep` covers this).
+
 For comparison, `OperationDispatchBatchingTests.manySmallDispatches` on the same node and commit
 measured 104.6 µs per dispatch on native and 91.5 µs per dispatch on Metal. (That figure comes
 from only 32 timed iterations, so it is noisy.) On Metal a one-element step costs about 155 µs per
