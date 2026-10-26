@@ -24,7 +24,6 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.CompiledModel;
-import org.almostrealism.stats.DistributionFeatures;
 
 import java.util.Arrays;
 import java.util.List;
@@ -34,6 +33,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.function.ToIntFunction;
 
 /**
  * Manages autoregressive token generation for language models, parameterized
@@ -69,7 +69,8 @@ import java.util.function.Supplier;
  * <h2>Generation Modes</h2>
  * <ul>
  *   <li><strong>Greedy (temperature=0):</strong> Always selects the highest-probability token</li>
- *   <li><strong>Sampling (temperature&gt;0):</strong> Samples from the softmax probability distribution</li>
+ *   <li><strong>Sampling (temperature&gt;0):</strong> Samples from the tempered softmax distribution,
+ *       optionally restricted to the nucleus (top-p) of most probable tokens</li>
  * </ul>
  *
  * <h2>Usage Example (Integer tokens)</h2>
@@ -118,9 +119,6 @@ import java.util.function.Supplier;
  */
 public class AutoregressiveModel<T> implements Destroyable {
 
-	/** Singleton for accessing {@link DistributionFeatures#softmax} from static context. */
-	private static final DistributionFeatures DIST = new DistributionFeatures() {};
-
 	/**
 	 * The device-resident sequence position, shared with the model's computation graph
 	 * (attention consumes it as {@code p(position)} to index the KV cache and apply
@@ -160,6 +158,15 @@ public class AutoregressiveModel<T> implements Destroyable {
 
 	/** A single-element collection holding the current sampling temperature value. */
 	private PackedCollection temperature;
+
+	/**
+	 * The nucleus (top-p) sampling threshold, in {@code (0, 1]}; {@code 1.0} (the default) disables
+	 * filtering and samples from the full tempered distribution. Unlike {@link #temperature}, this
+	 * value never enters a computation graph: it is read only on the host inside
+	 * {@link #sampleToken(PackedCollection, int, double, double, Random)}, so it is a plain field
+	 * rather than a device-resident collection.
+	 */
+	private double topP = 1.0;
 
 	/** The prompt token array set by {@link #setPrompt(Object[], int)}. */
 	private T[] prompt;
@@ -299,6 +306,39 @@ public class AutoregressiveModel<T> implements Destroyable {
 	 */
 	public void setTemperature(double temperature) {
 		this.temperature.set(0, temperature);
+	}
+
+	/**
+	 * Returns the current nucleus (top-p) sampling threshold.
+	 *
+	 * @return the threshold in {@code (0, 1]}; {@code 1.0} means no filtering
+	 */
+	public double getTopP() {
+		return topP;
+	}
+
+	/**
+	 * Sets the nucleus (top-p) sampling threshold for token selection.
+	 *
+	 * <p>Nucleus sampling restricts each draw to the smallest set of most probable tokens whose
+	 * cumulative probability reaches {@code topP}, renormalizes over that set, and samples within
+	 * it, cutting off the unreliable low-probability tail that full-distribution temperature
+	 * sampling can draw from. It applies only when {@link #getTemperature() temperature} is
+	 * positive; greedy decoding (temperature {@code 0}) is unaffected.</p>
+	 *
+	 * <p>The default of {@code 1.0} disables filtering, so behavior is unchanged unless a caller
+	 * opts in. The threshold is validated here, at the call site that owns the contract, rather
+	 * than inside {@link #sampleToken(PackedCollection, int, double, double, Random)}.</p>
+	 *
+	 * @param topP the threshold, which must be in {@code (0, 1]}
+	 * @throws IllegalArgumentException if {@code topP} is not in {@code (0, 1]} (including NaN)
+	 */
+	public void setTopP(double topP) {
+		if (!(topP > 0.0 && topP <= 1.0)) {
+			throw new IllegalArgumentException("topP must be in (0, 1], got " + topP);
+		}
+
+		this.topP = topP;
 	}
 
 	/**
@@ -531,7 +571,8 @@ public class AutoregressiveModel<T> implements Destroyable {
 	 *   <li>Advances the position on the device for each generation step</li>
 	 *   <li>Copies token embeddings into a reusable input buffer</li>
 	 *   <li>Executes the compiled model's forward pass for logits</li>
-	 *   <li>Samples the next token using temperature scaling and softmax</li>
+	 *   <li>Samples the next token using temperature scaling, softmax, and optional nucleus
+	 *       (top-p) filtering</li>
 	 * </ul>
 	 *
 	 * <p>The returned model owns the input buffer, temperature and sampling operations created
@@ -546,40 +587,70 @@ public class AutoregressiveModel<T> implements Destroyable {
 	 */
 	public static AutoregressiveModel<Integer> of(CompiledModel model, PackedCollection position,
 												 IntFunction<PackedCollection> tokenEmbed) {
+		return of(model, position, tokenEmbed, new Random());
+	}
+
+	/**
+	 * Creates an {@code AutoregressiveModel<Integer>} from a compiled transformer model with a
+	 * caller-supplied source of randomness, so that sampling is reproducible. The three-argument
+	 * {@link #of(CompiledModel, PackedCollection, IntFunction)} form delegates here with a fresh,
+	 * unseeded {@link Random}.
+	 *
+	 * <p>Sampling matches {@link SlidingWindowAutoregressiveModel}: the raw model output is routed
+	 * through {@link #sampleToken(PackedCollection, int, double, double, Random)} once, with the
+	 * configured {@link #getTemperature() temperature} and {@link #getTopP() top-p}, so the two
+	 * generators sample identically from the same logits under the same temperature, top-p and
+	 * seed. The greedy case (temperature {@code 0}) instead selects the argmax on the device via
+	 * {@code indexOfMax}, avoiding a full {@code vocabSize} read-back per step.</p>
+	 *
+	 * <p>The returned model owns the input buffer, temperature and the greedy argmax operation
+	 * created here, so {@link #destroy()} releases them; {@code model}, {@code position} and the
+	 * embeddings returned by {@code tokenEmbed} remain the caller's.</p>
+	 *
+	 * @param model      the compiled transformer model
+	 * @param position   single-element collection that {@code model} reads as the sequence position
+	 * @param tokenEmbed function that returns the embedding for a given token ID
+	 * @param random     the source of randomness for positive temperatures
+	 * @return a new {@code AutoregressiveModel<Integer>} ready for generation
+	 */
+	public static AutoregressiveModel<Integer> of(CompiledModel model, PackedCollection position,
+												 IntFunction<PackedCollection> tokenEmbed, Random random) {
 		PackedCollection in = new PackedCollection(model.getInputShape());
 		int vocabSize = model.getOutputShape().getTotalSize();
 
 		PackedCollection temperature = new PackedCollection(1);
 
 		Evaluable<PackedCollection> indexOfMax = Ops.o().indexOfMax(Ops.o().x(vocabSize)).get();
-		Evaluable<PackedCollection> rescale = Ops.o().x(vocabSize).divide(Ops.o().cp(temperature)).get();
-		Evaluable<? extends PackedCollection> softmax = Process.optimized(DIST.softmax(Ops.o().x(vocabSize))).get();
 
-		Random random = new Random();
+		// Greedy selection reads the argmax back from the device; kept a factory-local lambda so
+		// that device read stays at the `of` pipeline boundary rather than in the sample override.
+		ToIntFunction<PackedCollection> greedy = logits -> (int) indexOfMax.evaluate(logits).toDouble(0);
 
-		Function<PackedCollection, Integer> sample = logits -> {
-			if (temperature.toDouble(0) == 0.0) {
-				return (int) indexOfMax.evaluate(logits).toDouble(0);
-			} else {
-				rescale.into(logits).evaluate(logits);
-				softmax.into(logits).evaluate(logits);
-				return sampleToken(logits, vocabSize, 1.0, 1.0, random);
+		return new AutoregressiveModel<>(position, temperature) {
+			@Override
+			protected void load(Integer t) {
+				in.setFrom(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize());
 			}
-		};
 
-		return new AutoregressiveModel<>(
-				position,
-				t -> in.setFrom(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize()),
-				() -> model.forward(in),
-				sample,
-				temperature) {
+			@Override
+			protected PackedCollection forward() {
+				return model.forward(in);
+			}
+
+			@Override
+			protected Integer sample(PackedCollection logits) {
+				if (getTemperature() == 0.0) {
+					return greedy.applyAsInt(logits);
+				}
+
+				return sampleToken(logits, vocabSize, getTemperature(), getTopP(), random);
+			}
+
 			@Override
 			public void destroy() {
 				Destroyable.releaseAll(List.<Runnable>of(
 						super::destroy,
 						() -> Destroyable.destroy(indexOfMax),
-						() -> Destroyable.destroy(rescale),
-						() -> Destroyable.destroy(softmax),
 						in::destroy,
 						temperature::destroy));
 			}
