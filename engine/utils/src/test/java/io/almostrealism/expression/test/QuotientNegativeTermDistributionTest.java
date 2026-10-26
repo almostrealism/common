@@ -21,6 +21,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.IndexValues;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -93,6 +94,50 @@ public class QuotientNegativeTermDistributionTest extends TestSuiteBase implemen
 
 		for (int i = 0; i < 64; i++) {
 			long expected = (4L * i - 8) / 4;
+			Assert.assertEquals("at " + i, expected,
+					quotient.value(new IndexValues().put(kernel(), i)).longValue());
+		}
+	}
+
+	/**
+	 * The single-remainder fold ({@code unknown == 1 && total == 0}) must still distribute when its
+	 * lone non-divisible term cannot be negative. For {@code (4 * a + b) / 4} with non-negative
+	 * indices {@code a} and {@code b}, the quotient folds to {@code a + b / 4} rather than remaining
+	 * a {@link Quotient}, and evaluates as {@code trunc((4 * a + b) / 4)} at every pair of indices.
+	 * This pins that the negative-term guard does not over-restrict the sound single-remainder case.
+	 */
+	@Test(timeout = 30000)
+	public void divisibleProductPlusNonNegativeTermIsDistributed() {
+		DefaultIndex a = new DefaultIndex("a", 64);
+		DefaultIndex b = new DefaultIndex("b", 64);
+		Expression<?> numerator = Sum.of(a.multiply(4), b);
+		Expression<?> quotient = Quotient.of(numerator, e(4));
+
+		Assert.assertFalse("single non-negative remainder term should fold rather than remain a Quotient",
+				quotient instanceof Quotient);
+
+		for (int i = 0; i < 16; i++) {
+			for (int j = 0; j < 16; j++) {
+				long expected = (4L * i + j) / 4;
+				Assert.assertEquals("at a=" + i + ", b=" + j, expected,
+						quotient.value(new IndexValues().put(a, i).put(b, j)).longValue());
+			}
+		}
+	}
+
+	/**
+	 * A negative divisor must not trigger the per-term folds, whose truncation-direction reasoning
+	 * assumes a positive divisor. For {@code (4 * i + (-i)) / (-4)} the result must evaluate as
+	 * {@code trunc((4 * i - i) / (-4))} at every index, matching plain truncating integer division
+	 * rather than any distributed form.
+	 */
+	@Test(timeout = 30000)
+	public void negativeDivisorIsNotDistributed() {
+		Expression<?> numerator = Sum.of(kernel().multiply(4), Minus.of(kernel()));
+		Expression<?> quotient = Quotient.of(numerator, e(-4));
+
+		for (int i = 0; i < 64; i++) {
+			long expected = (4L * i - i) / -4;
 			Assert.assertEquals("at " + i, expected,
 					quotient.value(new IndexValues().put(kernel(), i)).longValue());
 		}

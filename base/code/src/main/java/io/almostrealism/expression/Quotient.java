@@ -480,6 +480,14 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * sum unfolded, as does a negative, non-divisible constant total such as {@code (2*i - 5) / 2};
 	 * the division is then evaluated on the combined value.</p>
 	 *
+	 * <p>The sign-exemption of an exactly-divisible term is not complete: a divisible term whose
+	 * value is negative (its coefficient is divisible but its remaining factor can go negative, as
+	 * in {@code 4 * (j - 5)}) can still truncate in the opposite direction from the combined value
+	 * when it and the total straddle zero — for example {@code (4 * (j - 5) + 2) / 4} is
+	 * {@code trunc(-2 / 4) == 0} at {@code j == 4}, not {@code (j - 5) + trunc(2 / 4) == -1}. The
+	 * total-based guard above does not detect that case, which folds the same way on master, so it
+	 * is a pre-existing limitation rather than a regression; it is tracked for a separate fix.</p>
+	 *
 	 * @param values the numerator followed by denominator expression(s)
 	 * @return the simplified expression or a new {@link Quotient}
 	 * @throws IllegalArgumentException if no operands are provided
@@ -632,7 +640,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 					}
 				}
 
-				// TODO(review): total>=0 insufficient when a divisible product is negative-valued (e.g. 4*(j-5)); pre-existing on master, out of scope
+				// Known limitation (see method javadoc): a negative-valued divisible product
+				// can still mis-fold here, as it does on master; not a regression.
 				if (unknown == 0 && (total >= 0 || total % d.getAsLong() == 0)) {
 					List<Expression<?>> newChildren = new ArrayList<>();
 					newChildren.addAll(products.stream()
