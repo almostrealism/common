@@ -37,7 +37,7 @@ on AR" that needs no sparse capability:
 | MaleCNS ingest [2218ffdf] | **Open**, with no workstream. It is blocked by the sparse matrix task [66b57639], so it will not land first. | As the task allows: the type-level matrix is written directly by a conversion script. The script is laid out so the ingest task extends it rather than writing a second reader (see Approach, part 1). |
 | Integer dtypes in safetensors [3e0043d3] | **Landed.** `SafetensorsReference` reads integer dtypes, and `StateDictionary(String directory)` loads a directory of `.safetensors` files. | The script writes safetensors; Java loads it with no new reader. |
 | Source tables | Present in `/Users/Shared/models/male-cns-v1.0/` with `SHA256SUMS`: annotations, neurotransmitters, body stats, connectome weights (the four flat-connectome Feather files). There is no `README.md` there yet, although the connectome plan says there should be one. | Input exists. |
-| Python environment | Neither `pyarrow` nor `numpy` is installed for the node's `python3`. CI's Python test job installs only `pyyaml` and `pytest`. | The conversion needs a virtual environment; CI-run Python tests must not need `numpy` or `pyarrow` (see Approach, part 1). |
+| Python environment | Neither `pyarrow` nor `numpy` is installed for the node's `python3`. CI's `python-tests` job (in `analysis.yaml`) installs `tools/mcp/requirements.txt` (which happens to include `numpy`) and `pyyaml`, not `pyarrow` and not `pytest`, and runs `tools/tests` with `python3 -m unittest discover`. | The conversion needs a virtual environment; CI-run Python tests must be `unittest.TestCase` classes and must not need `pyarrow`. They should not rely on `numpy` either, since it is present only as an MCP-server dependency (see Approach, part 1). |
 | Spiking LIF population [04470395] | On an open branch (`LeakyIntegrateAndFirePopulation` in `domain/graph`), not merged. | No dependency. The rate population sits beside it in the same package and follows the same placement rule. |
 
 ## Scope
@@ -150,8 +150,11 @@ Placement follows the connectome plan: code that depends on a third-party data l
 
 ### 4. Tests
 
-All Java tests extend `TestSuiteBase`, carry `@Test(timeout = ...)`, and live in `engine/utils`
-(where `TestSuiteBase` is), except where noted.
+All Java tests extend `TestSuiteBase` and carry `@Test(timeout = ...)`. Module placement follows the
+dependency direction: `engine/ml`'s pom depends on `ar-utils`, and `engine/utils`'s pom does not
+depend on `ar-ml`. So a test that uses `CellTypeConnectome` cannot live in `engine/utils`. It lives
+in `engine/ml`'s test sources, as the existing asset test `GruDecoderAssetTest`
+(`org.almostrealism.ml.midi.test`) does.
 
 - **`RatePopulationTest`** (`engine/utils`, package `org.almostrealism.graph.test`), synthetic data,
   runs everywhere in CI:
@@ -164,14 +167,16 @@ All Java tests extend `TestSuiteBase`, carry `@Test(timeout = ...)`, and live in
     NaN;
   - *row scale*: `s ⊙ (W · r)` equals `diag(s) · W · r` built on the host;
   - *orientation*: driving one unit raises exactly the units in its column of `W`.
-- **`CellTypeConnectomeTest`** (`engine/utils` or `engine/ml`, wherever `engine/ml`'s asset tests
-  live today), real data:
+- **`CellTypeConnectomeTest`** (`engine/ml`, package `org.almostrealism.ml.connectome.test`), real
+  data:
   - every entry in `spot-checks.json` equals the loaded `W[post, pre]` exactly (signed counts are
-    integers well below 2^24, so FP32 holds them exactly);
+    integers, and FP32 holds them exactly only below 2^24. The script asserts `max |W| < 2^24`
+    before writing, so that this exactness is checked rather than assumed);
   - `matmul(W, e_k)` evaluated on the device equals column `k` of the loaded matrix for a few `k`,
     including the last column. This is the early check that a 137-million-element operand is
     addressed correctly on Metal (beyond 2^24 elements; see open question 6).
-- **`CellTypeRateModelTest`** (`engine/utils`), real data, on Metal and native:
+- **`CellTypeRateModelTest`** (`engine/ml`, same package; it needs both `CellTypeConnectome` and
+  `RatePopulation`, and only `engine/ml` reaches both), real data, on Metal and native:
   - *stability*: `RatePopulation` on the MaleCNS matrix with the row scale, run for a long
     simulated duration (proposed: 10 s at `dt = 1 ms`, `tau = 20 ms`, so 10,000 steps), recording all
     rates every 100 steps with `SimulationRunner.record`; after the run, assert every sample is
@@ -188,7 +193,11 @@ All Java tests extend `TestSuiteBase`, carry `@Test(timeout = ...)`, and live in
   The measured times per step are recorded in the Javadoc of `CellTypeRateModelTest` and in the
   connectome section of a durable document (open question 7), with node, backend and precision.
 - **Python**: `tools/tests/test_male_cns.py` covers the stdlib-only pieces (sign table, safetensors
-  header layout) with no `numpy`/`pyarrow`, so it runs in CI's Python job. The vectorized
+  header layout) with no `numpy`/`pyarrow`, so it runs in CI's `python-tests` job. That job runs
+  `unittest discover`, so the tests are `unittest.TestCase` classes (bare pytest-style functions
+  would not be collected). They import `male_cns` by inserting `tools/connectome` into `sys.path`,
+  as other tests under `tools/tests` do for `tools/ci`. `male_cns.py` must therefore import
+  `pyarrow` and `numpy` lazily, inside the functions that use them. The vectorized
   aggregation is verified end to end by the spot checks above.
 
 ## Success criteria
