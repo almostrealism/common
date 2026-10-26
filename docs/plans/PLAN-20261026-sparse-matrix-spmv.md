@@ -222,9 +222,12 @@ A reviewer will know the task is done when:
    degree distribution during implementation and documenting the choice.
 
 3. **Output shape convention.** Should `multiply(x)` return `(rows)` or `(rows, 1)`? Dense `matmul`
-   returns a column vector `(n, 1)` for the vector path. Matching it eases drop-in parity tests but
-   the connectome's per-step input is naturally `(rows)`. Recommend `(rows)` with reshape parity in
-   the tests; approver to confirm.
+   is not uniformly shaped on its matrix–vector path: the `weightedSum` path (large outputs) returns
+   a 1-D `(rows)` result for a 1-D vector input, and a `(n, 1)` column vector is trimmed to a 1-D
+   input before reaching that path, so it too yields `(rows)`; only the zero-vector shortcut returns
+   `(rows, 1)`. So `(rows)` both matches the dense large-output path and is the connectome's natural
+   per-step shape, while the `(rows, 1)` column-vector form surfaces only in the shortcut paths.
+   Recommend `(rows)` with reshape parity in the tests; approver to confirm.
 
 4. **Which index arrays need the split representation?** `rowOffsets` and flat addresses into
    `values`/`columns` can exceed `2^24` at tens of millions of non-zeros and must be integer-exact.
