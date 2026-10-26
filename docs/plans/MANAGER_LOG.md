@@ -28,6 +28,90 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-25 — Expose nucleus (top-p) sampling through the autoregressive generators
+
+**Category:** Proof of Value (self-hosted LM generation)
+**Branch:** `project/plan-20261025-022810`
+**Plan:** [`PLAN-20261025-nucleus-sampling-generators.md`](PLAN-20261025-nucleus-sampling-generators.md)
+
+#### What changed since last cycle
+
+The PDSL language reference landed (merged 2026-10-24): `docs/internals/pdsl-language.md` is the
+single complete reference (grammar, definition kinds, name resolution, import semantics, and a
+40-builtin catalog with a per-operand gradient column), `PdslLanguageReferenceExamplesTest` reads
+the page and parses every fenced example so it cannot drift from the parser, the
+`org.almostrealism.ml.dsl` Javadoc is complete, and `pdsl-audio-dsp.md` no longer duplicates the
+core table. That closes the flagship documentation gap the last cycle opened. With it, both
+foundation arcs the recent cycles were on are closed: the attention backward pass is honest end to
+end (K/V projections, then the differential lambda), and the language the models are written in is
+documented.
+
+#### Category assessment (priority order)
+
+- **Documentation — excellent, and the one flagship gap just closed.** `consult` finds no durable
+  gap: the internals corpus is current at `master` and now includes the PDSL reference. The one
+  standing item — a PDSL *tutorial* in `docs/tutorials/` (01–09 never mention PDSL) — is real but
+  has been the low-priority, continuous-QA item for several cycles; it is a teaching asset, not a
+  missing reference, and does not outrank cashing a proof-of-value step. Moved on.
+- **Code quality — strong and owned by continuous QA.** The correctness arc (three cycles) is
+  closed; enforcement is mechanical. The standing minor item (`io.almostrealism.collect` split) is
+  unchanged and not a flagship. Moved on.
+- **Performance — no blocker.** The named lever (the weighted-sum `matmul` reduced form for outputs
+  wider than 1000) is real but blocks nothing and ranks below cashing the proof-of-value step.
+  Moved on.
+- **Proof of value — the category.** The self-hosted LM can decode greedily or with
+  full-distribution temperature, and neither is good: greedy collapses to the most-frequent byte,
+  temperature draws from the unreliable tail. Nucleus (top-p) sampling is the standard remedy and
+  is the first "what comes next" item of the last four entries.
+
+#### Why this task
+
+The survey turned up a sharp, high-confidence instance of the category. `AutoregressiveModel.sampleToken`
+**already implements nucleus filtering in full**, but **no public API lets a caller set `topP`** —
+both generator call sites hardcode it to `1.0`. The platform ships a nucleus-sampling implementation
+that is unreachable from a consumer. Reading the two paths together also surfaced a second defect in
+the same code: `AutoregressiveModel.of(...)` pre-applies `rescale` (`logits / temperature`) and
+`softmax` on the device — so the configured temperature *is* applied — and then calls `sampleToken`
+with a **hardcoded temperature of `1.0`**, which re-exponentiates and renormalizes the
+already-softmaxed values: a redundant second softmax that flattens the already-tempered distribution.
+It therefore samples from a different (flatter) distribution than `SlidingWindowAutoregressiveModel`,
+which passes raw logits and the configured temperature straight through for a single softmax. The
+fix for both is one unification: route raw logits through `sampleToken` once, with the configured
+temperature and configured top-p, from both generators. It is the smallest change that
+materially improves what the self-hosted LM can produce, and a prerequisite for the sampling-quality
+comparison the training doc already promises.
+
+Because the change touches a documented sampling path, the plan is evidence-led: step one is a host
+test that *measures* the two distributions the two paths sample from today, turning the
+double-softmax reading from inspection into an asserted fact before anything changes. Top-p defaults
+to `1.0`, so behavior is unchanged unless a caller opts in; the only intended default-case change is
+`of(...)` ceasing to double-softmax, which a new two-generators-agree test pins. Existing acceptance
+assertions are untouched; the new behavior is pinned by new tests, never by weakening an existing
+one.
+
+#### Balance across categories
+
+The last four cycles were correctness (three) then documentation (the PDSL reference). Both
+foundation arcs are now closed, so returning to proof of value is the disciplined move the log has
+been telegraphing, not a jump to the exciting category. It is a small–medium task whose committed
+deliverable is a host-side API change plus deterministic sampling tests — **no training, no Metal,
+runs on any backend, no workstream settings file.**
+
+#### What comes next
+
+1. This plan: `getTopP`/`setTopP` on `AutoregressiveModel`, wire top-p through both generators,
+   unify the `of(...)` path with the `SlidingWindow` path, add the nucleus and cross-generator
+   tests, and update the two internals pages.
+2. **Measure** generation quality under top-p on a macOS/Metal node (a separate cycle: re-run the
+   documented training run and compare greedy vs. top-p decoding), then a single-position KV-cache
+   decode, which would make per-token sampling cheap enough to compare at length.
+3. **Proof of value:** conditional diffusion training, now that both its conditioning (K/V) and its
+   differential cancellation (λ) train honestly.
+4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
+5. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2 (with the SAME fine-tune); the
+   `io.almostrealism.collect` package split; a PDSL tutorial in `docs/tutorials/`; letting a trained
+   model read the platform's own *source*.
+
 ### 2026-10-23 — Document the PDSL language
 
 **Category:** Documentation
