@@ -54,10 +54,18 @@ those branch blocks to the score and context products through the `Block`-valued
 the fused `toKvWeight` and the key normalization weights (`SequenceCrossAttentionGradientTest`).
 Because the context is an auxiliary model input, this also required propagating the training
 `ParameterUpdate` into `BranchBlock` children and into `Model`'s auxiliary inputs, so a weight that
-lives on a branch of an auxiliary input trains like one on the main chain. The buffering pattern
-remains only in `TransformerResamplingFeatures`, whose deliberate materialization bounds each
-compiled kernel at full SAME dimensions; that path does not yet deliver gradients to its K/V
-projections and nothing on the main branch trains it today.
+lives on a branch of an auxiliary input trains like one on the main chain. The learned-resampling
+transformer of `TransformerResamplingFeatures` was the last to buffer: its layer copied the first keys,
+the values, the second queries and the second attention map into collections, and built its
+projections as weightless cells over constant weight tensors, so a backward pass reached none of its
+projections. Its layer is now `resampling_transformer.pdsl`, which composes the attention maps of
+`differential_attention.pdsl` and the `glu_feed_forward` of `feed_forward.pdsl` with `dense`
+projections, so every section of its fused projection, its output projection and its feed-forward
+projections receive their gradients (`ResamplingTransformerAssetTest`). Its DynamicTanh
+normalizations differentiate correctly because the hyperbolic tangent is now differentiated at the
+Producer level (`CollectionHyperbolicTangentComputation`), as the sine and cosine are; the
+expression-level derivative it used before was wrong for the scaled, row-traversed argument
+DynamicTanh and GELU give it.
 
 ## Device memory during training
 

@@ -475,6 +475,33 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
+	 * Asserts that a gradient a backward pass delivered matches its finite-difference estimate (see
+	 * {@link #centralDifferences}): the two may differ by at most {@code tolerance} times the
+	 * estimate's largest magnitude, and that magnitude must exceed {@code minimum}, so that a gradient
+	 * which is trivially zero cannot pass by agreeing with an estimate that is zero too.
+	 *
+	 * @param label     what the gradient is of, for the messages
+	 * @param numeric   the finite-difference estimate
+	 * @param analytic  the gradient the backward pass delivered
+	 * @param tolerance the permitted largest difference, relative to the estimate's largest magnitude
+	 * @param minimum   the largest magnitude the estimate must exceed
+	 */
+	default void assertGradientMatches(String label, double[] numeric, double[] analytic,
+									   double tolerance, double minimum) {
+		assertEquals(label + ": gradient size", numeric.length, analytic.length);
+		double magnitude = 0.0;
+		double difference = 0.0;
+		for (int i = 0; i < numeric.length; i++) {
+			magnitude = Math.max(magnitude, Math.abs(numeric[i]));
+			difference = Math.max(difference, Math.abs(numeric[i] - analytic[i]));
+		}
+		log(label + ": largest |numeric|=" + magnitude + " largestDifference=" + difference);
+		assertTrue(label + ": the gradient is trivially zero", magnitude > minimum);
+		assertTrue(label + ": the gradient differs from the finite differences by " + difference,
+				difference <= tolerance * magnitude);
+	}
+
+	/**
 	 * Asserts that a one-dimensional collection is symmetric about its centre.
 	 *
 	 * <p>The reversed collection is gathered on the device, so the property is checked

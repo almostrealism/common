@@ -111,6 +111,39 @@ public class DynamicTanhTest extends TestSuiteBase implements LayerFeatures {
 	}
 
 	/**
+	 * The layer rejects parameters that do not describe a normalization of its input: a weight whose
+	 * runs of features do not tile the input, a bias that does not match the weight, and a missing
+	 * {@code alpha}.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsParametersThatDoNotDescribeTheInput() {
+		TraversalPolicy shape = shape(2, 8);
+		PackedCollection alpha = new PackedCollection(shape(1)).fill(1.0);
+		PackedCollection weight = new PackedCollection(shape(8)).fill(1.0);
+
+		assertRejected("a weight whose runs do not tile the input",
+				() -> dynamicTanh(shape, alpha, new PackedCollection(shape(5)).fill(1.0), null));
+		assertRejected("a bias that does not match the weight",
+				() -> dynamicTanh(shape, alpha, weight, new PackedCollection(shape(4))));
+		assertRejected("a missing alpha", () -> dynamicTanh(shape, null, weight, null));
+	}
+
+	/**
+	 * Asserts that building a DyT layer is rejected with an {@link IllegalArgumentException}.
+	 *
+	 * @param description what is wrong with the parameters, for the failure message
+	 * @param build       builds the layer
+	 */
+	private void assertRejected(String description, Runnable build) {
+		try {
+			build.run();
+			throw new AssertionError("DynamicTanh should reject " + description);
+		} catch (IllegalArgumentException expected) {
+			log("rejected: " + expected.getMessage());
+		}
+	}
+
+	/**
 	 * Builds the DyT layer for the given parameters, runs a forward pass through a compiled model,
 	 * and asserts every output element matches {@code weight ⊙ tanh(alpha · x) + bias}.
 	 *

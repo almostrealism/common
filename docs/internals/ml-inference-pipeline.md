@@ -867,6 +867,18 @@ layer of `feed_forward.pdsl` with a GELU gate, each sub-layer sandwiched between
 share the checkpoint's one epsilon. `T5GemmaEncoder` binds each layer's weights, the prompt mask (as
 the key mask) and an all-ones value mask, and builds that layer once per layer.
 
+The learned-resampling transformer of the SAME autoencoder
+(`TransformerResamplingFeatures.resamplingLayerBlock`) is a layer of
+`engine/ml/src/main/resources/pdsl/resampling_transformer.pdsl`: a `dynamic_tanh` pre-norm and the
+fused projection of five sections laid out `Q1 K1 V Q2 K2`, then `accum_blocks` over two
+`attention_map_qk_dyt` maps of `differential_attention.pdsl` (the second negated, a lambda of one),
+the head merge and the output projection, all inside an `accum`; then an `accum` around a
+`dynamic_tanh` norm and the `glu_feed_forward` layer of `feed_forward.pdsl` with a SiLU gate. Every
+attention chunk is a batch entry of the attention. `resamplingLayerBlock` binds the chunk geometry,
+the layer's group of the checkpoint (each stage reads its tensors by path), the groups of the two
+feed-forward projections and an all-ones mask; `addResamplingTransformerStack` builds one layer per
+layer, the second half of them over chunks shifted by half a chunk.
+
 ---
 
 ## Related Files

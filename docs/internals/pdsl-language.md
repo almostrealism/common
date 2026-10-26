@@ -400,7 +400,7 @@ layer block_with_imports(size: int) {
 
 ## Builtin catalog
 
-The 40 built-ins dispatched by `PdslBuiltins` (package-private). The interpreter itself evaluates
+The 41 built-ins dispatched by `PdslBuiltins` (package-private). The interpreter itself evaluates
 the four arithmetic operators `+ - * /` and unary `-`. Unless noted, a built-in returns a block
 factory, so its shape checks run when the stage is placed, not at the call. "Input" means the
 signal the stage receives.
@@ -421,6 +421,7 @@ means neither the code nor a test settles it.
 | `conv_transpose1d` | `conv_transpose1d(w, b, stride, padding, output_padding)`, `conv_transpose1d(w, stride, padding, output_padding)` | `[batch, in_ch, len]` → `[batch, out_ch, (len - 1) * stride - 2 * padding + kernel + output_padding]`, with `w` `[in_ch, out_ch, kernel]` | `ConvolutionLayerFeatures.convTranspose1d` | input: passes; `w`, `b`: trains (registered weights); no PDSL gradient test |
 | `rmsnorm` | `rmsnorm(w, eps)`, `rmsnorm(w, b, eps)` (`b` may be `null`) | shape preserved; normalizes runs of `w`'s last-axis length | `NormalizationLayerFeatures.rmsnorm` | input: passes; `w`, `b`: trains (registered weights); `eps`: build-time constant |
 | `layernorm` | `layernorm(w, b, eps)` (`b` may be `null`; `w` required) | shape preserved; runs of `size(w)` must tile the input | `NormalizationLayerFeatures.norm` | input: passes (`SequenceAttentionAssetTest.qkLayerNormGradientsMatchJavaAssembly`); `w`, `b`: trains (registered weights) |
+| `dynamic_tanh` | `dynamic_tanh(alpha, w, b)` (`w` and `b` may be `null`; `alpha` required, one value or one per feature) | shape preserved; every element becomes `w ⊙ tanh(alpha · x) + b`, with runs of `size(w)` (or `size(b)`) tiling the input; DynamicTanh (DyT) normalization, which computes no statistic | `NormalizationLayerFeatures.dynamicTanh` | input: passes; `alpha`, `w`, `b`: trains (registered weights) (`DynamicTanhPrimitiveTest.dynamicTanhTrainsAlphaAndItsAffine`) |
 | `softmax` | `softmax()` | `[rows, size]` (≥ 2 axes) preserved; max-subtracted, over the last axis | `ActivationFeatures.softmax(shape, true)` | input: passes |
 | `silu` | `silu()` | preserved | `ActivationFeatures.silu` | input: passes |
 | `relu` | `relu()` | preserved | `ActivationFeatures.relu` | input: passes |
@@ -532,10 +533,14 @@ depends on where the error comes from:
 | Built-ins | none, often with shapes | "dense() expects 1 or 2 arguments, got 0"; "softmax() expects a [rows, size] input shape, got [4]"; "scaled_dot_product() operand is a branch already consumed by another product ..." |
 | Loader | none | "'x' is defined more than once (in /a.pdsl and /b.pdsl)"; "'/a.pdsl' imports itself (/a.pdsl -> /b.pdsl -> /a.pdsl) ..."; a missing resource is an `IllegalStateException` ("PDSL resource not found on classpath: ...") |
 
-Two other failure modes are not `PdslParseException`s. A size mismatch caught by `SequentialBlock`
+Three other failure modes are not `PdslParseException`s. A size mismatch caught by `SequentialBlock`
 (for example an `accum` body whose output size differs from its input) is an
-`IllegalArgumentException` with no message. A built-in that casts its argument (see below) throws
-`ClassCastException` when given the wrong kind of value.
+`IllegalArgumentException` with no message. A built-in whose layer checks its own parameters
+reports a bad parameter as that layer does for a Java caller: `dynamic_tanh` leaves its
+parameters to `NormalizationLayerFeatures.dynamicTanhSize`, so a missing `alpha`, or weights and
+biases whose runs do not tile the input, are an `IllegalArgumentException` with a message when the
+stage is placed. A built-in that casts its argument (see below) throws `ClassCastException` when
+given the wrong kind of value.
 
 ## Worked examples
 
@@ -680,8 +685,11 @@ The platform's shipped assets, under `engine/ml/src/main/resources/pdsl/`, are t
 examples. `attention.pdsl` and `transformer.pdsl` are the autoregressive attention block and
 pre-norm transformer layer. `sequence_attention.pdsl`, `sdpa.pdsl` and
 `differential_attention.pdsl` are full-sequence attention. `feed_forward.pdsl` holds the
-feed-forward networks. `qwen2.pdsl`, `qwen3.pdsl` and `t5gemma_encoder.pdsl` are whole models and
-encoders. `midi/` and `audio/` hold the SkyTNT, GRU decoder, Oobleck codec and mixdown assets.
+feed-forward networks. `resampling_transformer.pdsl` is one layer of a learned-resampling
+transformer: differential attention within each attention chunk and a gated feed-forward, both
+normalized with `dynamic_tanh`. `qwen2.pdsl`, `qwen3.pdsl` and `t5gemma_encoder.pdsl` are whole
+models and encoders. `midi/` and `audio/` hold the SkyTNT, GRU decoder, Oobleck codec and mixdown
+assets.
 
 ## Known limits
 
@@ -703,9 +711,15 @@ Each limit below is recorded with its evidence. Fixing any of them changes this 
 - **Parameter types are not checked**, except `producer([shape])`. A `weight [shape]` shape is
   parsed and ignored. A wrong value surfaces later, as a cast or shape error inside a built-in.
 - **Several built-ins cast instead of normalizing.** `dense`, `conv1d`, `conv_transpose1d`,
-  `rmsnorm`, `layernorm`, `snake`, `sequence_rope` and `range` cast their tensor arguments to
-  `PackedCollection`, so a producer argument fails with `ClassCastException`, not a
+  `rmsnorm`, `layernorm`, `dynamic_tanh`, `snake`, `sequence_rope` and `range` cast their tensor
+  arguments to `PackedCollection`, so a producer argument fails with `ClassCastException`, not a
   `PdslParseException`.
+- **A checkpoint path cannot name a numeric segment.** After a `.` the parser accepts an
+  identifier or a keyword, and `0` lexes as a number, so `weights.ff.0.proj.weight` (the index of a
+  module in a PyTorch `nn.Sequential`) is a parse error. Only `stack` reaches numbered members, and
+  it reaches all of them. A layer reading weights below a numbered segment takes that group as an
+  argument of its own: `resampling_transformer.pdsl` is given `ff.ff.0.proj` and `ff.ff.2` as
+  `ff_in` and `ff_out`.
 - **`snake` parameters do not train.** `ActivationFeatures.snake` evaluates the broadcast of
   `alpha` and `beta` once, at build time, and registers no weights. A later change to `alpha` or
   `beta` is not seen by the built layer either.

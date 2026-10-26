@@ -1,0 +1,95 @@
+/**
+ * One transformer layer of a learned-resampling block (the resampling transformer of the SAME audio
+ * autoencoder): differential self-attention within each attention chunk, then a gated feed-forward,
+ * each normalized by DynamicTanh beforehand and each inside a residual connection.
+ *
+ * This file replaces the Java assembly that used to live in
+ * TransformerResamplingFeatures.resamplingLayerBlock, which built these stages as a SequentialBlock:
+ * the DynamicTanh pre-norm and the fused projection as two cells, a split of the projection into five
+ * per-head branches, the DynamicTanh normalization and rotary embedding of every query and key branch,
+ * stores for the first keys, the values, the second queries and the second attention map, the two
+ * maps and their difference, the head merge and the output projection, and a feed-forward of four
+ * cells. resamplingLayerBlock now only binds the layer's weights and builds the layer below;
+ * TransformerResamplingFeatures.addResamplingTransformerStack still repeats it in Java, once per
+ * layer, and with the midpoint shift runs the second half of the layers on chunks shifted by half a
+ * chunk.
+ *
+ * The input is a windowed sequence folded into independent attention chunks,
+ * [chunks, chunk_len, dim] with dim = heads * head_dim. Each chunk is one batch entry of the
+ * attention, so a position attends to the positions of its own chunk and to no other.
+ *
+ * Data flow of one forward pass:
+ *
+ *   x                                                                   [chunks, chunk_len, dim]
+ *   accum   x = x + differential attention over x
+ *             dynamic_tanh(pre_norm)          tanh-squashed, scaled, shifted
+ *             dense(to_qkv)                   Q1 K1 V Q2 K2 side by side  [chunks, chunk_len, 5 * dim]
+ *             reshape                         one dim-wide section each   [chunks, chunk_len, 5, dim]
+ *             accum_blocks:
+ *               attention_map_qk_dyt(Q1 = 0, K1 = 1, V = 2)               [chunks, heads, chunk_len, head_dim]
+ *               attention_map_qk_dyt(Q2 = 3, K2 = 4, V = 2)               [chunks, heads, chunk_len, head_dim]
+ *                 scale(-1)                   negated, so that the sum subtracts it
+ *             merge_heads                     map1 - map2, heads joined   [chunks, chunk_len, dim]
+ *             dense(to_out)                   the output projection       [chunks, chunk_len, dim]
+ *   accum   x = x + gated feed-forward of x
+ *             dynamic_tanh(ff_norm)                                       [chunks, chunk_len, dim]
+ *             glu_feed_forward:
+ *               dense(ff_in)                  linear and gate halves      [chunks, chunk_len, 2 * inner_dim]
+ *               product(linear half, silu(gate half))                     [chunks, chunk_len, inner_dim]
+ *               dense(ff_out)                 back to the model width     [chunks, chunk_len, dim]
+ *
+ * The attention is the differential attention of /pdsl/differential_attention.pdsl with a fixed
+ * lambda of one: out = W_o · merge_heads( softmax(Q1 K1ᵀ / √d) V − softmax(Q2 K2ᵀ / √d) V ). Both
+ * maps weight the same value section. Every query and key row is normalized with DynamicTanh and then
+ * rotated by its position within its chunk; the rotation turns the leading 2 · size(inv_freq)
+ * features of each row and passes the rest through. The chunks carry no padding, so both masks of each
+ * attention map are every_position, all ones, which changes no value and no score. The feed-forward is
+ * the glu_feed_forward layer of /pdsl/feed_forward.pdsl with dense projections and a SiLU gate: its
+ * fused input projection holds the linear half and then the gate half.
+ *
+ * The weights. weights is the layer's group of the checkpoint (encoder.layers.0.transformers.0, for
+ * example), and every stage reads its tensors by their path in that group, so each line can be matched
+ * against the parameter names of the reference implementation. The feed-forward's projections sit at
+ * the numeric module indices ff.ff.0.proj and ff.ff.2, which a field path cannot name, so the loader
+ * passes those two groups as ff_in and ff_out.
+ */
+
+import "/pdsl/differential_attention.pdsl"
+import "/pdsl/feed_forward.pdsl"
+
+layer resampling_transformer_layer(chunks: int, chunk_len: int, heads: int, head_dim: int,
+                                   inner_dim: int, weights: checkpoint,
+                                   ff_in: checkpoint, ff_out: checkpoint,
+                                   every_position: weight) {
+    // Residual differential self-attention within each chunk.
+    accum {
+        let self_attn = weights.self_attn
+        dynamic_tanh(weights.pre_norm.alpha, weights.pre_norm.gamma, weights.pre_norm.beta)
+        dense(self_attn.to_qkv.weight)
+        reshape([chunks, chunk_len, 5, heads * head_dim])
+        accum_blocks(
+            {
+                attention_map_qk_dyt(chunks, chunk_len, heads, head_dim, 0, 1, 2,
+                                     self_attn.q_norm.alpha, self_attn.q_norm.gamma, self_attn.q_norm.beta,
+                                     self_attn.k_norm.alpha, self_attn.k_norm.gamma, self_attn.k_norm.beta,
+                                     weights.rope.inv_freq, every_position, every_position)
+            },
+            {
+                attention_map_qk_dyt(chunks, chunk_len, heads, head_dim, 3, 4, 2,
+                                     self_attn.q_norm.alpha, self_attn.q_norm.gamma, self_attn.q_norm.beta,
+                                     self_attn.k_norm.alpha, self_attn.k_norm.gamma, self_attn.k_norm.beta,
+                                     weights.rope.inv_freq, every_position, every_position)
+                scale(-1)
+            }
+        )
+        merge_heads(chunks, chunk_len, heads, head_dim)
+        dense(self_attn.to_out.weight)
+    }
+
+    // Residual gated feed-forward.
+    accum {
+        dynamic_tanh(weights.ff_norm.alpha, weights.ff_norm.gamma, weights.ff_norm.beta)
+        glu_feed_forward(dense(ff_in.weight, ff_in.bias), dense(ff_out.weight, ff_out.bias), silu(),
+                         chunks, chunk_len, inner_dim)
+    }
+}

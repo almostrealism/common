@@ -17,15 +17,14 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Factor;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.layers.NormalizationLayerFeatures;
+import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * A general, reusable <em>learned-resampling transformer block</em>: a transformer that changes the
@@ -49,7 +48,8 @@ import java.util.List;
  *   <li><b>Windowed transformer stack</b> &mdash; the segmented sequence is folded into contiguous
  *       chunks (with an optional midpoint shift on the second half of the layer stack) and a stack of
  *       differential, DyT-normalized, RoPE self-attention layers is applied
- *       ({@link #addResamplingTransformerStack}).</li>
+ *       ({@link #addResamplingTransformerStack}); each layer is the {@value #RESAMPLING_TRANSFORMER_LAYER}
+ *       of {@link #RESAMPLING_TRANSFORMER_ASSET} ({@link #resamplingLayerBlock}).</li>
  *   <li><b>Extraction</b> &mdash; the learned-token positions are read back out as the resampled
  *       output ({@link #resamplingExtract}).</li>
  * </ol>
@@ -59,38 +59,28 @@ import java.util.List;
  * <h2>AR idiom</h2>
  * <p>The resampling stages are {@link CollectionProducer}-valued methods ({@link #resamplingMapping},
  * {@link #resamplingSegment}, {@link #resamplingExtract}); none calls {@code evaluate()} or
- * {@code get()}. The windowed transformer stack is assembled by {@link #resamplingLayerBlock}, and its
- * differential attention follows the {@code split} + {@link #into} materialization idiom: the fused
- * {@code to_qkv} projection is split into per-head {@code Q1, K1, V, Q2, K2} branches, the {@code K1},
- * {@code V} and {@code Q2} branches are materialized into leaves, and each of the two differential
- * attention maps is built from three materializing cells (a score matmul, a softmax, and a value
- * matmul) by {@link #addAttentionMap}. The attention is built directly from
- * {@link #scaledDotProduct} (which, unlike the block-level
- * {@link AttentionFeatures#scaledDotProductAttention}, places no batch-size-1 restriction, so chunked
- * attention keeps its chunk count as the batch dimension), the producer-level
- * {@link NormalizationLayerFeatures#dynamicTanh(CollectionProducer, PackedCollection, PackedCollection,
- * PackedCollection) dynamicTanh}, and the producer-level
- * {@link RotationFeatures#applyRotaryPositionEmbedding(CollectionProducer, PackedCollection)
- * applyRotaryPositionEmbedding}. Each stage maps one-to-one onto a captured SAME reference activation,
- * so a numerical-parity test can localize any discrepancy to a single stage.</p>
+ * {@code get()}. The transformer layers of the windowed stack are not assembled here: one layer's
+ * structure — the DynamicTanh pre-norm, the fused {@code to_qkv} projection laid out as the sections
+ * {@code Q1, K1, V, Q2, K2}, the two attention maps and their difference, the head merge and the output
+ * projection, then the DynamicTanh-normalized gated feed-forward, each inside a residual connection — is
+ * the {@value #RESAMPLING_TRANSFORMER_LAYER} of {@link #RESAMPLING_TRANSFORMER_ASSET}, and
+ * {@link #resamplingLayerBlock} binds one layer's weights and builds it. The keys and values of each
+ * attention map are branches that feed the attention products, so a backward pass reaches every section
+ * of the fused projection, and the projections are registered weights of their layers.</p>
  *
- * <p>{@link #transformerResamplingBlock} assembles those stages into a {@link Block} — a
+ * <p>{@link #transformerResamplingBlock} assembles the stages into a {@link Block} — a
  * {@link SequentialBlock} of materializing {@link org.almostrealism.layers.CellularLayer layers}: one per
- * resampling stage, and <em>several</em> per transformer layer (the pre-norm, the {@code to_qkv}
- * projection, the differential attention, the output projection, the feed-forward norm, the GLU
- * projection, the SwiGLU gating, and the feed-forward output projection are each their own cell, wrapped
- * in {@code residual} skip-connections). This per-matmul granularity is
- * deliberate, not merely conventional. A single producer expression spanning a whole transformer layer —
- * let alone the depth-{@code N} stack — blows up twice over: at construction, because each residual
- * ({@code x = x + f(x)}) and each reused sub-projection (the fused {@code to_qkv} sliced five ways, the
- * shared {@code V}, the reused softmax input) is a diamond whose super-linear signature recomputation
- * compounds; and again at compile time, because the same diamonds make a single kernel's embedded
- * expression grow exponentially during {@code Expression.simplify}, independent of tensor size (so even
- * tiny dimensions time out). Routing each matmul through a {@link org.almostrealism.layers.CellularLayer}
- * materializes its output into a buffer, so the next cell reads a leaf rather than re-embedding the
- * entire upstream expression — the same idiom {@link AttentionFeatures#attention} and the
- * {@link org.almostrealism.ml.audio.OobleckEncoder} use for their deep stacks, and it bounds both the
- * construction traversal and the per-kernel compile. The returned {@link Block} still follows the
+ * resampling stage, and <em>several</em> per transformer layer, because every stage of the asset's layer
+ * (each normalization, projection, attention product, softmax and gate) is its own cell. This
+ * per-stage granularity is deliberate, not merely conventional. A single producer expression spanning a
+ * whole transformer layer — let alone the depth-{@code N} stack — blows up twice over: at construction,
+ * because each residual ({@code x = x + f(x)}) and each reused sub-projection (the fused {@code to_qkv}
+ * sliced five ways, the shared {@code V}, the reused softmax input) is a diamond whose super-linear
+ * signature recomputation compounds; and again at compile time, because the same diamonds make a single
+ * kernel's embedded expression grow exponentially during {@code Expression.simplify}, independent of
+ * tensor size (so even tiny dimensions time out). Materializing each stage's output into a buffer means
+ * the next cell reads a leaf rather than re-embedding the entire upstream expression, which bounds both
+ * the construction traversal and the per-kernel compile. The returned {@link Block} still follows the
  * Producer pattern: it builds a computation graph and never evaluates it; compilation happens at the
  * pipeline boundary via {@link org.almostrealism.model.Model#compile()}.</p>
  *
@@ -104,7 +94,18 @@ import java.util.List;
  * @see StateDictionary
  * @see Block
  */
-public interface TransformerResamplingFeatures extends RotationFeatures, NormalizationLayerFeatures {
+public interface TransformerResamplingFeatures extends SequenceAttentionFeatures {
+
+	/**
+	 * Classpath location of the asset defining one transformer layer of the windowed stack: its
+	 * {@value #RESAMPLING_TRANSFORMER_LAYER} is the single definition of how a chunked sequence flows
+	 * through the DynamicTanh pre-norm, the fused five-section projection, the two attention maps and
+	 * their difference, the output projection and the gated feed-forward.
+	 */
+	String RESAMPLING_TRANSFORMER_ASSET = "/pdsl/resampling_transformer.pdsl";
+
+	/** Name of the {@link #RESAMPLING_TRANSFORMER_ASSET} layer that {@link #resamplingLayerBlock} builds. */
+	String RESAMPLING_TRANSFORMER_LAYER = "resampling_transformer_layer";
 
 	/**
 	 * Builds the complete learned-resampling block as a {@link Block}: a {@link SequentialBlock} of
@@ -172,7 +173,7 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 	 * that leaf. The split keeps every compiled kernel bounded: a single fused cell would embed the
 	 * padding {@code concat}'s {@code Conditional} in each tap's matmul reduction and, summed over the
 	 * taps, blows up kernel-series simplification at full SAME dimensions &mdash; the same property that
-	 * routes the learned projections through {@link #addLinearCell}.
+	 * gives every stage of the transformer layers ({@link #resamplingLayerBlock}) a cell of its own.
 	 *
 	 * @param block     the sequential block to append to
 	 * @param config    the resampling configuration
@@ -406,31 +407,17 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 	}
 
 	/**
-	 * Builds one transformer layer of the resampling stack as a {@link SequentialBlock} of materializing
-	 * {@link org.almostrealism.layers.CellularLayer layers} wrapped in residual skip-connections:
-	 * {@code x = x + selfAttn(DyT(x))} followed by {@code x = x + ff(DyT(x))}.
+	 * Builds one transformer layer of the resampling stack from the {@value #RESAMPLING_TRANSFORMER_LAYER}
+	 * of {@link #RESAMPLING_TRANSFORMER_ASSET}: {@code x = x + selfAttn(DyT(x))} followed by
+	 * {@code x = x + ff(DyT(x))}, where the self-attention is differential attention over the sections
+	 * {@code Q1, K1, V, Q2, K2} of the fused projection with a lambda of one, and the feed-forward is a
+	 * SwiGLU gated linear unit.
 	 *
-	 * <p>The differential attention follows the same {@code split} + {@link #into} materialization idiom
-	 * {@link AttentionFeatures#sequenceAttention} and {@link DifferentialAttentionFeatures} use. After the
-	 * pre-norm {@code DyT} cell and the {@code to_qkv} projection cell produce {@code [Q1, K1, V, Q2, K2]},
-	 * the projection is
-	 * {@link SequentialBlock#split split} into five per-head branches (all DyT/rotary-normalized except
-	 * {@code V}). The {@code K1}, {@code V} and {@code Q2} branches are <em>materialized into leaves</em> via
-	 * {@link #into}; the {@code K2} branch (the last to run) then builds the entire second attention map
-	 * {@code softmax(Q2 K2^T/sqrt d) V} from the stored {@code Q2} and {@code V} leaves and materializes it;
-	 * and the main {@code Q1} path (the last branch to run) builds the first map
-	 * {@code softmax(Q1 K1^T/sqrt d) V} and subtracts the materialized second map (no learned lambda).</p>
-	 *
-	 * <p>Each attention map is itself built from three materializing cells &mdash; a score matmul, a softmax,
-	 * and a value matmul ({@link #addAttentionMap}) &mdash; so that no single kernel fuses the score matmul
-	 * with the softmax or the softmax with the value matmul. That decomposition is what keeps every compiled
-	 * kernel bounded: a kernel that fuses both differential maps and the shared {@code V} embeds each softmax
-	 * in its value matmul, and the non-memoized embedded-expression growth times out at full SAME dimensions.
-	 * It mirrors how {@link AttentionFeatures#scaledDotProductAttention} materializes scores, softmax and
-	 * values as separate cells (here without its batch-size-1 restriction) and how
-	 * {@link DifferentialAttentionFeatures} materializes the second map in a branch so the main path carries
-	 * only one map &mdash; the same idiom the {@link org.almostrealism.ml.audio.OobleckEncoder} uses for its
-	 * deep stacks.
+	 * <p>The structure is not assembled here: the asset composes the stages. This method binds the
+	 * chunk geometry, the layer's group of {@code weights} (from which every stage reads its tensors by
+	 * their path), the groups of the two feed-forward projections, which sit at numeric module indices a
+	 * PDSL field path cannot name, and an all-ones mask for the attention maps, since the chunks carry no
+	 * padding.</p>
 	 *
 	 * @param numChunks the attention chunk count (the batch dimension of the per-chunk attention)
 	 * @param config    the resampling configuration
@@ -440,207 +427,21 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 	 */
 	default Block resamplingLayerBlock(int numChunks, ResamplingConfig config,
 									   StateDictionary weights, String key) {
-		int dim = config.getDim();
-		int heads = config.getHeads();
-		int dimHead = config.getDimHead();
 		int effChunk = config.getEffectiveChunkSize();
-		TraversalPolicy chunkShape = shape(numChunks, effChunk, dim);
-		TraversalPolicy qkvShape = shape(numChunks, effChunk, 5 * dim);
-		TraversalPolicy headShape = shape(numChunks, heads, effChunk, dimHead);
-		TraversalPolicy projShape = shape(numChunks, effChunk, 2 * config.getInnerFfDim());
-		TraversalPolicy innerShape = shape(numChunks, effChunk, config.getInnerFfDim());
+		Map<String, Object> args = new HashMap<>();
+		args.put("chunks", numChunks);
+		args.put("chunk_len", effChunk);
+		args.put("heads", config.getHeads());
+		args.put("head_dim", config.getDimHead());
+		args.put("inner_dim", config.getInnerFfDim());
+		args.put("weights", weights.group(key));
+		args.put("ff_in", weights.group(key + ".ff.ff.0.proj"));
+		args.put("ff_out", weights.group(key + ".ff.ff.2"));
+		args.put("every_position", everyPositionValid(numChunks, effChunk));
 
-		PackedCollection qAlpha = weights.get(key + ".self_attn.q_norm.alpha");
-		PackedCollection qGamma = weights.get(key + ".self_attn.q_norm.gamma");
-		PackedCollection qBeta = weights.get(key + ".self_attn.q_norm.beta");
-		PackedCollection kAlpha = weights.get(key + ".self_attn.k_norm.alpha");
-		PackedCollection kGamma = weights.get(key + ".self_attn.k_norm.gamma");
-		PackedCollection kBeta = weights.get(key + ".self_attn.k_norm.beta");
-		PackedCollection invFreq = weights.get(key + ".rope.inv_freq");
-
-		SequentialBlock attention = new SequentialBlock(chunkShape);
-		// Pre-norm DyT and the fused [Q1, K1, V, Q2, K2] projection as two materializing cells: the DyT
-		// normalizes into a leaf, then the bias-free to_qkv linear contracts over that leaf. Keeping the
-		// tanh out of the matmul reduction is what bounds the kernel — a fused norm+matmul embeds the tanh
-		// in every contraction term and times out during kernel-series simplification at full SAME dims.
-		attention.add(dynamicTanh(chunkShape,
-				weights.get(key + ".pre_norm.alpha"),
-				weights.get(key + ".pre_norm.gamma"),
-				weights.get(key + ".pre_norm.beta")));
-		addLinearCell(attention, key + ".attn_proj", chunkShape, qkvShape,
-				weights.get(key + ".self_attn.to_qkv.weight"), null);
-
-		// Split the fused projection into five per-head branches. The Q1 branch stays in the main path;
-		// the other four (K1, V, Q2, K2) are DyT/rotary-normalized and materialized into leaves via
-		// into(...), so the differential attention reads materialized tensors rather than re-embedding
-		// four lazy rotary expressions in one concatenated kernel (see RotationFeatures#mraRopeRotation).
-		// This mirrors AttentionFeatures#sequenceAttention.
-		attention.reshape(numChunks, effChunk, 5, dim);
-		List<Block> sections = attention.split(shape(numChunks, effChunk, 1, dim), 0);
-		SequentialBlock q1 = headBranch(sections.get(0), numChunks, effChunk, heads, dimHead);
-		SequentialBlock k1 = headBranch(sections.get(1), numChunks, effChunk, heads, dimHead);
-		SequentialBlock v = headBranch(sections.get(2), numChunks, effChunk, heads, dimHead);
-		SequentialBlock q2 = headBranch(sections.get(3), numChunks, effChunk, heads, dimHead);
-		SequentialBlock k2 = headBranch(sections.get(4), numChunks, effChunk, heads, dimHead);
-
-		// Shared DyT query/key normalization and partial rotary embedding, materialized per branch.
-		q1.add(dynamicTanh(headShape, qAlpha, qGamma, qBeta));
-		q2.add(dynamicTanh(headShape, qAlpha, qGamma, qBeta));
-		k1.add(dynamicTanh(headShape, kAlpha, kGamma, kBeta));
-		k2.add(dynamicTanh(headShape, kAlpha, kGamma, kBeta));
-		q1.add(applyRotaryPositionEmbedding(headShape, invFreq));
-		q2.add(applyRotaryPositionEmbedding(headShape, invFreq));
-		k1.add(applyRotaryPositionEmbedding(headShape, invFreq));
-		k2.add(applyRotaryPositionEmbedding(headShape, invFreq));
-
-		// Materialize the first key, the value, and the second query as leaves. The branches run in section
-		// order (K1, V, Q2, K2) before the main Q1 path, so each leaf is stored before it is read: the K2
-		// branch (last) reads the stored Q2 and V to build the second attention map, and the main Q1 path
-		// reads the stored K1, V and second map.
-		PackedCollection k1Tensor = new PackedCollection(headShape);
-		PackedCollection vTensor = new PackedCollection(headShape);
-		PackedCollection q2Tensor = new PackedCollection(headShape);
-		PackedCollection map2Tensor = new PackedCollection(headShape);
-		k1.andThen(into(k1Tensor));
-		v.andThen(into(vTensor));
-		q2.andThen(into(q2Tensor));
-
-		double scale = 1.0 / Math.sqrt(dimHead);
-
-		// Differential attention (no learned lambda):
-		//   out = softmax(Q1 K1^T / sqrt d) V - softmax(Q2 K2^T / sqrt d) V.
-		// Each attention map is built from three materializing cells (score matmul, softmax, value matmul)
-		// so no kernel fuses the matmul with the softmax: the softmax reads a materialized score leaf and
-		// the value matmul reads a materialized weight leaf. This is the cell decomposition
-		// AttentionFeatures#scaledDotProductAttention uses, here without its batch-size-1 restriction so the
-		// attention chunk count is the batch dimension. As DifferentialAttentionFeatures does, the second
-		// map is materialized in the K2 branch (which runs after Q2 and V are stored), so the main Q1 path
-		// forms only the first map and subtracts the materialized second map rather than carrying both
-		// through one kernel — fusing both maps and the shared V in a single cell is the compile-bound
-		// diamond that times out at full SAME dimensions.
-		addAttentionMap(k2, k2v -> scaledDotProduct(cp(q2Tensor), c(k2v), true).multiply(c(scale)),
-				cp(vTensor), numChunks, heads, effChunk, dimHead, key + ".attn2");
-		k2.andThen(into(map2Tensor));
-
-		addAttentionMap(q1, q1v -> scaledDotProduct(c(q1v), cp(k1Tensor), true).multiply(c(scale)),
-				cp(vTensor), numChunks, heads, effChunk, dimHead, key + ".attn1");
-		q1.add(layer(key + ".attn_diff", headShape, headShape,
-				m1 -> c(m1).subtract(cp(map2Tensor))));
-
-		// Merge the heads and apply the bias-free output projection (reads the merged leaf).
-		q1.permute(0, 2, 1, 3).reshape(numChunks, effChunk, dim);
-		addLinearCell(q1, key + ".attn_out", chunkShape, chunkShape,
-				weights.get(key + ".self_attn.to_out.weight"), null);
-
-		// SwiGLU feed-forward as four materializing cells: ff_norm DyT into a leaf, the dim -> 2*inner
-		// projection over that leaf, the SwiGLU gating (a * SiLU(gate)) into a leaf, and the
-		// inner -> dim output projection over that leaf. As with attn_proj, no matmul reduction embeds a
-		// norm or a SiLU; each linear contracts over a materialized leaf.
-		SequentialBlock feedForward = new SequentialBlock(chunkShape);
-		feedForward.add(dynamicTanh(chunkShape,
-				weights.get(key + ".ff_norm.alpha"),
-				weights.get(key + ".ff_norm.gamma"),
-				weights.get(key + ".ff_norm.beta")));
-		addLinearCell(feedForward, key + ".ff_proj", chunkShape, projShape,
-				weights.get(key + ".ff.ff.0.proj.weight"), weights.get(key + ".ff.ff.0.proj.bias"));
-		feedForward.add(layer(key + ".ff_gate", projShape, innerShape,
-				in -> resamplingSwiGLU(c(in), config)));
-		addLinearCell(feedForward, key + ".ff_out", innerShape, chunkShape,
-				weights.get(key + ".ff.ff.2.weight"), weights.get(key + ".ff.ff.2.bias"));
-
-		SequentialBlock layerBlock = new SequentialBlock(chunkShape);
-		layerBlock.add(residual(attention));
-		layerBlock.add(residual(feedForward));
-		return layerBlock;
-	}
-
-	/**
-	 * Lays out one split section of the fused projection as a per-head attention branch: reshapes
-	 * {@code [numChunks, chunkLen, 1, dim]} to {@code [numChunks, chunkLen, heads, dimHead]} and permutes
-	 * to the multi-head layout {@code [numChunks, heads, chunkLen, dimHead]}. The returned branch is the
-	 * same {@link SequentialBlock} the {@link SequentialBlock#split split} produced, ready for the per-head
-	 * normalization and rotary embedding.
-	 *
-	 * @param section   the split-section block; output {@code [numChunks, chunkLen, 1, dim]}
-	 * @param numChunks the attention chunk count
-	 * @param chunkLen  the per-chunk sequence length
-	 * @param heads     the number of attention heads
-	 * @param dimHead   the per-head dimension
-	 * @return the per-head branch; output {@code [numChunks, heads, chunkLen, dimHead]}
-	 */
-	default SequentialBlock headBranch(Block section, int numChunks, int chunkLen, int heads, int dimHead) {
-		return (SequentialBlock) section.reshape(numChunks, chunkLen, heads, dimHead).permute(0, 2, 1, 3);
-	}
-
-	/**
-	 * Appends one decomposed scaled-dot-product attention map to {@code branch}: a score-matmul cell, a
-	 * softmax cell, and a value-matmul cell, each a materializing
-	 * {@link org.almostrealism.layers.CellularLayer}. Separating the three keeps every compiled kernel
-	 * bounded &mdash; the softmax reads a materialized score leaf rather than the inlined score matmul, and
-	 * the value matmul reads a materialized weight leaf rather than the inlined softmax &mdash; the same cell
-	 * boundaries {@link AttentionFeatures#scaledDotProductAttention} uses, here with no batch-size-1
-	 * restriction so the attention chunk count can be the batch dimension.
-	 *
-	 * @param branch    the branch to append to; its current output is one operand of the score matmul (the
-	 *                  query on the main path, or the key in the materialized second-map branch)
-	 * @param scores    produces the scaled score matrix {@code [numChunks, heads, chunkLen, chunkLen]} from
-	 *                  the branch output and the complementary materialized leaf
-	 * @param value     the materialized value leaf; {@code [numChunks, heads, chunkLen, dimHead]}
-	 * @param numChunks the attention chunk count (the batch dimension)
-	 * @param heads     the number of attention heads
-	 * @param chunkLen  the per-chunk sequence length
-	 * @param dimHead   the per-head dimension
-	 * @param label     the cell label prefix
-	 */
-	default void addAttentionMap(SequentialBlock branch, Factor<PackedCollection> scores,
-								 CollectionProducer value, int numChunks, int heads, int chunkLen,
-								 int dimHead, String label) {
-		TraversalPolicy scoreShape = shape(numChunks, heads, chunkLen, chunkLen);
-		TraversalPolicy mapShape = shape(numChunks, heads, chunkLen, dimHead);
-		branch.add(layer(label + "_scores", mapShape, scoreShape, scores));
-		branch.add(layer(label + "_softmax", scoreShape, scoreShape, s -> softmaxLastAxis(c(s))));
-		branch.add(layer(label + "_value", scoreShape, mapShape, w -> scaledDotProduct(c(w), value)));
-	}
-
-	/**
-	 * Appends a materializing linear-projection cell that reads the (already materialized) cell input as a
-	 * clean leaf and computes {@code y = x W^T + b}. Every learned projection in the resampling layer is
-	 * added through this helper so the matmul reduction always contracts over a materialized leaf rather
-	 * than an embedded norm or activation &mdash; the property that keeps each compiled kernel bounded. A
-	 * matmul that contracts over a fused nonlinearity embeds that nonlinearity in every contraction term
-	 * and times out during kernel-series simplification at full SAME dimensions.
-	 *
-	 * @param block    the block to append the projection cell to
-	 * @param label    the cell label
-	 * @param inShape  the cell input shape
-	 * @param outShape the cell output shape
-	 * @param weight   the projection weight; logical {@code [out, in]}
-	 * @param bias     the bias ({@code [out]}), or {@code null} for no bias
-	 */
-	default void addLinearCell(SequentialBlock block, String label, TraversalPolicy inShape,
-							   TraversalPolicy outShape, PackedCollection weight, PackedCollection bias) {
-		block.add(layer(label, inShape, outShape, in -> resamplingLinear(c(in), cp(weight), bias)));
-	}
-
-	/**
-	 * The SwiGLU gating {@code a * SiLU(gate)} (where {@code SiLU(z) = z * sigmoid(z)}) computed from the
-	 * {@code [a, gate]} halves, without the output projection. It is materialized into its own cell so the
-	 * following {@code innerFfDim -> dim} linear contracts over a leaf rather than embedding the
-	 * {@code sigmoid} in its reduction.
-	 *
-	 * @param projected the projected halves; {@code [numChunks, chunkLen, 2 * innerFfDim]}
-	 * @param config    the resampling configuration
-	 * @return the gated activation; {@code [numChunks, chunkLen, innerFfDim]}
-	 */
-	default CollectionProducer resamplingSwiGLU(CollectionProducer projected, ResamplingConfig config) {
-		int inner = config.getInnerFfDim();
-		TraversalPolicy xs = projected.getShape();
-		int rows0 = xs.length(0);
-		int rows1 = xs.length(1);
-
-		CollectionProducer a = projected.subset(shape(rows0, rows1, inner), 0, 0, 0);
-		CollectionProducer gate = projected.subset(shape(rows0, rows1, inner), 0, 0, inner);
-		return a.multiply(gate.multiply(sigmoid(gate)));
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(RESAMPLING_TRANSFORMER_ASSET), RESAMPLING_TRANSFORMER_LAYER,
+				shape(numChunks, effChunk, config.getDim()), args);
 	}
 
 	/**
@@ -672,7 +473,8 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 	/**
 	 * Numerically-stable softmax over the trailing axis, computed via the log-sum-exp identity (the
 	 * producer-level equivalent of the framework's stable {@code softmax2d} layer). No zero-masking is
-	 * applied, which is correct for the dense (unmasked) attention used by the resampling block.
+	 * applied. The resampling block's attention maps no longer use it: their softmax is the
+	 * {@code softmax()} stage of the attention asset {@link #resamplingLayerBlock} builds.
 	 *
 	 * @param input the logits; the softmax is taken over the last dimension
 	 * @return the softmax probabilities, same shape as {@code input}
