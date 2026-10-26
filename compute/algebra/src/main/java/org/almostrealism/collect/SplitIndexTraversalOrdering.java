@@ -152,6 +152,7 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	 */
 	@Override
 	public OptionalInt getLength() {
+		// TODO(review): of(-5) yields a negative length; the javadoc promises 0 when all are absent
 		double[] values = lanes.toArray();
 		long max = IntStream.range(0, values.length / LANES)
 				.mapToLong(i -> (long) values[LANES * i] * BASE + (long) values[LANES * i + 1])
