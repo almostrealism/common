@@ -99,6 +99,40 @@ public class HarmonicEnergyFeatureProviderTest implements TestFeatures {
 	}
 
 	/**
+	 * A full second of audio split into {@code FRAMES} windows gives each bin a sum over
+	 * thousands of samples, the size the drawing pipeline requests. The computation must
+	 * still finish well within the time callers wait for features and agree with the host.
+	 * A kernel that unrolls the whole window into one expression spends longer than this
+	 * timeout on native compilation alone.
+	 */
+	@Test(timeout = 60000)
+	public void longWindowMatchesHostEvaluation() {
+		HarmonicEnergyFeatureProvider provider = new HarmonicEnergyFeatureProvider(
+				FRAMES, BINS, SAMPLE_RATE, 1.0);
+		PackedCollection samples =
+				cos(integers(0, SAMPLE_RATE).multiply(2.0 * Math.PI * 4.0 / SAMPLE_RATE))
+					.add(sin(integers(0, SAMPLE_RATE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)).multiply(0.5))
+					.evaluate();
+		WaveData audio = new WaveData(samples, SAMPLE_RATE);
+
+		double[] expected = provider.referenceFeatures(audio);
+		PackedCollection actual = provider.computeFeatures(audio);
+
+		Assert.assertEquals(FRAMES * BINS, actual.getMemLength());
+
+		double peak = 0.0;
+		for (int i = 0; i < expected.length; i++) {
+			peak = Math.max(peak, Math.abs(expected[i]));
+		}
+
+		assertTrue("Reference features are empty", peak > 1e-6);
+
+		for (int i = 0; i < expected.length; i++) {
+			Assert.assertEquals("bin " + i, expected[i], actual.toDouble(i), 1e-4 * peak);
+		}
+	}
+
+	/**
 	 * The phase depends on where a window begins, so shifting the signal changes the
 	 * result. This is what distinguishes this provider from one whose phase restarts
 	 * at every window, and it holds in the computed form as it does on the host.
