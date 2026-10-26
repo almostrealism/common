@@ -129,6 +129,28 @@ the bug is invisible with such data. Exactness is observable only through *which
 read, using a payload that is exact and distinct between adjacent addresses (for example the
 address modulo 16, computed from the integer kernel index). See `SplitIndexTests`.
 
+### Gather with a Segmented Reduction (Sparse Matrix–Vector Product)
+
+`SparseMatrix` (`compute/algebra`, `org.almostrealism.algebra`) holds a compressed-sparse-row
+matrix as three collections — row offsets, columns and values — and `multiply(x)` returns
+`y = A·x` of shape `(rows)` (or `(rows, n)` for an operand of shape `(cols, n)`):
+
+```java
+// rowOffsets and columns are host int[] index structure; values is a device collection
+SparseMatrix a = SparseMatrix.of(rows, cols, rowOffsets, columns, values);
+CollectionProducer y = a.multiply(cp(x));
+```
+
+The product is a gather (`x[columns[k]]`) followed by a reduction over each row's
+data-dependent range, computed by `SegmentedWeightedSumComputation`: one kernel thread per
+row, whose native loop bound `rowOffsets[i + 1] - rowOffsets[i]` is read from device memory.
+Each output is written once, with no atomics and no padding. The row offsets and columns are
+stored in the split layout above (uploaded with `PackedCollection.ofSplitIndices`) and decoded
+with `SplitIndexTraversalOrdering.positionAt`, so offsets past `2^24` (tens of millions of
+non-zeros) and large column counts are exact on FP32 backends.
+Because its iteration count is data-dependent, the computation is always compiled into a kernel
+of its own rather than embedded in a consumer. See `SparseMatrixTests`.
+
 ### Scatter (Writing with Dynamic Indices)
 
 Write to positions specified by an index array:

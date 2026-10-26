@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-26
+closed: 2026-10-26
+tracker: [66b57639-42ae-423f-bbde-ae93406228ac]
+---
+
 # Sparse matrix type and sparse matrix–vector product with a segmented reduction
 
 - **Tracker task:** [66b57639-42ae-423f-bbde-ae93406228ac] Sparse matrix type and sparse matrix–vector product with a segmented reduction
@@ -250,3 +257,20 @@ As the task directs, file these as new tracker tasks in the Common project (noti
   and the values; structural forms for both.
 - **Event-driven / scatter-add propagation** — the cheaper-at-low-firing-rate alternative; needs a
   scatter-add primitive and is a later optimisation.
+
+## Outcome
+
+- **Open Question 1:** the data-dependent `Repeated` bound shipped; ELL was not needed. It
+  compiles and runs correctly on Metal (FP32) and native (FP64).
+- **Open Question 3:** `multiply(x)` returns `(rows)` for a vector; an operand of shape
+  `(cols, n)` yields `(rows, n)`.
+- **Open Question 4:** both `rowOffsets` and `columns` use the split layout, so neither the
+  offsets nor the column count is limited to `2^24`.
+- **Open Question 5:** `SparseMatrix.of(rows, cols, int[] rowOffsets, int[] columns,
+  PackedCollection values)` takes host index structure (uploaded through
+  `PackedCollection.ofSplitIndices`) and a device collection of values, as the host→device write
+  policy requires; the constructor accepts pre-built device collections.
+- **Scale:** 166,000 rows, about 19.9M non-zeros: about 240 MB and 5.6 ms per product on Metal,
+  480 MB and 13 ms per product on native.
+- **Follow-ups filed:** ce31398a (CSC transposed product), cb9de664 (reduced deltas),
+  eb28f816 (event-driven scatter-add).

@@ -56,7 +56,9 @@ import java.util.function.Supplier;
  * 
  * <p>This class is {@code abstract}: a concrete subclass supplies the initial, condition
  * and expression behaviour through the protected constructors (or the {@code setInitial}/
- * {@code setCondition} hooks) so that the behaviour of every instance is fixed by its class,
+ * {@code setCondition} hooks), or overrides the {@link #getInitialValue},
+ * {@link #getCondition} and {@link #getExpression(TraversableExpression[], Expression, Expression)}
+ * steps directly when that behaviour reads the subclass's own state, so that the behaviour of every instance is fixed by its class,
  * which, together with its name and inputs, is what its {@link #signature()} identifies.
  *
  * <p><strong>Subclass Implementation Pattern:</strong>
@@ -270,16 +272,16 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 
 		OptionalInt limit = getIndexLimit();
 		DefaultIndex ref = limit.isPresent() ? new DefaultIndex(i, limit.getAsInt()) : new DefaultIndex(i);
-		scope.setCondition(condition.apply(getTraversableArguments(ref), ref));
+		scope.setCondition(getCondition(getTraversableArguments(ref), ref));
 
 		Expression index = new KernelIndex(context).divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
 
-		if (initial != null) {
-			for (int j = 0; j < getMemLength(); j++) {
-				Expression<?> out = getDestination(new KernelIndex(context), e(0), e(j));
-				Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
-				scope.getStatements().add(out.assign(val));
-			}
+		for (int j = 0; j < getMemLength(); j++) {
+			Expression<?> val = getInitialValue(getTraversableArguments(index), ref.add(j));
+			if (val == null) break;
+
+			Expression<?> out = getDestination(new KernelIndex(context), e(0), e(j));
+			scope.getStatements().add(out.assign(val));
 		}
 
 		OperationMetadata bodyMetadata = new OperationMetadata
@@ -295,6 +297,32 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 
 		scope.add(body);
 		return scope;
+	}
+
+	/**
+	 * Returns the value each output element holds before the first iteration. The default
+	 * applies the initial function; a subclass whose initialization is fixed by its class
+	 * overrides this instead of supplying a function.
+	 *
+	 * @param args  the traversable arguments, positioned at the start of the output block
+	 * @param index the position within the output block
+	 * @return the initial value, or {@code null} if the output is not initialized
+	 */
+	protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+		return initial == null ? null : initial.apply(args, index);
+	}
+
+	/**
+	 * Returns the boolean expression that keeps the loop running. The default applies the
+	 * condition function; a subclass whose loop bound is fixed by its class overrides this
+	 * instead of supplying a function.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the loop index
+	 * @return the continuation condition
+	 */
+	protected Expression<Boolean> getCondition(TraversableExpression[] args, Expression index) {
+		return condition.apply(args, index);
 	}
 
 	/**

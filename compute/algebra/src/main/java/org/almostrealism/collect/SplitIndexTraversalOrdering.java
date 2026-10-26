@@ -136,9 +136,24 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	 */
 	@Override
 	public Expression<Integer> indexOf(Expression<Integer> idx) {
+		return positionAt(lookup, idx);
+	}
+
+	/**
+	 * Decodes, on integer expressions, the position stored split at logical index {@code idx}
+	 * of a lane collection in the layout produced by {@link #encode(int...)}. This is the
+	 * reconstruction {@link #indexOf(Expression)} performs, exposed for computations that hold
+	 * split integers as an operand of their own (for example the row offsets of a sparse matrix)
+	 * rather than reading another collection through this ordering.
+	 *
+	 * @param lanes the lane collection, or the kernel argument it is delivered as
+	 * @param idx   the logical index of the position to read
+	 * @return an integer expression for {@code hi * BASE + lo}, exact for every {@code int}
+	 */
+	public static Expression<Integer> positionAt(TraversableExpression<?> lanes, Expression<?> idx) {
 		Expression<?> position = idx.multiply(LANES);
-		Expression<Integer> hi = lookup.getValueAt(position).toInt();
-		Expression<Integer> lo = lookup.getValueAt(position.add(1)).toInt();
+		Expression<Integer> hi = lanes.getValueAt(position).toInt();
+		Expression<Integer> lo = lanes.getValueAt(position.add(1)).toInt();
 		return hi.multiply(BASE).add(lo).toInt();
 	}
 
