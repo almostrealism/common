@@ -34,6 +34,17 @@ public class CUDeviceBuffer extends CUObject {
 	/** Zero-filled host memory shared by {@link #clear()}, which only ever reads it. */
 	private static ByteBuffer zeroSource = ByteBuffer.allocateDirect(0);
 
+	/** The largest transfer, in bytes, staged through the calling thread's reused buffer. */
+	private static final int maxReusedStaging = 64 * 1024;
+
+	/**
+	 * Direct host memory reused by each thread to stage transfers to and from device
+	 * allocations of at most {@link #maxReusedStaging} bytes, so that reading or writing a few
+	 * elements at a time does not allocate (and later free) direct memory on every call.
+	 */
+	private static final ThreadLocal<ByteBuffer> staging =
+			ThreadLocal.withInitial(() -> ByteBuffer.allocateDirect(maxReusedStaging));
+
 	/** Size of the allocation in bytes. */
 	private final long size;
 
@@ -145,7 +156,9 @@ public class CUDeviceBuffer extends CUObject {
 	 * <p>For a {@link #isHostAccessible() host accessible} allocation this is a slice of its
 	 * {@link #hostView() view}, so values move with no driver call; this is what makes reading
 	 * or writing a few elements at a time affordable. Otherwise it is a direct staging buffer,
-	 * which {@code load} fills from the allocation and {@link #store} writes back.</p>
+	 * which {@code load} fills from the allocation and {@link #store} writes back. A transfer of
+	 * at most {@link #maxReusedStaging} bytes is staged in a slice of the calling thread's
+	 * reused buffer; the slice is only valid until the thread stages its next transfer.</p>
 	 */
 	private ByteBuffer staged(int offset, int length, int elementSize, boolean load) {
 		long start = (long) offset * elementSize;
@@ -156,7 +169,9 @@ public class CUDeviceBuffer extends CUObject {
 			return hostView().slice((int) start, (int) bytes).order(ByteOrder.nativeOrder());
 		}
 
-		ByteBuffer buf = ByteBuffer.allocateDirect(Math.toIntExact(bytes)).order(ByteOrder.nativeOrder());
+		ByteBuffer buf = bytes <= maxReusedStaging ?
+				staging.get().slice(0, (int) bytes) : ByteBuffer.allocateDirect(Math.toIntExact(bytes));
+		buf.order(ByteOrder.nativeOrder());
 		if (load) read(buf, 0, start, bytes);
 		return buf;
 	}
