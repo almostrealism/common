@@ -457,17 +457,7 @@ public class SimulationRunnerTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void failedDispatchSettlesTheWorkInFlight() {
 		IllegalStateException inFlightFailure = new IllegalStateException("in flight");
-		AtomicInteger inFlightWaits = new AtomicInteger();
-		Semaphore inFlight = new Semaphore() {
-			@Override
-			public void waitFor() {
-				inFlightWaits.incrementAndGet();
-				throw inFlightFailure;
-			}
-
-			@Override
-			public boolean isOrderedOnDevice() { return true; }
-		};
+		FailingCompletion inFlight = new FailingCompletion(inFlightFailure);
 
 		RuntimeException dispatchFailure = new RuntimeException("dispatch");
 		List<Semaphore> received = new ArrayList<>();
@@ -491,9 +481,36 @@ public class SimulationRunnerTest extends TestSuiteBase {
 		}
 
 		Assert.assertEquals(List.of(inFlight), received);
-		assertEquals(1, inFlightWaits.get());
+		assertEquals(1, inFlight.waits.get());
 		assertEquals(0, runner.getStepCount());
 		runner.destroy();
+	}
+
+	/**
+	 * A device-ordered completion whose wait fails with a given exception, counting how many
+	 * times it was waited on.
+	 */
+	private static class FailingCompletion implements Semaphore {
+		/** The failure thrown by every wait. */
+		private final RuntimeException failure;
+		/** The number of times this completion was waited on. */
+		private final AtomicInteger waits = new AtomicInteger();
+
+		/**
+		 * @param failure the failure thrown by every wait
+		 */
+		FailingCompletion(RuntimeException failure) {
+			this.failure = failure;
+		}
+
+		@Override
+		public void waitFor() {
+			waits.incrementAndGet();
+			throw failure;
+		}
+
+		@Override
+		public boolean isOrderedOnDevice() { return true; }
 	}
 
 	/** A boundary input that only submits through a given {@link Submittable}. */
