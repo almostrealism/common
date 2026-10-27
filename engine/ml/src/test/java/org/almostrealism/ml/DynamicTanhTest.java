@@ -126,6 +126,31 @@ public class DynamicTanhTest extends TestSuiteBase implements LayerFeatures {
 		assertRejected("a bias that does not match the weight",
 				() -> dynamicTanh(shape, alpha, weight, new PackedCollection(shape(4))));
 		assertRejected("a missing alpha", () -> dynamicTanh(shape, null, weight, null));
+		assertRejected("an alpha that is neither a scalar nor one value per feature",
+				() -> dynamicTanh(shape, new PackedCollection(shape(3)).fill(1.0), weight, null));
+		assertRejected("a weight that is not 1-dimensional",
+				() -> dynamicTanh(shape, alpha, new PackedCollection(shape(2, 4)).fill(1.0), null));
+		assertRejected("a bias whose runs do not tile the input when there is no weight",
+				() -> dynamicTanh(shape, alpha, null, new PackedCollection(shape(3))));
+		assertRejected("a producer whose shape the weight does not tile",
+				() -> dynamicTanh(cp(new PackedCollection(shape)), alpha,
+						new PackedCollection(shape(5)).fill(1.0), null));
+	}
+
+	/**
+	 * The run length of a DyT normalization is that of the weight, else of the bias, else the last
+	 * axis of the input, and a run shorter than the last axis is accepted when it tiles the input.
+	 */
+	@Test(timeout = 60000)
+	public void runLengthFollowsWeightThenBiasThenLastAxis() {
+		TraversalPolicy shape = shape(2, 8);
+		PackedCollection alpha = new PackedCollection(shape(1)).fill(1.0);
+
+		assertEquals(4, dynamicTanhSize(shape, alpha, new PackedCollection(shape(4)), null));
+		assertEquals(2, dynamicTanhSize(shape, alpha, null, new PackedCollection(shape(2))));
+		assertEquals(8, dynamicTanhSize(shape, alpha, null, null));
+		assertEquals(4, dynamicTanhSize(shape, new PackedCollection(shape(4)),
+				new PackedCollection(shape(4)), new PackedCollection(shape(4))));
 	}
 
 	/**
