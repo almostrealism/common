@@ -24,6 +24,7 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import io.almostrealism.code.Memory;
 
+import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -72,24 +73,36 @@ import java.util.stream.Stream;
  * <pre>
  * while (true) {
  *   NativeRef ref = referenceQueue.remove();  // Blocks until GC collects an object
+ *   if (ref.isFreed()) continue;              // Already released explicitly; nothing to do
  *   if (queueDeallocation)
- *     deallocationQueue.put(ref);  // Queue for processing
+ *     deallocationQueue.put(new PendingRelease(ref, COLLECTED));  // Queue for processing
  *   else
- *     deallocateNow(ref);  // Deallocate immediately
+ *     deallocateNow(ref, COLLECTED);  // Deallocate immediately
  * }
  * </pre>
  *
  * <h3>2. Process Thread</h3>
- * <p>Performs actual deallocation from the priority queue (largest allocations first):</p>
+ * <p>Performs queued deallocation from the priority queue (largest allocations first), and
+ * finishes releases that were held back while a kernel was still using the memory:</p>
  * <pre>
  * while (true) {
- *   NativeRef ref = deallocationQueue.take();  // Blocks until work available
- *   deallocateNow(ref);  // Free native resources
+ *   PendingRelease pending = deallocationQueue.poll(DEFERRED_SWEEP_INTERVAL_MS);
+ *   if (pending != null) deallocateNow(pending.ref(), pending.origin());
+ *   sweepDeferred();  // Runs on every iteration, even when queueDeallocation is false
  * }
  * </pre>
  *
  * <p>This two-thread design separates GC detection from deallocation work, preventing GC pauses
  * from blocking on expensive native operations.</p>
+ *
+ * <h3>Explicit and Collected Releases</h3>
+ * <p>A block can be asked to be released both by its owner ({@link #deallocate(int, RAM)}) and by
+ * the collector, for example when the owner's release was held back for a kernel and the
+ * {@link RAM} became unreachable before the sweep finished it. The reference is claimed
+ * atomically, so the backend is called once. A request that loses the claim is reported as a
+ * prevented double free only when both it and the winner were explicit; every race involving the
+ * collected path is silent, since it is the expected overlap of the two paths rather than an
+ * ownership bug.</p>
  *
  * <h2>Allocation Tracking</h2>
  *
@@ -220,7 +233,17 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	private long collectionPasses;
 
 	/** Priority queue of memory blocks pending deallocation, ordered by size (largest first). */
-	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
+	private PriorityBlockingQueue<PendingRelease<T>> deallocationQueue;
+
+	/**
+	 * Number of references the submit thread has taken off the {@link #referenceQueue} and
+	 * finished handling. Tests wait on this rather than on the reference queue itself, which
+	 * returns references in last-in, first-out order.
+	 */
+	private final AtomicLong collectedHandled = new AtomicLong();
+
+	/** Number of loop iterations (queue poll plus deferred sweep) the process thread has completed. */
+	private final AtomicLong processIterations = new AtomicLong();
 
 	/** Releases held back while kernels are still using the memory, by address. */
 	private final ConcurrentHashMap<Long, DeferredRelease<T>> deferred = new ConcurrentHashMap<>();
@@ -252,26 +275,27 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 */
 	public HardwareMemoryProvider() {
 		this.allocated = new ConcurrentHashMap<>();
-		this.deallocationQueue = new PriorityBlockingQueue<>(100, Comparator.comparing(NativeRef<T>::getSize).reversed());
+		this.deallocationQueue = new PriorityBlockingQueue<>(100,
+				Comparator.comparing((PendingRelease<T> pending) -> pending.ref().getSize()).reversed());
 		this.referenceQueue = new ReferenceQueue<>();
 
 		Thread deallocationSubmit = new Thread(() -> {
 			while (true) {
-				try {
-					NativeRef ref = (NativeRef) getReferenceQueue().remove();
+				NativeRef<T> ref;
 
-					if (queueDeallocation) {
-						getDeallocationQueue().put(ref);
-					} else {
-						deallocateNow(ref);
-					}
+				try {
+					ref = (NativeRef<T>) getReferenceQueue().remove();
 				} catch (InterruptedException e) {
 					Thread.currentThread().interrupt();
 					break;
-				} catch (IllegalStateException e) {
-					warn(e.getMessage());
+				}
+
+				try {
+					submitCollected(ref);
 				} catch (Exception e) {
 					warn(e.getMessage());
+				} finally {
+					collectedHandled.incrementAndGet();
 				}
 			}
 		}, getClass().getSimpleName() + " Deallocation Submit Thread");
@@ -280,9 +304,9 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		Thread deallocationProcess = new Thread(() -> {
 			while (true) {
 				try {
-					NativeRef<T> ref = getDeallocationQueue()
+					PendingRelease<T> pending = getDeallocationQueue()
 							.poll(DEFERRED_SWEEP_INTERVAL_MS, TimeUnit.MILLISECONDS);
-					if (ref != null) deallocateNow(ref);
+					if (pending != null) deallocateNow(pending.ref(), pending.origin());
 
 					sweepDeferred();
 				} catch (InterruptedException e) {
@@ -290,6 +314,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 					break;
 				} catch (Exception e) {
 					warn(e.getMessage());
+				} finally {
+					processIterations.incrementAndGet();
 				}
 			}
 		}, getClass().getSimpleName() + " Deallocation Process Thread");
@@ -451,7 +477,44 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	protected ReferenceQueue<T> getReferenceQueue() { return referenceQueue; }
 
 	/** Returns the deallocation queue where blocks are placed pending background release. */
-	protected PriorityBlockingQueue<NativeRef<T>> getDeallocationQueue() { return deallocationQueue; }
+	private PriorityBlockingQueue<PendingRelease<T>> getDeallocationQueue() { return deallocationQueue; }
+
+	/**
+	 * Handles a reference the garbage collector has enqueued. A reference that has already
+	 * been claimed for release (by an explicit release that finished, or is finishing, the
+	 * job) is dropped: the collector reporting a block its owner already released is the
+	 * expected outcome, not a double free.
+	 *
+	 * @param ref the reference taken off the reference queue
+	 */
+	private void submitCollected(NativeRef<T> ref) {
+		if (ref.isFreed()) return;
+
+		if (queueDeallocation) {
+			getDeallocationQueue().put(new PendingRelease<>(ref, ReleaseOrigin.COLLECTED));
+		} else {
+			deallocateNow(ref, ReleaseOrigin.COLLECTED);
+		}
+	}
+
+	/**
+	 * Returns how many references the submit thread has taken off the reference queue and
+	 * finished handling. Exposed for tests, which cannot rely on the order in which a
+	 * {@link ReferenceQueue} returns references.
+	 *
+	 * @return the number of collected references handled so far
+	 */
+	long getCollectedHandledCount() { return collectedHandled.get(); }
+
+	/**
+	 * Returns how many loop iterations the deallocation process thread has completed. Each
+	 * iteration polls the deallocation queue and then sweeps the deferred releases, so once
+	 * this count has advanced by two past a given moment, at least one complete sweep has
+	 * started and finished after it.
+	 *
+	 * @return the number of completed process-thread iterations
+	 */
+	long getProcessIterationCount() { return processIterations.get(); }
 
 	/**
 	 * Returns all currently allocated memory blocks, sorted by size in descending order.
@@ -475,19 +538,28 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/**
 	 * Deallocates the given memory block immediately, or logs a warning if it cannot be found.
 	 *
+	 * <p>{@code mem} is kept strongly reachable until the release has finished. Nothing reads it
+	 * after its reference is looked up, so without the fence the garbage collector could find it
+	 * unreachable while the native release is still running and enqueue its reference, sending
+	 * the same block down the collected path in parallel.</p>
+	 *
 	 * @param mem The memory block to deallocate
 	 */
 	private void deallocateNow(T mem) {
-		NativeRef<T> ref = getNativeRef(mem);
-		if (ref == null) {
-			if (mem.isActive()) {
-				warn("Attempting to deallocate untracked memory " + mem);
+		try {
+			NativeRef<T> ref = getNativeRef(mem);
+			if (ref == null) {
+				if (mem.isActive()) {
+					warn("Attempting to deallocate untracked memory " + mem);
+				}
+
+				return;
 			}
 
-			return;
+			deallocateNow(ref, ReleaseOrigin.EXPLICIT);
+		} finally {
+			Reference.reachabilityFence(mem);
 		}
-
-		deallocateNow(ref);
 	}
 
 	/**
@@ -512,12 +584,19 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * would therefore indicate either a race window between reference-queue
 	 * enqueuing and guard release, or a bug in the guard's accounting.</p>
 	 *
-	 * @param ref Native reference to the memory block to deallocate
+	 * <p>A {@link ReleaseOrigin#COLLECTED collected} request for a reference that has already
+	 * been claimed returns at once. The check comes before the deferral decision because
+	 * {@link #deferred} is keyed by address: a stale reference whose address now belongs to a
+	 * new block that a kernel holds would otherwise be deferred in that block's place.</p>
+	 *
+	 * @param ref    Native reference to the memory block to deallocate
+	 * @param origin where the release request came from
 	 */
-	private void deallocateNow(NativeRef<T> ref) {
-		if (deferIfInUse(ref)) return;
+	private void deallocateNow(NativeRef<T> ref, ReleaseOrigin origin) {
+		if (origin == ReleaseOrigin.COLLECTED && ref.isFreed()) return;
+		if (deferIfInUse(ref, origin)) return;
 
-		releaseNow(ref);
+		releaseNow(ref, origin);
 	}
 
 	/**
@@ -530,13 +609,34 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * to a new allocation, which {@link #allocated(RAM)} registers under the same key.
 	 * The removal therefore takes out this reference's own entry only, compared by
 	 * identity, since {@link NativeRef} equality is by address and size and would
-	 * match the new allocation's entry as well.</p>
+	 * match the new allocation's entry as well. A held-back release of this same
+	 * reference is removed in the same way, so that a stale entry neither re-attempts
+	 * the freed block nor occupies the address when a new block placed there needs to
+	 * be held back.</p>
 	 *
-	 * @param ref Native reference to the memory block to free
+	 * <p>When the claim is lost, the block is already being freed (or has been) by
+	 * another request. That is reported as a double free only when both requests were
+	 * {@link ReleaseOrigin#EXPLICIT explicit}: an owner releasing memory the collector
+	 * also reported, in either order, is the expected overlap of the two paths, and
+	 * reporting it would spend the bounded detail budget of {@link #warnDoubleFree}
+	 * on events that are not ownership bugs.</p>
+	 *
+	 * <p>After a successful explicit release the reference is
+	 * {@linkplain java.lang.ref.Reference#clear() cleared}, so the collector cannot
+	 * enqueue it afterwards. That happens only after the identity-checked removal from
+	 * {@link #allocated}: {@link #getNativeRef(RAM)} matches entries with
+	 * {@code refersTo}, and a reference cleared while still tracked would make a
+	 * concurrent lookup report the block as untracked instead of losing the claim.</p>
+	 *
+	 * @param ref    Native reference to the memory block to free
+	 * @param origin where the release request came from
 	 */
-	private void releaseNow(NativeRef<T> ref) {
-		if (!ref.tryClaimFreed()) {
-			warnDoubleFree(ref);
+	private void releaseNow(NativeRef<T> ref, ReleaseOrigin origin) {
+		if (!ref.tryClaimFreed(origin)) {
+			if (origin.isDoubleFreeAfter(ref.getFreedBy())) {
+				warnDoubleFree(ref);
+			}
+
 			return;
 		}
 
@@ -547,6 +647,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		} finally {
 			if (released) {
 				allocated.computeIfPresent(ref.getAddress(), (address, current) -> current == ref ? null : current);
+				deferred.computeIfPresent(ref.getAddress(), (address, current) -> current.ref() == ref ? null : current);
+				if (origin == ReleaseOrigin.EXPLICIT) ref.clear();
 				notifyIfFullyReleased();
 			} else {
 				ref.unclaimFreed();
@@ -638,14 +740,19 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * <p>Deferral is skipped while the provider is being destroyed, where
 	 * nothing further will run to release the memory later.</p>
 	 *
-	 * @param ref the reference whose release was requested
+	 * <p>The held-back release remembers the origin of the request that created it, which is
+	 * the origin the eventual release is attempted under. When several requests for the same
+	 * address are held back, the first one's entry is kept.</p>
+	 *
+	 * @param ref    the reference whose release was requested
+	 * @param origin where the release request came from
 	 * @return {@code true} if the release was held back
 	 */
-	private boolean deferIfInUse(NativeRef<T> ref) {
+	private boolean deferIfInUse(NativeRef<T> ref, ReleaseOrigin origin) {
 		if (destroying || reservations(ref.getAddress()).isReleasable()) return false;
 
 		deferred.computeIfAbsent(ref.getAddress(),
-				k -> new DeferredRelease<>(ref, System.currentTimeMillis()));
+				k -> new DeferredRelease<>(ref, origin, System.currentTimeMillis()));
 		return true;
 	}
 
@@ -684,11 +791,11 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 			if (action == SweepAction.HOLD) continue;
 			if (action == SweepAction.RESET) {
-				deferred.replace(address, new DeferredRelease<>(ref, now));
+				deferred.replace(address, release, release.restartedAt(now));
 				continue;
 			}
 
-			deferred.remove(address);
+			if (!deferred.remove(address, release)) continue;
 
 			KernelMemoryGuard guard = kernelMemoryGuard();
 			if (expired && guard != null) {
@@ -697,7 +804,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 						address, ref.getAllocationStackTrace());
 			}
 
-			releaseNow(ref);
+			releaseNow(ref, release.origin());
 		}
 	}
 
@@ -713,35 +820,108 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 	/**
 	 * Returns the reservations kernels and scheduling leases currently hold on the given
-	 * address, both read at the same moment.
+	 * address, both read at the same moment. Every decision to hold a release back, and
+	 * every sweep of held-back releases, asks this method.
+	 *
+	 * <p>A subclass may override it to answer from somewhere other than the local
+	 * {@link Hardware}'s {@link KernelMemoryGuard}, for example to exercise the release path
+	 * without starting a hardware backend.</p>
 	 *
 	 * @param address the native address to test
 	 * @return the reservations, or {@link ReservationState#NONE} when there is no guard
 	 */
-	private ReservationState reservations(long address) {
+	protected ReservationState reservations(long address) {
 		KernelMemoryGuard guard = kernelMemoryGuard();
 		return guard == null ? ReservationState.NONE : guard.stateOf(address);
 	}
 
 	/**
-	 * One release being held back, and when it was first asked for.
+	 * One release being held back, the origin of the request that held it back, and when
+	 * it was first asked for.
+	 *
+	 * <p>Equality is identity. {@link #deferred} is keyed by address, and an address can be
+	 * reused by a new block once the old one is freed, so a sweep working from a snapshot must
+	 * replace or remove only the entry it read, never a newer entry for a different block that
+	 * happens to sit at the same address (and that would compare equal by value whenever its
+	 * size, origin and request time matched).</p>
 	 *
 	 * @param <R> the memory type
-	 * @param ref        the reference to release
-	 * @param deferredAt when the release was first requested
 	 */
-	private record DeferredRelease<R extends RAM>(NativeRef<R> ref, long deferredAt) { }
+	private static final class DeferredRelease<R extends RAM> {
+		/** The reference to release. */
+		private final NativeRef<R> ref;
+
+		/** Where the held-back request came from. */
+		private final ReleaseOrigin origin;
+
+		/** When the release was first requested, or when its timeout was last restarted. */
+		private final long deferredAt;
+
+		/**
+		 * Creates a held-back release.
+		 *
+		 * @param ref        the reference to release
+		 * @param origin     where the held-back request came from
+		 * @param deferredAt when the release was requested
+		 */
+		DeferredRelease(NativeRef<R> ref, ReleaseOrigin origin, long deferredAt) {
+			this.ref = ref;
+			this.origin = origin;
+			this.deferredAt = deferredAt;
+		}
+
+		/** Returns the reference to release. */
+		NativeRef<R> ref() { return ref; }
+
+		/** Returns where the held-back request came from. */
+		ReleaseOrigin origin() { return origin; }
+
+		/** Returns when the release was requested, or its timeout last restarted. */
+		long deferredAt() { return deferredAt; }
+
+		/**
+		 * Returns the same release, for the same reference and origin, with its timeout
+		 * restarted at the given time.
+		 *
+		 * @param now the time the timeout restarts from
+		 * @return a new held-back release
+		 */
+		DeferredRelease<R> restartedAt(long now) {
+			return new DeferredRelease<>(ref, origin, now);
+		}
+	}
+
+	/**
+	 * One release waiting on the deallocation queue in queued mode, and where it was
+	 * requested from. The same reference may be queued once by an explicit release and once
+	 * by the collector, and the origin decides whether the entry that loses the claim is
+	 * reported.
+	 *
+	 * @param <R> the memory type
+	 * @param ref    the reference to release
+	 * @param origin where the release request came from
+	 */
+	private record PendingRelease<R extends RAM>(NativeRef<R> ref, ReleaseOrigin origin) { }
 
 	/**
 	 * Total prevented double-free attempts across all providers, used to cap how many are
-	 * reported in full. A prevented double free is functionally harmless — the second
-	 * release is skipped, not carried out — but under heavy allocation churn (for example a
-	 * long real-time render that caches and evicts many note buffers) it can recur in the
-	 * millions, and each full report captures and prints the current thread's whole stack
-	 * trace. Left unbounded, that reporting alone dominates run time; capping it keeps the
-	 * diagnostic without letting it starve the workload.
+	 * reported in full. Only an explicit release that loses its claim to another explicit
+	 * release counts; a race between an explicit release and the garbage-collector path is
+	 * not a double free and does not consume this budget. A prevented double free is
+	 * functionally harmless — the second release is skipped, not carried out — but each full
+	 * report captures and prints the current thread's whole stack trace, so the count is
+	 * capped to keep the diagnostic from starving the workload if an ownership bug recurs
+	 * at high frequency.
 	 */
 	private static final AtomicLong doubleFreeAttempts = new AtomicLong();
+
+	/**
+	 * Returns the process-wide number of prevented double frees reported so far (subject to
+	 * {@link RAM#enableWarnings}). Exposed for tests, which assert on its change.
+	 *
+	 * @return the number of prevented double frees counted so far
+	 */
+	static long getDoubleFreeAttempts() { return doubleFreeAttempts.get(); }
 
 	/** Number of prevented double frees reported in full before falling back to a periodic count. */
 	private static final long DOUBLE_FREE_DETAIL_LIMIT = 64;
@@ -782,6 +962,11 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * the allocation stack trace and (when available) the stack trace of the first
 	 * successful release. Skips the warning during provider destruction, where extra
 	 * deallocation attempts are routine and not bug indicators.
+	 *
+	 * <p>Only called when an {@link ReleaseOrigin#EXPLICIT explicit} release lost its claim
+	 * to another explicit release, i.e. two owners released the same block concurrently.
+	 * A claim lost to or by the garbage-collector path is the expected overlap of the two
+	 * release paths and is not reported (see {@link #releaseNow(NativeRef, ReleaseOrigin)}).</p>
 	 *
 	 * <p>The full report — which captures and prints the current stack trace — is emitted
 	 * only for the first {@link #DOUBLE_FREE_DETAIL_LIMIT} prevented double frees. Beyond
@@ -974,7 +1159,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 		if (queueDeallocation) {
 			NativeRef<T> ref = getNativeRef(mem);
-			if (ref != null) getDeallocationQueue().put(ref);
+			if (ref != null) getDeallocationQueue().put(new PendingRelease<>(ref, ReleaseOrigin.EXPLICIT));
 		} else {
 			deallocateNow(mem);
 		}
