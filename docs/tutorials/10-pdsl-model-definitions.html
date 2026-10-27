@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial 10: Writing Models in PDSL - Almost Realism</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Tutorial 10: Writing Models in PDSL</h1>
+            <p class="tagline">Read the platform's model files, then write a small decoder of your own</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="../index.html#tutorials">All Tutorials</a>
+            </nav>
+        </header>
+
+        <main>
+            <section>
+                <h2>Overview</h2>
+                <p>PDSL is the language in which the platform writes down <em>what its models compute</em>.
+                This tutorial first reads three of the shipped model files, one construct at a time, and then
+                builds a small decoder of your own, step by step, until it is a complete program that loads
+                from a checkpoint. You'll learn how to:</p>
+                <ul>
+                    <li>Read a PDSL layer and follow the shape of the data through it</li>
+                    <li>Recognize residual connections, side branches and gates</li>
+                    <li>Repeat a layer once per layer of a checkpoint with <code>stack</code></li>
+                    <li>Write and build a complete model, and hand it to the Java generation loop</li>
+                </ul>
+
+                <p><strong>Prerequisites:</strong></p>
+                <ul>
+                    <li>Understanding of PackedCollection (Tutorial 2)</li>
+                    <li>Computation graphs (Tutorial 4)</li>
+                    <li>Running ML models (Tutorial 5)</li>
+                </ul>
+
+                <p>This page teaches; it does not define. The grammar, every built-in and the exact rules live in
+                the <a href="../internals/pdsl-language.md">PDSL Language Reference</a>, and each step below
+                links to the part of it that applies.</p>
+            </section>
+
+            <section>
+                <h2>Step 1: What PDSL Is For</h2>
+                <p>In this project Java is the orchestration language: it describes a computation graph, and the
+                framework compiles that graph to native kernels (Tutorial 4). PDSL takes the description one step
+                further. A <code>.pdsl</code> file states the structure of a model, stage by stage, and the
+                interpreter turns it into the same <code>Block</code> and <code>Model</code> graphs a hand-written
+                Java layer would produce. Because the file holds nothing but structure, its text can look like the
+                picture of the data flow you would draw on a whiteboard. Weight loading, the embedding lookup,
+                sampling and the generation loop stay in Java.</p>
+
+                <p>The shipped files live in <code>engine/ml/src/main/resources/pdsl/</code>. The three you will
+                read are <code>feed_forward.pdsl</code>, <code>attention.pdsl</code> and
+                <code>transformer.pdsl</code>, plus the whole-model file <code>qwen3.pdsl</code>.</p>
+            </section>
+
+            <section>
+                <h2>Step 2: Reading a Layer</h2>
+                <p>Start with the feed-forward network of a Llama or Qwen decoder, the <code>swiglu_ffn</code> layer
+                of <code>feed_forward.pdsl</code>. The file's doc comment draws it like this:</p>
+
+                <pre><code class="language-text">[1, dim] token vector
+  └─ rmsnorm(norm_weights, epsilon)                          [1, dim]
+     ├─ gate: dense(w1) → silu()                             [1, hidden_dim]
+     └─ up:   dense(w3)                                      [1, hidden_dim]
+     product(gate, up)   (element-wise, one multiply)        [1, hidden_dim]
+  └─ dense(w2)                                               [1, dim]</code></pre>
+
+                <p>and the layer itself is six lines of body:</p>
+
+                <pre><code class="language-pdsl-asset" data-asset="/pdsl/feed_forward.pdsl">layer swiglu_ffn(norm_weights: weight, w1: weight, w2: weight, w3: weight, epsilon: float) {
+    rmsnorm(norm_weights, epsilon)
+    product(
+        { dense(w1); silu() },
+        { dense(w3) }
+    )
+    dense(w2)
+}</code></pre>
+
+                <p>Read it top to bottom. Each line is a stage, and the output of one stage is the input of the
+                next.</p>
+                <ul>
+                    <li><strong><code>layer swiglu_ffn(...)</code></strong> declares a layer and its parameters. A
+                    <code>weight</code> is a tensor (a <code>PackedCollection</code>) and a <code>float</code> is a
+                    number used while the graph is being built.</li>
+                    <li><strong><code>rmsnorm(norm_weights, epsilon)</code></strong> normalizes the incoming vector and
+                    scales it by learned weights. The shape does not change.</li>
+                    <li><strong><code>product({ ... }, { ... })</code></strong> runs two inline blocks on the same input
+                    and multiplies their outputs element-wise. Here that is the SwiGLU gate: one path is
+                    <code>dense(w1)</code> then <code>silu()</code>, the other is <code>dense(w3)</code>. Inside braces,
+                    <code>;</code> separates stages written on one line.</li>
+                    <li><strong><code>dense(w2)</code></strong> projects the gated hidden vector back to
+                    <code>[1, dim]</code>.</li>
+                </ul>
+                <p>The text is the picture: one line per box, and the two branches of the picture are the two
+                arguments of <code>product</code>. The file's second layer, <code>glu_feed_forward</code>, is a
+                variant that takes its projections as arguments; you can leave it for later. For the formal
+                meaning of each statement, see
+                <a href="../internals/pdsl-language.md#statements-and-their-block-semantics">Statements and their
+                block semantics</a>.</p>
+            </section>
+
+            <section>
+                <h2>Step 3: Reading Attention</h2>
+                <p>Attention is the larger read. <code>attention.pdsl</code> handles one token per forward pass: the
+                input is that token's <code>[1, dim]</code> vector, and <code>position</code> is its index in the
+                sequence. Keys and values of every earlier token are kept in a key/value cache, so each pass only
+                has to compute the new token's key and value.</p>
+
+                <h3>The score stage: <code>attend</code></h3>
+
+                <pre><code class="language-pdsl-asset" data-asset="/pdsl/attention.pdsl">layer attend(heads: int, head_size: int, position: scalar,
+             key_cache: weight, value_cache: weight) -&gt; [heads, head_size] {
+    attention_scores(key_cache)
+    scale(1 / sqrt(head_size))
+    causal_mask(position)
+    softmax()
+    weighted_values(value_cache)
+}</code></pre>
+
+                <ul>
+                    <li><code>attention_scores(key_cache)</code> takes the query, one row per head, and scores it
+                    against every cached key: <code>[heads, head_size]</code> becomes <code>[heads, seq_len]</code>.</li>
+                    <li><code>scale(1 / sqrt(head_size))</code> is the usual 1/√d scaling. The argument is ordinary
+                    arithmetic, evaluated once while the layer is built.</li>
+                    <li><code>causal_mask(position)</code> penalizes every cached row after the current position, so a
+                    token cannot attend to the future.</li>
+                    <li><code>softmax()</code> turns each head's scores into weights.</li>
+                    <li><code>weighted_values(value_cache)</code> sums the cached values by those weights and returns
+                    <code>[1, heads * head_size]</code>.</li>
+                </ul>
+
+                <p><strong>The arrow is not a return type.</strong> <code>-&gt; [heads, head_size]</code> looks like
+                an output shape, but it declares the <em>input</em> shape <code>attend</code> is built for when
+                another layer calls it. Its doc comment gives the mapping as
+                <code>[heads, head_size] -&gt; [1, heads * head_size]</code>: the annotation names the left-hand
+                side. When Java builds a layer directly, the annotation is not used at all; see
+                <a href="../internals/pdsl-language.md#definitions-and-parameters">The shape annotation</a> in the
+                reference.</p>
+
+                <h3>The whole stage: <code>attention</code></h3>
+
+                <pre><code class="language-pdsl-asset" data-asset="/pdsl/attention.pdsl">layer attention(heads: int, kv_heads: int, head_size: int,
+                rms_att_weight: weight,
+                wq: weight, wk: weight, wv: weight, wo: weight,
+                bq: weight, bk: weight, bv: weight,
+                freq_cis: weight, position: scalar, epsilon: float,
+                key_cache: weight, value_cache: weight) -&gt; [1, heads * head_size] {
+    rmsnorm(rms_att_weight, epsilon)
+
+    branch keys {
+        dense(wk, bk)
+        rotate_heads(kv_heads, head_size, freq_cis, position)
+        repeat_each(heads / kv_heads)
+        cache_write(key_cache, position)
+    }
+    branch values {
+        dense(wv, bv)
+        reshape([kv_heads, head_size])
+        repeat_each(heads / kv_heads)
+        cache_write(value_cache, position)
+    }
+
+    dense(wq, bq)
+    rotate_heads(heads, head_size, freq_cis, position)
+    attend(heads, head_size, position, key_cache, value_cache)
+    dense(wo)
+    reshape([1, heads * head_size])
+}</code></pre>
+
+                <p>Here the annotation <code>-&gt; [1, heads * head_size]</code> is again the input shape: the
+                <code>[1, dim]</code> token vector. Reading the body:</p>
+                <ul>
+                    <li><strong><code>rmsnorm</code></strong> normalizes the token vector first (pre-norm).</li>
+                    <li><strong><code>branch keys { }</code></strong> is a side path. It receives the normalized vector,
+                    and the main path continues with that same vector; the branch's result is not passed on. The keys
+                    branch projects (<code>dense(wk, bk)</code>), applies rotary position embedding
+                    (<code>rotate_heads</code>, itself a layer of this file), duplicates each key head for the query
+                    heads that share it (<code>repeat_each(heads / kv_heads)</code>, which is grouped-query attention),
+                    and writes the result into row <code>position</code> of the cache with
+                    <code>cache_write</code>.</li>
+                    <li><strong><code>branch values { }</code></strong> does the same for values, without rotation.</li>
+                    <li>A branch runs before the path that follows it, so when the <strong>query path</strong>
+                    (<code>dense(wq, bq)</code>, <code>rotate_heads</code>) reaches <code>attend</code>, both caches
+                    already hold the current token.</li>
+                    <li><strong><code>dense(wo)</code></strong> is the output projection, and the final
+                    <code>reshape</code> restores the <code>[1, dim]</code> layout.</li>
+                </ul>
+                <p><code>bq</code>, <code>bk</code> and <code>bv</code> are optional: a model without projection
+                biases passes <code>null</code> and <code>dense</code> adds nothing.</p>
+                <p>By contrast, <code>sdpa.pdsl</code> scores a whole sequence at once with
+                <code>scaled_dot_product</code> and a <code>key_mask</code>; it has no rotary embedding and no cache.
+                It is a different kind of attention, not a variant of this one.</p>
+            </section>
+
+            <section>
+                <h2>Step 4: Composing Layers into a Model</h2>
+                <p><code>transformer.pdsl</code> assembles attention and the feed-forward network into one pre-norm
+                decoder layer. It does not redefine them; it imports the files that do:</p>
+
+                <pre><code class="language-pdsl-asset" data-asset="/pdsl/transformer.pdsl">import "/pdsl/attention.pdsl"
+import "/pdsl/feed_forward.pdsl"
+...
+layer transformer(heads: int, kv_heads: int, head_size: int,
+                  rms_att_weight: weight,
+                  wq: weight, wk: weight, wv: weight, wo: weight,
+                  bq: weight, bk: weight, bv: weight,
+                  freq_cis: weight, position: scalar,
+                  rms_ffn_weight: weight, w1: weight, w2: weight, w3: weight,
+                  epsilon: float, key_cache: weight, value_cache: weight)
+        -&gt; [1, heads * head_size] {
+    // Residual self-attention: the stream plus attention over its normalized copy.
+    accum {
+        attention(heads, kv_heads, head_size, rms_att_weight, wq, wk, wv, wo,
+                  bq, bk, bv, freq_cis, position, epsilon, key_cache, value_cache)
+    }
+
+    // Residual feed-forward: the stream plus the SwiGLU network over its normalized copy.
+    accum {
+        swiglu_ffn(rms_ffn_weight, w1, w2, w3, epsilon)
+    }
+}</code></pre>
+
+                <ul>
+                    <li><strong><code>import "/pdsl/..."</code></strong> brings in every definition of another asset.
+                    Imports come before every definition and name a classpath resource.</li>
+                    <li><strong><code>accum { body }</code></strong> is a residual connection: the body's output is
+                    added to the input it read, so <code>x</code> becomes <code>x + attention(x)</code>, then
+                    <code>x + swiglu_ffn(x)</code>. The stream itself is never normalized in place; each stage
+                    normalizes its own copy.</li>
+                    <li>A call such as <code>attention(...)</code> builds another layer of the program, passing
+                    arguments by position.</li>
+                </ul>
+
+                <p><code>transformer.pdsl</code> describes one layer. The repetition over layers lives in the
+                whole-model files, <code>qwen2.pdsl</code> and <code>qwen3.pdsl</code>:</p>
+
+                <pre><code class="language-pdsl-asset" data-asset="/pdsl/qwen3.pdsl">import "/pdsl/transformer.pdsl"
+
+model qwen3(settings: model_settings, weights: checkpoint, position: scalar) {
+    let rope = rope_freqs(settings.rope_theta, settings.dim / settings.heads, settings.seq_len)
+
+    stack weights.model.layers as block {
+        transformer_qk_norm(settings.heads, settings.kv_heads, settings.dim / settings.heads,
+                            block.input_layernorm.weight,
+                            ...
+                            zeros([settings.seq_len, settings.dim]), zeros([settings.seq_len, settings.dim]))
+    }
+
+    rmsnorm(weights.model.norm.weight, 1e-6)
+    dense(weights.model.embed_tokens.weight)
+}</code></pre>
+
+                <ul>
+                    <li><strong><code>model</code></strong> declares a whole model rather than a layer.</li>
+                    <li><strong><code>weights: checkpoint</code></strong> receives the checkpoint. A dotted path such as
+                    <code>weights.model.norm.weight</code> names one tensor by its checkpoint key, and
+                    <code>weights.model.layers</code> names the group of everything under that prefix.</li>
+                    <li><strong><code>stack weights.model.layers as block { }</code></strong> repeats its body once per
+                    member of the group (<code>model.layers.0</code>, <code>model.layers.1</code>, ...), with
+                    <code>block</code> bound to that member. There is no index to compute keys from; each layer's
+                    weights are read as <code>block.self_attn.q_proj.weight</code> and so on.</li>
+                    <li><strong><code>let rope = ...</code></strong> binds a value for the rest of the body, here the
+                    rotary frequency table every layer shares. <code>zeros([...])</code> allocates a fresh cache for
+                    each layer.</li>
+                    <li>After the stack, a final <code>rmsnorm</code> and a <code>dense</code> onto the vocabulary give
+                    one score per token of the vocabulary.</li>
+                </ul>
+
+                <p>The elided lines pass each weight of the layer as its own argument, twenty-two of them in all.
+                Read that call to see which checkpoint tensor feeds which parameter; it is not a pattern to copy.</p>
+
+                <p><strong>Why the residual lives in a layer.</strong> A <code>model</code> body accepts only
+                expressions, <code>let</code>, <code>for</code> and <code>stack</code>. <code>accum</code>,
+                <code>branch</code> and <code>product</code> are rejected there, so composition is written in a
+                <code>layer</code> and the model calls it. The language also has an index loop,
+                <code>for i in 0..n { }</code>; the platform's model files use <code>stack</code> instead, and so does
+                this tutorial. See
+                <a href="../internals/pdsl-language.md#statements-and-their-block-semantics">the statement table</a>
+                for both.</p>
+            </section>
+
+            <section>
+                <h2>Step 5: Writing Your Own Decoder</h2>
+                <p>Now write a small decoder of your own: two layers, each a residual attention stage and a residual
+                gated MLP, then a vocabulary projection. It uses the constructs you have just read, simplified so the
+                whole program fits on one screen: one key/value head per query head and no rotary embedding. Every
+                program below is parsed by a test, and the final one is built from a checkpoint.</p>
+
+                <h3>5a. A gated MLP</h3>
+                <p>Write the feed-forward stage first. It is the shape of <code>swiglu_ffn</code>, with your own
+                names and a fixed epsilon:</p>
+
+                <pre><code class="language-pdsl">/** Pre-norm gated MLP: down(silu(gate(n)) * up(n)), where n = rmsnorm(x). */
+layer gated_mlp(norm: weight, gate: weight, up: weight, down: weight) {
+    rmsnorm(norm, 1e-6)
+    product(
+        { dense(gate); silu() },
+        { dense(up) }
+    )
+    dense(down)
+}</code></pre>
+
+                <p>With <code>norm</code> <code>[4]</code>, <code>gate</code> and <code>up</code> <code>[8, 4]</code>
+                and <code>down</code> <code>[4, 8]</code>, it maps <code>[1, 4]</code> to <code>[1, 4]</code>. A
+                <code>dense</code> weight is <code>[out, in]</code>.</p>
+
+                <h3>5b. Attention over a cache</h3>
+                <p>Next, attention. Two branches write the new token's key and value into the caches, and the query
+                path scores against them. Instead of a separate <code>attend</code> layer, the score stages are
+                written inline, after a <code>reshape</code> that splits the query into heads:</p>
+
+                <pre><code class="language-pdsl">/** Single-token attention over a key/value cache, [1, heads * head_size] in and out. */
+layer cached_attention(heads: int, head_size: int, norm: weight,
+                       wq: weight, wk: weight, wv: weight, wo: weight,
+                       position: scalar, key_cache: weight, value_cache: weight)
+        -&gt; [1, heads * head_size] {
+    rmsnorm(norm, 1e-6)
+
+    branch keys {
+        dense(wk)
+        cache_write(key_cache, position)
+    }
+    branch values {
+        dense(wv)
+        cache_write(value_cache, position)
+    }
+
+    dense(wq)
+    reshape([heads, head_size])
+    attention_scores(key_cache)
+    scale(1 / sqrt(head_size))
+    causal_mask(position)
+    softmax()
+    weighted_values(value_cache)
+    dense(wo)
+}</code></pre>
+
+                <p>Follow the shapes for <code>heads = 2</code>, <code>head_size = 2</code> and caches of
+                <code>[8, 4]</code> (eight positions):</p>
+
+                <pre><code class="language-text">rmsnorm                      [1, 4]
+keys:   dense(wk)            [1, 4]   cache_write → key_cache[position]
+values: dense(wv)            [1, 4]   cache_write → value_cache[position]
+dense(wq)                    [1, 4]
+reshape                      [2, 2]   one row per head
+attention_scores             [2, 8]   one score per head and cached position
+scale, causal_mask, softmax  [2, 8]
+weighted_values              [1, 4]
+dense(wo)                    [1, 4]</code></pre>
+
+                <p>The annotation <code>-&gt; [1, heads * head_size]</code> says what this layer expects to be fed
+                when another layer calls it, which is the token vector. It is not the output shape, even though here
+                the two happen to agree.</p>
+
+                <h3>5c. The decoder layer</h3>
+                <p>Compose the two stages with residual connections, exactly as <code>transformer</code> does:</p>
+
+                <pre><code class="language-pdsl">/** Pre-norm decoder layer: x + cached_attention(x), then x + gated_mlp(x). */
+layer decoder_layer(heads: int, head_size: int, position: scalar,
+                    attn_norm: weight, wq: weight, wk: weight, wv: weight, wo: weight,
+                    mlp_norm: weight, gate: weight, up: weight, down: weight,
+                    key_cache: weight, value_cache: weight) {
+    accum {
+        cached_attention(heads, head_size, attn_norm, wq, wk, wv, wo,
+                         position, key_cache, value_cache)
+    }
+    accum {
+        gated_mlp(mlp_norm, gate, up, down)
+    }
+}</code></pre>
+
+                <p>This parses on its own, but it cannot be built on its own: it calls two layers it does not define.
+                The next step puts all three in one program.</p>
+
+                <h3>5d. The model</h3>
+                <p>Finally, the model. It stacks <code>decoder_layer</code> over the checkpoint's
+                <code>layers</code> group, gives each layer its own caches with <code>zeros</code>, and ends in a norm
+                and the vocabulary projection. Here is the complete program, with the three layers you wrote
+                above:</p>
+
+                <pre><code class="language-pdsl">/** Pre-norm gated MLP: down(silu(gate(n)) * up(n)), where n = rmsnorm(x). */
+layer gated_mlp(norm: weight, gate: weight, up: weight, down: weight) {
+    rmsnorm(norm, 1e-6)
+    product(
+        { dense(gate); silu() },
+        { dense(up) }
+    )
+    dense(down)
+}
+
+/** Single-token attention over a key/value cache, [1, heads * head_size] in and out. */
+layer cached_attention(heads: int, head_size: int, norm: weight,
+                       wq: weight, wk: weight, wv: weight, wo: weight,
+                       position: scalar, key_cache: weight, value_cache: weight)
+        -&gt; [1, heads * head_size] {
+    rmsnorm(norm, 1e-6)
+
+    branch keys {
+        dense(wk)
+        cache_write(key_cache, position)
+    }
+    branch values {
+        dense(wv)
+        cache_write(value_cache, position)
+    }
+
+    dense(wq)
+    reshape([heads, head_size])
+    attention_scores(key_cache)
+    scale(1 / sqrt(head_size))
+    causal_mask(position)
+    softmax()
+    weighted_values(value_cache)
+    dense(wo)
+}
+
+/** Pre-norm decoder layer: x + cached_attention(x), then x + gated_mlp(x). */
+layer decoder_layer(heads: int, head_size: int, position: scalar,
+                    attn_norm: weight, wq: weight, wk: weight, wv: weight, wo: weight,
+                    mlp_norm: weight, gate: weight, up: weight, down: weight,
+                    key_cache: weight, value_cache: weight) {
+    accum {
+        cached_attention(heads, head_size, attn_norm, wq, wk, wv, wo,
+                         position, key_cache, value_cache)
+    }
+    accum {
+        gated_mlp(mlp_norm, gate, up, down)
+    }
+}
+
+/** A toy decoder: one decoder_layer per checkpoint layer, then one score per vocabulary entry. */
+model toy_decoder(settings: model_settings, weights: checkpoint, position: scalar) {
+    stack weights.layers as block {
+        decoder_layer(settings.heads, settings.dim / settings.heads, position,
+                      block.attn_norm.weight,
+                      block.attn.q.weight, block.attn.k.weight,
+                      block.attn.v.weight, block.attn.o.weight,
+                      block.mlp_norm.weight,
+                      block.mlp.gate.weight, block.mlp.up.weight, block.mlp.down.weight,
+                      zeros([settings.seq_len, settings.dim]),
+                      zeros([settings.seq_len, settings.dim]))
+    }
+
+    rmsnorm(weights.norm.weight, 1e-6)
+    dense(weights.lm_head.weight)
+}</code></pre>
+
+                <p>The program reads these checkpoint keys, for each layer <code>N</code>:</p>
+
+                <pre><code class="language-text">layers.N.attn_norm.weight                       [dim]
+layers.N.attn.q.weight  ... attn.o.weight       [dim, dim]
+layers.N.mlp_norm.weight                        [dim]
+layers.N.mlp.gate.weight, layers.N.mlp.up.weight  [hidden, dim]
+layers.N.mlp.down.weight                        [dim, hidden]
+norm.weight                                     [dim]
+lm_head.weight                                  [vocab, dim]</code></pre>
+
+                <p>Built for <code>[1, 4]</code> with <code>dim = 4</code>, <code>heads = 2</code>,
+                <code>seq_len = 8</code>, a two-layer checkpoint, <code>hidden = 8</code> and
+                <code>vocab = 16</code>, the model has four blocks (two decoder layers, the norm and the projection)
+                and outputs <code>[1, 16]</code>: one score per vocabulary entry. The program is self-contained on
+                purpose. It has no <code>import</code>, because only classpath loading resolves imports (see
+                Step 6).</p>
+            </section>
+
+            <section>
+                <h2>Step 6: Running It from Java</h2>
+                <p>Save the program as <code>toy_decoder.pdsl</code>, then parse and build it:</p>
+
+                <pre><code class="language-java">import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslNode;
+import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
+
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
+
+PdslLoader loader = new PdslLoader();
+PdslNode.Program program = loader.parse(Path.of("toy_decoder.pdsl"));
+
+StateDictionary weights = new StateDictionary(weightsDirectory);   // the checkpoint
+PackedCollection position = new PackedCollection(1);               // updated every step
+
+Map&lt;String, Object&gt; settings = new HashMap&lt;&gt;();
+settings.put("dim", 4);
+settings.put("heads", 2);
+settings.put("seq_len", 8);
+
+Map&lt;String, Object&gt; args = new HashMap&lt;&gt;();
+args.put("settings", settings);
+args.put("position", position);
+
+Model model = loader.buildModel(program, "toy_decoder", new TraversalPolicy(1, 4), weights, args);
+CompiledModel compiled = model.compile(false);</code></pre>
+
+                <ul>
+                    <li><code>buildModel(program, name, inputShape, stateDict, extraArgs)</code> binds the
+                    <code>StateDictionary</code> to every parameter typed <code>checkpoint</code>; every other parameter
+                    is taken from <code>extraArgs</code> by name.</li>
+                    <li><code>parse(Path)</code> and <code>parse(String)</code> read one source and do not resolve
+                    <code>import</code>. For a classpath asset that imports others, use
+                    <code>loader.parseResource("/pdsl/transformer.pdsl")</code>, which merges every imported
+                    definition into one program.</li>
+                    <li>For a quick experiment without a checkpoint on disk, build a <code>StateDictionary</code> from a
+                    <code>Map&lt;String, PackedCollection&gt;</code> holding the keys listed above.</li>
+                </ul>
+
+                <p>The model starts from a token's embedding and ends with scores, so the embedding lookup, the
+                generation loop and sampling stay in Java, exactly as in the real models.
+                <code>AutoregressiveModel.of(compiled, position, token -&gt; ...)</code> wraps the compiled model with
+                an embedding function and advances <code>position</code> each step; its subclasses
+                <code>KeyValueCacheAutoregressiveModel</code> and <code>SlidingWindowAutoregressiveModel</code> are
+                the other generators (Tutorial 5).</p>
+            </section>
+
+            <section>
+                <h2>Common First Mistakes</h2>
+                <p>These are the errors new PDSL authors meet most often, with what you will actually see. The
+                complete list of messages is under
+                <a href="../internals/pdsl-language.md#errors-and-diagnostics">Errors and diagnostics</a>.</p>
+
+                <h3>A shape that does not fit</h3>
+                <p><strong>Symptom:</strong> a <code>dense</code> weight whose second axis is not the input width, or
+                an <code>accum</code> body whose output size differs from its input, fails with an
+                <code>IllegalArgumentException</code> that has <em>no message</em>. Built-ins that check their input
+                say so, for example <code>softmax() expects a [rows, size] input shape, got [4]</code>.</p>
+                <p><strong>Fix:</strong> write the shape next to each stage, as the asset doc comments do, and check
+                that every <code>dense</code> weight is <code>[out, in]</code>.</p>
+
+                <h3>Reading <code>-&gt; [shape]</code> as the output shape</h3>
+                <p><strong>Symptom:</strong> the layer builds fine from Java, because a direct build ignores the
+                annotation, and then fails with a shape error from its first stage once another layer calls it, since
+                the call builds it for the shape you wrote.</p>
+                <p><strong>Fix:</strong> the annotation is the shape the layer is <em>fed</em>. Write the input
+                shape, or leave the annotation out and let a call build the layer for whatever reaches it.</p>
+
+                <h3>Forgetting a norm</h3>
+                <p><strong>Symptom:</strong> nothing reports it. The model builds and runs and its output is simply
+                wrong. In a pre-norm layer each residual stage starts with its own <code>rmsnorm</code>.</p>
+                <p><strong>Fix:</strong> compare your stages with the asset's data-flow picture, line by line.</p>
+
+                <h3>Putting <code>accum</code> in a model</h3>
+                <p><strong>Symptom:</strong> <code>Unsupported statement in model body: AccumStatement</code>.</p>
+                <p><strong>Fix:</strong> move the composition into a <code>layer</code> and call it from the model, as
+                <code>decoder_layer</code> does.</p>
+
+                <h3>Expecting <code>parse(String)</code> to resolve an import</h3>
+                <p><strong>Symptom:</strong> the program parses, and the build fails with
+                <code>Unknown function 'attention' at line N</code>.</p>
+                <p><strong>Fix:</strong> load the asset with <code>parseResource</code>, or make the program
+                self-contained, as <code>toy_decoder</code> is.</p>
+
+                <h3>A misspelled checkpoint path</h3>
+                <p><strong>Symptom:</strong> <code>No weight named '...' among N weights; the closest names are ...,
+                at line L</code>.</p>
+                <p><strong>Fix:</strong> the message lists the nearest keys; paths follow the checkpoint's own key
+                names, segment by segment.</p>
+            </section>
+
+            <section>
+                <h2>Summary</h2>
+                <p>In this tutorial, you learned how to:</p>
+                <ul>
+                    <li>✓ Read a PDSL layer as a picture of its data flow</li>
+                    <li>✓ Recognize <code>product</code> gates, <code>branch</code> side paths and <code>accum</code>
+                    residuals in the shipped assets</li>
+                    <li>✓ Read the <code>-&gt; [shape]</code> annotation as the input shape</li>
+                    <li>✓ Repeat a layer over a checkpoint with <code>stack</code></li>
+                    <li>✓ Write, parse and build a complete decoder, and hand it to the Java generation loop</li>
+                </ul>
+
+                <h3>Next Steps</h3>
+                <ul>
+                    <li>Add grouped-query attention to <code>cached_attention</code> with
+                    <code>repeat_each</code>, as <code>attention</code> does</li>
+                    <li>Add rotary embedding by importing <code>attention.pdsl</code> and calling
+                    <code>rotate_heads</code> (load the program with <code>parseResource</code>)</li>
+                    <li>Read <code>qwen2.pdsl</code> and compare it with <code>qwen3.pdsl</code></li>
+                </ul>
+
+                <h3>Related Documentation</h3>
+                <ul>
+                    <li><a href="../internals/pdsl-language.md">PDSL Language Reference</a>: grammar, built-in catalog,
+                    errors and known limits</li>
+                    <li><a href="../internals/pdsl-audio-dsp.md">PDSL Audio DSP Reference</a>: audio primitives and
+                    multi-channel constructs</li>
+                    <li><a href="../internals/ml-inference-pipeline.md">ML Inference Pipeline</a>: where the attention
+                    and transformer assets sit</li>
+                    <li><a href="05-ml-inference.html">Tutorial 5: Running ML Models</a></li>
+                    <li><a href="../index.html#modules">All Modules</a></li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>
