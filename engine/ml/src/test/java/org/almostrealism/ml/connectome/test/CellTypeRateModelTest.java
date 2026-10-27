@@ -120,7 +120,6 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 			SimulationRunner.Recording recording = runner.record(cp(population.getRates()), interval, steps / interval);
 			runner.run(steps);
 
-			int t = population.getCount();
 			double[] samples = recording.getBuffer().toArray();
 			double min = Double.MAX_VALUE;
 			double max = -Double.MAX_VALUE;
@@ -132,10 +131,10 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 
 			int last = steps / interval - 1;
 			double lateChange = 0.0;
-			double active = 0;
-			for (int i = 0; i < t; i++) {
-				lateChange = Math.max(lateChange, Math.abs(samples[last * t + i] - samples[(last - 1) * t + i]));
-				if (samples[last * t + i] > 1e-3) active++;
+			int active = 0;
+			for (int i = 0; i < n; i++) {
+				lateChange = Math.max(lateChange, Math.abs(samples[last * n + i] - samples[(last - 1) * n + i]));
+				if (samples[last * n + i] > 1e-3) active++;
 			}
 
 			log("backend=" + backend() + " min=" + min + " max=" + max
