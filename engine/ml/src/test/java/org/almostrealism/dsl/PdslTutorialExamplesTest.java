@@ -63,6 +63,9 @@ public class PdslTutorialExamplesTest extends TestSuiteBase {
 	/** Repository-relative path of the tutorial. */
 	private static final String TUTORIAL = "docs/tutorials/10-pdsl-model-definitions.html";
 
+	/** Classpath directory of the programs the failure tests build. */
+	private static final String TUTORIAL_FIXTURES = "/pdsl/tutorial/";
+
 	/** A PDSL program the reader writes. */
 	private static final Pattern PROGRAM = Pattern.compile(
 			"<pre><code class=\"language-pdsl\">(.*?)</code></pre>", Pattern.DOTALL);
@@ -211,7 +214,7 @@ public class PdslTutorialExamplesTest extends TestSuiteBase {
 		Map<String, Object> args = new HashMap<>();
 		args.put("w", weights(4, 4));
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse("model m(w: weight) {\n    accum { dense(w) }\n}\n");
+		PdslNode.Program program = fixture(loader, "accum_in_model.pdsl");
 		String message = buildFailure(PdslParseException.class,
 				() -> loader.buildModel(program, "m", new TraversalPolicy(1, 4), args));
 		Assert.assertEquals("Unsupported statement in model body: AccumStatement", message);
@@ -224,8 +227,7 @@ public class PdslTutorialExamplesTest extends TestSuiteBase {
 		Map<String, Object> args = new HashMap<>();
 		args.put("heads", 2);
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse("import \"/pdsl/attention.pdsl\"\n\n"
-				+ "layer wrapper(heads: int) {\n    attention(heads)\n}\n");
+		PdslNode.Program program = fixture(loader, "unresolved_import.pdsl");
 		String message = buildFailure(PdslParseException.class,
 				() -> loader.buildLayer(program, "wrapper", new TraversalPolicy(1, 4), args));
 		Assert.assertEquals("Unknown function 'attention' at line " + 4, message);
@@ -239,9 +241,7 @@ public class PdslTutorialExamplesTest extends TestSuiteBase {
 		tensors.put("norm.weight", weights(4));
 		tensors.put("lm_head.weight", weights(16, 4));
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse("model m(weights: checkpoint) {\n"
-				+ "    rmsnorm(weights.norm.weight, 1e-6)\n"
-				+ "    dense(weights.lm_haed.weight)\n}\n");
+		PdslNode.Program program = fixture(loader, "misspelled_checkpoint_path.pdsl");
 		String message = buildFailure(PdslParseException.class,
 				() -> loader.buildModel(program, "m", new TraversalPolicy(1, 4),
 						new StateDictionary(tensors), new HashMap<>()));
@@ -257,11 +257,25 @@ public class PdslTutorialExamplesTest extends TestSuiteBase {
 		Map<String, Object> args = new HashMap<>();
 		args.put("w", weights(8, 3));
 		PdslLoader loader = new PdslLoader();
-		PdslNode.Program program = loader.parse("layer l(w: weight) {\n    dense(w)\n}\n");
+		PdslNode.Program program = fixture(loader, "dense_width_mismatch.pdsl");
 		String message = buildFailure(IllegalArgumentException.class,
 				() -> loader.buildLayer(program, "l", new TraversalPolicy(1, 4), args));
 		Assert.assertNull(message);
 		assertPageQuotes("<code>IllegalArgumentException</code> that has <em>no message</em>");
+	}
+
+	/**
+	 * Parses one of the tutorial's failure fixtures from its source text. The fixtures live in
+	 * {@code /pdsl/tutorial/} on the test classpath. They are read as text and parsed with
+	 * {@link PdslLoader#parse(String)}, the way the page's reader parses a program, so an
+	 * {@code import} in a fixture is not resolved.
+	 *
+	 * @param loader the loader to parse with
+	 * @param name   the fixture's file name
+	 * @return the parsed program
+	 */
+	private static PdslNode.Program fixture(PdslLoader loader, String name) {
+		return loader.parse(loader.readResource(TUTORIAL_FIXTURES + name));
 	}
 
 	/**
