@@ -23,7 +23,7 @@ Phase 1 of the connectome model organism (`CONNECTOME_MODEL_ORGANISM.md`):
 | Counter-based in-kernel random numbers (`CounterRandom`, selected by `AR_RANDOM=counter`) | `compute/algebra` `org.almostrealism.collect.computations` | **None.** `AR_RANDOM` and `CounterRandom` are named in no Markdown file. `collection-producer-operations.md` shows `rand`/`randn` without saying that two implementations exist, how they differ (host draw vs in-kernel hash), what `refresh()`/`advance()` mean, or the 2^24 seed/counter limit. |
 | The simulation loop owner (`SimulationRunner`) | `compute/time` | `simulation-loop-examples.md`, `compute/time/README.md`: good, but its only worked system is an oscillator bank |
 | A leaky integrate-and-fire population (`LeakyIntegrateAndFirePopulation`): exact-exponential membrane and conductance, refractory countdown, spike ring buffer for synaptic delay, Poisson drive | `domain/graph` `org.almostrealism.graph` | **None** outside its Javadoc. `domain/graph/README.md` does not mention it. |
-| The biology modules (`domain/biology`, `studio/bioscience`) and the PDSL core's move to `domain/graph` (`org.almostrealism.dsl`, `PdslExtension`, `WeightGroup`) | `domain/biology`, `studio/bioscience`, `domain/graph` | The module READMEs exist. `llms.txt` lists neither module and still describes `ar-graph` without PDSL. `domain/graph/README.md` never mentions PDSL, `WeightGroup` or the population classes. |
+| The biology modules (`domain/biology`, `studio/bioscience`) and the PDSL core's move to `domain/graph` (package `org.almostrealism.dsl`, including `PdslExtension`; `WeightGroup` is in `org.almostrealism.model`) | `domain/biology`, `studio/bioscience`, `domain/graph` | The module READMEs exist. `llms.txt` lists neither module and still describes `ar-graph` without PDSL. `domain/graph/README.md` never mentions PDSL, `WeightGroup` or the population classes. |
 
 Each piece has thorough Javadoc, and each plan that produced it has been or will be swept away.
 What is missing is the page that **puts them together**: how a reader (human or model) goes from
@@ -74,11 +74,19 @@ A single page that walks one example from start to finish, in the register of
 6. **Reproducible random drive.** A full section on random generation, which no page covers:
    `RandomProducer` as one concept with two implementations chosen once by `AR_RANDOM`
    (`java`, the default: host draw, delivered as data; `counter`: `CounterRandom`, a PCG hash of
-   seed, counter and element index computed in the kernel); `refresh()` vs the device-side
-   `advance()`; that the population owns its own `CounterRandom` and advances it inside the step
+   seed, counter and element index computed in the kernel); `refresh()`, the one method of
+   `RandomProducer` that moves a generator on (for `Random` it discards the host-drawn values so
+   the next evaluation draws new ones; for `CounterRandom` it runs a compiled counter increment),
+   vs `CounterRandom.advance()` and `resetCounter()`, which exist only on `CounterRandom` and
+   return the increment and reset as uncompiled `Assignment`s for a caller to compose into its
+   own step; that the population owns its own `CounterRandom` and advances it inside the step
    regardless of `AR_RANDOM`; uniform output bit-identical across backends, normal output only to
    backend precision; the 2^24 bound on seed and counter on FP32 backends and what it means in
-   simulated steps. Poisson drive as `uniform < rate * dt`, masked to an input set.
+   simulated steps. Poisson drive as `uniform < rate * dt`, masked to an input set. State
+   that the drive is combined with the threshold spike by `max` in `emittedSpikes()` without
+   consulting the refractory countdown, so a driven neuron with no other input fires a
+   Bernoulli(`rate * dt`) spike every step, refractory or not, and that `rate * dt` above 1
+   simply fires every step (`setPoissonDrive` rejects only a negative rate).
 7. **Driving it with `SimulationRunner`.** The population exposes `step(Producer)` rather than
    implementing `Temporal`, so show the adapter (`Temporal network = () -> pop.step(input);`) and
    a `SimulationRunner` that runs it, with `record(...)` capturing the spike vector into a
@@ -90,9 +98,17 @@ A single page that walks one example from start to finish, in the register of
    - **How the runner dispatches the step.** `SimulationRunner` flattens the system's tick
      (`OperationList.flatten()` inlines a nested list that carries no compute requirements, and
      the `"lif-step"` list carries none), so each assignment of `step` becomes its own dispatch,
-     plus the runner's counter advance. That is a different dispatch pattern from the
-     `step(...).get()` that `LeakyIntegrateAndFirePopulation`'s Javadoc and its test describe;
-     the page should say so and point to the measured per-dispatch cost rather than restate it.
+     plus the runner's counter advance. The direct `step(...).get()` path that
+     `LeakyIntegrateAndFirePopulation`'s Javadoc and its test use is, by a reading of
+     `OperationList.get()`, *not* one kernel either: a list is compiled as a single kernel only
+     when it is uniform (or `OperationList.enableNonUniformCompilation`, default `false`, is set),
+     and the `lif-step` list mixes parallelisms (`count` for the state assignments,
+     `rows * count` for the ring write, 1 for the write-index and counter advances), so it falls
+     through to an `OperationListRunner` that dispatches each operation separately (logging
+     "OperationList was not compiled"). The writer must confirm this with an operation profile
+     (`ar-profile-analyzer`) rather than repeat it. If it holds, the two paths have the same
+     per-assignment dispatch pattern, and the page should say so instead of contrasting them.
+     It should also point to the measured per-dispatch cost rather than restate it.
      The LIF step satisfies the runner's step contract because every assignment is element-local
      (the coupled read, the `matmul` over `delayedSpikes()`, reads the ring, which the same
      operation does not write). The open rate-model branch changes `SimulationRunner` to optimize
@@ -104,7 +120,13 @@ A single page that walks one example from start to finish, in the register of
    - **Ordering constraints of the population API.** `setPoissonDrive` must be called before
      `step(...)` is built (the step captures the generator; `setPoissonDrive` replaces it), and
      the seed is fixed by `setPoissonDrive`, so a run with a different seed needs a
-     `setPoissonDrive` call followed by a new runner, or a new population.
+     `setPoissonDrive` call followed by a new runner, or a new population. Because the
+     adapter's `tick()` is called once, when the `SimulationRunner` is constructed
+     (`SimulationRunner.stepOperations`), "before `step(...)` is built" means before the runner
+     is constructed. `setPoissonDrive` replaces the previous `CounterRandom` without destroying
+     it (see open question 5). A repeat run with the *same* seed needs no new runner:
+     `runner.reset()` followed by the population's own `reset()` (which also resets the
+     Poisson counter) restores the initial condition.
    - **Recording cost.** A `Recording` write is a slot update over the whole buffer, so its cost
      is proportional to `capacity * width` (`SimulationRunner.Recording` Javadoc); recording the
      spike vector every step for `n` steps therefore costs `O(n^2 * width)` in total, and
@@ -140,7 +162,10 @@ claims, so the page cannot silently drift from the code:
   connected by a dense weight matrix to an output population) stepped by `SimulationRunner`
   through the adapter the page shows, with the spike vector recorded;
 - the driven neurons' measured rate matches `rate` within a binomial tolerance derived from the
-  number of steps, stated in the test (not tuned);
+  number of steps, stated in the test (not tuned). The binomial model is exact only because the
+  drive ignores the refractory countdown (section 6) and the input population receives no
+  synaptic input, so each driven neuron spikes independently with probability `rate * dt` per
+  step; the test should say so, and use a `rate * dt` well below 1;
 - undriven input neurons never fire;
 - an input spike reaches the output population exactly `delaySteps` steps later (assert the
   step at which the output conductance first becomes non-zero, as
@@ -157,16 +182,21 @@ The test must exercise exactly the code the page shows. If a claim on the page c
 
 - `docs/internals/shape-and-traversal.md`, "IndexSet and TraversalOrdering": bring the interface
   sketch up to date (`bind`, `signature`, `getLength`, `compose`), state the absent-element
-  contract (a negative position reads as zero on the host and in generated code), list the
-  orderings that ship (`RepeatTraversalOrdering`, `ExplicitIndexTraversalOrdering`,
-  `IndexMaskTraversalOrdering` and its per-lookup cost, `SplitIndexTraversalOrdering`), and state
+  contract (a negative position reads as zero on the host and in generated code), and the rule
+  that an ordering which reads a collection returns a `null` signature so its kernel is never
+  reused. List the orderings that ship: in `base/code`, `DefaultTraversalOrdering` (identity),
+  `RepeatTraversalOrdering`, `IndexExpressionTraversalOrdering` and `DelegatedTraversalOrdering`
+  (what `compose` returns); in `compute/algebra`, `ExplicitIndexTraversalOrdering`,
+  `IndexMaskTraversalOrdering` (its lookup has no closed form, so each lookup costs one
+  comparison per mask entry, which suits small masks and not a large sparse structure) and `SplitIndexTraversalOrdering`. The current sketch also
+  omits that `TraversalOrdering` extends `Signature` as well as `IndexSet`. State
   that an ordered collection may be the input to any kernel (the subject of
   `OrderedCollectionInputTests`) while a computation's own output never carries an ordering
   (`CollectionProducerComputationBase` strips it). Link `dynamic-indexing.md` for split indices.
 - `docs/internals/collection-producer-operations.md`: one sentence under `rand()`/`randn()`
   pointing to the new page's random-generation section and naming `AR_RANDOM`.
 - `domain/graph/README.md`: add short sections for the PDSL language core
-  (`org.almostrealism.dsl`, `PdslExtension`, `WeightGroup`, linking `pdsl-language.md` rather
+  (`org.almostrealism.dsl`, `PdslExtension`, and `org.almostrealism.model.WeightGroup`, linking `pdsl-language.md` rather
   than repeating it) and for population dynamics (`LeakyIntegrateAndFirePopulation`, and
   `RatePopulation` if landed), linking the new page.
 - `domain/biology/README.md`: link the new page as the account of how biological dynamics are
@@ -259,6 +289,42 @@ Raised in review of this plan, for the person deciding whether it goes ahead.
    which do not depend on the new page except for its link targets) from the page and test
    would let the `shape-and-traversal.md` and `llms.txt` corrections, which are stale today,
    land on their own.
+
+5. **Two lifecycle gaps the page will have to describe.** Both are in production code this plan
+   does not touch, and both affect what the page tells a reader to do:
+   - `setPoissonDrive` assigns a new `CounterRandom` to the population's `poisson` field without
+     destroying the previous one, so calling it twice (for example to rerun with a different
+     seed, as section 7 describes) leaks the first generator's seed and counter collections.
+     `destroy()` releases only the current generator.
+   - Destroying the runner destroys the compiled step and its operations, and destroying a
+     computation recursively destroys its input producers (`ComputableBase.destroy`,
+     `OperationAdapter.destroy`). Whether that reaches the population's state collections
+     through `cp(...)` (a `CollectionProviderProducer`, which does not override `destroy`) has
+     not been checked, so the page's "destroy the runner, then the population" order must be
+     confirmed by the drift guard (destroy in that order without error) rather than asserted.
+   The approver may want the first filed as a tracker task alongside the `Temporal` follow-up.
+6. **The plan's dispatch description is unverified.** Section 7 contrasts runner dispatch with
+   `step(...).get()`, but a reading of `OperationList.get()` suggests the non-uniform `lif-step`
+   list is not compiled to one kernel on either path (see section 7). If a profile confirms
+   that, the Javadoc of `LeakyIntegrateAndFirePopulation` ("compiles it once ... and runs the
+   resulting operation") is not wrong, but it invites a single-kernel reading; correcting that
+   Javadoc is outside `docs/` and would be a separate change.
+
+## Existing work this plan builds on
+
+- `PLAN-20261025-spiking-lif-population.md` (status `in-progress`) delivered
+  `LeakyIntegrateAndFirePopulation` and its test; its Brian2 parity criterion is still open, so
+  the page must not claim parity. This plan does not duplicate any of its deliverables.
+- `PLAN-20261025-simulation-loop-owner.md` delivered `SimulationRunner`,
+  `simulation-loop-examples.md` and the `compute/time/README.md` section, which this page links
+  rather than repeats.
+- `PLAN-20261023-counter-based-random.md` delivered `CounterRandom`/`RandomProducer`; its
+  durable documentation is Javadoc only, which is the gap section 6 fills.
+- The open sparse-matrix branch adds a "Gather with a Segmented Reduction (Sparse
+  Matrix–Vector Product)" section to `dynamic-indexing.md`; the open rate-model branch adds a
+  connectome-scale row and a paragraph on `Process.optimized(op.flatten())` to
+  `simulation-loop-examples.md`'s measured-overhead section. Section 3's "do not edit the
+  measured overhead section" is because of the latter.
 
 ## What this sets up
 
