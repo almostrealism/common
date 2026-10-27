@@ -18,6 +18,7 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.hardware.CompilationInterruptedException;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.profile.RunData;
 import org.almostrealism.io.ConsoleFeatures;
@@ -116,11 +117,23 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 	/**
 	 * Compiles the OpenCL source code and creates the program.
 	 *
+	 * <p>If the calling thread has been interrupted, no {@link cl_program} is created and a
+	 * {@link CompilationInterruptedException} is thrown with the interrupt status left set.
+	 * If the build fails for any other reason, the program that was created for it (see
+	 * {@link #createProgram(OperationMetadata, String)}) is destroyed before the failure is
+	 * rethrown, so a failed build does not leak a native program. This happens only once
+	 * {@link CLProgram#compile()} has returned, so no build is outstanding against the program
+	 * and releasing it cannot race with the compiler; the {@link #prog} field is cleared so
+	 * that {@link #destroy()} does not release the same program a second time.</p>
+	 *
 	 * @param metadata  metadata describing the operation
 	 * @param src       the OpenCL C source code to compile
+	 * @throws CompilationInterruptedException if the calling thread is interrupted
 	 * @throws RuntimeException if compilation fails
 	 */
 	protected void init(OperationMetadata metadata, String src) {
+		CompilationInterruptedException.throwIfInterrupted(metadata.getDisplayName());
+
 		if (CLOperator.enableLog) {
 			log("HardwareOperatorMap: init " + metadata.getDisplayName());
 		}
@@ -134,23 +147,32 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 			log(src);
 		}
 
-		prog = CLProgram.create(context, metadata, src);
-
-		RuntimeException ex = null;
+		prog = createProgram(metadata, src);
 
 		try {
 			prog.compile();
 		} catch (RuntimeException e) {
-			ex = e;
-		}
-
-		if (ex != null) {
 			if (CLOperator.enableLog) {
 				log("Error compiling:\n" + src);
 			}
 
-			throw ex;
+			prog.destroy();
+			prog = null;
+			throw e;
 		}
+	}
+
+	/**
+	 * Creates the (not yet built) {@link CLProgram} this map compiles and owns. Called by
+	 * {@link #init(OperationMetadata, String)} only after the interrupt check has passed,
+	 * so no program is created for a cancelled compilation.
+	 *
+	 * @param metadata  metadata describing the operation
+	 * @param src       the OpenCL C source code of the program
+	 * @return the new program, owned by this map
+	 */
+	protected CLProgram createProgram(OperationMetadata metadata, String src) {
+		return CLProgram.create(context, metadata, src);
 	}
 
 	/**
