@@ -14,10 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.connectome.test;
+package org.almostrealism.bioscience.connectome.test;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.connectome.CellTypeConnectome;
+import org.almostrealism.bioscience.connectome.CellTypeConnectome;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -33,11 +33,12 @@ import java.util.List;
 
 /**
  * Checks {@link CellTypeConnectome#load(File)} on a small directory written in the layout of
- * {@code tools/connectome/male_cns_cell_types.py}: an F32 {@code weights} matrix and I32
+ * {@code studio/bioscience/scripts/male_cns_cell_types.py}: an F32 {@code weights} matrix and I32
  * {@code type_sizes} and {@code type_out_synapses} in one safetensors file, the type names and
  * the annotation table. Unlike {@link CellTypeConnectomeTest}, it needs no external data, so it
  * runs everywhere.
  */
+// TODO(review): analysis.yaml has no test step for studio/bioscience, so this data-free test no longer runs in CI after the move from engine/ml
 public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 	/** The type names of the synthetic connectome. */
 	private static final List<String> NAMES = List.of("LB3a", "MN9", "Kenyon");

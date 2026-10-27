@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.connectome;
+package org.almostrealism.bioscience.connectome;
 
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.CollectionFeatures;
@@ -38,7 +38,7 @@ import java.util.stream.IntStream;
  * A connectome aggregated to cell types: a dense, signed type-by-type weight matrix together with
  * the name, size and outgoing synapse count of every type.
  *
- * <p>The data is the output directory of {@code tools/connectome/male_cns_cell_types.py}:</p>
+ * <p>The data is the output directory of {@code studio/bioscience/scripts/male_cns_cell_types.py}:</p>
  * <ul>
  *   <li>{@value #WEIGHTS_FILE}, read through {@link StateDictionary}, holding {@code weights}
  *       ({@code [T, T]}, row = postsynaptic type, column = presynaptic type, each entry the sum

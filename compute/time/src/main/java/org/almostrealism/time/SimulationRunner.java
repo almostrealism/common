@@ -224,27 +224,23 @@ public class SimulationRunner extends TemporalRunner {
 	 * Builds the step: the system's tick followed by the counter advance, flattened and marked
 	 * so that every top-level operation is dispatched on its own (see the step contract).
 	 *
-	 * <p>Each top-level operation is optimized on its own before it is compiled, as every
-	 * process must be. Optimization is what isolates a reduction such as a large
-	 * {@code matmul} into a looped kernel; compiled unoptimized, the reduction is generated as
-	 * one unrolled expression per output element, which for rows of about ten thousand terms
-	 * exceeds the stack space a Metal kernel may use. Optimizing the operations separately,
-	 * rather than the step as a whole, keeps the boundary between two operations a global
-	 * synchronization.</p>
+	 * <p>The flattened list is optimized before it is compiled, as every process must be.
+	 * Optimization is what isolates a reduction such as a large {@code matmul} into a looped
+	 * kernel; compiled unoptimized, the reduction is generated as one unrolled expression per
+	 * output element, which for rows of about ten thousand terms exceeds the stack space a
+	 * Metal kernel may use. The optimized list keeps compilation disabled, so its top-level
+	 * operations are still dispatched one at a time.</p>
 	 *
 	 * @param system the system being stepped
 	 * @param step   the step counter
 	 * @return the step operations
 	 */
-	private static OperationList stepOperations(Temporal system, PackedCollection step) {
+	private static Supplier<Runnable> stepOperations(Temporal system, PackedCollection step) {
 		CollectionFeatures f = CollectionFeatures.getInstance();
 		OperationList op = new OperationList("Simulation Step", false);
 		op.add(system.tick());
 		op.add(f.a("Advance Simulation Step", f.cp(step), f.add(f.cp(step), f.c(1.0))));
-
-		OperationList optimized = new OperationList("Simulation Step", false);
-		op.flatten().forEach(operation -> optimized.add(Process.optimized(operation)));
-		return optimized;
+		return Process.optimized(op.flatten());
 	}
 
 	/**

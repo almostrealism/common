@@ -295,6 +295,15 @@ question:
 - **Missing data (question 1).** As proposed: the real-data tests are new `@TestDepth(2)` tests that
   are skipped where the derived directory is absent.
 
+- **Review (PR #759).** `CellTypeConnectome` and its tests moved from `engine/ml` to
+  `studio/bioscience` (package `org.almostrealism.bioscience.connectome`), since a connectome is
+  biology-specific and `ar-bioscience` depends on both `ar-biology` and `ar-ml`. The conversion
+  scripts and their test moved from `tools/connectome/` and `tools/tests/` to
+  `studio/bioscience/scripts/`. `SimulationRunner` now optimizes the flattened step as a whole
+  (`Process.optimized(op.flatten())`); for that to keep each operation a separate dispatch,
+  `OperationList` segmentation and subdivision now carry the list's `enableCompilation` setting
+  into the lists they create instead of re-enabling compilation.
+
 ## The machine the work needs
 
 The task requires the model to run on Metal, and only macOS nodes provide Metal. The MaleCNS tables

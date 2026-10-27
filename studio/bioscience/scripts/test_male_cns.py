@@ -2,8 +2,11 @@
 
 The transmitter sign rule decides the sign of every column of the cell-type
 matrix, and the safetensors header decides whether the Java loader reads the
-tensors at the right offsets. Both are pinned here without numpy or pyarrow,
-which the CI python-tests job does not install.
+tensors at the right offsets. Both are pinned here without numpy or pyarrow.
+
+Run from the repository root with:
+
+    python3 -m unittest discover -s studio/bioscience/scripts -p "test_*.py"
 """
 
 import json
@@ -12,8 +15,8 @@ import struct
 import sys
 import unittest
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(_REPO_ROOT, "tools", "connectome"))
+# TODO(review): moved out of tools/tests, so CI's python-tests job (unittest discover -s tools/tests) no longer runs this file
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import male_cns  # noqa: E402
 

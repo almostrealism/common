@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.connectome.test;
+package org.almostrealism.bioscience.connectome.test;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -22,7 +22,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.SystemUtils;
-import org.almostrealism.ml.connectome.CellTypeConnectome;
+import org.almostrealism.bioscience.connectome.CellTypeConnectome;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assume;
@@ -35,7 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
 /**
- * Checks the MaleCNS cell-type matrix written by {@code tools/connectome/male_cns_cell_types.py}
+ * Checks the MaleCNS cell-type matrix written by {@code studio/bioscience/scripts/male_cns_cell_types.py}
  * and loaded by {@link CellTypeConnectome}: the loaded entries against values the script
  * recomputed from the raw edge table by a separate path, and a device {@code matmul} over the
  * whole matrix against its host columns.

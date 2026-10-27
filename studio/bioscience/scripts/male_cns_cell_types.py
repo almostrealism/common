@@ -1,6 +1,6 @@
 """Aggregates the MaleCNS v1.0 connectome to a signed cell-type-by-cell-type matrix.
 
-Usage (in a virtual environment with tools/connectome/requirements.txt):
+Usage (in a virtual environment with studio/bioscience/scripts/requirements.txt):
 
     python male_cns_cell_types.py --source /Users/Shared/models/male-cns-v1.0 \\
         --output <directory>
@@ -203,7 +203,7 @@ def write_readme(path, source, names, sizes, kept, source_sums, command):
         "# MaleCNS v1.0 cell-type matrix",
         "",
         "Derived from the MaleCNS v1.0 connectome (Janelia FlyEM, CC-BY 4.0) by",
-        "`tools/connectome/male_cns_cell_types.py` in almostrealism/common.",
+        "`studio/bioscience/scripts/male_cns_cell_types.py` in almostrealism/common.",
         "",
         "## Contents",
         "",

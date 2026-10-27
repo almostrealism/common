@@ -1160,8 +1160,9 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		boolean match = IntStream.range(1, size()).anyMatch(i -> Countable.countLong(get(i - 1)) == Countable.countLong(get(i)));
 		if (!match) return optimizeAndSubdivide(context);
 
-		OperationList op = new OperationList();
-		OperationList current = new OperationList();
+		// TODO(review): segments of a non-compiled list no longer fuse; check perf of other false-compilation lists (e.g. CellList Tick)
+		OperationList op = new OperationList(description, enableCompilation);
+		OperationList current = new OperationList(null, enableCompilation);
 		long currentCount = -1;
 
 		for (int i = 0; i < size(); i++) {
@@ -1172,7 +1173,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				current.add(o);
 			} else {
 				op.add(current.size() == 1 ? current.get(0) : current);
-				current = new OperationList();
+				current = new OperationList(null, enableCompilation);
 				current.add(o);
 			}
 
@@ -1236,7 +1237,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		if (size() <= 1 || sequential) return this;
 
 		List<OperationList> segments = new ArrayList<>();
-		OperationList current = new OperationList();
+		OperationList current = new OperationList(null, enableCompilation);
 		MemoryRegionList written = new MemoryRegionList();
 
 		for (Supplier<Runnable> member : this) {
@@ -1246,7 +1247,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				}
 
 				segments.add(current);
-				current = new OperationList();
+				current = new OperationList(null, enableCompilation);
 				written.clear();
 			}
 
@@ -1257,7 +1258,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		segments.add(current);
 		if (segments.size() == 1) return this;
 
-		OperationList op = new OperationList(description);
+		OperationList op = new OperationList(description, enableCompilation);
 		op.sequential = true;
 		for (OperationList segment : segments) {
 			op.add(segment.size() == 1 ? segment.get(0) : segment);

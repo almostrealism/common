@@ -14,12 +14,12 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml.connectome.test;
+package org.almostrealism.bioscience.connectome.test;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.RatePopulation;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.ml.connectome.CellTypeConnectome;
+import org.almostrealism.bioscience.connectome.CellTypeConnectome;
 import org.almostrealism.time.SimulationRunner;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
