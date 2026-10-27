@@ -472,11 +472,17 @@ lm_head.weight                                  [vocab, dim]</code></pre>
                 <h2>Step 6: Running It from Java</h2>
                 <p>Save the program as <code>toy_decoder.pdsl</code>, then parse and build it:</p>
 
-                <pre><code class="language-java">import org.almostrealism.ml.StateDictionary;
+                <pre><code class="language-java">import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.dsl.PdslNode;
+import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 
 PdslLoader loader = new PdslLoader();
 PdslNode.Program program = loader.parse(Path.of("toy_decoder.pdsl"));
@@ -493,7 +499,7 @@ Map&lt;String, Object&gt; args = new HashMap&lt;&gt;();
 args.put("settings", settings);
 args.put("position", position);
 
-Model model = loader.buildModel(program, "toy_decoder", shape(1, 4), weights, args);
+Model model = loader.buildModel(program, "toy_decoder", new TraversalPolicy(1, 4), weights, args);
 CompiledModel compiled = model.compile(false);</code></pre>
 
                 <ul>

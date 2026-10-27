@@ -205,6 +205,95 @@ public class PdslTutorialExamplesTest extends TestSuiteBase {
 		Assert.assertArrayEquals(new int[] { 1, vocab }, model.getOutputShape().extent());
 	}
 
+	/** An {@code accum} in a model body is rejected with the message the page quotes. */
+	@Test(timeout = 60000)
+	public void accumInAModelFailsAsThePageSays() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("w", weights(4, 4));
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse("model m(w: weight) {\n    accum { dense(w) }\n}\n");
+		String message = buildFailure(PdslParseException.class,
+				() -> loader.buildModel(program, "m", new TraversalPolicy(1, 4), args));
+		Assert.assertEquals("Unsupported statement in model body: AccumStatement", message);
+		assertPageQuotes("<code>Unsupported statement in model body: AccumStatement</code>");
+	}
+
+	/** A program parsed from a string does not resolve its import, so a call to an imported layer is unknown. */
+	@Test(timeout = 60000)
+	public void importFromAStringIsNotResolvedAsThePageSays() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("heads", 2);
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse("import \"/pdsl/attention.pdsl\"\n\n"
+				+ "layer wrapper(heads: int) {\n    attention(heads)\n}\n");
+		String message = buildFailure(PdslParseException.class,
+				() -> loader.buildLayer(program, "wrapper", new TraversalPolicy(1, 4), args));
+		Assert.assertEquals("Unknown function 'attention' at line " + 4, message);
+		assertPageQuotes("<code>Unknown function 'attention' at line N</code>");
+	}
+
+	/** A misspelled checkpoint path names the nearest keys and the line, as the page says. */
+	@Test(timeout = 60000)
+	public void misspelledCheckpointPathFailsAsThePageSays() {
+		Map<String, PackedCollection> tensors = new HashMap<>();
+		tensors.put("norm.weight", weights(4));
+		tensors.put("lm_head.weight", weights(16, 4));
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse("model m(weights: checkpoint) {\n"
+				+ "    rmsnorm(weights.norm.weight, 1e-6)\n"
+				+ "    dense(weights.lm_haed.weight)\n}\n");
+		String message = buildFailure(PdslParseException.class,
+				() -> loader.buildModel(program, "m", new TraversalPolicy(1, 4),
+						new StateDictionary(tensors), new HashMap<>()));
+		Assert.assertTrue(message, message.startsWith("No weight named 'lm_haed' among 2 weights;"
+				+ " the closest names are lm_head.weight"));
+		Assert.assertTrue(message, message.endsWith(", at line " + 3));
+		assertPageQuotes("<code>No weight named '...' among N weights; the closest names are ...,");
+	}
+
+	/** A dense weight whose second axis is not the input width fails with no message, as the page says. */
+	@Test(timeout = 60000)
+	public void denseWidthMismatchFailsWithoutAMessageAsThePageSays() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("w", weights(8, 3));
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parse("layer l(w: weight) {\n    dense(w)\n}\n");
+		String message = buildFailure(IllegalArgumentException.class,
+				() -> loader.buildLayer(program, "l", new TraversalPolicy(1, 4), args));
+		Assert.assertNull(message);
+		assertPageQuotes("<code>IllegalArgumentException</code> that has <em>no message</em>");
+	}
+
+	/**
+	 * Runs a build that the page says fails, and returns the message of the exception it throws.
+	 *
+	 * @param type  the exception type the page says the reader will see
+	 * @param build the build to run
+	 * @return the exception's message, which may be {@code null}
+	 */
+	private static String buildFailure(Class<? extends RuntimeException> type, Runnable build) {
+		try {
+			build.run();
+		} catch (RuntimeException e) {
+			if (!type.isInstance(e)) {
+				throw new AssertionError("expected " + type.getSimpleName() + " but got " + e, e);
+			}
+			return e.getMessage();
+		}
+		throw new AssertionError("the build succeeded, but the tutorial says it fails with "
+				+ type.getSimpleName());
+	}
+
+	/**
+	 * Asserts that the page still shows {@code html}, so a test that pins a failure the page
+	 * describes cannot outlive the description.
+	 *
+	 * @param html the text as it appears in the page's HTML
+	 */
+	private static void assertPageQuotes(String html) {
+		Assert.assertTrue("the tutorial no longer shows '" + html + "'", tutorial().contains(html));
+	}
+
 	/**
 	 * Returns the position of {@code line} in {@code asset} at or after {@code from}, comparing
 	 * each asset line with its surrounding whitespace removed.
