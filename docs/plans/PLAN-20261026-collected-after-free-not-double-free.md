@@ -143,7 +143,7 @@ has to be explicit:
     origin-taking variant of `tryClaimFreed` on `MemoryReference`, under the same monitor) or
     default to "unknown, stay silent". The implementer should choose one. The choice changes
     `MemoryReference`/`NativeRef` in `org.almostrealism.hardware.mem`, which the Scope section
-    below now includes.
+    above now includes.
 - `DeferredRelease` keeps the origin of the request that created it. `sweepDeferred` passes that
   origin to `releaseNow` as the loser's origin. `computeIfAbsent` keeps the first request's
   origin. That is acceptable: either way the block is freed once, and the winner-origin rule above
