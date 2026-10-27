@@ -106,6 +106,17 @@ contract, and the `registerPrimitive` path for domain libraries. The static help
 `PdslPrimitiveContext.toInt`/`toInts`/`toDouble` are static methods on a different public
 interface used by every primitive. They are also out of scope.
 
+`PdslInterpreter`'s other static members do not use features and stay as they are: the
+`EXTENSIONS` list (`PdslExtension.discover()`), the public `enableVectorizedForEach` switch
+(set by `MixdownLayerPerformanceTest`), the `ALL_CHANNELS` sentinel, and the static nested
+classes `Environment` and `Build`. This plan removes only the feature holder and the one static
+method that reaches it.
+
+Not already done: on `origin/master`, `PdslFeatures.java` still exists and both classes still
+hold the `FEATURES` field. No other plan in `docs/plans/` covers this change; the two earlier
+PDSL plans (`PLAN-20261023-pdsl-language-reference.md`, `PLAN-20261026-pdsl-authoring-tutorial.md`)
+are `completed` and concern documentation only.
+
 ## Approach
 
 ### 1. Ownership: the interpreter owns an instance (no singleton)
@@ -227,7 +238,8 @@ Once steps 2 and 3 compile, nothing refers to it. Check this with
 - `PdslBuiltins` has no static methods and no static fields. Its only static member is the
   nested type `ConvolutionArguments`. It implements `LayerRoutingFeatures` and
   `TemporalFeatures`, and its methods call feature defaults directly.
-- `PdslFeatures.java` no longer exists, and no file refers to it.
+- `PdslFeatures.java` no longer exists, and no Java source or durable document outside
+  `docs/plans/` refers to it (completed plans are historical records; see open question 5).
 - `PdslInterpreter` has no `FEATURES` field and no static method that uses features.
   `normalizeToProducer` lives on `PdslBuiltins`.
 - The only test changes are the four call sites in step 5 (`git diff` shows nothing else in
@@ -245,7 +257,20 @@ Once steps 2 and 3 compile, nothing refers to it. Check this with
   - `DifferentialAttentionAssetTest`, `T5GemmaEncoderLayerAssetTest`, `GruDecoderAssetTest`,
     `SkytntBlockAssetTest`
   - In `studio/compose`, as a check of the audio registrar path that runs alongside the
-    built-ins: `PdslAudioDspTest`, `DelayFeedbackBankPdslTest`
+    built-ins: `PdslAudioDspTest`, `DelayFeedbackBankPdslTest`, `MixdownManagerPdslTest`.
+    The last is needed because none of the `engine/ml` classes above use `for each channel`,
+    so they never reach the interpreter's `FEATURES` calls in `interpretForEachChannel` or the
+    per-channel subscript slicing in `evaluateExpression`. `MixdownManagerPdslTest` reaches
+    them at default depth: `testMixdownEfxBusBuilds` builds a `for each channel` bus with
+    `[channel]` subscripts (the vectorized path, which calls `shape(channels, signalSize)`), and
+    `testMixdownManagerRectangularRoute` builds `mixdown_efx_bus_rectangular`, whose second
+    `for each channel` follows a rectangular `route` and is therefore not channel-aligned. That
+    forces the per-channel dispatch, which calls `shape(1, signalSize)` and slices
+    `buffers[channel]`/`heads[channel]` through the subscript branch. Whether the
+    `CollectionProducer` branch (`subset(...)`) is reached depends on the argument types the
+    test passes; the implementer should confirm it, and add a test if no existing one does.
+    `DelayFeedbackBankPdslTest`'s only `for each channel` test is `@TestDepth(2)`, so it does
+    not cover this path at default depth.
   - A skipped test is not a pass. `GruDecoderAssetTest` has a `@TestDepth(2)` method guarded by
     `Assume.assumeTrue` on the presence of real model weights, and several of these classes have
     depth-gated methods. Report which methods ran and which were skipped rather than reading a
