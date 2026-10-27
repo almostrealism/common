@@ -1,3 +1,10 @@
+---
+status: in-progress
+created: 2026-10-25
+closed:
+tracker: [04470395-234c-4e3b-912d-6feb902c3067]
+---
+
 # Plan: Spiking population dynamics as Producers (leaky integrate-and-fire)
 
 - **Tracker task:** 04470395-234c-4e3b-912d-6feb902c3067 — "Spiking population dynamics as Producers: leaky integrate-and-fire with reset, refractory period and synaptic delay"

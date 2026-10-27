@@ -100,6 +100,9 @@ public abstract class MemoryReference<T extends Memory> extends PhantomReference
 	/** Stack trace captured at the first deallocation, when {@link #captureFreeStackTrace} is enabled. */
 	private StackTraceElement[] firstFreeStackTrace;
 
+	/** Origin of the release request whose claim succeeded, or {@code null} while unclaimed. */
+	private ReleaseOrigin freedBy;
+
 	/**
 	 * Creates a phantom reference for the given memory object, registered with the given queue.
 	 *
@@ -137,27 +140,56 @@ public abstract class MemoryReference<T extends Memory> extends PhantomReference
 	 * remain marked as freed even though the underlying memory was never released,
 	 * permanently leaking the block.</p>
 	 *
+	 * <p>The claim is recorded as made by an {@link ReleaseOrigin#EXPLICIT explicit}
+	 * request; see {@link #tryClaimFreed(ReleaseOrigin)}.</p>
+	 *
 	 * @return true if this caller is responsible for releasing the underlying memory,
 	 *         false if a previous caller has already claimed responsibility
 	 */
-	public synchronized boolean tryClaimFreed() {
+	public boolean tryClaimFreed() {
+		return tryClaimFreed(ReleaseOrigin.EXPLICIT);
+	}
+
+	/**
+	 * Atomically claims this reference for deallocation on behalf of a request from the
+	 * given origin, exactly as {@link #tryClaimFreed()} does, and records that origin as
+	 * part of the same claim. Because the origin is written under the same monitor as the
+	 * claim itself, a caller whose claim is lost always observes the winner's origin
+	 * through {@link #getFreedBy()}, never a stale or missing value.
+	 *
+	 * @param origin where the release request making this claim came from
+	 * @return true if this caller is responsible for releasing the underlying memory,
+	 *         false if a previous caller has already claimed responsibility
+	 */
+	synchronized boolean tryClaimFreed(ReleaseOrigin origin) {
 		if (freed) return false;
 		if (captureFreeStackTrace) {
 			firstFreeStackTrace = Thread.currentThread().getStackTrace();
 		}
+		freedBy = origin;
 		freed = true;
 		return true;
 	}
 
 	/**
+	 * Returns the origin of the request whose claim currently holds this reference, or
+	 * {@code null} if it is not claimed. Synchronized with the claim, so a caller that has
+	 * just lost {@link #tryClaimFreed(ReleaseOrigin)} sees the winner's origin.
+	 *
+	 * @return the origin of the winning claim, or {@code null}
+	 */
+	synchronized ReleaseOrigin getFreedBy() { return freedBy; }
+
+	/**
 	 * Reverses a previous successful claim of {@link #tryClaimFreed()} when the
 	 * backend release call failed. Restores the reference to an unfreed state so
 	 * that a subsequent attempt (e.g. via the GC-driven deallocation path) can
-	 * retry. The first-free stack trace, if captured, is also cleared so that
-	 * a later genuine double-free can record fresh diagnostic context.
+	 * retry. The first-free stack trace and the origin of the claim are also
+	 * cleared so that a later genuine double-free can record fresh diagnostic context.
 	 */
 	public synchronized void unclaimFreed() {
 		freed = false;
+		freedBy = null;
 		firstFreeStackTrace = null;
 	}
 
