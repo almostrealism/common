@@ -143,7 +143,8 @@ CollectionProducer y = a.multiply(cp(x));
 
 The product is a gather (`x[columns[k]]`) followed by a reduction over each row's
 data-dependent range, computed by `SegmentedWeightedSumComputation`: one kernel thread per
-row, whose native loop bound `rowOffsets[i + 1] - rowOffsets[i]` is read from device memory.
+output element of row `i`, whose native loop bound `rowOffsets[i + 1] - rowOffsets[i]` is read
+from device memory.
 Each output is written once, with no atomics and no padding. The row offsets and columns are
 stored in the split layout above (uploaded with `PackedCollection.ofSplitIndices`) and decoded
 with `SplitIndexTraversalOrdering.positionAt`, so offsets past `2^24` (tens of millions of

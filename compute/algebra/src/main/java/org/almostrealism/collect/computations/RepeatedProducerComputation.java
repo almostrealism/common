@@ -276,7 +276,6 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 
 		Expression index = new KernelIndex(context).divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
 
-		// TODO(review): hoisting this pure lookup does not change the kernel; confirm the reported test failure is actually resolved
 		TraversableExpression[] initialArgs = getTraversableArguments(index);
 		for (int j = 0; j < getMemLength(); j++) {
 			Expression<?> val = getInitialValue(initialArgs, ref.add(j));
