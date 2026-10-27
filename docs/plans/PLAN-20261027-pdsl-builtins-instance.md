@@ -150,8 +150,8 @@ static accessor. Reasons, to be recorded in `PdslBuiltins`' class Javadoc:
   - Inside lambdas, `this::` and unqualified calls refer to the enclosing `PdslBuiltins`, which
     is the intended behaviour.
 - `ConvolutionArguments` stays a `private static final` nested class. It does not use features,
-  and a static nested type is not a static method. The "Done when" condition is about static
-  methods and the `FEATURES` field.
+  and a static nested type is not a static method. The completion condition this plan applies
+  (see Success criteria) is about static methods and static fields, not nested types.
 - Move `normalizeToProducer(Object, TraversalPolicy, String)` here as a package-private instance
   method, with its Javadoc. Its body is unchanged except that `FEATURES.c`/`cp`/`shape` become
   direct calls. The seven internal call sites change from `PdslInterpreter.normalizeToProducer` to
@@ -294,8 +294,11 @@ hardware specific to one node, so this plan has no workstream settings file.
    `@Test` methods of `Conv1dSnakePrimitivesTest` and one helper of
    `PdslLanguageReferenceExamplesTest`. This is allowed under the test-integrity rules (no
    weakening), but if the implementation job is submitted with test-file protection
-   (`protectTestFiles`), the harness keeps every base-branch test method unchanged and the
-   three `Conv1dSnakePrimitivesTest` edits would be reverted, breaking compilation. The
+   (`protectTestFiles`), `FileStager` asks `TestMethodProtection` about each base-branch test
+   file. That check compares only `@Test` methods, so the `PdslLanguageReferenceExamplesTest`
+   helper edit is allowed. `Conv1dSnakePrimitivesTest` changes three `@Test` bodies, so that whole
+   file is left unstaged. The commit would then delete the static `call` while the file still
+   calls `PdslBuiltins.call(...)`, and `engine/ml` test compilation would break. The
    implementation job must be submitted without that protection.
 5. **`docs/plans/PLAN-20261023-pdsl-language-reference.md` still names `PdslFeatures`.** That
    plan is `completed`, so it is a historical record and is left as it is; it will be removed by
