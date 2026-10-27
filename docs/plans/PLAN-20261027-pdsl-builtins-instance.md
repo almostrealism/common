@@ -75,7 +75,8 @@ Callers of the static API:
 
 The static `PdslInterpreter.normalizeToProducer(Object, TraversalPolicy, String)` also uses
 `FEATURES`. It is the single conversion point for producer arguments. Its callers are
-`PdslBuiltins` (six times), the interpreter's `bindProducerParameter`, and the static nested
+`PdslBuiltins` (seven call sites, in `producerArg`, `callScale` (twice),
+`callScaleAlongAxis`, `callCacheRow` (twice) and `callScaledDotProduct`), the interpreter's `bindProducerParameter`, and the static nested
 class `EnvContext` (the `PdslPrimitiveContext.toProducer` adapter). It has to change with the
 rest, because otherwise the interpreter keeps a static path to a holder.
 
@@ -132,8 +133,15 @@ static accessor. Reasons, to be recorded in `PdslBuiltins`' class Javadoc:
     not collide.
   - The static imports `toInt`, `toInts` and `toDouble` from `PdslPrimitiveContext` do not
     collide with any default method in the `LayerRoutingFeatures`/`TemporalFeatures` hierarchy.
-    I checked: no `*Features` interface in `base`, `compute` or `domain/graph` declares
-    `toInt`, `toInts` or `toDouble`.
+    Checked by reflection over the compiled `LayerRoutingFeatures` and `TemporalFeatures`
+    (all inherited methods): neither declares `toInt`, `toInts`, `toDouble`, `call`,
+    `normalizeToProducer`, `producerArg`, `scaledDotProductLayer` or any `call*` method, so the
+    instance methods neither override nor shadow a feature default.
+  - The call sites use 32 distinct feature methods; the convolution ones are `convolution1d` and
+    `convTranspose1d` (`ConvolutionLayerFeatures`). Several names (`shape`, `c`, `subset`,
+    `reshape`, `permute`, `concat`, `sigmoid`, `tanh`) are overloaded across more than one
+    feature interface. Today they already resolve on a type implementing the same two
+    interfaces (`PdslFeatures`), so the unqualified calls resolve to the same overloads.
   - Inside lambdas, `this::` and unqualified calls refer to the enclosing `PdslBuiltins`, which
     is the intended behaviour.
 - `ConvolutionArguments` stays a `private static final` nested class. It does not use features,
@@ -141,7 +149,7 @@ static accessor. Reasons, to be recorded in `PdslBuiltins`' class Javadoc:
   methods and the `FEATURES` field.
 - Move `normalizeToProducer(Object, TraversalPolicy, String)` here as a package-private instance
   method, with its Javadoc. Its body is unchanged except that `FEATURES.c`/`cp`/`shape` become
-  direct calls. The six internal call sites change from `PdslInterpreter.normalizeToProducer` to
+  direct calls. The seven internal call sites change from `PdslInterpreter.normalizeToProducer` to
   `normalizeToProducer`.
 - Update the class Javadoc: it is an instance type that implements the features it needs, the
   interpreter owns one instance, and the reasons are those in step 1. The sentence "Every method
@@ -166,7 +174,9 @@ static accessor. Reasons, to be recorded in `PdslBuiltins`' class Javadoc:
   implemented `LayerRoutingFeatures`, the whole feature default-method surface (`dense`,
   `convolution1d`, `fft`, ...) would become part of the interpreter's public API, which would be
   a much larger and unintended surface. Getting the features from the package-private library
-  keeps the public API unchanged.
+  keeps the public API unchanged. Note the tension with the Motivation, recorded as open
+  question 3: calling `builtins.shape(...)` from the interpreter is still "reaching a features
+  mixin through another object", only through a non-static one.
 - Update the Javadoc references `{@link #normalizeToProducer(...)}` in `bindProducerParameter`
   and `EnvContext` so that they point to `PdslBuiltins#normalizeToProducer`.
 
@@ -194,7 +204,7 @@ Once steps 2 and 3 compile, nothing refers to it. Check this with
   paragraph says that the library is a package-private instance type, owned by each
   interpreter, that implements the feature interfaces it needs.
 - `docs/internals/pdsl-language.md`:
-  - The `producer([shape])` row of the parameter type table (around line 275) names
+  - The `producer([shape])` row of the parameter type table names
     `PdslInterpreter.normalizeToProducer`. Change it to `PdslBuiltins.normalizeToProducer`.
   - The other references (resolution order item 3 "a built-in in `PdslBuiltins`", the catalog
     sentence "The 29 built-ins dispatched by `PdslBuiltins` (package-private)", the placement
@@ -212,7 +222,8 @@ Once steps 2 and 3 compile, nothing refers to it. Check this with
 - `PdslInterpreter` has no `FEATURES` field and no static method that uses features.
   `normalizeToProducer` lives on `PdslBuiltins`.
 - The only test changes are the four call sites in step 5 (`git diff` shows nothing else in
-  those files).
+  those files). `tools/ci/agent-protection/detect-test-hiding.sh` and `test-integrity-check`
+  pass: no assertion, tolerance, dimension, timeout or `@TestDepth` changes.
 - `mvn clean install -DskipTests` succeeds.
 - These targeted tests pass, run through `ar-test-runner` in `engine/ml` with at most five
   classes per invocation:
@@ -255,3 +266,21 @@ hardware specific to one node, so this plan has no workstream settings file.
    (step 3). If the approver would rather `PdslInterpreter` implement `LayerRoutingFeatures`
    directly, the change is just as small, but it exposes the whole feature surface on a public
    class.
+
+   The plan's choice does not fully meet its own Motivation ("a features mixin is meant to be
+   implemented by the type that uses it, not reached through a holder"): the interpreter would
+   still call feature defaults on another object, now an instance field rather than a static
+   one, and the post-session `ObjectOrientedDesignRule` review may flag it. A third option the
+   approver may prefer: move each interpreter operation that needs features into a named
+   package-private method on `PdslBuiltins` (for example the per-channel subscript slicing in
+   `evaluateExpression`, and the `accumBlocks`/`concatBlocks` wrapping), so the interpreter
+   calls library operations rather than raw feature defaults. That is a somewhat larger diff
+   (the ten `FEATURES.` references in `PdslInterpreter` outside `normalizeToProducer`) but leaves no feature call outside a type that
+   implements the features.
+4. **Existing test methods are edited.** Step 5 changes call sites inside three existing
+   `@Test` methods of `Conv1dSnakePrimitivesTest` and one helper of
+   `PdslLanguageReferenceExamplesTest`. This is allowed under the test-integrity rules (no
+   weakening), but if the implementation job is submitted with test-file protection
+   (`protectTestFiles`), the harness keeps every base-branch test method unchanged and the
+   three `Conv1dSnakePrimitivesTest` edits would be reverted, breaking compilation. The
+   implementation job must be submitted without that protection.
