@@ -16,16 +16,23 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.UnaryCollectionComputation;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.DoubleUnaryOperator;
+import java.util.function.Function;
 
 /**
  * Tests for trigonometric function gradients (sine, cosine, tangent, hyperbolic tangent).
@@ -180,6 +187,51 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 				double expected = (i == j) ? 0.7 * (1.0 - t * t) : 0.0;
 				assertEquals("d tanh(a x[" + i + "]) / d x[" + j + "]", expected, gradient.valueAt(i, j), 1e-5);
 			}
+		}
+	}
+
+	/**
+	 * Tests that regenerating a unary computation over new children, as process optimization does,
+	 * rebuilds the same function (the same class, carrying the original description) over the new
+	 * input rather than the old one, for each of sine, cosine and the hyperbolic tangent.
+	 */
+	@Test(timeout = 120000)
+	public void unaryComputationsRegenerateOverNewInput() {
+		PackedCollection original = pack(0.1, 0.2, 0.3);
+		PackedCollection replacement = pack(-1.0, 0.5, 2.0);
+
+		assertRegenerated(sin(cp(original)), replacement, Math::sin);
+		assertRegenerated(cos(cp(original)), replacement, Math::cos);
+		assertRegenerated(tanh(cp(original)), replacement, Math::tanh);
+	}
+
+	/**
+	 * Regenerates {@code computation} with {@code replacement} as its input and asserts that the
+	 * regenerated computation is of the same class, keeps the description, and evaluates
+	 * {@code function} element-wise over {@code replacement}.
+	 *
+	 * @param computation the unary computation to regenerate
+	 * @param replacement the new input
+	 * @param function    the element-wise function the computation applies
+	 */
+	private void assertRegenerated(CollectionProducer computation, PackedCollection replacement,
+								   DoubleUnaryOperator function) {
+		UnaryCollectionComputation unary = (UnaryCollectionComputation) computation;
+		Function<List<String>, String> description = args -> "regenerated " + args;
+		unary.setDescription(description);
+
+		List<Process<?, ?>> children = new ArrayList<>(unary.getChildren());
+		children.set(1, (Process<?, ?>) cp(replacement));
+		CollectionProducerParallelProcess regenerated = unary.generate(children);
+
+		assertEquals(unary.getClass(), regenerated.getClass());
+		assertTrue("the description is carried over",
+				((UnaryCollectionComputation) regenerated).getDescription() == description);
+
+		PackedCollection result = ((CollectionProducer) regenerated).evaluate();
+		assertEquals(replacement.getShape().getTotalSize(), result.getShape().getTotalSize());
+		for (int i = 0; i < replacement.getShape().getTotalSize(); i++) {
+			assertEquals(function.applyAsDouble(replacement.toDouble(i)), result.toDouble(i));
 		}
 	}
 
