@@ -66,25 +66,43 @@ public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 	 * @return the directory
 	 */
 	private static File writeDirectory(int tensorCount, String names, String annotations) throws IOException {
+		return writeDirectory(tensorCount, names, annotations, true);
+	}
+
+	/**
+	 * Writes a connectome directory with the given tensors, names and annotation table,
+	 * optionally leaving out the {@code type_out_synapses} tensor.
+	 *
+	 * @param tensorCount     the number of types the tensors are shaped for
+	 * @param names           the content of the type-name file
+	 * @param annotations     the content of the annotation file
+	 * @param withOutSynapses whether the {@code type_out_synapses} tensor is written
+	 * @return the directory
+	 */
+	private static File writeDirectory(int tensorCount, String names, String annotations,
+									   boolean withOutSynapses) throws IOException {
 		int t = tensorCount;
 		int weightBytes = t * t * Float.BYTES;
 		int sizeBytes = t * Integer.BYTES;
+		int countTensors = withOutSynapses ? 2 : 1;
 		String header = "{"
 				+ "\"weights\":{\"dtype\":\"F32\",\"shape\":[" + t + "," + t + "],\"data_offsets\":[0," + weightBytes + "]},"
 				+ "\"type_sizes\":{\"dtype\":\"I32\",\"shape\":[" + t + "],\"data_offsets\":["
-				+ weightBytes + "," + (weightBytes + sizeBytes) + "]},"
-				+ "\"type_out_synapses\":{\"dtype\":\"I32\",\"shape\":[" + t + "],\"data_offsets\":["
-				+ (weightBytes + sizeBytes) + "," + (weightBytes + 2 * sizeBytes) + "]}"
+				+ weightBytes + "," + (weightBytes + sizeBytes) + "]}"
+				+ (withOutSynapses ? ",\"type_out_synapses\":{\"dtype\":\"I32\",\"shape\":[" + t + "],\"data_offsets\":["
+				+ (weightBytes + sizeBytes) + "," + (weightBytes + 2 * sizeBytes) + "]}" : "")
 				+ "}";
 		byte[] headerBytes = header.getBytes(StandardCharsets.UTF_8);
 
-		ByteBuffer file = ByteBuffer.allocate(Long.BYTES + headerBytes.length + weightBytes + 2 * sizeBytes)
+		ByteBuffer file = ByteBuffer.allocate(Long.BYTES + headerBytes.length + weightBytes + countTensors * sizeBytes)
 				.order(ByteOrder.LITTLE_ENDIAN);
 		file.putLong(headerBytes.length);
 		file.put(headerBytes);
 		for (int i = 0; i < t * t; i++) file.putFloat(i < WEIGHTS.length ? WEIGHTS[i] : 1.0f);
 		for (int i = 0; i < t; i++) file.putInt(i < SIZES.length ? SIZES[i] : 1);
-		for (int i = 0; i < t; i++) file.putInt(i < OUT_SYNAPSES.length ? OUT_SYNAPSES[i] : 1);
+		if (withOutSynapses) {
+			for (int i = 0; i < t; i++) file.putInt(i < OUT_SYNAPSES.length ? OUT_SYNAPSES[i] : 1);
+		}
 
 		Path directory = Files.createTempDirectory("cell-types");
 		Files.write(directory.resolve(CellTypeConnectome.WEIGHTS_FILE), file.array());
@@ -181,6 +199,22 @@ public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void rejectsShapeMismatch() throws IOException {
 		assertThrowsLoad(writeDirectory(4, String.join("\n", NAMES), ANNOTATIONS));
+	}
+
+	/**
+	 * A weights file without one of the three required tensors is rejected with an
+	 * {@link IllegalArgumentException} naming the missing tensor, rather than loading a
+	 * connectome whose outgoing synapse counts are {@code null}.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsMissingTensor() throws IOException {
+		File directory = writeDirectory(3, String.join("\n", NAMES), ANNOTATIONS, false);
+		try {
+			CellTypeConnectome.load(directory).destroy();
+			Assert.fail("Expected an IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage(), expected.getMessage().contains("type_out_synapses"));
+		}
 	}
 
 	/** A type name listed twice is rejected. */
