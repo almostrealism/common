@@ -28,6 +28,90 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-27 — Document simulating a spiking neural population, from state to recorded spikes
+
+**Category:** Documentation
+**Branch:** `project/plan-20261027-081706`
+**Plan:** [`PLAN-20261027-neural-population-simulation-docs.md`](PLAN-20261027-neural-population-simulation-docs.md)
+
+#### What changed since last cycle
+
+The PDSL tutorial landed (PR #757, merged): `docs/tutorials/10-pdsl-model-definitions.html` with
+`PdslTutorialExamplesTest`, and its first-mistake messages pinned by fixtures. That closes the PDSL
+teaching gap. Separately, and much larger, a whole simulation substrate reached `master` this week
+through the connectome model organism's Phase 1 tracker tasks, outside the manager-log cycles:
+ordered collections as kernel inputs (`TraversalOrdering.bind`, absent elements reading as zero),
+integer-exact split indices, integer safetensors/protobuf payloads, `CounterRandom` (in-kernel
+counter-based random numbers, `AR_RANDOM=counter`), `SimulationRunner` (the simulation loop owner)
+and `LeakyIntegrateAndFirePopulation`. The PDSL core moved to `domain/graph`
+(`org.almostrealism.dsl`, `PdslExtension`, `WeightGroup`) and two modules appeared,
+`domain/biology` and `studio/bioscience`. Two branches are still open on the same track: the
+sparse matrix–vector product (`SparseMatrix`, `SegmentedWeightedSumComputation`) and the cell-type
+rate model (`RatePopulation`, `CellTypeConnectome`).
+
+#### Category assessment (priority order)
+
+- **Documentation — a real gap, and it decided the cycle.** The new substrate is well covered by
+  Javadoc, and `SimulationRunner` and split indices have good internals sections. But I checked
+  each piece against the durable corpus: `AR_RANDOM` and `CounterRandom` appear in no Markdown
+  file at all; `LeakyIntegrateAndFirePopulation` is documented nowhere outside its own class;
+  `shape-and-traversal.md` still sketches a two-method `TraversalOrdering` that predates `bind`,
+  signatures and the absent-element contract; `llms.txt` lists neither biology module nor
+  `simulation-loop-examples.md`, and `domain/graph/README.md` never mentions PDSL, which now lives
+  there. Worse, the only example of driving a LIF population (`LeakyIntegrateAndFirePopulationTest`)
+  steps it with a hand-written host loop, because the population exposes `step(Producer)` rather
+  than implementing `Temporal`. The next connectome agents will learn the wrong pattern from it.
+  Nothing puts the pieces together as one simulation.
+- **Code quality — one real item found, owned elsewhere.** `PLAN-20261025-spiking-lif-population.md`
+  has no lifecycle header, so `RepositoryPlansTest.test_every_plan_has_a_valid_header` fails on
+  `master`. The open rate-model branch already adds that header, so I left it alone rather than
+  create a merge conflict. The `io.almostrealism.collect` split is unchanged.
+- **Performance — no blocker.** The weighted-sum `matmul` reduced form remains real and
+  non-blocking; the rate-model branch measured that a dense 11,751-wide step on Metal is bound by
+  its looped reduction kernel, which is useful evidence for that lever.
+- **Proof of value — live, deliberately not chosen.** The KV-cache throughput measurement is
+  Metal-gated, conditional diffusion training is heavy, and the connectome's proof-of-value steps
+  (Shiu et al. reproduction) wait on ingest and the sparse product.
+
+#### Why this task
+
+It is the 2026-10-26 move again, applied to the newest domain: the reference material exists, the
+connective material does not. One internals page walks a spiking population from device-resident
+state through the LIF step, the ring-buffer delay, connectivity, reproducible in-kernel Poisson
+drive and a `SimulationRunner` run with a device-resident spike recording, and states the known
+limits from evidence. A drift-guard test runs the page's example through `SimulationRunner` and
+asserts its rate, silence, delay and reproducibility claims, so the page cannot rot, and it also
+tests whether the adapter pattern works. If it does not, that becomes an evidenced tracker task,
+not a production change in this cycle. The cycle also brings `shape-and-traversal.md`, `llms.txt`
+and the graph and biology READMEs up to date. It runs on any node.
+
+For the self-understanding aim, this is the page that lets a model trained on the corpus reason
+about the platform's simulations of living systems, which is the most distinctive thing the
+platform added this month.
+
+#### Balance across categories
+
+Two documentation cycles in a row (tutorial, now this) after a long proof-of-value run. That is
+not drift. The substrate arrived fast through tracker tasks, and documenting it now, before the
+connectome's proof-of-value steps build on it, is cheaper than repairing the patterns later. The
+next cycle should go back to proof of value unless something foundational breaks.
+
+#### What comes next
+
+1. This plan: `docs/internals/neural-population-simulation.md`,
+   `NeuralPopulationSimulationExamplesTest`, and the `shape-and-traversal.md`, `llms.txt` and
+   README corrections.
+2. **Proof of value, connectome:** once the sparse product merges, the MaleCNS ingest into CSR
+   form and the Shiu et al. reproduction on its own FlyWire inputs (tracker tasks 2218ffdf, d72c5ca4).
+3. **Proof of value, Metal:** KV-cache decode throughput vs full forward, and greedy-vs-top-p over
+   long samples.
+4. **Proof of value:** conditional diffusion training.
+5. **Performance:** the reduced form for the weighted-sum `matmul` lowering, now with a
+   connectome-scale measurement behind it.
+6. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
+   split; the PDSL research/education features; letting a trained model read the platform's own
+   source.
+
 ### 2026-10-26 (later) — Teach PDSL model authoring with a worked tutorial
 
 **Category:** Documentation
@@ -198,162 +282,28 @@ nucleus-sampling cycle deferred its measurement.
    `io.almostrealism.collect` package split; a PDSL tutorial in `docs/tutorials/`; letting a trained
    model read the platform's own *source*.
 
-### 2026-10-25 — Expose nucleus (top-p) sampling through the autoregressive generators
+### 2026-10-25 — Expose nucleus (top-p) sampling through the autoregressive generators (condensed)
 
-**Category:** Proof of Value (self-hosted LM generation)
-**Branch:** `project/plan-20261025-022810`
+**Category:** Proof of Value (self-hosted LM generation) · **Branch:** `project/plan-20261025-022810` ·
 **Plan:** [`PLAN-20261025-nucleus-sampling-generators.md`](PLAN-20261025-nucleus-sampling-generators.md)
 
-#### What changed since last cycle
+`AutoregressiveModel.sampleToken` already implemented nucleus filtering, but no public API could set
+`topP`, and `AutoregressiveModel.of(...)` applied a redundant second softmax that flattened the
+tempered distribution. The plan measured the two paths' distributions first, then unified both
+generators on one `sampleToken` call with the configured temperature and top-p (PR #741, merged).
+That settled the sampling strategy and set up the KV-cache decode cycle.
 
-The PDSL language reference landed (merged 2026-10-24): `docs/internals/pdsl-language.md` is the
-single complete reference (grammar, definition kinds, name resolution, import semantics, and a
-40-builtin catalog with a per-operand gradient column), `PdslLanguageReferenceExamplesTest` reads
-the page and parses every fenced example so it cannot drift from the parser, the
-`org.almostrealism.ml.dsl` Javadoc is complete, and `pdsl-audio-dsp.md` no longer duplicates the
-core table. That closes the flagship documentation gap the last cycle opened. With it, both
-foundation arcs the recent cycles were on are closed: the attention backward pass is honest end to
-end (K/V projections, then the differential lambda), and the language the models are written in is
-documented.
+### 2026-10-23 — Document the PDSL language (condensed)
 
-#### Category assessment (priority order)
-
-- **Documentation — excellent, and the one flagship gap just closed.** `consult` finds no durable
-  gap: the internals corpus is current at `master` and now includes the PDSL reference. The one
-  standing item — a PDSL *tutorial* in `docs/tutorials/` (01–09 never mention PDSL) — is real but
-  has been the low-priority, continuous-QA item for several cycles; it is a teaching asset, not a
-  missing reference, and does not outrank cashing a proof-of-value step. Moved on.
-- **Code quality — strong and owned by continuous QA.** The correctness arc (three cycles) is
-  closed; enforcement is mechanical. The standing minor item (`io.almostrealism.collect` split) is
-  unchanged and not a flagship. Moved on.
-- **Performance — no blocker.** The named lever (the weighted-sum `matmul` reduced form for outputs
-  wider than 1000) is real but blocks nothing and ranks below cashing the proof-of-value step.
-  Moved on.
-- **Proof of value — the category.** The self-hosted LM can decode greedily or with
-  full-distribution temperature, and neither is good: greedy collapses to the most-frequent byte,
-  temperature draws from the unreliable tail. Nucleus (top-p) sampling is the standard remedy and
-  is the first "what comes next" item of the last four entries.
-
-#### Why this task
-
-The survey turned up a sharp, high-confidence instance of the category. `AutoregressiveModel.sampleToken`
-**already implements nucleus filtering in full**, but **no public API lets a caller set `topP`** —
-both generator call sites hardcode it to `1.0`. The platform ships a nucleus-sampling implementation
-that is unreachable from a consumer. Reading the two paths together also surfaced a second defect in
-the same code: `AutoregressiveModel.of(...)` pre-applies `rescale` (`logits / temperature`) and
-`softmax` on the device — so the configured temperature *is* applied — and then calls `sampleToken`
-with a **hardcoded temperature of `1.0`**, which re-exponentiates and renormalizes the
-already-softmaxed values: a redundant second softmax that flattens the already-tempered distribution.
-It therefore samples from a different (flatter) distribution than `SlidingWindowAutoregressiveModel`,
-which passes raw logits and the configured temperature straight through for a single softmax. The
-fix for both is one unification: route raw logits through `sampleToken` once, with the configured
-temperature and configured top-p, from both generators. It is the smallest change that
-materially improves what the self-hosted LM can produce, and a prerequisite for the sampling-quality
-comparison the training doc already promises.
-
-Because the change touches a documented sampling path, the plan is evidence-led: step one is a host
-test that *measures* the two distributions the two paths sample from today, turning the
-double-softmax reading from inspection into an asserted fact before anything changes. Top-p defaults
-to `1.0`, so behavior is unchanged unless a caller opts in; the only intended default-case change is
-`of(...)` ceasing to double-softmax, which a new two-generators-agree test pins. Existing acceptance
-assertions are untouched; the new behavior is pinned by new tests, never by weakening an existing
-one.
-
-#### Balance across categories
-
-The last four cycles were correctness (three) then documentation (the PDSL reference). Both
-foundation arcs are now closed, so returning to proof of value is the disciplined move the log has
-been telegraphing, not a jump to the exciting category. It is a small–medium task whose committed
-deliverable is a host-side API change plus deterministic sampling tests — **no training, no Metal,
-runs on any backend, no workstream settings file.**
-
-#### What comes next
-
-1. This plan: `getTopP`/`setTopP` on `AutoregressiveModel`, wire top-p through both generators,
-   unify the `of(...)` path with the `SlidingWindow` path, add the nucleus and cross-generator
-   tests, and update the two internals pages.
-2. **Measure** generation quality under top-p on a macOS/Metal node (a separate cycle: re-run the
-   documented training run and compare greedy vs. top-p decoding), then a single-position KV-cache
-   decode, which would make per-token sampling cheap enough to compare at length.
-3. **Proof of value:** conditional diffusion training, now that both its conditioning (K/V) and its
-   differential cancellation (λ) train honestly.
-4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
-5. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2 (with the SAME fine-tune); the
-   `io.almostrealism.collect` package split; a PDSL tutorial in `docs/tutorials/`; letting a trained
-   model read the platform's own *source*.
-
-### 2026-10-23 — Document the PDSL language
-
-**Category:** Documentation
-**Branch:** `project/plan-20261023-025021`
+**Category:** Documentation · **Branch:** `project/plan-20261023-025021` ·
 **Plan:** [`PLAN-20261023-pdsl-language-reference.md`](PLAN-20261023-pdsl-language-reference.md)
 
-#### What changed since last cycle
-
-The differential-lambda plan landed (PR #716): the four `differentialLambda` vectors now train, the
-three `TODO(review)` markers in `differential_attention.pdsl` are gone, and
-`DifferentialAttentionAssetTest` checks them by finite difference. With PR #697 before it, every
-learnable operand of every attention variant the platform ships now receives its gradient — the
-correctness arc of the last three cycles is closed, apart from the SAME resampling site deliberately
-deferred to the cycle that first fine-tunes that autoencoder.
-
-#### Category assessment (priority order)
-
-- **Documentation — a real, flagship gap, and it decided the cycle.** Those three cycles all turned on
-  PDSL: the attention family, the transformer layer, the Qwen model files, the Oobleck codec, the MIDI
-  decoders and the real-time mixdown are all PDSL assets (19 shipped `.pdsl` assets in `engine/ml`
-  plus 29 test fixtures, ~6,200 lines of interpreter), and the defects fixed were questions of what a PDSL builtin does with its operands
-  (`scale` reading λ as a constant; `scaled_dot_product` taking a branch as an auxiliary operand). But
-  `consult` answers plainly: "There is no single complete language reference for PDSL." The only durable
-  page is `pdsl-audio-dsp.md` (audio primitives, with the ML builtins in one parenthesized list); the
-  grammar, the definition kinds, parameter types, composition statements, imports, name resolution and
-  the builtins' gradient behavior are documented nowhere outside the interpreter source. No tutorial
-  mentions PDSL. No tracker task covers it. Smaller doc items seen and left to continuous QA: four
-  small `flowtree/*` submodules have no README (the parent `flowtree/README.md` and `runtime/docs/`
-  cover them), and the ONNX-pressure note.
-- Code quality, performance and proof of value all keep live candidates (below); none was chosen,
-  because documentation comes first and this gap is genuine.
-
-#### Why this task
-
-PDSL is the form in which the platform states *what its models compute* — compact, readable,
-declarative. That makes its reference the most generative page we can add to the corpus the
-self-hosted LM trains on: a model that can read the language can read the model files, and later
-propose edits to them — a concrete step toward software that understands its own architecture. It is
-also the page every future PDSL conversion and the PDSL-for-research track (whose teaching phase has
-nothing to build on) need first. The language is stable enough to document: imports, `stack`,
-program scope and the attention gradient fixes have all landed.
-
-The plan asks for a reference derived from source, not memory: the keyword table from `PdslLexer`,
-an EBNF grammar from `PdslParser`, every `PdslNode` subclass, the block structure each composition
-statement builds, resolution and shadowing rules, the import semantics pinned to the
-`pdsl/imports/*.pdsl` fixtures, and a catalog of all 40 builtins with shapes, lowering and a
-**per-operand gradient column** backed by code or tests (or marked "not verified"). It removes the
-duplicated core-primitive table from `pdsl-audio-dsp.md`, completes the `org.almostrealism.ml.dsl`
-Javadoc, and adds a small parse-only test whose snippets are the page's own examples, so the
-reference cannot silently drift from the parser. Defects found are recorded, not fixed.
-
-#### Balance across categories
-
-The last four cycles were correctness (three) and proof of value (one); the last documentation cycle
-was 2026-10-17. Returning to the foundation now is not rote: the correctness work showed that the
-semantics of PDSL builtins are where gradients get lost, and that knowledge exists only in the code
-and in session notes. It is a medium task that **runs on any node** — no macOS requirement, no
-workstream settings file.
-
-#### What comes next
-
-1. This plan: `docs/internals/pdsl-language.md`, the examples test, the Javadoc pass and cross-links.
-2. **Proof of value**, now on a fully honest attention backward pass: top-p through the sliding-window
-   generator (`SlidingWindowAutoregressiveModel` calls `sampleToken` with a top-p of `1.0`), a
-   single-position KV-cache decode, and conditional diffusion training. Adding the new PDSL page (and
-   the model files it explains) to the LM's training corpus is a natural, cheap follow-on.
-3. Whatever the reference's "known limits" section records about builtin operand handling becomes the
-   next PDSL consistency item.
-4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
-5. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2 (with the SAME fine-tune); the
-   `io.almostrealism.collect` package split; a PDSL tutorial in `docs/tutorials/`; letting a trained
-   model read the platform's own *source*.
+The three attention-correctness cycles all turned on what PDSL builtins do with their operands, yet
+`consult` reported no complete PDSL reference. The cycle wrote `docs/internals/pdsl-language.md`
+(grammar from `PdslParser`, definition kinds, resolution, imports, a builtin catalog with a
+per-operand gradient column) with `PdslLanguageReferenceExamplesTest` parsing every example, and
+completed the package Javadoc (merged 2026-10-24). Its teaching companion, Tutorial 10, followed on
+2026-10-26.
 
 ### 2026-10-22 — Train the learned lambda of differential attention (condensed)
 
