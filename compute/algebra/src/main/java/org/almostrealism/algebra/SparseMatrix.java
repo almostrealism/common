@@ -253,7 +253,11 @@ public class SparseMatrix implements MatrixFeatures, Destroyable {
 	 */
 	public static SparseMatrix of(int rows, int cols, int[] rowOffsets, int[] columns,
 								  PackedCollection values) {
-		if (rows <= 0 || rowOffsets.length != rows + 1) {
+		if (rows <= 0) {
+			throw new IllegalArgumentException("Sparse matrix row count " + rows + " must be positive");
+		}
+
+		if (rowOffsets.length != rows + 1) {
 			throw new IllegalArgumentException(rowOffsets.length + " row offsets given for "
 					+ rows + " rows; expected " + (rows + 1));
 		}

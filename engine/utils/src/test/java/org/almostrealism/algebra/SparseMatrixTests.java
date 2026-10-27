@@ -328,6 +328,45 @@ public class SparseMatrixTests extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * Building from host arrays rejects row offsets that do not start at {@code 0} or do not end
+	 * at the entry count, either of which would let the kernel read outside the entries.
+	 */
+	@Test(timeout = 30000)
+	public void ofRejectsOffsetsNotSpanningEntries() {
+		assertRejected(() -> SparseMatrix.of(2, 2, new int[] { 1, 1, 2 }, new int[] { 0, 1 },
+				PackedCollection.of(1.0, 2.0)));
+		assertRejected(() -> SparseMatrix.of(2, 2, new int[] { 0, 1, 1 }, new int[] { 0, 1 },
+				PackedCollection.of(1.0, 2.0)));
+		assertRejected(() -> SparseMatrix.of(2, 2, new int[] { 0, 1, 3 }, new int[] { 0, 1 },
+				PackedCollection.of(1.0, 2.0, 3.0)));
+	}
+
+	/**
+	 * Building from host arrays stores the row offsets and columns as split lanes of shape
+	 * {@code (rows + 1, 2)} and {@code (nnz, 2)} holding the given integers, keeps the given
+	 * values, and stores one unused column for a matrix without entries.
+	 */
+	@Test(timeout = 30000)
+	public void ofStoresSplitIndexStructure() {
+		PackedCollection values = PackedCollection.of(1.0, 2.0, 3.0);
+		try (SparseMatrix a = SparseMatrix.of(3, 3, new int[] { 0, 2, 2, 3 },
+				new int[] { 0, 2, 1 }, values)) {
+			Assert.assertEquals(4, a.getRowOffsets().getShape().length(0));
+			Assert.assertEquals(2, a.getRowOffsets().getShape().length(1));
+			Assert.assertEquals(3, a.getColumns().getShape().length(0));
+			Assert.assertEquals(2, a.getColumns().getShape().length(1));
+			Assert.assertSame(values, a.getValues());
+			assertMatches(PackedCollection.ofSplitIndices(0, 2, 2, 3).toArray(), a.getRowOffsets(), 0.0);
+			assertMatches(PackedCollection.ofSplitIndices(0, 2, 1).toArray(), a.getColumns(), 0.0);
+		}
+
+		try (SparseMatrix empty = SparseMatrix.of(2, 5, new int[3], new int[0], new PackedCollection(1))) {
+			Assert.assertEquals(1, empty.getColumns().getShape().length(0));
+			Assert.assertEquals(3, empty.getRowOffsets().getShape().length(0));
+		}
+	}
+
+	/**
 	 * Asserts that an action is rejected with an {@link IllegalArgumentException}.
 	 *
 	 * @param action the action
