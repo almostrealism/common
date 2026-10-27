@@ -67,7 +67,8 @@ A single page that walks one example from start to finish, in the register of
 5. **Connectivity.** The synaptic input is a `Producer` argument to `step`, so the population is
    indifferent to how it is formed: a dense `matmul` of a weight matrix and the delayed spikes
    (show it), and, if `SparseMatrix` has landed on `master` when this work is done, a
-   `SparseMatrix.multiply` of the same (show it, and link `dynamic-indexing.md`'s sparse section).
+   `SparseMatrix.multiply` of the same (show it, and link the sparse section that branch adds to
+   `dynamic-indexing.md`; `master` has no such section today).
    If it has not landed, state that the sparse product is the connectome-scale form and that a
    dense 166k x 166k matrix is about 110 GB in FP32. Do not document an unmerged API.
 6. **Reproducible random drive.** A full section on random generation, which no page covers:
@@ -84,15 +85,48 @@ A single page that walks one example from start to finish, in the register of
    device-resident buffer read after `run` returns. Show the wrong pattern next to it (a host
    `for` loop calling `step.run()` and reading `toDouble` per step) and say why it is wrong, with
    a link to `simulation-loop-examples.md`. Note the lifecycle order: destroy the runner (which
-   releases the compiled step) before the population.
+   releases the compiled step) before the population. The section must also state, from the
+   code:
+   - **How the runner dispatches the step.** `SimulationRunner` flattens the system's tick
+     (`OperationList.flatten()` inlines a nested list that carries no compute requirements, and
+     the `"lif-step"` list carries none), so each assignment of `step` becomes its own dispatch,
+     plus the runner's counter advance. That is a different dispatch pattern from the
+     `step(...).get()` that `LeakyIntegrateAndFirePopulation`'s Javadoc and its test describe;
+     the page should say so and point to the measured per-dispatch cost rather than restate it.
+     The LIF step satisfies the runner's step contract because every assignment is element-local
+     (the coupled read, the `matmul` over `delayedSpikes()`, reads the ring, which the same
+     operation does not write). The open rate-model branch changes `SimulationRunner` to optimize
+     the flattened step (`Process.optimized(...)`) before compiling it, keeping each top-level
+     operation a separate dispatch; if that has merged, describe the merged behaviour.
+   - **Two populations in one tick.** A network of an input and an output population needs a
+     tick that adds both steps to one `OperationList`, not the single-population lambda above.
+     The order of the two steps matters: see open question 1.
+   - **Ordering constraints of the population API.** `setPoissonDrive` must be called before
+     `step(...)` is built (the step captures the generator; `setPoissonDrive` replaces it), and
+     the seed is fixed by `setPoissonDrive`, so a run with a different seed needs a
+     `setPoissonDrive` call followed by a new runner, or a new population.
+   - **Recording cost.** A `Recording` write is a slot update over the whole buffer, so its cost
+     is proportional to `capacity * width` (`SimulationRunner.Recording` Javadoc); recording the
+     spike vector every step for `n` steps therefore costs `O(n^2 * width)` in total, and
+     `capacity * width` must stay within 2^24 on FP32 backends. The page should give the reader
+     that arithmetic and recommend a recording interval or a reduced quantity (for example a
+     per-step spike count) for long runs.
 8. **Firing-rate populations** — only if `RatePopulation` has landed on `master`: a short section
    contrasting it (a `Temporal` with a next-state buffer and copy-back) with the spiking
    population, and when to use each. If it has not landed, omit the section entirely.
 9. **Known limits.** Evidenced facts only, each with the class that establishes it: no surrogate
-   gradients or backpropagation through time (so spiking dynamics are forward-only); the
+   gradients or backpropagation through time (so spiking dynamics are forward-only; the evidence
+   is that the spike is a `greaterThanOrEqual` comparison in
+   `LeakyIntegrateAndFirePopulation.emittedSpikes()` and that no class in the repository defines
+   a surrogate gradient, which the writer must re-check rather than repeat); the
    per-step global synchronization and its measured dispatch cost (link the measured-overhead
-   table, do not copy it); the 2^24 counter bound; spike-for-spike parity with Brian2 not yet
-   established.
+   table, do not copy it); the 2^24 bound on the `CounterRandom` counter (`CounterRandom.SEED_LIMIT`
+   bounds the seed, and the class Javadoc states the same bound for the counter), on the
+   `SimulationRunner` step counter, and on a `Recording`'s `capacity * width`; spike-for-spike
+   parity with Brian2 not yet established (the `LeakyIntegrateAndFirePopulationTest` class Javadoc
+   says so). The population is not a `Temporal`, `Setup` or `Lifecycle`, so
+   `SimulationRunner.reset()` does not reset its state; a second simulation calls the
+   population's own `reset()` as well.
 10. **Related files** table (paths, no line numbers) and **See also** links.
 
 ### 2. Drift guard: `NeuralPopulationSimulationExamplesTest`
@@ -108,8 +142,11 @@ claims, so the page cannot silently drift from the code:
 - the driven neurons' measured rate matches `rate` within a binomial tolerance derived from the
   number of steps, stated in the test (not tuned);
 - undriven input neurons never fire;
-- the output population's first spike comes no earlier than `delaySteps` after the first input
-  spike;
+- an input spike reaches the output population exactly `delaySteps` steps later (assert the
+  step at which the output conductance first becomes non-zero, as
+  `LeakyIntegrateAndFirePopulationTest.synapticDelayDeliversWeightedInputAfterDelay` does for one
+  population, rather than only "no earlier than"; a lower bound would not catch the off-by-one
+  described in open question 1);
 - two runs with the same seed record identical spike rasters, and a different seed records a
   different one.
 
@@ -161,7 +198,10 @@ The test must exercise exactly the code the page shows. If a claim on the page c
    `LeakyIntegrateAndFirePopulationTest`, `CounterRandomTests`, `SimulationRunnerTest`,
    `OrderedCollectionInputTests` (at most five classes per invocation).
 5. **Validate**: `mcp__ar-build-validator__start_validation` (default checks) must pass, and
-   `python3 -m unittest tools.tests.test_sweep_plans` must pass for the plan headers.
+   `python3 -m unittest tools.tests.test_sweep_plans` must pass for the plan headers. (When this
+   plan was written that test failed on `master` because
+   `PLAN-20261025-spiking-lif-population.md` had no lifecycle header; this branch adds the same
+   header the open rate-model branch adds, so the two merge cleanly.)
 6. Language rules for the page: no source line numbers; reference by class and method; no
    reference to any file in `docs/plans/` from the page, the READMEs or the test.
 
@@ -187,6 +227,38 @@ The test must exercise exactly the code the page shows. If a claim on the page c
 - None blocking. Everything documented is on `master`.
 - Soft: sections 5 and 8 widen if the sparse-matrix and rate-model branches merge first. The
   page is correct without them.
+
+## Open questions
+
+Raised in review of this plan, for the person deciding whether it goes ahead.
+
+1. **Delay across two populations depends on the order of their steps.** `delayedSpikes()` reads
+   row `(writeIndex - delaySteps) mod rows`, and the population's Javadoc guarantees a delay of
+   exactly `delaySteps` with respect to *its own* step. In a network tick that steps the input
+   population before the output population, the output's synaptic input reads the input's ring
+   after the input has already advanced its write index, so the effective delay becomes
+   `delaySteps - 1`; stepping the output first gives `delaySteps`. The page must state which order
+   it uses and why, and the drift guard must pin the exact delay (Scope section 2). If the writer
+   finds this too fragile to teach, that is evidence for the `Temporal` follow-up below rather
+   than something to paper over in prose.
+2. **Document the adapter, or fix the type first?** The plan teaches a lambda adapter
+   (`() -> pop.step(input)`) around a class whose own Javadoc says the loop belongs to a separate
+   owner but which does not implement `Temporal`. The adapter also leaves the population's reset
+   outside `SimulationRunner.reset()` (the runner resets only a system that is a `Lifecycle`) and
+   its setup outside the runner's setup. A small production change (make the population a
+   `Temporal`, or provide one) would let the page show the same pattern as
+   `simulation-loop-examples.md` with no caveats. This plan defers that to a tracker task; the
+   approver may prefer to sequence that task first and write the page once.
+3. **Open branches change sections 5, 7 and 8.** At review time `SparseMatrix` and
+   `SegmentedWeightedSumComputation` were on an open branch (not on `master`), and `RatePopulation`,
+   `CellTypeConnectome` and a `SimulationRunner` change (optimizing the flattened step before
+   compiling it) were on another. If the page is written before they merge, it will need a second
+   pass when they do. Writing it after both merge avoids that, at the cost of delay.
+4. **Scope.** The deliverables span one new page, one new test, and edits to two internals pages,
+   `llms.txt` and two module READMEs. Splitting the cross-link corrections (Scope section 3,
+   which do not depend on the new page except for its link targets) from the page and test
+   would let the `shape-and-traversal.md` and `llms.txt` corrections, which are stale today,
+   land on their own.
 
 ## What this sets up
 

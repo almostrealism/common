@@ -64,8 +64,9 @@ rate model (`RatePopulation`, `CellTypeConnectome`).
   Nothing puts the pieces together as one simulation.
 - **Code quality — one real item found, owned elsewhere.** `PLAN-20261025-spiking-lif-population.md`
   has no lifecycle header, so `RepositoryPlansTest.test_every_plan_has_a_valid_header` fails on
-  `master`. The open rate-model branch already adds that header, so I left it alone rather than
-  create a merge conflict. The `io.almostrealism.collect` split is unchanged.
+  `master`. The open rate-model branch adds that header; plan review on this branch added the
+  identical header (byte for byte, so the two merge cleanly), because this plan's own validation
+  step runs that test. The `io.almostrealism.collect` split is unchanged.
 - **Performance — no blocker.** The weighted-sum `matmul` reduced form remains real and
   non-blocking; the rate-model branch measured that a dense 11,751-wide step on Metal is bound by
   its looped reduction kernel, which is useful evidence for that lever.
@@ -82,7 +83,9 @@ drive and a `SimulationRunner` run with a device-resident spike recording, and s
 limits from evidence. A drift-guard test runs the page's example through `SimulationRunner` and
 asserts its rate, silence, delay and reproducibility claims, so the page cannot rot, and it also
 tests whether the adapter pattern works. If it does not, that becomes an evidenced tracker task,
-not a production change in this cycle. The cycle also brings `shape-and-traversal.md`, `llms.txt`
+not a production change in this cycle. Plan review found that, in a two-population tick, the
+effective delay depends on the order of the two steps, and recorded that with the other open
+questions in the plan. The cycle also brings `shape-and-traversal.md`, `llms.txt`
 and the graph and biology READMEs up to date. It runs on any node.
 
 For the self-understanding aim, this is the page that lets a model trained on the corpus reason
