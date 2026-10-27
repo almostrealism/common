@@ -17,7 +17,7 @@
 /**
  * Audio-domain PDSL primitives. Registers audio DSP capabilities (FIR/biquad/delay,
  * LFO, multi-channel routing, fan-out, delay networks) with the
- * {@link org.almostrealism.ml.dsl.PdslInterpreter} from the audio module so the PDSL
- * core in {@code engine/ml} stays free of audio-specific dispatch.
+ * {@link org.almostrealism.dsl.PdslInterpreter} from the audio module so the PDSL
+ * core in {@code domain/graph} stays free of audio-specific dispatch.
  */
 package org.almostrealism.studio.dsl.audio;

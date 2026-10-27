@@ -27,8 +27,9 @@ inside them.
 | Concern | Location |
 |---------|----------|
 | `.pdsl` resources | `engine/ml/src/main/resources/pdsl/` (audio under `pdsl/audio/`) |
-| Interpreter + core/ML primitives | `engine/ml/.../ml/dsl/PdslInterpreter.java` (core primitives delegated to `PdslBuiltins.java`) |
-| Argument normalisation | `engine/ml/.../ml/dsl/PdslPrimitiveContext.java` (`toProducer`); bank form `PdslChannelBank.java` |
+| Interpreter + core primitives | `domain/graph/.../dsl/PdslInterpreter.java` (core primitives delegated to `PdslBuiltins.java`) |
+| Attention and rotary primitives | `engine/ml/.../ml/dsl/AttentionPrimitives.java`, a `PdslExtension` every interpreter registers |
+| Argument normalisation | `domain/graph/.../dsl/PdslPrimitiveContext.java` (`toProducer`); bank form `PdslChannelBank.java` |
 | Audio primitive dispatch | `studio/compose/.../studio/dsl/audio/AudioDspPrimitives.java` |
 | Multi-channel block factories | `studio/compose/.../studio/dsl/audio/MultiChannelDspFeatures.java` |
 

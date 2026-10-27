@@ -23,6 +23,7 @@ import org.almostrealism.ml.audio.DiffusionTransformerConfig;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Random;
 
 /**
  * Small random weights for a {@link org.almostrealism.ml.audio.DiffusionTransformer} built from a
@@ -30,14 +31,28 @@ import java.util.Map;
  * configuration (including the adaLN, memory-token and local-add paths, and the normalization
  * family's parameter layout) so that {@code validateWeights()} accepts the dictionary. The
  * timestep features are assumed to be the deterministic {@code EXPO} encoding.
+ *
+ * <p>Each fixture draws its weights from its own {@link Random} seeded with {@link #WEIGHT_SEED},
+ * so the weights are the same on every run. Successive calls to {@link #weights} on one fixture
+ * continue the same sequence, so two models built from one fixture hold different weights.</p>
  */
 public class DiffusionTransformerWeightFixture implements CodeFeatures {
+
+	/**
+	 * Seed of the random weights. An unseeded fill left the transformer's output to vary run to
+	 * run, which made tests that require the decoded output of a generation to stay strictly
+	 * inside a clamp fail on the runs whose weights happened to push a sample past it.
+	 */
+	private static final long WEIGHT_SEED = 2113L;
 
 	/** Random weights are scaled by this factor so activations stay well-conditioned. */
 	private static final double WEIGHT_SCALE = 0.1;
 
 	/** Width of the expo Fourier timestep features consumed by the timestep embedding. */
 	private static final int TIMESTEP_FEATURES = 256;
+
+	/** Source of the random weights, in the order {@link #weights} adds them. */
+	private final Random random = new Random(WEIGHT_SEED);
 
 	/**
 	 * Builds the weight map for the given configuration.
@@ -147,14 +162,15 @@ public class DiffusionTransformerWeightFixture implements CodeFeatures {
 	}
 
 	/**
-	 * Adds a small random weight of the given shape to the weight map.
+	 * Adds a small random weight of the given shape, drawn from this fixture's seeded source, to
+	 * the weight map.
 	 *
 	 * @param weights the weight map
 	 * @param key     the weight key
 	 * @param dims    the weight dimensions
 	 */
 	private void put(Map<String, PackedCollection> weights, String key, int... dims) {
-		PackedCollection value = new PackedCollection(shape(dims)).randnFill();
+		PackedCollection value = new PackedCollection(shape(dims)).randnFill(random);
 		weights.put(key, cp(value).multiply(WEIGHT_SCALE).into(value.traverseEach()).evaluate());
 	}
 }

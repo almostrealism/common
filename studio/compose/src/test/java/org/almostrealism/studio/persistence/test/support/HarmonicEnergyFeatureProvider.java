@@ -129,7 +129,10 @@ public class HarmonicEnergyFeatureProvider implements WaveDataFeatureProvider, C
 		CollectionProducer angle = position.multiply(harmonic).multiply(2.0 * Math.PI / sampleRate);
 		CollectionProducer energy = repeat(1, bins, cp(windows)).multiply(cos(angle)).sum(2);
 
-		return energy.abs().divide(window).evaluate().reshape(frames, bins);
+		// Optimizing isolates the window sum into a looped kernel; embedding it
+		// instead unrolls every sample of the window into one expression, whose
+		// native compilation alone can take longer than callers wait for features
+		return energy.abs().divide(window).evaluateOptimized().reshape(frames, bins);
 	}
 
 	/**
