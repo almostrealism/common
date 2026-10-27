@@ -18,9 +18,9 @@ package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
-import org.almostrealism.ml.dsl.PdslNode;
+import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -46,8 +46,8 @@ import java.util.Map;
  * {@code results/pdsl-audio-dsp/delay_feedback_bank.wav} can be listened to as
  * audible confirmation of the delay-feedback effect.</p>
  *
- * @see org.almostrealism.ml.dsl.PdslLoader
- * @see org.almostrealism.ml.dsl.MultiChannelDspFeatures
+ * @see org.almostrealism.dsl.PdslLoader
+ * @see org.almostrealism.dsl.MultiChannelDspFeatures
  */
 public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilterTestFeatures {
 

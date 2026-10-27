@@ -21,7 +21,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
-import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.model.Block;
 
 import java.util.Map;
