@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-22
+closed: 2026-10-23
+tracker: [e72668a2-3645-4da6-b4e4-397424b44e39]
+---
+
 # Blend from an adjusted latent with native Stable Audio 3
 
 - **Tracker task:** `e72668a2-3645-4da6-b4e4-397424b44e39` — "Blend from an adjusted latent with native Stable Audio 3"

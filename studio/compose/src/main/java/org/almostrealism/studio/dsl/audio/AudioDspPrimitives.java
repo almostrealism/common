@@ -24,11 +24,11 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.ml.dsl.PdslChannelBank;
-import org.almostrealism.ml.dsl.PdslInterpreter;
-import org.almostrealism.ml.dsl.PdslParseException;
-import org.almostrealism.ml.dsl.PdslPrimitiveContext;
-import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toDouble;
+import org.almostrealism.dsl.PdslChannelBank;
+import org.almostrealism.dsl.PdslInterpreter;
+import org.almostrealism.dsl.PdslParseException;
+import org.almostrealism.dsl.PdslPrimitiveContext;
+import static org.almostrealism.dsl.PdslPrimitiveContext.toDouble;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.ForwardOnlyBlock;
@@ -55,7 +55,7 @@ import java.util.function.Supplier;
  * register them so the same kernels are available to non-audio PDSL programs.</p>
  *
  * <p>This class lives in the audio domain (studio/compose) so the PDSL interpreter
- * core in {@code engine/ml} stays free of audio-specific dispatch. Callers that want
+ * core in {@code domain/graph} stays free of audio-specific dispatch. Callers that want
  * audio primitives use either {@link PdslInterpreter#registerPrimitive} directly or,
  * more typically, construct a {@code PdslLoader} with this class's
  * {@link #registerWith(PdslInterpreter)} method as the registrar:</p>

@@ -369,6 +369,33 @@ return AutoregressiveModel.of(
 `PackedCollection` and passed to attention as `p(position)` so the model reads the
 current step from the device.
 
+### Single-Position KV-Cache Decode for the Self-Hosted LM
+
+`KeyValueCacheAutoregressiveModel` is the cache-decode counterpart of
+`SlidingWindowAutoregressiveModel` for the self-hosted `CausalLanguageModel`. Where the
+sliding-window generator re-runs a full `(seqLen, vocabSize)` forward pass per byte, this
+generator decodes one position at a time, scoring the new position against each layer's
+cached keys and values. It is a dedicated `AutoregressiveModel<Integer>` subclass rather
+than an `of()` wrapper because the per-layer caches live inside the compiled decode model
+(the attention layer allocates them), and `reset()` must clear them so a new sequence does
+not read a previous one's cached entries — a handle the `of()` factory, which owns only its
+input buffer, position, temperature and sampling, does not have.
+
+The decode model is built by `CausalLanguageModel.decodeModel`, which the generator compiles
+and owns. It bridges the trained weight layout to the cached `AttentionFeatures.attention`
+overloads without copying a weight: the fused QKV `(3·dim, dim)` weight of each block is
+exposed as three contiguous `(dim, dim)` query, key and value views (sections 0, 1 and 2, as
+the full-sequence `sequence_attention` slices them), and the position-indexed rotary
+`freqCis` the cached overload expects is derived from the stored `rope_inv_freq` with
+`RotationFeatures.computeRopeFreqs(seqLen, invFreq)`. That rotation equals the one the
+full-sequence `sequence_rope` applies at the same row (both use the split-half convention
+with angle `position · invFreq[i]`), so greedy decoding agrees with the full forward. The
+feed-forward, final normalization, output projection and log-softmax are the trained ones.
+No weights are copied: the decode variant is built over the model's own `StateDictionary`,
+which stays the caller's, exactly as a second training compilation would be. Because each
+layer's cache is a fixed `(seqLen, dim)` that does not slide, the decode is bounded to
+`seqLen` positions; longer generation uses the sliding window.
+
 ### Two-Phase Operation
 
 The `next()` method of `AutoregressiveModel` implements two distinct phases:

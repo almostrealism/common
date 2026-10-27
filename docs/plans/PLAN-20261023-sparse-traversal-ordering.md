@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-23
+closed: 2026-10-25
+tracker: [82bda0b7-fce1-4805-8a3c-51beaf156508]
+---
+
 # Make sparse TraversalOrdering work through TraversableExpression
 
 - **Tracker task:** [82bda0b7] Make sparse `TraversalOrdering` work through `TraversableExpression`

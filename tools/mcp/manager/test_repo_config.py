@@ -2,8 +2,7 @@
 
 ``repo_config`` is what makes reformulation settable per repository rather
 than per ar-manager process (one process serves every repository, so an
-environment variable cannot express it). See
-docs/plans/MANAGER_CONSULTANT_CONSOLIDATION.md.
+environment variable cannot express it).
 """
 
 import json

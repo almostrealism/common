@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-23
+closed: 2026-10-25
+tracker: [3e0043d3-c087-4e9b-b687-62931627b70e]
+---
+
 # Integer dtypes in SafetensorsReference and an integer payload in collections.proto
 
 - **Tracker task:** `3e0043d3-c087-4e9b-b687-62931627b70e`, "Integer dtypes in

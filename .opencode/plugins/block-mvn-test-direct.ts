@@ -21,7 +21,7 @@
 // .before's throw was somehow swallowed), the .after falls back to
 // running the core again — fail-safe.
 //
-// See docs/plans/OPENCODE_HOOKS.md for the architecture.
+// See docs/internals/agent-hooks.md for the architecture.
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { spawnSync } from "node:child_process"

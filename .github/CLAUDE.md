@@ -17,6 +17,7 @@ Layer 6 — Studio
   studio/music      → audio
   studio/spatial    → compose
   studio/experiments→ compose, ml-onnx, ml-djl, ml-script, utils
+  studio/bioscience → biology, ml
 
 Layer 5 — Extern
   extern/ml-djl     → ml
@@ -37,6 +38,7 @@ Layer 3 — Domain
   domain/physics    → time, color
   domain/color      → geometry, stats
   domain/chemistry  → physics, heredity
+  domain/biology    → chemistry, graph
   domain/heredity   → time
 
 Layer 2 — Compute
@@ -315,6 +317,15 @@ Check the file is there first, and date its absence against the merge base:
 absent there too means the branch predates it (benign), present there means it
 was removed (a real finding) — and only once a merge base has actually been
 established, since without one nothing about the branch is known.
+
+An enforcement check is the exception: there, "the branch predates it" is not
+benign, because skipping would let any branch based before the check existed
+pass unchecked. The CI file lock and the Python test-hiding detector therefore
+run a trusted copy of `tools/ci/agent-protection/` extracted from
+`origin/master` (with `git archive`, into a temporary directory) when the head
+lacks the script, and fail if even `origin/master` does not have it.
+`tools/tests/test_enforcement_script_fallback.py` pins this. A new enforcement
+step follows the same pattern.
 
 **The `ci/...` carve-out covers `.claude/hooks/` too, and covers comparisons
 only.** Both the enforcement-tampering check and the exfiltration guard's
@@ -788,7 +799,9 @@ deploys.
 Restarting `ar-manager` drops the MCP connection of every in-flight coding-agent
 job, so the workflow drains first: it closes job intake via
 `POST /api/config/accept-automated-jobs {"accept": false}`, waits with
-`tools/ci/drain-agent-jobs.sh` until no job reports an active status, and
+`tools/ci/drain-agent-jobs.sh` until the controller's `GET /api/jobs/in-flight`
+reports a `total` of zero (`STARTED` plus `SUBMITTED` jobs across every
+workstream; `tools/tests/test_drain_agent_jobs.py` pins the route), and
 **fails rather than forcing** when the wait expires (`skip_drain: true` on a
 manual run overrides this deliberately). Intake is reopened in an `always()`
 step so a failed deploy cannot leave the controller permanently quiesced.
@@ -1355,14 +1368,12 @@ hook below is a partial backstop, not yet a closed surface (see its own entry):
   so a direct API call cannot bypass what `workstream_submit_task` already rejects.
 - The `mcp__ar-test-runner__start_test_run` tool rejects `test_group`/`test_groups`
   outright and caps `timeout_minutes` at 40, with no bypass.
-- A `PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also restricts what
-  a running agent session can do directly, but today it only covers a direct `mvn
-  test`/`mvn integration-test`, not the full rule above: it does not yet block
-  `verify`/`install`/`package`/`deploy` without `-DskipTests`, a bare `AR_TEST_GROUP`/
-  `AR_TEST_GROUPS` reference, or a broad `pytest`/`python -m pytest` invocation (there is
-  no pytest hook at all yet). The diff that closes this gap has been recorded for a human
-  to apply by hand — coding-agent sessions cannot write under `.claude/hooks/` or
-  `.claude/settings.json`. Until it lands, this hook is a partial backstop, not a closed surface.
+- Two `PreToolUse` Bash hooks restrict what a running agent session can do directly.
+  `.claude/hooks/block-mvn-test-direct.sh` blocks `mvn test`/`integration-test`,
+  `verify`/`install`/`package`/`deploy` without `-DskipTests`, and any assignment of
+  `AR_TEST_GROUP`/`AR_TEST_GROUPS`. `.claude/hooks/block-pytest-broad-run.sh` blocks a
+  pytest run with no path, with a directory, or with more than 5 test files or 40 node
+  ids. They parse command text, so they are backstops rather than a closed surface.
 - `tools/ci/prompts/**`, the auto-resolve prompt builders, must never instruct an agent
   to run something broad — see [`tools/ci/README.md`](../tools/ci/README.md#test-execution-limits).
 

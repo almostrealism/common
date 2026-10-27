@@ -9,12 +9,13 @@ This document is the comprehensive reference for `ClaudeCodeJob` and its support
 1. [Class Overview](#class-overview)
 2. [Execution Flow](#execution-flow)
 3. [InstructionPromptBuilder](#instructionpromptbuilder)
-4. [McpConfigBuilder and Tool Configuration](#mcpconfigbuilder-and-tool-configuration)
-5. [ManagedToolsDownloader and Pushed Tool Lifecycle](#managedtoolsdownloader-and-pushed-tool-lifecycle)
-6. [MCP Tool Discovery](#mcp-tool-discovery)
-7. [Output Metric Extraction](#output-metric-extraction)
-8. [Factory Serialization Format](#factory-serialization-format)
-9. [Command-Line Arguments](#command-line-arguments)
+4. [Workstream Conversations (Mailbox)](#workstream-conversations-mailbox)
+5. [McpConfigBuilder and Tool Configuration](#mcpconfigbuilder-and-tool-configuration)
+6. [ManagedToolsDownloader and Pushed Tool Lifecycle](#managedtoolsdownloader-and-pushed-tool-lifecycle)
+7. [MCP Tool Discovery](#mcp-tool-discovery)
+8. [Output Metric Extraction](#output-metric-extraction)
+9. [Factory Serialization Format](#factory-serialization-format)
+10. [Command-Line Arguments](#command-line-arguments)
 
 ---
 
@@ -515,6 +516,56 @@ When all features are active (workstream URL set, target branch set, merge confl
 
 **Merge conflict scenario:**
 When the base branch has diverged, the merge conflict section provides explicit step-by-step instructions. The agent is told to run `git merge origin/<baseBranch>`, resolve the listed files, stage them, and complete the merge before proceeding with any other work. The "Do NOT skip conflict resolution" directive is critical because the merge must be completed for subsequent commits to be clean.
+
+---
+
+## Workstream Conversations (Mailbox)
+
+Two agent sessions collaborate through their **workstream**: the workstream is the
+conversation. Every message posted to a workstream is appended to its mailbox
+(`io.flowtree.workstream.WorkstreamMailbox`), an append-only log totally ordered by a
+`seq` number the controller assigns under the mailbox's lock.
+
+**Sending.** There is one way to send: `send_message`, i.e.
+`POST /api/workstreams/{ws}[/jobs/{job}]/messages` (`MessageEndpointHandler`). It archives
+and notifies as before, then appends to the mailbox. A body may carry a `messageId`; a
+retry with the same id within `WorkstreamMailbox.DEDUPE_WINDOW_MILLIS` is not appended
+twice.
+
+**Reading.** `GET /api/workstreams/{ws}/mailbox?since=<seq>&wait=<seconds>&exclude=<sender>`
+(`MailboxEndpointHandler`) returns the messages after `since` and the `nextSince` to use
+next. Readers hold their own cursor; the server keeps no per-reader state, so a job
+submitted later can replay the conversation from `since=0`. `wait` is a long poll: a
+caught-up reader blocks on the mailbox monitor and is woken by the next append, up to
+`WorkstreamMailbox.MAX_WAIT_SECONDS` per request (so no HTTP hold outlives an
+intermediary's timeout). Concurrent waiters per mailbox are capped (`MAX_WAITERS`).
+`sender` is derived by the controller (the job id, or the caller's token label), never
+supplied by the agent; it is what lets a reader exclude its own echo.
+
+**Storage.** One NDJSON file per workstream under the controller's data directory, loaded
+lazily, so a controller restart loses nothing unread. Messages older than
+`RETENTION_MILLIS` (7 days) are dropped; the `messages` memory namespace is the archive.
+
+**The agent side.** `await_message` (`tools/mcp/manager/messaging_tools.py`) composes long
+waits out of successive bounded long polls:
+
+- `since=-1` (the default) means "from now on"; `since=0` replays everything, which is how a
+  follow-up job catches up.
+- `timeout_seconds` is clamped to `MAX_AWAIT_SECONDS` (1500), below the agent inactivity
+  watchdog. On timeout the tool returns `ok=true, timed_out=true` with an unchanged cursor,
+  and the agent calls again. Returning is what proves the session is alive.
+- Own messages are excluded unless `include_own=True`.
+
+A job submitted with `collaborative=true` gets a **Collaboration Protocol** section in its
+prompt: announce readiness with `send_message`, then `await_message` and act on what comes
+back; on `timed_out`, wait again rather than exit or busy-work; start long-running work
+detached so it outlives the session, and report where its logs live. When a session is
+relaunched, the **Conversation Catch-Up** section (above) quotes every message that arrived
+while it was down.
+
+A blocking tool call was chosen over pushing messages into the session's stdin because it
+needs no runner changes, works with every runner, and fails by waiting longer rather than
+wedging a subprocess. What it cannot do is interrupt an agent mid-tool-call.
 
 ---
 

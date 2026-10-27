@@ -18,6 +18,8 @@ specialized representations. Neural network graphs, color and lighting,
 - Genetic algorithms, evolution, probabilistic factories (`heredity`)
 - Atomic/molecular structures, forces, simulation (`physics`)
 - Periodic table, chemical elements (`chemistry`)
+- Biological models: neurons, synapses, connectomes and their dynamics (`biology`)
+- The PDSL language core: lexer, parser, interpreter and domain-agnostic built-ins (`graph`)
 - StateDictionary-based weight management for neural network models
 
 ## What Does NOT Belong Here
@@ -46,3 +48,4 @@ specialized representations. Neural network graphs, color and lighting,
 - [heredity](heredity/README.md) — Genetic algorithms, evolution, probabilistic factories
 - [physics](physics/README.md) — Atomic/molecular structures, simulation, forces
 - [chemistry](chemistry/README.md) — Periodic table and chemical element representations
+- [biology](biology/README.md) — Neurons, synapses, connectomes and biological dynamics

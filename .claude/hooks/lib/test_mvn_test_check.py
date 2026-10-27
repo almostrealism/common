@@ -101,8 +101,47 @@ class DecideFunctionTests(unittest.TestCase):
         self.assertEqual(d["action"], "allow")
 
     def test_mvn_clean_install_allows(self):
-        d = self.core.decide("mvn clean install")
+        # install runs tests unless skipped, so the allowed form carries -DskipTests.
+        d = self.core.decide("mvn clean install -DskipTests")
         self.assertEqual(d["action"], "allow")
+
+    def test_mvn_clean_install_without_skip_blocks(self):
+        d = self.core.decide("mvn clean install")
+        self.assertEqual(d["action"], "block")
+
+    def test_mvn_verify_without_skip_blocks(self):
+        d = self.core.decide("mvn verify")
+        self.assertEqual(d["action"], "block")
+
+    def test_mvn_package_without_skip_blocks(self):
+        d = self.core.decide("mvn package")
+        self.assertEqual(d["action"], "block")
+
+    def test_ar_test_group_assignment_blocks(self):
+        d = self.core.decide("AR_TEST_GROUP=2 AR_TEST_GROUPS=8 mvn test -pl engine/utils")
+        self.assertEqual(d["action"], "block")
+        self.assertIn("AR_TEST_GROUP", d["reason"])
+
+    def test_ar_test_group_property_blocks_on_non_test_phase(self):
+        d = self.core.decide("mvn package -DAR_TEST_GROUP=1 -DAR_TEST_GROUPS=4 -DskipTests")
+        self.assertEqual(d["action"], "block")
+
+    def test_ar_test_group_export_blocks(self):
+        d = self.core.decide("export AR_TEST_GROUP=3 && echo set")
+        self.assertEqual(d["action"], "block")
+
+    def test_searching_for_ar_test_group_allows(self):
+        # Reading or searching for the name is not running a shard.
+        d = self.core.decide("grep -n AR_TEST_GROUP .github/workflows/analysis.yaml")
+        self.assertEqual(d["action"], "allow")
+
+    def test_skip_tests_equals_false_is_not_treated_as_skip(self):
+        d = self.core.decide("mvn test -DskipTests=false")
+        self.assertEqual(d["action"], "block")
+
+    def test_maven_test_skip_equals_false_is_not_treated_as_skip(self):
+        d = self.core.decide("mvn install -Dmaven.test.skip=false")
+        self.assertEqual(d["action"], "block")
 
     def test_bash_c_mvn_test_blocks_via_recursion(self):
         d = self.core.decide('bash -c "mvn test"')
@@ -288,14 +327,17 @@ class BitForBitEquivalenceTests(unittest.TestCase):
         """The pre-extraction analyze() function, copied verbatim from
         the old .claude/hooks/block-mvn-test-direct.sh. The core's
         decide() must agree with this on every command in the
-        sample below."""
+        sample below. SKIP and TEST_PHASES are read from the module
+        under test: this test proves tokenizer/dispatch equivalence,
+        and an independent copy of those sets would go stale every
+        time they intentionally change."""
         OPERATORS = {"&&", "||", "|", "|&", ";", ";;", "&", "(", ")", "{", "}",
                      "\n", "then", "do", "else", "elif", "fi", "done"}
         CMD_PREFIXES = {"!", "time", "nohup", "sudo", "env", "command", "exec",
                         "builtin", "stdbuf", "nice", "ionice"}
         ENV_ASSIGN = __import__("re").compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-        SKIP = __import__("re").compile(r"-DskipTests|-Dmaven\.test\.skip(=true)?$|-Dmaven\.test\.skip\b")
-        TEST_PHASES = {"test", "integration-test"}
+        SKIP = self.core.SKIP
+        TEST_PHASES = self.core.TEST_PHASES
         DASH_C = __import__("re").compile(r"^-[a-z]*c$")
 
         def runs_tests(args):

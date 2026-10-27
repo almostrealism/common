@@ -446,6 +446,34 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 	}
 
 	/**
+	 * Rendering into a context whose destination is not the buffer the pattern
+	 * registered with {@link PatternLayerManager#updateDestination} is rejected before
+	 * any audio is written, and the context's buffer is left untouched.
+	 */
+	@Test(timeout = 120000)
+	public void destinationMismatchIsRejected() {
+		try (PatternSystemManager psm = system();
+			 PackedCollection registered = new PackedCollection(TOTAL_FRAMES);
+			 PackedCollection other = new PackedCollection(TOTAL_FRAMES)) {
+			AudioSceneContext context = context(registered);
+			PatternLayerManager plm = psm.getPatterns().get(0);
+			plm.updateDestination(context);
+			context.setDestination(other);
+
+			try {
+				plm.sum(() -> context, CHANNEL.getVoicing(), CHANNEL.getAudioChannel(),
+						() -> 0, TOTAL_FRAMES).get().run();
+				Assert.fail("a destination other than the registered one is invalid");
+			} catch (IllegalArgumentException e) {
+				Assert.assertEquals("Destination buffer mismatch", e.getMessage());
+			}
+
+			Assert.assertEquals("nothing is rendered into the mismatched buffer",
+					0.0, peak(other.toArray(0, TOTAL_FRAMES), 0, TOTAL_FRAMES), 0.0);
+		}
+	}
+
+	/**
 	 * Warming the note cache evaluates one note per element of every pattern, and
 	 * resetting a buffer clears whatever it held.
 	 */
