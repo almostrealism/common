@@ -8,7 +8,7 @@ tracker: [f86ab017-e3c2-48a3-a906-943491d6aad1]
 # Stop starting new kernel builds on an interrupted thread
 
 **Tracker task:** f86ab017-e3c2-48a3-a906-943491d6aad1 — "Stop starting new OpenCL builds on a
-thread that has been interrupted" (release Common 0.76).
+thread that has been interrupted" (assigned to the release under development).
 
 ## Motivation
 
@@ -42,6 +42,8 @@ The backends do not behave alike today, and the difference matters for what this
   message, the interrupt flag is **cleared** by the catch, and the compiler process is left running
   unwaited.
 - **Metal and CUDA**: no interrupt check before or during compilation.
+- **External** (`ExternalComputeContext.deliver`) also compiles through `NativeCompiler.compile`,
+  so it shares the native behaviour above.
 
 ## What stays as it is
 
@@ -70,12 +72,21 @@ use-after-free. **A build that has started is never abandoned.** This plan adds 
    *start* a new compilation. It also saves the scope encoding work, not just the native build.
    What happens to a compilation that has *already started* when the interrupt arrives still
    differs by backend (see Motivation and Open question 5); this plan changes only the start.
+   Kernels compiled outside `deliver` are not covered by this check: the deprecated
+   `CLOperatorSources` maps (covered by the CL check, see Call sites) and Metal's built-in copy
+   kernels (`MetalComputeContext.copyKernel`, which compiles a `MetalProgram` directly, once per
+   unit width, and caches it). The copy kernels are a fixed, small set compiled once per context,
+   so leaving them out does not reopen the per-iteration loop this plan is about.
 3. **No half-registered state after a cancelled or failed compile.**
    - `ScopeInstructionsManager`: the check runs before `getScope()`. Otherwise `scopeName`,
      `inputs` and `arguments` would be cached for a compile that never happened, and the next
-     attempt would log "Repeated attempt to retrieve Scope". `operators` stays `null`, so a later
-     call on an uninterrupted thread compiles normally. Note that this only covers the
-     cancellation this plan adds. Any `deliver` that fails *after* `getScope()` — a genuine compile
+     attempt would log "Repeated attempt to retrieve Scope". `operators` is left as it was
+     (`null` on a first compile, or the destroyed instruction set on a recompile), so a later
+     call on an uninterrupted thread compiles normally. The warning claim applies to the first
+     compile only: when a manager recompiles after its instruction set was destroyed,
+     `scopeName` is already set from the earlier compile, so `getScope()` logs "Repeated attempt
+     to retrieve Scope" on that recompile today whether or not this plan lands. Note that this
+     only covers the cancellation this plan adds. Any `deliver` that fails *after* `getScope()` — a genuine compile
      error, or a native compile whose `waitFor` was interrupted — already leaves `scopeName`,
      `inputs` and `arguments` cached today, and this plan does not change that.
    - `CLComputeContext.deliver` adds the `CLOperatorMap` to `instructionSets` only after its
@@ -83,7 +94,9 @@ use-after-free. **A build that has started is never abandoned.** This plan adds 
      rethrows a compile failure without releasing the `cl_program` that `CLProgram.create` made,
      which leaks one native program per failed build. `init` will release the program (via
      `CLProgram.destroy()`, which is safe here because `compile()` has returned and no build is
-     outstanding) before it rethrows. A second copy of the CL check (see Call sites) runs before
+     outstanding) before it rethrows, and clear its `prog` field so nothing can release it a
+     second time (`CLProgram.destroy()` does not guard against a repeated call; it would pass
+     `null` to `clReleaseProgram`). A second copy of the CL check (see Call sites) runs before
      `CLProgram.create`, inside `CLOperatorMap.init`, so a cancelled compile on that path creates no
      `cl_program` at all; the check in `CLProgram.compile()` itself (item 1) is the backstop for
      callers that create a `CLProgram` directly. Only a build that
@@ -95,9 +108,10 @@ use-after-free. **A build that has started is never abandoned.** This plan adds 
    `getOperator` snippet, which reproduces today's compile-on-first-call code. It also goes in the
    javadoc of `CLProgram.compile()`, `ScopeInstructionsManager.getOperator` and
    `getInstructionSet`, `AcceleratedOperation.load()` and
-   `AcceleratedComputationEvaluable.evaluate()`. Of these, only `evaluate()` (alongside
-   `AcceleratedOperation.awaitCompletion`) describes the dispatch-side contract today; `load()`'s
-   javadoc says nothing about interrupts yet.
+   `AcceleratedComputationEvaluable.evaluate()`. Of these, only `evaluate()` describes the
+   dispatch-side contract today (as do `AcceleratedOperation.run()` and
+   `AcceleratedOperation.awaitCompletion`, which are not on the list because their contract does
+   not change); `load()`'s javadoc says nothing about interrupts yet.
 
 Out of scope: changing how the build waits, changing what any caller does with the exception, the
 native compiler's handling of an interrupt that arrives during `Process.waitFor()` (Open question
@@ -140,7 +154,8 @@ rules require. The method only reads the flag (`isInterrupted()`, never `Thread.
 - `CLInstructionsManager.getOperator` (the deprecated `CLOperatorSources` path) compiles through
   `CLOperatorMap` — once per context in `CLOperatorSources.init` and once per class in
   `getOperators(Class)`, both cached — so the CL check covers it without a change of its own. No
-  production code outside the `cl` package constructs a `CLInstructionsManager` today.
+  production code constructs a `CLInstructionsManager` at all today (its constructor is its only
+  occurrence outside javadoc), so this path matters only for completeness.
 - **Native/JNI** gets the generic check from `ScopeInstructionsManager` and needs no change of its
   own for this plan; how `NativeCompiler.runner` reports an interrupt that arrives *during*
   `Process.waitFor()` is left as it is (Open question 5).
@@ -163,7 +178,11 @@ matrix group 0 runs `base/hardware` with `AR_HARDWARE_DRIVER=native,cl`) is wher
 to run for real. Because the test builds its own `CLDataContext` rather than following the
 configured driver, it will also run on any other lane whose host exposes an OpenCL device (the
 macOS lane, `test-mac`, runs `base/hardware` too, and macOS still ships a deprecated OpenCL), so it
-must not assume a particular vendor's build timing. Every `@Test` has a timeout.
+must not assume a particular vendor's build timing. The same applies to the other lanes that run
+`base/hardware` (`test`, with `AR_HARDWARE_DRIVER=native`, and `test-cuda`, with `native,cuda`):
+the driver setting does not stop the test building its own `CLDataContext`, so it runs there too
+whenever the host has an OpenCL ICD installed (an NVIDIA driver commonly provides one). Every
+`@Test` has a timeout.
 
 `CLDataContextLifecycleTest` only constructs and destroys contexts without triggering OpenCL
 startup, so it shows how to build a context without `TestSuiteBase` but not how to reach the
@@ -171,6 +190,12 @@ device. `clGetProgramBuildInfo` needs a `cl_device_id`, and `CLDataContext` expo
 publicly (only `getClContext()` and the value object `getMainDeviceInfo()`). The test can obtain
 the device from the program itself with `clGetProgramInfo(..., CL_PROGRAM_DEVICES, ...)`, which
 avoids adding an accessor purely for the test. Methods:
+
+`CLProgram.compile()` names its build thread `CLProgram build ` followed by the metadata's display
+name. `CLProgram`'s constructor substitutes an empty `OperationMetadata` when given `null`, so
+every program built without metadata gets the same thread name. The interrupter below finds the
+build thread by name, so each program the test creates needs `OperationMetadata` with its own
+display name.
 
 - **`compileOnInterruptedThreadDoesNotBuild`**: create a `CLProgram`, interrupt the current
   thread, call `compile()`. Expect `CompilationInterruptedException`, the interrupt flag still set,
@@ -188,29 +213,54 @@ avoids adding an accessor purely for the test. Methods:
   - the next kernel in the sequence fails with `CompilationInterruptedException`, and no later
     kernel's build status is anything but `CL_BUILD_NONE` (or the program was never created, when
     going through `CLOperatorMap`).
+
+  Seeing the build thread alive does not prove the interrupt landed before the build finished: a
+  fast compiler can finish between the interrupter's observation and its `interrupt()` call. All
+  of the assertions above still hold in that case, so the test does not become flaky, but the run
+  then does not actually exercise "interrupt during a build". The test should record which case
+  occurred (for example by checking whether the build thread was still alive immediately after
+  `interrupt()`), so a reviewer can tell whether the CL lane really covered the in-progress case.
+  Making it fully deterministic would need a hook inside `compile()`, which this plan does not
+  propose.
 - **`uninterruptedSequenceCompilesAll`**: the same sequence on an uninterrupted thread builds every
   program successfully.
 - **`failedCompileReleasesProgram`** (for scope item 3): an invalid source passed to `CLOperatorMap`
-  fails, and the `cl_program` is released. This is observed by the program's `CL_PROGRAM_REFERENCE_COUNT`
-  before release, or by verifying through the map that `destroy` ran. The exact observation is
-  settled during implementation; a test seam is acceptable only if JOCL offers no direct one.
+  fails, and the `cl_program` is released. Observing the release is harder than it looks, and the
+  plan should not pretend otherwise. The failure is thrown from the `CLOperatorMap` constructor
+  (which calls `init`), so the test never receives the map; the `CLProgram` is held only in the
+  private `prog` field; and querying a `cl_program` after `clReleaseProgram` (for example its
+  `CL_PROGRAM_REFERENCE_COUNT`) is undefined behaviour in OpenCL, not a check. JOCL offers no
+  direct observation, so this test needs a seam. The least invasive one available today is that
+  `CLOperatorMap.init` is `protected` and the class is not final: a test subclass can override
+  `init`, call `super.init`, and observe the release through a small protected hook (for example
+  a protected method that `init` calls to release the program, which the subclass records). The
+  implementer chooses the seam; the approver should know that one is required (Open question 6).
 
 ### New test methods, engine/utils: `AcceleratedOperationInterruptTest`
 
 New methods only; the existing ones are not modified.
 
 - **`firstCompileOnInterruptedThreadFails`**: build a computation that has never been compiled,
-  interrupt the thread, `get().evaluate()`. Expect `CompilationInterruptedException` (or a
-  `HardwareException` whose cause chain contains it — since it is a `HardwareException`,
-  `AcceleratedOperation.load()` should pass it through unwrapped, and the test should state which
-  it expects), with the interrupt flag still set. On the native lane this must be the new
-  exception, not the existing `NativeCompiler.runner` failure, which would show the generic check
+  interrupt the thread *before calling `get()`*, then `get().evaluate()`. Where the compile happens
+  depends on the producer: `CollectionProducerComputation.get()` builds a
+  `DefaultCollectionEvaluable` and calls `load()` inside `get()`, while
+  `CollectionProducerComputationBase.get()` returns a `HardwareEvaluable` whose kernel is created
+  lazily on the first `evaluate()`. Interrupting before `get()` covers both, and the try block
+  must enclose `get()` as well as `evaluate()`. Assert that the cause chain contains
+  `CompilationInterruptedException` rather than that it is thrown bare:
+  `AcceleratedOperation.load()` and `setupOperator` pass a `HardwareException` through unwrapped,
+  but `AcceleratedComputationEvaluable.evaluate()` wraps any `HardwareException` raised inside its
+  `try` block (which includes `apply()`, and `apply()` calls `load()` when no arguments are bound)
+  in "Failed to evaluate ...". Also assert the interrupt flag is still set. On the native lane
+  this must be the new exception, not the existing `NativeCompiler.runner` failure, which would show the generic check
   ran too late.
 - **`compileAfterCancelledCompileSucceeds`**: after the above, clear the flag and evaluate the same
   evaluable again. It compiles and returns the correct value. This shows the cancelled attempt left
   no half-registered state in `ScopeInstructionsManager`, and no "Repeated attempt to retrieve
   Scope" warning appears (observable through a listener registered with `Console.addListener` on
-  the hardware console). With `ScopeSettings.enableInstructionSetReuse` on, the manager is shared
+  `Hardware.console`, which is the console `ScopeInstructionsManager.console()` returns; remove
+  the listener in a `finally`). With `ScopeSettings.enableInstructionSetReuse` on (the default,
+  controlled by `AR_INSTRUCTION_SET_REUSE`), the manager is shared
   through `DefaultComputer`'s signature cache, so the second evaluation reaches the same manager
   the cancelled attempt left behind — which is exactly the state this test must exercise.
 - **`compileLoopStopsAtInterrupt`**: a loop that compiles distinct computations (distinct constant
@@ -232,6 +282,14 @@ On the CL lane, a test that times out no longer leaves its thread compiling. The
 compile or deallocation activity from that test's thread after the timeout beyond the build that
 was in progress. A reviewer can check this in the next `test-media-cl` run that contains a timeout.
 No single test can force one for this purpose.
+
+## Related plans
+
+- [`PLAN-20261026-collected-after-free-not-double-free.md`](PLAN-20261026-collected-after-free-not-double-free.md)
+  deals with the deallocation warnings that the Motivation uses as evidence the abandoned thread
+  was still running. It lists "the JUnit timeout / uninterruptible `CLProgram.compile` join" as
+  out of its scope, which is the gap this plan fills. The two plans touch different code and can
+  be approved independently.
 
 ## Dependencies
 
@@ -275,6 +333,11 @@ No single test can force one for this purpose.
    reporting `CompilationInterruptedException`) there is small and would make the contract uniform
    across backends; whether to fold it into this plan or file it as a follow-up is for the
    approver. It is listed as out of scope above only so the plan does not grow silently.
+
+6. **Test seam for the failed-build release.** `failedCompileReleasesProgram` cannot observe the
+   release of a `cl_program` without a seam in `CLOperatorMap` (see Success criteria). Approve a
+   small protected hook in `CLOperatorMap.init` for this, or prefer to drop that test and rely on
+   review for the release-on-failure change?
 
 ## Estimated complexity
 
