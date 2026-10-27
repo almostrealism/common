@@ -129,6 +129,11 @@ public class OperationListRunner implements Runnable, Submittable, Destroyable, 
 	 * profile attributes it to the operation rather than to an anonymous entry created afresh
 	 * for every call.</p>
 	 *
+	 * <p>If a member fails to issue, the work issued before it (and so everything it was
+	 * chained on) is waited for before the failure propagates, with any failure of that work
+	 * attached as suppressed (see {@link Semaphore#waitForSettled(Throwable)}), so a caller
+	 * that sees the failure never releases memory that work is still using.</p>
+	 *
 	 * @param dependsOn the completion the first operation must be ordered after, or
 	 *                  {@code null} to begin a chain
 	 * @return the completion of the last operation, or {@code null} when nothing issued
@@ -144,18 +149,23 @@ public class OperationListRunner implements Runnable, Submittable, Destroyable, 
 
 			Semaphore pending = dependsOn;
 
-			// TODO(review): a member that throws leaves earlier members in flight; settle pending (waitForSettled) as SimulationRunner.run does
-			for (int i = 0; i < run.size(); i++) {
-				Runnable r = run.get(i);
-				Submittable member = Submittable.of(r);
+			try {
+				for (int i = 0; i < run.size(); i++) {
+					Runnable r = run.get(i);
+					Submittable member = Submittable.of(r);
 
-				// Chain on the prior member; see the method javadoc
-				if (timingListener == null) {
-					pending = member.submit(pending);
-				} else {
-					if (enableRunLogging) log("Running " + OperationInfo.display(r));
-					pending = member.submit(getMetadata(), pending, timingListener);
+					// Chain on the prior member; see the method javadoc
+					if (timingListener == null) {
+						pending = member.submit(pending);
+					} else {
+						if (enableRunLogging) log("Running " + OperationInfo.display(r));
+						pending = member.submit(getMetadata(), pending, timingListener);
+					}
 				}
+			} catch (RuntimeException | Error e) {
+				// Members issued before the failure may still be running against shared memory
+				if (pending != null) pending.waitForSettled(e);
+				throw e;
 			}
 
 			return pending;

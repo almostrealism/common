@@ -159,9 +159,13 @@ public class MetalSemaphore implements OperationSemaphore {
 	 * completion's {@link #getValue() value}, so issuing it costs no host wait or thread (see
 	 * {@link MetalCommandRunner#submit}).
 	 *
+	 * <p>This describes dependents issued to Metal. A dependent issued to a provider that honors
+	 * a foreign dependency on the host (a native dispatch, for example) still waits for this
+	 * completion on one of its threads; a caller running ahead of the device bounds how many
+	 * such waits it can accumulate (see {@code SimulationRunner.maxStepsInFlight}).</p>
+	 *
 	 * @return {@code true}
 	 */
-	// TODO(review): device ordering depends on the receiving provider too; a native receiver of this completion still parks a host thread
 	@Override
 	public boolean isOrderedOnDevice() { return true; }
 

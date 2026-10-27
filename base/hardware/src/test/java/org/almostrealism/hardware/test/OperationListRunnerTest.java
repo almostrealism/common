@@ -51,6 +51,30 @@ public class OperationListRunnerTest {
 		public void waitFor() { waits++; }
 	}
 
+	/** A completion whose wait fails, as the completion of failed device work does. */
+	private static class FailedCompletion extends RecordedCompletion {
+		/** The failure thrown by every wait. */
+		private final RuntimeException failure = new IllegalStateException("device work failed");
+
+		@Override
+		public void waitFor() {
+			super.waitFor();
+			throw failure;
+		}
+	}
+
+	/** A member whose submission fails, as a dispatch that cannot be issued does. */
+	private static class FailingMember extends RecordingMember {
+		/** The failure thrown by every submission. */
+		private final RuntimeException failure = new IllegalArgumentException("dispatch failed");
+
+		@Override
+		public Semaphore submit(Semaphore dependsOn) {
+			super.submit(dependsOn);
+			throw failure;
+		}
+	}
+
 	/** A member that records the completion it is chained on and returns its own completion. */
 	private static class RecordingMember implements Runnable, Submittable {
 		/** This member's completion. */
@@ -246,5 +270,68 @@ public class OperationListRunnerTest {
 		Assert.assertEquals(List.of(first.completion), second.received);
 		Assert.assertEquals(0, first.completion.waits);
 		Assert.assertEquals(1, second.completion.waits);
+	}
+
+	/**
+	 * A member that fails to issue leaves the members before it in flight; {@code submit} waits
+	 * for them before the failure propagates, rethrows that very failure, and issues nothing after
+	 * the failing member.
+	 */
+	@Test(timeout = 30000)
+	public void failedMemberSettlesTheWorkInFlight() {
+		RecordingMember first = new RecordingMember();
+		FailingMember failing = new FailingMember();
+		RecordingMember after = new RecordingMember();
+
+		try {
+			runner(first, failing, after).submit(null);
+			Assert.fail("Expected the member's failure to propagate");
+		} catch (IllegalArgumentException e) {
+			Assert.assertSame(failing.failure, e);
+			Assert.assertEquals(0, e.getSuppressed().length);
+		}
+
+		Assert.assertEquals(List.of(first.completion), ((RecordingMember) failing).received);
+		Assert.assertEquals(1, first.completion.waits);
+		Assert.assertTrue(after.received.isEmpty());
+		Assert.assertEquals(0, after.runs);
+	}
+
+	/**
+	 * When the work in flight at a member's failure has itself failed, its failure is attached
+	 * to the propagating one as suppressed instead of replacing it.
+	 */
+	@Test(timeout = 30000)
+	public void failedMemberSuppressesTheFailureOfTheWorkInFlight() {
+		FailedCompletion inFlight = new FailedCompletion();
+		FailingMember failing = new FailingMember();
+
+		try {
+			runner(failing).submit(inFlight);
+			Assert.fail("Expected the member's failure to propagate");
+		} catch (IllegalArgumentException e) {
+			Assert.assertSame(failing.failure, e);
+			Assert.assertArrayEquals(new Throwable[] { inFlight.failure }, e.getSuppressed());
+		}
+
+		Assert.assertEquals(1, ((RecordedCompletion) inFlight).waits);
+	}
+
+	/** A member that fails as the first issued, with no dependency, has nothing to wait for. */
+	@Test(timeout = 30000)
+	public void failedFirstMemberWithoutDependencyPropagates() {
+		FailingMember failing = new FailingMember();
+
+		try {
+			runner(failing).submit(null);
+			Assert.fail("Expected the member's failure to propagate");
+		} catch (IllegalArgumentException e) {
+			Assert.assertSame(failing.failure, e);
+			Assert.assertEquals(0, e.getSuppressed().length);
+		}
+
+		List<Semaphore> received = ((RecordingMember) failing).received;
+		Assert.assertEquals(1, received.size());
+		Assert.assertNull(received.get(0));
 	}
 }
