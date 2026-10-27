@@ -21,27 +21,29 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.SplitIndexTraversalOrdering;
 
 /**
- * A sparse matrix in compressed-sparse-row (CSR) form, with a matrix–vector (and
- * matrix–matrix) product computed by a segmented reduction.
+ * A sparse matrix in compressed-sparse-row (CSR) form: a collection of entry values laid out
+ * by a {@link CompressedRowTraversalOrdering}, with a matrix–vector (and matrix–matrix) product
+ * computed by a segmented reduction over the members of each row.
  *
  * <h2>Storage</h2>
- * <p>The matrix is held as three device collections:</p>
+ * <p>The matrix is the {@code values} collection read through a
+ * {@link CompressedRowTraversalOrdering}, which holds the index structure:</p>
  * <ul>
  *   <li>{@code rowOffsets}: the {@code rows + 1} row boundaries, where the entries of row
  *       {@code i} are {@code rowOffsets[i] .. rowOffsets[i + 1] - 1}.</li>
  *   <li>{@code columns}: the column of each entry.</li>
- *   <li>{@code values}: the value of each entry.</li>
  * </ul>
  * <p>Both index collections are stored split across two lanes, shape {@code (n, 2)}, in the
  * layout of {@link SplitIndexTraversalOrdering}: at tens of millions of entries an offset exceeds
  * {@code 2^24} and would be rounded in an FP32 collection, and the split layout also lifts any
  * limit on the column count. Every flat address into {@code columns} and {@code values} is formed
  * from the offsets on integer expressions in the kernel, so it is exact for any {@code int} entry
- * count. The entry collections may hold more elements than the last row offset; the extra
+ * count. The values collection may hold more elements than the last row offset; the extra
  * capacity is never read.</p>
  *
  * <p>The index structure is host data and enters device memory through
@@ -51,45 +53,37 @@ import org.almostrealism.collect.SplitIndexTraversalOrdering;
  * <h2>Product</h2>
  * <p>{@link #multiply(Producer)} computes {@code A·x} as a gather followed by a segmented
  * reduction ({@link SegmentedWeightedSumComputation}): one kernel thread per output element,
- * which loops over exactly that row's entries and writes its output once, deterministically and
- * without atomics.</p>
+ * which enumerates exactly that row's entries and writes its output once, deterministically and
+ * without atomics. The loop bound, {@code rowOffsets[i + 1] - rowOffsets[i]}, is read from device
+ * memory, so rows of any length are handled without padding. This runs on both the native
+ * (FP64) and Metal (FP32) backends: a product with 166,000 rows and about twenty million
+ * entries runs in roughly 5 ms on Metal and 13 ms on the native backend. The kernel depends
+ * only on the operand shapes, so matrices with the same shape and capacity share one compiled
+ * kernel.</p>
  *
- * <h2>Design decisions</h2>
- * <p><strong>Data-dependent loop bound, not padded rows.</strong> The row loop is a native loop
- * whose bound, {@code rowOffsets[i + 1] - rowOffsets[i]}, is read from device memory, so rows of
- * any length are handled without padding and without wasted work on long rows. A degree-binned
- * padded-row (ELL) layout was the alternative, needed only if a data-dependent bound did not
- * compile and run correctly on every backend. It does, on both the native (FP64) and Metal
- * (FP32) backends: a product with 166,000 rows and about twenty million entries runs in roughly
- * 5 ms on Metal and 13 ms on the native backend. So no padding layout is provided. The kernel
- * depends only on the operand shapes, so matrices with the same shape and capacity share one
- * compiled kernel.</p>
- *
- * <p><strong>Not a collection read through a sparse ordering.</strong> The official way to
- * lay out collection memory is a {@link io.almostrealism.collect.TraversalOrdering} configured
- * on a {@link PackedCollection}, and a matrix with that layout would be a {@code (rows, cols)}
- * collection over the entry values whose ordering maps each logical element to its entry, or to
- * an absent position. That representation was considered and rejected for this type, for three
- * reasons that hold for every possible CSR ordering, not only the existing ones:</p>
+ * <h2>Why the product is not dense {@code matmul} of an ordered collection</h2>
+ * <p>The {@code (rows, cols)} collection of the values read through the ordering,
+ * {@code new PackedCollection(getShape(), 0, getValues(), 0, getOrdering())}, is a correct view
+ * of the matrix: every computation reading it sees the dense matrix, with zero for every absent
+ * element. It is not the representation the product runs on, because two existing operations
+ * do not support it at the scale this type exists for:</p>
  * <ul>
- *   <li><strong>It cannot be built at the scale this type exists for.</strong> The logical
- *       element count of an ordered collection is an {@code int}: {@link PackedCollection}
- *       rejects a shape of more than {@link Integer#MAX_VALUE} elements, and a kernel
- *       addresses logical elements through {@code int} sizes. A 166,000 × 166,000 matrix has
- *       about {@code 2.8 * 10^10} logical elements.</li>
- *   <li><strong>The map runs the wrong way for a product.</strong> An ordering maps a logical
- *       index to a physical position, so any computation reading the collection, including
- *       dense {@code matmul}, reads every logical element: {@code rows * cols} reads per
- *       product rather than one per entry. The sparse product enumerates the stored entries
- *       of each row, which is the inverse map (entry to logical position) and is exactly
- *       the row offsets and columns held here.</li>
- *   <li><strong>The logical-to-physical map has no closed form.</strong> Finding the entry of
- *       {@code (i, j)} is a search of row {@code i}'s columns. The one searching ordering,
- *       {@link org.almostrealism.collect.IndexMaskTraversalOrdering}, renders one conditional
- *       per stored entry into every read, which its documentation limits to small masks.</li>
+ *   <li><strong>Logical size.</strong> A {@link PackedCollection} measures its logical shape
+ *       as an {@code int} even when an ordering stores only the entries, so a shape of more than
+ *       {@link Integer#MAX_VALUE} logical elements cannot be constructed. A 166,000 × 166,000
+ *       matrix has about {@code 2.8 * 10^10} logical elements.</li>
+ *   <li><strong>Reductions read every logical element.</strong> Dense {@code matmul} sums over
+ *       every column of every row, reading each element through
+ *       {@link CompressedRowTraversalOrdering#indexOf}, which searches the row: that is
+ *       {@code rows * cols} searches per product, each as long as the longest row, where the
+ *       segmented reduction visits each stored entry once. The cost is already prohibitive in
+ *       compilation: for a 300 × 200 matrix with one 200-entry row, dense {@code matmul} of
+ *       the ordered collection with a {@code (200, 3)} operand fails to compile after more than
+ *       two minutes, while the segmented product of the same operands compiles and runs in
+ *       seconds.</li>
  * </ul>
- * <p>The ordering machinery is used where it does fit: the index arrays are stored in the
- * integer-exact layout of {@link SplitIndexTraversalOrdering}.</p>
+ * <p>Once ordered collections may exceed {@code int} logical sizes and reductions enumerate the
+ * members of a compressed ordering, this type reduces to that ordered collection.</p>
  *
  * <h2>Usage</h2>
  * <pre>{@code
@@ -103,23 +97,15 @@ import org.almostrealism.collect.SplitIndexTraversalOrdering;
  * CollectionProducer y = a.multiply(cp(x));   // shape (3)
  * }</pre>
  *
+ * @see CompressedRowTraversalOrdering
  * @see SegmentedWeightedSumComputation
  * @see SplitIndexTraversalOrdering
  *
  * @author Michael Murray
  */
 public class SparseMatrix implements MatrixFeatures, Destroyable {
-	/** The number of rows. */
-	private final int rows;
-
-	/** The number of columns. */
-	private final int cols;
-
-	/** The {@code rows + 1} row boundaries, split into lanes of shape {@code (rows + 1, 2)}. */
-	private final PackedCollection rowOffsets;
-
-	/** The column of each entry, split into lanes of shape {@code (m, 2)}. */
-	private final PackedCollection columns;
+	/** The index structure, which lays the values out as a {@code (rows, cols)} matrix. */
+	private final CompressedRowTraversalOrdering ordering;
 
 	/** The value of each entry. */
 	private final PackedCollection values;
@@ -142,33 +128,25 @@ public class SparseMatrix implements MatrixFeatures, Destroyable {
 	 */
 	public SparseMatrix(int rows, int cols, PackedCollection rowOffsets,
 						PackedCollection columns, PackedCollection values) {
-		if (rows <= 0 || cols <= 0) {
-			throw new IllegalArgumentException("Sparse matrix dimensions (" + rows + ", " + cols
-					+ ") must be positive");
-		}
+		this(new CompressedRowTraversalOrdering(rows, cols, rowOffsets, columns), values);
+	}
 
-		TraversalPolicy offsetShape = new TraversalPolicy(rows + 1, SplitIndexTraversalOrdering.LANES);
-		if (!rowOffsets.getShape().equalsIgnoreAxis(offsetShape)) {
-			throw new IllegalArgumentException("Row offsets " + rowOffsets.getShape()
-					+ " must have shape " + offsetShape);
-		}
-
-		TraversalPolicy columnShape = columns.getShape();
-		TraversalPolicy splitColumns = new TraversalPolicy(columnShape.length(0), SplitIndexTraversalOrdering.LANES);
-		if (!columnShape.equalsIgnoreAxis(splitColumns)) {
-			throw new IllegalArgumentException("Columns " + columnShape
-					+ " must have shape (m, " + SplitIndexTraversalOrdering.LANES + ")");
-		}
-
-		if (values.getMemLength() < columnShape.length(0)) {
+	/**
+	 * Creates a sparse matrix of the given values laid out by the given ordering.
+	 *
+	 * @param ordering the index structure
+	 * @param values   the value of each entry
+	 * @throws IllegalArgumentException if {@code values} holds fewer elements than the
+	 *         ordering has column lanes
+	 */
+	public SparseMatrix(CompressedRowTraversalOrdering ordering, PackedCollection values) {
+		int capacity = ordering.getColumns().getShape().length(0);
+		if (values.getMemLength() < capacity) {
 			throw new IllegalArgumentException(values.getMemLength() + " values given for "
-					+ columnShape.length(0) + " columns");
+					+ capacity + " columns");
 		}
 
-		this.rows = rows;
-		this.cols = cols;
-		this.rowOffsets = rowOffsets;
-		this.columns = columns;
+		this.ordering = ordering;
 		this.values = values;
 	}
 
@@ -177,35 +155,42 @@ public class SparseMatrix implements MatrixFeatures, Destroyable {
 	 *
 	 * @return the number of rows
 	 */
-	public int getRows() { return rows; }
+	public int getRows() { return ordering.getRows(); }
 
 	/**
 	 * Returns the number of columns.
 	 *
 	 * @return the number of columns
 	 */
-	public int getCols() { return cols; }
+	public int getCols() { return ordering.getCols(); }
 
 	/**
 	 * Returns the shape {@code (rows, cols)} of the dense matrix this matrix represents.
 	 *
 	 * @return the dense shape
 	 */
-	public TraversalPolicy getShape() { return new TraversalPolicy(rows, cols); }
+	public TraversalPolicy getShape() { return new TraversalPolicy(getRows(), getCols()); }
+
+	/**
+	 * Returns the ordering that lays the values out as the matrix.
+	 *
+	 * @return the index structure
+	 */
+	public CompressedRowTraversalOrdering getOrdering() { return ordering; }
 
 	/**
 	 * Returns the row boundaries.
 	 *
 	 * @return the row offsets as split lanes of shape {@code (rows + 1, 2)}
 	 */
-	public PackedCollection getRowOffsets() { return rowOffsets; }
+	public PackedCollection getRowOffsets() { return ordering.getRowOffsets(); }
 
 	/**
 	 * Returns the column of each entry.
 	 *
 	 * @return the columns as split lanes of shape {@code (m, 2)}
 	 */
-	public PackedCollection getColumns() { return columns; }
+	public PackedCollection getColumns() { return ordering.getColumns(); }
 
 	/**
 	 * Returns the value of each entry.
@@ -226,6 +211,7 @@ public class SparseMatrix implements MatrixFeatures, Destroyable {
 	 * @throws IllegalArgumentException if {@code x} does not have {@code cols} rows
 	 */
 	public CollectionProducer multiply(Producer<PackedCollection> x) {
+		int cols = getCols();
 		TraversalPolicy shape = shape(x);
 		int size = shape.getTotalSize();
 		if (shape.getDimensions() > 2 || shape.length(0) != cols) {
@@ -233,8 +219,8 @@ public class SparseMatrix implements MatrixFeatures, Destroyable {
 					+ " cannot multiply a sparse matrix with " + cols + " columns");
 		}
 
-		return new SegmentedWeightedSumComputation("sparseMultiply", rows, size / cols,
-				x, cp(values), cp(columns), cp(rowOffsets));
+		return new SegmentedWeightedSumComputation("sparseMultiply", getRows(), size / cols,
+				x, cp(values), cp(getColumns()), cp(getRowOffsets()));
 	}
 
 	/**
@@ -242,17 +228,21 @@ public class SparseMatrix implements MatrixFeatures, Destroyable {
 	 * device as the product of this matrix with the identity. The result holds
 	 * {@code rows * cols} elements, so this is intended for matrices small enough to be dense.
 	 *
+	 * <p>This is not the values read through the {@link #getOrdering() ordering}: that view is
+	 * correct, but each of its elements is a search of its row, so a computation consuming it
+	 * compiles one search per element (see the class documentation).</p>
+	 *
 	 * @return a producer of the dense matrix
 	 */
 	public CollectionProducer toDense() {
-		return multiply(identity(cols));
+		return multiply(identity(getCols()));
 	}
 
-	/** Releases the device memory of the three CSR collections. */
+	/** Releases the device memory of the index structure and the values. */
 	@Override
 	public void destroy() {
-		rowOffsets.destroy();
-		columns.destroy();
+		getRowOffsets().destroy();
+		getColumns().destroy();
 		values.destroy();
 	}
 
@@ -282,33 +272,11 @@ public class SparseMatrix implements MatrixFeatures, Destroyable {
 					+ rows + " rows; expected " + (rows + 1));
 		}
 
-		if (rowOffsets[0] != 0 || rowOffsets[rows] != columns.length) {
-			throw new IllegalArgumentException("Row offsets must run from 0 to the entry count "
-					+ columns.length + ", not " + rowOffsets[0] + " to " + rowOffsets[rows]);
-		}
-
 		if (values.getMemLength() < columns.length) {
 			throw new IllegalArgumentException(values.getMemLength() + " values given for "
 					+ columns.length + " entries");
 		}
 
-		for (int i = 0; i < rows; i++) {
-			if (rowOffsets[i + 1] < rowOffsets[i]) {
-				throw new IllegalArgumentException("Row offsets decrease at row " + i);
-			}
-		}
-
-		for (int k = 0; k < columns.length; k++) {
-			if (columns[k] < 0 || columns[k] >= cols) {
-				throw new IllegalArgumentException("Column " + columns[k] + " of entry " + k
-						+ " is outside [0, " + cols + ")");
-			}
-		}
-
-		// A matrix without entries keeps one unused column, since a collection cannot be empty
-		return new SparseMatrix(rows, cols,
-				PackedCollection.ofSplitIndices(rowOffsets),
-				PackedCollection.ofSplitIndices(columns.length == 0 ? new int[1] : columns),
-				values);
+		return new SparseMatrix(CompressedRowTraversalOrdering.of(cols, rowOffsets, columns), values);
 	}
 }

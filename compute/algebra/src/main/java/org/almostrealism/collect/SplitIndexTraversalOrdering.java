@@ -167,11 +167,21 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	 */
 	@Override
 	public OptionalInt getLength() {
-		double[] values = lanes.toArray();
-		long max = IntStream.range(0, values.length / LANES)
-				.mapToLong(i -> (long) values[LANES * i] * BASE + (long) values[LANES * i + 1])
-				.max().orElse(-1);
+		long max = IntStream.of(decode(lanes.toArray())).max().orElse(-1);
 		return OptionalInt.of(Math.toIntExact(Math.max(max, -1) + 1));
+	}
+
+	/**
+	 * Decodes, on the host, lane values in the layout produced by {@link #encode(int...)} back
+	 * into the integer positions they represent. This is the inverse of {@link #encode(int...)}.
+	 *
+	 * @param lanes the lane values, {@link #LANES} per position
+	 * @return the positions, {@code hi * BASE + lo} for each pair of lanes
+	 */
+	public static int[] decode(double... lanes) {
+		return IntStream.range(0, lanes.length / LANES)
+				.map(i -> (int) lanes[LANES * i] * BASE + (int) lanes[LANES * i + 1])
+				.toArray();
 	}
 
 	/**

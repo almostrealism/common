@@ -272,6 +272,39 @@ public class SplitIndexTests extends TestSuiteBase {
 	}
 
 	/**
+	 * A kernel reading a single-element collection respects its ordering: the element at an
+	 * absent position reads as zero, and a present position reads the element it addresses,
+	 * exactly as the host read path does.
+	 */
+	@Test(timeout = 60000)
+	public void kernelRespectsOrderingOfSingleElement() {
+		PackedCollection data = pack(5.0, 7.0);
+
+		PackedCollection absent = view(1, data, SplitIndexTraversalOrdering.of(-1));
+		Assert.assertEquals(0.0, absent.toDouble(0), 0.0);
+		assertEquals(0.0, cp(absent).multiply(2.0).evaluate().toDouble(0));
+
+		PackedCollection present = view(1, data, SplitIndexTraversalOrdering.of(1));
+		assertEquals(14.0, cp(present).multiply(2.0).evaluate().toDouble(0));
+	}
+
+	/**
+	 * Decoding on the host inverts encoding for every kind of position: zero, positions either
+	 * side of the lane boundary, a negative (absent) position, and both extremes of the
+	 * {@code int} range. A trailing odd lane, which is not a whole position, is ignored.
+	 */
+	@Test(timeout = 60000)
+	public void decodeInvertsEncode() {
+		int[] positions = { 0, SplitIndexTraversalOrdering.BASE - 1, SplitIndexTraversalOrdering.BASE,
+				SINGLE_PRECISION_LIMIT + 1, -1, -SplitIndexTraversalOrdering.BASE - 3,
+				Integer.MAX_VALUE, Integer.MIN_VALUE };
+		Assert.assertArrayEquals(positions,
+				SplitIndexTraversalOrdering.decode(SplitIndexTraversalOrdering.encode(positions)));
+		Assert.assertArrayEquals(new int[] { 5 }, SplitIndexTraversalOrdering.decode(0.0, 5.0, 7.0));
+		Assert.assertEquals(0, SplitIndexTraversalOrdering.decode().length);
+	}
+
+	/**
 	 * The gather {@code c(shape, collection, index)} respects the ordering of its collection
 	 * argument: indexing a view that reads {@code data} at positions {@code [5, 3, 1]} with
 	 * {@code [2, 0]} selects {@code data[1]} and {@code data[5]}.

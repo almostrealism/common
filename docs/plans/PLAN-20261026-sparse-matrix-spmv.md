@@ -153,32 +153,40 @@ different index arithmetic) is inherited from `AggregatedProducerComputation`, n
 
 ### The type-vs-ordering decision (documented in Javadoc)
 
-`SparseMatrix` **holds its three arrays directly** rather than being a collection read through a
-sparse `TraversalOrdering`.
+*Second correction (PR review, 2026-10-27).* The reviewer proposed the matrix as
+`new PackedCollection(new TraversalPolicy(sparseOrdering, rows, cols))` and asked for each step of
+that pattern to be built and tested, not dismissed. Done; the results replace the three reasons
+previously given here, one of which ("no closed form") was wrong.
 
-*Correction (PR review, 2026-10-27).* The two reasons originally given here did not justify the
-choice. The first was out of date when the plan was written: the ordering integration (task
-82bda0b7) closed on 2026-10-25, before this plan was created, and ordered collections are correct
-kernel inputs on master. The second ("CSR is three arrays, not a reordering of one collection")
-describes the representation already chosen rather than testing the alternative, and it conflates
-the storage of an ordering's map with the data it orders. The reasons that do hold, for any CSR
-ordering, are:
+1. **The ordering can be built.** `CompressedRowTraversalOrdering` (`org.almostrealism.collect`)
+   holds the split row offsets and columns. `indexOf(i * cols + j)` searches row `i` for column
+   `j` as a chain of conditionals bounded by the longest row, the same technique
+   `IndexMaskTraversalOrdering` uses. It returns `-1` (read as zero) for an absent element.
+   `getLength()` is the entry count, and `bind` delivers both index collections to the kernel.
+   Tested on the host and in kernels (`CompressedRowTraversalOrderingTests`).
+2. **`TraversalPolicy(ordering, rows, cols)` works.** `TraversalPolicy` accepts `long`
+   dimensions.
+3. **The ordered `PackedCollection` works below `int` scale.** Kernels reading it see the dense
+   matrix, and dense `matmul` of it matches the segmented product on small matrices. Building it
+   exposed a framework bug, fixed on this branch: `CollectionVariable.getValueAt` ignored the
+   ordering of a single-element collection.
+4. **It does not work at the scale this type exists for, for two reasons that are limits of
+   existing operations, not of the ordering:**
+   - `PackedCollection` measures its logical shape as an `int` (`TraversalPolicy.inputSize` uses
+     `Math.toIntExact`), so constructing a 166,000 × 166,000 ordered collection throws
+     `ArithmeticException: integer overflow`, even though its ordering addresses only the entries.
+   - Reductions such as dense `matmul` read every logical element through `indexOf`, so every
+     read is a search as long as the longest row. Measured: for a 300 × 200 matrix with one
+     200-entry row, `matmul` of the ordered collection with a `(200, 3)` operand failed to
+     compile after 142 s ("Cannot compile weightedSum"). The segmented product of the same
+     operands ran in seconds.
 
-- **Scale.** The logical element count of an ordered collection is an `int`: `PackedCollection`
-  rejects a shape of more than `Integer.MAX_VALUE` elements, and kernels address logical elements
-  through `int` sizes. A 166,000 × 166,000 matrix has about 2.8 × 10^10 logical elements, so it
-  cannot be expressed as an ordered `(rows, cols)` collection at all.
-- **Direction of the map.** An ordering maps logical index → physical position, so any consumer
-  (including dense `matmul`) reads every logical element: `rows × cols` reads per product. The
-  product needs the inverse map, entry → logical position, which is exactly `rowOffsets` and
-  `columns`.
-- **No closed form.** The logical → physical map of CSR is a search within a row. The one
-  searching ordering, `IndexMaskTraversalOrdering`, renders one conditional per stored entry into
-  every read and is documented as suitable for small masks only.
-
-The ordering machinery is still used where it fits: the index arrays are stored in the
-integer-exact layout of `SplitIndexTraversalOrdering`. The same reasons are stated in the
-`SparseMatrix` Javadoc.
+`SparseMatrix` therefore keeps the segmented product, but its index structure is now that ordering
+(`getOrdering()`), and the reduction enumerates rows with the ordering's `rowStart`/`rowLength`.
+Once ordered collections allow `long` logical sizes and reductions enumerate the members of a
+compressed ordering instead of searching for them, `SparseMatrix` reduces to the ordered collection.
+Both are filed as follow-ups: 85d80f6a (long logical sizes for ordered collections) and 44f6b5a3
+(reductions enumerate the members of a compressed ordering).
 
 ### Placement
 

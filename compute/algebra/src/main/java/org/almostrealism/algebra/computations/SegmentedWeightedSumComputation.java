@@ -25,6 +25,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.SplitIndexTraversalOrdering;
 import org.almostrealism.collect.computations.RepeatedProducerComputation;
@@ -47,7 +48,8 @@ import java.util.List;
  * segment {@code offsets}. Both index operands are stored split across two lanes in the
  * layout of {@link SplitIndexTraversalOrdering}, and decoded with
  * {@link SplitIndexTraversalOrdering#positionAt}, so that offsets and columns above
- * {@code 2^24} stay exact on FP32 backends. Every flat address into {@code values} and
+ * {@code 2^24} stay exact on FP32 backends. The segments are enumerated in the same way as
+ * the rows of a {@link CompressedRowTraversalOrdering}. Every flat address into {@code values} and
  * {@code columns} is formed from the offsets on integer expressions inside the kernel, so it
  * is exact too.</p>
  *
@@ -162,7 +164,7 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 */
 	@Override
 	protected Expression<Boolean> getCondition(TraversableExpression[] args, Expression index) {
-		return index.lessThan(segmentLength(args, segmentOf(new KernelIndex())));
+		return index.lessThan(CompressedRowTraversalOrdering.rowLength(args[OFFSETS], segmentOf(new KernelIndex())));
 	}
 
 	/**
@@ -173,29 +175,6 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 */
 	private Expression<?> segmentOf(Expression<?> outputIndex) {
 		return outputIndex.divide(width);
-	}
-
-	/**
-	 * Returns the integer-exact offset of the first entry of the given segment.
-	 *
-	 * @param args    the traversable arguments
-	 * @param segment the segment index
-	 * @return the offset of the segment's first entry
-	 */
-	private Expression<Integer> segmentStart(TraversableExpression[] args, Expression<?> segment) {
-		return SplitIndexTraversalOrdering.positionAt(args[OFFSETS], segment);
-	}
-
-	/**
-	 * Returns the number of entries in the given segment.
-	 *
-	 * @param args    the traversable arguments
-	 * @param segment the segment index
-	 * @return the number of entries in the segment, read from device memory
-	 */
-	private Expression<?> segmentLength(TraversableExpression[] args, Expression<?> segment) {
-		return SplitIndexTraversalOrdering.positionAt(args[OFFSETS], segment.add(1))
-				.subtract(segmentStart(args, segment));
 	}
 
 	/**
@@ -212,7 +191,7 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 		ArrayVariable<?> out = getOutputVariable();
 		Expression currentValue = out.reference(globalIndex.multiply(out.length()));
 
-		Expression<?> entry = segmentStart(args, segmentOf(globalIndex)).add(localIndex);
+		Expression<?> entry = CompressedRowTraversalOrdering.rowStart(args[OFFSETS], segmentOf(globalIndex)).add(localIndex);
 		Expression<?> row = SplitIndexTraversalOrdering.positionAt(args[COLUMNS], entry);
 		Expression<?> gathered = args[INPUT].getValueAt(row.multiply(width).add(globalIndex.imod(width)));
 		return currentValue.add(args[VALUES].getValueAt(entry).multiply(gathered));
