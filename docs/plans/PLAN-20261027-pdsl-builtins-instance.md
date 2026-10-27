@@ -9,7 +9,7 @@ tracker: [97e964a3-4740-4e0b-846b-2a05c27e3da8]
 
 **Tracker task:** `97e964a3-4740-4e0b-846b-2a05c27e3da8`, "Make PdslBuiltins an instance type
 and remove the PdslFeatures static holder"
-**Release:** Common 0.76
+**Release:** the release under development (the version in the root `pom.xml`)
 **Estimated complexity:** Small
 
 ---
@@ -69,9 +69,13 @@ but never uses it.
 Callers of the static API:
 - `PdslInterpreter.tryCallBuiltin` calls `PdslBuiltins.call(name, args, build.consumedBranchOperands)`.
 - `PdslLanguageReferenceExamplesTest.dispatches` calls `PdslBuiltins.call(name, new ArrayList<>(), new HashSet<>())`.
-- `Conv1dSnakePrimitivesTest` calls `PdslBuiltins.call(...)` three times
-  (`conv1dRejectsWrongArgumentCount`, `snakeRejectsWrongArgumentCount`, and the transposed
-  convolution arity test).
+- `Conv1dSnakePrimitivesTest` calls `PdslBuiltins.call(...)` three times, once each in
+  `conv1dRejectsWrongArgumentCount`, `snakeRejectsWrongArgumentCount` and
+  `convTranspose1dRejectsWrongArgumentCount`.
+
+No other file under `src/` refers to `PdslBuiltins`, `PdslFeatures` or `normalizeToProducer`
+(`grep -rln` over every `*.java` outside `target/` returns only the three main classes,
+`package-info.java` and the two tests above), and no other module calls the library.
 
 The static `PdslInterpreter.normalizeToProducer(Object, TraversalPolicy, String)` also uses
 `FEATURES`. It is the single conversion point for producer arguments. Its callers are
@@ -192,7 +196,8 @@ Once steps 2 and 3 compile, nothing refers to it. Check this with
 ### 5. Tests: change the call form only
 
 - `Conv1dSnakePrimitivesTest`: change `PdslBuiltins.call(...)` to
-  `new PdslBuiltins().call(...)` at all three sites. No assertion, argument, tolerance or
+  `new PdslBuiltins().call(...)` at all three sites (`conv1dRejectsWrongArgumentCount`,
+  `snakeRejectsWrongArgumentCount`, `convTranspose1dRejectsWrongArgumentCount`). No assertion, argument, tolerance or
   annotation changes.
 - `PdslLanguageReferenceExamplesTest.dispatches`: the same change. This is a `private static`
   helper in a test class, so it can either construct an instance inline or use a
@@ -292,3 +297,7 @@ hardware specific to one node, so this plan has no workstream settings file.
    (`protectTestFiles`), the harness keeps every base-branch test method unchanged and the
    three `Conv1dSnakePrimitivesTest` edits would be reverted, breaking compilation. The
    implementation job must be submitted without that protection.
+5. **`docs/plans/PLAN-20261023-pdsl-language-reference.md` still names `PdslFeatures`.** That
+   plan is `completed`, so it is a historical record and is left as it is; it will be removed by
+   the plan sweep. No durable document outside `docs/plans/` names `PdslFeatures`, so the only
+   durable mention to update is the `package-info.java` paragraph in step 6.
