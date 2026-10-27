@@ -290,6 +290,31 @@ public class RatePopulationTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link RatePopulation#destroy()} releases the collections the population owns (its rates
+	 * and input) and leaves the borrowed weight matrix and row scale intact.
+	 */
+	@Test(timeout = 60000)
+	public void destroyReleasesOnlyOwnedState() {
+		int n = 4;
+		PackedCollection weights = new PackedCollection(shape(n, n));
+		PackedCollection scale = new PackedCollection(shape(n));
+		RatePopulation population = new RatePopulation(weights, cp(scale), 1.0, DT, TAU, 1.0);
+		PackedCollection rates = population.getRates();
+		PackedCollection input = population.getInput();
+		assertFalse(rates.isDestroyed());
+		assertFalse(input.isDestroyed());
+
+		population.destroy();
+
+		assertTrue(rates.isDestroyed());
+		assertTrue(input.isDestroyed());
+		assertFalse(weights.isDestroyed());
+		assertFalse(scale.isDestroyed());
+
+		Destroyable.releaseAll(List.of(weights::destroy, scale::destroy));
+	}
+
+	/**
 	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
 	 *
 	 * @param action the action expected to throw
