@@ -378,74 +378,43 @@ public class SimulationRunnerTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Returns whether the completion of a dispatch like the runner's own counter advance (a
-	 * one-element assignment) is ordered on the device, that is, whether the runner may run
-	 * ahead of the steps it dispatches on this backend.
-	 *
-	 * @return true if the backend orders dependents of such a dispatch on the device
-	 */
-	private boolean isCounterAdvanceOrderedOnDevice() {
-		PackedCollection counter = new PackedCollection(1);
-		Semaphore completion = Submittable.of(a(cp(counter), cp(counter).add(1.0)).get()).submit(null);
-
-		try {
-			return completion != null && completion.isOrderedOnDevice();
-		} finally {
-			if (completion != null) completion.waitFor();
-			counter.destroy();
-		}
-	}
-
-	/**
-	 * Where the device orders a step's successor after it, the host does not wait for a step
-	 * before dispatching the next: a boundary input that can be submitted is chained on the
-	 * completion of the step before it instead of being run. The host still waits before a due
-	 * boundary listener, which is host code, and once it has run
-	 * {@link SimulationRunner#maxStepsInFlight} steps ahead, so the input dispatched after either
-	 * wait begins a new chain. Where the device does not order dependents itself, the host waits
-	 * after every step and the input is never chained.
+	 * The host does not wait for a step before submitting the next, on any backend: a boundary
+	 * input that can be submitted is chained on the completion of the step before it instead of
+	 * being run. The only host waits are the boundary listeners, which take part as host
+	 * submissions: each runs once the work ahead of it has completed and leaves nothing in
+	 * flight, so the input submitted after a due listener begins a new chain.
 	 */
 	@Test(timeout = 120000)
 	public void stepsAreChainedWithoutHostWaits() {
-		int maxStepsInFlight = SimulationRunner.maxStepsInFlight;
-		SimulationRunner.maxStepsInFlight = 3;
+		CountedSystem system = new CountedSystem();
+		SimulationRunner runner = new SimulationRunner(system, DT);
+		ChainProbe probe = new ChainProbe();
+		List<Long> calls = new ArrayList<>();
+		runner.addBoundaryListener(8, calls::add);
+		runner.addInput(1, () -> probe);
 
-		try {
-			CountedSystem system = new CountedSystem();
-			SimulationRunner runner = new SimulationRunner(system, DT);
-			ChainProbe probe = new ChainProbe();
-			AtomicInteger calls = new AtomicInteger();
-			runner.addBoundaryListener(8, step -> calls.incrementAndGet());
-			runner.addInput(1, () -> probe);
+		runner.run(10);
 
-			runner.run(10);
-			boolean runsAhead = isCounterAdvanceOrderedOnDevice();
+		// Listeners are due before steps 0 and 8
+		List<Integer> waits = List.of(0, 8);
+		assertEquals(0, probe.hostRuns.get());
+		assertEquals(10, probe.received.size());
+		for (int step = 0; step < 10; step++) {
+			Semaphore dependsOn = probe.received.get(step);
 
-			// Listeners are due before steps 0 and 8; three steps in flight end at steps 3 and 6
-			List<Integer> waits = List.of(0, 3, 6, 8);
-			assertEquals(0, probe.hostRuns.get());
-			assertEquals(10, probe.received.size());
-			for (int step = 0; step < 10; step++) {
-				Semaphore dependsOn = probe.received.get(step);
-
-				if (waits.contains(step) || !runsAhead) {
-					Assert.assertNull("the input at step " + step + " was chained where the host should have waited",
-							dependsOn);
-				} else {
-					Assert.assertNotNull("the input at step " + step + " was not chained on the step before it",
-							dependsOn);
-					Assert.assertTrue("the input at step " + step + " was chained on a host-ordered completion",
-							dependsOn.isOrderedOnDevice());
-				}
+			if (waits.contains(step)) {
+				Assert.assertNull("the input at step " + step + " was chained past a due listener",
+						dependsOn);
+			} else {
+				Assert.assertNotNull("the input at step " + step + " was not chained on the step before it",
+						dependsOn);
 			}
-
-			assertEquals(2, calls.get());
-			assertEquals(10, runner.getStepCount());
-			assertEquals(10, system.x.toDouble(0), 0.0);
-			runner.destroy();
-		} finally {
-			SimulationRunner.maxStepsInFlight = maxStepsInFlight;
 		}
+
+		assertEquals(List.of(0L, 8L), calls);
+		assertEquals(10, runner.getStepCount());
+		assertEquals(10, system.x.toDouble(0), 0.0);
+		runner.destroy();
 	}
 
 	/**
@@ -487,8 +456,8 @@ public class SimulationRunnerTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A device-ordered completion whose wait fails with a given exception, counting how many
-	 * times it was waited on.
+	 * A completion whose wait fails with a given exception, counting how many times it was
+	 * waited on.
 	 */
 	private static class FailingCompletion implements Semaphore {
 		/** The failure thrown by every wait. */
@@ -508,9 +477,6 @@ public class SimulationRunnerTest extends TestSuiteBase {
 			waits.incrementAndGet();
 			throw failure;
 		}
-
-		@Override
-		public boolean isOrderedOnDevice() { return true; }
 	}
 
 	/** A boundary input that only submits through a given {@link Submittable}. */

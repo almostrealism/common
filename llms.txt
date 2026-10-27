@@ -79,6 +79,7 @@
 - [Process Optimization Pipeline](docs/internals/process-optimization-pipeline.md): CascadingOptimizationStrategy, parallelism scoring
 - [Backend Compilation and Dispatch](docs/internals/backend-compilation-and-dispatch.md): ComputationScopeCompiler, ExecutionKey caching, native code generation
 - [Native Runtime Lifecycle](docs/internals/native-runtime-lifecycle.md): Generated kernel library lifetime, off-heap memory budget and enforcement, GC-driven release, kernel reentrancy, and native-crash triage
+- [Asynchronous Submission](docs/internals/asynchronous-submission.md): The Submittable contract — chain every submission, wait once at a host boundary, host work via Submittable.of; ordering, bounds and thread use are the receiving backend's job, and a chain that is slow or wrong is a backend defect
 - [Semaphore Coordination](docs/internals/semaphore-coordination.md): The dependsOn/completion Semaphore model — invariants, how each backend chains work, and why Metal bridged dependencies must be actively driven
 - [Argument Binding Lifecycle](docs/internals/argument-binding-lifecycle.md): How compiled operations bind and prepare arguments, ordering argument evaluation after dependencies, and rebinding after instruction-cache eviction
 - [Host→Device Write Policy](docs/internals/host-device-write-policy.md): The narrow sanctioned paths for host data to reach device memory (fill/pack/setMem/ingest), how SetMemLiteralsDetector enforces them, and the laundering failure modes to avoid

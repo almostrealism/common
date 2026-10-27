@@ -1430,12 +1430,12 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 				() -> { throw new UnsupportedOperationException("kernel should not be reached"); },
 				null, shortCircuit, false);
 
-		CountDownLatch waitEntered = new CountDownLatch(1);
+		CountDownLatch orderingRegistered = new CountDownLatch(1);
 		DefaultLatchSemaphore dependsOn = new DefaultLatchSemaphore((OperationMetadata) null, 1) {
 			@Override
-			public void waitFor() {
-				waitEntered.countDown();
-				super.waitFor();
+			public void onSettled(Runnable r) {
+				orderingRegistered.countDown();
+				super.onSettled(r);
 			}
 		};
 		CountDownLatch delivered = new CountDownLatch(1);
@@ -1446,8 +1446,8 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 			delivered.countDown();
 		});
 
-		// The request has returned while the dependency is still outstanding
-		assertTrue(waitEntered.await(5, TimeUnit.SECONDS));
+		// The request has returned, ordered after the dependency, while it is still outstanding
+		assertTrue(orderingRegistered.await(5, TimeUnit.SECONDS));
 		assertEquals(1L, delivered.getCount());
 
 		sharedState[0] = 42;
@@ -1470,12 +1470,12 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 		Evaluable<PackedCollection> operation = args -> element;
 		DestinationEvaluable<PackedCollection> evaluable = new DestinationEvaluable<>(operation, destination);
 
-		CountDownLatch waitEntered = new CountDownLatch(1);
+		CountDownLatch orderingRegistered = new CountDownLatch(1);
 		DefaultLatchSemaphore dependsOn = new DefaultLatchSemaphore((OperationMetadata) null, 1) {
 			@Override
-			public void waitFor() {
-				waitEntered.countDown();
-				super.waitFor();
+			public void onSettled(Runnable r) {
+				orderingRegistered.countDown();
+				super.onSettled(r);
 			}
 		};
 		CountDownLatch delivered = new CountDownLatch(1);
@@ -1486,7 +1486,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 			delivered.countDown();
 		});
 
-		assertTrue(waitEntered.await(5, TimeUnit.SECONDS));
+		assertTrue(orderingRegistered.await(5, TimeUnit.SECONDS));
 		assertEquals(1L, delivered.getCount());
 
 		element.setMem(0, 42.0);

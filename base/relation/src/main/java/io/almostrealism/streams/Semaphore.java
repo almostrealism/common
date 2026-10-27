@@ -105,12 +105,14 @@ public interface Semaphore {
 
 	/**
 	 * Registers a callback to be invoked on a background thread once the guarded
-	 * operation has completed.
+	 * operation has completed. The callback runs promptly, as an {@link #onSettled(Runnable)}
+	 * callback does, and only if the operation completed normally: a failure is reported to
+	 * whoever waits on this semaphore, and the callback does not run.
 	 *
 	 * @param r the callback to invoke after {@link #waitFor()} returns
 	 */
 	default void onComplete(Runnable r) {
-		CALLBACK_EXECUTOR.execute(() -> {
+		onSettled(() -> {
 			waitFor();
 			r.run();
 		});
@@ -154,9 +156,42 @@ public interface Semaphore {
 	 * held for the operation requires. The failure itself is not handled here: it is
 	 * reported to whoever waits on this semaphore.
 	 *
+	 * <p>This is the passive form of {@link #onSettled(Runnable)}, for bookkeeping that
+	 * must not influence when the operation completes. The default delegates to
+	 * {@link #onSettled(Runnable)}; an implementation whose {@link #waitFor()} has side
+	 * effects (forcing a command-buffer commit) overrides this to attach the callback
+	 * without them, in which case the callback may run arbitrarily late.</p>
+	 *
 	 * @param r the callback to invoke once {@link #waitFor()} returns or throws
 	 */
 	default void whenSettled(Runnable r) {
+		onSettled(r);
+	}
+
+	/**
+	 * Registers a callback to run on a background thread, promptly, once the guarded
+	 * operation has either completed or failed. This is what work ordered after this
+	 * operation is started by ({@link #then(Supplier)}, a composite's members, a backend
+	 * dispatch chained on a completion it cannot express natively), so it must hold for
+	 * every implementation that the callback runs without anyone waiting on this semaphore:
+	 * the operation is driven to completion if it would not otherwise reach it.
+	 *
+	 * <p>The default waits for the operation on a {@link #CALLBACK_EXECUTOR} thread, which
+	 * both drives it (a {@link #waitFor()} that commits a command buffer, for example) and
+	 * observes it, at the cost of one thread for as long as the operation is pending. An
+	 * implementation that is told when its operation settles &mdash; a latch counted down by
+	 * the work itself, a completion that is itself started by another's settlement &mdash;
+	 * overrides this to register the callback instead, holding no thread while the work runs.
+	 * That is what lets a caller chain any number of submissions before it waits: a chain is
+	 * then a list of registered callbacks, not a list of parked threads.</p>
+	 *
+	 * <p>The failure itself is not handled here: it is reported to whoever waits on this
+	 * semaphore, and a callback that needs it calls {@link #waitFor()}, which returns or
+	 * throws at once for settled work.</p>
+	 *
+	 * @param r the callback to invoke once {@link #waitFor()} returns or throws
+	 */
+	default void onSettled(Runnable r) {
 		CALLBACK_EXECUTOR.execute(() -> {
 			try {
 				waitFor();
@@ -166,24 +201,6 @@ public interface Semaphore {
 				r.run();
 			}
 		});
-	}
-
-	/**
-	 * Returns whether a dispatch submitted with this completion as its dependency waits for it
-	 * on the device rather than on the host.
-	 *
-	 * <p>A provider that orders dependent work itself (a later dispatch encodes a device-side
-	 * wait for this completion, or shares its in-order queue) costs the host nothing for each
-	 * dependent issued before this has completed, so a caller issuing a long sequence of
-	 * dependent work may run far ahead of it. A provider that honors a dependency by waiting for
-	 * it on a host thread instead holds a thread for every dependent issued early, so a caller
-	 * gains nothing by running ahead of such a completion and should wait for it before issuing
-	 * more. The default is {@code false}, which is always safe: it only gives up running ahead.</p>
-	 *
-	 * @return true if dependents of this completion are ordered after it on the device
-	 */
-	default boolean isOrderedOnDevice() {
-		return false;
 	}
 
 	/**
@@ -213,7 +230,7 @@ public interface Semaphore {
 	 * thread when there is no dependency. This is the non-blocking way for work that cannot
 	 * chain a completion into a dispatch (a host evaluation that reads memory a prior
 	 * dispatch is still writing, for example) to be ordered after it: the caller never
-	 * waits, and the wait happens on the completion's callback thread instead, exactly as
+	 * waits, and the completion starts the work once it has completed, exactly as
 	 * {@link #onComplete(Runnable)} arranges.
 	 *
 	 * @param dependsOn the completion to order {@code r} after, or {@code null} when there
@@ -266,8 +283,10 @@ public interface Semaphore {
 	 * composite's {@link #waitFor()}, so a member failure reaches the group's waiter instead of
 	 * being swallowed the way {@link #onComplete(Runnable)} would swallow it.</p>
 	 *
-	 * <p>Each member is waited for on a {@link #CALLBACK_EXECUTOR} thread as soon as the
-	 * composite exists, which is what drives a member whose completion has to be requested.
+	 * <p>Each member counts the composite down from its {@link #onSettled(Runnable)} callback,
+	 * registered as soon as the composite exists, which is what drives a member whose
+	 * completion has to be requested; a member that is told of its own settlement holds no
+	 * thread meanwhile.
 	 * The composite also records its members, so its own {@link #waitFor()} settles them
 	 * directly and is released by the last member's completion rather than by the thread that
 	 * counts the composite down (see {@link LatchSemaphore#waitFor()}).</p>
@@ -301,7 +320,7 @@ public interface Semaphore {
 		LatchSemaphore combined = combiner.apply(members.size());
 		combined.compose(members);
 		for (Semaphore s : members) {
-			CALLBACK_EXECUTOR.execute(() -> {
+			s.onSettled(() -> {
 				try {
 					s.waitFor();
 				} catch (Throwable t) {

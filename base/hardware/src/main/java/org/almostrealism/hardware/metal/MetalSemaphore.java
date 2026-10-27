@@ -154,22 +154,6 @@ public class MetalSemaphore implements OperationSemaphore {
 	}
 
 	/**
-	 * Returns {@code true}: a dispatch of the same runner that depends on this one is ordered
-	 * after it on the GPU, by the open command buffer it shares or by an encoded wait for this
-	 * completion's {@link #getValue() value}, so issuing it costs no host wait or thread (see
-	 * {@link MetalCommandRunner#submit}).
-	 *
-	 * <p>This describes dependents issued to Metal. A dependent issued to a provider that honors
-	 * a foreign dependency on the host (a native dispatch, for example) still waits for this
-	 * completion on one of its threads; a caller running ahead of the device bounds how many
-	 * such waits it can accumulate (see {@code SimulationRunner.maxStepsInFlight}).</p>
-	 *
-	 * @return {@code true}
-	 */
-	@Override
-	public boolean isOrderedOnDevice() { return true; }
-
-	/**
 	 * Merges with another completion from the same {@link MetalCommandRunner} into the
 	 * completion of whichever dispatch was issued later, so that a dispatch depending on both
 	 * chains on one completion of this runner instead of on a host-side composite. Completions

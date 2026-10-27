@@ -88,29 +88,6 @@ public interface Submittable {
 	}
 
 	/**
-	 * Submits this operation after {@code dependsOn}, chaining it on that completion only where
-	 * the device orders it after it (see {@link Semaphore#isOrderedOnDevice()}).
-	 *
-	 * <p>A completion that is held on the host is waited for first, so this operation begins a
-	 * new chain. This is for a loop that issues a long sequence of dependent work and returns to
-	 * the host between issues: running ahead of a device that orders dependents itself lets it
-	 * batch the work, while a backend that would hold a host thread for every dependent issued
-	 * early gains nothing from running ahead, and chaining on it only adds those threads'
-	 * hand-offs to every operation.</p>
-	 *
-	 * @param dependsOn the completion this operation must be ordered after, or {@code null}
-	 * @return this operation's completion, as {@link #submit(Semaphore)} returns it
-	 */
-	default Semaphore chainOnDevice(Semaphore dependsOn) {
-		if (dependsOn != null && !dependsOn.isOrderedOnDevice()) {
-			dependsOn.waitFor();
-			return submit(null);
-		}
-
-		return submit(dependsOn);
-	}
-
-	/**
 	 * Returns {@code operation} as a {@link Submittable}: the operation itself when it is one, and
 	 * otherwise its submission as an operation that can only run on the host.
 	 *

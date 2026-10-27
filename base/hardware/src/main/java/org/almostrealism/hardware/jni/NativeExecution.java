@@ -54,7 +54,7 @@ import java.util.stream.Collectors;
  *
  * <p>When {@link #accept(Object[], Semaphore)} is called:</p>
  * <pre>
- * 1. Wait for dependencies   dependsOn.waitFor() if present
+ * 1. Order after dependency  started by dependsOn.onSettled() if present
  * 2. Prepare arguments       MemoryData[] from Object[]
  * 3. Calculate parallelism   min(workSize, configured parallelism)
  * 4. Submit tasks           p tasks to executor, each runs inst.apply()
@@ -252,12 +252,21 @@ public class NativeExecution extends HardwareOperator {
 	 * Dispatches the native kernel and returns its completion {@link Semaphore} without
 	 * blocking the submitting thread.
 	 *
-	 * <p>When {@link #enableExecutor} is true, a coordinator task (on the
-	 * {@link #dispatchExecutor}) waits for {@code dependsOn}, submits the parallel worker
-	 * tasks, and releases the dispatch's memory guard once every worker has finished; the
+	 * <p>When {@link #enableExecutor} is true, a coordinator task submits the parallel worker
+	 * tasks and releases the dispatch's memory guard once every worker has finished; the
 	 * returned latch fires at that point, so a caller (or a dependent operation receiving it
 	 * as {@code dependsOn}) waits on genuine completion. When {@link #enableExecutor} is
 	 * false, execution is fully synchronous and the returned latch has already fired.</p>
+	 *
+	 * <p>Ordering after {@code dependsOn} is this backend's job, and it must not cost a thread
+	 * per dispatch: a caller may issue any number of dependent dispatches before it waits, and
+	 * a coordinator parked in {@code dependsOn.waitFor()} for each of them would hold one
+	 * thread for every dispatch issued ahead of its dependency. The coordinator is therefore
+	 * started by the dependency's settlement (see {@link Semaphore#onSettled(Runnable)}). A
+	 * completion that is told when its work settles (this backend's own latches, a composite of
+	 * them, work deferred after them) registers it and holds no thread meanwhile; one that only
+	 * completes when it is waited for (a Metal command buffer is committed by its wait) is
+	 * waited for on a callback thread, which is what bridges it to this backend.</p>
 	 *
 	 * @param args      the kernel arguments
 	 * @param dependsOn the completion this dispatch must be ordered after, or {@code null}
@@ -295,7 +304,13 @@ public class NativeExecution extends HardwareOperator {
 		DefaultLatchSemaphore latch = new DefaultLatchSemaphore(dependsOn, p);
 
 		if (enableExecutor) {
-			dispatchExecutor.submit(() -> coordinate(data, args, dependsOn, guard, latch, p));
+			Runnable coordination = () -> coordinate(data, args, dependsOn, guard, latch, p);
+
+			if (dependsOn == null) {
+				dispatchExecutor.submit(coordination);
+			} else {
+				dependsOn.onSettled(coordination);
+			}
 		} else {
 			try {
 				if (dependsOn != null) dependsOn.waitFor();
@@ -318,10 +333,11 @@ public class NativeExecution extends HardwareOperator {
 	}
 
 	/**
-	 * Coordinates one dispatch on a {@link #dispatchExecutor} thread: waits for the dispatch's
-	 * dependency, submits the parallel worker tasks, waits for them all, and releases the
-	 * memory guard. The latch always reaches zero &mdash; workers count down in their own
-	 * finally blocks, and any workers that could not be submitted are counted down here &mdash;
+	 * Coordinates one dispatch: confirms the dispatch's dependency completed (it has already
+	 * settled, since its settlement started this coordination), submits the parallel worker
+	 * tasks, waits for them all, and releases the memory guard. The latch always reaches zero
+	 * &mdash; workers count down in their own finally blocks, and any workers that could not be
+	 * submitted are counted down here &mdash;
 	 * so no waiter can hang on a failed dispatch.
 	 *
 	 * <p>The guard comes off only once the latch has reached zero, on the failure path as
