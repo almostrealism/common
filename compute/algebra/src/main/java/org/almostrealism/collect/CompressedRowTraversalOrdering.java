@@ -100,6 +100,9 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	/** The number of entries of the longest row, read from the row offsets when first needed. */
 	private Integer maxRowLength;
 
+	/** The number of entries, the last row offset, read from the row offsets when first needed. */
+	private Integer entryCount;
+
 	/**
 	 * Creates an ordering over pre-built index collections, validating that their shapes are
 	 * mutually consistent. The contents are not read back from the device here; use
@@ -234,14 +237,19 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 
 	/**
 	 * Returns the number of physical positions addressed, which is the number of entries:
-	 * the last row offset.
+	 * the last row offset. It is read back from the row offsets the first time it is needed.
 	 *
 	 * @return the number of entries
 	 */
 	@Override
 	public OptionalInt getLength() {
-		int[] offsets = SplitIndexTraversalOrdering.decode(rowOffsets.toArray());
-		return OptionalInt.of(offsets[offsets.length - 1]);
+		if (entryCount == null) {
+			int last = getRows() * SplitIndexTraversalOrdering.LANES;
+			entryCount = SplitIndexTraversalOrdering.decode(
+					rowOffsets.toArray(last, SplitIndexTraversalOrdering.LANES))[0];
+		}
+
+		return OptionalInt.of(entryCount);
 	}
 
 	/**
@@ -254,11 +262,11 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	public TraversalOrdering bind(ArgumentProvider provider) {
 		TraversableExpression<?> offsets = provider.<PackedCollection>argumentForInput()
 				.apply(new CollectionProviderProducer<>(rowOffsets)).getTraversableExpression();
-		TraversableExpression<?> cols = provider.<PackedCollection>argumentForInput()
+		TraversableExpression<?> entryColumns = provider.<PackedCollection>argumentForInput()
 				.apply(new CollectionProviderProducer<>(columns)).getTraversableExpression();
-		if (offsets == null || cols == null) return this;
+		if (offsets == null || entryColumns == null) return this;
 
-		return new CompressedRowTraversalOrdering(this.cols, rowOffsets, columns, offsets, cols, maxRowLength);
+		return new CompressedRowTraversalOrdering(cols, rowOffsets, columns, offsets, entryColumns, maxRowLength);
 	}
 
 	/**
