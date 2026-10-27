@@ -122,8 +122,9 @@ static accessor. Reasons, to be recorded in `PdslBuiltins`' class Javadoc:
 ### 2. `PdslBuiltins`
 
 - Declaration: `final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures`.
-  The constructor stays package-private and has a Javadoc.
-- Remove `private static final PdslFeatures FEATURES` and the private no-arg constructor.
+- Remove `private static final PdslFeatures FEATURES`. Replace today's `private PdslBuiltins() { }`
+  (whose Javadoc says built-ins are reached only through `call`) with a package-private no-arg
+  constructor and a Javadoc that says the interpreter, and same-package tests, construct it.
 - `static Object call(...)` becomes `Object call(...)`. Each `private static callXxx`,
   `producerArg` and `scaledDotProductLayer` becomes a `private` instance method.
 - Replace every `FEATURES.x(...)` with `x(...)`, and `FEATURES::cacheWrite`/`FEATURES::cacheRead`/
@@ -166,9 +167,12 @@ static accessor. Reasons, to be recorded in `PdslBuiltins`' class Javadoc:
   that `toProducer` can call `builtins.normalizeToProducer(...)`. The other choice is to pass the
   instance to its constructor. Either works. An inner class is the smaller change, because the
   only construction site is `new EnvContext(env)` in `evaluateFunctionCall`.
-- The interpreter's own feature calls (`accumBlocks`, `concatBlocks`, `shape(...)` in
-  `evaluateShape`, `interpretForEachChannel` and indexed field access, and `subset` in field
-  access) go through `builtins.` instead of `FEATURES.`. The task offers two choices here: the
+- The interpreter's own feature calls go through `builtins.` instead of `FEATURES.`. There are
+  ten of them: `accumBlocks` in `interpretAccumBlocks`, `concatBlocks` in
+  `interpretConcatBlocks`, `shape(...)` in `evaluateShape` and twice in
+  `interpretForEachChannel`, and the per-channel slicing in the `PdslNode.Subscript` branch of
+  `evaluateExpression` (four `shape(...)` calls and one `subset(...)`). `evaluateFieldAccess`
+  makes no feature calls. The task offers two choices here: the
   interpreter implements the features itself, or it gets them from the library instance. The
   plan takes the library instance, for this reason. `PdslInterpreter` is `public`. If it
   implemented `LayerRoutingFeatures`, the whole feature default-method surface (`dense`,
@@ -237,6 +241,10 @@ Once steps 2 and 3 compile, nothing refers to it. Check this with
     `SkytntBlockAssetTest`
   - In `studio/compose`, as a check of the audio registrar path that runs alongside the
     built-ins: `PdslAudioDspTest`, `DelayFeedbackBankPdslTest`
+  - A skipped test is not a pass. `GruDecoderAssetTest` has a `@TestDepth(2)` method guarded by
+    `Assume.assumeTrue` on the presence of real model weights, and several of these classes have
+    depth-gated methods. Report which methods ran and which were skipped rather than reading a
+    green run as full coverage.
 - `ar-build-validator` reports no violations for checkstyle, code_policy, test_timeouts and
   duplicate_code. `PdslInterpreter` gets smaller, so it stays under the 1600-line `FileLength`
   cap.
@@ -245,8 +253,8 @@ Once steps 2 and 3 compile, nothing refers to it. Check this with
 
 ## Dependencies
 
-None. The task has no blockers, and every file involved is in `domain/graph` (main) and
-`engine/ml` (tests). No `pom.xml` changes are needed: `ar-graph` already reaches `ar-time`
+None. The task has no blockers, and every file involved is in `domain/graph` (main),
+`engine/ml` (tests) and `docs/internals/pdsl-language.md`. No `pom.xml` changes are needed: `ar-graph` already reaches `ar-time`
 through `ar-heredity`, which is why `PdslFeatures` compiles today. Nothing needs Metal or other
 hardware specific to one node, so this plan has no workstream settings file.
 
