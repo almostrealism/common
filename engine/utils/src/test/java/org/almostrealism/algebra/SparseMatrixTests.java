@@ -367,6 +367,27 @@ public class SparseMatrixTests extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * Two matrices with identical shapes and capacities but different structure and values
+	 * share one compiled kernel, yet each product reads its own collections: the first matrix
+	 * is {@code [[1, 0, 2], [0, 0, 0], [0, 3, 0]]} and the second
+	 * {@code [[0, 0, 0], [5, -1, 0], [0, 0, 7]]}, so with {@code x = [1, 2, 3]} the products are
+	 * {@code [7, 0, 6]} and {@code [0, 3, 21]}. Evaluating the first again after the second
+	 * confirms that neither product caches the other's data.
+	 */
+	@Test(timeout = 60000)
+	public void sameShapeMatricesKeepTheirOwnData() {
+		try (SparseMatrix first = SparseMatrix.of(3, 3, new int[] { 0, 2, 2, 3 },
+				new int[] { 0, 2, 1 }, PackedCollection.of(1.0, 2.0, 3.0));
+			 SparseMatrix second = SparseMatrix.of(3, 3, new int[] { 0, 0, 2, 3 },
+					 new int[] { 0, 1, 2 }, PackedCollection.of(5.0, -1.0, 7.0));
+			 PackedCollection vector = PackedCollection.of(1.0, 2.0, 3.0)) {
+			assertMatches(new double[] { 7.0, 0.0, 6.0 }, first.multiply(cp(vector)).evaluate(), 1e-6);
+			assertMatches(new double[] { 0.0, 3.0, 21.0 }, second.multiply(cp(vector)).evaluate(), 1e-6);
+			assertMatches(new double[] { 7.0, 0.0, 6.0 }, first.multiply(cp(vector)).evaluate(), 1e-6);
+		}
+	}
+
+	/**
 	 * Asserts that an action is rejected with an {@link IllegalArgumentException}.
 	 *
 	 * @param action the action

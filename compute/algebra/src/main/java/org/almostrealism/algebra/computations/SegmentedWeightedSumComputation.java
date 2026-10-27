@@ -211,6 +211,13 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 		return true;
 	}
 
+	/**
+	 * Creates a segmented weighted sum with the same segment count and width over new
+	 * operands, in the order input, values, columns, offsets.
+	 *
+	 * @param children the output followed by the four operands
+	 * @return the new computation
+	 */
 	@Override
 	public SegmentedWeightedSumComputation generate(List<Process<?, ?>> children) {
 		return new SegmentedWeightedSumComputation(getName(), count, width,
