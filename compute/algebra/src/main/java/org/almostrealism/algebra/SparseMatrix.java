@@ -248,11 +248,12 @@ public class SparseMatrix implements MatrixFeatures, Destroyable {
 	 * @param values     the value of each entry, at least as many elements as {@code columns}
 	 *                   (and at least one, even when there are no entries)
 	 * @return the sparse matrix, which takes ownership of {@code values}
-	 * @throws IllegalArgumentException if the arrays are not a valid CSR matrix of the given shape
+	 * @throws IllegalArgumentException if {@code rows} is not positive, or the arrays are not a
+	 *         valid CSR matrix of the given shape
 	 */
 	public static SparseMatrix of(int rows, int cols, int[] rowOffsets, int[] columns,
 								  PackedCollection values) {
-		if (rowOffsets.length != rows + 1) {
+		if (rows <= 0 || rowOffsets.length != rows + 1) {
 			throw new IllegalArgumentException(rowOffsets.length + " row offsets given for "
 					+ rows + " rows; expected " + (rows + 1));
 		}

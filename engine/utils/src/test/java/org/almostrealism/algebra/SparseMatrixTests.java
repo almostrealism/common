@@ -296,6 +296,38 @@ public class SparseMatrixTests extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * A {@code (cols, 1)} column operand yields a product of shape {@code (rows)}, identical to the
+	 * product with the equivalent vector, and the matrix reports its dense shape. The matrix is
+	 * {@code [[1, 0, 2], [0, 0, 0], [0, 3, 0]]} and the operand {@code [1, 2, 3]}, so
+	 * {@code A·x = [7, 0, 6]}.
+	 */
+	@Test(timeout = 60000)
+	public void columnOperandAndShape() {
+		try (SparseMatrix a = SparseMatrix.of(3, 3, new int[] { 0, 2, 2, 3 },
+				new int[] { 0, 2, 1 }, PackedCollection.of(1.0, 2.0, 3.0));
+			 PackedCollection column = PackedCollection.of(1.0, 2.0, 3.0).reshape(shape(3, 1))) {
+			Assert.assertEquals(3, a.getShape().length(0));
+			Assert.assertEquals(3, a.getShape().length(1));
+			Assert.assertEquals(9, a.getShape().getTotalSize());
+
+			PackedCollection result = a.multiply(cp(column)).evaluate();
+			Assert.assertEquals(1, result.getShape().getDimensions());
+			Assert.assertEquals(3, result.getShape().length(0));
+			assertMatches(new double[] { 7.0, 0.0, 6.0 }, result, 1e-6);
+		}
+	}
+
+	/**
+	 * Building from host arrays rejects a negative or zero row count with an
+	 * {@link IllegalArgumentException} rather than an out-of-range array access.
+	 */
+	@Test(timeout = 30000)
+	public void ofRejectsNonPositiveRows() {
+		assertRejected(() -> SparseMatrix.of(-1, 2, new int[0], new int[0], PackedCollection.of(1.0)));
+		assertRejected(() -> SparseMatrix.of(0, 2, new int[] { 0 }, new int[0], PackedCollection.of(1.0)));
+	}
+
+	/**
 	 * Asserts that an action is rejected with an {@link IllegalArgumentException}.
 	 *
 	 * @param action the action
