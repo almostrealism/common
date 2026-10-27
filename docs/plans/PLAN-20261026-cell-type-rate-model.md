@@ -287,7 +287,8 @@ question:
 - **A defect found in `SimulationRunner`.** The runner compiled its step without
   `Process.optimize()`. As a result the matrix-vector reduction was generated as one unrolled
   expression per row, and Metal rejected the 11,751-row step with "Compute function exceeds
-  available stack space". The runner now optimizes each top-level operation of the step on its own,
+  available stack space". The runner now optimizes its step before compiling it (at first each
+  top-level operation on its own, after review the flattened step as a whole; see below),
   which keeps the dispatch contract. `SimulationRunnerTest.largeDenseStep` crashes without the fix
   and passes with it.
 - **Time per step (question 7).** Native FP64 14,527 µs and Metal FP32 11,380 µs, recorded in
