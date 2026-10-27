@@ -109,16 +109,36 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 * @param columns the input row of each entry, as split lanes of shape {@code (m, 2)}
 	 * @param offsets the {@code count + 1} segment boundaries, as split lanes of shape
 	 *                {@code (count + 1, 2)}, both produced by {@link PackedCollection#ofSplitIndices(int...)}
+	 * @throws IllegalArgumentException if {@code count} or {@code width} is not positive
 	 */
 	public SegmentedWeightedSumComputation(String name, int count, int width,
 										   Producer<PackedCollection> input,
 										   Producer<PackedCollection> values,
 										   Producer<PackedCollection> columns,
 										   Producer<PackedCollection> offsets) {
-		super(name, (width == 1 ? new TraversalPolicy(count) : new TraversalPolicy(count, width)).traverseEach(), 1,
+		super(name, outputShape(count, width), 1,
 				null, null, null, input, values, columns, offsets);
 		this.count = count;
 		this.width = width;
+	}
+
+	/**
+	 * Returns the output shape for the given segment count and width, rejecting a
+	 * non-positive dimension before it reaches the index arithmetic of the kernel
+	 * (a zero width would divide by zero when locating the segment of an element).
+	 *
+	 * @param count the number of segments
+	 * @param width the number of input columns
+	 * @return {@code (count)} when {@code width} is 1, otherwise {@code (count, width)}
+	 * @throws IllegalArgumentException if {@code count} or {@code width} is not positive
+	 */
+	private static TraversalPolicy outputShape(int count, int width) {
+		if (count <= 0 || width <= 0) {
+			throw new IllegalArgumentException("Segment count " + count + " and width " + width
+					+ " must be positive");
+		}
+
+		return (width == 1 ? new TraversalPolicy(count) : new TraversalPolicy(count, width)).traverseEach();
 	}
 
 	/**

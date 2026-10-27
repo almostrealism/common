@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.util.TestSuiteBase;
@@ -384,6 +385,33 @@ public class SparseMatrixTests extends TestSuiteBase implements MatrixFeatures {
 			assertMatches(new double[] { 7.0, 0.0, 6.0 }, first.multiply(cp(vector)).evaluate(), 1e-6);
 			assertMatches(new double[] { 0.0, 3.0, 21.0 }, second.multiply(cp(vector)).evaluate(), 1e-6);
 			assertMatches(new double[] { 7.0, 0.0, 6.0 }, first.multiply(cp(vector)).evaluate(), 1e-6);
+		}
+	}
+
+	/**
+	 * The segmented weighted sum rejects a non-positive segment count or width rather than
+	 * building a kernel whose segment arithmetic divides by zero, and, built directly, reduces
+	 * each column of a two-column operand independently. The segments are {@code [0, 2)},
+	 * {@code [2, 2)} and {@code [2, 3)} with values {@code [1, 2, 3]} gathering rows
+	 * {@code [0, 2, 1]} of {@code [[1, 10], [2, 20], [3, 30]]}, so the output is
+	 * {@code [[7, 70], [0, 0], [6, 60]]}.
+	 */
+	@Test(timeout = 60000)
+	public void segmentedWeightedSumValidatesAndReducesColumns() {
+		try (PackedCollection input = PackedCollection.of(1.0, 10.0, 2.0, 20.0, 3.0, 30.0).reshape(shape(3, 2));
+			 PackedCollection values = PackedCollection.of(1.0, 2.0, 3.0);
+			 PackedCollection columns = PackedCollection.ofSplitIndices(0, 2, 1);
+			 PackedCollection offsets = PackedCollection.ofSplitIndices(0, 2, 2, 3)) {
+			assertRejected(() -> new SegmentedWeightedSumComputation("sum", 3, 0,
+					cp(input), cp(values), cp(columns), cp(offsets)));
+			assertRejected(() -> new SegmentedWeightedSumComputation("sum", 0, 2,
+					cp(input), cp(values), cp(columns), cp(offsets)));
+
+			PackedCollection result = new SegmentedWeightedSumComputation("sum", 3, 2,
+					cp(input), cp(values), cp(columns), cp(offsets)).evaluate();
+			Assert.assertEquals(3, result.getShape().length(0));
+			Assert.assertEquals(2, result.getShape().length(1));
+			assertMatches(new double[] { 7.0, 70.0, 0.0, 0.0, 6.0, 60.0 }, result, 1e-6);
 		}
 	}
 
