@@ -721,9 +721,8 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 	 * <p>Computes {@code y = weight ⊙ tanh(alpha · x) + bias} over the trailing feature axis, the
 	 * producer-level form of {@link #dynamicTanh(TraversalPolicy, PackedCollection, PackedCollection,
 	 * PackedCollection, ComputeRequirement...)}. The {@link CellularLayer} overload delegates here so
-	 * the two cannot drift; this form is used by computations that compose DyT inline (for example the
-	 * query/key normalization inside the learned-resampling transformer block) rather than as a
-	 * standalone trainable layer.</p>
+	 * the two cannot drift; this form is for computations that compose DyT inline in a larger producer
+	 * rather than as a standalone trainable layer.</p>
 	 *
 	 * @param input  the input producer; the affine parameters apply over its trailing feature axis
 	 * @param alpha  the learnable scale applied inside {@code tanh}; a scalar ({@code [1]}) or one
