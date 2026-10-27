@@ -116,8 +116,7 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 										   Producer<PackedCollection> values,
 										   Producer<PackedCollection> columns,
 										   Producer<PackedCollection> offsets) {
-		super(name, outputShape(count, width), 1,
-				null, null, null, input, values, columns, offsets);
+		super(name, outputShape(count, width), 1, input, values, columns, offsets);
 		this.count = count;
 		this.width = width;
 	}
@@ -210,7 +209,7 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		ArrayVariable<?> out = (ArrayVariable<?>) getOutputVariable();
+		ArrayVariable<?> out = getOutputVariable();
 		Expression currentValue = out.reference(globalIndex.multiply(out.length()));
 
 		Expression<?> entry = segmentStart(args, segmentOf(globalIndex)).add(localIndex);

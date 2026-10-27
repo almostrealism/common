@@ -65,11 +65,31 @@ import org.almostrealism.collect.SplitIndexTraversalOrdering;
  * depends only on the operand shapes, so matrices with the same shape and capacity share one
  * compiled kernel.</p>
  *
- * <p><strong>Arrays held directly, not a sparse ordering.</strong> A
- * {@link io.almostrealism.collect.TraversalOrdering} maps logical to physical positions within a
- * single collection, while CSR is three arrays whose relationship is the segmented reduction
- * itself. The ordering machinery is used only where it fits: the integer-exact layout of the
- * index arrays.</p>
+ * <p><strong>Not a collection read through a sparse ordering.</strong> The official way to
+ * lay out collection memory is a {@link io.almostrealism.collect.TraversalOrdering} configured
+ * on a {@link PackedCollection}, and a matrix with that layout would be a {@code (rows, cols)}
+ * collection over the entry values whose ordering maps each logical element to its entry, or to
+ * an absent position. That representation was considered and rejected for this type, for three
+ * reasons that hold for every possible CSR ordering, not only the existing ones:</p>
+ * <ul>
+ *   <li><strong>It cannot be built at the scale this type exists for.</strong> The logical
+ *       element count of an ordered collection is an {@code int}: {@link PackedCollection}
+ *       rejects a shape of more than {@link Integer#MAX_VALUE} elements, and a kernel
+ *       addresses logical elements through {@code int} sizes. A 166,000 × 166,000 matrix has
+ *       about {@code 2.8 * 10^10} logical elements.</li>
+ *   <li><strong>The map runs the wrong way for a product.</strong> An ordering maps a logical
+ *       index to a physical position, so any computation reading the collection, including
+ *       dense {@code matmul}, reads every logical element: {@code rows * cols} reads per
+ *       product rather than one per entry. The sparse product enumerates the stored entries
+ *       of each row, which is the inverse map (entry to logical position) and is exactly
+ *       the row offsets and columns held here.</li>
+ *   <li><strong>The logical-to-physical map has no closed form.</strong> Finding the entry of
+ *       {@code (i, j)} is a search of row {@code i}'s columns. The one searching ordering,
+ *       {@link org.almostrealism.collect.IndexMaskTraversalOrdering}, renders one conditional
+ *       per stored entry into every read, which its documentation limits to small masks.</li>
+ * </ul>
+ * <p>The ordering machinery is used where it does fit: the index arrays are stored in the
+ * integer-exact layout of {@link SplitIndexTraversalOrdering}.</p>
  *
  * <h2>Usage</h2>
  * <pre>{@code

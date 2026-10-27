@@ -153,15 +153,32 @@ different index arithmetic) is inherited from `AggregatedProducerComputation`, n
 
 ### The type-vs-ordering decision (documented in Javadoc)
 
-`SparseMatrix` **holds its three arrays directly** rather than being backed by a sparse
-`TraversalOrdering`. Reasons, to be stated in the class Javadoc:
+`SparseMatrix` **holds its three arrays directly** rather than being a collection read through a
+sparse `TraversalOrdering`.
 
-- The sparse-`TraversalOrdering`/`TraversableExpression` integration (task 82bda0b7) is a separate,
-  still-incomplete capability, and the task requires the product not to wait on it.
-- CSR is three dense arrays, not a reordering of one collection; a `TraversalOrdering` expresses a
-  logical→physical index map over a single collection, which is a poor fit for the `(rowOffsets,
-  columns, values)` triple. The ordering machinery is still used, but narrowly and where it fits:
-  reading the **index** arrays integer-exact via `SplitIndexTraversalOrdering`.
+*Correction (PR review, 2026-10-27).* The two reasons originally given here did not justify the
+choice. The first was out of date when the plan was written: the ordering integration (task
+82bda0b7) closed on 2026-10-25, before this plan was created, and ordered collections are correct
+kernel inputs on master. The second ("CSR is three arrays, not a reordering of one collection")
+describes the representation already chosen rather than testing the alternative, and it conflates
+the storage of an ordering's map with the data it orders. The reasons that do hold, for any CSR
+ordering, are:
+
+- **Scale.** The logical element count of an ordered collection is an `int`: `PackedCollection`
+  rejects a shape of more than `Integer.MAX_VALUE` elements, and kernels address logical elements
+  through `int` sizes. A 166,000 × 166,000 matrix has about 2.8 × 10^10 logical elements, so it
+  cannot be expressed as an ordered `(rows, cols)` collection at all.
+- **Direction of the map.** An ordering maps logical index → physical position, so any consumer
+  (including dense `matmul`) reads every logical element: `rows × cols` reads per product. The
+  product needs the inverse map, entry → logical position, which is exactly `rowOffsets` and
+  `columns`.
+- **No closed form.** The logical → physical map of CSR is a search within a row. The one
+  searching ordering, `IndexMaskTraversalOrdering`, renders one conditional per stored entry into
+  every read and is documented as suitable for small masks only.
+
+The ordering machinery is still used where it fits: the index arrays are stored in the
+integer-exact layout of `SplitIndexTraversalOrdering`. The same reasons are stated in the
+`SparseMatrix` Javadoc.
 
 ### Placement
 
@@ -207,8 +224,9 @@ A reviewer will know the task is done when:
   task builds directly on it for the index arrays. Verified present on `master`.
 - **Not a dependency: task 82bda0b7 (sparse `TraversalOrdering` through `TraversableExpression`).**
   The connectome plan and the task description both state the product does not need a compact
-  ordering and must not wait on that integration. `SparseMatrix` holds its arrays directly for
-  precisely this reason.
+  ordering and must not wait on that integration. (That integration had in fact already landed
+  when this plan was written; see the corrected type-vs-ordering decision above for why
+  `SparseMatrix` still holds its arrays directly.)
 - **Platform: macOS node required for implementation.** The "done when" criteria require parity *on
   Metal*, and Metal is available only on macOS FlowTree nodes. The large-scale check also wants a
   measurement per backend. A `requiredLabels: platform: macos` setting is filed beside this plan

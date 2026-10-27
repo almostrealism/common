@@ -19,7 +19,7 @@ package io.almostrealism.code;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.scope.Variable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.uml.Signature;
 import io.almostrealism.util.DescribableParent;
 
@@ -49,11 +49,13 @@ public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O
 	 * {@inheritDoc}
 	 *
 	 * <p>Returns the first argument (index 0), which is the output variable by convention.
+	 * Every argument of a computation is an {@link ArrayVariable}, so the output variable is
+	 * declared as one and subclasses address its elements without a cast.
 	 *
 	 * @return the output variable
 	 */
 	@Override
-	public Variable getOutputVariable() { return getArgument( 0); }
+	public ArrayVariable<?> getOutputVariable() { return getArgument(0); }
 
 	/**
 	 * Returns the destination evaluable for this computation, which is the first input producer's value.

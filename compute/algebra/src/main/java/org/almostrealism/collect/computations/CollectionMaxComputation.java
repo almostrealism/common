@@ -17,9 +17,10 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
-import io.almostrealism.expression.Max;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.calculus.ReduceAxis;
@@ -49,7 +50,7 @@ import java.util.List;
  *   <li><strong>Initialization:</strong> Accumulator starts at {@link MinimumValue} (negative infinity)</li>
  *   <li><strong>Accumulation:</strong> Each element is compared to the current maximum</li>
  *   <li><strong>Iteration:</strong> Fixed count equal to the input collection size</li>
- *   <li><strong>Comparison:</strong> Uses {@link Max#of(io.almostrealism.expression.Expression, io.almostrealism.expression.Expression)} for element-wise max</li>
+ *   <li><strong>Comparison:</strong> Uses {@link io.almostrealism.expression.ExpressionArithmetic#max(Expression)} for element-wise max</li>
  * </ul>
  *
  * <h2>Usage Examples</h2>
@@ -134,10 +135,31 @@ public class CollectionMaxComputation extends AggregatedProducerComputation {
 	 * @param input The {@link Producer} providing the collection to find the maximum of
 	 */
 	protected CollectionMaxComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
-		super("max", shape.replace(new TraversalPolicy(1)), shape.getSize(),
-				(args, index) -> new MinimumValue(),
-				(out, arg) -> Max.of(out, arg),
-				input);
+		super("max", shape.replace(new TraversalPolicy(1)), shape.getSize(), input);
+	}
+
+	/**
+	 * Returns the minimum representable value, the identity of the maximum.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the position within the output block
+	 * @return the minimum value
+	 */
+	@Override
+	protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+		return new MinimumValue();
+	}
+
+	/**
+	 * Returns the larger of the accumulator and the element.
+	 *
+	 * @param accumulator the maximum so far
+	 * @param element     the next element
+	 * @return {@code max(accumulator, element)}
+	 */
+	@Override
+	protected Expression<?> combine(Expression<?> accumulator, Expression<?> element) {
+		return accumulator.max(element);
 	}
 
 	/**

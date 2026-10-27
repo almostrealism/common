@@ -17,9 +17,11 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
@@ -144,10 +146,31 @@ public class CollectionSumComputation extends AggregatedProducerComputation {
 	 * @param input The {@link Producer} providing the collection to be summed
 	 */
 	protected CollectionSumComputation(TraversalPolicy shape, boolean replaceLoop, Producer<PackedCollection> input) {
-		super("sum", shape.replace(new TraversalPolicy(1)), shape.getSize(),
-				(args, index) -> new DoubleConstant(0.0),
-				(out, arg) -> out.add(arg),
-				replaceLoop, input);
+		super("sum", shape.replace(new TraversalPolicy(1)), shape.getSize(), replaceLoop, input);
+	}
+
+	/**
+	 * Returns zero, the identity of addition.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the position within the output block
+	 * @return the constant {@code 0.0}
+	 */
+	@Override
+	protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+		return new DoubleConstant(0.0);
+	}
+
+	/**
+	 * Adds the element to the accumulator.
+	 *
+	 * @param accumulator the sum so far
+	 * @param element     the next element
+	 * @return {@code accumulator + element}
+	 */
+	@Override
+	protected Expression<?> combine(Expression<?> accumulator, Expression<?> element) {
+		return accumulator.add(element);
 	}
 
 	/**
