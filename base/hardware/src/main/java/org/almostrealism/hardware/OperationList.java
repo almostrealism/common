@@ -1160,7 +1160,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		boolean match = IntStream.range(1, size()).anyMatch(i -> Countable.countLong(get(i - 1)) == Countable.countLong(get(i)));
 		if (!match) return optimizeAndSubdivide(context);
 
-		// TODO(review): segments of a non-compiled list no longer fuse; check perf of other false-compilation lists (e.g. CellList Tick)
 		OperationList op = new OperationList(description, enableCompilation);
 		OperationList current = new OperationList(null, enableCompilation);
 		long currentCount = -1;

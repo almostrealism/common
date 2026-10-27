@@ -15,7 +15,6 @@ import struct
 import sys
 import unittest
 
-# TODO(review): moved out of tools/tests, so CI's python-tests job (unittest discover -s tools/tests) no longer runs this file
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import male_cns  # noqa: E402

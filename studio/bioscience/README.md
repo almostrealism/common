@@ -32,6 +32,9 @@ This module exists to:
   python3 -m unittest discover -s studio/bioscience/scripts -p "test_*.py"
   ```
 
+  CI's `python-tests` job runs them through `tools/tests/test_bioscience_scripts.py`, which
+  imports their test cases so that discovery under `tools/tests` collects them.
+
 ## What does not belong here
 
 - Biological models that do not need `ar-ml`. Put them in `domain/biology`, where lower
