@@ -23,6 +23,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.lang.ref.ReferenceQueue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -255,6 +256,125 @@ public class HardwareMemoryProviderDoubleFreeTest {
 	}
 
 	/**
+	 * A stale collected reference whose address has been reused by a new block that a kernel
+	 * holds must not be held back in the new block's place. If it were, the new block's own
+	 * held-back release would be absorbed by the stale entry (the held-back releases are keyed
+	 * by address and the first entry is kept), the sweep would retry only the stale reference,
+	 * and the new block would never be freed.
+	 */
+	@Test(timeout = 30000)
+	public void staleCollectedRefDoesNotTakeReusedAddress() {
+		long address = nextAddress.addAndGet(0x1000);
+
+		FakeRam first = provider.register(address);
+		NativeRef<RAM> staleRef = provider.trackedRef(first);
+		provider.deallocate(SIZE, first);
+		Assert.assertEquals(1, provider.releases.get());
+
+		FakeRam second = provider.register(address);
+		Assert.assertNotSame("the new block must have its own reference",
+				staleRef, provider.trackedRef(second));
+
+		long attempts = HardwareMemoryProvider.getDoubleFreeAttempts();
+		provider.heldForProcessThread = true;
+		provider.heldForOthers = true;
+
+		enqueueAndAwait(staleRef);
+
+		provider.deallocate(SIZE, second);
+		Assert.assertEquals("the new block's release must be held back while a kernel uses it",
+				1, provider.releases.get());
+
+		provider.heldForProcessThread = false;
+		provider.heldForOthers = false;
+		await("the sweep to free the new block", () -> provider.releases.get() == 2);
+		awaitSweeps();
+
+		Assert.assertEquals("each block must be freed exactly once", 2, provider.releases.get());
+		Assert.assertEquals("no block may remain tracked", 0, provider.getAllocatedCount());
+		Assert.assertFalse("no double free may be reported", loggedContains(DOUBLE_FREE));
+		Assert.assertEquals("the double-free detail budget must not be consumed",
+				attempts, HardwareMemoryProvider.getDoubleFreeAttempts());
+	}
+
+	/**
+	 * A successful explicit release clears the reference, so the collector can no longer find
+	 * its referent, and it stops being tracked.
+	 */
+	@Test(timeout = 30000)
+	public void explicitReleaseClearsReference() {
+		FakeRam ram = provider.register();
+		NativeRef<RAM> ref = provider.trackedRef(ram);
+		Assert.assertTrue(ref.refersTo(ram));
+
+		provider.deallocate(SIZE, ram);
+
+		Assert.assertTrue("the reference must be claimed", ref.isFreed());
+		Assert.assertEquals(ReleaseOrigin.EXPLICIT, ref.getFreedBy());
+		Assert.assertFalse("an explicitly released reference must be cleared", ref.refersTo(ram));
+		Assert.assertEquals("the released block must no longer be tracked",
+				0, provider.getAllocatedCount());
+	}
+
+	/**
+	 * A release freed by the collected path records that origin on the reference and leaves
+	 * nothing tracked.
+	 */
+	@Test(timeout = 30000)
+	public void collectedReleaseRecordsOrigin() {
+		FakeRam ram = provider.register();
+		NativeRef<RAM> ref = provider.trackedRef(ram);
+
+		enqueueAndAwait(ref);
+
+		Assert.assertEquals(1, provider.releases.get());
+		Assert.assertTrue(ref.isFreed());
+		Assert.assertEquals(ReleaseOrigin.COLLECTED, ref.getFreedBy());
+	}
+
+	/**
+	 * The claim records its origin atomically: the first claim wins and its origin is kept, a
+	 * losing claim does not overwrite it, and reversing the claim clears both the flag and the
+	 * origin so a retry records its own.
+	 */
+	@Test(timeout = 30000)
+	public void claimRecordsWinningOrigin() {
+		FakeRam ram = new FakeRam(provider, nextAddress.addAndGet(0x1000));
+		NativeRef<RAM> ref = new NativeRef<>(ram, new ReferenceQueue<>());
+
+		Assert.assertFalse(ref.isFreed());
+		Assert.assertNull("an unclaimed reference has no origin", ref.getFreedBy());
+
+		Assert.assertTrue(ref.tryClaimFreed(ReleaseOrigin.COLLECTED));
+		Assert.assertFalse("a second claim must lose", ref.tryClaimFreed(ReleaseOrigin.EXPLICIT));
+		Assert.assertFalse("the no-argument claim must lose as well", ref.tryClaimFreed());
+		Assert.assertEquals("a losing claim must not overwrite the winner's origin",
+				ReleaseOrigin.COLLECTED, ref.getFreedBy());
+		Assert.assertNotNull("the first claim's stack trace must be captured",
+				ref.getFirstFreeStackTrace());
+
+		ref.unclaimFreed();
+		Assert.assertFalse(ref.isFreed());
+		Assert.assertNull("reversing the claim must clear its origin", ref.getFreedBy());
+		Assert.assertNull("reversing the claim must clear its stack trace", ref.getFirstFreeStackTrace());
+
+		Assert.assertTrue("the no-argument claim is an explicit claim", ref.tryClaimFreed());
+		Assert.assertEquals(ReleaseOrigin.EXPLICIT, ref.getFreedBy());
+	}
+
+	/** Only an explicit request losing to an explicit winner is a double free. */
+	@Test(timeout = 30000)
+	public void onlyExplicitAfterExplicitIsDoubleFree() {
+		Assert.assertTrue(ReleaseOrigin.EXPLICIT.isDoubleFreeAfter(ReleaseOrigin.EXPLICIT));
+		Assert.assertFalse(ReleaseOrigin.EXPLICIT.isDoubleFreeAfter(ReleaseOrigin.COLLECTED));
+		Assert.assertFalse(ReleaseOrigin.COLLECTED.isDoubleFreeAfter(ReleaseOrigin.EXPLICIT));
+		Assert.assertFalse(ReleaseOrigin.COLLECTED.isDoubleFreeAfter(ReleaseOrigin.COLLECTED));
+		Assert.assertFalse("a claim reversed before the loser looked is not a double free",
+				ReleaseOrigin.EXPLICIT.isDoubleFreeAfter(null));
+		Assert.assertFalse(ReleaseOrigin.COLLECTED.isDoubleFreeAfter(null));
+	}
+
+	/**
 	 * Enqueues the reference as the garbage collector would, and waits until the submit thread
 	 * has handled it.
 	 *
@@ -354,7 +474,17 @@ public class HardwareMemoryProviderDoubleFreeTest {
 		 * @return the block
 		 */
 		FakeRam register() {
-			FakeRam ram = new FakeRam(this, nextAddress.addAndGet(0x1000));
+			return register(nextAddress.addAndGet(0x1000));
+		}
+
+		/**
+		 * Allocates and registers a fake block at the given address.
+		 *
+		 * @param address the block's address
+		 * @return the block
+		 */
+		FakeRam register(long address) {
+			FakeRam ram = new FakeRam(this, address);
 			allocated(ram);
 			return ram;
 		}
