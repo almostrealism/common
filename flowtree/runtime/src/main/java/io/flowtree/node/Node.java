@@ -94,6 +94,9 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 	/** Shared {@link Random} instance used for probabilistic relay and connection decisions. */
 	public static Random random = new Random();
 
+	/** Longest an idle worker thread waits for a new job before re-checking failed jobs. */
+	private static final long IDLE_POLL_MILLIS = 5000;
+
 	/** Formatter for percentage values used in status output. */
 	protected NumberFormat pFormat = NumberFormat.getPercentInstance();
 
@@ -463,11 +466,7 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 											tot / 1000.0 + " seconds.");
 						}
 					} else {
-						try {
-							Thread.sleep(5000);
-						} catch (InterruptedException ie) {
-							Node.this.warn("Node " + Node.this.id + ": " + ie);
-						}
+						Node.this.awaitJob();
 					}
 				}
 		}, "Node " + this.id + " Worker Thread");
@@ -919,6 +918,8 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 				id = this.jobs.size() - 1;
 			else
 				return id;
+
+			this.jobs.notifyAll();
 		}
 
 		if (this.worker != null && !"relay".equals(labels.get("role"))) {
@@ -933,6 +934,24 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 		return id;
 	}
 	
+	/**
+	 * Blocks the idle worker thread until {@link #addJob(Job)} queues a job, or
+	 * until {@link #IDLE_POLL_MILLIS} elapses so that failed jobs are still
+	 * retried during inactivity. A fixed sleep here would leave a job that
+	 * arrives while the worker is idle unexecuted for up to the full interval.
+	 */
+	private void awaitJob() {
+		synchronized (this.jobs) {
+			if (!this.jobs.isEmpty()) return;
+
+			try {
+				this.jobs.wait(IDLE_POLL_MILLIS);
+			} catch (InterruptedException ie) {
+				warn("Node " + this.id + ": " + ie);
+			}
+		}
+	}
+
 	/**
 	 * Adds a job to the list of failed jobs to be retried during inactivity.
 	 * The String value will be converted to a Job instance using the
