@@ -125,4 +125,34 @@ public class SubmittableTest extends TestSuiteBase {
 		Assert.assertNull(operation.received.get(0));
 		Assert.assertEquals(1, dependsOn.waits);
 	}
+
+	/**
+	 * Settling on behalf of a propagating failure waits for the guarded work, attaches a
+	 * different failure of that work as suppressed, does not attach the propagating failure to
+	 * itself when the work rethrows that very instance, and leaves the failure untouched when the
+	 * work completes normally.
+	 */
+	@Test(timeout = 30000)
+	public void waitForSettledSuppressesOnlyOtherFailures() {
+		RuntimeException propagating = new RuntimeException("propagating");
+
+		CountedCompletion completes = new CountedCompletion(true);
+		completes.waitForSettled(propagating);
+		Assert.assertEquals(1, completes.waits);
+		Assert.assertEquals(0, propagating.getSuppressed().length);
+
+		IllegalStateException other = new IllegalStateException("other");
+		Semaphore failsDifferently = () -> { throw other; };
+		failsDifferently.waitForSettled(propagating);
+		Assert.assertArrayEquals(new Throwable[] { other }, propagating.getSuppressed());
+
+		Semaphore rethrows = () -> { throw propagating; };
+		rethrows.waitForSettled(propagating);
+		Assert.assertArrayEquals(new Throwable[] { other }, propagating.getSuppressed());
+
+		AssertionError error = new AssertionError("error");
+		Semaphore failsWithError = () -> { throw error; };
+		failsWithError.waitForSettled(propagating);
+		Assert.assertArrayEquals(new Throwable[] { other, error }, propagating.getSuppressed());
+	}
 }

@@ -133,7 +133,7 @@ public class OperationListRunner implements Runnable, Submittable, Destroyable, 
 	 *                  {@code null} to begin a chain
 	 * @return the completion of the last operation, or {@code null} when nothing issued
 	 *         remains in flight (the last member ran on the host, or none published a
-	 *         completion)
+	 *         completion), or {@code dependsOn} itself when the list has no operations
 	 */
 	@Override
 	public Semaphore submit(Semaphore dependsOn) {
@@ -144,6 +144,7 @@ public class OperationListRunner implements Runnable, Submittable, Destroyable, 
 
 			Semaphore pending = dependsOn;
 
+			// TODO(review): a member that throws leaves earlier members in flight; settle pending (waitForSettled) as SimulationRunner.run does
 			for (int i = 0; i < run.size(); i++) {
 				Runnable r = run.get(i);
 				Submittable member = Submittable.of(r);

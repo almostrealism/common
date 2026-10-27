@@ -449,6 +449,73 @@ public class SimulationRunnerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * When dispatching fails partway through a step, {@code run} waits for the work already
+	 * dispatched before the failure propagates, so nothing is still running against state the
+	 * caller may release; a failure of that work is attached to the propagating one as
+	 * suppressed instead of replacing it, and the step that failed is not counted.
+	 */
+	@Test(timeout = 120000)
+	public void failedDispatchSettlesTheWorkInFlight() {
+		IllegalStateException inFlightFailure = new IllegalStateException("in flight");
+		AtomicInteger inFlightWaits = new AtomicInteger();
+		Semaphore inFlight = new Semaphore() {
+			@Override
+			public void waitFor() {
+				inFlightWaits.incrementAndGet();
+				throw inFlightFailure;
+			}
+
+			@Override
+			public boolean isOrderedOnDevice() { return true; }
+		};
+
+		RuntimeException dispatchFailure = new RuntimeException("dispatch");
+		List<Semaphore> received = new ArrayList<>();
+		Submittable dispatched = dependsOn -> inFlight;
+		Submittable failing = dependsOn -> {
+			received.add(dependsOn);
+			throw dispatchFailure;
+		};
+
+		CountedSystem system = new CountedSystem();
+		SimulationRunner runner = new SimulationRunner(system, DT);
+		runner.addInput(1, () -> new SubmittableInput(dispatched));
+		runner.addInput(1, () -> new SubmittableInput(failing));
+
+		try {
+			runner.run(5);
+			Assert.fail("the dispatch failure was not propagated");
+		} catch (RuntimeException e) {
+			Assert.assertSame(dispatchFailure, e);
+			Assert.assertArrayEquals(new Throwable[] { inFlightFailure }, e.getSuppressed());
+		}
+
+		Assert.assertEquals(List.of(inFlight), received);
+		assertEquals(1, inFlightWaits.get());
+		assertEquals(0, runner.getStepCount());
+		runner.destroy();
+	}
+
+	/** A boundary input that only submits through a given {@link Submittable}. */
+	private static class SubmittableInput implements Runnable, Submittable {
+		/** The submission performed by this input. */
+		private final Submittable submission;
+
+		/**
+		 * @param submission the submission performed by this input
+		 */
+		SubmittableInput(Submittable submission) {
+			this.submission = submission;
+		}
+
+		@Override
+		public void run() { throw new UnsupportedOperationException("the input must be submitted"); }
+
+		@Override
+		public Semaphore submit(Semaphore dependsOn) { return submission.submit(dependsOn); }
+	}
+
+	/**
 	 * Interleaving {@code run} with the inherited {@code getContinue()}, {@code get()} and
 	 * {@code tick()} keeps the device counter, host count, recording and listener calls equal to
 	 * the number of steps, with setup run once; composing the runner in another
