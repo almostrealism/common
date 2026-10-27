@@ -18,6 +18,8 @@ engine/audio for synthesis and compute/time for temporal operations.
 - AudioScene, PatternSystemManager, MixdownManager
 - High-level arrangement and sequencing of audio elements
 - Effects routing, automation curves, mix bus management
+- Applications that combine a domain model with the ML engine, such as biological models
+  coupled to trained networks (`bioscience`)
 
 ## What Does NOT Belong Here
 
@@ -40,3 +42,4 @@ engine/audio for synthesis and compute/time for temporal operations.
 - [music](music/README.md) — Musical patterns, notes, scales, composition
 - [compose](compose/README.md) — Audio scene composition, arrangement, effects processing
 - [spatial](spatial/README.md) — Spatial audio, 3D sound, composition integration
+- [bioscience](bioscience/README.md) — Biological models combined with the ML engine

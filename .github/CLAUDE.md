@@ -17,6 +17,7 @@ Layer 6 — Studio
   studio/music      → audio
   studio/spatial    → compose
   studio/experiments→ compose, ml-onnx, ml-djl, ml-script, utils
+  studio/bioscience → biology, ml
 
 Layer 5 — Extern
   extern/ml-djl     → ml
@@ -37,6 +38,7 @@ Layer 3 — Domain
   domain/physics    → time, color
   domain/color      → geometry, stats
   domain/chemistry  → physics, heredity
+  domain/biology    → chemistry, graph
   domain/heredity   → time
 
 Layer 2 — Compute

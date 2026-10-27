@@ -19,6 +19,7 @@ package org.almostrealism.ml;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.model.WeightGroup;
 import org.almostrealism.persist.assets.Asset;
 import org.almostrealism.persist.assets.AssetGroup;
 import org.almostrealism.persist.assets.AssetGroupInfo;
@@ -59,7 +60,7 @@ import java.util.stream.Collectors;
  *
  * @author  Michael Murray
  */
-public class StateDictionary extends AssetGroup implements Destroyable, ConsoleFeatures {
+public class StateDictionary extends AssetGroup implements WeightGroup, Destroyable, ConsoleFeatures {
 	/**
 	 * When {@code true}, weight tensors are decoded eagerly into freshly
 	 * allocated collections. When {@code false}, weight tensors keep their
@@ -377,6 +378,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * @param key Weight key
 	 * @return PackedCollection containing the weight data, or null if not found
 	 */
+	@Override
 	public PackedCollection get(String key) {
 		return weights.get(key);
 	}
@@ -391,6 +393,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * @return PackedCollection containing the weight data
 	 * @throws IllegalArgumentException if there is no weight named {@code key}
 	 */
+	@Override
 	public PackedCollection require(String key) {
 		PackedCollection weight = weights.get(key);
 		if (weight != null) return weight;
@@ -426,6 +429,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * @param name a name, or dotted path of names, within this dictionary
 	 * @return the weights under {@code name}; empty if there are none
 	 */
+	@Override
 	public StateDictionary group(String name) {
 		String prefix = name + ".";
 		Map<String, PackedCollection> members = new HashMap<>();
@@ -451,6 +455,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 *
 	 * @return the distinct first segments of this dictionary's keys
 	 */
+	@Override
 	public List<String> members() {
 		List<String> names = new ArrayList<>(weights.keySet().stream()
 				.map(key -> key.contains(".") ? key.substring(0, key.indexOf('.')) : key)
@@ -469,6 +474,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * @param key Weight key
 	 * @return true if weight exists, false otherwise
 	 */
+	@Override
 	public boolean containsKey(String key) {
 		return weights.containsKey(key);
 	}
@@ -487,6 +493,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 *
 	 * @return Number of weights
 	 */
+	@Override
 	public int size() {
 		return weights.size();
 	}

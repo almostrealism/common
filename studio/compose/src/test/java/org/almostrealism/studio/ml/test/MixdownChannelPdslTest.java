@@ -20,9 +20,9 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
-import org.almostrealism.ml.dsl.PdslNode;
+import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -73,7 +73,7 @@ import java.util.Map;
  * <p>The energy-level and echo-presence assertions below confirm correctness of the PDSL signal path
  * without requiring exact sample-level agreement.</p>
  *
- * @see org.almostrealism.ml.dsl.PdslInterpreter
+ * @see org.almostrealism.dsl.PdslInterpreter
  * @see org.almostrealism.studio.arrange.MixdownManager
  */
 public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTestFeatures {
