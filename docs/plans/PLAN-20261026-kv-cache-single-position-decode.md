@@ -1,3 +1,10 @@
+---
+status: approved
+created: 2026-10-26
+closed:
+tracker: []
+---
+
 # Decode the self-hosted LM one token at a time with a key/value cache
 
 **Category:** Proof of Value (self-hosted LM generation)

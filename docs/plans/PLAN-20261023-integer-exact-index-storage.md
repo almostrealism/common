@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-23
+closed: 2026-10-26
+tracker: [2c0793a7-141c-40bb-8253-a2dda02ebaa2]
+---
+
 # Integer-exact index storage for gather and sparse addressing on FP32 backends
 
 **Tracker task:** `2c0793a7-141c-40bb-8253-a2dda02ebaa2` — "Integer-exact index storage for

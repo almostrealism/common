@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-26
+closed: 2026-10-27
+tracker: []
+---
+
 # Teach PDSL model authoring with a worked tutorial
 
 **Category:** Documentation
@@ -278,3 +285,25 @@ Raised in review for the person approving the plan; none has been decided.
 Medium. One substantial HTML page grounded in source, one focused drift-guard test mirroring
 an existing one, and index/cross-link wiring. The risk is scope discipline (staying a
 tutorial, not a second reference) and extraction robustness in HTML, both addressed above.
+
+## Resolution
+
+Implemented as `docs/tutorials/10-pdsl-model-definitions.html` with the drift guard
+`PdslTutorialExamplesTest`. The open questions were settled as follows:
+
+1. The final model is option (a) without rotary embedding: a self-contained `toy_decoder`
+   that stacks a pre-norm decoder layer (cached single-token attention plus a gated MLP, each
+   in an `accum`) over a synthetic checkpoint, then a norm and a vocabulary projection. Its
+   caches come from `zeros(...)` as in `qwen3.pdsl`; only `position` and a settings map are
+   passed from Java.
+2. The 22-argument `transformer_qk_norm(...)` call is shown elided, as something to read, not
+   to write. Landing `transformer(block, position)` or changing the meaning of `-> [shape]`
+   are triggers to revise the page.
+3. `for i in a..b` is mentioned once, with a pointer to the reference; only `stack` is taught.
+4. The test, README link and `llms.txt` entry are included.
+5. The page is numbered `10`; the two `08` pages are untouched.
+
+Asset excerpts on the page are marked `language-pdsl-asset` with a `data-asset` path and are
+checked line by line against the asset; programs the reader writes are `language-pdsl` and
+must parse; the final one must build to `[1, vocab]` with one block per stacked layer plus two.
+

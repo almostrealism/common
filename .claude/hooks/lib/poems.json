@@ -1,7 +1,7 @@
 {
   "_comment": [
-    "Poems for the topic-diversity interlude hook. See item 10 of",
-    "docs/plans/AR_MANAGER_TOOL_ERGONOMICS.md for why this exists.",
+    "Poems for the topic-diversity interlude hook; the rationale is in",
+    ".claude/hooks/lib/interlude_check.py.",
     "",
     "Selection rules, which matter as much as the text:",
     "  - Public domain only. Everything here is an originally-English work",

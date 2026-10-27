@@ -1,3 +1,10 @@
+---
+status: proposed
+created: 2026-10-06
+closed:
+tracker: []
+---
+
 # Maven Artifact Staleness — A Verdict That Is Right, Quiet, and Enforced
 
 **Status:** proposal (not started)
@@ -179,7 +186,7 @@ Move the computation into one shared core, `staleness_verdict(project_root,
 target_module | None, scope)`. It returns
 `{stale: [(module, source_time, newest_file, install_time)], scope}`. Put it under
 `.claude/hooks/lib/`, which is already the home of shared hook cores, following the
-shared-core + thin-adapter pattern in `docs/plans/OPENCODE_HOOKS.md`.
+shared-core + thin-adapter pattern in `docs/internals/agent-hooks.md`.
 
 - **The Claude hook** becomes a thin adapter: payload in, then deny, warn or
   silence.

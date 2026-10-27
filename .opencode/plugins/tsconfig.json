@@ -10,6 +10,7 @@
   },
   "include": [
     "block-mvn-test-direct.ts",
+    "block-pytest-broad-run.ts",
     "block-git-commit.ts",
     "block-git-worktree.ts",
     "warn-git-log.ts",

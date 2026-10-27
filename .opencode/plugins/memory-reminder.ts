@@ -42,8 +42,7 @@
 // .after would put the reminder after the (often lengthy) tool
 // output, where it's more likely to be ignored.
 //
-// See docs/plans/OPENCODE_HOOKS.md for the harness contract and
-// docs/plans/MEMORY_REMINDER_HOOK.md for the design.
+// See docs/internals/agent-hooks.md for the harness contract and the design.
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { spawnSync } from "node:child_process"

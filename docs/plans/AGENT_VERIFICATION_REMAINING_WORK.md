@@ -1,3 +1,10 @@
+---
+status: in-progress
+created: 2026-09-24
+closed:
+tracker: []
+---
+
 # Agent job verification — what is not done
 
 Companion to `AGENT_JOB_END_TO_END_VERIFICATION.md`, which describes the

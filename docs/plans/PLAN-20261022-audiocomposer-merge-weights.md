@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-22
+closed: 2026-10-23
+tracker: [7dca3a77-2708-4905-bb2b-397b7f4d1d87]
+---
+
 # Controllable per-source merge weights for AudioComposer latent blending
 
 **Tracker task:** `7dca3a77-2708-4905-bb2b-397b7f4d1d87` — *Controllable per-source merge weights for AudioComposer latent blending*

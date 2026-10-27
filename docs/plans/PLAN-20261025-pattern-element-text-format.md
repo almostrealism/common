@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-25
+closed: 2026-10-26
+tracker: [a80d6ce3-69ad-49b1-8a5b-44addfcfe648]
+---
+
 # Text Representation of PatternElement (Parse and Serialize)
 
 - **Tracker task:** `a80d6ce3-69ad-49b1-8a5b-44addfcfe648` — *Text representation of PatternElement (parse and serialize)*

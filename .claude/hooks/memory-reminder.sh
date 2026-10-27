@@ -14,7 +14,7 @@
 # reminds the agent to store a memory when a threshold is crossed.
 # The threshold is hybrid: a count of side-effect tool calls OR a
 # wall-clock time floor, whichever first. See
-# docs/plans/MEMORY_REMINDER_HOOK.md for the design.
+# docs/internals/agent-hooks.md for the design.
 #
 # The hook is **soft-inject only** (never blocks). It emits a JSON
 # hookSpecificOutput.additionalContext for the model's next turn

@@ -1,9 +1,14 @@
+---
+status: in-progress
+created: 2026-10-04
+closed:
+tracker: []
+---
+
 # PDSL for Research and Education
 
-**Status:** Direction agreed (see "Decisions") and partially implemented. The `stack`
-construct, hierarchical weight binding, explicit KV-cache parameters and the pure-Java
-safetensors reader (`SafetensorsReference`) have landed; the per-item notes below mark what
-is done and what remains.
+**Status:** Direction agreed (see "Decisions") and partially implemented; the per-item
+notes below mark what is done and what remains.
 
 ## Resume here
 
@@ -103,58 +108,26 @@ alongside a short sequence of variants with the changed lines highlighted:
 **Every snippet shown publicly must be a file that a test loads and runs.** The published
 pages and the tests read the same files, so a page cannot drift away from code that works.
 
-## Where PDSL was when this plan began
+## Gaps still open
 
-This section is the survey of 2026-10-04, kept as the baseline the plan was written against.
-Citations are against that tree. Since then, the model-level structure has moved to
-`qwen2.pdsl` / `qwen3.pdsl` (only the embedding lookup and sampling remain in Java). Weight
-binding, `zeros`, `rope_freqs` and per-layer KV caches exist. The `state_dict` stub is gone:
-`buildModel(..., StateDictionary, ...)` binds the dictionary to every `checkpoint` parameter.
-`weight("key")` still evaluates to the string `"weight:<key>"` and nothing resolves it, but it
-is superseded rather than blocking, since a model now names its weights by `checkpoint` field
-path (`weights.model.norm.weight`); `pdsl-language.md` lists it under "Known limits". The
-phase notes below are the current state.
+Done since the plan began: weight binding by path from a checkpoint, `stack`, explicit
+per-layer `key_cache`/`value_cache` parameters, and `qwen2.pdsl`/`qwen3.pdsl` as the
+model files `Qwen3.model()` uses. In Java, only the embedding lookup, tokenization,
+sampling and the generation loop remain. These gaps remain:
 
-### Already expressed in PDSL
-
-- **One transformer layer for Llama-style models.**
-  - `engine/ml/src/main/resources/pdsl/transformer.pdsl` defines `transformer`, `transformer_qk_norm` (Qwen3) and `transformer_mra`.
-  - The attention stage is in `attention.pdsl`. It had a KV cache declared as `state attention_cache` (since replaced by `key_cache`/`value_cache` parameters on each attention layer, so every layer gets caches of its own), grouped-query attention via `repeat_each`, RoPE and per-head QK-norm.
-  - The SwiGLU MLP is in `feed_forward.pdsl`.
-- **The header comments are already teaching material.** Each stage is annotated with its shape (for example `[heads, seq_len]`). That style is the right one for this audience.
-- **Composition is readable.** `accum { ... }` is a residual connection, `branch { ... }` is a side path whose result the main path does not consume, and `product(a, b)` is an element-wise gate.
-- **An observation primitive exists.** `capture(slot)` (`PdslBuiltins.java:288-321`) copies the signal into a slot and passes it through unchanged. Only the audio mixdown uses it today.
-
-### Still in Java
-
-The model-level structure of every LLM is still in Java (`Qwen3.model()`, `Qwen3.java:334-415`):
-
-- the token embedding, a lambda in `AutoregressiveModel`;
-- the loop over layers, which calls `AttentionFeatures.transformer(...)` once per layer;
-- binding of each layer's weights from `StateDictionary` by Hugging Face key;
-- allocation of the KV cache (`AttentionFeatures.java:846`);
-- the RoPE frequency table, the final RMSNorm, the vocabulary projection, and sampling.
-
-No shipped `.pdsl` file defines a `model`.
-
-### Gaps that block this plan
-
-This table is part of the 2026-10-04 baseline. The first two rows are closed by `checkpoint`
-parameters and field paths (see above). The others were open at the survey; the phase notes and
-"Resume here" give their current state.
-
-| Gap | Where | Consequence |
-|-----|-------|-------------|
-| `weight("key")` returns the string `"weight:key"` and nothing resolves it | `PdslInterpreter.java:984-988` | A model cannot name its own weights |
-| `buildModel(..., StateDictionary, ...)` only stores the dictionary under `args["state_dict"]`, and nothing reads it | `PdslLoader.java:218-229` | No direct weight binding |
-| No token-embedding primitive | — | The model cannot begin in PDSL |
-| No runner: every `.pdsl` file is loaded from Java | — | Nobody can run a file without writing Java |
-| Interpreter errors are mostly unpositioned, and there is no static shape check | `PdslInterpreter.java:345-354`, `906-913` | A novice's first mistake produces a stack trace |
-| `-> [shape]` is parsed as a return shape but treated as the input shape | `PdslInterpreter.java:1110-1133` | The language says something it does not mean |
-| No primitive adds an external vector; `capture` is the only observation hook | — | No steering; probing only through a slot nobody reads |
-| PDSL `dense` has no `ProjectionFactory` hook | `PdslBuiltins.java:79` | Existing LoRA support (`LoRALinear`, `LowRankAdapterSupport`) cannot reach PDSL-built LLMs |
-| `capture`'s backward pass is an empty operation list | `PdslBuiltins.java:313-316` | A recorded model may block gradients; this matters once adapters are trained |
-| Only Qwen2.5-0.5B-Instruct has been validated end to end (exact top-logit match with PyTorch, `engine/ml/qwen/STATUS.md`) | — | Qwen3 support is untested, and the program's studies used Qwen3-4B |
+| Gap | Consequence |
+|-----|-------------|
+| No token-embedding primitive (`embed`) | The model cannot begin in PDSL |
+| Model files pass every weight as its own argument | Every new model file inherits a 20-argument call (fix with `transformer(block, position)`) |
+| No stack slicing | Interventions on a range of layers cannot be written |
+| No runner: every `.pdsl` file is loaded from Java | Nobody can run a file without writing Java |
+| Interpreter errors are mostly unpositioned; no static shape check | A novice's first mistake produces a stack trace |
+| `-> [shape]` is parsed as a return shape but treated as the input shape | The language says something it does not mean |
+| No primitive adds an external vector; `capture` is the only observation hook | No steering; probing only through a slot nobody reads |
+| PDSL `dense` has no `ProjectionFactory` hook | Existing LoRA support cannot reach PDSL-built LLMs |
+| `capture`'s backward pass is an empty operation list | A recorded model may block gradients once adapters are trained |
+| The Qwen tokenizer reads only its own `tokenizer.bin` format | A published checkpoint's `tokenizer.json` / `vocab.json` + `merges.txt` cannot be used |
+| Only Qwen2.5-0.5B-Instruct has been validated end to end against PyTorch | Qwen3 support is untested on real weights |
 
 ## Design principles
 
@@ -379,7 +352,7 @@ already established; this gate is about real weights.
      support `engine/ml` already has; add no new dependency.
    - Decode BF16 and F16 to the framework's precision. Qwen checkpoints ship as BF16.
    - The reader goes through the sanctioned host-ingest path, following the setMem ingest
-     rules (`SETMEM_INGEST_LAYER.md`), and does no element-wise copying in Java.
+     rules (`docs/internals/host-device-write-policy.md`), and does no element-wise copying in Java.
    - It serves two uses: `StateDictionary` loads a Hugging Face directory directly, and
      `pdsl convert <hf-dir> <out>` writes the protobuf form once.
 
@@ -421,8 +394,8 @@ the published number. For example, a Study 2 projection read: frozen directions 
 layer 18 of Qwen3-4B on a fixed replay. This needs:
 
 - Qwen3 validated as Qwen2.5 is now (QK-norm path, config inference);
-- a 4B checkpoint running at a speed that makes a small replay practical (`QWEN_PERFORMANCE.md`
-  reports about 735 ms per token at 0.5B).
+- a 4B checkpoint running at a speed that makes a small replay practical (the last
+  measurement was about 735 ms per token at 0.5B; re-profiling is a tracker task).
 
 **Gate:** the PDSL number matches the published one within its reported uncertainty.
 

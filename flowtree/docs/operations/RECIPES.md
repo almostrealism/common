@@ -220,7 +220,7 @@ The `default_runner` / `runners` / `model` / `effort` parameters are no
 longer accepted on any config tool; a call that passes one is rejected with
 a 400-style error. Use `default_phase_config` / `phase_configs` per the
 precedence rules in
-[../../docs/plans/UNIFIED_PHASE_CONFIG.md](../../docs/plans/UNIFIED_PHASE_CONFIG.md).
+[../architecture/PHASES.md](../architecture/PHASES.md).
 
 To migrate from the initial Slack-team-ID-as-ID form to a friendlier
 operator-chosen name, pass `new_id`:

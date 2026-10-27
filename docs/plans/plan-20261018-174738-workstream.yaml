@@ -1,6 +1,0 @@
-# The output-projection full-Jacobian gradient defect has only been measured on Metal, and
-# diagnosis and verification both require ar-profile-analyzer on a Metal-captured profile,
-# so the implementation must run on a macOS node. See
-# docs/plans/PLAN-20261018-full-jacobian-gradient-correctness.md (Dependencies).
-requiredLabels:
-  platform: macos

@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-25
+closed: 2026-10-26
+tracker: [6d8bbb62-cf36-481c-8dbb-f82147029a78]
+---
+
 # Plan: a simulation loop owner for recurrent dynamical systems
 
 **Tracker task:** [6d8bbb62-cf36-481c-8dbb-f82147029a78] "A simulation loop owner for recurrent

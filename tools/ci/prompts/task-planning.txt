@@ -52,7 +52,18 @@ this task builds on it.
 ## Step 3: Write the plan
 
 Create exactly one new plan document: `docs/plans/PLAN-<YYYYMMDD>-<short-slug>.md`.
-It should contain:
+It must start with the lifecycle front matter described in `docs/plans/CLAUDE.md`,
+with `status: proposed`, today's date as `created`, an empty `closed`, and the
+tracker task's id in `tracker`:
+
+    ---
+    status: proposed
+    created: <YYYY-MM-DD>
+    closed:
+    tracker: [<task id>]
+    ---
+
+After the front matter it should contain:
 
 - **Title**, and the tracker task it plans: its id and title, and the release.
 - **Motivation**: why the task matters, in the task's own terms.

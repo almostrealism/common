@@ -731,6 +731,8 @@ Each limit below is recorded with its evidence. Fixing any of them changes this 
 
 ## Related documentation
 
+- [Tutorial 10: Writing Models in PDSL](../tutorials/10-pdsl-model-definitions.html): a guided,
+  progressive read of the shipped assets that ends in a small model built from a checkpoint
 - [PDSL Audio DSP Reference](pdsl-audio-dsp.md): audio primitives, `for each channel`,
   producer-valued arguments, state blocks for DSP
 - [ML Inference Pipeline](ml-inference-pipeline.md): which assets build which attention and

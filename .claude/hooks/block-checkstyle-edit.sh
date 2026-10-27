@@ -22,6 +22,6 @@
 # MUST abandon the task and declare it impossible.  Declaring
 # failure is always preferable to tampering with enforcement.
 #
-# See docs/plans/OPENCODE_HOOKS.md for the architecture.
+# See docs/internals/agent-hooks.md for the architecture.
 set -euo pipefail
 exec python3 "$(cd "$(dirname "$0")" && pwd)/lib/checkstyle_config_check.py" --stdin
