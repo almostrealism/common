@@ -16,16 +16,19 @@
 
 package org.almostrealism.time;
 
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionSlotUpdateComputation;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,7 +52,10 @@ import java.util.function.Supplier;
  *       {@link org.almostrealism.hardware.computations.Loop}. Such a loop lets every kernel thread
  *       iterate on its own with no barrier between iterations, which is correct only for
  *       element-local steps; a globally coupled step needs a global synchronization per step.
- *       There is deliberately no way to request several steps per dispatch.</li>
+ *       There is deliberately no way to request several steps per dispatch. The synchronization
+ *       is the device's where the device can provide it: each step's operations are chained on
+ *       the completion of the work dispatched before them, and where the device orders them
+ *       after it on its own the host does not wait for each step (see {@link #run(long)}).</li>
  *   <li><strong>A device-resident step counter</strong> ({@link #getStep()}): a single-element
  *       collection that the system's own graph can consume, for example as time
  *       ({@link #time()}) for a driven input. It is reset by a compiled operation when the
@@ -77,7 +83,8 @@ import java.util.function.Supplier;
  *
  * <h2>Order of one step</h2>
  * <ol>
- *   <li>Boundary listeners that are due are called with the index of the step about to run.</li>
+ *   <li>Boundary listeners that are due are called with the index of the step about to run,
+ *       once every operation dispatched before them has completed.</li>
  *   <li>Boundary inputs that are due are dispatched.</li>
  *   <li>The compiled step runs (the system's tick, then the counter advance).</li>
  *   <li>Recordings that are due write one sample.</li>
@@ -127,6 +134,16 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class SimulationRunner extends TemporalRunner {
+	/**
+	 * The most steps {@link #run(long)} dispatches ahead of the device before it waits for the
+	 * work dispatched so far to complete. The host runs ahead only of completions that the device
+	 * orders the next step after (see {@link Semaphore#isOrderedOnDevice()}), so this bounds the
+	 * work queued on such a device, and the memory held until its completion is observed, while
+	 * letting one wait cover many steps on a backend that batches them. {@code 1} restores a wait
+	 * after every step. Controlled by {@code AR_SIMULATION_STEPS_IN_FLIGHT}.
+	 */
+	public static int maxStepsInFlight = SystemUtils.getInt("AR_SIMULATION_STEPS_IN_FLIGHT").orElse(256);
+
 	/** The system being stepped. */
 	private final Temporal system;
 
@@ -350,6 +367,21 @@ public class SimulationRunner extends TemporalRunner {
 	 * dispatches compiled operations and performs {@code long} arithmetic for scheduling, and
 	 * nothing in it evaluates a producer or reads device memory.
 	 *
+	 * <p>The inputs, steps and recordings run in the order of this loop. Each compiled operation
+	 * is chained on the completion of the one dispatched before it wherever the device orders it
+	 * after that completion on its own (see {@link Submittable#chainOnDevice(Semaphore)} and
+	 * {@link Semaphore#isOrderedOnDevice()}): the host then does not wait for a step before
+	 * dispatching the next, and a backend that batches dispatches (Metal) accumulates many steps
+	 * into one command buffer instead of committing and waiting for every step. A backend that
+	 * would hold a host thread for every dispatch issued ahead of its dependency is waited for
+	 * before each operation instead, as running ahead of it gains nothing. Either way the host
+	 * also waits where host code needs the work ahead of it to be complete &mdash; before
+	 * calling boundary listeners that are due, before an operation that cannot be chained, and
+	 * once at the end of the run, so the state may be read when this method returns &mdash; and
+	 * after every {@link #maxStepsInFlight} steps, which bounds how far it runs ahead of the
+	 * device. If dispatching fails, the work already dispatched is waited for before the
+	 * failure propagates.</p>
+	 *
 	 * @param steps the number of steps to run; must not be negative
 	 * @throws IllegalArgumentException if {@code steps} is negative
 	 * @throws IllegalStateException    if a recording would exceed its capacity
@@ -364,24 +396,62 @@ public class SimulationRunner extends TemporalRunner {
 		}
 
 		runSetupIfPending();
-		Runnable compiledStep = super.getContinue();
+		Submittable compiledStep = Submittable.of(super.getContinue());
+		Semaphore pending = null;
+		int inFlight = 0;
 
-		for (long i = 0; i < steps; i++) {
-			for (Scheduled<LongConsumer> listener : listeners) {
-				if (listener.isDue(stepCount)) listener.getAction().accept(stepCount);
+		try {
+			for (long i = 0; i < steps; i++) {
+				boolean listenersDue = isListenerDue(stepCount);
+
+				// A listener is host code, so everything dispatched ahead of it must be complete
+				if (listenersDue || inFlight >= maxStepsInFlight) {
+					if (pending != null) {
+						pending.waitFor();
+						pending = null;
+					}
+
+					inFlight = 0;
+				}
+
+				if (listenersDue) {
+					for (Scheduled<LongConsumer> listener : listeners) {
+						if (listener.isDue(stepCount)) listener.getAction().accept(stepCount);
+					}
+				}
+
+				for (Scheduled<Runnable> input : inputs) {
+					if (input.isDue(stepCount)) pending = Submittable.of(input.getAction()).chainOnDevice(pending);
+				}
+
+				pending = compiledStep.chainOnDevice(pending);
+				stepCount++;
+				inFlight++;
+
+				for (Recording recording : recordings) {
+					if (recording.isDue(stepCount)) pending = recording.write(pending);
+				}
 			}
-
-			for (Scheduled<Runnable> input : inputs) {
-				if (input.isDue(stepCount)) input.getAction().run();
-			}
-
-			compiledStep.run();
-			stepCount++;
-
-			for (Recording recording : recordings) {
-				if (recording.isDue(stepCount)) recording.write();
-			}
+		} catch (RuntimeException | Error e) {
+			if (pending != null) pending.waitForSettled(e);
+			throw e;
 		}
+
+		if (pending != null) pending.waitFor();
+	}
+
+	/**
+	 * Returns whether any boundary listener is due before the given step.
+	 *
+	 * @param step the index of the step about to run
+	 * @return true when at least one listener's interval divides {@code step}
+	 */
+	private boolean isListenerDue(long step) {
+		for (Scheduled<LongConsumer> listener : listeners) {
+			if (listener.isDue(step)) return true;
+		}
+
+		return false;
 	}
 
 	/**
@@ -629,10 +699,17 @@ public class SimulationRunner extends TemporalRunner {
 			}
 		}
 
-		/** Writes one sample. */
-		protected void write() {
-			write.run();
+		/**
+		 * Writes one sample, ordered after {@code dependsOn} (see
+		 * {@link Submittable#chainOnDevice(Semaphore)}).
+		 *
+		 * @param dependsOn the completion the write must be ordered after, or {@code null}
+		 * @return the completion of the write, or {@code null} if it has already completed
+		 */
+		protected Semaphore write(Semaphore dependsOn) {
+			Semaphore written = Submittable.of(write).chainOnDevice(dependsOn);
 			sampleCount++;
+			return written;
 		}
 
 		/** Returns the sample index to zero. */

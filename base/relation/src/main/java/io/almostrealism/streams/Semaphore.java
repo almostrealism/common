@@ -84,6 +84,26 @@ public interface Semaphore {
 	}
 
 	/**
+	 * Blocks until the guarded operation has either completed or failed, on behalf of a
+	 * failure that is already propagating.
+	 *
+	 * <p>Work submitted before a failure may still be running against resources the caller
+	 * releases once it sees the failure, so it is waited for before the failure propagates.
+	 * The wait must not replace that failure: a failure of the guarded operation is attached
+	 * to {@code failure} as suppressed rather than thrown, unless it is that very instance
+	 * (work sharing the failing dependency may rethrow it).</p>
+	 *
+	 * @param failure the failure that is propagating
+	 */
+	default void waitForSettled(Throwable failure) {
+		try {
+			waitFor();
+		} catch (RuntimeException | Error settled) {
+			if (settled != failure) failure.addSuppressed(settled);
+		}
+	}
+
+	/**
 	 * Registers a callback to be invoked on a background thread once the guarded
 	 * operation has completed.
 	 *
@@ -146,6 +166,24 @@ public interface Semaphore {
 				r.run();
 			}
 		});
+	}
+
+	/**
+	 * Returns whether a dispatch submitted with this completion as its dependency waits for it
+	 * on the device rather than on the host.
+	 *
+	 * <p>A provider that orders dependent work itself (a later dispatch encodes a device-side
+	 * wait for this completion, or shares its in-order queue) costs the host nothing for each
+	 * dependent issued before this has completed, so a caller issuing a long sequence of
+	 * dependent work may run far ahead of it. A provider that honors a dependency by waiting for
+	 * it on a host thread instead holds a thread for every dependent issued early, so a caller
+	 * gains nothing by running ahead of such a completion and should wait for it before issuing
+	 * more. The default is {@code false}, which is always safe: it only gives up running ahead.</p>
+	 *
+	 * @return true if dependents of this completion are ordered after it on the device
+	 */
+	default boolean isOrderedOnDevice() {
+		return false;
 	}
 
 	/**

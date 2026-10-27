@@ -154,6 +154,18 @@ public class MetalSemaphore implements OperationSemaphore {
 	}
 
 	/**
+	 * Returns {@code true}: a dispatch of the same runner that depends on this one is ordered
+	 * after it on the GPU, by the open command buffer it shares or by an encoded wait for this
+	 * completion's {@link #getValue() value}, so issuing it costs no host wait or thread (see
+	 * {@link MetalCommandRunner#submit}).
+	 *
+	 * @return {@code true}
+	 */
+	// TODO(review): device ordering depends on the receiving provider too; a native receiver of this completion still parks a host thread
+	@Override
+	public boolean isOrderedOnDevice() { return true; }
+
+	/**
 	 * Merges with another completion from the same {@link MetalCommandRunner} into the
 	 * completion of whichever dispatch was issued later, so that a dispatch depending on both
 	 * chains on one completion of this runner instead of on a host-side composite. Completions
