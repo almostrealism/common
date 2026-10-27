@@ -24,8 +24,8 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
-import org.almostrealism.ml.dsl.PdslLoader;
-import org.almostrealism.ml.dsl.PdslNode;
+import org.almostrealism.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 

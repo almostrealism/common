@@ -26,7 +26,7 @@ import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
-import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;

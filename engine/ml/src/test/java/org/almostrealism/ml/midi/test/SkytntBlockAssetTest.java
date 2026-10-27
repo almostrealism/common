@@ -20,7 +20,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.RotationFeatures;
-import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;

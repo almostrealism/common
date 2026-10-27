@@ -19,7 +19,7 @@ package org.almostrealism.ml.audio;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
-import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 

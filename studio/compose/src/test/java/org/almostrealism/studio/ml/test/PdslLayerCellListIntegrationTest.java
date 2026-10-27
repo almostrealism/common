@@ -18,8 +18,8 @@ package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.dsl.PdslLoader;
-import org.almostrealism.ml.dsl.PdslNode;
+import org.almostrealism.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -48,7 +48,7 @@ import java.util.Map;
  *       without dropping samples.</li>
  * </ol>
  *
- * @see org.almostrealism.ml.dsl.PdslLoader
+ * @see org.almostrealism.dsl.PdslLoader
  * @see org.almostrealism.time.Temporal
  */
 public class PdslLayerCellListIntegrationTest extends TestSuiteBase
