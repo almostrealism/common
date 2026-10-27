@@ -20,7 +20,10 @@ the "Deallocation Submit Thread" takes the block's `NativeRef` off the reference
 `deallocateNow(ref)`. The claim is atomic, so the driver is never called twice. These are not
 double frees, but each one is reported as a bug:
 
-- **Noise.** A detailed report prints three stack traces.
+- **Noise.** A detailed report prints up to three stack traces: the allocation trace (only when
+  `RAM.allocationTraceFrames` > 0, which is off by default), the first-free trace (only when
+  `MemoryReference.captureFreeStackTrace` is on, which is the default) and the current thread's
+  stack (always).
 - **Real double frees get hidden.** Detail is limited by the static, never-reset
   `doubleFreeAttempts` counter to `DOUBLE_FREE_DETAIL_LIMIT` (64) per JVM. The counter is shared
   by every provider in the JVM. Benign races use up that budget, so a real ownership bug later in
@@ -52,7 +55,11 @@ removes it). This is how the GC path gets to see a ref that an explicit release 
    the deallocation queue. The ref stays in `allocated`, so if the caller drops the RAM the GC
    can enqueue the same ref, and the submit thread queues it a second time. Whichever entry the
    process thread takes second loses the claim. `PriorityBlockingQueue` orders only by size, so
-   the two entries can come off in either order.
+   the two entries can come off in either order. **This mode is off everywhere in the
+   repository.** `queueDeallocation` is a plain static field (no system property or environment
+   variable binds it), and nothing outside `HardwareMemoryProvider` assigns it (checked with grep
+   across all modules), so it is always `false`. Queued mode therefore cannot produce the CI
+   reports. It is covered here only so that the change stays correct if someone enables it.
 3. **Inline release (inferred, not demonstrated).** In `deallocateNow(T mem)`, `mem` is not used
    after `getNativeRef(mem)`, so the JIT may treat it as unreachable while the native release is
    still running. Note that the main explicit caller, `MemoryDataAdapter.destroy`, keeps the RAM
@@ -61,15 +68,39 @@ removes it). This is how the GC path gets to see a ref that an explicit release 
    callers that hold the RAM in nothing but a local variable. No such report has been traced to a
    specific caller.
 
-No path clears the `NativeRef` after a successful explicit free, and the submit thread never
-checks `isFreed()`.
+The submit thread never checks `isFreed()`, so whatever the GC enqueues reaches the claim.
+
+The converse matters just as much: a ref the provider no longer holds is not enqueued at all.
+Once `releaseNow` has removed a ref from `allocated` (and it is not in `deferred` or on the
+deallocation queue), nothing keeps the `NativeRef` reachable, so the GC collects it with its
+referent and does not enqueue it. A GC race is therefore possible only while the ref is still
+held: during a deferral, while it waits on the deallocation queue, or in the window between the
+claim and the `allocated` removal inside `releaseNow`. This is why the three cases above are the
+complete list, and why the fix has to be in the claim-lost branch rather than in clearing refs
+after release (see Approach step 3).
+
+One consequence is worth checking against the logs before implementing (Open question 9). With
+`queueDeallocation = false`, an explicit release that is *not* deferred cannot race with the GC
+when the caller keeps the RAM reachable, as `MemoryDataAdapter.destroy` does. So in the two
+deferred orderings the explicit side's stack is `sweepDeferred` on the Deallocation Process
+Thread, not `MemoryDataAdapter.destroy`: the eviction stack is where the release was *requested*,
+and it does not appear in either "First freed at" or "Current free attempt at". A report whose
+stack runs through `MemoryDataAdapter.destroy` → `deallocate(int, T)` is not explained by the
+mechanisms above, unless it is the inferred item 3 with a caller other than
+`MemoryDataAdapter.destroy`.
 
 **What `warnDoubleFree` can actually catch today.** A second *sequential* explicit
 `deallocate(size, ram)` never reaches `warnDoubleFree`. The first release removes the ref from
 `allocated`, so the second call's `getNativeRef(mem)` returns `null`. `deallocateNow(T mem)` then
-logs "Attempting to deallocate untracked memory" if `mem.isActive()`, and stays silent otherwise
-(`CLMemory.isActive()` is `false` once released). `AddressReuseDuringReleaseTest` relies on this
-behaviour. The explicit-versus-explicit cases that do reach `warnDoubleFree` are two explicit
+logs "Attempting to deallocate untracked memory" if `mem.isActive()`, and stays silent otherwise.
+Whether it logs depends on the backend. `MetalMemory.isActive()` is `false` once its `MTLBuffer`
+is released. `CLMemory.isActive()` returns `!released`, but nothing in the repository calls
+`CLMemory.tryClaimReleased()` any more (the claim moved to `NativeRef` when `CLMemoryProvider`
+moved onto `HardwareMemoryProvider`), so `released` is never set and a released `CLMemory` still
+reports active. On the CL backend a sequential second `deallocate` therefore logs "Attempting to
+deallocate untracked memory", not a double free. `RAM.isActive()` defaults to `true`, as for the
+fake `RAM` in `AddressReuseDuringReleaseTest`, whose `staleHandleDoesNotResolveToReusedBlock`
+relies on the second `deallocate` freeing nothing. The explicit-versus-explicit cases that do reach `warnDoubleFree` are two explicit
 requests that both obtained the ref before either release finished. That happens with two
 concurrent releases, or with two queued-mode `deallocate` calls for the same RAM. In practice
 almost every report in today's logs is a race with the GC path, so this plan is mainly about
@@ -92,10 +123,17 @@ In scope:
   actually catch today".)
 - The GC path no longer uses up the double-free detail budget.
 - Close the inline-release window with `Reference.reachabilityFence`, and `clear()` the ref after
-  a successful explicit release so the GC does not enqueue it in most cases.
+  a successful explicit release. Both are cheap hardening. Neither is expected to remove any of the
+  reports traced so far (see Approach step 3 and Open questions 5 and 6).
 - Regression tests for both behaviours.
 - Bring the class Javadoc ("Two-Thread Deallocation Architecture") and the `warnDoubleFree`
-  Javadoc in line with the new behaviour.
+  Javadoc in line with the new behaviour. The class Javadoc is already out of date in ways this
+  change touches: its process-thread pseudo-code shows `deallocationQueue.take()` followed by
+  `deallocateNow(ref)`, but the thread actually polls with a `DEFERRED_SWEEP_INTERVAL_MS` timeout
+  and calls `sweepDeferred()` on every iteration, so it is the thread that finishes deferred
+  releases even when `queueDeallocation` is `false`. The `warnDoubleFree` and
+  `doubleFreeAttempts` Javadoc call every lost claim a "prevented double free"; after this change
+  that is true only of explicit-versus-explicit races.
 
 Out of scope:
 
@@ -149,8 +187,14 @@ has to be explicit:
   origin. That is acceptable: either way the block is freed once, and the winner-origin rule above
   decides whether a lost claim is reported.
 - A successful `COLLECTED` release should also remove any `deferred` entry that holds the **same**
-  ref, compared by identity, as `releaseNow` already does for `allocated`. Otherwise the sweep
-  keeps re-attempting a block that is already gone.
+  ref, compared by identity, as `releaseNow` already does for `allocated`. Without it the stale
+  entry causes two problems. `sweepDeferred` removes an entry before it calls `releaseNow`, so it
+  re-attempts the freed block only once, which the winner-origin rule makes silent. The larger
+  problem is that `deferred` is keyed by address and `deferIfInUse` uses `computeIfAbsent`: if the
+  backend reuses the address for a new block and that block's release is deferred while the stale
+  entry is still present, the new ref is never recorded, and when the stale entry is swept its
+  lost claim is all that happens. The new block is then left to the GC path or leaks until the
+  provider is destroyed. The identity-checked removal closes that.
 
 ### 2. Queued mode (`queueDeallocation = true`)
 
@@ -172,12 +216,16 @@ change, or it can become private.
   Reference.reachabilityFence(mem); }` so `mem` stays strongly reachable until the native release
   and the `allocated` removal have finished (Motivation, item 3). This is cheap, but it addresses
   an inferred window. It is not expected to remove any of the reports traced so far, which come
-  from the deferred and queued paths.
+  from the deferred path (queued mode is never enabled; see Motivation, item 2).
 - In `releaseNow`, after a successful `EXPLICIT` release (the `released == true` branch), call
   `ref.clear()`, **after** the identity-checked `allocated` removal. Clearing a `PhantomReference`
-  before the GC finds it prevents enqueueing, so in most cases the submit thread never sees the
-  ref. This is safe: `PhantomReference.get()` always returns `null`, so the native release
-  already uses only cached fields (address, size and per-backend handles such as `CLMemoryRef.mem`
+  before the GC finds it prevents enqueueing. Its practical effect is small, though. Once the
+  removal is done the provider no longer holds the ref (see the end of the Motivation), so the GC
+  would not enqueue it anyway; `clear()` only closes the few instructions between the removal and
+  the end of `releaseNow`, while the local variable still holds it. The orderings traced so far
+  are not affected: in both deferred orderings the GC can enqueue the ref throughout the deferral,
+  before any explicit claim succeeds. This is safe: `PhantomReference.get()` always returns
+  `null`, so the native release already uses only cached fields (address, size and per-backend handles such as `CLMemoryRef.mem`
   or `NativeBufferRef`'s root buffer). The order matters because `getNativeRef` matches the
   tracked entry with `ref.refersTo(ram)`. A ref cleared while still in `allocated` would make a
   concurrent `getNativeRef` return `null`, and the caller would see "Attempting to deallocate
@@ -224,7 +272,12 @@ Observability:
   used. `warnDoubleFree` returns before it increments the counter when `RAM.enableWarnings` is
   `false` (`AR_HARDWARE_MEMORY_WARNINGS=false`). A "delta of 0" assertion would then pass
   vacuously. The tests must set `RAM.enableWarnings = true` and restore it in `finally`, as they
-  do for `queueDeallocation`.
+  do for `queueDeallocation`. The counter is static and shared by every provider in the JVM.
+  Surefire runs other test classes in the same fork, and if one of them has already started
+  `Hardware`, a real provider's deallocation threads can increment the counter while a case runs.
+  An exact delta is then only reliable for 0-versus-nonzero in a quiet JVM. The captured console
+  lines from the test provider's own `console()` (below) are provider-local and should be the
+  primary assertion; the counter delta is a secondary check.
 - Capture warnings by overriding `console()` in the test provider to return a child `Console`
   (`Console.root().child()`) with a listener (`Console.addListener`). This also keeps logging
   from touching `Hardware.console`. Remove the listener in teardown.
@@ -233,12 +286,28 @@ Cases:
 
 1. **Explicit free, then GC enqueue:** `deallocate(size, ram)` → `ref.enqueue()` → wait for the
    submit thread. Expect exactly one native release, a counter delta of 0, and no "Skipping double
-   deallocate" line.
+   deallocate" line. The test holds the ref (obtained with `getNativeRef` before the release, as
+   `AddressReuseDuringReleaseTest.trackedRef` does), so it can enqueue it after the provider has
+   dropped it. In production that only happens in the short window inside `releaseNow` (see the
+   end of the Motivation). This case pins the claim-lost behaviour; case 2 is the one that matches
+   the reports seen in CI.
 2. **Deferred explicit release, both orderings:** the explicit `deallocate` is deferred because a
    guard reservation is held, then the reservation is released. (a) The sweep frees the block,
    then `ref.enqueue()`. (b) `ref.enqueue()` first, so the submit thread frees it, then the sweep
    runs. Both need the guard seam (Open question 1). Expect one release and a delta of 0 in both.
    Today, (b) is reported from the Deallocation Process Thread.
+   Ordering (b) is hard to force. The process thread runs `sweepDeferred` every
+   `DEFERRED_SWEEP_INTERVAL_MS` (100 ms) on its own, so between releasing the reservation and
+   the submit thread handling the enqueued ref, the sweep may free the block first, which turns
+   (b) into (a). Enqueueing *before* releasing the reservation does not help either: the submit
+   thread then defers too (`computeIfAbsent` keeps the explicit entry) and the sweep does both
+   releases. A deterministic (b) needs the seam to answer per caller, for example a hook that
+   returns the `ReservationState` and reports "executing" to the process thread until the submit
+   thread has finished. That shapes the choice in Open question 1. Without it, (b) is a timing
+   test and may be flaky.
+   With option (a) of Open question 1, a reservation on a test-owned `KernelMemoryGuard` is taken
+   with `acquire(MemoryData...)`, so the case also needs a `MemoryData` whose `getMem()` returns
+   the fake `RAM`.
 3. **Two explicit releases racing for the same ref:** the test provider's native
    `deallocate(NativeRef)` blocks on a latch. Thread A calls `deallocate(size, ram)` and blocks
    inside the native release. At that point the ref is claimed but still in `allocated`, with its
@@ -267,7 +336,11 @@ Cases:
   explicit release losing to the GC path, is reported.
 - New tests: case 1 shows no warning and no counter consumption after an explicit free followed
   by GC enqueue. Case 3 shows the detailed warning for two racing explicit releases. Cases 2(a),
-  2(b), 4 and 5 pass.
+  2(b), 4 and 5 pass. Case 2(b) forces its ordering through the seam rather than by timing, and
+  each case passes on repeated runs (for example `repetitions` 10 in `ar-test-runner`).
+- Cases 1, 2(a), 2(b) and 5 each fail against master's release logic (with only the test seam
+  from Open question 1 added), because master reports a double free in each of them. That shows
+  the tests detect the behaviour they guard rather than passing vacuously.
 - Existing tests above pass, run through `ar-test-runner` with bounded `test_classes`.
 - The build validator (checkstyle, code_policy, test_timeouts, duplicate_code) passes.
 - After merge, the `test-media-cl` CI shards show no "Skipping double deallocate" report in which
@@ -297,7 +370,13 @@ None. The task has no `blocked_by` tasks, and everything it touches is already o
    would then have to reserve the address on the process-wide guard.
    The task asks for base/hardware, so (a) is proposed. The reviewer should confirm that the hook
    is acceptable, since it adds a `protected` extension point to production code only to serve
-   tests.
+   tests. A hook at the `reservations(long)` level (returning `ReservationState`, a public record
+   with a public constructor) would serve case 2(b) better than one at the `kernelMemoryGuard()`
+   level, because it lets the test decide what the process thread's sweep sees independently of
+   the submit thread (see case 2). Note that `sweepDeferred` also uses `kernelMemoryGuard()`
+   directly, for `warnIfReserved` on expiry, so a `reservations`-only hook leaves that call on the
+   real `Hardware` path. It is reached only when a deferral times out (30 s), which no case
+   should do.
 2. **Is recording the winner's origin worth it?** The winner-origin rule in Approach step 1 is
    what keeps the "GC first" deferred ordering and the queued-mode ordering silent. It needs a new
    field on `NativeRef`/`MemoryReference`. A simpler alternative would be to report only lost
@@ -314,7 +393,39 @@ None. The task has no `blocked_by` tasks, and everything it touches is already o
 5. **Is the inline-release fence needed?** Motivation item 3 is inferred, not observed, and the
    main explicit caller (`MemoryDataAdapter.destroy`) already keeps the RAM reachable for the
    whole call. The fence is harmless and cheap. But if the reports turn out to come only from the
-   deferred and queued paths, it can be dropped without losing anything this plan measures.
+   deferred path, it can be dropped without losing anything this plan measures.
+6. **Is the `clear()` after release worth it?** As Approach step 3 explains, a ref that has left
+   `allocated` is no longer held by the provider and is not enqueued anyway, so `clear()` closes
+   only a window of a few instructions. It is cheap, but it is a second mechanism aimed at the
+   same symptom as step 1, and it adds an ordering rule (clear only after the identity-checked
+   removal) that a later edit could break. The reviewer may prefer to drop it and rely on step 1.
+7. **Is a GC-first deferred release correct, not only noisy?** In the "GC first" ordering the GC
+   path frees a block whose explicit release was deferred because a kernel held it. That is safe
+   only because the guard has already let go (`deferIfInUse` returned `false`), so no kernel is
+   reading it. This plan does not change that decision. It only stops the sweep's later lost
+   claim from being reported. If a reviewer suspects the guard's accounting (the `deallocateNow`
+   Javadoc notes that a GC-path deferral "would indicate either a race window ... or a bug in the
+   guard's accounting"), that is a separate investigation.
+8. **Stale `CLMemory` released flag.** `CLMemory.tryClaimReleased()`/`unclaimReleased()` have no
+   callers, so `CLMemory.isActive()` and `isReleased()` never report a released buffer (see "What
+   `warnDoubleFree` can actually catch today"). A second explicit `deallocate` of a CL buffer is
+   therefore reported as "Attempting to deallocate untracked memory", which is the same kind of
+   misleading warning this plan removes elsewhere. Fixing it (for example by having
+   `CLMemoryProvider.deallocate(NativeRef)` mark the buffer, or by removing the dead methods) is
+   outside this plan's scope, which excludes the backend subclasses, and is a candidate for a
+   follow-up task.
+9. **Do the CI reports match the mechanisms?** The Motivation describes the explicit stack as
+   either instruction-cache eviction ending in `MemoryDataAdapter.destroy` → `deallocate(int, T)`
+   or `sweepDeferred`. As noted at the end of the Motivation, the code only explains the
+   `sweepDeferred` form. Before implementing, take a sample of detailed reports from a recent
+   `test-media-cl` run and classify each by the thread and top frames of "First freed at" and
+   "Current free attempt at", against the orderings: sweep first (Process Thread
+   `sweepDeferred`, then Submit Thread), GC first (Submit Thread, then Process Thread
+   `sweepDeferred`), or something else. If any report shows `MemoryDataAdapter.destroy` itself as
+   one of the two stacks, there is a path this plan has not identified, and the winner-origin rule
+   could silence it or leave it loud without anyone knowing which. The fix is still correct for
+   the orderings it covers, but the success criterion on the CI logs should not be relied on until
+   the sample has been classified.
 
 ## Estimated complexity
 
