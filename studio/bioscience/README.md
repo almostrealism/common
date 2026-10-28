@@ -18,6 +18,23 @@ This module exists to:
 - Loaders that read third-party biological data formats into the platform's collections.
 - Experiments and applications that study a biological model with machine-learning tools.
 
+## Contents
+
+- `org.almostrealism.bioscience.connectome.CellTypeConnectome`: a connectome aggregated to cell
+  types (a dense, signed type-by-type matrix with type names, sizes and annotations), loaded
+  from the output of the conversion script below.
+- `scripts/`: Python scripts that convert third-party biological datasets into the formats the
+  Java loaders read. `male_cns.py` reads and filters the MaleCNS tables;
+  `male_cns_cell_types.py` writes the cell-type matrix. Their dependencies are listed in
+  `scripts/requirements.txt`. The standard-library parts are tested by `scripts/test_male_cns.py`:
+
+  ```bash
+  python3 -m unittest discover -s studio/bioscience/scripts -p "test_*.py"
+  ```
+
+  CI's `python-tests` job runs them through `tools/tests/test_bioscience_scripts.py`, which
+  imports their test cases so that discovery under `tools/tests` collects them.
+
 ## What does not belong here
 
 - Biological models that do not need `ar-ml`. Put them in `domain/biology`, where lower

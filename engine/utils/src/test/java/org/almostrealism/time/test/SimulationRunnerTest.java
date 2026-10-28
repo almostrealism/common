@@ -27,6 +27,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.SimulationRunner;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.time.TemporalRunner;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -691,6 +692,47 @@ public class SimulationRunnerTest extends TestSuiteBase {
 
 		runner.destroy();
 		assertFalse(step.isDestroyed());
+	}
+
+	/**
+	 * A dense 12,000 x 12,000 {@code matmul} step with copy-back. The runner optimizes each
+	 * operation of the step, which isolates the reduction into a looped kernel; compiled without
+	 * that, every row's 12,000-term dot product is generated as one unrolled expression, which
+	 * Metal rejects for exceeding a kernel's stack space. The matrix is
+	 * {@code M = a I + (b / size) J}, so after {@code n} steps
+	 * {@code x = a^n (x0 - mean) + (a + b)^n mean}.
+	 */
+	@Test(timeout = 1800000)
+	@TestDepth(2)
+	public void largeDenseStep() {
+		int size = 12000;
+		int steps = 20;
+		double a = 0.99;
+		double b = -0.005;
+
+		PackedCollection matrix = identity(size).multiply(a).add(b / size).evaluate();
+		PackedCollection state = integers(0, size).divide(size).evaluate();
+		PackedCollection next = new PackedCollection(size);
+		double mean = (size - 1) / (2.0 * size);
+
+		Temporal system = () -> {
+			OperationList tick = new OperationList("Large Dense Step");
+			tick.add(a("matmul", cp(next), matmul(cp(matrix), cp(state))));
+			tick.add(a("copyBack", cp(state), cp(next)));
+			return tick;
+		};
+
+		SimulationRunner runner = new SimulationRunner(system, DT);
+		runner.run(steps);
+
+		double local = Math.pow(a, steps);
+		double global = Math.pow(a + b, steps) * mean;
+		assertEquals(local * (0.0 - mean) + global, state.toDouble(0), 1e-3);
+		assertEquals(local * (6000.0 / size - mean) + global, state.toDouble(6000), 1e-3);
+		assertEquals(local * ((size - 1.0) / size - mean) + global, state.toDouble(size - 1), 1e-3);
+
+		runner.destroy();
+		Destroyable.releaseAll(List.of(matrix::destroy, state::destroy, next::destroy));
 	}
 
 	/**
