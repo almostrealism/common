@@ -247,14 +247,21 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * Folds the given root delegate into the shared aggregate buffer, returning an argument
 	 * variable that delegates to the aggregate at the assigned offset.
 	 *
+	 * <p>The root occupies its {@link MemoryData#getDelegatedLength() delegated length} in the
+	 * aggregate: that is the memory it actually has, which is less than its logical
+	 * {@link MemoryData#getMemLength() length} when an ordering stores fewer elements than it
+	 * addresses (a compact or sparse collection). Kernels reach the elements through that
+	 * ordering, so only the backing memory needs a place in the aggregate.</p>
+	 *
 	 * @param key  Supplier identifying the root delegate argument being created
 	 * @param root The root delegate {@link MemoryData} to aggregate
 	 * @return Argument variable delegating into the aggregate, or null if it cannot be aggregated
 	 */
 	private ArrayVariable aggregate(Supplier key, MemoryData root) {
 		int pos = aggregateLength;
+		int length = root.getDelegatedLength();
 
-		long tot = pos + (long) root.getMemLength();
+		long tot = pos + (long) length;
 		if (tot > Integer.MAX_VALUE) {
 			// The aggregate would overflow; leave this argument on its own
 			return null;
@@ -263,7 +270,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		// Record the root and its position so the data can be copied into and out of
 		// the aggregate around kernel execution.
 		replacements.add(new Replacement(root, pos));
-		aggregateLength += root.getMemLength();
+		aggregateLength += length;
 
 		return delegateProvider.getArgument(key, getAggregateArgument(), pos);
 	}
@@ -313,7 +320,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	public String describeAggregate() {
 		StringBuilder b = new StringBuilder("len=").append(aggregateLength).append(" [");
 		for (Replacement r : replacements) {
-			b.append(r.getPosition()).append(':').append(r.getRoot().getMemLength()).append(',');
+			b.append(r.getPosition()).append(':').append(r.getRoot().getDelegatedLength()).append(',');
 		}
 		return b.append(']').toString();
 	}
@@ -412,6 +419,10 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * collected into {@link #writableCopyOutOperations}, which is what a caller running all of them
 	 * is given. Whether a source is read-only cannot change while this map lives, so it is decided
 	 * here rather than on each dispatch.</p>
+	 *
+	 * <p>A copy moves a root's backing memory, its {@link MemoryData#getDelegatedLength() delegated
+	 * length}; a root whose logical length is larger is copied through a view of exactly that
+	 * memory, because a copy transfers the logical length of its source.</p>
 	 */
 	private void ensureCopyOperations() {
 		if (copyInOperations != null) {
@@ -424,11 +435,12 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 		for (Replacement r : replacements) {
 			MemoryData root = r.getRoot();
-			int len = root.getMemLength();
+			int len = root.getDelegatedLength();
+			MemoryData backing = len == root.getMemLength() ? root : new Bytes(len, root, 0);
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
-			Submittable copyOut = copyOperation(slice, root);
+			Submittable copyOut = copyOperation(slice, backing);
 
-			copyInOperations.add(copyOperation(root, slice));
+			copyInOperations.add(copyOperation(backing, slice));
 			copyOutOperations.add(copyOut);
 
 			if (!root.isReadOnly()) {
