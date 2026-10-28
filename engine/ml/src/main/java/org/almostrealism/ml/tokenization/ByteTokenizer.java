@@ -18,7 +18,11 @@ package org.almostrealism.ml.tokenization;
 
 import org.almostrealism.ml.Tokenizer;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.function.IntToLongFunction;
 
 /**
  * A {@link Tokenizer} over a fixed vocabulary of the 256 byte values. Text is encoded as its
@@ -83,12 +87,46 @@ public class ByteTokenizer implements Tokenizer {
 	 */
 	@Override
 	public String decodeAsLong(long[] tokens) {
-		byte[] bytes = new byte[tokens.length];
-		for (int i = 0; i < tokens.length; i++) {
-			bytes[i] = toByte(tokens[i]);
+		return new String(toBytes(tokens.length, i -> tokens[i]), StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * Returns whether token ids form valid UTF-8 under a strict decoder, one that reports a malformed
+	 * or unmappable sequence instead of replacing it. A byte-level model may legitimately emit a
+	 * partial multi-byte sequence, which {@link #decodeAsLong(long[])} would silently replace with
+	 * {@code U+FFFD}; this distinguishes such output from well-formed text.
+	 *
+	 * @param tokens token ids, each in {@code 0..255}
+	 * @return {@code true} if the bytes are well-formed UTF-8
+	 * @throws IllegalArgumentException if any id is outside {@code 0..255}
+	 */
+	public boolean isValidUtf8(int[] tokens) {
+		try {
+			StandardCharsets.UTF_8.newDecoder()
+					.onMalformedInput(CodingErrorAction.REPORT)
+					.onUnmappableCharacter(CodingErrorAction.REPORT)
+					.decode(ByteBuffer.wrap(toBytes(tokens.length, i -> tokens[i])));
+			return true;
+		} catch (CharacterCodingException e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Maps a sequence of token ids to their bytes, rejecting ids outside the vocabulary.
+	 *
+	 * @param count the number of ids
+	 * @param id    the id at each index
+	 * @return the bytes
+	 * @throws IllegalArgumentException if any id is outside {@code 0..255}
+	 */
+	private byte[] toBytes(int count, IntToLongFunction id) {
+		byte[] bytes = new byte[count];
+		for (int i = 0; i < count; i++) {
+			bytes[i] = toByte(id.applyAsLong(i));
 		}
 
-		return new String(bytes, StandardCharsets.UTF_8);
+		return bytes;
 	}
 
 	/**

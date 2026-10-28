@@ -28,6 +28,99 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-10-28 — Measure the self-hosted LM's key/value-cache decode speed, and generate prose about the platform at that speed
+
+**Category:** Proof of Value (self-hosted LM generation)
+**Branch:** `project/plan-20261028-004435`
+**Plan:** [`PLAN-20261028-lm-decode-throughput.md`](PLAN-20261028-lm-decode-throughput.md)
+
+#### What changed since last cycle
+
+The neural-population-simulation documentation landed (PR #762, merged):
+`docs/internals/neural-population-simulation.md` walks one spiking population from device-resident
+state through the LIF step, ring-buffer delay, connectivity, in-kernel Poisson drive and a
+`SimulationRunner` run, drift-guarded by `NeuralPopulationSimulationExamplesTest`, and brought
+`shape-and-traversal.md`, `llms.txt` and the graph/biology READMEs up to date. Independently
+verified this cycle: the rate model (`RatePopulation`, `CellTypeConnectome`) merged with it and is
+documented in the same page; `CounterRandom`, `SimulationRunner` and the new `domain/biology` /
+`studio/bioscience` modules are all in `llms.txt`. The simulation substrate is now covered
+connectively, not just by Javadoc. On the connectome track, the CSR sparse matrix and
+segmented-reduction product (PR #758) and a simulation run-ahead performance change (PR #764) are
+still open; the connectome's own proof-of-value gate (MaleCNS ingest, Shiu et al. reproduction)
+waits on that sparse product merging **and** on the project owner providing the ~2 GB MaleCNS tables
+and a Brian2 reference — so it is not reachable in a self-contained session this cycle.
+
+#### Category assessment (priority order)
+
+- **Documentation — genuinely excellent and current.** Checked the newest substrate against the
+  durable corpus rather than taking the last two cycles on faith: the rate model, the spiking
+  population, `CounterRandom`/`AR_RANDOM`, `SimulationRunner` and both new modules are documented and
+  indexed. Tutorial 10 closed the PDSL teaching gap. `consult` finds no flagship gap. Moved on.
+- **Code quality — strong and owned.** The KV-decode `seqLen` out-of-bounds guard a reviewer flagged
+  on the KV-cache branch is in fact present on `master` now (`KeyValueCacheAutoregressiveModel.load`
+  throws `IllegalStateException` at or beyond `seqLen`), so that correctness item is closed, not
+  open. The attention-correctness arc is closed; the remaining items are owned by continuous QA and
+  the open cleanup PRs (#766 PdslBuiltins instance type). No flagship defect. Moved on.
+- **Performance — no PM-level blocker.** The standing lever (weighted-sum `matmul` reduced form,
+  outputs > 1000) is real but non-blocking, and simulation per-step dispatch overhead is already in
+  flight as PR #764. Moved on.
+- **Proof of value — the category, and a sharp, reachable instance.** The KV-cache decode landed
+  byte-identical to the full forward, but **its throughput was never measured.** The Generation
+  section of `training-a-language-model.md` states the sliding-window cost (~100 bytes/second for the
+  trained model) and then says only that the cache decode "avoids it" — no figure, and no benchmark
+  anywhere compares the two. The one performance claim the whole KV-cache cycle was justified by is
+  unquantified.
+
+#### Why this task
+
+It cashes the arc. The "what comes next" list has named this step five cycles running — measure the
+cache's throughput improvement and compare greedy-vs-nucleus generation now that decoding is cheap
+enough to run at length. It is bounded and low-risk: one benchmark test modeled on the existing
+`CausalLanguageModelForwardProfileTest` harness (same `OperationProfileNode`, Metal dispatch/commit
+counters, wall-clock loop), measuring both decode paths on one small model and reporting the speedup
+and per-byte dispatch reduction, plus a greedy-vs-top-p sample over a documentation prompt. The
+documentation's unquantified sentence is replaced with the measured figure, drift-guarded by the new
+benchmark the way the correctness claim is already guarded by `keyValueCacheDecodeMatchesFullForward`.
+
+Crucially the benchmark **asserts only the robust structural property** — the cache issues strictly
+fewer kernels per decoded byte than the sliding window — and *reports* wall-clock bytes/second
+without asserting a host-dependent threshold, so it is not a flaky timing gate and cannot be gamed by
+weakening a tolerance. For the self-understanding aim this is the measured confirmation that the
+software can now describe its own architecture at a usable rate, which is the first time that is both
+true and quantified.
+
+The fast path is capped at `seqLen` positions by design. If the measurement shows that usable
+long-form generation past the trained context is therefore still stuck at sliding-window speed, the
+honest next capability is a **sliding** key/value cache (rolling, position-remapped — sliding-window
+semantics at cache cost). That is explicitly out of scope here and becomes an evidenced tracker task,
+not work on this branch.
+
+#### Balance across categories
+
+Two documentation cycles preceded this (Tutorial 10, then the simulation page) after a long
+proof-of-value run, and the log said the next cycle should return to proof of value unless something
+foundational broke. Nothing did: the foundation is covered and current, so returning to proof of
+value is the disciplined move, not a jump to the exciting category. It is a medium task that needs a
+Metal node for comparable numbers (workstream settings file present), exactly as the readable-
+generation and the deferred throughput measurement always were.
+
+#### What comes next
+
+1. This plan: `CausalLanguageModelDecodeThroughputTest`, the Generation-section rewrite with the
+   measured cache throughput and speedup, and the greedy-vs-nucleus sample.
+2. **Proof of value, if the cap binds:** a sliding (rolling) key/value cache so long-form generation
+   runs at cache speed past `seqLen`, filed from this cycle's measurement.
+3. **Proof of value, connectome:** once PR #758 (CSR sparse product) merges and the owner provides
+   the MaleCNS tables and a Brian2 reference, the ingest into CSR form and the Shiu et al.
+   reproduction (the Phase 1 gate), then the throughput benchmark on every backend.
+4. **Proof of value:** conditional diffusion training, on an attention backward pass now honest end
+   to end for both conditioning (K/V) and differential cancellation (λ).
+5. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than
+   1000), now with connectome-scale evidence behind it.
+6. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
+   package split; the unbuilt PDSL research/education features; letting a trained model read the
+   platform's own *source*, the deepest self-understanding aim.
+
 ### 2026-10-27 — Document simulating a spiking neural population, from state to recorded spikes
 
 **Category:** Documentation
