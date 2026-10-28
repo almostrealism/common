@@ -338,8 +338,7 @@ public class NativeExecution extends HardwareOperator {
 	 * settled, since its settlement started this coordination), submits the parallel worker
 	 * tasks, waits for them all, and releases the memory guard. The latch always reaches zero
 	 * &mdash; workers count down in their own finally blocks, and any workers that could not be
-	 * submitted are counted down here &mdash;
-	 * so no waiter can hang on a failed dispatch.
+	 * submitted are counted down here &mdash; so no waiter can hang on a failed dispatch.
 	 *
 	 * <p>The guard comes off only once the latch has reached zero, on the failure path as
 	 * well as the ordinary one. Releasing it is what allows this dispatch's memory to be
