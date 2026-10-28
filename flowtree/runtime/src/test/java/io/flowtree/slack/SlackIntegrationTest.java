@@ -153,10 +153,12 @@ public class SlackIntegrationTest extends TestSuiteBase {
             List.of("auth.py", "tests/test_auth.py"), List.of(), true);
         notifier.onJobCompleted(workstream.getWorkstreamId(), successEvent);
 
-        assertTrue(messages.size() > 0);
-        String successMsg = messages.get(0);
+        // Details are posted to the thread first, then the summary
+        assertEquals(2, messages.size());
+        String successDetails = messages.get(0);
+        String successMsg = messages.get(1);
         assertTrue(successMsg.contains("Work complete"));
-        assertTrue(successMsg.contains("abc1234")); // Shortened commit hash
+        assertTrue(successDetails.contains("abc1234")); // Shortened commit hash
         assertTrue(successMsg.contains("feature/test"));
 
         messages.clear();
@@ -205,14 +207,16 @@ public class SlackIntegrationTest extends TestSuiteBase {
         eventWithCosts.withTimingInfo(0, 0, 1.75, 0);
         notifier.onJobCompleted(workstream.getWorkstreamId(), eventWithCosts);
 
-        assertTrue(messages.size() > 0);
+        // Summary to the channel, then the details as a reply to it
+        assertEquals(2, messages.size());
         String msg = messages.get(0);
-        assertTrue("Slack completion should include moneybag cost block",
-            msg.contains(":moneybag:"));
+        String details = messages.get(1);
+        assertTrue("Slack completion details should include moneybag cost block",
+            details.contains(":moneybag:"));
         assertTrue("Slack completion should include dollar total",
             msg.contains(":dollar:"));
-        assertTrue("Slack completion should include per-model cost breakdown",
-            msg.contains("claude-opus-4-7"));
+        assertTrue("Slack completion details should include per-model cost breakdown",
+            details.contains("claude-opus-4-7"));
         assertTrue("Slack completion should include runner breakdown",
             msg.contains("claude") && msg.contains("opencode"));
     }
