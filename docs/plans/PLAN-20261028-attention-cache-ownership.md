@@ -41,14 +41,33 @@ The consequences are real, not cosmetic:
 - **`destroy()` leaks the real caches.** It releases the orphans; the bound caches are never freed.
   `2 · depth · seqLen · dim` floats leak per generator.
 - **The documentation describes a mechanism that does not exist.** The javadoc of
-  `KeyValueCacheAutoregressiveModel` / `decodeModel` and the Generation section of
-  `training-a-language-model.md` say `reset()` clears "the caches the decode uses." It does not.
+  `KeyValueCacheAutoregressiveModel` (its `reset()` "clears every layer's key and value cache, so a new
+  sequence starts clean"), the `decodeModel` javadoc (the appended caches are the ones the caller "can
+  clear them when a new sequence starts"), and the Generation section of `training-a-language-model.md`
+  (the generator "owns ... the per-layer caches" and "`reset()` clears the caches and position") all
+  describe clearing the caches the decode uses. It clears other buffers.
 
 The root cause is **general**, and that is what makes this worth a plan rather than a one-line patch:
-`attentionArguments` allocates the caches with **no owner**. Every caller of the cached `attention(...)`
-family — the self-hosted LM, Qwen3, the SkyTnt MIDI model — gets a compiled block whose caches are
-sealed inside it, with no handle to clear them at a sequence boundary or free them at end of life.
-`decodeModel` only *looks* like it has a handle because it allocates a parallel set and discards them.
+the self-allocating `attentionArguments` allocates the caches with **no owner**. Every Java caller of
+the `attention(...)` and `transformer(...)` block builders gets a compiled block whose caches are
+sealed inside it, with no handle to clear them at a sequence boundary or free them at end of life. In
+production code those callers are `CausalLanguageModel.decodeModel` (the only caller of
+`attention(...)`), and `Llama2` and `MoonbeamMidi` (via `transformer(...)`); tests such as
+`QwenModelFileTest`, `MultiTokenGenerationTest`, `MoonbeamFineTuningTest`, `TransformerAssetTest`
+and `AttentionAssetTest` use the same builders. `decodeModel` only *looks* like it has a handle
+because it allocates a parallel set and discards them.
+
+Two models that are easy to assume belong in that list do **not** go through `attentionArguments`:
+
+- **`Qwen3`** builds from `/pdsl/qwen3.pdsl` or `/pdsl/qwen2.pdsl` through `PdslLoader.buildModel`.
+  Its caches are the `zeros([settings.seq_len, settings.dim])` arguments those files pass to the
+  `transformer` layer of `transformer.pdsl`, so the Java caller has no handle to them either, but for a
+  different reason that this plan does not change.
+- **`SkyTntMidi`** (in `studio/compose`) already allocates one cleared `[seqLen, hiddenSize]` key/value
+  cache pair per layer in `buildTransformerModel` and binds them itself as the `key_cache`/`value_cache`
+  arguments of `skytnt_block` through `PdslLoader.buildLayer`. It already owns its caches, and it is
+  existing precedent for the caller-owned binding this plan proposes for the Java builders.
+
 Fixing this properly means giving the caller a way to own the caches the block really uses, which is
 the honest form of the "own your collaborators" and "a method returns the thing it builds" principles
 the project holds every class to.
@@ -70,7 +89,8 @@ The single allocation site is `attentionArguments(int heads, int kvHeads, Packed
 rmsAttWeight, PackedCollection wk, PackedCollection wv, PackedCollection wq, PackedCollection wo, int
 seqLen, Producer<PackedCollection> position, double epsilon)` in `AttentionFeatures` — every other
 overload of the *cached* attention family funnels through it: the QK-Norm and MRA `attentionArguments`
-variants delegate to it, and the `attention(...)` block builders call it. (The cross-attention family —
+variants delegate to it, and both the `attention(...)` and the `transformer(...)` block builders reach
+it through those variants. (The cross-attention family —
 `sequenceAttention`/`sequenceCrossAttention` in `SequenceAttentionFeatures`, which `DiffusionTransformer`
 and the resampling callers use — is a separate, cache-free path that does not go through
 `attentionArguments`; it has no `key_cache`/`value_cache` and this change does not touch it.) Introduce a sibling overload that
@@ -85,8 +105,9 @@ The decision to record in the plan, for the approver: whether the caller-supplie
 thread all the way up through a new **`attention(...)`** block overload (so a model builds the block
 and holds the caches in one call), or whether `decodeModel` should call `attentionArguments` +
 `attentionLayer` directly (the lower-level path the convenience `attention(...)` overloads wrap).
-The former is the better public API and the one Qwen3/SkyTnt would eventually want; the latter is a
-smaller diff. Lead with the `attention(...)` overload unless it forces a cache argument onto callers
+The former is the better public API, and the shape a `transformer(...)` overload for `Llama2` and
+`MoonbeamMidi` would eventually mirror; the latter is a smaller diff. (`SkyTntMidi` shows the
+lower-level route already works: it fills the `key_cache`/`value_cache` arguments itself.) Lead with the `attention(...)` overload unless it forces a cache argument onto callers
 that do not want to own caches — which it must not (the existing no-cache overloads stay, unchanged,
 for every caller that is content to let the block allocate).
 
@@ -180,8 +201,11 @@ whether the `decodeModel`-level guard is sufficient or the generator-level one i
 5. **Correct the javadoc and the doc sentence** from the now-true behaviour.
 6. **Validate:** build validator (checkstyle, code_policy, test_timeouts, duplicate_code, javadoc),
    then run narrowly `keyValueCacheDecodeMatchesFullForward`, `keyValueCacheResetClearsCacheAcrossSequences`,
-   the new test, and `slidingWindowGenerationMatchesFullForward`; plus `AttentionAssetTest` and
-   `SkyTntPdslTest`/`PdslLoaderTest` to confirm the self-allocating callers are untouched.
+   the new test, and `slidingWindowGenerationMatchesFullForward`; plus `AttentionAssetTest` (the
+   `attention(...)` builders) and `TransformerAssetTest` (every public `transformer(...)` overload) to
+   confirm the self-allocating callers are untouched. `SkyTntPdslTest` and `PdslLoaderTest` do not
+   exercise `attentionArguments` (the PDSL loaders bind their own caches), so they are not evidence
+   for this change.
 
 ## Success Criteria
 
@@ -197,7 +221,7 @@ whether the `decodeModel`-level guard is sufficient or the generator-level one i
   clearing those buffers erases the attended past (a decode at position `k > 0` straight after the
   clear matches a fresh decode model at `k`) — independent of the causal-mask accident.
 - `keyValueCacheDecodeMatchesFullForward`, `keyValueCacheResetClearsCacheAcrossSequences`,
-  `slidingWindowGenerationMatchesFullForward` and the asset tests still pass; no test weakened. Build
+  `slidingWindowGenerationMatchesFullForward`, `AttentionAssetTest` and `TransformerAssetTest` still pass; no test weakened. Build
   validator clean. Javadoc and the training-doc sentence match the code.
 
 ## Dependencies
@@ -214,9 +238,28 @@ a clear owner.
 - The decode-throughput regression (`d8ad5001`): the ~4× slowdown from ~30 host-blocking `mtlCopy`
   waits per byte is a Metal performance investigation, the next proof-of-value-adjacent cycle, not
   this correctness fix.
-- Threading caller-owned caches through Qwen3 and SkyTnt's own generators. This plan makes the
-  capability exist on `AttentionFeatures` and proves it on the self-hosted LM decode; adopting it in
-  the other models is a follow-up if and when they need sequence-boundary cache control.
+- Threading caller-owned caches through the `transformer(...)` builders and their callers (`Llama2`,
+  `MoonbeamMidi`). This plan makes the capability exist on `AttentionFeatures` and proves it on the
+  self-hosted LM decode; adopting it in the other models is a follow-up if and when they need
+  sequence-boundary cache control.
+- `Qwen3`'s PDSL-built caches (the `zeros(...)` arguments in `qwen2.pdsl`/`qwen3.pdsl`), which never
+  pass through `attentionArguments`. Giving that caller a handle is a PDSL-loader question, not this
+  change. `SkyTntMidi` needs nothing: it already allocates and binds its own caches.
+
+## Open questions
+
+- **Should `transformer(...)` get the owned-cache overload in the same change?** The new
+  `attentionArguments` overload makes it a one-line addition per `transformer(...)` variant, and
+  `Llama2`/`MoonbeamMidi` have the same no-handle defect `decodeModel` has (though neither currently
+  exposes a `reset()` that claims to clear caches, so nothing there is documented falsely). Leaving it
+  out keeps the diff to the one caller whose contract is broken; including it gives the family one
+  consistent API. The plan currently leaves it out.
+- **Is the existing `PdslLoader.buildLayer` binding the better route for `decodeModel`?** `SkyTntMidi`
+  already owns its caches by filling `key_cache`/`value_cache` in the argument map it passes to the
+  loader. If the approver prefers no new public overload at all, `decodeModel` could do the same over
+  the map `attentionArguments` returns. But the self-allocating overload would still allocate (and
+  leak) a pair per layer before the caller replaced them, which is why the plan prefers the
+  caller-supplied overload with the self-allocating one delegating to it.
 
 ## Estimated Complexity
 

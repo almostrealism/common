@@ -60,8 +60,10 @@ byte), so the benchmark asserts only path agreement and reports the rest. Two fo
   generator's `reset()` clears orphan buffers (the real caches are never cleared; it passes its guard
   only because the causal mask hides unwritten rows and decode overwrites in order), `destroy()`
   leaks the real caches, and the javadoc/training-doc describe a mechanism that does not exist. The
-  root cause is general — `attentionArguments` allocates caches with no owner, so every cached-attention
-  caller (Qwen3, SkyTnt) is in the same position — which is what lifts it above a one-line patch.
+  root cause is general — `attentionArguments` allocates caches with no owner, so every caller of the
+  Java `attention(...)`/`transformer(...)` builders (`Llama2`, `MoonbeamMidi`) is in the same position
+  — which is what lifts it above a one-line patch. (`Qwen3` and `SkyTntMidi` build through PDSL and do
+  not reach `attentionArguments`; `SkyTntMidi` already binds caches it owns.)
 - **Performance — live, deliberately deferred.** `d8ad5001` (the ~4× slowdown) is the sharpest
   performance lever on the board, but it is Metal-gated and ranks below an open correctness defect
   under the priority order. It is next cycle's work, and fixing ownership first hands it a decode
