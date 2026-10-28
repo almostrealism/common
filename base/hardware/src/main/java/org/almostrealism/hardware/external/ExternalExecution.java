@@ -28,7 +28,8 @@ import java.util.stream.IntStream;
  *
  * <p>The executable is given its arguments and nothing else: no work-item index reaches it,
  * so it performs exactly one work item. A work range of any other size, or one that starts
- * past the first item, cannot be honored and is refused when it is set.</p>
+ * past the first item, cannot be honored and is refused when it is set, by the single-item
+ * range {@link io.almostrealism.kernel.KernelWork} provides by default.</p>
  *
  * <p>The executable runs as a separate process that this waits for, so
  * {@link #accept(Object[], Semaphore)} waits for its dependency on the calling thread and
@@ -53,50 +54,6 @@ public class ExternalExecution implements Execution {
 	protected ExternalExecution(ExternalInstructionSet instructions, int argCount) {
 		this.instructions = instructions;
 		this.argCount = argCount;
-	}
-
-	/**
-	 * Returns the single work item the executable performs.
-	 *
-	 * @return always 1
-	 */
-	@Override
-	public long getGlobalWorkSize() { return 1; }
-
-	/**
-	 * Accepts a work range of the single work item the executable performs.
-	 *
-	 * @param globalWorkSize Global work size, which must be 1
-	 * @throws UnsupportedOperationException if {@code globalWorkSize} is not 1
-	 */
-	@Override
-	public void setGlobalWorkSize(long globalWorkSize) {
-		if (globalWorkSize != 1) {
-			throw new UnsupportedOperationException(
-					"The external executable performs a single work item, not " + globalWorkSize);
-		}
-	}
-
-	/**
-	 * Returns the index of the single work item the executable performs.
-	 *
-	 * @return always 0
-	 */
-	@Override
-	public long getGlobalWorkOffset() { return 0; }
-
-	/**
-	 * Accepts a work range starting at the first work item, the only one the executable performs.
-	 *
-	 * @param globalWorkOffset Global work offset, which must be 0
-	 * @throws UnsupportedOperationException if {@code globalWorkOffset} is not 0
-	 */
-	@Override
-	public void setGlobalWorkOffset(long globalWorkOffset) {
-		if (globalWorkOffset != 0) {
-			throw new UnsupportedOperationException(
-					"The external executable performs only the first work item, not item " + globalWorkOffset);
-		}
 	}
 
 	/**
