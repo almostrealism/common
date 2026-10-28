@@ -366,7 +366,16 @@ A reviewer can confirm the task is done when:
   safe reading of "later submissions are ignored" (previous item), but it also means
   one intermittent watchdog kill — the kind already seen in
   `CausalLanguageModelTest` on Metal — fails every later test sharing the same
-  runner/context in that JVM, not only the one that hit it. **Open question:**
+  runner/context in that JVM, not only the one that hit it. The same rule also
+  over-reports *within* a single run: a buffer committed after the error that
+  waited on nothing older than it — whose work genuinely ran and wrote its
+  destinations — still has its waiter throw, because keying on "≥ first errored
+  value" cannot tell such an independent, correct completion apart from a true
+  dependent of the killed buffer. That false positive is the accepted cost of
+  stickiness, which exists precisely because a dependent's own `isError()` is
+  unreliable (an independent later buffer's higher timeline signal can release a
+  dependent's GPU wait, so it completes without an error of its own — see §1).
+  **Open question:**
   is a permanently poisoned runner the intended behaviour (and should the
   runner then be discarded and rebuilt by its context), or should the record be
   bounded — e.g. cleared once a later buffer that waited on nothing older than
