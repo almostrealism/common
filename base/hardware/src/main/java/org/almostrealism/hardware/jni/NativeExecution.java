@@ -340,6 +340,11 @@ public class NativeExecution extends HardwareOperator {
 	 * &mdash; workers count down in their own finally blocks, and any workers that could not be
 	 * submitted are counted down here &mdash; so no waiter can hang on a failed dispatch.
 	 *
+	 * <p>A dispatch with a single worker runs it on this thread rather than on the
+	 * {@link #executor}: handing it off would leave this thread nothing to do but wait for it,
+	 * so running it here saves a thread hand-off on every such dispatch (a scalar result, for
+	 * example) without adding any concurrency.</p>
+	 *
 	 * <p>The guard comes off only once the latch has reached zero, on the failure path as
 	 * well as the ordinary one. Releasing it is what allows this dispatch's memory to be
 	 * freed, and a worker still inside the kernel would then be reading a block that has
@@ -360,21 +365,16 @@ public class NativeExecution extends HardwareOperator {
 			if (dependsOn != null) dependsOn.waitFor();
 
 			recordDuration(latch, () -> {
-				for (int i = 0; i < p; i++) {
-					int id = i;
-
-					executor.submit(() -> {
-						try {
-							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
-						} catch (Exception e) {
-							warn("Operation " + id + " of " +
-									getGlobalWorkSize() + " failed", e);
-						} finally {
-							latch.countDown();
-						}
-					});
-
+				if (p == 1) {
+					// TODO(review): inline workers run outside the fixed executor, so getCpuParallelism() no longer caps concurrent p == 1 kernels
+					// The only worker would leave this thread nothing to do but wait for it
 					submitted.incrementAndGet();
+					work(data, latch, 0).run();
+				} else {
+					for (int i = 0; i < p; i++) {
+						executor.submit(work(data, latch, i));
+						submitted.incrementAndGet();
+					}
 				}
 
 				latch.waitFor();
@@ -396,6 +396,28 @@ public class NativeExecution extends HardwareOperator {
 
 		Reference.reachabilityFence(data);
 		Reference.reachabilityFence(args);
+	}
+
+	/**
+	 * Returns the worker task that runs one slice of a dispatch and counts its latch down,
+	 * whether the kernel completed or failed, so no waiter can hang on a failed worker.
+	 *
+	 * @param data  the resolved kernel arguments
+	 * @param latch the dispatch's completion latch
+	 * @param id    the index of the worker within the dispatch
+	 * @return the worker task
+	 */
+	private Runnable work(MemoryData[] data, DefaultLatchSemaphore latch, int id) {
+		return () -> {
+			try {
+				inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
+			} catch (Exception e) {
+				warn("Operation " + id + " of " +
+						getGlobalWorkSize() + " failed", e);
+			} finally {
+				latch.countDown();
+			}
+		};
 	}
 
 }
