@@ -55,6 +55,8 @@ package io.almostrealism.kernel;
  * <h2>Implementation Notes</h2>
  *
  * <ul>
+ *   <li><strong>Default work range:</strong> a single work item at offset 0, so an
+ *       implementation that does not override the range methods refuses any other range</li>
  *   <li><strong>Default workgroup size:</strong> 1 (no workgroup parallelism)</li>
  *   <li><strong>OpenCL:</strong> Maps to global_work_size, local_work_size, global_work_offset</li>
  *   <li><strong>Metal:</strong> Maps to grid size and threadgroup size</li>
@@ -75,17 +77,29 @@ public interface KernelWork {
 	/**
 	 * Returns the total number of work items to execute.
 	 *
+	 * <p>Default implementation returns 1, the single work item of work whose range is fixed.</p>
+	 *
 	 * @return Global work size (total threads/items)
 	 */
-	long getGlobalWorkSize();
+	default long getGlobalWorkSize() {
+		return 1;
+	}
 
 	/**
 	 * Sets the total number of work items to execute.
 	 *
+	 * <p>Default implementation accepts only the single work item reported by the default
+	 * {@link #getGlobalWorkSize()}, and refuses any other size.</p>
+	 *
 	 * @param globalWorkSize Global work size (total threads/items)
 	 * @throws UnsupportedOperationException if this work cannot be dispatched over that many items
 	 */
-	void setGlobalWorkSize(long globalWorkSize);
+	default void setGlobalWorkSize(long globalWorkSize) {
+		if (globalWorkSize != 1) {
+			throw new UnsupportedOperationException(
+					"This work performs a single work item, not " + globalWorkSize);
+		}
+	}
 
 	/**
 	 * Returns the workgroup size (local work size).
@@ -102,15 +116,27 @@ public interface KernelWork {
 	/**
 	 * Returns the starting index offset for the work range.
 	 *
+	 * <p>Default implementation returns 0, the first work item.</p>
+	 *
 	 * @return Global work offset (starting index)
 	 */
-	long getGlobalWorkOffset();
+	default long getGlobalWorkOffset() {
+		return 0;
+	}
 
 	/**
 	 * Sets the starting index offset for the work range.
 	 *
+	 * <p>Default implementation accepts only the first work item, matching the default
+	 * {@link #getGlobalWorkOffset()}, and refuses any other offset.</p>
+	 *
 	 * @param globalWorkOffset Global work offset (starting index)
 	 * @throws UnsupportedOperationException if this work cannot be dispatched from that index
 	 */
-	void setGlobalWorkOffset(long globalWorkOffset);
+	default void setGlobalWorkOffset(long globalWorkOffset) {
+		if (globalWorkOffset != 0) {
+			throw new UnsupportedOperationException(
+					"This work performs only the first work item, not item " + globalWorkOffset);
+		}
+	}
 }
