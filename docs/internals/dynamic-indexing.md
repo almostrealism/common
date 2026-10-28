@@ -129,28 +129,36 @@ the bug is invisible with such data. Exactness is observable only through *which
 read, using a payload that is exact and distinct between adjacent addresses (for example the
 address modulo 16, computed from the integer kernel index). See `SplitIndexTests`.
 
-### Gather with a Segmented Reduction (Sparse Matrix–Vector Product)
+### Sparse Matrices (Compressed-Sparse-Row Ordering)
 
-`SparseMatrix` (`compute/algebra`, `org.almostrealism.algebra`) holds a compressed-sparse-row
-matrix as three collections — row offsets, columns and values — and `multiply(x)` returns
-`y = A·x` of shape `(rows)` (or `(rows, n)` for an operand of shape `(cols, n)`):
+A sparse matrix is an ordinary `PackedCollection` whose shape carries a
+`CompressedRowTraversalOrdering` (`compute/algebra`, `org.almostrealism.collect`). The ordering
+holds the compressed-sparse-row index structure — row offsets and the column of each entry, both
+in the split layout above — and the collection's memory holds only the entries:
 
 ```java
-// rowOffsets and columns are host int[] index structure; values is a device collection
-SparseMatrix a = SparseMatrix.of(rows, cols, rowOffsets, columns, values);
-CollectionProducer y = a.multiply(cp(x));
+// [[1, 0, 2],
+//  [0, 0, 0],
+//  [0, 3, 0]]
+CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(3,
+        new int[] { 0, 2, 2, 3 }, new int[] { 0, 2, 1 });
+PackedCollection matrix = new PackedCollection(new TraversalPolicy(order, 3, 3));
+matrix.fill(1.0, 2.0, 3.0);   // the three stored entries
 ```
 
-The product is a gather (`x[columns[k]]`) followed by a reduction over each row's
-data-dependent range, computed by `SegmentedWeightedSumComputation`: one kernel thread per
-output element of row `i`, whose native loop bound `rowOffsets[i + 1] - rowOffsets[i]` is read
-from device memory.
-Each output is written once, with no atomics and no padding. The row offsets and columns are
-stored in the split layout above (uploaded with `PackedCollection.ofSplitIndices`) and decoded
-with `SplitIndexTraversalOrdering.positionAt`, so offsets past `2^24` (tens of millions of
-non-zeros) and large column counts are exact on FP32 backends.
-Because its iteration count is data-dependent, the computation is always compiled into a kernel
-of its own rather than embedded in a consumer. See `SparseMatrixTests`.
+Every existing computation reads the collection as the dense matrix: `indexOf(i * cols + j)`
+searches row `i` for column `j` and an absent element reads as zero (see
+`CompressedRowOrderedComputationTests`, which checks dozens of computations against the dense
+equivalent). That search costs one comparison per entry of the longest row.
+
+A computation that needs only the stored entries asks the ordering for an enumeration of its
+rows with `TraversalOrdering.segments(cols)`, which gives the start and length of each row and
+the column of each entry. `matmul` does this: when the matrix's ordering enumerates its rows, the
+product is a `SegmentedWeightedSumComputation` — one kernel thread per output element, whose
+native loop bound (the row length) is read from device memory, each output written once with no
+atomics. It never forms a logical index of the matrix, so the matrix's logical size may exceed
+the range of an `int` (only its memory, the entries, is bounded by `int`); because its iteration
+count is data-dependent, it is always compiled into a kernel of its own.
 
 ### Scatter (Writing with Dynamic Indices)
 

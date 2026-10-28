@@ -35,6 +35,7 @@ import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.hardware.mem.RAM;
+import org.almostrealism.io.CallOrigin;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
@@ -52,6 +53,7 @@ import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
@@ -339,13 +341,43 @@ public class PackedCollection extends MemoryDataAdapter
 		init();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Only the backing memory is bounded by {@code int}: the logical shape of a collection
+	 * whose ordering addresses fewer elements, such as a sparse matrix, may be larger.</p>
+	 */
 	@Override
 	protected void init() {
-		if (shape.getTotalInputSizeLong() > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException(String.valueOf(shape.getTotalInputSizeLong()));
+		if (getPhysicalLength() > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException(String.valueOf(getPhysicalLength()));
 		}
 
 		super.init();
+	}
+
+	/**
+	 * Returns the number of elements of backing memory: the {@link TraversalOrdering#getLength()
+	 * physical length} of the shape's ordering when it reports one (at least one element, since
+	 * memory cannot be empty), so that a compact or sparse collection stores only its entries,
+	 * and otherwise the {@link TraversalPolicy#getTotalInputSizeLong() total input size}.
+	 *
+	 * @return the length of the backing memory
+	 */
+	private long getPhysicalLength() {
+		OptionalInt physical = shape.getOrder() == null ? OptionalInt.empty() : shape.getOrder().getLength();
+		return physical.isPresent() ? Math.max(1, physical.getAsInt()) : shape.getTotalInputSizeLong();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>This is the {@link #getPhysicalLength() length of the backing memory}, which is what is
+	 * allocated for a collection that has no delegate.</p>
+	 */
+	@Override
+	public int getDelegatedLength() {
+		return Math.toIntExact(getPhysicalLength());
 	}
 
 	/**
@@ -598,16 +630,21 @@ public class PackedCollection extends MemoryDataAdapter
 	 * arithmetic. Anything larger is a tensor, where zeroing is a kernel's
 	 * worth of work and the report is worth making.</p>
 	 *
+	 * <p>The elements filled are those of the backing memory, so a collection read through an
+	 * ordering that stores only some of its elements (a compact or sparse collection) is filled
+	 * entry by entry, in the order the ordering stores them.</p>
+	 *
 	 * @param value the values to cycle through; repeated if shorter than the collection
 	 * @return this collection
 	 * @see #enableFillOrigin
 	 */
 	public PackedCollection fill(double... value) {
-		if (getMemLength() > 3 && DoubleStream.of(value).allMatch(v -> v == 0.0)) {
+		int length = getDelegatedLength();
+		if (length > 3 && DoubleStream.of(value).allMatch(v -> v == 0.0)) {
 			reportFillWithZeros();
 		}
 
-		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
+		double[] data = IntStream.range(0, length).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(data);
 		return this;
 	}
@@ -677,62 +714,8 @@ public class PackedCollection extends MemoryDataAdapter
 			return;
 		}
 
-		StackTraceElement[] stack = new Exception().getStackTrace();
-		warn(message + " (from " + originOf(stack) + ")" + callersOf(stack));
-	}
-
-	/**
-	 * Returns the first frame outside this class, which is the call that filled.
-	 *
-	 * @param stack the stack to read
-	 * @return a description of the calling frame, or "unknown origin"
-	 */
-	private String originOf(StackTraceElement[] stack) {
-		for (StackTraceElement frame : stack) {
-			if (!PackedCollection.class.getName().equals(frame.getClassName())) {
-				return frame.toString();
-			}
-		}
-
-		return "unknown origin";
-	}
-
-	/**
-	 * Returns the calls that led here, as lines of the report itself.
-	 *
-	 * <p>Carried in the message rather than attached as an exception, because
-	 * an attached one is printed straight to the error stream and never
-	 * reaches the console — so it misses whatever the console has been asked
-	 * to write to, which for a packaged application is the only place anyone
-	 * reads. A stack that goes somewhere nobody is looking is no better than
-	 * no stack.</p>
-	 *
-	 * <p>Begins above the origin, which the report has already named. Repeating
-	 * it would put the same frame on two consecutive lines of every report, and
-	 * these are read in numbers.</p>
-	 *
-	 * @param stack the stack to read
-	 * @return the frames above the origin, one per line
-	 */
-	private String callersOf(StackTraceElement[] stack) {
-		StringBuilder callers = new StringBuilder();
-		boolean atOrigin = true;
-		int shown = 0;
-
-		for (StackTraceElement frame : stack) {
-			if (PackedCollection.class.getName().equals(frame.getClassName())) continue;
-
-			if (atOrigin) {
-				atOrigin = false;
-				continue;
-			}
-
-			if (shown++ >= ORIGIN_FRAMES) break;
-
-			callers.append("\n    at ").append(frame);
-		}
-
-		return callers.toString();
+		CallOrigin origin = new CallOrigin(PackedCollection.class, ORIGIN_FRAMES);
+		warn(message + " (from " + origin.getOrigin() + ")" + origin.getCallers());
 	}
 
 	/**
@@ -1063,9 +1046,9 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	@Override
 	public PackedCollection reshape(TraversalPolicy shape) {
-		if (shape.getTotalSize() != getMemLength()) {
-			throw new IllegalArgumentException("Shape size (" + shape.getSize() +
-					") does not match collection size (" + getMemLength() + ")");
+		if (shape.getTotalSizeLong() != getShape().getTotalInputSizeLong()) {
+			throw new IllegalArgumentException("Shape size (" + shape.getTotalSizeLong() +
+					") does not match collection size (" + getShape().getTotalInputSizeLong() + ")");
 		} else if (getShape().equals(shape)) {
 			return this;
 		}

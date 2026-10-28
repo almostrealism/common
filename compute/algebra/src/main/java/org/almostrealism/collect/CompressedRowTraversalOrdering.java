@@ -17,15 +17,15 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.ArgumentProvider;
-import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.OrderingSegments;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Conjunction;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import org.almostrealism.collect.computations.CollectionProviderProducer;
 
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.stream.IntStream;
 
@@ -35,7 +35,8 @@ import java.util.stream.IntStream;
  * through this ordering, is the sparse matrix.
  *
  * <p>The ordering is defined by two index collections, both stored split across two lanes in
- * the integer-exact layout of {@link SplitIndexTraversalOrdering}:</p>
+ * the integer-exact layout of {@link SplitIndexTraversalOrdering} and each read through an
+ * ordering of that kind:</p>
  * <ul>
  *   <li>{@code rowOffsets}: the {@code rows + 1} row boundaries, where the entries of row
  *       {@code i} occupy physical positions {@code rowOffsets[i] .. rowOffsets[i + 1] - 1}.</li>
@@ -49,8 +50,12 @@ import java.util.stream.IntStream;
  * //  [0, 3, 0]]
  * CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(3,
  *         new int[] { 0, 2, 2, 3 }, new int[] { 0, 2, 1 });
- * PackedCollection matrix = new PackedCollection(shape(3, 3), 0, values, 0, order);
+ * PackedCollection matrix = new PackedCollection(new TraversalPolicy(order, 3, 3));
+ * matrix.fill(1.0, 2.0, 3.0);
  * }</pre>
+ * <p>The collection's memory holds only the entries. An existing collection of entry values can
+ * also be read through the ordering, with
+ * {@code new PackedCollection(shape(3, 3), 0, values, 0, order)}.</p>
  *
  * <h2>Logical to physical: a bounded search</h2>
  * <p>{@link #indexOf(Expression)} maps logical index {@code i * cols + j} to the position of
@@ -60,42 +65,38 @@ import java.util.stream.IntStream;
  * the same way that {@link IndexMaskTraversalOrdering} searches its mask. Every reader of the
  * collection is therefore correct, but each read costs one comparison per entry of the longest
  * row, and a reader that visits every logical element (such as a dense product) performs
- * {@code rows * cols} such reads. A logical element stored as several entries of its row reads
- * as the first of them.</p>
+ * {@code rows * cols} such reads. The columns of each row are distinct, so that every logical
+ * element is at most one entry, and reading the elements and enumerating the entries agree.</p>
  *
  * <h2>Physical to logical: enumerating the members of a row</h2>
- * <p>A computation that needs only the stored entries, such as a sparse product, enumerates
- * the members of each row instead, with {@link #rowStart(TraversableExpression, Expression)},
- * {@link #rowLength(TraversableExpression, Expression)} and the column of each entry (decoded
- * with {@link SplitIndexTraversalOrdering#positionAt}). This visits each stored entry once.</p>
+ * <p>A computation that needs only the stored entries, such as a product of the matrix,
+ * enumerates the members of each row instead: the ordering is its own
+ * {@link #segments(int) enumeration} of rows, giving the {@link #start(Expression) start} and
+ * {@link #length(Expression) length} of each row and the {@link #offset(Expression) column} of
+ * each entry. This visits each stored entry once.</p>
  *
- * <h2>Limits</h2>
- * <p>The ordering addresses logical indices as {@code int}s, and a {@link PackedCollection}
- * measures its logical shape as an {@code int} even when it is ordered, so an ordered
- * collection is available only for matrices whose {@code rows * cols} fits that bound. The index
- * collections and the physical positions themselves are exact for any {@code int}.</p>
+ * <h2>Scale</h2>
+ * <p>A collection read through this ordering stores only its entries, so its logical shape may
+ * exceed the range of an {@code int}: a computation that enumerates its rows never forms a
+ * logical index. Reading it through {@link #indexOf(Expression)} forms the logical index
+ * {@code i * cols + j}, and is therefore available only for matrices whose {@code rows * cols}
+ * fits that bound. The index collections and the physical positions are exact for any
+ * {@code int}.</p>
  *
  * @see SplitIndexTraversalOrdering
  * @see IndexMaskTraversalOrdering
- * @see org.almostrealism.algebra.SparseMatrix
  *
  * @author Michael Murray
  */
-public class CompressedRowTraversalOrdering implements TraversalOrdering {
+public class CompressedRowTraversalOrdering implements TraversalOrdering, OrderingSegments {
 	/** The number of columns, which separates the row and column of a logical index. */
 	private final int cols;
 
-	/** The {@code rows + 1} row boundaries, split into lanes of shape {@code (rows + 1, 2)}. */
-	private final PackedCollection rowOffsets;
+	/** The {@code rows + 1} row boundaries, each the position of the first entry of a row. */
+	private final SplitIndexTraversalOrdering rowOffsets;
 
-	/** The column of each entry, split into lanes of shape {@code (m, 2)}. */
-	private final PackedCollection columns;
-
-	/** The expression supplying the row offset lanes: the collection or its kernel argument. */
-	private final TraversableExpression<?> offsetLookup;
-
-	/** The expression supplying the column lanes: the collection or its kernel argument. */
-	private final TraversableExpression<?> columnLookup;
+	/** The column of each entry, by physical position. */
+	private final SplitIndexTraversalOrdering columns;
 
 	/** The number of entries of the longest row, read from the row offsets when first needed. */
 	private Integer maxRowLength;
@@ -119,7 +120,7 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	 */
 	public CompressedRowTraversalOrdering(int rows, int cols, PackedCollection rowOffsets,
 										  PackedCollection columns) {
-		this(cols, rowOffsets, columns, rowOffsets, columns, null);
+		this(cols, new SplitIndexTraversalOrdering(rowOffsets), new SplitIndexTraversalOrdering(columns), null);
 
 		if (rows <= 0 || cols <= 0) {
 			throw new IllegalArgumentException("Sparse matrix dimensions (" + rows + ", " + cols
@@ -141,24 +142,18 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	}
 
 	/**
-	 * Creates an ordering that reads its index collections through the given expressions.
+	 * Creates an ordering from the orderings that read its row offsets and its columns.
 	 *
 	 * @param cols         the number of columns
-	 * @param rowOffsets   the row offset lanes
-	 * @param columns      the column lanes
-	 * @param offsetLookup the expression supplying the row offset lanes
-	 * @param columnLookup the expression supplying the column lanes
+	 * @param rowOffsets   the row boundaries
+	 * @param columns      the column of each entry
 	 * @param maxRowLength the length of the longest row, or {@code null} if not yet known
 	 */
-	private CompressedRowTraversalOrdering(int cols, PackedCollection rowOffsets, PackedCollection columns,
-										   TraversableExpression<?> offsetLookup,
-										   TraversableExpression<?> columnLookup,
-										   Integer maxRowLength) {
+	private CompressedRowTraversalOrdering(int cols, SplitIndexTraversalOrdering rowOffsets,
+										   SplitIndexTraversalOrdering columns, Integer maxRowLength) {
 		this.cols = cols;
 		this.rowOffsets = rowOffsets;
 		this.columns = columns;
-		this.offsetLookup = offsetLookup;
-		this.columnLookup = columnLookup;
 		this.maxRowLength = maxRowLength;
 	}
 
@@ -167,7 +162,7 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	 *
 	 * @return the number of rows
 	 */
-	public int getRows() { return rowOffsets.getShape().length(0) - 1; }
+	public int getRows() { return rowOffsets.getLanes().getShape().length(0) - 1; }
 
 	/**
 	 * Returns the number of columns.
@@ -181,14 +176,14 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	 *
 	 * @return the row offsets as split lanes of shape {@code (rows + 1, 2)}
 	 */
-	public PackedCollection getRowOffsets() { return rowOffsets; }
+	public PackedCollection getRowOffsets() { return rowOffsets.getLanes(); }
 
 	/**
 	 * Returns the column of each entry.
 	 *
 	 * @return the columns as split lanes of shape {@code (m, 2)}
 	 */
-	public PackedCollection getColumns() { return columns; }
+	public PackedCollection getColumns() { return columns.getLanes(); }
 
 	/**
 	 * Returns the number of entries of the longest row, which bounds the search performed by
@@ -199,7 +194,7 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	 */
 	public int getMaxRowLength() {
 		if (maxRowLength == null) {
-			int[] offsets = SplitIndexTraversalOrdering.decode(rowOffsets.toArray());
+			int[] offsets = rowOffsets.getPositions();
 			maxRowLength = IntStream.range(0, offsets.length - 1)
 					.map(i -> offsets[i + 1] - offsets[i]).max().orElse(0);
 		}
@@ -220,14 +215,14 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	public Expression<Integer> indexOf(Expression<Integer> idx) {
 		Expression<?> row = idx.divide(cols);
 		Expression<Integer> column = idx.imod(cols);
-		Expression<Integer> start = rowStart(offsetLookup, row);
-		Expression<Integer> length = rowLength(offsetLookup, row);
-		int capacity = columns.getShape().length(0);
+		Expression<Integer> start = start(row);
+		Expression<Integer> length = length(row);
+		int capacity = getColumns().getShape().length(0);
 
 		Expression<Integer> position = new IntegerConstant(-1);
 		for (int k = getMaxRowLength() - 1; k >= 0; k--) {
 			Expression<Integer> entry = start.add(k).toInt();
-			Expression<Integer> entryColumn = SplitIndexTraversalOrdering.positionAt(columnLookup, entry.imod(capacity));
+			Expression<Integer> entryColumn = offset(entry.imod(capacity));
 			Expression<Boolean> found = Conjunction.of(new IntegerConstant(k).lessThan(length), entryColumn.eq(column));
 			position = Conditional.of(found, entry, position);
 		}
@@ -244,9 +239,7 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	@Override
 	public OptionalInt getLength() {
 		if (entryCount == null) {
-			int last = getRows() * SplitIndexTraversalOrdering.LANES;
-			entryCount = SplitIndexTraversalOrdering.decode(
-					rowOffsets.toArray(last, SplitIndexTraversalOrdering.LANES))[0];
+			entryCount = rowOffsets.getPosition(getRows());
 		}
 
 		return OptionalInt.of(entryCount);
@@ -255,41 +248,58 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Returns an ordering that reads both index collections from the kernel arguments the
+	 * <p>Returns an ordering whose row offsets and columns are both
+	 * {@link SplitIndexTraversalOrdering#bind(ArgumentProvider) bound} to the kernel arguments the
 	 * provider supplies for them.</p>
 	 */
 	@Override
-	public TraversalOrdering bind(ArgumentProvider provider) {
-		TraversableExpression<?> offsets = provider.<PackedCollection>argumentForInput()
-				.apply(new CollectionProviderProducer<>(rowOffsets)).getTraversableExpression();
-		TraversableExpression<?> entryColumns = provider.<PackedCollection>argumentForInput()
-				.apply(new CollectionProviderProducer<>(columns)).getTraversableExpression();
-		if (offsets == null || entryColumns == null) return this;
+	public CompressedRowTraversalOrdering bind(ArgumentProvider provider) {
+		return new CompressedRowTraversalOrdering(cols, rowOffsets.bind(provider), columns.bind(provider), maxRowLength);
+	}
 
-		return new CompressedRowTraversalOrdering(cols, rowOffsets, columns, offsets, entryColumns, maxRowLength);
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The segments of a compressed-sparse-row ordering are its rows, so this ordering
+	 * enumerates segments whose length is its number of columns, and is itself the
+	 * enumeration.</p>
+	 */
+	@Override
+	public Optional<OrderingSegments> segments(int segmentLength) {
+		return segmentLength == cols ? Optional.of(this) : Optional.empty();
 	}
 
 	/**
 	 * Returns the integer-exact physical position of the first entry of the given row.
 	 *
-	 * @param rowOffsets the row offset lanes, or the kernel argument they are delivered as
-	 * @param row        the row index
-	 * @return the position of the row's first entry
+	 * @param row the row index
+	 * @return the position of the row's first entry, {@code rowOffsets[row]}
 	 */
-	public static Expression<Integer> rowStart(TraversableExpression<?> rowOffsets, Expression<?> row) {
-		return SplitIndexTraversalOrdering.positionAt(rowOffsets, row);
+	@Override
+	public Expression<Integer> start(Expression<?> row) {
+		return rowOffsets.indexOf(row.toInt());
 	}
 
 	/**
 	 * Returns the number of entries of the given row.
 	 *
-	 * @param rowOffsets the row offset lanes, or the kernel argument they are delivered as
-	 * @param row        the row index
+	 * @param row the row index
 	 * @return {@code rowOffsets[row + 1] - rowOffsets[row]}
 	 */
-	public static Expression<Integer> rowLength(TraversableExpression<?> rowOffsets, Expression<?> row) {
-		return SplitIndexTraversalOrdering.positionAt(rowOffsets, row.add(1))
-				.subtract(rowStart(rowOffsets, row)).toInt();
+	@Override
+	public Expression<Integer> length(Expression<?> row) {
+		return rowOffsets.indexOf(row.add(1).toInt()).subtract(start(row)).toInt();
+	}
+
+	/**
+	 * Returns the column of the entry at the given physical position.
+	 *
+	 * @param position the physical position of an entry
+	 * @return {@code columns[position]}
+	 */
+	@Override
+	public Expression<Integer> offset(Expression<?> position) {
+		return columns.indexOf(position.toInt());
 	}
 
 	/**
@@ -299,8 +309,8 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 	 * @param cols       the number of columns
 	 * @param rowOffsets the {@code rows + 1} row boundaries: starting at {@code 0} and
 	 *                   non-decreasing, with at least one row
-	 * @param columns    the column of each entry, in {@code [0, cols)}, as many as the last row
-	 *                   offset
+	 * @param columns    the column of each entry, in {@code [0, cols)} and distinct within each
+	 *                   row, as many as the last row offset
 	 * @return the ordering
 	 * @throws IllegalArgumentException if the arrays are not a valid CSR structure with
 	 *         {@code cols} columns
@@ -326,6 +336,14 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering {
 			if (columns[k] < 0 || columns[k] >= cols) {
 				throw new IllegalArgumentException("Column " + columns[k] + " of entry " + k
 						+ " is outside [0, " + cols + ")");
+			}
+		}
+
+		for (int i = 0; i < rows; i++) {
+			int start = rowOffsets[i];
+			int length = rowOffsets[i + 1] - start;
+			if (IntStream.range(start, start + length).map(k -> columns[k]).distinct().count() != length) {
+				throw new IllegalArgumentException("Row " + i + " stores a column more than once");
 			}
 		}
 

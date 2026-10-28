@@ -136,25 +136,30 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	 */
 	@Override
 	public Expression<Integer> indexOf(Expression<Integer> idx) {
-		return positionAt(lookup, idx);
+		Expression<?> position = idx.multiply(LANES);
+		Expression<Integer> hi = lookup.getValueAt(position).toInt();
+		Expression<Integer> lo = lookup.getValueAt(position.add(1)).toInt();
+		return hi.multiply(BASE).add(lo).toInt();
 	}
 
 	/**
-	 * Decodes, on integer expressions, the position stored split at logical index {@code idx}
-	 * of a lane collection in the layout produced by {@link #encode(int...)}. This is the
-	 * reconstruction {@link #indexOf(Expression)} performs, exposed for computations that hold
-	 * split integers as an operand of their own (for example the row offsets of a sparse matrix)
-	 * rather than reading another collection through this ordering.
+	 * Returns every stored position, read back to the host and decoded.
 	 *
-	 * @param lanes the lane collection, or the kernel argument it is delivered as
-	 * @param idx   the logical index of the position to read
-	 * @return an integer expression for {@code hi * BASE + lo}, exact for every {@code int}
+	 * @return the position of each logical index
 	 */
-	public static Expression<Integer> positionAt(TraversableExpression<?> lanes, Expression<?> idx) {
-		Expression<?> position = idx.multiply(LANES);
-		Expression<Integer> hi = lanes.getValueAt(position).toInt();
-		Expression<Integer> lo = lanes.getValueAt(position.add(1)).toInt();
-		return hi.multiply(BASE).add(lo).toInt();
+	public int[] getPositions() {
+		return decode(lanes.toArray());
+	}
+
+	/**
+	 * Returns the position stored for one logical index, reading only its lanes back to the
+	 * host.
+	 *
+	 * @param index the logical index
+	 * @return the position stored for it
+	 */
+	public int getPosition(int index) {
+		return decode(lanes.toArray(index * LANES, LANES))[0];
 	}
 
 	/**
@@ -167,7 +172,7 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	 */
 	@Override
 	public OptionalInt getLength() {
-		long max = IntStream.of(decode(lanes.toArray())).max().orElse(-1);
+		long max = IntStream.of(getPositions()).max().orElse(-1);
 		return OptionalInt.of(Math.toIntExact(Math.max(max, -1) + 1));
 	}
 
@@ -191,7 +196,7 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	 * for the lane collection.</p>
 	 */
 	@Override
-	public TraversalOrdering bind(ArgumentProvider provider) {
+	public SplitIndexTraversalOrdering bind(ArgumentProvider provider) {
 		TraversableExpression<?> bound = provider.<PackedCollection>argumentForInput()
 				.apply(new CollectionProviderProducer<>(lanes)).getTraversableExpression();
 		return bound == null ? this : new SplitIndexTraversalOrdering(lanes, bound);

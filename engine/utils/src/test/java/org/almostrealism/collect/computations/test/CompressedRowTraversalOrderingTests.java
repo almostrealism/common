@@ -18,7 +18,6 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.MatrixFeatures;
-import org.almostrealism.algebra.SparseMatrix;
 import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
@@ -30,7 +29,7 @@ import java.util.Arrays;
 /**
  * Tests for {@link CompressedRowTraversalOrdering}: the logical-to-physical search on the host
  * and in kernels, a collection of entry values read through the ordering as a dense matrix,
- * dense {@code matmul} of that collection against the sparse product, validation, and the
+ * {@code matmul} of that collection, validation, and the
  * logical-size limit that keeps a connectome-scale matrix from being an ordered collection.
  *
  * <p>Unless stated otherwise the matrix is
@@ -151,40 +150,22 @@ public class CompressedRowTraversalOrderingTests extends TestSuiteBase implement
 	}
 
 	/**
-	 * Dense {@code matmul} of the ordered collection is correct and agrees with the segmented
-	 * sparse product of the same structure: with {@code x = [1, 2, 3]} both give
+	 * {@code matmul} of the ordered collection with {@code x = [1, 2, 3]} gives
 	 * {@code [7, 0, 6]}.
 	 */
 	@Test(timeout = 60000)
-	public void denseMatmulOfOrderedCollectionMatchesSparseProduct() {
-		try (SparseMatrix a = SparseMatrix.of(3, 3, OFFSETS, COLUMNS, PackedCollection.of(1.0, 2.0, 3.0));
+	public void matmulOfOrderedCollection() {
+		try (PackedCollection values = PackedCollection.of(1.0, 2.0, 3.0);
 			 PackedCollection x = PackedCollection.of(1.0, 2.0, 3.0)) {
-			double[] expected = { 7.0, 0.0, 6.0 };
-			assertMatches(expected, a.multiply(cp(x)).evaluate());
-			assertMatches(expected, matmul(cp(matrix(a.getOrdering(), a.getValues())), cp(x))
-					.evaluate().reshape(shape(3)));
-			assertMatches(DENSE, a.toDense().evaluate());
+			PackedCollection a = matrix(CompressedRowTraversalOrdering.of(3, OFFSETS, COLUMNS), values);
+			assertMatches(new double[] { 7.0, 0.0, 6.0 },
+					matmul(cp(a), cp(x)).evaluate().reshape(shape(3)));
 		}
 	}
 
 	/**
-	 * A logical element stored as two entries of the same row reads as the first of them in
-	 * the ordered view, while the product sums both.
-	 */
-	@Test(timeout = 60000)
-	public void repeatedColumnReadsFirstEntry() {
-		try (SparseMatrix a = SparseMatrix.of(1, 2, new int[] { 0, 2 }, new int[] { 1, 1 },
-					PackedCollection.of(2.0, 5.0));
-			 PackedCollection x = PackedCollection.of(1.0, 3.0)) {
-			Assert.assertEquals(0, a.getOrdering().indexOf(1));
-			assertMatches(new double[] { 0.0, 2.0 },
-					cp(matrix(a.getOrdering(), a.getValues())).multiply(1.0).evaluate());
-			assertMatches(new double[] { 21.0 }, a.multiply(cp(x)).evaluate());
-		}
-	}
-
-	/**
-	 * Index structures that are not CSR, and index collections that are not in the split
+	 * Index structures that are not CSR (including a row that stores a column twice, which
+	 * would make reading the element and enumerating the entries disagree), and index collections that are not in the split
 	 * layout or disagree on the row count, are rejected.
 	 */
 	@Test(timeout = 30000)
@@ -195,6 +176,7 @@ public class CompressedRowTraversalOrderingTests extends TestSuiteBase implement
 				() -> CompressedRowTraversalOrdering.of(2, new int[] { 0, 2, 1 }, new int[] { 0 }),
 				() -> CompressedRowTraversalOrdering.of(2, new int[] { 0, 1 }, new int[] { 2 }),
 				() -> CompressedRowTraversalOrdering.of(2, new int[] { 0, 1 }, new int[] { -1 }),
+				() -> CompressedRowTraversalOrdering.of(2, new int[] { 0, 2 }, new int[] { 1, 1 }),
 				() -> CompressedRowTraversalOrdering.of(0, new int[] { 0, 0 }, new int[0]),
 				() -> new CompressedRowTraversalOrdering(2, 2,
 						PackedCollection.ofSplitIndices(0, 1), PackedCollection.ofSplitIndices(0)),
@@ -232,21 +214,60 @@ public class CompressedRowTraversalOrderingTests extends TestSuiteBase implement
 	}
 
 	/**
-	 * The ordering itself is defined at any scale, but a {@link PackedCollection} measures its
-	 * logical shape as an {@code int} even when its ordering stores only a few entries, so a
-	 * 166,000 × 166,000 matrix cannot be an ordered collection: sizing it overflows.
+	 * A collection whose shape carries the ordering, built as
+	 * {@code new PackedCollection(new TraversalPolicy(order, 3, 3))}, allocates memory for its
+	 * three entries only, is filled entry by entry, and reads as the dense matrix both on the
+	 * host and in kernels.
 	 */
-	@Test(timeout = 30000)
-	public void orderedCollectionLimitedToIntLogicalSize() {
-		int n = 166_000;
-		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(n, new int[n + 1], new int[0]);
-		Assert.assertEquals(0, order.getLength().getAsInt());
+	@Test(timeout = 60000)
+	public void orderedShapeStoresOnlyEntries() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(3, OFFSETS, COLUMNS);
 
-		try (PackedCollection values = new PackedCollection(1)) {
-			new PackedCollection(new TraversalPolicy(n, n), 0, values, 0, order);
-			Assert.fail("Expected a logical size of " + ((long) n * n) + " elements to be rejected");
-		} catch (ArithmeticException expected) {
-			Assert.assertEquals("integer overflow", expected.getMessage());
+		try (PackedCollection matrix = new PackedCollection(new TraversalPolicy(order, 3, 3))) {
+			Assert.assertEquals(3, matrix.getDelegatedLength());
+			Assert.assertEquals(9, matrix.getMemLength());
+
+			matrix.fill(1.0, 2.0, 3.0);
+			assertMatches(DENSE, matrix);
+
+			double[] doubled = new double[DENSE.length];
+			for (int i = 0; i < DENSE.length; i++) doubled[i] = 2 * DENSE[i];
+			assertMatches(doubled, cp(matrix).multiply(2.0).evaluate());
+		}
+	}
+
+	/**
+	 * A 70,000 × 70,000 matrix, whose 4.9 billion logical elements exceed the range of an
+	 * {@code int}, stores only its two entries per row, and its product with a vector is exact:
+	 * the product enumerates the entries of each row and never forms a logical index.
+	 */
+	@Test(timeout = 120000)
+	public void productBeyondIntLogicalSize() {
+		int n = 70_000;
+		int[] offsets = new int[n + 1];
+		int[] columns = new int[2 * n];
+		for (int i = 0; i < n; i++) {
+			offsets[i + 1] = 2 * (i + 1);
+			columns[2 * i] = i;
+			columns[2 * i + 1] = (int) ((i * 7L + 3) % n);
+		}
+
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(n, offsets, columns);
+		TraversalPolicy shape = new TraversalPolicy(n, n);
+		Assert.assertTrue(shape.getTotalSizeLong() > Integer.MAX_VALUE);
+
+		try (PackedCollection values = integers(0, 2 * n).mod(8).add(1.0).evaluate();
+			 PackedCollection x = integers(0, n).mod(16).evaluate()) {
+			PackedCollection matrix = new PackedCollection(shape, 0, values, 0, order);
+			PackedCollection y = matmul(cp(matrix), cp(x)).evaluate();
+			Assert.assertEquals(n, y.getShape().getTotalSize());
+
+			double[] result = y.toArray();
+			for (int i = 0; i < n; i++) {
+				double expected = (2 * i % 8 + 1) * (columns[2 * i] % 16)
+						+ ((2 * i + 1) % 8 + 1) * (columns[2 * i + 1] % 16);
+				Assert.assertEquals("row " + i, expected, result[i], 0.0);
+			}
 		}
 	}
 }

@@ -12,6 +12,33 @@ tracker: [66b57639-42ae-423f-bbde-ae93406228ac]
 - **Phase context:** Phase 1, task 4 of `docs/plans/CONNECTOME_MODEL_ORGANISM.md` ("Sparse connectivity: compressed rows plus a segmented reduction")
 - **Estimated complexity:** Large
 
+## Revision (2026-10-28): no sparse matrix type
+
+The reviewer's decision on PR #758 supersedes the `SparseMatrix` type described in the Scope and
+Approach sections below: no special-case sparse data structure is merged. A sparse matrix is an
+ordinary `PackedCollection` whose shape carries a `CompressedRowTraversalOrdering`, and the
+framework supports it in full generality:
+
+- `SparseMatrix` and `SparseMatrixTests` are deleted.
+- `CompressedRowOrderedComputationTests` applies 34 existing computations (element-wise
+  arithmetic and functions, per-row reductions, reshape, subset, pad, repeat, transpose,
+  permute, enumerate, concat, and every form of `matmul`) to a CSR-ordered collection and to the
+  same matrix stored densely, on every available backend, and requires the results to agree.
+- **Member enumeration (was follow-up 44f6b5a3).** `TraversalOrdering.segments(int)` returns an
+  `OrderingSegments` (the start and length of each segment of consecutive logical indices and
+  the logical offset of each member) when the ordering stores segments contiguously.
+  `CompressedRowTraversalOrdering` is its own enumeration of rows. `matmul` of a matrix whose
+  ordering enumerates its rows is a `SegmentedWeightedSumComputation`, which now takes the
+  ordered matrix itself and binds its ordering to the kernel, instead of three separate arrays.
+- **Long logical sizes (was follow-up 85d80f6a).** A `PackedCollection` allocates the ordering's
+  physical length (`getDelegatedLength()`), not its logical size, and only that length is bounded
+  by `int`. `new PackedCollection(new TraversalPolicy(order, rows, cols))` stores only the
+  entries (`fill` writes them), and a 70,000 × 70,000 product (4.9 billion logical elements) is
+  exact (`CompressedRowTraversalOrderingTests.productBeyondIntLogicalSize`). Host reads that
+  address logical indices (`toArray`, `valueAt`) remain bounded by `int`.
+- The columns of a CSR row must be distinct, so that reading an element and enumerating the
+  entries agree.
+
 ## Motivation
 
 The platform has no sparse matrix type and no sparse matrix–vector product. `Tensor` (nested-list

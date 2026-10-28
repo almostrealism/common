@@ -188,18 +188,21 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	 * Initializes backing memory if no delegate has been set.
 	 *
 	 * <p>If a delegate exists, does nothing. Otherwise allocates memory from the
-	 * default provider or heap.</p>
+	 * default provider or heap. The memory allocated is the {@link #getDelegatedLength()
+	 * delegated length}, which is less than the {@link #getMemLength() length} when an ordering
+	 * addresses fewer physical elements than there are logical ones.</p>
 	 */
 	protected void init() {
 		if (getDelegate() == null) {
 			Heap heap = getDefaultDelegate();
+			int length = getDelegatedLength();
 
 			if (heap == null) {
-				init(Hardware.getLocalHardware().getMemoryProvider(getMemLength()).allocate(getMemLength()));
+				init(Hardware.getLocalHardware().getMemoryProvider(length).allocate(length));
 			} else {
-				Bytes data = heap.allocate(getMemLength());
+				Bytes data = heap.allocate(length);
 				setDelegate(data.getDelegate(), data.getDelegateOffset(), data.getDelegateOrdering());
-				setMem(new double[getMemLength()]);
+				setMem(new double[length]);
 			}
 		}
 	}
@@ -277,7 +280,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	public void setMem(int offset, double value) {
 		MemoryData root = getRootDelegate();
 
-		if (getOffset() - root.getOffset() + offset + 1 > root.getMemLength()) {
+		if (getOffset() - root.getOffset() + offset + 1 > root.getDelegatedLength()) {
 			throw new IllegalArgumentException("Offset is beyond the length of this MemoryData");
 		}
 
@@ -339,7 +342,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 
 		MemoryData root = getRootDelegate();
 
-		if (getOffset() - root.getOffset() + offset + source.length > root.getMemLength()) {
+		if (getOffset() - root.getOffset() + offset + source.length > root.getDelegatedLength()) {
 			throw new IllegalArgumentException("Array extends beyond the length of the underlying storage");
 		}
 
