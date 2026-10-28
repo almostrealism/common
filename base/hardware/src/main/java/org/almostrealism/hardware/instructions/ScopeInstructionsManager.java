@@ -25,6 +25,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.hardware.CompilationInterruptedException;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
@@ -85,6 +86,8 @@ import java.util.stream.Collectors;
  * @Override
  * public synchronized Execution getOperator(K key) {
  *     if (operators == null || operators.isDestroyed()) {
+ *         // An interrupted thread never starts a compilation
+ *         CompilationInterruptedException.throwIfInterrupted(name);
  *         operators = getComputeContext().deliver(getScope());  // Compile once
  *     }
  *     return operators.get(scopeName, arguments.size());
@@ -379,19 +382,41 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	}
 
 	/**
-	 * Returns the compiled instruction set, compiling if necessary.
+	 * Compiles the scope if no usable instruction set is cached.
 	 *
-	 * <p>This method is synchronized to ensure only one compilation occurs
-	 * even under concurrent access.</p>
+	 * <p>An interrupted thread does not start a compilation: when one is needed and the
+	 * calling thread's interrupt status is set, a {@link CompilationInterruptedException}
+	 * is thrown before {@link #getScope()} is called or anything is delivered to the
+	 * {@link ComputeContext}, and the interrupt status is left set. Nothing is cached
+	 * for the cancelled attempt, so a later call on an uninterrupted thread compiles
+	 * normally. When a compiled instruction set is already cached, no check is made and
+	 * the cached instructions are reused exactly as they would be otherwise.</p>
 	 *
-	 * @return the compiled instruction set
+	 * @throws CompilationInterruptedException if a compilation is needed and the calling
+	 *                                         thread is interrupted
 	 */
-	protected synchronized InstructionSet getInstructionSet() {
+	private void compileIfNecessary() {
 		if (operators == null || operators.isDestroyed()) {
+			CompilationInterruptedException.throwIfInterrupted(
+					scopeName == null ? "a scope" : scopeName);
 			operators = getComputeContext().deliver(getScope());
 			HardwareOperator.recordCompilation(!getComputeContext().isCPU());
 		}
+	}
 
+	/**
+	 * Returns the compiled instruction set, compiling if necessary.
+	 *
+	 * <p>This method is synchronized to ensure only one compilation occurs
+	 * even under concurrent access. A compilation is never started on an
+	 * interrupted thread (see {@link #compileIfNecessary()}).</p>
+	 *
+	 * @return the compiled instruction set
+	 * @throws CompilationInterruptedException if a compilation is needed and the calling
+	 *                                         thread is interrupted
+	 */
+	protected synchronized InstructionSet getInstructionSet() {
+		compileIfNecessary();
 		return operators;
 	}
 
@@ -399,16 +424,20 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	 * {@inheritDoc}
 	 *
 	 * <p>Compiles the scope on first call and caches the result. Subsequent calls
-	 * return the cached operator. Notifies the access listener if one is registered.</p>
+	 * return the cached operator. Notifies the access listener if one is registered.
+	 * A compilation is never started on an interrupted thread: if one is needed and
+	 * the calling thread's interrupt status is set, a
+	 * {@link CompilationInterruptedException} is thrown with the status left set (see
+	 * {@link #compileIfNecessary()}). Reusing an already compiled operator is not
+	 * affected.</p>
+	 *
+	 * @throws CompilationInterruptedException if a compilation is needed and the calling
+	 *                                         thread is interrupted
 	 */
 	@Override
 	public synchronized Execution getOperator(K key) {
 		try {
-			if (operators == null || operators.isDestroyed()) {
-				operators = getComputeContext().deliver(getScope());
-				HardwareOperator.recordCompilation(!getComputeContext().isCPU());
-			}
-
+			compileIfNecessary();
 			return operators.get(scopeName, arguments.size());
 		} finally {
 			if (accessListener != null) {
