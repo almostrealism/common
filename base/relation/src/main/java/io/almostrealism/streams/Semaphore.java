@@ -136,7 +136,7 @@ public interface Semaphore {
 	/**
 	 * Registers a callback to run once the guarded operation has completed, without
 	 * driving the operation toward completion. The default delegates to
-	 * {@link #onComplete(Runnable)}, whose callback thread actively waits; an
+	 * {@link #onComplete(Runnable)}, which drives the operation to completion; an
 	 * implementation whose {@link #waitFor()} has side effects beyond blocking — such
 	 * as forcing a command-buffer commit that breaks dispatch batching — overrides
 	 * this to attach the callback passively instead. The callback may consequently
