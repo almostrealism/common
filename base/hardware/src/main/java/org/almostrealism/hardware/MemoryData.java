@@ -278,10 +278,13 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * allocates new memory, copies existing data, and reassigns this {@link MemoryData} to
 	 * reference the new memory.</p>
 	 *
+	 * <p>What moves is the backing memory, its {@link #getDelegatedLength() delegated length},
+	 * which an ordering can make shorter or longer than the logical length.</p>
+	 *
 	 * @param provider The target memory provider (e.g., GPU memory)
 	 */
 	default void reallocate(MemoryProvider<?> provider) {
-		reassign(provider.reallocate(getMem(), getOffset(), getMemLength()));
+		reassign(provider.reallocate(getMem(), getOffset(), getDelegatedLength()));
 	}
 
 	/**

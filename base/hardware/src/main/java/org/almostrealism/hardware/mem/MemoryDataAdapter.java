@@ -246,9 +246,9 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		this.delegateOrder = order;
 
 		if (m != null) {
-			// A root's memory is its delegated length, which an ordering that gathers
-			// from more positions than it has logical elements makes the larger of the two
-			// TODO(review): max() lets a view of a compact root (CSR: 3 of 9 allocated) extend past its allocated delegated length
+			// A view of a root spans either its logical elements, which a view without an ordering
+			// reads through the root's ordering (so a compact root storing 3 of 9 still has 9), or
+			// its backing memory, the delegated length, which a gather makes the longer of the two
 			int extent = m.getDelegate() == null ?
 					Math.max(m.getMemLength(), m.getDelegatedLength()) : m.getMemLength();
 
@@ -389,7 +389,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 			MemoryData.super.reallocate(provider);
 		} else {
 			Memory mem = memVersions.get(provider);
-			mem.getProvider().setMem(mem, 0, this.mem, 0, getMemLength());
+			mem.getProvider().setMem(mem, 0, this.mem, 0, getDelegatedLength());
 			reassign(mem);
 			memVersions.remove(provider);
 		}
@@ -436,7 +436,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 			memVersions = new HashMap<>();
 
 		if (memVersions == null) {
-			this.mem.getProvider().deallocate(getMemLength(), this.mem);
+			this.mem.getProvider().deallocate(getDelegatedLength(), this.mem);
 		} else {
 			memVersions.put(this.mem.getProvider(), this.mem);
 		}
@@ -455,7 +455,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		}
 
 		if (mem != null) {
-			if (memOwned) mem.getProvider().deallocate(getMemLength(), mem);
+			if (memOwned) mem.getProvider().deallocate(getDelegatedLength(), mem);
 			mem = null;
 			memOwned = false;
 		}
@@ -464,7 +464,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 			Map<MemoryProvider, Memory> versions = memVersions;
 			memVersions = null;
 			for (Memory cached : versions.values()) {
-				cached.getProvider().deallocate(getMemLength(), cached);
+				cached.getProvider().deallocate(getDelegatedLength(), cached);
 			}
 			versions.clear();
 		}

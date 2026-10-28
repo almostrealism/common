@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.concurrent.Submittable;
@@ -26,6 +27,8 @@ import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.SplitIndexTraversalOrdering;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -441,6 +444,69 @@ public class CompressedRowTraversalOrderingTests extends TestSuiteBase implement
 				assertMatches(new double[] { 1.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0 }, matrixClone);
 				assertMatches(new double[] { 6.0, 4.0, 2.0 }, gatheredClone);
 			}
+		}
+	}
+
+	/**
+	 * Moving an ordered collection to another memory provider, and back again (which reuses the
+	 * version kept on the original provider), carries its backing memory: the three stored
+	 * entries of a CSR matrix that keeps 3 of 9 elements, and all six positions a gather reads
+	 * its 3 elements from. The collection reads the same values afterwards.
+	 */
+	@Test(timeout = 30000)
+	public void reallocateMovesBackingMemory() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(3, OFFSETS, COLUMNS);
+		JVMMemoryProvider jvm = new JVMMemoryProvider();
+
+		try (PackedCollection matrix = new PackedCollection(new TraversalPolicy(order, 3, 3));
+			 PackedCollection gathered = new PackedCollection(
+					 new TraversalPolicy(SplitIndexTraversalOrdering.of(5, 3, 1), 3))) {
+			matrix.fill(1.0, 2.0, 3.0);
+			gathered.fill(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+			MemoryProvider<?> original = matrix.getMem().getProvider();
+
+			matrix.reallocate(jvm);
+			gathered.reallocate(jvm);
+			Assert.assertSame(jvm, matrix.getMem().getProvider());
+			Assert.assertSame(jvm, gathered.getMem().getProvider());
+			assertMatches(DENSE, matrix);
+			assertMatches(new double[] { 6.0, 4.0, 2.0 }, gathered);
+			Assert.assertArrayEquals(new double[] { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 },
+					gathered.getMem().toArray(0, 6), 0.0);
+
+			matrix.setMem(2, 30.0);
+			matrix.reallocate(original);
+			gathered.reallocate(original);
+			assertMatches(new double[] { 1.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 30.0, 0.0 }, matrix);
+			assertMatches(new double[] { 6.0, 4.0, 2.0 }, gathered);
+		}
+	}
+
+	/**
+	 * A view of an ordered root without an ordering of its own addresses the root's logical
+	 * elements, which the root's ordering maps to its stored entries. A reshape and a view at a
+	 * logical offset of a CSR matrix that stores 3 of its 9 elements therefore span logical
+	 * positions beyond the 3 allocated ones and read the dense values there, while a view past
+	 * the logical length is rejected.
+	 */
+	@Test(timeout = 30000)
+	public void viewOfOrderedRootAddressesLogicalElements() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(3, OFFSETS, COLUMNS);
+
+		try (PackedCollection matrix = new PackedCollection(new TraversalPolicy(order, 3, 3))) {
+			matrix.fill(1.0, 2.0, 3.0);
+
+			assertMatches(DENSE, matrix.reshape(shape(9)));
+			assertMatches(Arrays.copyOfRange(DENSE, 3, 9), new PackedCollection(shape(6), 0, matrix, 3));
+
+			boolean rejected = false;
+			try {
+				new PackedCollection(shape(6), 0, matrix, 4);
+			} catch (HardwareException expected) {
+				rejected = true;
+			}
+
+			Assert.assertTrue("a view past the logical length should be rejected", rejected);
 		}
 	}
 
