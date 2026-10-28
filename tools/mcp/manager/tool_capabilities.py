@@ -4,13 +4,13 @@ Enabling an orchestrator workstream takes two independent grants, and setting
 only one of them leaves an operator stuck with a denial that names neither:
 
 * **Controller-side.** ``dispatchCapable`` on the workstream, checked by
-  ``workspace_map._require_dispatch_capable``. This is the real gate, and the
-  only one the opencode harness has, because that harness filters by server
-  rather than by tool.
-* **Harness-side.** The ``--allowedTools`` CSV the Claude Code harness is
-  launched with, built by ``McpConfigBuilder.buildAllowedTools``. Claude Code
-  filters per tool, so a tool missing here is denied even when the controller
-  would allow it.
+  ``workspace_map._require_dispatch_capable``. This is the real gate, and it
+  holds whatever harness the session runs under.
+* **Harness-side.** The ``--allowedTools`` CSV built by
+  ``McpConfigBuilder.buildAllowedTools``. Claude Code is launched with it, and
+  opencode receives the same list as per-tool permissions
+  (``OpencodeConfigBuilder.translateAllowlist``), so under either harness a
+  tool missing here is denied even when the controller would allow it.
 
 The classification below mirrors the sets in that Java class. Two languages
 cannot share the definition, so the risk is drift, and the answer to drift is

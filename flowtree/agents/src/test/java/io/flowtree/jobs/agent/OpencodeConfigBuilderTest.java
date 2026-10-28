@@ -20,9 +20,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -241,10 +244,12 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     }
 
     /**
-     * Built-in tool names become per-tool allow entries; each MCP server with
-     * any allowed tool becomes a single {@code "allow"} action string —
-     * opencode 1.x's PermissionActionConfig does not support per-tool
-     * granularity on MCP servers, only a single action per server.
+     * The block denies every tool by default and then allows each listed one
+     * under the key opencode checks: built-in names map to opencode's
+     * lower-case tool permissions, and each {@code mcp__server__tool} becomes
+     * {@code server_tool}, so MCP access is granted per tool exactly as Claude
+     * Code's {@code --allowedTools} grants it. opencode applies the last rule
+     * that matches a tool, so the default must come first.
      */
     @Test(timeout = 5000)
     public void translateAllowlistHandlesBuiltinsAndMcp() {
@@ -253,17 +258,37 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
                 "Read,Edit,Bash,mcp__ar-manager__memory_store,mcp__ar-manager__memory_recall,"
                         + "mcp__ar-build-validator__start_validation");
 
-        JsonNode tools = permission.path("tools");
-        assertEquals("allow", tools.path("Read").asText());
-        assertEquals("allow", tools.path("Edit").asText());
-        assertEquals("allow", tools.path("Bash").asText());
-        assertFalse(tools.has("Write"));
+        List<String> keys = new ArrayList<>();
+        permission.fieldNames().forEachRemaining(keys::add);
+        Assert.assertEquals(List.of("*", "read", "edit", "bash",
+                        "ar-manager_memory_store", "ar-manager_memory_recall",
+                        "ar-build-validator_start_validation"), keys);
+        assertEquals("deny", permission.path("*").asText());
+        assertEquals("allow", permission.path("read").asText());
+        assertEquals("allow", permission.path("edit").asText());
+        assertEquals("allow", permission.path("bash").asText());
+        assertEquals("allow", permission.path("ar-manager_memory_store").asText());
+        assertEquals("allow", permission.path("ar-manager_memory_recall").asText());
+        assertEquals("allow", permission.path("ar-build-validator_start_validation").asText());
+    }
 
-        JsonNode mcp = permission.path("mcp");
-        assertEquals("allow", mcp.path("ar-manager").asText());
-        assertEquals("allow", mcp.path("ar-build-validator").asText());
-        // Two distinct ar-manager tool entries collapse to a single per-server allow.
-        assertEquals(2, mcp.size());
+    /**
+     * {@code Write} shares opencode's {@code edit} permission, a whole-server
+     * entry grants every tool of that server, and Claude Code tools with no
+     * opencode counterpart grant nothing — in particular they never open up
+     * opencode's own tools such as {@code webfetch} or {@code todowrite}.
+     */
+    @Test(timeout = 5000)
+    public void translateAllowlistMapsWriteServersAndUnknownEntries() {
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
+        ObjectNode permission = b.translateAllowlist("Write,TaskOutput,TaskStop,mcp__ar-docs");
+
+        List<String> keys = new ArrayList<>();
+        permission.fieldNames().forEachRemaining(keys::add);
+        Assert.assertEquals(List.of("*", "edit", "ar-docs_*"), keys);
+        assertEquals("deny", permission.path("*").asText());
+        assertEquals("allow", permission.path("edit").asText());
+        assertEquals("allow", permission.path("ar-docs_*").asText());
     }
 
     /**
@@ -311,8 +336,9 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertFalse("ar-manager entry must declare oauth=false so opencode "
                         + "uses the supplied bearer instead of attempting DCR",
                 managerEntry.path("oauth").asBoolean(true));
-        assertEquals("allow", root.path("permission").path("tools").path("Read").asText());
-        assertEquals("allow", root.path("permission").path("mcp").path("ar-manager").asText());
+        assertEquals("deny", root.path("permission").path("*").asText());
+        assertEquals("allow", root.path("permission").path("read").asText());
+        assertEquals("allow", root.path("permission").path("ar-manager_memory_store").asText());
         // external_directory is always granted in the full build so headless
         // runs don't hang on opencode's interactive permission prompt.
         assertEquals("allow", root.path("permission").path("external_directory").asText());
