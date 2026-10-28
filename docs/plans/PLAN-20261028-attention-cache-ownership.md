@@ -35,11 +35,14 @@ The consequences are real, not cosmetic:
   orphan caches; the caches the model reads are never cleared between sequences. This passes its
   guard test (`keyValueCacheResetClearsCacheAcrossSequences`) today *only* because the causal mask
   hides rows at or beyond the current position and decoding overwrites rows in order — so a stale row
-  from a previous sequence is never read. The invariant the method's javadoc promises ("a new
-  sequence cannot read this one's cached keys and values") is not actually enforced; it holds by
-  accident of two unrelated mechanisms.
+  from a previous sequence is never read. The invariant the method's javadoc promises (it clears
+  the caches "so that the next sequence cannot read this one's cached keys and values") is not
+  actually enforced; it holds by accident of two unrelated mechanisms.
 - **`destroy()` leaks the real caches.** It releases the orphans; the bound caches are never freed.
-  `2 · depth · seqLen · dim` floats leak per generator.
+  `2 · depth · seqLen · dim` floats leak per generator. The existing lifecycle test
+  `destroyingKeyValueCacheGeneratorReleasesItsBuffers` says in its javadoc that destroy releases "the
+  per-layer caches", but it asserts only that the position is released and the weights are not, so
+  it does not detect this leak either.
 - **The documentation describes a mechanism that does not exist.** The javadoc of
   `KeyValueCacheAutoregressiveModel` (its `reset()` "clears every layer's key and value cache, so a new
   sequence starts clean"), the `decodeModel` javadoc (the appended caches are the ones the caller "can
@@ -182,7 +185,10 @@ caller actually uses — would additionally pin that `KeyValueCacheAutoregressiv
 the bound caches, but requires giving the generator a (package-private or test-visible) accessor to
 its `keyCaches`/`valueCaches`, which it does not have today. That accessor is a small, defensible
 production addition, but it is a design choice to make deliberately rather than smuggle in; decide
-whether the `decodeModel`-level guard is sufficient or the generator-level one is wanted.
+whether the `decodeModel`-level guard is sufficient or the generator-level one is wanted. The same
+accessor would also let `destroyingKeyValueCacheGeneratorReleasesItsBuffers` assert what its javadoc
+already claims, that `destroy()` releases the per-layer caches. That would be a strengthening of an
+existing test, not a weakening, but it stays out of this plan unless the accessor is approved.
 
 ## Approach
 
@@ -200,8 +206,12 @@ whether the `decodeModel`-level guard is sufficient or the generator-level one i
    first to prove it catches the bug), then make it pass with the fix.
 5. **Correct the javadoc and the doc sentence** from the now-true behaviour.
 6. **Validate:** build validator (checkstyle, code_policy, test_timeouts, duplicate_code, javadoc),
-   then run narrowly `keyValueCacheDecodeMatchesFullForward`, `keyValueCacheResetClearsCacheAcrossSequences`,
-   the new test, and `slidingWindowGenerationMatchesFullForward`; plus `AttentionAssetTest` (the
+   then run narrowly the `CausalLanguageModelTest` methods that touch the decode caches —
+   `keyValueCacheDecodeMatchesFullForward`, `keyValueCacheResetClearsCacheAcrossSequences`,
+   `keyValueCacheLaterPositionsReadEarlierEntries` (whose `decodeRow` helper now clears the bound
+   caches instead of orphans), `destroyingKeyValueCacheGeneratorReleasesItsBuffers` (the generator's
+   `destroy()` now releases the bound caches), `keyValueCacheRefusesDecodingPastSeqLen`, the new
+   test, and `slidingWindowGenerationMatchesFullForward`; plus `AttentionAssetTest` (the
    `attention(...)` builders) and `TransformerAssetTest` (every public `transformer(...)` overload) to
    confirm the self-allocating callers are untouched. `SkyTntPdslTest` and `PdslLoaderTest` do not
    exercise `attentionArguments` (the PDSL loaders bind their own caches), so they are not evidence
@@ -221,7 +231,9 @@ whether the `decodeModel`-level guard is sufficient or the generator-level one i
   clearing those buffers erases the attended past (a decode at position `k > 0` straight after the
   clear matches a fresh decode model at `k`) — independent of the causal-mask accident.
 - `keyValueCacheDecodeMatchesFullForward`, `keyValueCacheResetClearsCacheAcrossSequences`,
-  `slidingWindowGenerationMatchesFullForward`, `AttentionAssetTest` and `TransformerAssetTest` still pass; no test weakened. Build
+  `keyValueCacheLaterPositionsReadEarlierEntries`, `destroyingKeyValueCacheGeneratorReleasesItsBuffers`,
+  `keyValueCacheRefusesDecodingPastSeqLen`, `slidingWindowGenerationMatchesFullForward`,
+  `AttentionAssetTest` and `TransformerAssetTest` still pass; no test weakened. Build
   validator clean. Javadoc and the training-doc sentence match the code.
 
 ## Dependencies
@@ -260,6 +272,12 @@ a clear owner.
   the map `attentionArguments` returns. But the self-allocating overload would still allocate (and
   leak) a pair per layer before the caller replaced them, which is why the plan prefers the
   caller-supplied overload with the self-allocating one delegating to it.
+- **Should the caller-supplied overload still take `seqLen`?** The self-allocating overload needs
+  `seqLen` only to size the caches it allocates (`shape(seqLen, dim)`); once the caller supplies them,
+  `seqLen` is the caches' row count. Keeping the parameter and validating against it (as section 1
+  proposes) catches a cache sized for a different sequence length. Dropping it and reading the row
+  count from `keyCache` gives a shorter signature with one less value that can disagree. Either works.
+  The approver should pick one before the signature is written, because it is public API.
 
 ## Estimated Complexity
 
