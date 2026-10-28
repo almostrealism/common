@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CompressedRowTraversalOrdering;
@@ -25,6 +26,8 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.OptionalInt;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tests for {@link CompressedRowTraversalOrdering}: the logical-to-physical search on the host
@@ -233,6 +236,46 @@ public class CompressedRowTraversalOrderingTests extends TestSuiteBase implement
 			double[] doubled = new double[DENSE.length];
 			for (int i = 0; i < DENSE.length; i++) doubled[i] = 2 * DENSE[i];
 			assertMatches(doubled, cp(matrix).multiply(2.0).evaluate());
+		}
+	}
+
+	/**
+	 * The backing memory of an ordered collection is measured once, when the collection is
+	 * created: writes are bounded by the ordering's physical length, but they never ask the
+	 * ordering for it again (an ordering may read its index collections back to the host to
+	 * answer). A write past the physical length is rejected even though it is within the
+	 * logical length.
+	 */
+	@Test(timeout = 30000)
+	public void physicalLengthMeasuredOnce() {
+		AtomicInteger lengthQueries = new AtomicInteger();
+		RepeatTraversalOrdering order = new RepeatTraversalOrdering(4) {
+			@Override
+			public OptionalInt getLength() {
+				lengthQueries.incrementAndGet();
+				return super.getLength();
+			}
+		};
+
+		try (PackedCollection repeated = new PackedCollection(new TraversalPolicy(order, 12))) {
+			Assert.assertEquals(4, repeated.getDelegatedLength());
+			Assert.assertEquals(12, repeated.getMemLength());
+
+			int queries = lengthQueries.get();
+			repeated.fill(5.0, 6.0, 7.0, 8.0);
+			repeated.setMem(3, 1.0);
+			Assert.assertEquals(4, repeated.getDelegatedLength());
+			Assert.assertEquals(queries, lengthQueries.get());
+			assertMatches(new double[] { 5, 6, 7, 1, 5, 6, 7, 1, 5, 6, 7, 1 }, repeated);
+
+			boolean rejected = false;
+			try {
+				repeated.setMem(4, 9.0);
+			} catch (IllegalArgumentException expected) {
+				rejected = true;
+			}
+
+			Assert.assertTrue("a write past the physical length should be rejected", rejected);
 		}
 	}
 

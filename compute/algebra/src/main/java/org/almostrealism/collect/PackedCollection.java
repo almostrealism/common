@@ -243,6 +243,13 @@ public class PackedCollection extends MemoryDataAdapter
 	/** The traversal policy describing the shape and traversal axis of this collection. */
 	private final TraversalPolicy shape;
 
+	/**
+	 * The number of elements of backing memory, fixed when the collection is created so that
+	 * bounds checks on every write do not ask the ordering again (which may read its index
+	 * collections back to the host); see {@link #computePhysicalLength()}.
+	 */
+	private final long physicalLength;
+
 	/** Optional factory function for creating sub-collection delegates at a given offset. */
 	private Function<DelegateSpec, PackedCollection> supply;
 
@@ -337,6 +344,7 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 
 		this.shape = shape.traverse(order).traverse(traversalAxis);
+		this.physicalLength = computePhysicalLength();
 		setDelegate(delegate, delegateOffset);
 		init();
 	}
@@ -349,22 +357,23 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	@Override
 	protected void init() {
-		if (getPhysicalLength() > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException(String.valueOf(getPhysicalLength()));
+		if (physicalLength > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException(String.valueOf(physicalLength));
 		}
 
 		super.init();
 	}
 
 	/**
-	 * Returns the number of elements of backing memory: the {@link TraversalOrdering#getLength()
-	 * physical length} of the shape's ordering when it reports one (at least one element, since
-	 * memory cannot be empty), so that a compact or sparse collection stores only its entries,
-	 * and otherwise the {@link TraversalPolicy#getTotalInputSizeLong() total input size}.
+	 * Computes the number of elements of backing memory for this collection's shape: the
+	 * {@link TraversalOrdering#getLength() physical length} of the shape's ordering when it
+	 * reports one (at least one element, since memory cannot be empty), so that a compact or
+	 * sparse collection stores only its entries, and otherwise the
+	 * {@link TraversalPolicy#getTotalInputSizeLong() total input size}.
 	 *
 	 * @return the length of the backing memory
 	 */
-	private long getPhysicalLength() {
+	private long computePhysicalLength() {
 		OptionalInt physical = shape.getOrder() == null ? OptionalInt.empty() : shape.getOrder().getLength();
 		return physical.isPresent() ? Math.max(1, physical.getAsInt()) : shape.getTotalInputSizeLong();
 	}
@@ -372,12 +381,12 @@ public class PackedCollection extends MemoryDataAdapter
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>This is the {@link #getPhysicalLength() length of the backing memory}, which is what is
-	 * allocated for a collection that has no delegate.</p>
+	 * <p>This is the {@link #computePhysicalLength() length of the backing memory},
+	 * which is what is allocated for a collection that has no delegate.</p>
 	 */
 	@Override
 	public int getDelegatedLength() {
-		return Math.toIntExact(getPhysicalLength());
+		return Math.toIntExact(physicalLength);
 	}
 
 	/**
