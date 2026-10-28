@@ -484,6 +484,31 @@ public class SequentialBlock implements Block, Learning, Tracking, LayerRoutingF
 	}
 
 	/**
+	 * Applies every block to the current output and appends the element-wise sum of their
+	 * outputs: the form of {@link #accum(Block, Block, ComputeRequirement...)} for any number of
+	 * blocks. The sum replaces the current tail.
+	 *
+	 * @param blocks       the blocks, each taking the current output and producing the same shape
+	 * @param requirements optional compute requirements for the accumulation
+	 * @see LayerRoutingFeatures#accumBlocks(TraversalPolicy, List, ComputeRequirement...)
+	 */
+	public void accum(List<Block> blocks, ComputeRequirement... requirements) {
+		add(accumBlocks(getOutputShape(), blocks, requirements));
+	}
+
+	/**
+	 * Applies every block to the current output and appends the concatenation of their outputs,
+	 * in order, as one flat vector. The concatenation replaces the current tail.
+	 *
+	 * @param blocks       the blocks, each taking the current output
+	 * @param requirements optional compute requirements for the concatenation
+	 * @see LayerRoutingFeatures#concatBlocks(TraversalPolicy, List, ComputeRequirement...)
+	 */
+	public void concat(List<Block> blocks, ComputeRequirement... requirements) {
+		add(concatBlocks(getOutputShape(), blocks, requirements));
+	}
+
+	/**
 	 * Adds an element-wise product step using blocks produced by the given factories.
 	 *
 	 * @param a            factory that produces the first operand block
