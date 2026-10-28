@@ -153,9 +153,16 @@ Production changes are in `base/hardware` (`MetalCommandRunner`,
   the first is one more than the previous buffer's last value). Keying on the
   buffer's **last** value alone would be wrong: a waiter for an *earlier*
   dispatch in the errored buffer has a smaller value and would not be covered.
-- **Record the error durably.** The command queue is serial, and an errored
-  buffer never signals its value, so every later buffer that encoded a wait for
-  it can never complete normally either. Record the first error as runner state:
+- **Record the error durably.** An errored buffer never signals its value, but
+  that does **not** guarantee that a later buffer which encoded a wait for it
+  also fails. The runner uses one monotonic timeline `event`, and a GPU wait on a
+  shared event is released once the event reaches *at least* the waited value.
+  If an independent buffer committed after the errored one (no wait on it)
+  completes and signals its own, higher value, a dependent buffer queued behind
+  it has its wait released, runs on destinations the errored buffer never wrote,
+  and completes **without** `isError()`. So the failure cannot be detected from
+  the dependents' own Metal status; it must be a sticky runner-level record that
+  every later value consults. Record the first error as runner state:
   the errored buffer's *first* timeline value, plus a `HardwareException` built
   from `buffer.getError()` and the requester's display name. `errorCompletions`
   already counts these; keep the existing `warn(...)` as the loud log line next
@@ -184,7 +191,10 @@ Production changes are in `base/hardware` (`MetalCommandRunner`,
   `complete()` calls `waitUntilCompleted()` on the *target* buffer only and
   drains older buffers afterwards. If an older buffer was killed, a target
   buffer that encoded a GPU wait for one of its values stalls until the watchdog
-  kills *it* too (~5 s more), and only then is the older error drained and seen.
+  kills *it* too (~5 s more), and only then is the older error drained and seen
+  — unless, as above, an intervening independent buffer signals a higher value
+  first, in which case the target completes "successfully" on unwritten inputs
+  and only the sticky record makes its waiter throw.
   To make dependents fail promptly, `complete()` should wait, on the calling
   thread, for each committed buffer from the oldest up to the target in queue
   order and check `isError()` after each, stopping at the first error (then
@@ -294,7 +304,10 @@ A reviewer can confirm the task is done when:
     the head buffer is made to complete in error; a downstream dependent's
     `waitFor()` (and a single trailing host wait in the `SimulationRunner` shape)
     throws with the error text, and a waiter for an earlier dispatch of the same
-    errored buffer also throws. Lives alongside `SemaphoreChainBatchingTest` /
+    errored buffer also throws. Include the shape errored buffer → independent
+    buffer (no wait on it) → dependent buffer, where the dependent's GPU wait is
+    released by the independent buffer's higher timeline signal: the dependent
+    completes without a Metal error, and its `waitFor()` must still throw. Lives alongside `SemaphoreChainBatchingTest` /
     `MetalCompletionCallbackTest` in `engine/utils`
     (`org.almostrealism.hardware.test`).
   - **Metal-to-native chain** (macOS): a `NativeExecution` dispatch chained
@@ -347,6 +360,18 @@ A reviewer can confirm the task is done when:
   even other contexts are also poisoned, and recording the error per runner is
   not enough. **Open question:** has this been confirmed, and should a recorded
   Metal error be device-wide rather than runner-wide?
+- **Does a recorded error ever clear?** As proposed, the error is sticky: every
+  completion whose value is ≥ the first errored value throws, so after one kill
+  the runner fails every later wait for the rest of its life. That is the
+  safe reading of "later submissions are ignored" (previous item), but it also means
+  one intermittent watchdog kill — the kind already seen in
+  `CausalLanguageModelTest` on Metal — fails every later test sharing the same
+  runner/context in that JVM, not only the one that hit it. **Open question:**
+  is a permanently poisoned runner the intended behaviour (and should the
+  runner then be discarded and rebuilt by its context), or should the record be
+  bounded — e.g. cleared once a later buffer that waited on nothing older than
+  the error completes cleanly? The latter is only safe if the "later
+  submissions are ignored" claim turns out to be false.
 - **`destroy()` with a recorded error.** `destroy()` drains through the same
   `drainOldestCommitted`. Should destroying a runner whose buffers errored throw
   (loud, but turns teardown into a failure path for every caller of
