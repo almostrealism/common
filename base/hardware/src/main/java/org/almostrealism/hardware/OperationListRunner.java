@@ -23,7 +23,6 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationTimingListener;
-import io.almostrealism.profile.OperationWithInfo;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -38,8 +37,15 @@ import java.util.List;
  * chaining on the previous member's completion {@link Semaphore}, so ordering holds across
  * {@link io.almostrealism.code.ComputeContext}s while a single wait at the end (or before a
  * non-submittable member) covers the whole group.</p>
+ *
+ * <p>The runner is itself {@link Submittable}: {@link #submit(Semaphore)} issues the group
+ * chained on a prior completion and returns the group's completion without waiting for it.
+ * A runner nested in another runner is therefore chained like any other member rather than
+ * waited for, and a loop that issues the same runner repeatedly (a simulation step, for
+ * example) can chain each issue on the last, waiting only where its own host code requires
+ * the work to be complete.</p>
  */
-public class OperationListRunner implements Runnable, Destroyable, OperationInfo, ConsoleFeatures {
+public class OperationListRunner implements Runnable, Submittable, Destroyable, OperationInfo, ConsoleFeatures {
 	/** Enable logging of operation list execution (controlled by AR_HARDWARE_RUN_LOGGING environment variable). */
 	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
 
@@ -85,7 +91,22 @@ public class OperationListRunner implements Runnable, Destroyable, OperationInfo
 	public List<Runnable> getOperations() { return run; }
 
 	/**
-	 * Executes all operations in sequence with compute requirements and timing.
+	 * Executes all operations in sequence with compute requirements and timing, and waits
+	 * once for the whole group: this is {@link #submit(Semaphore) submit(null)} followed by a
+	 * wait on the returned completion.
+	 */
+	@Override
+	public void run() {
+		Semaphore pending = submit(null);
+
+		if (pending != null) {
+			pending.waitFor();
+		}
+	}
+
+	/**
+	 * Issues all operations in sequence, the first chained on {@code dependsOn}, and returns
+	 * the completion of the group without waiting for it.
 	 *
 	 * <p>{@link Submittable} members are issued without a host wait, each chaining on the
 	 * previous member's completion {@link Semaphore}, so ordering holds even when
@@ -94,67 +115,60 @@ public class OperationListRunner implements Runnable, Destroyable, OperationInfo
 	 * provider that already orders same-context work treats a same-batch dependency as
 	 * free &mdash; Metal's in-buffer hazard tracking covers a dependency still in the open
 	 * command buffer without a commit or an event wait &mdash; so chaining does not defeat
-	 * batching, and a foreign dependency is honored by the receiving provider. A single
-	 * wait covers the whole group, taken at the end of the list or before a
-	 * non-submittable member (which requires everything ahead of it to be complete).</p>
+	 * batching, and a foreign dependency is honored by the receiving provider. The only
+	 * host wait is before a non-submittable member, which requires everything ahead of it
+	 * to be complete (see {@link Submittable#of(Runnable)}).</p>
 	 *
 	 * <p>The compute requirements pushed here are thread-local; each member's dispatch
 	 * captures them on this thread and re-establishes them on whatever thread performs
 	 * the asynchronous work (see {@code AcceleratedOperation.apply}).</p>
 	 *
-	 * <p>When a timing listener is configured, the time taken to issue a {@link Submittable}
-	 * member is recorded under that member's own {@link OperationInfo#getMetadata() metadata},
-	 * as the run of a non-submittable member is, so a profile attributes it to the operation
-	 * rather than to an anonymous entry created afresh for every call.</p>
+	 * <p>When a timing listener is configured, each member records the time taken to issue it
+	 * under its own {@link OperationInfo#getMetadata() metadata} (see
+	 * {@link Submittable#submit(OperationMetadata, Semaphore, OperationTimingListener)}), so a
+	 * profile attributes it to the operation rather than to an anonymous entry created afresh
+	 * for every call.</p>
+	 *
+	 * <p>If a member fails to issue, the work issued before it (and so everything it was
+	 * chained on) is waited for before the failure propagates, with any failure of that work
+	 * attached as suppressed (see {@link Semaphore#waitForSettled(Throwable)}), so a caller
+	 * that sees the failure never releases memory that work is still using.</p>
+	 *
+	 * @param dependsOn the completion the first operation must be ordered after, or
+	 *                  {@code null} to begin a chain
+	 * @return the completion of the last operation, or {@code null} when nothing issued
+	 *         remains in flight (the last member ran on the host, or none published a
+	 *         completion), or {@code dependsOn} itself when the list has no operations
 	 */
 	@Override
-	public void run() {
+	public Semaphore submit(Semaphore dependsOn) {
 		try {
 			if (requirements != null) {
 				Hardware.getLocalHardware().getComputer().pushRequirements(requirements);
 			}
 
-			Semaphore pending = null;
+			Semaphore pending = dependsOn;
 
-			for (int i = 0; i < run.size(); i++) {
-				Runnable r = run.get(i);
+			try {
+				for (int i = 0; i < run.size(); i++) {
+					Runnable r = run.get(i);
+					Submittable member = Submittable.of(r);
 
-				if (r instanceof Submittable) {
 					// Chain on the prior member; see the method javadoc
-					Submittable s = (Submittable) r;
-
 					if (timingListener == null) {
-						pending = s.submit(pending);
+						pending = member.submit(pending);
 					} else {
 						if (enableRunLogging) log("Running " + OperationInfo.display(r));
-						Semaphore[] completion = { pending };
-						Runnable submit = () -> completion[0] = s.submit(completion[0]);
-
-						// Attributed to the member, as a non-submittable member's run is
-						OperationMetadata member = r instanceof OperationInfo ? ((OperationInfo) r).getMetadata() : null;
-						timingListener.recordDuration(getMetadata(),
-								member == null ? submit : OperationWithInfo.RunnableWithInfo.of(member, submit));
-						pending = completion[0];
-					}
-				} else {
-					// Non-submittable members require everything ahead of them to be complete
-					if (pending != null) {
-						pending.waitFor();
-						pending = null;
-					}
-
-					if (timingListener == null) {
-						r.run();
-					} else {
-						if (enableRunLogging) log("Running " + OperationInfo.display(r));
-						timingListener.recordDuration(getMetadata(), r);
+						pending = member.submit(getMetadata(), pending, timingListener);
 					}
 				}
+			} catch (RuntimeException | Error e) {
+				// Members issued before the failure may still be running against shared memory
+				if (pending != null) pending.waitForSettled(e);
+				throw e;
 			}
 
-			if (pending != null) {
-				pending.waitFor();
-			}
+			return pending;
 		} finally {
 			if (requirements != null) {
 				Hardware.getLocalHardware().getComputer().popRequirements();
