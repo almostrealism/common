@@ -59,4 +59,28 @@ public class OperationProfileNodeRunCountTests extends TestSuiteBase {
 		root.save(file);
 		Assert.assertEquals(5, OperationProfileNode.load(file).getRunCount());
 	}
+
+	/**
+	 * Counting while another thread records runs neither fails nor loses a run: every reading is
+	 * between zero and the final total, and the count once recording ends is exact.
+	 */
+	@Test(timeout = 30000)
+	public void countsWhileRecordingConcurrently() throws InterruptedException {
+		OperationProfileNode root = new OperationProfileNode("root");
+		OperationMetadata operation = new OperationMetadata("operation", "recorded operation");
+		root.getProfileNode(operation);
+		OperationTimingListener listener = root.getRuntimeListener();
+		int runs = 20000;
+
+		Thread recorder = new Thread(() -> IntStream.range(0, runs)
+				.forEach(i -> listener.recordDuration(null, operation, 1000)));
+		recorder.start();
+		while (recorder.isAlive()) {
+			long count = root.getRunCount();
+			Assert.assertTrue(count >= 0 && count <= runs);
+		}
+
+		recorder.join();
+		Assert.assertEquals(runs, root.getRunCount());
+	}
 }

@@ -426,16 +426,23 @@ public class OperationProfileNode extends OperationProfile
 	 * subtree rooted at this node: the counts of this node's {@link #RUN_SUFFIX run} entries plus
 	 * those of every descendant. Compilation and stage entries are not counted. Every compiled
 	 * kernel reports its runs through that listener on every backend, so this is a
-	 * backend-independent count of the kernels a profiled workload executed.
+	 * backend-independent count of the kernels a profiled workload executed. The runtime listener
+	 * may record into the counts concurrently, so each node's counts are read under their lock.
 	 *
 	 * @return the number of recorded operation invocations
 	 */
 	public long getRunCount() {
 		Map<String, Integer> counts = getMetricCounts();
-		long self = counts == null ? 0 : counts.entrySet().stream()
-				.filter(entry -> entry.getKey().endsWith(RUN_SUFFIX))
-				.mapToLong(Map.Entry::getValue)
-				.sum();
+		long self = 0;
+		if (counts != null) {
+			synchronized (counts) {
+				self = counts.entrySet().stream()
+						.filter(entry -> entry.getKey().endsWith(RUN_SUFFIX))
+						.mapToLong(Map.Entry::getValue)
+						.sum();
+			}
+		}
+
 		return self + getChildren().stream().mapToLong(OperationProfileNode::getRunCount).sum();
 	}
 
