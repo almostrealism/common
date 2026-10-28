@@ -31,9 +31,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -76,9 +74,28 @@ public class OpencodeRunner implements AgentRunner {
      */
     private static final String PROVIDER_OPENROUTER = "openrouter";
 
+    /**
+     * Environment variable through which the synthesized config reaches the
+     * opencode process.
+     *
+     * <p>opencode merges configuration from several sources, and a project's
+     * own config ({@code opencode.json} or {@code .opencode/opencode.json} in
+     * the repository the session runs in) is merged <em>after</em> a file named
+     * by {@code OPENCODE_CONFIG}, so it overrides it. A repository that declares
+     * an MCP server of the same name as one in the synthesized config — this
+     * repository declares {@code ar-manager} as a local stdio server for
+     * interactive use — would replace the runner's authenticated remote entry
+     * with its own, and when that server fails to start opencode drops it
+     * without telling the session: its tools are never offered to the model.
+     * The content of this variable is merged after project config, so the
+     * runner's servers, permissions and provider are the ones the session runs
+     * with, while the project's plugins still load.</p>
+     */
+    static final String ENV_CONFIG_CONTENT = "OPENCODE_CONFIG_CONTENT";
+
     /** Discovery helper for the opencode binary. */
     private final Supplier<OpencodeBinaryLocator> locatorSupplier;
-    /** Config builder used to synthesize the JSON config file. */
+    /** Config builder used to synthesize the JSON config. */
     private final Supplier<OpencodeConfigBuilder> configBuilderSupplier;
     /** Lazily resolved path to the opencode binary; null until first use. */
     private Path binaryPath;
@@ -310,10 +327,9 @@ public class OpencodeRunner implements AgentRunner {
         String configJson = config.buildConfigJson(request, provider, providerUrl,
                 providerConfig.secretName(), providerConfig.envVarName(),
                 effectiveSecretLookup);
-        Path configPath = writeConfigFile(request, configJson, logger);
         String qualifiedModel = config.resolveQualifiedModel(provider, request.getModel());
 
-        List<String> command = buildCommandLine(binary, request, configPath, qualifiedModel);
+        List<String> command = buildCommandLine(binary, request, qualifiedModel);
 
         logger.log("Starting opencode session");
         logger.log("Tools: " + request.getAllowedTools());
@@ -327,69 +343,62 @@ public class OpencodeRunner implements AgentRunner {
 
         ProcessBuilder pb = new ProcessBuilder(command);
         AgentProcessRunner.applyRequestToProcessBuilder(pb, request);
-        // Must be absolute: opencode resolves OPENCODE_CONFIG relative to the
-        // subprocess cwd, which is the agent's working directory (the repo
-        // clone), not the directory where the runner wrote the config file.
-        pb.environment().put("OPENCODE_CONFIG", configPath.toAbsolutePath().toString());
+        pb.environment().put(ENV_CONFIG_CONTENT, configJson);
 
         Path workDir = request.getWorkingDirectory();
         logger.log("Command: " + String.join(" ", command));
         logger.log("Working directory: "
                 + (workDir != null ? workDir.toString() : System.getProperty("user.dir")));
 
-        try {
-            long start = System.currentTimeMillis();
-            boolean useTmux = request.isUseTmux() && TmuxSession.isAvailable();
-            if (request.isUseTmux() && !useTmux) {
-                logger.warn("tmux launch was requested but tmux is not on PATH;"
-                        + " falling back to direct process launch.");
-            }
-            AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
-                    pb,
-                    useTmux,
-                    request.getInactivityTimeoutMillis(),
-                    request.getTaskId(),
-                    OpencodeOutputParser::toActionSignature,
-                    logger);
-            long endMs = System.currentTimeMillis();
-            long durationMs = endMs - start;
-
-            String rawOutput = processResult.output();
-            if (request.getOutputCapturePath() != null) {
-                try (FileWriter writer = new FileWriter(request.getOutputCapturePath().toFile(), true)) {
-                    writer.write(rawOutput);
-                } catch (IOException e) {
-                    logger.warn("Failed to save opencode output to "
-                            + request.getOutputCapturePath() + ": " + e.getMessage());
-                }
-            }
-
-            Map<String, String> metadata = new LinkedHashMap<>();
-            metadata.put("opencode_binary_path", binary.toString());
-            if (binaryVersion != null) {
-                metadata.put("opencode_version", binaryVersion);
-            }
-            metadata.put("provider", provider);
-            metadata.put("provider_url", providerUrl);
-            metadata.put("model", qualifiedModel);
-
-            AgentRunResult result = OpencodeOutputParser.parse(
-                    rawOutput,
-                    processResult.exitCode(),
-                    processResult.killedForInactivity(),
-                    durationMs,
-                    metadata,
-                    logger,
-                    providerConfig.reportsCost(),
-                    processResult.killedForLooping());
-
-            result = applyOpenRouterCost(result, provider, qualifiedModel, logger);
-
-            OpencodeTranscriptWriter.forRequest(request).write(request, result, start, endMs, logger);
-            return result;
-        } finally {
-            deleteConfigFile(configPath, logger);
+        long start = System.currentTimeMillis();
+        boolean useTmux = request.isUseTmux() && TmuxSession.isAvailable();
+        if (request.isUseTmux() && !useTmux) {
+            logger.warn("tmux launch was requested but tmux is not on PATH;"
+                    + " falling back to direct process launch.");
         }
+        AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
+                pb,
+                useTmux,
+                request.getInactivityTimeoutMillis(),
+                request.getTaskId(),
+                OpencodeOutputParser::toActionSignature,
+                logger);
+        long endMs = System.currentTimeMillis();
+        long durationMs = endMs - start;
+
+        String rawOutput = processResult.output();
+        if (request.getOutputCapturePath() != null) {
+            try (FileWriter writer = new FileWriter(request.getOutputCapturePath().toFile(), true)) {
+                writer.write(rawOutput);
+            } catch (IOException e) {
+                logger.warn("Failed to save opencode output to "
+                        + request.getOutputCapturePath() + ": " + e.getMessage());
+            }
+        }
+
+        Map<String, String> metadata = new LinkedHashMap<>();
+        metadata.put("opencode_binary_path", binary.toString());
+        if (binaryVersion != null) {
+            metadata.put("opencode_version", binaryVersion);
+        }
+        metadata.put("provider", provider);
+        metadata.put("provider_url", providerUrl);
+        metadata.put("model", qualifiedModel);
+
+        AgentRunResult result = OpencodeOutputParser.parse(
+                rawOutput,
+                processResult.exitCode(),
+                processResult.killedForInactivity(),
+                durationMs,
+                metadata,
+                logger,
+                providerConfig.reportsCost(),
+                processResult.killedForLooping());
+
+        result = applyOpenRouterCost(result, provider, qualifiedModel, logger);
+
+        OpencodeTranscriptWriter.forRequest(request).write(request, result, start, endMs, logger);
+        return result;
     }
 
     /**
@@ -482,23 +491,17 @@ public class OpencodeRunner implements AgentRunner {
      * Builds the {@code opencode} command line. Exposed so tests can assert
      * the exact flags without running the subprocess.
      *
-     * <p>The {@code configPath} is intentionally not passed on the argv —
-     * opencode 1.x removed {@code --config}. The runner injects it instead
-     * via the {@code OPENCODE_CONFIG} environment variable when launching the
-     * process (see {@link #run}). The parameter is retained so the runner can
-     * synthesize and persist the JSON before launch and so the test surface
-     * stays stable.</p>
+     * <p>The synthesized config is not on the argv — opencode 1.x removed
+     * {@code --config}. The runner passes it in {@link #ENV_CONFIG_CONTENT}
+     * when launching the process (see {@link #run}).</p>
      *
      * @param binary         resolved binary path
      * @param request        the run request
-     * @param configPath     path to the synthesized config file (passed via
-     *                       {@code OPENCODE_CONFIG} at launch, not on argv)
      * @param qualifiedModel resolved provider/model identifier
      * @return the argv list passed to {@link ProcessBuilder}
      */
     public List<String> buildCommandLine(Path binary,
                                          AgentRunRequest request,
-                                         Path configPath,
                                          String qualifiedModel) {
         List<String> command = new ArrayList<>();
         command.add(binary.toString());
@@ -821,71 +824,6 @@ public class OpencodeRunner implements AgentRunner {
             return millis > 0 ? Duration.ofMillis(millis) : null;
         } catch (NumberFormatException e) {
             return null;
-        }
-    }
-
-    /**
-     * Writes the synthesized config JSON to a temp file next to
-     * {@link AgentRunRequest#getOutputCapturePath()} when available, or to the
-     * system temp directory otherwise.
-     *
-     * @param request the run request (provides the capture path neighbour)
-     * @param json    the JSON content
-     * @param logger  diagnostic sink
-     * @return the absolute path of the written file
-     */
-    private Path writeConfigFile(AgentRunRequest request, String json, ConsoleFeatures logger) {
-        Path capture = request.getOutputCapturePath();
-        Path dir;
-        try {
-            if (capture != null && capture.getParent() != null) {
-                Files.createDirectories(capture.getParent());
-                dir = capture.getParent();
-            } else {
-                dir = Files.createTempDirectory("opencode-config-");
-            }
-            Path file = Files.createTempFile(dir, "opencode-config-", ".json");
-            try {
-                // Restrict to owner read/write only so API keys written next are not
-                // world-readable on POSIX filesystems. Non-POSIX systems skip silently.
-                Files.setPosixFilePermissions(file,
-                        PosixFilePermissions.fromString("rw-------"));
-            } catch (UnsupportedOperationException ignored) {
-                // Not a POSIX filesystem; default permissions apply
-            } catch (IOException e) {
-                // Best-effort hardening: if chmod fails (e.g., filesystem refuses
-                // POSIX bits), continue with whatever permissions the OS produced
-                // rather than aborting the run.
-                logger.warn("Failed to restrict opencode config file permissions: "
-                        + e.getMessage());
-            }
-            Files.writeString(file, json, StandardCharsets.UTF_8);
-            return file;
-        } catch (IOException e) {
-            logger.warn("Failed to write opencode config file: " + e.getMessage());
-            throw new AgentRunnerNotAvailableException(
-                    "Failed to write opencode config file", e);
-        }
-    }
-
-    /**
-     * Deletes the synthesized config file after the subprocess exits. When the
-     * file lives inside a directory whose name starts with {@code "opencode-config-"}
-     * (i.e., a temp directory created by this runner), the directory is also removed.
-     *
-     * @param configFile the config file path returned by {@link #writeConfigFile}
-     * @param logger     diagnostic sink for deletion warnings
-     */
-    private void deleteConfigFile(Path configFile, ConsoleFeatures logger) {
-        try {
-            Files.deleteIfExists(configFile);
-            Path dir = configFile.getParent();
-            if (dir != null && dir.getFileName() != null
-                    && dir.getFileName().toString().startsWith("opencode-config-")) {
-                Files.deleteIfExists(dir);
-            }
-        } catch (IOException e) {
-            logger.warn("Failed to delete opencode config file: " + e.getMessage());
         }
     }
 

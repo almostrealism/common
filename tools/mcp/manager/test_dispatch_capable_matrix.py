@@ -11,9 +11,8 @@ responsible for:
   untouched, ``True``/``False`` set it explicitly). The controller field
   is only reachable if the MCP layer actually forwards it, so these tests
   assert against the real payload dict handed to ``_controller_post``.
-* **Enforcement** — ``_require_dispatch_capable`` is the effective gate
-  for the opencode harness (which filters per-SERVER, not per-tool) and a
-  backstop for Claude Code. A non-dispatch caller cannot self-elevate by
+* **Enforcement** — ``_require_dispatch_capable`` is the controller-side
+  backstop for both harnesses, each of which gates tools per the allowlist. A non-dispatch caller cannot self-elevate by
   passing ``dispatch_capable=True``; the check reads the *caller's*
   existing flag, never the requested child flag.
 * **Scope** — ``workstream_submit_task`` is deliberately NOT gated by the
@@ -184,8 +183,8 @@ class DispatchCapableForwardingTest(unittest.TestCase):
 
 class DispatchCapableEnforcementMatrixTest(unittest.TestCase):
     """The controller-side gate. These pin the cells the harness CSV
-    cannot cover — notably opencode (per-server filtering) and
-    self-elevation attempts."""
+    cannot cover — notably a harness that does not honour the allowlist,
+    and self-elevation attempts."""
 
     def setUp(self):
         _grant_all_scopes()

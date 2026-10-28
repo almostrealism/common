@@ -5,9 +5,8 @@ The dispatch-capable flag is the gate that lets a workstream register
 or update child workstreams. The harness CSV half of the contract is
 in ``McpConfigBuilder.buildAllowedTools`` (Java side, tested in
 ``McpConfigBuilderDispatchCapableTest``); the controller-side check in
-``server._require_dispatch_capable`` is the backstop for the opencode
-harness, which filters per-SERVER (not per-tool) and cannot precisely
-gate individual MCP tools at the harness layer.
+``server._require_dispatch_capable`` is the backstop for either
+harness, should one offer a tool its allowlist does not name.
 
 These tests live in a new file because ``test_server.py`` is on the
 base branch and the agent write-lock prevents editing it. The
@@ -159,10 +158,9 @@ class TestWorkstreamRegisterDispatchCapable(unittest.TestCase):
         denied with a PermissionError that names the calling
         workstream. The controller is NOT called.
 
-        This is the opencode-caveat backstop: the harness CSV for
-        opencode filters per-SERVER, so a non-dispatch workstream
-        still sees the entire ar-manager server. The controller
-        refuses the dispatch tool invocation here.
+        This is the controller-side backstop: whatever the harness
+        offers, the controller refuses the dispatch tool invocation
+        here.
         """
         server._set_token_context(
             workstream_id="ws-inert", job_id="job-inert"

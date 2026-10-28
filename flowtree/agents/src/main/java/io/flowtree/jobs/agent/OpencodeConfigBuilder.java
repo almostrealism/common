@@ -26,10 +26,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -53,8 +51,9 @@ import java.util.function.Function;
  *   <li><b>MCP servers</b> translated from the orchestrator's canonical
  *       {@code {"mcpServers":{...}}} JSON.</li>
  *   <li><b>Permissions / allowlist</b> translated from the orchestrator's CSV
- *       allowlist; built-in entries become tool toggles, and
- *       {@code mcp__server__tool} entries become per-server grants.</li>
+ *       allowlist: every tool is denied except those the allowlist names,
+ *       matching what a Claude Code session launched with the same
+ *       {@code --allowedTools} list can use.</li>
  * </ul>
  *
  * <p>The exact shape of opencode's permission and MCP blocks is evolving. The
@@ -88,9 +87,20 @@ final class OpencodeConfigBuilder {
     /** Environment variable that supplies the fallback model name. */
     static final String ENV_DEFAULT_MODEL = "OPENCODE_DEFAULT_MODEL";
 
-    /** Built-in tool names recognised when translating the allowlist. */
-    private static final List<String> BUILTIN_TOOLS =
-            List.of("Read", "Edit", "Bash", "Glob", "Grep", "Write");
+    /**
+     * opencode permission key for each Claude Code built-in tool name that can
+     * appear in the allowlist. opencode governs its {@code write} tool with the
+     * {@code edit} permission, so {@code Write} and {@code Edit} share a key.
+     * Claude Code tools with no opencode counterpart ({@code TaskOutput},
+     * {@code TaskStop}) are absent and grant nothing.
+     */
+    private static final Map<String, String> BUILTIN_PERMISSIONS = Map.of(
+            "Read", "read",
+            "Edit", "edit",
+            "Write", "edit",
+            "Bash", "bash",
+            "Glob", "glob",
+            "Grep", "grep");
 
     /** Environment lookup; overridable for tests. */
     private final Function<String, String> envLookup;
@@ -427,56 +437,47 @@ final class OpencodeConfigBuilder {
 
     /**
      * Translates the orchestrator's CSV allowlist into opencode's permission
-     * block.
+     * block, so that an opencode session can use exactly the tools a Claude
+     * Code session launched with the same {@code --allowedTools} list can.
      *
-     * <p>The result has two sections:</p>
+     * <p>The block opens with {@code "*": "deny"} and then allows each listed
+     * tool; opencode applies the last rule that matches a tool, and removes a
+     * denied tool from what the model is offered. Every tool the allowlist does
+     * not name is therefore unavailable — including opencode's own tools that
+     * have no Claude Code counterpart, such as web access ({@code webfetch},
+     * {@code websearch}), its task list ({@code todowrite}) and subagents
+     * ({@code task}).</p>
+     *
      * <ul>
-     *   <li>{@code tools}: built-in tool toggles for {@code Read}, {@code Edit},
-     *       {@code Bash}, {@code Glob}, {@code Grep}, {@code Write}. Each entry
-     *       is set to {@code "allow"} when the CSV lists it.</li>
-     *   <li>{@code mcp}: per-server allow markers for every server that has at
-     *       least one {@code mcp__server__tool} entry. Each value is the
-     *       opencode {@code PermissionActionConfig} string {@code "allow"} —
-     *       opencode 1.x does not support per-tool granularity on MCP servers,
-     *       only a single action per server. Per-tool gating still happens via
-     *       Claude Code's {@code --allowedTools} list; opencode's filtering
-     *       happens at the registered-server level.</li>
+     *   <li>Built-in names map through {@link #BUILTIN_PERMISSIONS}.</li>
+     *   <li>{@code mcp__server__tool} becomes {@code server_tool}, the name
+     *       opencode gives that MCP tool.</li>
+     *   <li>{@code mcp__server}, which grants a whole server in Claude Code,
+     *       becomes {@code server_*}.</li>
      * </ul>
      *
-     * <p>Unknown entries are ignored.</p>
+     * <p>Entries with no opencode counterpart grant nothing.</p>
      *
      * @param csv the orchestrator's CSV allowlist (may be null/empty)
-     * @return the opencode permission block; empty when no tools were granted
+     * @return the opencode permission block; empty, and so restricting
+     *         nothing, when the allowlist is empty
      */
     ObjectNode translateAllowlist(String csv) {
         ObjectNode out = MAPPER.createObjectNode();
         if (csv == null || csv.isEmpty()) {
             return out;
         }
-        List<String> entries = splitCsv(csv);
-        ObjectNode tools = MAPPER.createObjectNode();
-        Set<String> mcpServers = new LinkedHashSet<>();
-        for (String entry : entries) {
-            String value = entry.trim();
-            if (value.isEmpty()) continue;
-            if (BUILTIN_TOOLS.contains(value)) {
-                tools.put(value, "allow");
-                continue;
-            }
-            if (value.startsWith("mcp__")) {
-                String[] parts = value.split("__", 3);
+        out.put("*", "deny");
+        for (String entry : splitCsv(csv)) {
+            String key = BUILTIN_PERMISSIONS.get(entry);
+            if (key == null && entry.startsWith("mcp__")) {
+                String[] parts = entry.split("__", 3);
                 if (parts.length >= 2 && !parts[1].isEmpty()) {
-                    mcpServers.add(parts[1]);
+                    key = parts[1] + "_" + (parts.length == 3 ? parts[2] : "*");
                 }
             }
-        }
-        if (tools.size() > 0) {
-            out.set("tools", tools);
-        }
-        if (!mcpServers.isEmpty()) {
-            ObjectNode mcp = out.putObject("mcp");
-            for (String server : mcpServers) {
-                mcp.put(server, "allow");
+            if (key != null) {
+                out.put(key, "allow");
             }
         }
         return out;

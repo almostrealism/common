@@ -415,11 +415,11 @@ def workstream_introspect(workstream_id: str = "") -> dict:
     without the other produces a denial that names neither. This shows both:
 
     * ``controller`` — the ``dispatchCapable`` flag the server checks. This is
-      the real gate, and the only one an opencode session has, because that
-      harness filters by server rather than by tool.
+      the real gate, whatever harness the session runs under.
     * ``harness`` — the ``--allowedTools`` list a Claude Code session is
-      launched with. Claude Code filters per tool, so a tool absent here is
-      denied even when the controller would permit it.
+      launched with, which an opencode session receives as per-tool
+      permissions. Under either harness a tool absent here is denied even
+      when the controller would permit it.
 
     When a tool is denied, compare the two blocks: a tool the controller allows
     but the harness omits is a harness-side gap, and the reverse is a missing

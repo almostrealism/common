@@ -593,7 +593,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * {@link io.flowtree.workstream.Workstream#isDispatchCapable()} at
      * the call sites that build the factory. The flag is purely a
      * harness-CSV switch; the controller-side check is the real
-     * backstop for the opencode harness (per-SERVER filtering).
+     * backstop for either harness.
      *
      * <p>The value is stored in the inherited {@link AbstractJobFactory}
      * properties map (not a plain field) so that it survives the
