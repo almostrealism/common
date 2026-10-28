@@ -26,10 +26,10 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /**
@@ -59,18 +59,10 @@ import java.util.function.Supplier;
  *
  * <h2>Usage Example</h2>
  * <pre>{@code
- * // Create a delta computation for a repeated operation
- * TraversalPolicy deltaShape = shape(10);      // Shape of the original computation output
- * TraversalPolicy targetShape = shape(5);      // Shape of the target w.r.t. which delta is computed
- * int iterationCount = 3;                      // Number of iterations
- *
- * ConstantRepeatedDeltaComputation<PackedCollection> delta =
- *     new ConstantRepeatedDeltaComputation<>(
- *         deltaShape, targetShape, iterationCount,
- *         (args, index) -> computeExpression(args, index),  // Expression function
- *         targetProducer,                                   // Target for differentiation
- *         inputProducers...                                  // Input data producers
- *     );
+ * // The delta of a fixed-iteration computation with respect to one of its inputs
+ * ConstantRepeatedProducerComputation computation = ...;
+ * ConstantRepeatedDeltaComputation delta =
+ *     new ConstantRepeatedDeltaComputation(computation, targetProducer);
  *
  * // Evaluate to get the gradient
  * PackedCollection gradient = delta.get().evaluate(inputs...);
@@ -89,14 +81,11 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerComputation implements TraversableExpression<Double> {
-	/** The shape of the delta (gradient) computation output, before appending target dimensions. */
-	private final TraversalPolicy deltaShape;
-
 	/** The shape of the target producer with respect to which the derivative is computed. */
 	private final TraversalPolicy targetShape;
 
-	/** The expression function that defines the computation at each iteration. */
-	private final BiFunction<TraversableExpression[], Expression, Expression> expression;
+	/** The computation being differentiated, whose iteration step this delta differentiates. */
+	private final ConstantRepeatedProducerComputation source;
 
 	/** The target producer with respect to which the derivative is being computed. */
 	private final Producer<?> target;
@@ -111,49 +100,34 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	private TraversableExpression<Double> fallback;
 
 	/**
-	 * Constructs a delta computation with default memory length of 1.
-	 * This constructor delegates to the full constructor with size=1, making each
-	 * kernel thread process one element at a time.
+	 * Constructs the delta of the given fixed-iteration computation with respect to the target,
+	 * over the same inputs, iteration count and memory length.
 	 *
-	 * @param deltaShape The shape of the delta computation output (before appending target dimensions)
-	 * @param targetShape The shape of the target with respect to which delta is computed
-	 * @param count The fixed number of iterations to perform
-	 * @param expression The expression function defining the computation at each iteration
+	 * @param source The computation to differentiate
 	 * @param target The producer with respect to which the derivative is computed
-	 * @param inputs Variable number of input producers providing the data collections
 	 */
-	@SafeVarargs
-	public ConstantRepeatedDeltaComputation(TraversalPolicy deltaShape, TraversalPolicy targetShape, int count,
-											BiFunction<TraversableExpression[], Expression, Expression> expression,
-											Producer<?> target,
-											Producer<PackedCollection>... inputs) {
-		this(deltaShape, targetShape, 1, count, expression, target, inputs);
+	public ConstantRepeatedDeltaComputation(ConstantRepeatedProducerComputation source, Producer<?> target) {
+		this(source, CollectionFeatures.getInstance().shape(target), target,
+				source.getInputs().stream().skip(1).toArray(Producer[]::new));
 	}
 
 	/**
-	 * Constructs a delta computation with explicit memory length control.
-	 * This is the primary constructor that sets up all parameters for delta computation.
+	 * Constructs the delta of the given computation over the given inputs. The output shape is
+	 * the shape of the source followed by the shape of the target, allowing gradients to
+	 * accumulate across the target's dimensions.
 	 *
-	 * <p>The output shape is automatically constructed as deltaShape.append(targetShape),
-	 * allowing gradients to properly accumulate across the target's dimensions.</p>
-	 *
-	 * @param deltaShape The shape of the delta computation output (before appending target dimensions)
+	 * @param source The computation to differentiate
 	 * @param targetShape The shape of the target with respect to which delta is computed
-	 * @param size The memory length - number of elements processed by each kernel thread
-	 * @param count The fixed number of iterations to perform
-	 * @param expression The expression function defining the computation at each iteration
 	 * @param target The producer with respect to which the derivative is computed
-	 * @param inputs Variable number of input producers providing the data collections
+	 * @param inputs The input producers of the source computation
 	 */
 	@SafeVarargs
-	public ConstantRepeatedDeltaComputation(TraversalPolicy deltaShape, TraversalPolicy targetShape, int size, int count,
-											BiFunction<TraversableExpression[], Expression, Expression> expression,
-											Producer<?> target,
-											Producer<PackedCollection>... inputs) {
-		super(null, deltaShape.append(targetShape), size, count, null, null, inputs);
-		this.deltaShape	= deltaShape;
+	private ConstantRepeatedDeltaComputation(ConstantRepeatedProducerComputation source,
+											 TraversalPolicy targetShape, Producer<?> target,
+											 Producer<PackedCollection>... inputs) {
+		super(null, source.getShape().append(targetShape), source.getMemLength(), source.count, inputs);
 		this.targetShape = targetShape;
-		this.expression = expression;
+		this.source = source;
 		this.target = target;
 	}
 
@@ -175,6 +149,19 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	}
 
 
+
+	/**
+	 * Returns {@code null}: each gradient element is written by its iteration of the loop, so
+	 * the output is not initialized before it.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the position within the output block
+	 * @return {@code null}
+	 */
+	@Override
+	protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+		return null;
+	}
 
 	/**
 	 * Prepares the scope for kernel compilation by setting up the target variable.
@@ -203,12 +190,13 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 
 	/**
 	 * Generates the delta expression for the computation at the specified indices.
-	 * This method applies the expression function, computes its delta with respect
-	 * to the target variable, and retrieves the gradient value at the current position.
+	 * This method takes the iteration step of the source computation, computes its delta
+	 * with respect to the target variable, and retrieves the gradient value at the current
+	 * position.
 	 *
 	 * <p>The delta computation follows this pattern:</p>
 	 * <pre>
-	 * result = expression(args, row + localIndex).delta(target).getValueAt(row + localIndex)
+	 * result = source.step(args, row + localIndex).delta(target).getValueAt(row + localIndex)
 	 * </pre>
 	 *
 	 * @param args The traversable expressions representing input arguments
@@ -218,7 +206,7 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionExpression delta = expression.apply(args, row.add(localIndex))
+		CollectionExpression delta = source.getExpression(args, null, row.add(localIndex))
 				.delta(targetVariable);
 
 		// Each kernel instance owns one gradient batch of the delta's size, so the
@@ -287,44 +275,7 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 */
 	@Override
 	public ConstantRepeatedDeltaComputation generate(List<Process<?, ?>> children) {
-		return new ConstantRepeatedDeltaComputation(
-				deltaShape, targetShape,
-				getMemLength(), count,
-				expression, target,
+		return new ConstantRepeatedDeltaComputation(source, targetShape, target,
 				children.stream().skip(1).toArray(Producer[]::new));
-	}
-
-	/**
-	 * Factory method for creating a {@link ConstantRepeatedDeltaComputation} with default
-	 * memory length. This is a convenience method that simplifies creation of delta
-	 * computations for repeated operations.
-	 *
-	 * <p>Usage Example:</p>
-	 * <pre>{@code
-	 * ConstantRepeatedDeltaComputation delta =
-	 *     ConstantRepeatedDeltaComputation.create(
-	 *         shape(10), shape(5), 3,
-	 *         (args, index) -> computeExpression(args, index),
-	 *         targetProducer,
-	 *         inputProducers...
-	 *     );
-	 * }</pre>
-	 *
-	 * @param deltaShape The shape of the delta computation output
-	 * @param targetShape The shape of the target for differentiation
-	 * @param count The number of iterations
-	 * @param expression The expression function for each iteration
-	 * @param target The target producer for differentiation
-	 * @param arguments Input producers providing data collections
-	 * @return A new {@link ConstantRepeatedDeltaComputation} instance
-	 */
-	public static ConstantRepeatedDeltaComputation create(
-			TraversalPolicy deltaShape, TraversalPolicy targetShape, int count,
-			BiFunction<TraversableExpression[], Expression, Expression> expression,
-			Producer<?> target,
-			Producer<PackedCollection>... arguments) {
-		return new ConstantRepeatedDeltaComputation(
-				deltaShape, targetShape, count, expression,
-				target, arguments);
 	}
 }

@@ -143,6 +143,26 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	}
 
 	/**
+	 * Returns every stored position, read back to the host and decoded.
+	 *
+	 * @return the position of each logical index
+	 */
+	public int[] getPositions() {
+		return decode(lanes.toArray());
+	}
+
+	/**
+	 * Returns the position stored for one logical index, reading only its lanes back to the
+	 * host.
+	 *
+	 * @param index the logical index
+	 * @return the position stored for it
+	 */
+	public int getPosition(int index) {
+		return decode(lanes.toArray(index * LANES, LANES))[0];
+	}
+
+	/**
 	 * Returns the number of physical positions addressed: one more than the largest stored
 	 * position, or 0 if every position is negative.
 	 *
@@ -152,11 +172,21 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	 */
 	@Override
 	public OptionalInt getLength() {
-		double[] values = lanes.toArray();
-		long max = IntStream.range(0, values.length / LANES)
-				.mapToLong(i -> (long) values[LANES * i] * BASE + (long) values[LANES * i + 1])
-				.max().orElse(-1);
+		long max = IntStream.of(getPositions()).max().orElse(-1);
 		return OptionalInt.of(Math.toIntExact(Math.max(max, -1) + 1));
+	}
+
+	/**
+	 * Decodes, on the host, lane values in the layout produced by {@link #encode(int...)} back
+	 * into the integer positions they represent. This is the inverse of {@link #encode(int...)}.
+	 *
+	 * @param lanes the lane values, {@link #LANES} per position
+	 * @return the positions, {@code hi * BASE + lo} for each pair of lanes
+	 */
+	public static int[] decode(double... lanes) {
+		return IntStream.range(0, lanes.length / LANES)
+				.map(i -> (int) lanes[LANES * i] * BASE + (int) lanes[LANES * i + 1])
+				.toArray();
 	}
 
 	/**
@@ -166,7 +196,7 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 	 * for the lane collection.</p>
 	 */
 	@Override
-	public TraversalOrdering bind(ArgumentProvider provider) {
+	public SplitIndexTraversalOrdering bind(ArgumentProvider provider) {
 		TraversableExpression<?> bound = provider.<PackedCollection>argumentForInput()
 				.apply(new CollectionProviderProducer<>(lanes)).getTraversableExpression();
 		return bound == null ? this : new SplitIndexTraversalOrdering(lanes, bound);

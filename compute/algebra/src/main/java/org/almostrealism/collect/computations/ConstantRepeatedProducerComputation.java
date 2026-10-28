@@ -27,8 +27,6 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.OptionalInt;
-import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 /**
  * A {@link RepeatedProducerComputation} with a fixed, constant number of iterations.
@@ -48,20 +46,29 @@ import java.util.function.Supplier;
  *   <li>Performance optimization where loop unrolling is beneficial</li>
  * </ul>
  * 
- * <p>This class is {@code abstract}: the fixed iteration count and the initial/expression
- * behaviour are supplied by a concrete subclass (such as {@link IndexOfMaxComputation} or
- * {@link CumulativeProductComputation}) through the protected constructors, so that the
- * behaviour of every instance is fixed by its class.</p>
+ * <p>This class is {@code abstract}: the fixed iteration count is supplied through the
+ * protected constructors, and a concrete subclass (such as {@link IndexOfMaxComputation} or
+ * {@link CumulativeProductComputation}) implements the initial value and the iteration step,
+ * so that the behaviour of every instance is fixed by its class. The condition is implemented
+ * here: the loop runs while its index is below the count.</p>
  *
  * <h3>Subclass Implementation Pattern</h3>
  * <pre>{@code
  * // A concrete fixed-iteration accumulation over all elements of a group
  * public class AccumulateComputation extends ConstantRepeatedProducerComputation {
  *     public AccumulateComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
- *         super("accumulate", shape, shape.getSize(),
- *             (args, index) -> args[0].getValueAt(index),         // Initialize with input
- *             (args, index) -> args[0].getValueAt(index).add(e(1.0)),  // Add 1 each iteration
- *             input);
+ *         super("accumulate", shape, shape.getSize(), input);
+ *     }
+ *
+ *     @Override
+ *     protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+ *         return args[1].getValueAt(index);                         // Initialize with input
+ *     }
+ *
+ *     @Override
+ *     protected Expression<?> getExpression(TraversableExpression[] args,
+ *                                           Expression globalIndex, Expression localIndex) {
+ *         return args[1].getValueAt(localIndex).add(e(1.0));        // Add 1 each iteration
  *     }
  *
  *     @Override
@@ -75,7 +82,7 @@ import java.util.function.Supplier;
  * <h3>Relationship to Parent Class</h3>
  * <p>This class simplifies the parent {@link RepeatedProducerComputation} by:</p>
  * <ul>
- *   <li>Eliminating the need for a condition function - the iteration count is fixed</li>
+ *   <li>Implementing {@link #getCondition} - the iteration count is fixed</li>
  *   <li>Providing a concrete {@link #getIndexLimit()} that returns the constant count</li>
  *   <li>Enabling more efficient differentiation through {@link ConstantRepeatedDeltaComputation}</li>
  *   <li>Allowing for compile-time optimizations due to known iteration bounds</li>
@@ -105,48 +112,17 @@ public abstract class ConstantRepeatedProducerComputation
 	protected int count;
 
 	/**
-	 * Creates a {@link ConstantRepeatedProducerComputation} with default memory length of 1.
-	 * 
-	 * <p>This constructor creates a computation that will perform a fixed number of iterations
-	 * on the provided input collections. The memory length defaults to 1, meaning each kernel
-	 * thread processes one element at a time. This is suitable for most general-purpose
-	 * repeated computations where memory optimization is not critical.</p>
-	 * 
-	 * <p>The computation operates by:</p>
-	 * <ol>
-	 *   <li>Initializing values using the {@code initial} function</li>
-	 *   <li>Performing exactly {@code count} iterations</li>
-	 *   <li>Applying the {@code expression} function in each iteration</li>
-	 * </ol>
-	 * 
-	 * <p><strong>Example usage (from a subclass constructor):</strong></p>
-	 * <pre>{@code
-	 * // A subclass that doubles a value 3 times
-	 * super("tripleDouble",
-	 *     new TraversalPolicy(10), // Process 10 elements
-	 *     3, // Perform 3 iterations
-	 *     (args, index) -> args[0].getValueAt(index), // Initialize with input
-	 *     (args, index) -> args[0].getValueAt(index).multiply(e(2.0)), // Double each time
-	 *     inputProducer);
-	 * }</pre>
+	 * Creates a {@link ConstantRepeatedProducerComputation} with a memory length of 1.
 	 *
 	 * @param name The name identifier for this computation, used in generated code and debugging
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param count The fixed number of iterations to perform (must be positive)
-	 * @param initial A function that defines how to initialize values at the start of computation.
-	 *                Takes (TraversableExpression[], Expression) and returns the initial Expression
-	 * @param expression A function that defines the computation to perform in each iteration step.
-	 *                   Takes (TraversableExpression[], Expression) and returns the updated Expression
-	 * @param args Variable number of input {@link Supplier} arguments providing the data collections
-	 * 
-	 * @throws IllegalArgumentException if count is not positive
+	 * @param args Variable number of input {@link Producer} arguments providing the data collections
 	 */
 	@SafeVarargs
 	protected ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
-											   BiFunction<TraversableExpression[], Expression, Expression> initial,
-											   BiFunction<TraversableExpression[], Expression, Expression> expression,
 											   Producer<PackedCollection>... args) {
-		this(name, shape, 1, count, initial, expression, args);
+		this(name, shape, 1, count, args);
 	}
 
 	/**
@@ -156,51 +132,30 @@ public abstract class ConstantRepeatedProducerComputation
 	 * of how many elements each kernel thread should process. A higher {@code size} value can
 	 * improve performance by reducing the number of kernel launches, but increases memory usage
 	 * per thread. This is the primary constructor that other constructors delegate to.</p>
-	 * 
-	 * <p>The {@code size} parameter (memory length) affects:</p>
-	 * <ul>
-	 *   <li><strong>Memory usage:</strong> Higher values increase memory per kernel thread</li>
-	 *   <li><strong>Kernel launches:</strong> Fewer launches needed with higher values</li>
-	 *   <li><strong>Cache efficiency:</strong> Better cache locality with appropriate sizing</li>
-	 *   <li><strong>Parallelism:</strong> Balance between thread count and work per thread</li>
-	 * </ul>
-	 * 
-	 * <p><strong>Memory optimization example (from a subclass constructor):</strong></p>
-	 * <pre>{@code
-	 * // Process a 2D array (100x10) where each row has 10 elements
-	 * TraversalPolicy inputShape = new TraversalPolicy(100, 10); // 100 rows, 10 elements each
-	 * int finalDimSize = inputShape.getSize(); // 10 (size of final dimension)
-	 *
-	 * super("repeatedProduct",
-	 *     new TraversalPolicy(100), // Output: 100 sums (one per row)
-	 *     finalDimSize, // Process 10 elements per kernel thread
-	 *     5, // 5 iterations
-	 *     (args, index) -> args[0].getValueAt(index), // Initialize with input
-	 *     (args, index) -> args[0].getValueAt(index).multiply(e(2.0)), // Multiply each element by 2
-	 *     dataProducer);
-	 * }</pre>
 	 *
 	 * @param name The name identifier for this computation, used in generated code and debugging
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
 	 * @param size The memory length - number of elements processed by each kernel thread
 	 * @param count The fixed number of iterations to perform (must be positive)
-	 * @param initial A function that defines how to initialize values at the start of computation.
-	 *                Takes (TraversableExpression[], Expression) and returns the initial Expression
-	 * @param expression A function that defines the computation to perform in each iteration step.
-	 *                   Takes (TraversableExpression[], Expression) and returns the updated Expression
-	 * @param inputs Variable number of input {@link Supplier} arguments providing the data collections
-	 * 
-	 * @throws IllegalArgumentException if count is not positive or size is not positive
+	 * @param inputs Variable number of input {@link Producer} arguments providing the data collections
 	 */
 	@SafeVarargs
 	protected ConstantRepeatedProducerComputation(String name, TraversalPolicy shape, int size, int count,
-											   BiFunction<TraversableExpression[], Expression, Expression> initial,
-											   BiFunction<TraversableExpression[], Expression, Expression> expression,
 											   Producer<PackedCollection>... inputs) {
-		super(name, shape, size, initial,
-				(args, index) ->
-						index.lessThan(new IntegerConstant(count)), expression, inputs);
+		super(name, shape, size, inputs);
 		this.count = count;
+	}
+
+	/**
+	 * Continues while the loop index is below the fixed iteration count.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the loop index
+	 * @return {@code index < count}
+	 */
+	@Override
+	protected Expression<Boolean> getCondition(TraversableExpression[] args, Expression index) {
+		return index.lessThan(new IntegerConstant(count));
 	}
 
 	/**
@@ -265,10 +220,7 @@ public abstract class ConstantRepeatedProducerComputation
 	 */
 	@Override
 	protected CollectionProducer deltaMatrix(Producer<?> target) {
-		return ConstantRepeatedDeltaComputation.create(
-				getShape(), shape(target),
-				count, (args, localIndex) -> getExpression(args, null, localIndex), target,
-				getInputs().stream().skip(1).toArray(Producer[]::new));
+		return new ConstantRepeatedDeltaComputation(this, target);
 	}
 
 	/**

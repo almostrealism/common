@@ -71,6 +71,17 @@ public interface ExpressionArithmetic<T> {
 	public default Expression<? extends Number> add(Expression<?> operand) { return Sum.of(self(), operand); }
 
 	/**
+	 * Returns the larger of this expression and another expression.
+	 *
+	 * @param operand the expression to compare with
+	 * @return an expression representing {@code max(this, operand)}
+	 * @see Max#of(Expression[])
+	 */
+	public default Expression<Double> max(Expression<?> operand) {
+		return Max.of((Expression) self(), (Expression) operand);
+	}
+
+	/**
 	 * Returns the difference of this expression and another expression.
 	 *
 	 * @param operand the expression to subtract

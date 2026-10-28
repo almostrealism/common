@@ -27,7 +27,6 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /**
@@ -110,9 +109,6 @@ public class RepeatedProducerComputationAdapter extends RepeatedProducerComputat
 	 *   <li><strong>Termination:</strong> Processing stops when all output positions are filled</li>
 	 * </ol>
 	 * 
-	 * <p>The adapter configures the {@link RepeatedProducerComputation} with appropriate
-	 * functions for initialization, condition checking, and expression evaluation.
-	 *
 	 * @param shape The {@link TraversalPolicy} defining the multi-dimensional shape and
 	 *              access pattern of the output data. This determines the iteration space
 	 *              and how elements are addressed during computation.
@@ -124,22 +120,50 @@ public class RepeatedProducerComputationAdapter extends RepeatedProducerComputat
 	 * 
 	 * @see TraversalPolicy
 	 * @see TraversableExpression#getValueAt(Expression)
-	 * @see RepeatedProducerComputation#RepeatedProducerComputation(String, TraversalPolicy, BiFunction, BiFunction, BiFunction, Producer[])
 	 */
 	@SafeVarargs
 	public RepeatedProducerComputationAdapter(TraversalPolicy shape,
 											  TraversableExpression expression,
 											  Producer<PackedCollection>... arguments) {
-		super(null, shape,
-				(args, index) ->
-						new DoubleConstant(0.0),
-				null,
-				(args, index) ->
-						expression.getValueAt(index),
-				arguments);
-
+		super(null, shape, arguments);
 		this.expression = expression;
-		setCondition((args, index) -> index.lessThan(((ArrayVariable) getOutputVariable()).length()));
+	}
+
+	/**
+	 * Returns zero: every output element starts empty.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the position within the output block
+	 * @return the constant {@code 0.0}
+	 */
+	@Override
+	protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+		return new DoubleConstant(0.0);
+	}
+
+	/**
+	 * Continues until every position of the output has been filled.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the position being filled
+	 * @return {@code index < length(output)}
+	 */
+	@Override
+	protected Expression<Boolean> getCondition(TraversableExpression[] args, Expression index) {
+		return index.lessThan(getOutputVariable().length());
+	}
+
+	/**
+	 * Returns the value of the adapted expression at the position being filled.
+	 *
+	 * @param args        the traversable arguments
+	 * @param globalIndex the global index in the overall computation space
+	 * @param localIndex  the position being filled
+	 * @return the adapted expression's value at {@code localIndex}
+	 */
+	@Override
+	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
+		return expression.getValueAt(localIndex);
 	}
 
 	/**
@@ -190,7 +214,7 @@ public class RepeatedProducerComputationAdapter extends RepeatedProducerComputat
 	 */
 	@Override
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset) {
-		ArrayVariable out = (ArrayVariable) getOutputVariable();
+		ArrayVariable<?> out = getOutputVariable();
 		return out.reference(globalIndex.multiply(out.length()).add(localIndex));
 	}
 }
