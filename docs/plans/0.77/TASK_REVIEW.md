@@ -375,9 +375,12 @@ Things worth tracking that currently have no (correct) task:
 - **`01642137` references "ar-cache paths" that don't exist** in the repo yet —
   confirm what that path is before dispatching.
 - **Stale plan docs to refresh:** `docs/plans/CONNECTOME_MODEL_ORGANISM.md` lists
-  already-closed tasks as open and its Open Question 1 is answered by #758;
-  the Realtime-AudioScene epic `3472d41a` / `STATE_OF_PLAY.md` (last baselined
-  2026-06-09) is stale — current code was checked directly instead.
+  already-closed tasks as open and its Open Question 1 is answered by #758.
+- **Realtime-AudioScene epic (`3472d41a`) has no plan document in this repo.**
+  There is no `STATE_OF_PLAY.md` (or any other realtime-AudioScene plan) under
+  `docs/plans/`, so nothing here needs refreshing; the epic's state was checked
+  against code directly. If the owner wants a durable plan for this epic, it is
+  an untracked item to write.
 - **Recoverable deleted plans** (useful starting points, not losses):
   `PROTOTYPE_DISCOVERY_QUALITY.md` (`git show af087f04b:docs/plans/PROTOTYPE_DISCOVERY_QUALITY.md`)
   and `MEMORY_DATA_COPY_RETIREMENT.md` (`git show 06d88ecff^:docs/plans/MEMORY_DATA_COPY_RETIREMENT.md`).
