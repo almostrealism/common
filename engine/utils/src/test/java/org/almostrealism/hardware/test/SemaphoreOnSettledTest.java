@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.concurrent.DefaultLatchSemaphore;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.streams.DeferredSemaphore;
 import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
@@ -87,6 +89,53 @@ public class SemaphoreOnSettledTest extends TestSuiteBase {
 		CountDownLatch late = new CountDownLatch(1);
 		latch.onSettled(late::countDown);
 		assertTrue(late.await(SETTLE_SECONDS, TimeUnit.SECONDS));
+	}
+
+	/**
+	 * A re-attributed view shares the latch it was made from, and with it the registered
+	 * callbacks: a callback on the view runs when the original is counted down to zero, and
+	 * not before.
+	 */
+	@Test(timeout = 30000)
+	public void reattributedViewObservesTheSharedLatch() throws InterruptedException {
+		DefaultLatchSemaphore original = new DefaultLatchSemaphore((OperationMetadata) null, 1);
+		Semaphore view = original.withRequester(new OperationMetadata("view", "re-attributed view"));
+		CountDownLatch ran = new CountDownLatch(1);
+
+		view.onSettled(ran::countDown);
+		assertFalse(ran.await(QUIET_MILLIS, TimeUnit.MILLISECONDS));
+
+		original.countDown();
+		assertTrue(ran.await(SETTLE_SECONDS, TimeUnit.SECONDS));
+	}
+
+	/**
+	 * A latch handed to the semaphore from outside cannot report its own settlement, so the
+	 * callback is driven by a wait on a callback thread instead: it still runs only once the
+	 * latch reaches zero.
+	 */
+	@Test(timeout = 30000)
+	public void foreignLatchFallsBackToAWaitingCallback() throws InterruptedException {
+		CountDownLatch foreign = new CountDownLatch(1);
+		LatchSemaphore latch = new ForeignLatchSemaphore(foreign);
+		CountDownLatch ran = new CountDownLatch(1);
+
+		latch.onSettled(ran::countDown);
+		assertFalse(ran.await(QUIET_MILLIS, TimeUnit.MILLISECONDS));
+
+		latch.countDown();
+		assertEquals(0L, foreign.getCount());
+		assertTrue(ran.await(SETTLE_SECONDS, TimeUnit.SECONDS));
+	}
+
+	/** A {@link LatchSemaphore} over a latch it did not create. */
+	private static final class ForeignLatchSemaphore extends LatchSemaphore {
+		/**
+		 * @param latch the latch to count down, created outside {@link LatchSemaphore}
+		 */
+		ForeignLatchSemaphore(CountDownLatch latch) {
+			super(latch);
+		}
 	}
 
 	/**

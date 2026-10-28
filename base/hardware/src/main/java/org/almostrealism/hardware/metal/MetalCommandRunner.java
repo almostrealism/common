@@ -448,6 +448,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 
 			result.add(new MetalSemaphore(requester, this, openBuffer, event, signaled));
 
+			// TODO(review): this closure can grow held past MAX_HELD (only bridged dispatches check it), risking a queue.commandBuffer() block on the executor
 			if (openCount >= MAX_OPEN && commitOpenOnExecutor()) {
 				maxOpenCommits++;
 			}
