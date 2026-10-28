@@ -67,4 +67,46 @@ public class NoteAudioContextTest extends TestSuiteBase {
 
 		Assert.assertSame(choices.get(choices.size() - 1), selected);
 	}
+
+	/**
+	 * Selection values strictly below {@code 1.0} must keep mapping to
+	 * {@code floor(selection * size)}, so the clamp only affects the top boundary
+	 * and does not shift the bins of any other choice.
+	 */
+	@Test(timeout = 30000)
+	public void selectAudioBelowDomainMaximumUsesProportionalIndex() {
+		List<PatternNoteAudio> choices = List.of(
+				new PatternNoteAudioChoice(0.0),
+				new PatternNoteAudioChoice(0.25),
+				new PatternNoteAudioChoice(0.5),
+				new PatternNoteAudioChoice(0.75));
+
+		NoteAudioContext context = new NoteAudioContext(
+				ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT,
+				choices, pos -> pos);
+
+		Assert.assertSame(choices.get(0), context.selectAudio(0.0));
+		Assert.assertSame(choices.get(0), context.selectAudio(0.2499));
+		Assert.assertSame(choices.get(1), context.selectAudio(0.25));
+		Assert.assertSame(choices.get(2), context.selectAudio(0.5));
+		Assert.assertSame(choices.get(2), context.selectAudio(0.7499));
+		Assert.assertSame(choices.get(3), context.selectAudio(0.75));
+		Assert.assertSame(choices.get(3), context.selectAudio(Math.nextDown(1.0)));
+	}
+
+	/**
+	 * With no audio choices there is nothing to select, so every selection value,
+	 * including both ends of the domain, yields {@code null} rather than an
+	 * index into an empty list.
+	 */
+	@Test(timeout = 30000)
+	public void selectAudioWithNoChoicesReturnsNull() {
+		NoteAudioContext context = new NoteAudioContext(
+				ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT,
+				List.of(), pos -> pos);
+
+		Assert.assertNull(context.selectAudio(0.0));
+		Assert.assertNull(context.selectAudio(0.5));
+		Assert.assertNull(context.selectAudio(1.0));
+	}
 }
