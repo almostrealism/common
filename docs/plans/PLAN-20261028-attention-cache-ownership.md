@@ -45,7 +45,7 @@ The consequences are real, not cosmetic:
   it does not detect this leak either.
 - **The documentation describes a mechanism that does not exist.** The javadoc of
   `KeyValueCacheAutoregressiveModel` (its `reset()` "clears every layer's key and value cache, so a new
-  sequence starts clean"), the `decodeModel` javadoc (the appended caches are the ones the caller "can
+  sequence starts clean"), the `decodeModel` javadoc (which says the caller "can
   clear them when a new sequence starts"), and the Generation section of `training-a-language-model.md`
   (the generator "owns ... the per-layer caches" and "`reset()` clears the caches and position") all
   describe clearing the caches the decode uses. It clears other buffers.
