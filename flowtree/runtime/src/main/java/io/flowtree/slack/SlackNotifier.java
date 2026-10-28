@@ -618,13 +618,21 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         // Terminal persistence is owned by the controller's completeJob path
         // (see JobLifecycleRecorder), not by the notifier.
-        String message = formatCompletedMessage(event);
+        String summary = formatCompletedSummary(event);
+        String details = formatCompletedDetails(event);
         String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
 
+        // Only the summary reaches the channel; the details stay in the thread.
         if (threadTs != null) {
-            postMessageInThread(workstream.getChannelId(), message, threadTs, true);
+            if (!details.isEmpty()) {
+                postMessageInThread(workstream.getChannelId(), details, threadTs);
+            }
+            postMessageInThread(workstream.getChannelId(), summary, threadTs, true);
         } else {
-            postMessage(workstream.getChannelId(), message);
+            String summaryTs = postMessage(workstream.getChannelId(), summary);
+            if (summaryTs != null && !details.isEmpty()) {
+                postMessageInThread(workstream.getChannelId(), details, summaryTs);
+            }
         }
     }
 
@@ -1036,45 +1044,32 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Formats the Slack message text sent when a job completes (either
-     * successfully or with a failure), including status, file count, commit
-     * hash, cost, and error details as applicable.
+     * Formats the summary of a job completion: the message posted to both the
+     * job's thread and the channel. It carries the outcome, branch or (when
+     * nothing was pushed) the job description, error details as applicable,
+     * pull request, wall time and total cost. Everything else is
+     * left to {@link #formatCompletedDetails(JobCompletionEvent)}.
      *
      * @param event       the completion event
      * @return            formatted Slack message string
      */
-    private String formatCompletedMessage(JobCompletionEvent event) {
+    private String formatCompletedSummary(JobCompletionEvent event) {
         StringBuilder sb = new StringBuilder();
 
         switch (event.getStatus()) {
             case SUCCESS:
-                int fileCount = event.getStagedFiles().size();
-
-                if (fileCount > 0 && event.isPushed()) {
+                if (isPushedWork(event)) {
                     sb.append(":white_check_mark: *Work complete* - pushed ");
-                    sb.append(fileCount).append(" file(s)\n");
+                    sb.append(event.getStagedFiles().size()).append(" file(s)\n");
 
                     if (event.getTargetBranch() != null) {
                         sb.append("   Branch: `").append(event.getTargetBranch()).append("`\n");
-                    }
-
-                    if (event.getCommitHash() != null) {
-                        String shortHash = event.getCommitHash().length() > 7
-                            ? event.getCommitHash().substring(0, 7)
-                            : event.getCommitHash();
-                        sb.append("   Commit: `").append(shortHash).append("` ");
-                        sb.append(event.shortDescription(50));
-                        sb.append("\n");
-                    }
-
-                    if (event.getPullRequestUrl() != null) {
-                        sb.append("   :link: PR: ").append(event.getPullRequestUrl()).append("\n");
                     }
                 } else {
                     sb.append(":white_check_mark: *Work complete* - no changes to push\n");
                     sb.append("   ").append(event.shortDescription(100)).append("\n");
                 }
-                appendSessionMetrics(sb, event);
+                appendSummaryFooter(sb, event);
                 break;
 
             case FAILED:
@@ -1086,13 +1081,13 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                     sb.append("   Exit code: ").append(event.getExitCode()).append("\n");
                 }
                 sb.append("   Job ID: `").append(event.getJobId()).append("`\n");
-                appendSessionMetrics(sb, event);
+                appendSummaryFooter(sb, event);
                 break;
 
             case CANCELLED:
                 sb.append(":no_entry_sign: *Work cancelled*\n");
                 sb.append("   Job ID: `").append(event.getJobId()).append("`\n");
-                appendSessionMetrics(sb, event);
+                appendSummaryFooter(sb, event);
                 break;
 
             case DEGRADED:
@@ -1101,7 +1096,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                     sb.append("   Detail: ").append(truncate(event.getErrorMessage(), 200)).append("\n");
                 }
                 sb.append("   Job ID: `").append(event.getJobId()).append("`\n");
-                appendSessionMetrics(sb, event);
+                appendSummaryFooter(sb, event);
                 break;
 
             default:
@@ -1112,32 +1107,45 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Appends session metrics (turns, time, cost, permission denials)
-     * to the Slack message if any metrics are available.
+     * Formats the details of a job completion: the message kept in the job's
+     * thread alongside the {@link #formatCompletedSummary(JobCompletionEvent) summary}.
+     * It carries the commit, stop reason, turn count, per-model cost and
+     * permission denials.
+     *
+     * @param event       the completion event
+     * @return            formatted Slack message string, empty when there are no details
      */
-    private void appendSessionMetrics(StringBuilder sb, JobCompletionEvent event) {
-        boolean hasMetrics = event.getNumTurns() > 0
-            || event.getDurationMs() > 0
-            || event.getSubtype() != null
-            || event.getCostUsd() > 0
-            || event.isCostIncomplete();
-        if (!hasMetrics) return;
+    private String formatCompletedDetails(JobCompletionEvent event) {
+        StringBuilder sb = new StringBuilder();
 
-        sb.append("   ---\n");
-
-        // Stop reason / subtype
-        if (event.getSubtype() != null) {
-            String stopLabel = formatStopReason(event.getSubtype());
-            if (event.isSessionError()) {
-                sb.append("   :warning: Stop reason: *").append(stopLabel).append("*\n");
-            } else {
-                sb.append("   Stop reason: ").append(stopLabel).append("\n");
-            }
+        if (event.getStatus() == JobCompletionEvent.Status.SUCCESS
+                && isPushedWork(event) && event.getCommitHash() != null) {
+            String shortHash = event.getCommitHash().length() > 7
+                ? event.getCommitHash().substring(0, 7)
+                : event.getCommitHash();
+            sb.append("   Commit: `").append(shortHash).append("` ");
+            sb.append(event.shortDescription(50));
+            sb.append("\n");
         }
 
-        // Turns
-        if (event.getNumTurns() > 0) {
-            sb.append("   Turns: ").append(event.getNumTurns()).append("\n");
+        appendSessionDetails(sb, event);
+        return sb.toString();
+    }
+
+    /**
+     * Returns whether a completion pushed changed files to its branch.
+     */
+    private static boolean isPushedWork(JobCompletionEvent event) {
+        return !event.getStagedFiles().isEmpty() && event.isPushed();
+    }
+
+    /**
+     * Appends the lines every completion summary ends with, whatever its
+     * outcome: the pull request, wall time and total cost.
+     */
+    private void appendSummaryFooter(StringBuilder sb, JobCompletionEvent event) {
+        if (event.getPullRequestUrl() != null) {
+            sb.append("   :link: PR: ").append(event.getPullRequestUrl()).append("\n");
         }
 
         // Duration (wall time and API time)
@@ -1153,8 +1161,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         // incomplete (an inactivity kill can leave the total at $0.00 even
         // though real, uncosted work happened — we report that explicitly
         // rather than implying the job was free).
-        if (event.getCostUsd() > 0 || event.isCostIncomplete()) {
-            sb.append(JobStatsStore.formatModelCostLines(event.getCostByModel()));
+        if (hasCost(event)) {
             sb.append("   :dollar: $").append(String.format("%.2f", event.getCostUsd()));
             // A "+" suffix marks the figure as a lower bound when cost is incomplete.
             if (event.isCostIncomplete()) sb.append("+");
@@ -1179,6 +1186,41 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             }
             sb.append("\n");
         }
+    }
+
+    /**
+     * Appends the session metrics that belong in the completion details: stop
+     * reason, turns, per-model cost and permission denials. A separator is
+     * placed between them and any detail lines already in {@code sb}.
+     */
+    private void appendSessionDetails(StringBuilder sb, JobCompletionEvent event) {
+        boolean hasMetrics = event.getNumTurns() > 0
+            || event.getSubtype() != null
+            || hasCost(event)
+            || event.getPermissionDenials() > 0;
+        if (!hasMetrics) return;
+
+        if (sb.length() > 0) sb.append("   ---\n");
+
+        // Stop reason / subtype
+        if (event.getSubtype() != null) {
+            String stopLabel = formatStopReason(event.getSubtype());
+            if (event.isSessionError()) {
+                sb.append("   :warning: Stop reason: *").append(stopLabel).append("*\n");
+            } else {
+                sb.append("   Stop reason: ").append(stopLabel).append("\n");
+            }
+        }
+
+        // Turns
+        if (event.getNumTurns() > 0) {
+            sb.append("   Turns: ").append(event.getNumTurns()).append("\n");
+        }
+
+        // Per-model cost; the total is part of the summary
+        if (hasCost(event)) {
+            sb.append(JobStatsStore.formatModelCostLines(event.getCostByModel()));
+        }
 
         // Permission denials
         if (event.getPermissionDenials() > 0) {
@@ -1199,6 +1241,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             }
             sb.append("\n");
         }
+    }
+
+    /**
+     * Returns whether a completion has a cost to report: a positive total, or
+     * an incomplete cost that must be reported even at $0.00.
+     */
+    private static boolean hasCost(JobCompletionEvent event) {
+        return event.getCostUsd() > 0 || event.isCostIncomplete();
     }
 
     /**
