@@ -390,7 +390,7 @@ the same `StateDictionary`, and wrapped it in `KeyValueCacheAutoregressiveModel`
 sampling path, pinned by a byte-identical-to-full-forward assertion at every position (PR #753,
 merged). The *measurement* was deferred to Metal — cashed, with a surprise, by the 2026-10-28 cycle,
 which found the cache ~4× slower and exposed the cache-ownership defect the 2026-10-28 (later) cycle
-fixes.
+plans to fix.
 
 ### 2026-10-25 — Expose nucleus (top-p) sampling through the autoregressive generators (condensed)
 

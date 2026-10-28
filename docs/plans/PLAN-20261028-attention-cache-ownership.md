@@ -130,10 +130,22 @@ the `decodeModel`-direct pattern, holding the lists itself:
   the caches the compiled model reads and writes). On `master` those lists are the orphans, which
   stay zero, so this fails today. This single assertion is the one that discriminates master from the
   fix, and it is the structural core of the guard.
-- Then clear those same held buffers (the operation `reset()` performs) and assert a subsequent decode
-  reads them as empty — i.e. that clearing the held buffers actually erases the past the model
-  attends to. On `master`, clearing the orphans leaves the bound caches dirty, so the model still
-  attends to the earlier sequence and this fails.
+- Then clear those same held buffers (the operation `reset()` performs) and show that clearing them
+  erases the past the model attends to. This half needs care, because the accident that masks the
+  bug masks a naive version of it too: a decode that restarts at position 0 overwrites row 0 before
+  reading it, and the causal mask hides every later row, so restarting from 0 reads no stale data on
+  `master` either. The assertion must therefore decode at a **later** position `k > 0` straight after
+  the clear, *without* re-decoding positions `0..k-1`, and compare that output row against the same
+  token decoded at position `k` by a freshly compiled decode model over the same weights (whose caches
+  are all zero). With the fix the cleared rows `0..k-1` are zero in both, so the rows match; on
+  `master` the bound caches still hold the earlier sequence's rows `0..k-1`, the decode attends to
+  them, and the rows differ — so this fails today as well.
+
+Note that the existing `decodeRow` helper in `CausalLanguageModelTest` (used by
+`keyValueCacheLaterPositionsReadEarlierEntries`) also clears the held `keyCaches`/`valueCaches`
+before each run and always restarts at position 0, so it currently clears orphans too and passes
+only by the same accident. It needs no change — it stays correct once the lists are the bound caches —
+but the new test must not reuse its restart-from-0 shape for the clearing assertion.
 
 The test asserts the ownership invariant structurally (which buffer the decode wrote, and that
 clearing *that* buffer erases the past), so it cannot be satisfied by the accidental causal-mask
@@ -181,8 +193,9 @@ whether the `decodeModel`-level guard is sufficient or the generator-level one i
   attention layers, with no orphan allocation; `KeyValueCacheAutoregressiveModel.reset()` clears, and
   `destroy()` releases, the caches the compiled model actually reads and writes.
 - A new test fails on `master` and passes with the fix, asserting that the `keyCaches`/`valueCaches`
-  lists `decodeModel` populates are the buffers the decode writes, and that clearing those buffers
-  erases the attended past — independent of the causal-mask accident.
+  lists `decodeModel` populates are the buffers the decode writes (non-zero after decoding), and that
+  clearing those buffers erases the attended past (a decode at position `k > 0` straight after the
+  clear matches a fresh decode model at `k`) — independent of the causal-mask accident.
 - `keyValueCacheDecodeMatchesFullForward`, `keyValueCacheResetClearsCacheAcrossSequences`,
   `slidingWindowGenerationMatchesFullForward` and the asset tests still pass; no test weakened. Build
   validator clean. Javadoc and the training-doc sentence match the code.
