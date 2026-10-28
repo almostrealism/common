@@ -58,6 +58,7 @@ import java.util.stream.Collectors;
  * 2. Prepare arguments       MemoryData[] from Object[]
  * 3. Calculate parallelism   min(workSize, configured parallelism)
  * 4. Submit tasks           p tasks to executor, each runs inst.apply()
+ *                           (a single task runs on the coordinating thread instead)
  * 5. Wait for completion    latch.waitFor()
  * 6. Return semaphore       For downstream dependencies
  * </pre>
@@ -184,6 +185,15 @@ public class NativeExecution extends HardwareOperator {
 
 	/** Shared thread pool sized to the available CPU parallelism for concurrent kernel execution. */
 	private static ExecutorService executor = Executors.newFixedThreadPool(KernelPreferences.getCpuParallelism());
+
+	/**
+	 * Permits for single-worker kernels, which run on their coordinating thread rather than on
+	 * the {@link #executor} (see {@link #coordinate}). Coordinating threads come from unbounded
+	 * pools, so without these permits any number of such kernels could run at once; there are as
+	 * many as the {@link #executor} has threads.
+	 */
+	private static final java.util.concurrent.Semaphore inlineWorkers =
+			new java.util.concurrent.Semaphore(KernelPreferences.getCpuParallelism());
 
 	/**
 	 * Executor for dispatch coordination: each {@link #accept(Object[], Semaphore)} without a
@@ -343,7 +353,9 @@ public class NativeExecution extends HardwareOperator {
 	 * <p>A dispatch with a single worker runs it on this thread rather than on the
 	 * {@link #executor}: handing it off would leave this thread nothing to do but wait for it,
 	 * so running it here saves a thread hand-off on every such dispatch (a scalar result, for
-	 * example) without adding any concurrency.</p>
+	 * example). Coordinating threads are not bounded, so a worker run here first takes one of
+	 * the {@link #inlineWorkers} permits: at most as many single-worker kernels run at once as
+	 * the {@link #executor} has threads, the bound they had when they ran there.</p>
 	 *
 	 * <p>The guard comes off only once the latch has reached zero, on the failure path as
 	 * well as the ordinary one. Releasing it is what allows this dispatch's memory to be
@@ -366,10 +378,15 @@ public class NativeExecution extends HardwareOperator {
 
 			recordDuration(latch, () -> {
 				if (p == 1) {
-					// TODO(review): inline workers run outside the fixed executor, so getCpuParallelism() no longer caps concurrent p == 1 kernels
 					// The only worker would leave this thread nothing to do but wait for it
-					submitted.incrementAndGet();
-					work(data, latch, 0).run();
+					inlineWorkers.acquireUninterruptibly();
+
+					try {
+						submitted.incrementAndGet();
+						work(data, latch, 0).run();
+					} finally {
+						inlineWorkers.release();
+					}
 				} else {
 					for (int i = 0; i < p; i++) {
 						executor.submit(work(data, latch, i));

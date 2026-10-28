@@ -51,6 +51,9 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	 */
 	private static final int MAX_THREAD_GROWTH = 64;
 
+	/** The number of independent single-element dispatches submitted at once. */
+	private static final int INDEPENDENT = 256;
+
 	/**
 	 * Submits {@value #SUBMISSIONS} increments of a counter, each chained on the completion of
 	 * the one before it, with a single wait at the end. Every increment reads the value the one
@@ -118,5 +121,36 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 
 		counter.destroy();
 		values.destroy();
+	}
+
+	/**
+	 * Submits {@value #INDEPENDENT} independent increments of separate single-element counters,
+	 * none ordered after another, so that far more single-worker dispatches are in flight at once
+	 * than there are permits for running them on their coordinating threads. Every counter
+	 * reaching exactly one proves each dispatch ran once and settled, which it cannot do if a
+	 * permit is lost or held past the kernel it was taken for.
+	 */
+	// TODO(review): only exercises NativeExecution's inlineWorkers path when the native driver is selected (CI native lanes)
+	@Test(timeout = 300000)
+	public void independentScalarDispatchesAllComplete() {
+		PackedCollection counters[] = new PackedCollection[INDEPENDENT];
+		Semaphore pending[] = new Semaphore[INDEPENDENT];
+
+		for (int i = 0; i < INDEPENDENT; i++) {
+			counters[i] = new PackedCollection(1);
+		}
+
+		for (int i = 0; i < INDEPENDENT; i++) {
+			pending[i] = Submittable.of(a(cp(counters[i]), cp(counters[i]).add(1.0)).get()).submit(null);
+		}
+
+		for (int i = 0; i < INDEPENDENT; i++) {
+			if (pending[i] != null) pending[i].waitFor();
+		}
+
+		for (int i = 0; i < INDEPENDENT; i++) {
+			Assert.assertEquals("counter " + i, 1.0, counters[i].toDouble(0), 0.0);
+			counters[i].destroy();
+		}
 	}
 }
