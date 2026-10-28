@@ -129,28 +129,37 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	 * than there are permits for running them on their coordinating threads. Every counter
 	 * reaching exactly one proves each dispatch ran once and settled, which it cannot do if a
 	 * permit is lost or held past the kernel it was taken for.
+	 *
+	 * <p>A computation with a fixed count of one is assigned to a CPU context whenever one is
+	 * configured (see {@code DefaultComputer.getContext}), so these dispatches reach the native
+	 * single-worker path under the default driver set, on a GPU host as well; only a GPU-only
+	 * driver selection leaves that path unexercised.</p>
 	 */
-	// TODO(review): only exercises NativeExecution's inlineWorkers path when the native driver is selected (CI native lanes)
 	@Test(timeout = 300000)
 	public void independentScalarDispatchesAllComplete() {
-		PackedCollection counters[] = new PackedCollection[INDEPENDENT];
-		Semaphore pending[] = new Semaphore[INDEPENDENT];
+		PackedCollection[] counters = new PackedCollection[INDEPENDENT];
+		Semaphore[] pending = new Semaphore[INDEPENDENT];
 
 		for (int i = 0; i < INDEPENDENT; i++) {
 			counters[i] = new PackedCollection(1);
 		}
 
-		for (int i = 0; i < INDEPENDENT; i++) {
-			pending[i] = Submittable.of(a(cp(counters[i]), cp(counters[i]).add(1.0)).get()).submit(null);
-		}
+		try {
+			for (int i = 0; i < INDEPENDENT; i++) {
+				pending[i] = Submittable.of(a(cp(counters[i]), cp(counters[i]).add(1.0)).get()).submit(null);
+			}
 
-		for (int i = 0; i < INDEPENDENT; i++) {
-			if (pending[i] != null) pending[i].waitFor();
-		}
+			for (int i = 0; i < INDEPENDENT; i++) {
+				if (pending[i] != null) pending[i].waitFor();
+			}
 
-		for (int i = 0; i < INDEPENDENT; i++) {
-			Assert.assertEquals("counter " + i, 1.0, counters[i].toDouble(0), 0.0);
-			counters[i].destroy();
+			for (int i = 0; i < INDEPENDENT; i++) {
+				Assert.assertEquals("counter " + i, 1.0, counters[i].toDouble(0), 0.0);
+			}
+		} finally {
+			for (PackedCollection counter : counters) {
+				counter.destroy();
+			}
 		}
 	}
 }
