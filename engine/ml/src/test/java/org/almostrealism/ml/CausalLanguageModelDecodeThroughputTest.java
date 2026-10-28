@@ -174,7 +174,7 @@ public class CausalLanguageModelDecodeThroughputTest extends TestSuiteBase {
 			int[] continuation = CausalLanguageModelTest.generate(decoder, prompt, length);
 
 			long runsBefore = profile.getRunCount();
-			Map<String, Integer> waitsBefore = new HashMap<>(MetalCommandRunner.hostCompleteRequesters.getCounts());
+			Map<String, Integer> waitsBefore = hostCompleteWaits();
 			MetalCommandRunner.resetBatchSizeCounters();
 			long start = System.nanoTime();
 			IntStream.range(0, repeats).forEach(i -> CausalLanguageModelTest.generate(decoder, prompt, length));
@@ -190,13 +190,27 @@ public class CausalLanguageModelDecodeThroughputTest extends TestSuiteBase {
 					+ " runsPerByte=" + measurement.runsPerByte()
 					+ " dispatchesPerByte=" + measurement.dispatchesPerByte()
 					+ " commitsPerByte=" + measurement.commitsPerByte());
-			MetalCommandRunner.hostCompleteRequesters.getCounts().entrySet().stream()
+			hostCompleteWaits().entrySet().stream()
 					.map(e -> Map.entry(e.getKey(), e.getValue() - waitsBefore.getOrDefault(e.getKey(), 0)))
 					.filter(e -> e.getValue() > 0)
 					.sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
 					.limit(LOGGED_COMMIT_CAUSES)
 					.forEach(e -> log(name + " commitForcingWaits=" + e.getValue() + " requester=" + e.getKey()));
 			return measurement;
+		}
+	}
+
+	/**
+	 * Returns a snapshot of the host-complete waits {@link MetalCommandRunner} has attributed to each
+	 * requester. The counts are a synchronized map that Metal completion threads may update, so the
+	 * copy is taken while holding its lock.
+	 *
+	 * @return a copy of the per-requester wait counts
+	 */
+	private static Map<String, Integer> hostCompleteWaits() {
+		Map<String, Integer> counts = MetalCommandRunner.hostCompleteRequesters.getCounts();
+		synchronized (counts) {
+			return new HashMap<>(counts);
 		}
 	}
 
