@@ -274,7 +274,6 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		TraversalOrdering mOrder = mShape.getOrder();
 		if (mOrder != null && mShape.getDimensions() == 2 && mOrder.segments(mShape.length(1)).isPresent()
 				&& vShape.getDimensions() <= 2 && vShape.length(0) == mShape.length(1)) {
-			// TODO(review): a (cols, 1) operand yields shape (rows) here; confirm it matches the dense path's output shape
 			return new SegmentedWeightedSumComputation("matmul",
 					vShape.getDimensions() == 1 ? 1 : vShape.length(1), matrix, vector);
 		} else if (mShape.getTotalSizeLong() == 1 || vShape.getTotalSizeLong() == 1) {

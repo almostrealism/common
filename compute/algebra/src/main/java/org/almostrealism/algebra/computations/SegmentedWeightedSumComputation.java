@@ -104,8 +104,8 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 * Creates the product of the given matrix with the given input.
 	 *
 	 * @param name   the computation name
-	 * @param width  the number of input columns; 1 for a vector, whose output has shape
-	 *               {@code (rows)}, otherwise the output has shape {@code (rows, width)}
+	 * @param width  the number of input columns, 1 for a vector; the output has shape
+	 *               {@code (rows, width)}, as the dense product does
 	 * @param matrix the matrix, of shape {@code (rows, n)}, whose ordering enumerates segments of
 	 *               length {@code n}
 	 * @param input  the input, {@code width} values for each of the {@code n} columns of the matrix
@@ -143,7 +143,8 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 *
 	 * @param matrixShape the shape of the matrix, carrying its ordering
 	 * @param width       the number of input columns
-	 * @return {@code (rows)} when {@code width} is 1, otherwise {@code (rows, width)}
+	 * @return {@code (rows, width)}, which for a vector input ({@code width} 1) is
+	 *         {@code (rows, 1)}, the shape of the dense product
 	 * @throws IllegalArgumentException if the matrix is not two-dimensional, its ordering does not
 	 *         enumerate its rows, or {@code width} is not positive
 	 */
@@ -157,8 +158,7 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 			throw new IllegalArgumentException("The ordering of " + matrixShape + " does not enumerate its rows");
 		}
 
-		int rows = matrixShape.length(0);
-		return (width == 1 ? new TraversalPolicy(rows) : new TraversalPolicy(rows, width)).traverseEach();
+		return new TraversalPolicy(matrixShape.length(0), width).traverseEach();
 	}
 
 	/**
@@ -238,7 +238,6 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 		Expression<?> position = segments.start(rowOf(globalIndex)).add(localIndex);
 		Expression<?> column = segments.offset(position);
 		Expression<?> gathered = args[INPUT].getValueAt(column.multiply(width).add(globalIndex.imod(width)));
-		// TODO(review): physical-position read assumes the matrix argument's memory is entry-packed; verify for a computed matrix producer whose shape carries the ordering
 		Expression<?> entry = getArgumentForInput(getInputs().get(MATRIX)).reference(position);
 		return currentValue.add(entry.multiply(gathered));
 	}

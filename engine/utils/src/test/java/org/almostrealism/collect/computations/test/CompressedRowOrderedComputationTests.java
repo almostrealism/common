@@ -27,6 +27,7 @@ import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -102,8 +103,9 @@ public class CompressedRowOrderedComputationTests extends TestSuiteBase implemen
 		for (ComputeRequirement backend : backends()) {
 			PackedCollection expected = evaluate(operation.apply(cp(dense())), backend);
 			PackedCollection actual = evaluate(operation.apply(cp(sparse())), backend);
-			assertEquals("shape on " + backend, expected.getShape().getTotalSize(),
-					actual.getShape().getTotalSize());
+			assertTrue("shape on " + backend + ": expected " + expected.getShape()
+							+ " but was " + actual.getShape(),
+					Arrays.equals(expected.getShape().extentLong(), actual.getShape().extentLong()));
 
 			double[] e = expected.toArray(0, expected.getShape().getTotalSize());
 			double[] a = actual.toArray(0, actual.getShape().getTotalSize());
@@ -264,6 +266,36 @@ public class CompressedRowOrderedComputationTests extends TestSuiteBase implemen
 	@Test(timeout = 60000)
 	public void matmulMatrix() {
 		assertMatchesDense(m -> matmul(m, cp(pack(1.0, -1.0, 2.0, 0.5, 3.0,
+				-2.0, 4.0, 1.0, 0.0, 5.0,
+				2.0, -3.0, 1.0, 1.0, 1.0).reshape(shape(5, 3)))));
+	}
+
+	/**
+	 * The product with a column vector of shape {@code (5, 1)}, whose result must have the same
+	 * dimensions as the dense product.
+	 */
+	@Test(timeout = 60000)
+	public void matmulColumnVector() {
+		assertMatchesDense(m -> matmul(m, cp(pack(1.0, 2.0, 3.0, 4.0, 5.0).reshape(shape(5, 1)))));
+	}
+
+	/**
+	 * The product of a computed matrix: the sparse matrix scaled element-wise before it is
+	 * multiplied, so that the left operand of the product is a computation of the ordered
+	 * collection rather than the collection itself.
+	 */
+	@Test(timeout = 60000)
+	public void matmulComputedMatrix() {
+		assertMatchesDense(m -> matmul(m.multiply(c(2.0)), cp(pack(1.0, 2.0, 3.0, 4.0, 5.0))));
+	}
+
+	/**
+	 * The product of a reshaped view of the matrix with a matrix, so that the left operand
+	 * reaches the product through a reshape of the ordered collection.
+	 */
+	@Test(timeout = 60000)
+	public void matmulReshapedMatrix() {
+		assertMatchesDense(m -> matmul(m.reshape(shape(4, 5)), cp(pack(1.0, -1.0, 2.0, 0.5, 3.0,
 				-2.0, 4.0, 1.0, 0.0, 5.0,
 				2.0, -3.0, 1.0, 1.0, 1.0).reshape(shape(5, 3)))));
 	}
