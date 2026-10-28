@@ -198,3 +198,9 @@ where the difference arises. Each run in the table dispatches more than 21,000 o
 roughly 2,300-dispatch point where `manySmallDispatches` notes a Metal stall. The per-step cost
 stayed flat and every run completed, so no dispatch-count stall showed up at this scale. No CUDA
 node was available for this measurement.
+
+## See Also
+
+- [Simulating a Spiking Neural Population](neural-population-simulation.md): a worked example of
+  stepping `LeakyIntegrateAndFirePopulation`s with `SimulationRunner`, including the two-population
+  tick order and the recording-cost arithmetic

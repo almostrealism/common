@@ -17,14 +17,10 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Cosine;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
-
-import java.util.List;
 
 /**
  * A computation that performs element-wise cosine function on {@link PackedCollection}s.
@@ -50,17 +46,13 @@ public class CollectionCosineComputation extends UnaryCollectionComputation {
 	}
 
 	@Override
-	protected CollectionProducer getCofactor(CollectionProducer input) {
+	protected CollectionProducer getCofactor() {
+		Producer<PackedCollection> input = getInputs().get(1);
 		return new CollectionSineComputation(shape(input), input).multiply(-1.0);
 	}
 
 	@Override
-	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new CollectionCosineComputation(getShape(),
-				(Producer<PackedCollection>) children.get(1))
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+	protected UnaryCollectionComputation create(TraversalPolicy shape, Producer<PackedCollection> input) {
+		return new CollectionCosineComputation(shape, input);
 	}
 }

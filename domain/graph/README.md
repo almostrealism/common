@@ -195,6 +195,33 @@ Block combined = block1.product(block2);  // Element-wise multiply
 - **WaveCell** - `org.almostrealism.graph.temporal.WaveCell`
 - **TimeCell** - `org.almostrealism.graph.TimeCell`
 
+## PDSL Language Core
+
+The PDSL language core lives in this module, in package `org.almostrealism.dsl`: the lexer, parser
+and interpreter (`PdslLexer`, `PdslParser`, `PdslInterpreter`), the loader (`PdslLoader`) and the
+domain-agnostic built-ins (`PdslBuiltins`). A module above this one adds primitives to every
+interpreter by implementing `PdslExtension` and naming the implementation in
+`META-INF/services/org.almostrealism.dsl.PdslExtension`. Model descriptions read their weights
+through `org.almostrealism.model.WeightGroup`, a set of named tensors organized by a dotted naming
+hierarchy, whatever the source of the weights. The language itself is documented in
+[PDSL Language Reference](../../docs/internals/pdsl-language.md).
+
+## Population Dynamics
+
+Two classes in `org.almostrealism.graph` describe one time step of a neural population as
+`CollectionProducer` math over device-resident state. Neither owns a loop: `SimulationRunner`
+(`compute/time`) steps them.
+
+- **`LeakyIntegrateAndFirePopulation`** — spiking LIF neurons with exact-exponential membrane and
+  conductance, a refractory countdown, a spike ring buffer for synaptic delay, and an optional
+  in-kernel Poisson drive. It exposes `step(Producer)` (the synaptic input is a producer
+  argument) rather than implementing `Temporal`, so it is stepped through an adapter lambda.
+- **`RatePopulation`** — firing-rate units coupled by a dense signed matrix, integrated by
+  exponential Euler. It implements `Temporal` directly.
+
+How to build, connect, drive, step and record a population is documented, with a tested worked
+example, in [Simulating a Spiking Neural Population](../../docs/internals/neural-population-simulation.md).
+
 ## Integration with Other Modules
 
 ### Collect Module
@@ -515,6 +542,9 @@ public class MyModel implements LowRankAdapterSupport, AttentionFeatures {
 ```
 
 ## Further Reading
+
+- [Simulating a Spiking Neural Population](../../docs/internals/neural-population-simulation.md)
+- [PDSL Language Reference](../../docs/internals/pdsl-language.md)
 
 - See **ar-ml** module for high-level model implementations
 - See **ar-collect** module for PackedCollection fundamentals

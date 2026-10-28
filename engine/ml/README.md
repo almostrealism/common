@@ -728,7 +728,10 @@ Other Stable Audio 3 building blocks:
   and a `FluxDistributionShift` constructed with a single constant `alpha` ignore sequence length
   entirely.
 - **`OobleckCodec`** (`OobleckEncoder`/`OobleckDecoder`) and **`SAMEAutoEncoder`** — latent audio
-  autoencoders that compress waveforms to and from the diffusion model's latent space.
+  autoencoders that compress waveforms to and from the diffusion model's latent space. The
+  transformer layers of `SAMEAutoEncoder`'s learned-resampling blocks
+  (`TransformerResamplingFeatures`) are the `resampling_transformer_layer` of the PDSL asset
+  `pdsl/resampling_transformer.pdsl`.
 - **`PatchedPretransform`** — a parameter-free pretransform, used by `SAMEAutoEncoder`, that folds
   runs of consecutive samples into the channel axis before encoding and unfolds them after decoding.
   The fold and unfold are the `patch_encode` and `patch_decode` layers of the PDSL asset

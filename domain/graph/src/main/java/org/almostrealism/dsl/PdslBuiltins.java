@@ -46,8 +46,8 @@ import java.util.function.Supplier;
 /**
  * The PDSL language's BUILT-IN FUNCTION LIBRARY: the standard, domain-agnostic
  * layer constructors every PDSL program can call without registering a primitive
- * (dense, conv1d, conv_transpose1d, rmsnorm, layernorm, softmax, the activations including snake,
- * slice, lerp, reshape, permute, identity,
+ * (dense, conv1d, conv_transpose1d, rmsnorm, layernorm, dynamic_tanh, softmax, the activations
+ * including snake, slice, lerp, reshape, permute, identity,
  * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read,
  * scaled_dot_product, sqrt, shape, range, zeros). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List, Set)}; domain
@@ -87,6 +87,7 @@ final class PdslBuiltins {
 			case "conv_transpose1d": return callConvTranspose1d(args);
 			case "rmsnorm": return callRmsnorm(args);
 			case "layernorm": return callLayernorm(args);
+			case "dynamic_tanh": return callDynamicTanh(args);
 			case "softmax": return callSoftmax(args);
 			case "silu": return callActivation("silu");
 			case "relu": return callActivation("relu");
@@ -616,6 +617,36 @@ final class PdslBuiltins {
 			}
 			return norm.apply(shape);
 		};
+	}
+
+	/**
+	 * Builds a DynamicTanh (DyT) normalization layer factory: every input element becomes
+	 * {@code weight * tanh(alpha * x) + bias}, the weights and biases applying to every run of
+	 * {@code n} consecutive features, where {@code n} is their length. DyT stands in for a statistical
+	 * normalization such as LayerNorm or RMSNorm but computes no statistic over the run, so it is one
+	 * element-wise stage. Binding {@code head_dim} weights normalizes every head row of a
+	 * {@code [batch, heads, seq_len, head_dim]} query or key tensor; binding {@code dim} weights
+	 * normalizes every position of a {@code [batch, seq_len, dim]} sequence.
+	 *
+	 * <p>The normalization checks its own parameters against the input shape when the stage is
+	 * placed: a missing alpha, or weights and biases whose runs do not tile the input, are rejected
+	 * there (see {@link org.almostrealism.layers.NormalizationLayerFeatures#dynamicTanhSize}).</p>
+	 *
+	 * @param args {@code (alpha, weights, biases)}: the scale inside the tanh, either one value
+	 *             ({@code [1]}) or one per feature, and the per-feature output scale and shift, either of
+	 *             which may be {@code null} for none
+	 * @return a factory that creates the normalization for any input made of whole runs of
+	 *         {@code n} features
+	 * @see org.almostrealism.layers.NormalizationLayerFeatures#dynamicTanh(PackedCollection,
+	 *      PackedCollection, PackedCollection, io.almostrealism.compute.ComputeRequirement...)
+	 */
+	private static Function<TraversalPolicy, CellularLayer> callDynamicTanh(List<Object> args) {
+		if (args.size() != 3) {
+			throw new PdslParseException(
+					"dynamic_tanh() expects 3 arguments (alpha, weights, biases), got " + args.size());
+		}
+		return FEATURES.dynamicTanh((PackedCollection) args.get(0),
+				(PackedCollection) args.get(1), (PackedCollection) args.get(2));
 	}
 
 	/**

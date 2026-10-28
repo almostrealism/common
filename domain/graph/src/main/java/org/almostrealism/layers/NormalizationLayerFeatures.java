@@ -695,29 +695,15 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 	 * @param bias         the learnable per-feature output shift (may be {@code null} for no shift)
 	 * @param requirements optional compute requirements
 	 * @return the constructed DyT {@link CellularLayer}
+	 * @throws IllegalArgumentException if the parameters do not describe a normalization of
+	 *                                  {@code shape} (see {@link #dynamicTanhSize})
 	 */
 	default CellularLayer dynamicTanh(TraversalPolicy shape,
 									  PackedCollection alpha,
 									  PackedCollection weight,
 									  PackedCollection bias,
 									  ComputeRequirement... requirements) {
-		if (alpha == null) {
-			throw new IllegalArgumentException("DynamicTanh requires a learnable alpha");
-		}
-
-		if ((weight != null && weight.getShape().getDimensions() != 1) ||
-				(bias != null && bias.getShape().getDimensions() != 1)) {
-			throw new IllegalArgumentException("DynamicTanh weight and bias must be 1-dimensional");
-		}
-
-		int size = weight != null ? weight.getShape().getTotalSize()
-				: bias != null ? bias.getShape().getTotalSize()
-				: shape.length(shape.getDimensions() - 1);
-
-		int alphaSize = alpha.getShape().getTotalSize();
-		if (alphaSize != 1 && alphaSize != size) {
-			throw new IllegalArgumentException("DynamicTanh alpha must be a scalar or match the feature size");
-		}
+		dynamicTanhSize(shape, alpha, weight, bias);
 
 		List<PackedCollection> params = new ArrayList<>();
 		params.add(alpha);
@@ -735,9 +721,8 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 	 * <p>Computes {@code y = weight ⊙ tanh(alpha · x) + bias} over the trailing feature axis, the
 	 * producer-level form of {@link #dynamicTanh(TraversalPolicy, PackedCollection, PackedCollection,
 	 * PackedCollection, ComputeRequirement...)}. The {@link CellularLayer} overload delegates here so
-	 * the two cannot drift; this form is used by computations that compose DyT inline (for example the
-	 * query/key normalization inside the learned-resampling transformer block) rather than as a
-	 * standalone trainable layer.</p>
+	 * the two cannot drift; this form is for computations that compose DyT inline in a larger producer
+	 * rather than as a standalone trainable layer.</p>
 	 *
 	 * @param input  the input producer; the affine parameters apply over its trailing feature axis
 	 * @param alpha  the learnable scale applied inside {@code tanh}; a scalar ({@code [1]}) or one
@@ -745,29 +730,15 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 	 * @param weight the learnable per-feature output scale (may be {@code null} for no scale)
 	 * @param bias   the learnable per-feature output shift (may be {@code null} for no shift)
 	 * @return the normalized producer, with the same shape as {@code input}
+	 * @throws IllegalArgumentException if the parameters do not describe a normalization of the
+	 *                                  input's shape (see {@link #dynamicTanhSize})
 	 */
 	default CollectionProducer dynamicTanh(CollectionProducer input,
 										   PackedCollection alpha,
 										   PackedCollection weight,
 										   PackedCollection bias) {
-		if (alpha == null) {
-			throw new IllegalArgumentException("DynamicTanh requires a learnable alpha");
-		}
-
-		if ((weight != null && weight.getShape().getDimensions() != 1) ||
-				(bias != null && bias.getShape().getDimensions() != 1)) {
-			throw new IllegalArgumentException("DynamicTanh weight and bias must be 1-dimensional");
-		}
-
 		TraversalPolicy shape = input.getShape();
-		int size = weight != null ? weight.getShape().getTotalSize()
-				: bias != null ? bias.getShape().getTotalSize()
-				: shape.length(shape.getDimensions() - 1);
-
-		int alphaSize = alpha.getShape().getTotalSize();
-		if (alphaSize != 1 && alphaSize != size) {
-			throw new IllegalArgumentException("DynamicTanh alpha must be a scalar or match the feature size");
-		}
+		int size = dynamicTanhSize(shape, alpha, weight, bias);
 
 		PackedCollection a = alpha.flatten();
 		PackedCollection w = weight == null ? null : weight.flatten();
@@ -779,5 +750,55 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 		if (b != null) out = out.add(cp(b));
 
 		return out.reshape(shape);
+	}
+
+	/**
+	 * Returns the number of consecutive features a {@code DynamicTanh} (DyT) normalization applies its
+	 * parameters to, after checking that the parameters describe a normalization of {@code shape}.
+	 * The run length is that of the weight, or of the bias when there is no weight, or the length of
+	 * the last axis of {@code shape} when there is neither.
+	 *
+	 * @param shape  the shape of the input to normalize
+	 * @param alpha  the learnable scale applied inside {@code tanh}: a scalar ({@code [1]}) or one
+	 *               value per feature
+	 * @param weight the learnable per-feature output scale (may be {@code null} for no scale)
+	 * @param bias   the learnable per-feature output shift (may be {@code null} for no shift)
+	 * @return the number of features in each run
+	 * @throws IllegalArgumentException if {@code alpha} is missing, the weight or bias is not
+	 *                                  1-dimensional, the weight and bias differ in length,
+	 *                                  {@code alpha} is neither a scalar nor one value per feature,
+	 *                                  or the runs do not tile {@code shape}
+	 */
+	default int dynamicTanhSize(TraversalPolicy shape, PackedCollection alpha,
+								PackedCollection weight, PackedCollection bias) {
+		if (alpha == null) {
+			throw new IllegalArgumentException("DynamicTanh requires a learnable alpha");
+		}
+
+		if ((weight != null && weight.getShape().getDimensions() != 1) ||
+				(bias != null && bias.getShape().getDimensions() != 1)) {
+			throw new IllegalArgumentException("DynamicTanh weight and bias must be 1-dimensional");
+		}
+
+		int size = weight != null ? weight.getShape().getTotalSize()
+				: bias != null ? bias.getShape().getTotalSize()
+				: shape.length(shape.getDimensions() - 1);
+
+		if (bias != null && bias.getShape().getTotalSize() != size) {
+			throw new IllegalArgumentException("DynamicTanh bias " + bias.getShape()
+					+ " does not match the weight " + weight.getShape());
+		}
+
+		int alphaSize = alpha.getShape().getTotalSize();
+		if (alphaSize != 1 && alphaSize != size) {
+			throw new IllegalArgumentException("DynamicTanh alpha must be a scalar or match the feature size");
+		}
+
+		if (shape.getTotalSizeLong() % size != 0) {
+			throw new IllegalArgumentException("DynamicTanh scales runs of " + size
+					+ " features, which do not tile the input shape " + shape);
+		}
+
+		return size;
 	}
 }

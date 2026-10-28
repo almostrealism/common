@@ -29,12 +29,13 @@
 - [stats](compute/stats/README.md): Probability distributions, statistical sampling | [Details](docs/modules/stats.html)
 
 ### domain/ — Domain Models
-- [graph](domain/graph/README.md): Cell-Receptor-Transmitter pattern, neural network layers, backpropagation | [Details](docs/modules/graph.html)
+- [graph](domain/graph/README.md): Cell-Receptor-Transmitter pattern, neural network layers, backpropagation, the PDSL language core (`org.almostrealism.dsl`), neural population dynamics (LIF and rate populations) | [Details](docs/modules/graph.html)
 - [color](domain/color/README.md): RGB/RGBA, lighting, shaders, textures | [Details](docs/modules/color.html)
 - [physics](domain/physics/README.md): Rigid body dynamics, absorbers, photon fields, physical constants | [Details](docs/modules/physics.html)
 - [space](domain/space/README.md): Scene management, meshes, spatial acceleration | [Details](docs/modules/space.html)
 - [heredity](domain/heredity/README.md): Genetic algorithms, Gene/Chromosome/Genome hierarchy | [Details](docs/modules/heredity.html)
 - [chemistry](domain/chemistry/README.md): Periodic table (Element enum), atomic structure, molecular modeling | [Details](docs/modules/chemistry.html)
+- [biology](domain/biology/README.md): Neurons, synapses, cell types, connectomes and their dynamics
 
 ### engine/ — Applications & Training
 - [ml](engine/ml/README.md): Transformer models (Qwen3), StateDictionary, attention, diffusion | [Details](docs/modules/ml.html)
@@ -53,6 +54,7 @@
 - [music](studio/music/README.md): Pattern-based music composition, notes, arrangements | [Details](docs/modules/music.html)
 - [compose](studio/compose/README.md): Audio scene orchestration, generative audio, ML integration | [Details](docs/modules/compose.html)
 - [spatial](studio/spatial/README.md): Spatial audio visualization | [Details](docs/modules/music.html)
+- [bioscience](studio/bioscience/README.md): Biological models combined with the ML engine; connectome loaders (`CellTypeConnectome`) and dataset conversion scripts
 
 ### Standalone
 - [tools](tools/README.md): MCP servers, profiling UI
@@ -108,6 +110,10 @@
 - [Training Loop Examples](docs/internals/training-loop-examples.md): ModelOptimizer patterns
 - [Training Compile Performance](docs/internals/training-compile-performance.md): Measuring and attributing first-step training compile cost, with the defects that once made fine-tuning look infeasible
 - [Sampling Loop Examples](docs/internals/sampling-loop-examples.md): DiffusionSampler patterns
+
+### Simulation
+- [Simulation Loop Examples](docs/internals/simulation-loop-examples.md): SimulationRunner patterns — the loop owner for recurrent dynamical systems, the step contract, boundary inputs, recording, measured dispatch overhead
+- [Simulating a Spiking Neural Population](docs/internals/neural-population-simulation.md): A tested worked example from device-resident state to recorded spikes — the LIF step, synaptic delay through the ring buffer, connectivity, reproducible random drive (`RandomProducer`, `AR_RANDOM`, `CounterRandom`), driving it with SimulationRunner, rate populations, and known limits
 
 ### Testing and Profiling
 - [Test Examples](docs/internals/test-examples.md): TestSuiteBase, @TestDepth usage

@@ -30,6 +30,14 @@ This module exists to:
 - General sparse or tensor operations. Those belong in `compute/` or `base/`, where every
   domain can use them.
 
+## How biological dynamics are expressed and stepped today
+
+The population models this module builds on are in `ar-graph`
+(`LeakyIntegrateAndFirePopulation`, `RatePopulation`), and `SimulationRunner` in `ar-time` steps
+them. [Simulating a Spiking Neural Population](../../docs/internals/neural-population-simulation.md)
+walks through a tested example from state to recorded spikes: the step, synaptic delay,
+connectivity, reproducible Poisson drive, the loop owner, and the known limits.
+
 ## Dependencies
 
 - `ar-chemistry` (and through it `ar-physics`)
