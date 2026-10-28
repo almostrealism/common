@@ -248,6 +248,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		if (m != null) {
 			// A root's memory is its delegated length, which an ordering that gathers
 			// from more positions than it has logical elements makes the larger of the two
+			// TODO(review): max() lets a view of a compact root (CSR: 3 of 9 allocated) extend past its allocated delegated length
 			int extent = m.getDelegate() == null ?
 					Math.max(m.getMemLength(), m.getDelegatedLength()) : m.getMemLength();
 
