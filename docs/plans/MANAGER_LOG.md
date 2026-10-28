@@ -28,7 +28,7 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
-### 2026-10-28 — Measure the self-hosted LM's key/value-cache decode speed, and generate at it
+### 2026-10-28 — Measure the self-hosted LM's key/value-cache decode speed, and generate prose about the platform at that speed
 
 **Category:** Proof of Value (self-hosted LM generation)
 **Branch:** `project/plan-20261028-004435`

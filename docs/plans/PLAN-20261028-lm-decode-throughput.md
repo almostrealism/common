@@ -5,7 +5,7 @@ closed:
 tracker: []
 ---
 
-# Measure the self-hosted LM's key/value-cache decode speed, and generate about the platform at it
+# Measure the self-hosted LM's key/value-cache decode speed, and generate prose about the platform at that speed
 
 **Category:** Proof of Value (self-hosted LM generation)
 **Estimated complexity:** Medium
