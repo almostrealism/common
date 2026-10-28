@@ -1,8 +1,8 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-10-28
 closed:
-tracker: []
+tracker: [d8ad5001-7d94-42c3-8a3b-51277dbcdc86, 9825196c-0c15-44c5-90d6-475aa0d503ff]
 ---
 
 # Measure the self-hosted LM's key/value-cache decode speed, and generate prose about the platform at that speed
@@ -196,6 +196,39 @@ silently.
    very small `seqLen` the gap narrows; the chosen configuration must keep the cache strictly ahead
    on dispatches per byte so the one assertion the test makes is not marginal. The benchmark should
    confirm the margin, not assume it.
+
+## Outcome of the implementation (2026-10-27)
+
+Measured on the Mac Studio Metal node by `CausalLanguageModelDecodeThroughputTest` at the
+documentation-run configuration (random weights; 37-byte prompt + 27 generated = 64 positions; three
+timed decodes after a warm-up; profile attached), stable across three runs:
+
+| | sliding window | key/value cache |
+|---|---|---|
+| bytes/second | ~190–198 | ~50 |
+| kernel invocations/byte (`OperationProfileNode.getRunCount`, new) | 86 | 109 |
+| Metal dispatches/byte | 135 | 181 |
+| Metal commits/byte | 7 | 45 |
+
+Both paths decode the same greedy continuation. **The premise of item 1.4 is false on `master`:** the
+cache path issues *more* kernels, dispatches and commits per byte and is ~4× slower. The commit-cause
+breakdown (`MetalCommandRunner.hostCompleteRequesters`) attributes ~30 host-blocking waits per byte to
+`mtlCopy` inside the decode graph. Asserting "strictly fewer dispatches per byte" would be asserting a
+falsehood, so the benchmark asserts only path agreement and that each path's kernels were profiled,
+and reports everything else. Answers to the open questions: (1) the steady-state sliding-window figure
+is ~190 B/s; the doc's ~100 B/s times the first decode after construction, and 35–45 B/s is dropped;
+(2) the documentation-run configuration fits easily (the test takes well under a minute warm); (3) the
+margin is negative at this configuration.
+
+Follow-ups filed:
+- `d8ad5001-7d94-42c3-8a3b-51277dbcdc86` — remove the host-blocking copies so the cache decode is
+  actually faster; then add the strictly-fewer-kernels assertion.
+- `9825196c-0c15-44c5-90d6-475aa0d503ff` — `decodeModel` hands out caches the attention layer never
+  uses (`reset()` clears and `destroy()` frees the wrong buffers).
+
+Item 4 (sliding key/value cache) was not filed: the `seqLen` cap is not the binding limit while the
+cache path is slower than the sliding window at every length; it becomes relevant once
+`d8ad5001` lands.
 
 ## Estimated Complexity
 

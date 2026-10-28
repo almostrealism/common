@@ -40,9 +40,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -84,19 +81,19 @@ import java.util.stream.IntStream;
  */
 public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestFeatures {
 	/** Byte vocabulary size. */
-	private static final int VOCAB = ByteTokenizer.VOCAB_SIZE;
+	static final int VOCAB = ByteTokenizer.VOCAB_SIZE;
 	/** Positions per window. */
-	private static final int SEQ_LEN = 64;
+	static final int SEQ_LEN = 64;
 	/** Model dimension. */
-	private static final int DIM = 64;
+	static final int DIM = 64;
 	/** Attention heads. */
-	private static final int HEADS = 4;
+	static final int HEADS = 4;
 	/** Transformer blocks. */
-	private static final int DEPTH = 2;
+	static final int DEPTH = 2;
 	/** Feed-forward hidden width (2 x embed). */
-	private static final int FF_DIM = 128;
+	static final int FF_DIM = 128;
 	/** Rotary embedding base. */
-	private static final double ROPE_BASE = 10000.0;
+	static final double ROPE_BASE = 10000.0;
 	/** Seed of the weight initialization. */
 	private static final long SEED = 20260930L;
 	/** Adam learning rate of the first epoch. */
@@ -118,7 +115,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	/** Fraction of the corpus bytes in the training region. */
 	private static final double TRAIN_FRACTION = 0.9;
 	/** The documentation-style prompt the trained model continues. */
-	private static final String GENERATION_PROMPT = "The computation graph is compiled to ";
+	static final String GENERATION_PROMPT = "The computation graph is compiled to ";
 	/**
 	 * A verbatim fragment of the first training page, continued alongside
 	 * {@link #GENERATION_PROMPT} so that the log shows how generation differs between text the
@@ -1133,22 +1130,10 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 			second = generate(generator, promptTokens, length);
 		}
 
-		byte[] bytes = new byte[first.length];
-		IntStream.range(0, first.length).forEach(i -> bytes[i] = (byte) first[i]);
-		String validity;
-		try {
-			StandardCharsets.UTF_8.newDecoder()
-					.onMalformedInput(CodingErrorAction.REPORT)
-					.onUnmappableCharacter(CodingErrorAction.REPORT)
-					.decode(ByteBuffer.wrap(bytes));
-			validity = "valid";
-		} catch (CharacterCodingException e) {
-			validity = "invalid (" + e.getMessage() + ")";
-		}
-
+		ByteTokenizer tokenizer = new ByteTokenizer();
 		log("generationSeconds=" + seconds + " bytesPerSecond=" + (promptTokens.length + length) / seconds +
-				" utf8=" + validity);
-		log("generated=" + prompt + new String(bytes, StandardCharsets.UTF_8));
+				" utf8=" + (tokenizer.isValidUtf8(first) ? "valid" : "invalid"));
+		log("generated=" + prompt + tokenizer.decodeAsInt(first));
 		return new int[][] { first, second };
 	}
 
@@ -1207,7 +1192,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	 * @param length    the number of tokens to generate
 	 * @return the generated tokens
 	 */
-	private int[] generate(AutoregressiveModel<Integer> generator, int[] prompt, int length) {
+	static int[] generate(AutoregressiveModel<Integer> generator, int[] prompt, int length) {
 		generator.reset();
 		generator.setPrompt(IntStream.of(prompt).boxed().toArray(Integer[]::new), prompt.length);
 		IntStream.range(0, prompt.length).forEach(i -> generator.next());
