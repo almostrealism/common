@@ -94,7 +94,7 @@ from burning job budget re-doing finished work.
 | f7d66015 | Self-hosted LM: KV-cache decode **and** batch>1 training | KV-cache single-position decode is **done** (`KeyValueCacheAutoregressiveModel`, `PLAN-20261026-kv-cache-single-position-decode.md`). Split: close the KV-cache half, keep **batch>1 training** (still untried) |
 | 40ee432f | Pass CORPUS_COMMIT to the CI ar-manager image build | The `.github/actions/` CI-lock claim is false — `check-ci-file-lock.sh` already covers it. Only `tools/ci/README.md` is stale; real gap is the missing `--build-arg CORPUS_COMMIT` in `analysis.yaml` |
 | 6361ec61 | Validate per-phase models at submission + resolution diagnostics | Submit-time model rejection is already implemented (`PhaseConfigResolver.validateModelForRunner` wired into `handleSubmit`). Only the per-field provenance diagnostic + `strictCapabilityChecks` remain |
-| 7116efd3 | Add a block-features-instance PreToolUse hook | Cited example (`AutoregressiveModel.java` ~line 122) no longer matches; the ask is still valid (9 live `new …Features(){}` sites, e.g. `MatrixFeatures.getInstance()`) — needs a fresh citation |
+| 7116efd3 | Add a block-features-instance PreToolUse hook | Cited example in `AutoregressiveModel` no longer matches; the ask is still valid (9 live `new …Features(){}` sites, e.g. `MatrixFeatures.getInstance()`) — needs a fresh citation |
 
 ---
 
