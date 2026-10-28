@@ -116,9 +116,10 @@ In scope:
    propagates** a source failure through `then`, `Semaphore.all` /
    composites and `DeferredSemaphore`.
 5. **Documentation.** State how a failed completion propagates in
-   `docs/internals/semaphore-coordination.md` and in
-   `docs/internals/asynchronous-submission.md` (to be created; see open
-   questions).
+   `docs/internals/semaphore-coordination.md`, and in a new
+   `docs/internals/asynchronous-submission.md` or folded into
+   `semaphore-coordination.md` — the home is the subject of an open question
+   below, so this item delivers one of those two, not necessarily a new file.
 
 Out of scope (named as dependencies / open questions, not widened into here):
 
@@ -258,12 +259,15 @@ real native chain to the point of a recorded failure and assert the downstream
   longer relies on it); native dispatch records a dependency or worker failure on
   its latch. Reference classes by name (no line numbers, per `docs/CLAUDE.md`).
 - `docs/internals/asynchronous-submission.md` — this file does **not exist yet**
-  (see open questions). Create it as the home for "how asynchronous submission and
-  its completion/failure model work" (the material currently living only in the
-  `MetalCommandRunner` class javadoc and in `semaphore-coordination.md`), and
-  state the same failure-propagation contract, cross-linked with
-  `semaphore-coordination.md` and `backend-compilation-and-dispatch.md` (whose
-  "Execution" section describes `accept(Object[], Semaphore dependsOn)` chaining).
+  (see open questions). If the open question resolves to create it, it becomes the
+  home for "how asynchronous submission and its completion/failure model work" (the
+  material currently living only in the `MetalCommandRunner` class javadoc and in
+  `semaphore-coordination.md`), stating the same failure-propagation contract,
+  cross-linked with `semaphore-coordination.md` and
+  `backend-compilation-and-dispatch.md` (whose "Execution" section describes
+  `accept(Object[], Semaphore dependsOn)` chaining). If it resolves to fold the
+  material in instead, the contract goes into `semaphore-coordination.md` and no new
+  file is created.
 
 ## Success criteria
 
@@ -310,9 +314,11 @@ A reviewer can confirm the task is done when:
     dependency is a composite with a failing member), going through the real
     composition code per the task's "a unit-level failing Semaphore is fine …
     must still go through the real composition code."
-- `docs/internals/semaphore-coordination.md` and
-  `docs/internals/asynchronous-submission.md` state how a failed completion
-  propagates.
+- The failure-propagation contract is documented in
+  `docs/internals/semaphore-coordination.md`, and — per the resolution of the
+  `asynchronous-submission.md` open question below — either in a new
+  `docs/internals/asynchronous-submission.md` or folded into
+  `semaphore-coordination.md`.
 - `mcp__ar-build-validator__start_validation` is clean (checkstyle, code_policy,
   test_timeouts, duplicate_code), and the targeted tests above pass (the Metal
   tests on a macOS node).
