@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-10-28
-closed:
+closed: 2026-10-28
 tracker: [ef3f7786-a97d-4eaa-bcc6-8fdd942df903]
 ---
 
@@ -10,6 +10,22 @@ tracker: [ef3f7786-a97d-4eaa-bcc6-8fdd942df903]
 **Tracker task:** `ef3f7786-a97d-4eaa-bcc6-8fdd942df903` — *Metal: a command buffer
 the GPU kills (watchdog timeout) must fail its waiters and dependents, not settle
 them as if the work ran* — assigned to the release currently under development.
+
+## Implementation notes (resolution of the open questions)
+
+- **Test seam:** `MetalCommandRunner.errorOf(MTLCommandBuffer)` is the single protected
+  error-status read; `MetalCommandFailureTest` overrides it on a private runner (never the
+  context's shared runner, since the record is sticky).
+- **Prompt detection:** implemented — `complete()` waits for each committed buffer up to its own
+  in queue order and stops at the first that failed.
+- **Bridge:** the bridge had already moved to `onSettled` (signals on failure) by the time this
+  was implemented; the foreign failure is now recorded for the bridged value before the signal.
+- **Sticky record:** kept permanent per runner, lowest failed value wins; not device-wide.
+- **`destroy()`:** records and logs only.
+- **Docs:** `asynchronous-submission.md` exists now; the contract is in both it and
+  `semaphore-coordination.md` (invariant 7 and "A failed command buffer fails loudly").
+- **`NativeExecution`:** coordinator waits use the new non-rethrowing
+  `LatchSemaphore.awaitCountDown()`, so the guard is always released.
 
 ## Motivation
 

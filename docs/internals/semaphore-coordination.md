@@ -43,6 +43,21 @@ These are phrased so a reviewer can check a diff against them.
    host-read memory whose producing semaphore it did not wait on or chain. This is the bug
    class behind "stale zeros" results: a semaphore dropped, read too early, or replaced by
    an unrelated wait.
+7. **A failure reaches every waiter downstream of it.** Work that did not run must never
+   settle as if it had. A failed completion rethrows from `waitFor()`, and so does every
+   completion ordered after it:
+   - `Semaphore.all` and its composites record a member failure (`LatchSemaphore.fail`) and
+     rethrow it; `then` (`DeferredSemaphore`) does not start its work after a failed
+     dependency and rethrows the failure (`SemaphoreCompositionTest`, `SemaphoreThenTest`).
+   - `onComplete(Runnable)` is success-only: its callback does not run after a failure, and the
+     failure goes to the semaphore's waiters, not to the callback. `whenSettled`/`onSettled`
+     run on both paths and leave the failure to the waiters. Ordering that must carry a failure
+     forward therefore uses `then`, `all` or a backend dispatch, never `onComplete`.
+   - A native dispatch records a failure of its dependency, or of a worker, on its latch
+     before the latch reaches zero, so its completion rethrows it and a dispatch chained after
+     it does not run (`NativeExecutionFailureTest`).
+   - A Metal command buffer that completes in error fails every wait for its dispatches and
+     for every later dispatch of the runner (see below).
 
 `ComputeContext.copy(source, destination, dependsOn)` is the template for the model: the
 context chooses both the copy mechanism and its sequencing, and returns the completion.
@@ -99,6 +114,38 @@ Two rules follow:
   bridge depends on needs that thread.** `MetalCommandRunner.complete` therefore waits for
   the GPU on the *calling* thread and uses the confined thread only to commit and drain
   (regression test: `SemaphoreChainBatchingTest#bridgedDependencyOnOwnDispatchCompletes`).
+
+### A failed command buffer fails loudly
+
+A command buffer that Metal reports as failed (a GPU fault, or the watchdog killing a stalled
+buffer) ran none of its dispatches and never signaled its timeline value. Detecting this is the
+job of `MetalCommandRunner`, through its single error-status read (`errorOf`):
+
+- The failure is **recorded on the runner**, keyed by the timeline value of the failed buffer's
+  first dispatch (the lowest such value if several fail), not only reported to the thread that
+  happened to drain the buffer. The existing `commandBufferError=` warning is still logged
+  beside it.
+- `MetalCommandRunner.complete` — and so `MetalSemaphore.waitFor()` — throws a
+  `HardwareException` carrying the Metal error text for **every** wait for a dispatch at or after
+  that value: the draining waiter, a concurrent waiter, one that arrives after the buffer was
+  drained, an earlier dispatch of the same buffer, and every later dispatch of the runner.
+- The record is **sticky**. A later buffer that encoded a GPU wait for a failed value can still
+  complete without an error of its own, because the shared timeline event is released by any
+  higher value that an independent buffer signals; its own status cannot be trusted, so only
+  the record reports it. The cost is that an independent later dispatch, whose work did run, is
+  also reported as failed: a runner that has lost work stays failed.
+- A waiter waits for every committed buffer up to its own **in queue order** and stops at the
+  first that failed, so a dependent of a killed buffer throws without waiting for its own buffer
+  to be killed in turn.
+- Draining is unchanged: a failed buffer's callbacks run and its memory and bridge events are
+  released exactly as for one that executed. `destroy()` records a failure but does not throw.
+- A **bridged** dispatch is released when its foreign dependency settles, whether that work
+  completed or failed, so the GPU never waits for a watchdog kill. If the foreign work failed,
+  its failure is recorded for the bridged dispatch's value before the bridge is signaled, so a
+  wait for the bridged dispatch throws the foreign cause.
+
+`MetalCommandFailureTest` covers these cases, including the native-to-Metal and Metal-to-native
+directions.
 
 When diagnosing a Metal stall, take a thread dump at the GPU timeout and validate on a Mac
 with test-mac group 0 and `MultiOrderFilterPerformanceTest` before declaring a settlement

@@ -30,6 +30,13 @@ That is the whole of the caller's job, for one operation or for a million, for o
 of native, Metal, OpenCL and host operations. `SimulationRunner.run` and
 `OperationListRunner.submit` are written exactly this way.
 
+The single wait is also where a failure arrives. Work that failed anywhere in the chain (a native
+worker that threw, a Metal command buffer the GPU killed, host work that threw) is not settled as
+if it had run: every completion ordered after it rethrows the failure, so the one `waitFor()` at
+the end throws instead of returning a plausible but wrong result. The caller needs no check of its
+own between submissions; the per-backend rules are invariant 7 in
+[semaphore-coordination.md](semaphore-coordination.md).
+
 ## Ordering is the receiver's job
 
 The implementation that receives `dependsOn` decides how to order after it: a Metal dispatch after
@@ -104,7 +111,8 @@ A `Submittable` or backend dispatch that receives `dependsOn`:
 - orders after it without blocking the submitting thread, and without holding a thread for as long
   as the dependency is pending; `dependsOn.onSettled(start)` is the primitive for starting work when
   a dependency it cannot express natively settles;
-- returns its own completion, which must settle only once the work has finished (or failed);
+- returns its own completion, which must settle only once the work has finished (or failed), and
+  must rethrow from `waitFor()` when the work failed or did not run because `dependsOn` failed;
 - applies any bound it needs itself, at the resource that runs out;
 - implements `onSettled` without parking a thread when its completion can be observed, and keeps
   the default (which waits, and so drives a completion that only progresses when waited for) when
