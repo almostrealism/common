@@ -23,6 +23,7 @@ import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -104,6 +105,77 @@ public class MetalCommandRunnerHeldBufferTest extends TestSuiteBase {
 		} finally {
 			foreign.countDown();
 			submitter.join(60000);
+			MetalCommandRunner.enableHostSignaledBridges = bridges;
+		}
+	}
+
+	/**
+	 * A host wait for a dispatch whose buffer is closed but held back for an unsettled bridge is
+	 * a wait for the foreign work, since the buffer is not on the GPU yet. An interrupt must end
+	 * that wait, leaving the caller's interrupt status set, without committing the held buffer.
+	 * Once the foreign work settles the buffer is committed, and a later wait for the same
+	 * dispatch completes normally, so the abandoned waiter did not leave the buffer wedged.
+	 */
+	@Test(timeout = 120000)
+	public void interruptedWaitForHeldBufferReturnsWithoutCommitting() throws InterruptedException {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
+		MetalCommandRunner.enableHostSignaledBridges = true;
+
+		DefaultLatchSemaphore foreign = new DefaultLatchSemaphore((Semaphore) null, 1);
+		AtomicBoolean interruptRestored = new AtomicBoolean();
+		AtomicReference<Throwable> waitFailure = new AtomicReference<>();
+
+		try {
+			runner.submit(null, buffer -> { }, null, null).waitFor();
+			long errors = runner.getErrorCompletionCount();
+			long commits = runner.getCommitCount();
+
+			Semaphore bridged = runner.submit(null, buffer -> { }, foreign, null);
+
+			Thread waiter = new Thread(() -> {
+				try {
+					bridged.waitFor();
+					interruptRestored.set(Thread.currentThread().isInterrupted());
+				} catch (Throwable t) {
+					waitFailure.set(t);
+				}
+			});
+			waiter.start();
+
+			long deadline = System.currentTimeMillis() + 30000;
+			while (waiter.getState() != Thread.State.WAITING && waiter.isAlive()
+					&& System.currentTimeMillis() < deadline) {
+				Thread.sleep(10);
+			}
+
+			// The waiter is still blocked: the buffer it waits for cannot be committed yet
+			Thread.sleep(200);
+			assertTrue("A wait for a held buffer must wait for the foreign work", waiter.isAlive());
+			assertEquals(commits, runner.getCommitCount());
+
+			waiter.interrupt();
+			waiter.join(30000);
+
+			assertFalse("An interrupt must end the wait for a held buffer", waiter.isAlive());
+			assertNull(waitFailure.get());
+			assertTrue("The interrupt status must be restored", interruptRestored.get());
+			assertEquals("The held buffer must not be committed before its bridge is signaled",
+					commits, runner.getCommitCount());
+
+			foreign.countDown();
+			bridged.waitFor();
+
+			assertTrue(runner.getCommitCount() > commits);
+			assertEquals(errors, runner.getErrorCompletionCount());
+		} finally {
+			foreign.countDown();
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
 		}
 	}

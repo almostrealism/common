@@ -57,9 +57,12 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link #MAX_OPEN} bound, or a bridged dispatch that must start a fresh buffer), and is
  * <em>committed</em> to the GPU only once every host-signaled bridge encoded into it has been
  * signaled, in the order the buffers were closed. The GPU therefore never holds a buffer that waits
- * for the host: a caller may submit any number of dispatches ahead of the foreign work they depend
- * on, and the buffers wait on the host side, where no watchdog applies, rather than on the GPU,
- * where a buffer that waits longer than the GPU timeout is killed and its dispatches never run.</p>
+ * for the host: a caller may submit dispatches ahead of the foreign work they depend on, and the
+ * buffers wait on the host side, where no watchdog applies, rather than on the GPU, where a buffer
+ * that waits longer than the GPU timeout is killed and its dispatches never run. Up to
+ * {@link #MAX_HELD} buffers wait in this way; beyond that, a dispatch that would open another
+ * waits on its submitting thread for the foreign work (see {@link #encode}), so foreign work that
+ * the same thread would only start later must be started before that bound is reached.</p>
  *
  * <h2>Timeline signals</h2>
  *
