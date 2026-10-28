@@ -18,15 +18,21 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
 import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.OptionalInt;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -305,6 +311,56 @@ public class CompressedRowTraversalOrderingTests extends TestSuiteBase implement
 			double[] doubled = new double[DENSE.length];
 			for (int i = 0; i < DENSE.length; i++) doubled[i] = 2 * DENSE[i];
 			assertMatches(doubled, cp(matrix).multiply(2.0).evaluate());
+		}
+	}
+
+	/**
+	 * When an ordered collection is folded into an argument aggregate, it occupies only its
+	 * three stored entries rather than its nine logical elements, so the argument after it is
+	 * placed at position 3. Copying into the aggregate moves exactly the stored entries, and
+	 * copying back writes the aggregate's values into those entries without touching the
+	 * argument that follows. This holds on every driver, not only the ones that aggregate
+	 * kernel arguments.
+	 */
+	@Test(timeout = 60000)
+	public void aggregateHoldsOnlyStoredEntries() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(3, OFFSETS, COLUMNS);
+		List<PackedCollection> aggregates = new ArrayList<>();
+
+		try (PackedCollection matrix = new PackedCollection(new TraversalPolicy(order, 3, 3));
+			 PackedCollection dense = PackedCollection.of(7.0, 8.0)) {
+			matrix.fill(1.0, 2.0, 3.0);
+
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), length -> {
+						PackedCollection aggregate = new PackedCollection(length);
+						aggregates.add(aggregate);
+						return aggregate;
+					});
+
+			try {
+				map.get(p(matrix));
+				map.get(p(dense));
+
+				Assert.assertEquals(5, map.getAggregateLength());
+				Assert.assertEquals("[0,3,]", map.describeAggregatePositions());
+				Assert.assertEquals("len=5 [0:3,3:2,]", map.describeAggregate());
+
+				Semaphore copiedIn = Submittable.submit(map.getPrepareOperations(), null);
+				if (copiedIn != null) copiedIn.waitFor();
+				Assert.assertEquals(1, aggregates.size());
+				PackedCollection aggregate = aggregates.get(0);
+				Assert.assertArrayEquals(new double[] { 1.0, 2.0, 3.0, 7.0, 8.0 },
+						aggregate.toArray(0, 5), 0.0);
+
+				aggregate.fill(10.0, 20.0, 30.0, 40.0, 50.0);
+				Semaphore copiedOut = Submittable.submit(map.getPostprocessOperations(null), null);
+				if (copiedOut != null) copiedOut.waitFor();
+				assertMatches(new double[] { 10.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0, 30.0, 0.0 }, matrix);
+				assertMatches(new double[] { 40.0, 50.0 }, dense);
+			} finally {
+				map.destroy();
+			}
 		}
 	}
 

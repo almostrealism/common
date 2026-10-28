@@ -436,7 +436,8 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		for (Replacement r : replacements) {
 			MemoryData root = r.getRoot();
 			int len = root.getDelegatedLength();
-			MemoryData backing = len == root.getMemLength() ? root : new Bytes(len, root, 0);
+			// TODO(review): a root whose delegated length exceeds getMemLength() (e.g. a gather ordering) fails the Bytes view bounds check here
+			MemoryData backing =len == root.getMemLength() ? root : new Bytes(len, root, 0);
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
 			Submittable copyOut = copyOperation(slice, backing);
 
