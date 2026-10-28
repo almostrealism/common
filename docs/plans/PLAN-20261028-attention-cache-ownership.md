@@ -69,8 +69,11 @@ guard that fails on the real bug.
 The single allocation site is `attentionArguments(int heads, int kvHeads, PackedCollection
 rmsAttWeight, PackedCollection wk, PackedCollection wv, PackedCollection wq, PackedCollection wo, int
 seqLen, Producer<PackedCollection> position, double epsilon)` in `AttentionFeatures` — every other
-`attentionArguments`/`attention` overload (including the QK-Norm and MRA variants, and the
-`DiffusionTransformer`/cross-attention callers) delegates to it. Introduce a sibling overload that
+overload of the *cached* attention family funnels through it: the QK-Norm and MRA `attentionArguments`
+variants delegate to it, and the `attention(...)` block builders call it. (The cross-attention family —
+`sequenceAttention`/`sequenceCrossAttention` in `SequenceAttentionFeatures`, which `DiffusionTransformer`
+and the resampling callers use — is a separate, cache-free path that does not go through
+`attentionArguments`; it has no `key_cache`/`value_cache` and this change does not touch it.) Introduce a sibling overload that
 accepts a caller-owned `PackedCollection keyCache` and `PackedCollection valueCache` and binds those
 into the argument map instead of allocating, and make the existing self-allocating overload delegate
 to it (allocate, clear, delegate) so there remains exactly one place that builds the map and exactly
@@ -112,21 +115,41 @@ call is replaced by the cache-owning form. Net: the `keyCaches`/`valueCaches` co
 
 ### 4. A drift guard that fails on the real bug
 
-Add a test (in `CausalLanguageModelTest`, beside `keyValueCacheResetClearsCacheAcrossSequences`,
-or a focused sibling) that would **fail on `master`** — i.e. that exercises the caches the compiled
-model actually reads, not the orphans:
+Add a test (in `CausalLanguageModelTest`, a focused sibling of the existing cache tests) that would
+**fail on `master`** — i.e. that exercises the caches the compiled model actually reads, not the
+orphans. The test must be able to read cache *contents*, and the only existing code path that holds
+the cache objects the compiled decode model binds is the directly-built-`decodeModel` pattern of
+`keyValueCacheLaterPositionsReadEarlierEntries`: it builds `lm.decodeModel(position, keyCaches,
+valueCaches)`, holds those two lists, and compiles. `KeyValueCacheAutoregressiveModel` keeps its own
+`keyCaches`/`valueCaches` private with no accessor, so a *generator-driven* variant of this test
+cannot see the buffers without a new accessor — see the open decision below. Model the drift guard on
+the `decodeModel`-direct pattern, holding the lists itself:
 
-- Decode a sequence of several positions, then read back the per-layer caches the generator exposes
-  and assert the rows written so far are **non-zero** (the bound caches received the decode's keys and
-  values). On `master` the exposed caches are the orphans, which stay zero, so this fails today.
-- Call `reset()` and assert those same bound-cache rows are **zero** afterwards. On `master`
-  `reset()` clears the orphans and leaves the bound caches dirty, so this fails today.
+- Decode a sequence of several positions, then read back the rows written so far in the held
+  `keyCaches`/`valueCaches` and assert they are **non-zero** (the lists `decodeModel` populated are
+  the caches the compiled model reads and writes). On `master` those lists are the orphans, which
+  stay zero, so this fails today. This single assertion is the one that discriminates master from the
+  fix, and it is the structural core of the guard.
+- Then clear those same held buffers (the operation `reset()` performs) and assert a subsequent decode
+  reads them as empty — i.e. that clearing the held buffers actually erases the past the model
+  attends to. On `master`, clearing the orphans leaves the bound caches dirty, so the model still
+  attends to the earlier sequence and this fails.
 
-The test asserts the ownership invariant structurally (which buffer the decode wrote, and that reset
-cleared *that* buffer), so it cannot be satisfied by the accidental causal-mask behaviour that makes
-the current guard pass. It needs no Metal and no trained weights — random weights decode fine for a
-buffer-contents check. Do not weaken or duplicate `keyValueCacheDecodeMatchesFullForward`; it still
-pins correctness and must still pass.
+The test asserts the ownership invariant structurally (which buffer the decode wrote, and that
+clearing *that* buffer erases the past), so it cannot be satisfied by the accidental causal-mask
+behaviour that makes the current generator guard (`keyValueCacheResetClearsCacheAcrossSequences`,
+which only compares decoded bytes) pass. It needs no Metal and no trained weights — random weights
+decode fine for a buffer-contents check. Do not weaken or duplicate
+`keyValueCacheDecodeMatchesFullForward`; it still pins correctness and must still pass.
+
+**Open decision for the approver (test surface vs. a new accessor):** the guard above proves ownership
+at the `decodeModel` level, which is where the bug lives, and needs no production change beyond the
+fix itself. Driving the assertion through the *generator*'s `reset()` instead — the public surface a
+caller actually uses — would additionally pin that `KeyValueCacheAutoregressiveModel.reset()` clears
+the bound caches, but requires giving the generator a (package-private or test-visible) accessor to
+its `keyCaches`/`valueCaches`, which it does not have today. That accessor is a small, defensible
+production addition, but it is a design choice to make deliberately rather than smuggle in; decide
+whether the `decodeModel`-level guard is sufficient or the generator-level one is wanted.
 
 ## Approach
 
@@ -157,8 +180,9 @@ pins correctness and must still pass.
 - `CausalLanguageModel.decodeModel` binds the caches it appends to `keyCaches`/`valueCaches` into the
   attention layers, with no orphan allocation; `KeyValueCacheAutoregressiveModel.reset()` clears, and
   `destroy()` releases, the caches the compiled model actually reads and writes.
-- A new test fails on `master` and passes with the fix, asserting the decode writes the exposed
-  caches and that `reset()` zeroes them — independent of the causal-mask accident.
+- A new test fails on `master` and passes with the fix, asserting that the `keyCaches`/`valueCaches`
+  lists `decodeModel` populates are the buffers the decode writes, and that clearing those buffers
+  erases the attended past — independent of the causal-mask accident.
 - `keyValueCacheDecodeMatchesFullForward`, `keyValueCacheResetClearsCacheAcrossSequences`,
   `slidingWindowGenerationMatchesFullForward` and the asset tests still pass; no test weakened. Build
   validator clean. Javadoc and the training-doc sentence match the code.
