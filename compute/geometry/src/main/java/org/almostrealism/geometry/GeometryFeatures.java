@@ -22,6 +22,7 @@ import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionCosineComputation;
+import org.almostrealism.collect.computations.CollectionHyperbolicTangentComputation;
 import org.almostrealism.collect.computations.CollectionSineComputation;
 
 /**
@@ -108,12 +109,15 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	/**
 	 * Computes the hyperbolic tangent of each element in the input collection.
 	 *
+	 * <p>This method uses {@link CollectionHyperbolicTangentComputation} which implements delta() at
+	 * the Producer level, as {@link #sin} and {@link #cos} do, so the derivative of the hyperbolic
+	 * tangent of a computed argument is the chain rule's {@code (1 - tanh(u)^2) * du}.</p>
+	 *
 	 * @param input the input values
 	 * @return a producer for the hyperbolic tangent of the input
 	 */
 	default CollectionProducer tanh(Producer<PackedCollection> input) {
-		return compute("tanh",
-				shape -> args -> tanh(shape, args[1]), input);
+		return new CollectionHyperbolicTangentComputation(shape(input), input);
 	}
 
 	/**

@@ -16,6 +16,7 @@
 
 package org.almostrealism.layers.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
@@ -36,6 +37,7 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Random;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -260,6 +262,38 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 		double[] actualArray = actualOutput.toArray(0, size);
 		for (int i = 0; i < size; i++) {
 			assertEquals(expectedOutput[i], actualArray[i]);
+		}
+	}
+
+	/**
+	 * The backward pass of the GELU layer delivers to its input the output gradient times the
+	 * derivative of the tanh approximation of GELU, element by element:
+	 * {@code d/dx[0.5 x (1 + tanh(u))] = 0.5 (1 + tanh(u)) + 0.5 x (1 - tanh(u)^2) du/dx} with
+	 * {@code u = sqrt(2 / pi) (x + 0.044715 x^3)}. The hyperbolic tangent of that polynomial was
+	 * differentiated wrongly before it was differentiated at the Producer level.
+	 */
+	@Test(timeout = 120000)
+	public void geluInputGradientMatchesTheDerivative() {
+		TraversalPolicy shape = shape(4, 6);
+		Random random = new Random(11);
+		PackedCollection input = randn(shape, 0.0, 1.5, random).evaluate();
+		PackedCollection outputGradient = new PackedCollection(shape).randnFill(random);
+
+		Model model = new Model(shape);
+		model.add(gelu(shape));
+		try (CompiledModel compiled = model.compile(true, true)) {
+			compiled.forward(input);
+			double[] gradient = compiled.backward(outputGradient).doubleStream().toArray();
+			double[] x = input.doubleStream().toArray();
+			double[] g = outputGradient.doubleStream().toArray();
+
+			double k = Math.sqrt(2.0 / Math.PI);
+			for (int i = 0; i < x.length; i++) {
+				double t = Math.tanh(k * (x[i] + 0.044715 * x[i] * x[i] * x[i]));
+				double derivative = 0.5 * (1.0 + t)
+						+ 0.5 * x[i] * (1.0 - t * t) * k * (1.0 + 3.0 * 0.044715 * x[i] * x[i]);
+				assertEquals("input gradient " + i, g[i] * derivative, gradient[i], 1e-4);
+			}
 		}
 	}
 }

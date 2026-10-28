@@ -1,0 +1,14 @@
+/**
+ * Fixtures for DynamicTanhPrimitiveTest: each layer applies the dynamic_tanh built-in once, so the
+ * primitive is pinned on its own, independently of the attention layers that use it.
+ */
+
+/** One DynamicTanh stage: every element becomes gamma ⊙ tanh(alpha · x) + beta. */
+layer squash(alpha: weight, gamma: weight, beta: weight) {
+    dynamic_tanh(alpha, gamma, beta)
+}
+
+/** dynamic_tanh given two of its three arguments, which the built-in rejects. */
+layer squash_without_biases(alpha: weight, gamma: weight) {
+    dynamic_tanh(alpha, gamma)
+}

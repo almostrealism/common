@@ -59,16 +59,20 @@
  * weight arguments null; the stage then scales by lambda without registering any weight, exactly as
  * before, so the forward pass is unchanged either way.
  *
- * The three forms. The query/key normalization is optional and comes in two families; each form is its
- * own pair of layers, so a reader sees exactly the stages a model runs:
+ * The forms. The query/key normalization is optional and comes in three families; each form is its
+ * own layer, so a reader sees exactly the stages a model runs:
  *
  *   query/key norm   attention map                  differential attention
  *   none             attention_map                  differential_attention
  *   LayerNorm        attention_map_qk_layernorm     differential_attention_qk_layernorm
  *   RMSNorm          attention_map_qk_rmsnorm       differential_attention_qk_rmsnorm
+ *   DynamicTanh      attention_map_qk_dyt           in /pdsl/resampling_transformer.pdsl
  *
  * Both query sections share the query normalization weights and both key sections share the key
- * normalization weights. The normalizations use an epsilon of 1e-6.
+ * normalization weights. LayerNorm and RMSNorm use an epsilon of 1e-6; DynamicTanh computes no
+ * statistic and takes none. The DynamicTanh map has no differential attention layer in this file: its
+ * caller, the learned-resampling transformer layer, lays its five sections out as Q1 K1 V Q2 K2 and
+ * subtracts the second map with a lambda of one, so it combines the two maps itself.
  */
 
 import "/pdsl/sequence_attention.pdsl"
@@ -162,6 +166,37 @@ layer attention_map_qk_rmsnorm(batch: int, seq_len: int, heads: int, head_dim: i
 
     head_rows(batch, seq_len, heads, head_dim, query)
     rmsnorm(q_norm_weight, q_norm_bias, 1e-6)
+    sequence_rope(inv_freq)
+    sdpa_scores(keys, key_mask, head_dim)
+    sdpa_context(values)
+}
+
+/**
+ * One attention map with a DynamicTanh of every query and key row before the rotation:
+ * [batch, seq_len, sections, dim] -> [batch, heads, seq_len, head_dim]. As attention_map, with one
+ * stage added on each of the query and key paths:
+ *
+ *   dynamic_tanh(alpha, weight, bias)         every element of each head_dim row squashed to
+ *                                             weight ⊙ tanh(alpha · x) + bias, with no row statistic;
+ *                                             after head_rows, before sequence_rope
+ */
+layer attention_map_qk_dyt(batch: int, seq_len: int, heads: int, head_dim: int,
+                           query: int, key: int, value: int,
+                           q_norm_alpha: weight, q_norm_weight: weight, q_norm_bias: weight,
+                           k_norm_alpha: weight, k_norm_weight: weight, k_norm_bias: weight,
+                           inv_freq: weight, padding_mask: weight, key_mask: weight) {
+    branch keys {
+        head_rows(batch, seq_len, heads, head_dim, key)
+        dynamic_tanh(k_norm_alpha, k_norm_weight, k_norm_bias)
+        sequence_rope(inv_freq)
+    }
+    branch values {
+        head_rows(batch, seq_len, heads, head_dim, value)
+        scale(padding_mask, 2)
+    }
+
+    head_rows(batch, seq_len, heads, head_dim, query)
+    dynamic_tanh(q_norm_alpha, q_norm_weight, q_norm_bias)
     sequence_rope(inv_freq)
     sdpa_scores(keys, key_mask, head_dim)
     sdpa_context(values)
