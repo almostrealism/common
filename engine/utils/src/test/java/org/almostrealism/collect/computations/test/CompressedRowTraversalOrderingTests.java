@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.MatrixFeatures;
+import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
 import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
@@ -198,6 +199,74 @@ public class CompressedRowTraversalOrderingTests extends TestSuiteBase implement
 			}
 
 			Assert.assertTrue("structure " + i + " should be rejected", rejected);
+		}
+	}
+
+	/**
+	 * The ordering enumerates segments only of its own row length: asking for segments of any
+	 * other length is empty, so a computation falls back to reading through
+	 * {@link CompressedRowTraversalOrdering#indexOf(io.almostrealism.expression.Expression)}.
+	 * The enumeration gives the start and length of each row, including the empty one, and the
+	 * column of each entry.
+	 */
+	@Test(timeout = 30000)
+	public void segmentsOnlyOfRowLength() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(3, OFFSETS, COLUMNS);
+		Assert.assertTrue(order.segments(3).isPresent());
+		Assert.assertSame(order, order.segments(3).get());
+		Assert.assertTrue(order.segments(1).isEmpty());
+		Assert.assertTrue(order.segments(9).isEmpty());
+
+		int[] starts = { 0, 2, 2 };
+		int[] lengths = { 2, 0, 1 };
+		for (int i = 0; i < starts.length; i++) {
+			Assert.assertEquals("start " + i, starts[i], order.start(e(i)).intValue().getAsInt());
+			Assert.assertEquals("length " + i, lengths[i], order.length(e(i)).intValue().getAsInt());
+		}
+
+		for (int p = 0; p < COLUMNS.length; p++) {
+			Assert.assertEquals("column " + p, COLUMNS[p], order.offset(e(p)).intValue().getAsInt());
+		}
+	}
+
+	/**
+	 * The segmented product rejects a non-positive width, a matrix that is not two-dimensional,
+	 * and a matrix whose ordering cannot enumerate its rows; {@code matmul} of a matrix of the
+	 * latter kind therefore takes the dense path and still gives the dense product.
+	 */
+	@Test(timeout = 60000)
+	public void segmentedProductRejectsInvalidOperands() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(3, OFFSETS, COLUMNS);
+
+		try (PackedCollection values = PackedCollection.of(1.0, 2.0, 3.0);
+			 PackedCollection x = PackedCollection.of(1.0, 2.0, 3.0);
+			 PackedCollection repeated = PackedCollection.of(1.0, 2.0)) {
+			PackedCollection sparse = matrix(order, values);
+			PackedCollection flat = new PackedCollection(shape(9), 0, values, 0, order);
+			PackedCollection unenumerable = new PackedCollection(shape(2, 2), 0, repeated, 0,
+					new RepeatTraversalOrdering(2));
+
+			Runnable[] invalid = {
+					() -> new SegmentedWeightedSumComputation("matmul", 0, cp(sparse), cp(x)),
+					() -> new SegmentedWeightedSumComputation("matmul", -1, cp(sparse), cp(x)),
+					() -> new SegmentedWeightedSumComputation("matmul", 1, cp(flat), cp(x)),
+					() -> new SegmentedWeightedSumComputation("matmul", 1, cp(unenumerable), cp(repeated))
+			};
+
+			for (int i = 0; i < invalid.length; i++) {
+				boolean rejected = false;
+				try {
+					invalid[i].run();
+				} catch (IllegalArgumentException expected) {
+					rejected = true;
+				}
+
+				Assert.assertTrue("operands " + i + " should be rejected", rejected);
+			}
+
+			// [[1, 2], [1, 2]] * [1, 2] = [5, 5]
+			assertMatches(new double[] { 5.0, 5.0 },
+					matmul(cp(unenumerable), cp(repeated)).evaluate().reshape(shape(2)));
 		}
 	}
 
