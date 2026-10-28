@@ -409,12 +409,17 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 *
 	 * <p>This is an interruptible blocking call: an interrupted calling thread fails
 	 * rather than returning an output the kernel may not have finished writing (see
-	 * {@link AcceleratedOperation#awaitCompletion(AcceleratedProcessDetails)}).</p>
+	 * {@link AcceleratedOperation#awaitCompletion(AcceleratedProcessDetails)}). The same
+	 * applies to compilation: if the kernel still has to be compiled, an interrupted
+	 * thread does not start the compilation, and the failure carries a
+	 * {@link CompilationInterruptedException} (possibly wrapped in a
+	 * {@link HardwareException} naming this evaluable) with the interrupt status left set
+	 * (see {@link AcceleratedOperation#load()}).</p>
 	 *
 	 * @param args The input arguments for the computation
 	 * @return The evaluated result of type T
 	 * @throws HardwareException if kernel execution fails, or if the calling thread is
-	 *                           interrupted
+	 *                           interrupted before compilation or completion
 	 */
 	@Override
 	public T evaluate(Object... args) {

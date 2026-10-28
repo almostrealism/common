@@ -351,7 +351,15 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * operation to use an {@link Execution} from a previously compiled
 	 * {@link io.almostrealism.code.InstructionSet}.
 	 *
+	 * <p>An interrupted thread does not start a new compilation. If the operation
+	 * has not been compiled yet and the calling thread's interrupt status is set,
+	 * this fails with a {@link CompilationInterruptedException} (passed through
+	 * unwrapped, as is any {@link HardwareException}) and the interrupt status is
+	 * left set. Reusing an operation that is already compiled is not affected.</p>
+	 *
 	 * @return  An {@link Execution} for performing this operation
+	 * @throws CompilationInterruptedException if a compilation is needed and the
+	 *                                         calling thread is interrupted
 	 */
 	public Execution load() {
 		try {
