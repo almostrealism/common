@@ -29,12 +29,16 @@ are now all on `master`:
 
 The KV-cache decode was added precisely because sliding-window decode re-runs a full
 `(seqLen, vocabSize)` forward pass per byte. The Generation section of
-`training-a-language-model.md` states that cost — "one full forward pass per byte, about 35 to 45
-bytes per second" for the miniature model, and "about 100 bytes per second" for the trained
-configuration — and then says only that the key/value-cache decode "avoids it." **It never says by
-how much.** There is no throughput figure for the cache path anywhere in the corpus, and no
-benchmark that measures the two decode paths against each other. The one performance claim the whole
-KV-cache cycle was justified by is, today, unquantified.
+`training-a-language-model.md` states that cost for the trained documentation-run configuration
+(byte vocabulary 256, context 64, embed 64, depth 2; 115,008 parameters) — "one full forward pass
+per byte, about 35 to 45 bytes per second" where the sliding window is introduced, and "about 100
+bytes per second" where `trainOnDocumentation` generates from the reloaded checkpoint — and then
+says only that the key/value-cache decode "avoids it." **The section never says by how much the
+cache improves on either.** There is no throughput figure for the cache path anywhere in the corpus,
+and no benchmark that measures the two decode paths against each other. The one performance claim the
+whole KV-cache cycle was justified by is, today, unquantified. (The two sliding-window figures
+quoted above describe the same configuration yet differ by more than a factor of two; this benchmark
+is also the first chance to reconcile them — see "Open questions".)
 
 This is the measurement that cashes the arc. It is the proof-of-value step the Manager Log has
 telegraphed in its "what comes next" list five cycles running ("measure the throughput improvement
@@ -56,10 +60,17 @@ Modeled directly on the existing `CausalLanguageModelForwardProfileTest` (same
 `OperationProfileNode` + `Hardware.assignProfile` + `MetalCommandRunner.resetBatchSizeCounters()` +
 wall-clock-loop pattern, writing its profile to `results/causal_lm_decode_throughput.xml`). It:
 
-1. Builds one small `CausalLanguageModel` with random weights at a configuration whose `seqLen`
+1. Builds a `CausalLanguageModel` with random weights at a configuration whose `seqLen`
    lets the cache path run a meaningful number of positions (the cache path decodes positions
    `0 .. seqLen - 1`; it deliberately refuses a step at or beyond `seqLen`, so the measured run
-   stays inside the cache's length — see "The seqLen cap" below).
+   stays inside the cache's length — see the `seqLen`-cap note in item 4 below). The **speedup** and
+   per-byte dispatch ratio this reports are properties of the two decode paths and carry across
+   configurations; an **absolute** bytes/second is comparable to the documentation run's figure only
+   when measured at (or close to) that configuration (byte vocabulary 256, context 64, embed 64,
+   depth 2), which random weights permit since throughput does not depend on the weight values. Which
+   configuration to run, and whether it fits the CI time and Metal-node budget, is an open question
+   below — but it must be decided before the benchmark's absolute number can be quoted in the
+   documentation.
 2. Warms up each generator once (first-call compilation is not part of steady-state throughput),
    then measures, over the same prompt and token budget:
    - `SlidingWindowAutoregressiveModel` decode: bytes/second, and the Metal dispatch and
@@ -84,16 +95,27 @@ decode path at (a) temperature 0 (greedy), and (b) a positive temperature with `
 representative nucleus threshold, from the same seed. Log both continuations and whether each is
 valid UTF-8 under a strict decoder (reported, not asserted — a byte-level model may emit a partial
 multi-byte sequence, the same stance `trainOnDocumentation` already takes). This demonstrates that
-the nucleus-sampling path and the cache path compose, and gives the documentation a concrete sample
-to show. It does **not** re-assert generation quality — `trainOnDocumentation` owns that bar and must
-not be weakened or duplicated here.
+the nucleus-sampling path and the cache path compose. It does **not** re-assert generation quality —
+`trainOnDocumentation` owns that bar and must not be weakened or duplicated here. Note that with the
+random-weight benchmark model the continuation shows only that the two sampling modes compose with
+the cache, not readable prose; a *readable* greedy-vs-nucleus sample for the documentation requires
+the trained checkpoint `trainOnDocumentation` reloads, so decide (with the configuration question
+below) whether this demonstration reuses that checkpoint or stays a composition check over random
+weights.
 
 ### 3. Rewrite the Generation section's throughput claim in `training-a-language-model.md`
 
 Replace the unquantified "the single-position key/value-cache decode avoids it" with the measured
-figure and speedup from the benchmark: the cache path's bytes/second for the trained configuration,
-stated next to the sliding window's ~100 bytes/second, and the per-byte dispatch-count reduction that
-explains it (the cache path's cost per byte is one position, not one `seqLen`-wide window). State the
+result from the benchmark. The **speedup** (cache vs sliding window on the same model) and the
+**per-byte dispatch-count reduction** are the portable claims and should be stated as such — they
+explain *why* the cache is faster (its cost per byte is one position, not one `seqLen`-wide window)
+and do not depend on which configuration was benchmarked. An **absolute** cache bytes/second may be
+stated next to the sliding window's figure only if the benchmark was run at a configuration
+comparable to the documentation run's; if it was run at a smaller configuration instead, give the
+speedup and dispatch ratio and label the absolute number as the benchmark model's, not the
+documentation model's — do not present a small-model throughput as the trained configuration's. If
+this rewrite resolves the existing 35–45-vs-100 bytes/second discrepancy (see "Open questions"),
+make the surviving figure consistent across the section rather than leaving both. State the
 `seqLen` cap plainly as the reason long-form generation past the trained context still falls back to
 the sliding window, and cite the new benchmark by class name (never line numbers) as the drift guard
 for the figure, the way the section already cites `keyValueCacheDecodeMatchesFullForward` for
@@ -130,8 +152,9 @@ a tracker task with the benchmark numbers as evidence; do not start it on this b
   XML; it asserts only the robust structural property (cache issues strictly fewer dispatches per
   byte) and reports wall-clock figures without asserting a host-dependent threshold.
 - The Generation section of `training-a-language-model.md` states the measured key/value-cache decode
-  throughput and speedup for the trained configuration, replacing the current unquantified sentence,
-  and cites the new benchmark as the figure's drift guard.
+  speedup and per-byte dispatch reduction, replacing the current unquantified sentence, and cites the
+  new benchmark as the figure's drift guard. Any absolute bytes/second it quotes is attributed to the
+  configuration it was measured at, not silently presented as the trained documentation model's.
 - A logged greedy-vs-nucleus continuation of a documentation prompt through the cache path,
   demonstrating the two sampling modes compose with the cache.
 - No existing test weakened; `keyValueCacheDecodeMatchesFullForward` and
@@ -146,6 +169,33 @@ None outstanding. Every piece this measures is already on `master`:
 `CausalLanguageModel.decodeModel`, the shared `sampleToken` / top-p path, and the
 `CausalLanguageModelForwardProfileTest` harness. It needs a Metal node for comparable numbers (see
 the workstream settings file).
+
+## Open questions
+
+These do not block the work, but the person approving the plan should decide them, and the
+implementer should surface the answers in the benchmark output and the rewrite rather than pick one
+silently.
+
+1. **The 35–45-vs-100 bytes/second discrepancy already in the doc.** The Generation section states
+   two sliding-window throughput figures for the same documentation-run configuration — "about 35 to
+   45 bytes per second" where the sliding window is introduced, and "about 100 bytes per second"
+   where `trainOnDocumentation` generates — that differ by more than 2×. They may reflect different
+   machines, different measurement points, or drift as the corpus changed. The benchmark measures one
+   sliding-window number on one node under controlled conditions; the rewrite should reconcile the
+   two existing figures (keep the measured one, explain or drop the other) instead of adding a third.
+2. **Which configuration to benchmark, given the Metal-node and CI-time budget.** The portable
+   claims (speedup, per-byte dispatch ratio) hold at any configuration, so a small model suffices for
+   them and keeps the test fast. A directly comparable *absolute* bytes/second, however, requires the
+   documentation-run configuration (context 64, 115,008 parameters), which is heavier and may push
+   the test past a comfortable CI budget on the Metal node — note that `trainOnDocumentation` itself
+   is a long test excluded from the pipeline profile. Decide whether the absolute figure is worth the
+   larger configuration, or whether the rewrite should lead with the speedup and dispatch ratio and
+   quote absolute numbers only as the benchmark model's.
+3. **Does the structural dispatch-count assertion hold for very short sequences?** The cache wins per
+   byte because it decodes one position while the sliding window runs a full `seqLen`-wide pass. At
+   very small `seqLen` the gap narrows; the chosen configuration must keep the cache strictly ahead
+   on dispatches per byte so the one assertion the test makes is not marginal. The benchmark should
+   confirm the margin, not assume it.
 
 ## Estimated Complexity
 
