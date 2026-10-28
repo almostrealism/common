@@ -1184,13 +1184,15 @@ public class PackedCollection extends MemoryDataAdapter
 
 	/**
 	 * Returns a shallow clone of this collection with all data copied to new memory.
+	 * What is copied is the backing memory, which the clone reads through the same
+	 * ordering.
 	 *
 	 * @return a new collection with the same shape and values
 	 */
 	@Override
 	public PackedCollection clone() {
 		PackedCollection clone = new PackedCollection(getShape(), getShape().getTraversalAxis());
-		clone.setFrom(0, this, 0, getMemLength());
+		clone.setFrom(0, this, 0, getDelegatedLength());
 		return clone;
 	}
 

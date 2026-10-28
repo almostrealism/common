@@ -246,13 +246,18 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		this.delegateOrder = order;
 
 		if (m != null) {
+			// A root's memory is its delegated length, which an ordering that gathers
+			// from more positions than it has logical elements makes the larger of the two
+			int extent = m.getDelegate() == null ?
+					Math.max(m.getMemLength(), m.getDelegatedLength()) : m.getMemLength();
+
 			if (m == this) {
 				throw new IllegalArgumentException("Circular delegate reference");
 			} else if (m.getDelegateDepth() > 25) {
 				throw new IllegalStateException("Delegation depth exceeded");
-			} else if (offset >= m.getMemLength()) {
+			} else if (offset >= extent) {
 				throw new HardwareException("Delegate offset is out of bounds");
-			} else if (offset + getDelegatedLength() > m.getMemLength()) {
+			} else if (offset + getDelegatedLength() > extent) {
 				throw new HardwareException("MemoryData extends beyond the length of the delegate");
 			}
 		}
@@ -326,7 +331,9 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	 * subclass. See {@link #setMem(double[])} for the routes available to everyone
 	 * else.</p>
 	 *
-	 * <p>The write must stay within the region this {@link MemoryData} owns, as well as
+	 * <p>The write must stay within the region this {@link MemoryData} owns, its
+	 * {@link #getDelegatedLength() delegated length} (which an ordering can make shorter or
+	 * longer than its logical length), as well as
 	 * within the underlying storage it delegates to. The second alone would let a write
 	 * into one entry of a bank continue into the entries that follow it, since those are
 	 * part of the same storage.</p>
@@ -336,7 +343,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	 * @throws IllegalArgumentException if the write extends beyond this memory or its storage
 	 */
 	protected void setMem(int offset, double[] source) {
-		if (offset < 0 || offset + source.length > getMemLength()) {
+		if (offset < 0 || offset + source.length > getDelegatedLength()) {
 			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
 		}
 

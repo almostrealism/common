@@ -24,6 +24,7 @@ import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
 import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.SplitIndexTraversalOrdering;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.util.TestSuiteBase;
@@ -360,6 +361,85 @@ public class CompressedRowTraversalOrderingTests extends TestSuiteBase implement
 				assertMatches(new double[] { 40.0, 50.0 }, dense);
 			} finally {
 				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * A root whose ordering gathers from more memory than it has logical elements (positions
+	 * 5, 3 and 1 of a 6-element backing, read as 3 elements) occupies all of that backing
+	 * memory in the aggregate, and its copy into and out of the aggregate moves all of it.
+	 */
+	@Test(timeout = 60000)
+	public void aggregateHoldsGatheredBackingMemory() {
+		List<PackedCollection> aggregates = new ArrayList<>();
+
+		try (PackedCollection gathered = new PackedCollection(
+					new TraversalPolicy(SplitIndexTraversalOrdering.of(5, 3, 1), 3));
+			 PackedCollection dense = PackedCollection.of(7.0, 8.0)) {
+			Assert.assertEquals(3, gathered.getMemLength());
+			Assert.assertEquals(6, gathered.getDelegatedLength());
+			gathered.fill(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+			assertMatches(new double[] { 6.0, 4.0, 2.0 }, gathered);
+
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), length -> {
+						PackedCollection aggregate = new PackedCollection(length);
+						aggregates.add(aggregate);
+						return aggregate;
+					});
+
+			try {
+				map.get(p(gathered));
+				map.get(p(dense));
+
+				Assert.assertEquals(8, map.getAggregateLength());
+				Assert.assertEquals("len=8 [0:6,6:2,]", map.describeAggregate());
+
+				Semaphore copiedIn = Submittable.submit(map.getPrepareOperations(), null);
+				if (copiedIn != null) copiedIn.waitFor();
+				Assert.assertEquals(1, aggregates.size());
+				PackedCollection aggregate = aggregates.get(0);
+				Assert.assertArrayEquals(new double[] { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0 },
+						aggregate.toArray(0, 8), 0.0);
+
+				aggregate.fill(10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0);
+				Semaphore copiedOut = Submittable.submit(map.getPostprocessOperations(null), null);
+				if (copiedOut != null) copiedOut.waitFor();
+				assertMatches(new double[] { 60.0, 40.0, 20.0 }, gathered);
+				assertMatches(new double[] { 70.0, 80.0 }, dense);
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * A clone of an ordered collection copies the backing memory, whether that is smaller than
+	 * the logical length (a CSR matrix storing 3 of 9 elements) or larger (a gather reading 3
+	 * elements from 6), and reads it through the same ordering; a later write to the original
+	 * does not reach the clone.
+	 */
+	@Test(timeout = 30000)
+	public void orderedCloneCopiesBackingMemory() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(3, OFFSETS, COLUMNS);
+
+		try (PackedCollection matrix = new PackedCollection(new TraversalPolicy(order, 3, 3));
+			 PackedCollection gathered = new PackedCollection(
+					 new TraversalPolicy(SplitIndexTraversalOrdering.of(5, 3, 1), 3))) {
+			matrix.fill(1.0, 2.0, 3.0);
+			gathered.fill(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+
+			try (PackedCollection matrixClone = matrix.clone();
+				 PackedCollection gatheredClone = gathered.clone()) {
+				Assert.assertEquals(3, matrixClone.getDelegatedLength());
+				Assert.assertEquals(6, gatheredClone.getDelegatedLength());
+
+				matrix.fill(9.0);
+				gathered.fill(9.0);
+
+				assertMatches(new double[] { 1.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0 }, matrixClone);
+				assertMatches(new double[] { 6.0, 4.0, 2.0 }, gatheredClone);
 			}
 		}
 	}

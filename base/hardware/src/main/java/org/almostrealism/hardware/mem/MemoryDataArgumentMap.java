@@ -421,8 +421,9 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * here rather than on each dispatch.</p>
 	 *
 	 * <p>A copy moves a root's backing memory, its {@link MemoryData#getDelegatedLength() delegated
-	 * length}; a root whose logical length is larger is copied through a view of exactly that
-	 * memory, because a copy transfers the logical length of its source.</p>
+	 * length}; a root whose logical length differs from it (smaller for a gather ordering,
+	 * larger for a compact or sparse one) is copied through a view of exactly that memory,
+	 * because a copy transfers the logical length of its source.</p>
 	 */
 	private void ensureCopyOperations() {
 		if (copyInOperations != null) {
@@ -436,8 +437,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		for (Replacement r : replacements) {
 			MemoryData root = r.getRoot();
 			int len = root.getDelegatedLength();
-			// TODO(review): a root whose delegated length exceeds getMemLength() (e.g. a gather ordering) fails the Bytes view bounds check here
-			MemoryData backing =len == root.getMemLength() ? root : new Bytes(len, root, 0);
+			MemoryData backing = len == root.getMemLength() ? root : new Bytes(len, root, 0);
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
 			Submittable copyOut = copyOperation(slice, backing);
 
