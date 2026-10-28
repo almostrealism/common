@@ -21,13 +21,14 @@ has it already been done, partly done, or made moot — using grep/read and
 Two things the owner should know before reading:
 
 1. **There is no `docs/GOALS.md` in `common`.** The task asked me to weigh themes
-   against it; it does not exist on master (only `ringsdesktop` has one). The
+   against it; it does not exist on master (a downstream product repository has
+   one, but that is private and out of scope for this public repo). The
    goal-decomposition automation treats this document as optional and "works
    from the release plan alone" when absent, so this is not a blocker — but if
    the owner wants goal-driven planning to anchor on a document, **writing a
    `common` goals doc is itself a worthwhile untracked item** (see Housekeeping).
-   This review instead weighs themes against `ringsdesktop/docs/GOALS.md`, the
-   `docs/plans/` directory (the de-facto 0.77 plan corpus), and the module map.
+   This review instead weighs themes against the `docs/plans/` directory (the
+   de-facto 0.77 plan corpus) and the module map.
 
 2. **The backlog is in good shape.** These ~100 tasks were *not* stale noise.
    Descriptions matched the code closely; only a dozen were already done/obsolete
@@ -93,7 +94,7 @@ from burning job budget re-doing finished work.
 | f7d66015 | Self-hosted LM: KV-cache decode **and** batch>1 training | KV-cache single-position decode is **done** (`KeyValueCacheAutoregressiveModel`, `PLAN-20261026-kv-cache-single-position-decode.md`). Split: close the KV-cache half, keep **batch>1 training** (still untried) |
 | 40ee432f | Pass CORPUS_COMMIT to the CI ar-manager image build | The `.github/actions/` CI-lock claim is false — `check-ci-file-lock.sh` already covers it. Only `tools/ci/README.md` is stale; real gap is the missing `--build-arg CORPUS_COMMIT` in `analysis.yaml` |
 | 6361ec61 | Validate per-phase models at submission + resolution diagnostics | Submit-time model rejection is already implemented (`PhaseConfigResolver.validateModelForRunner` wired into `handleSubmit`). Only the per-field provenance diagnostic + `strictCapabilityChecks` remain |
-| 7116efd3 | Add a block-features-instance PreToolUse hook | Cited example (`AutoregressiveModel.java` ~line 122) no longer matches; the ask is still valid (9 live `new …Features(){}` sites, e.g. `MatrixFeatures.java:545`) — needs a fresh citation |
+| 7116efd3 | Add a block-features-instance PreToolUse hook | Cited example (`AutoregressiveModel.java` ~line 122) no longer matches; the ask is still valid (9 live `new …Features(){}` sites, e.g. `MatrixFeatures.getInstance()`) — needs a fresh citation |
 
 ---
 
@@ -103,13 +104,14 @@ The keepers fall into four macro-families. Each sub-theme table is a candidate
 0.77 line item. Sizes are in agent-jobs: **S** = 1, **M** = 2–4, **L** = 5+ or
 multi-session.
 
-### Family A — Generative audio & music (Rings-facing)
+### Family A — Generative audio & music (downstream-product-facing)
 
-These are the tasks that most directly feed Rings. Rings 0.41 ships native
-Stable Audio 3, sculpting brushes, a composing MCP server, and the pattern
-format; the tasks below extend exactly those surfaces.
+These are the tasks that most directly feed the downstream generative-audio
+product. Its current release ships native Stable Audio 3, inpainting-driven
+editing, a composing MCP server, and the pattern format; the tasks below extend
+exactly those surfaces.
 
-**A1 · Stable Audio 3 generative extensions** *(builds on Rings 0.41's native SA3; SA3 inpainting/continuation is the engine behind "sculpting brushes" — diffusion from a latent/noise blend)*
+**A1 · Stable Audio 3 generative extensions** *(builds on the existing native SA3; SA3 inpainting/continuation is the engine behind interactive editing — diffusion from a latent/noise blend)*
 
 | ID | Title | Verdict | Size | Blocker |
 |---|---|---|---|---|
@@ -209,7 +211,7 @@ clusters.
 | 6c1067eb | Characterize the intermittent divideProduct3 gradient mismatch | keep (weakly evidenced) | S | none |
 | 9a68c5cb | Seedable default random source, reset per test | keep (build on merged `CounterRandom`) | M | none |
 | c7e103c1 | Re-evaluate enabling destination reuse by default | keep (preconditions now met) | S | hardware: Metal |
-| eec292d1 | Required-Scope conversion drops some Scopes | keep (live defect, `Scope.java:838`) | L | design |
+| eec292d1 | Required-Scope conversion drops some Scopes | keep (live defect in `Scope.convertArgumentsToRequiredScopes`) | L | design |
 | bcb229f1 | Multiple-dimension traversal for CollectionEnumerate | keep (downgrade — core limit remains) | M | none |
 | 87b95b81 | Sparse traversal support | keep (not a dup; producing-side half of the completed sparse-traversal-ordering plan) | M | none |
 | ac170ed1 | MemoryDataArgumentMap data-reuse defect | keep (standing architectural risk) | M | none |
@@ -297,23 +299,23 @@ block until #758 lands.
 
 ## 3. Three scope options
 
-### Option 1 — "Rings slice" (small; ~1 release-cycle of agent work)
+### Option 1 — "Product slice" (small; ~1 release-cycle of agent work)
 Close the 13 cleanup items, then ship **Family A only**, plus the handful of S
 compute-correctness fixes the audio path leans on.
 - **In:** A1 (SA3: 63162756, a758bdc9, optionally 33dadf3d), A2 (PDSL mixdown:
   f155a689, 539aca8d, 19335007, 60b1a161, 0e1699d5, 3128bdc2, ac6793a5), A3
   (MIDI: 4d3a372c, f42cb8c1, c964c41c), plus 2aa2c985, 9a68c5cb, 059da123.
-- **Roughly 18–22 tasks.** Everything maps onto a Rings 0.41 surface.
+- **Roughly 18–22 tasks.** Everything maps onto a downstream-product surface.
 - **Leaves out:** all of Family C (agent infra), Family D (connectome), the
   speculative B items, and the model-replication work (A5).
 
-### Option 2 — "Platform + Rings" (medium)
+### Option 2 — "Platform + product" (medium)
 Option 1 **plus Family B** (the compute-core correctness/performance clusters:
 copy-retirement chain, expansion-width cluster, backend fixes, codegen fixes) and
 the **consult/memory + quick-win FlowTree** parts of Family C (C1 + the S/M items
 of C2: e7413703, 212372ab, d3369a72, 52c769c4, ad19859a).
 - **Roughly 45–55 tasks.** This is the "keep improving the engine while serving
-  Rings" release. The B-family clusters have internal ordering but no external
+  the product" release. The B-family clusters have internal ordering but no external
   blockers, so they parallelize well across agents.
 - **Leaves out:** connectome (blocked on #758 anyway), the enforcement/hook
   burn-down (C3), the large speculative items, model replication.
@@ -326,7 +328,7 @@ burn-down (C3), plus model replication (A5).
   one; better treated as "the 0.77 candidate pool" from which 0.78+ also draws.
 
 **Recommendation to frame the decision:** the cleanest single release is
-**Option 2** — it serves Rings 0.41 directly *and* advances the platform, and
+**Option 2** — it serves the downstream product directly *and* advances the platform, and
 nothing in it is blocked on unmerged code or external data. Family D should wait
 for PR #758; Family C's meta-work is a judgment call about whether a *Common*
 release is the right home for it (§4).
@@ -335,8 +337,8 @@ release is the right home for it (§4).
 
 ## 4. Questions only the owner can answer
 
-1. **What is 0.77 *for*?** The backlog splits almost evenly into (A) Rings-facing
-   generative audio, (B) compute-platform engineering, (C) agent/CI
+1. **What is 0.77 *for*?** The backlog splits almost evenly into (A)
+   downstream-product-facing generative audio, (B) compute-platform engineering, (C) agent/CI
    self-improvement, and (D) connectome research. These are four different
    releases. Which one (or two) is 0.77?
 2. **Does agent-development infrastructure (Family C, ~35 tasks) belong in a
