@@ -44,6 +44,13 @@ from a JVM-wide counter, `reserveTargetIndex()`) by reflection and returns it as
 fresh on each run; the slot only supplies a stable class name for JNI linkage. When the pool of
 pre-generated slots is exhausted, `reserveLibraryTarget()` throws `OperatorPoolExhaustedException`.
 
+Slots are never returned to the pool, so a JVM that compiles many distinct kernels — a CI lane
+that runs a whole module's tests in one fork — can use them all up. Every test that runs after
+that fails with the same exception, whatever it tests. The pool is grown in blocks by
+`JavaFileGenerator` (in `org.almostrealism.generated`, the package the slots live in): set its
+`start` to the first unused index and its `count` to the number of new slots, then run it from
+`base/hardware`.
+
 ### Is a library reused across JVM runs?
 
 No. There is no cross-run reuse, and — this is the part investigators get wrong — **there is also no

@@ -16,15 +16,23 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.UnaryCollectionComputation;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.DoubleUnaryOperator;
+import java.util.function.Function;
 
 /**
  * Tests for trigonometric function gradients (sine, cosine, tangent, hyperbolic tangent).
@@ -143,6 +151,111 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 				double expected = (i == j) ? 1.0 - t * t : 0.0;
 				assertEquals(expected, gradient.valueAt(i, j));
 			}
+		}
+	}
+
+	/**
+	 * Tests the chain rule through the hyperbolic tangent of a row-wise scaled argument,
+	 * d/dx[tanh(a * x)] = a * (1 - tanh(a * x)^2), with {@code x} traversed as rows of four features
+	 * and {@code a} a single value, which is the form DynamicTanh normalization takes. Each output
+	 * element depends on its own input element only, so the Jacobian is diagonal. The hyperbolic tangent
+	 * used to be differentiated through the expression-level derivative of its {@code Tangent}
+	 * expression, which embeds the argument's expression in the derivative's kernel; for a traversed,
+	 * composite argument that derivative was wrong (it did not agree with the chain rule on the diagonal,
+	 * and was not zero off it).
+	 */
+	@Test(timeout = 120000)
+	public void hyperbolicTangentChainRuleOverRows() {
+		PackedCollection input = pack(-1.5, -0.5, 0.25, 1.0, 2.0, -2.5, 0.5, 0.0);
+		PackedCollection scale = pack(0.7);
+		CollectionProducer x = cp(input);
+
+		CollectionProducer squashed = tanh(x.reshape(-1, 4).traverse(1).multiply(cp(scale))).reshape(8);
+
+		PackedCollection forward = squashed.get().evaluate();
+		for (int i = 0; i < 8; i++) {
+			assertEquals(Math.tanh(0.7 * input.toDouble(i)), forward.toDouble(i));
+		}
+
+		PackedCollection gradient = squashed.delta(x).get().evaluate().reshape(8, 8);
+		log("d/dx[tanh(a * x)] = ");
+		gradient.traverse().print();
+
+		for (int i = 0; i < 8; i++) {
+			for (int j = 0; j < 8; j++) {
+				double t = Math.tanh(0.7 * input.toDouble(i));
+				double expected = (i == j) ? 0.7 * (1.0 - t * t) : 0.0;
+				assertEquals("d tanh(a x[" + i + "]) / d x[" + j + "]", expected, gradient.valueAt(i, j), 1e-5);
+			}
+		}
+	}
+
+	/**
+	 * Tests that regenerating a unary computation over new children, as process optimization does,
+	 * rebuilds the same function (the same class, carrying the original description) over the new
+	 * input rather than the old one, for each of sine, cosine and the hyperbolic tangent.
+	 */
+	@Test(timeout = 120000)
+	public void unaryComputationsRegenerateOverNewInput() {
+		PackedCollection original = pack(0.1, 0.2, 0.3);
+		PackedCollection replacement = pack(-1.0, 0.5, 2.0);
+
+		assertRegenerated(sin(cp(original)), replacement, Math::sin);
+		assertRegenerated(cos(cp(original)), replacement, Math::cos);
+		assertRegenerated(tanh(cp(original)), replacement, Math::tanh);
+	}
+
+	/**
+	 * Regenerates {@code computation} with {@code replacement} as its input and asserts that the
+	 * regenerated computation is of the same class, keeps the description, and evaluates
+	 * {@code function} element-wise over {@code replacement}.
+	 *
+	 * @param computation the unary computation to regenerate
+	 * @param replacement the new input
+	 * @param function    the element-wise function the computation applies
+	 */
+	private void assertRegenerated(CollectionProducer computation, PackedCollection replacement,
+								   DoubleUnaryOperator function) {
+		UnaryCollectionComputation unary = (UnaryCollectionComputation) computation;
+		Function<List<String>, String> description = args -> "regenerated " + args;
+		unary.setDescription(description);
+
+		List<Process<?, ?>> children = new ArrayList<>(unary.getChildren());
+		children.set(1, (Process<?, ?>) cp(replacement));
+		CollectionProducerParallelProcess regenerated = unary.generate(children);
+
+		assertEquals(unary.getClass(), regenerated.getClass());
+		assertTrue("the description is carried over",
+				((UnaryCollectionComputation) regenerated).getDescription() == description);
+
+		PackedCollection result = ((CollectionProducer) regenerated).evaluate();
+		assertEquals(replacement.getShape().getTotalSize(), result.getShape().getTotalSize());
+		for (int i = 0; i < replacement.getShape().getTotalSize(); i++) {
+			assertEquals(function.applyAsDouble(replacement.toDouble(i)), result.toDouble(i));
+		}
+	}
+
+	/**
+	 * Tests the output-reduced chain rule through the hyperbolic tangent of a row-wise scaled
+	 * argument: the vector-Jacobian product {@code g^T d/dx[tanh(a * x)]}, which is what a layer's
+	 * backward pass forms, must be {@code g * a * (1 - tanh(a * x)^2)} element by element, for the
+	 * same row-traversed argument as {@link #hyperbolicTangentChainRuleOverRows()}.
+	 */
+	@Test(timeout = 120000)
+	public void hyperbolicTangentReducedChainRuleOverRows() {
+		PackedCollection input = pack(-1.5, -0.5, 0.25, 1.0, 2.0, -2.5, 0.5, 0.0);
+		PackedCollection outputGradient = pack(0.3, -1.2, 0.8, 0.5, -0.4, 1.1, -0.9, 0.6);
+		PackedCollection scale = pack(0.7);
+		CollectionProducer x = cp(input);
+
+		CollectionProducer squashed = tanh(x.reshape(-1, 4).traverse(1).multiply(cp(scale))).reshape(8);
+		PackedCollection gradient = squashed.delta(x, ReduceAxis.OUT, cp(outputGradient)).get().evaluate();
+
+		assertTrue("the gradient holds one value per input element", gradient.getShape().getTotalSize() == 8);
+		for (int j = 0; j < 8; j++) {
+			double t = Math.tanh(0.7 * input.toDouble(j));
+			double expected = outputGradient.toDouble(j) * 0.7 * (1.0 - t * t);
+			assertEquals("g^T d tanh(a x) / d x[" + j + "]", expected, gradient.toDouble(j), 1e-5);
 		}
 	}
 

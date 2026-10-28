@@ -181,18 +181,76 @@ public interface IndexSet {
 }
 ```
 
-`TraversalOrdering` extends `IndexSet` and adds index remapping:
+`TraversalOrdering` extends both `IndexSet` and `Signature`, and adds index remapping,
+kernel binding and a physical length:
 
 ```java
-public interface TraversalOrdering extends IndexSet {
-    Expression<Integer> indexOf(Expression<Integer> idx);
-    default TraversalOrdering compose(TraversalOrdering other);
+// Fragment: the members of io.almostrealism.collect.TraversalOrdering
+public interface TraversalOrdering extends IndexSet, Signature {
+    Expression<Integer> indexOf(Expression<Integer> idx);          // logical -> physical
+    default Expression<Boolean> containsIndex(Expression<Integer> index); // indexOf(index) >= 0
+    default TraversalOrdering bind(ArgumentProvider provider);      // returns this by default
+    default String signature();                                     // null by default
+    default int indexOf(int idx);
+    default OptionalInt getLength();                                // physical element count
+    default TraversalOrdering compose(TraversalOrdering other);     // DelegatedTraversalOrdering
 }
 ```
 
 A `TraversalPolicy` can carry a `TraversalOrdering` (accessed via `getOrder()`)
 that remaps indices before they reach the underlying memory. Orderings compose:
-`traverse(ordering)` on a policy combines the new ordering with any existing one.
+`traverse(ordering)` on a policy combines the new ordering with any existing one, and
+`compose` returns a `DelegatedTraversalOrdering` that applies one ordering after the other.
+
+### The contract
+
+- **Absent elements read as zero.** A logical index with no physical position (an absent
+  element of a compact or sparse ordering) maps to a negative position. It is not a member of
+  the ordering in the sense of `containsIndex`, and readers treat it as zero, both on the host
+  and in generated code.
+- **Physical length, not logical length.** `getLength()` is the length of the backing memory
+  the ordering reads from: every non-negative position `indexOf` returns is less than it. It
+  sizes and bound-checks memory; it is not the number of logical indices the ordering maps.
+- **Kernel binding.** An ordering whose `indexOf` is a closed-form function of the index
+  appears in generated code as it is. An ordering that reads a collection (a lookup table, a
+  mask, a pair of index lanes) must have that collection delivered to the kernel as an
+  argument: `bind(ArgumentProvider)` returns the equivalent ordering that reads the kernel
+  argument instead. Binding is idempotent, so a caller may bind whenever it is prepared.
+- **Signatures and kernel reuse.** `signature()` identifies the structure of an ordering so
+  that two computations reading inputs with the same structure may share a compiled kernel.
+  An ordering that reads a collection returns `null`, which prevents reuse: the collection is
+  delivered to the kernel as an argument with no position in the computation's process tree,
+  so a reused kernel would read the collection of the computation it was compiled for.
+
+### Ordered collections as kernel inputs
+
+A `PackedCollection` whose shape carries an ordering may be the input to any kernel:
+element-wise math, reshape, subset, pad and matrix multiplication all read it through the
+ordering (`OrderedCollectionInputTests` in `engine/utils` covers each of these, on the native
+backend and, where the host has one, on Metal). A computation's own output never carries an
+ordering: `CollectionProducerComputationBase` strips the ordering from the output shape, because
+a computation produces a dense output with one element per logical index. Writing only the
+positions an ordering gives would be a scatter or a segmented reduction, not an ordinary
+computation.
+
+### Shipped orderings
+
+| Ordering | Module | Mapping |
+|---|---|---|
+| `DefaultTraversalOrdering` | `base/code` | Identity, optionally with a fixed length |
+| `RepeatTraversalOrdering` | `base/code` | `idx % length`, so the sequence repeats |
+| `IndexExpressionTraversalOrdering` | `base/code` | Positions read from a `TraversableExpression` |
+| `DelegatedTraversalOrdering` | `base/code` | One ordering applied after another (what `compose` returns) |
+| `ExplicitIndexTraversalOrdering` | `compute/algebra` | A lookup table in a `PackedCollection`; `-1` marks an absent element |
+| `IndexMaskTraversalOrdering` | `compute/algebra` | A mask of the logical indices that are present, searched for each lookup |
+| `SplitIndexTraversalOrdering` | `compute/algebra` | A lookup table split into high and low lanes, exact above 2^24 in FP32 |
+
+`IndexMaskTraversalOrdering`'s search has no closed form: it is a chain of comparisons against
+the mask entries, so each lookup costs one comparison per mask entry. It suits small masks,
+not a large sparse structure. `ExplicitIndexTraversalOrdering` stores positions as floating
+point values, which a 32-bit backend holds exactly only up to 2^24; above that, use
+`SplitIndexTraversalOrdering` (see
+[Dynamic Indexing](dynamic-indexing.md#integer-exact-indices-above-224-split-index-ordering)).
 
 ---
 

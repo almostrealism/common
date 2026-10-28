@@ -102,6 +102,26 @@ public class ModelTest implements ModelTestFeatures {
 }
 ```
 
+### GradientRecorder
+
+A `ParameterUpdate` that records each weight's gradient instead of applying it, so a backward pass
+can be checked against `TestFeatures.centralDifferences` with `assertGradientMatches`:
+
+```java
+GradientRecorder recorder = new GradientRecorder();
+Model model = new Model(shape, recorder);
+model.add(layer);
+try (CompiledModel compiled = model.compile(true, true)) {
+    compiled.forward(input);
+    compiled.backward(outputGradient);
+    assertGradientMatches("weight", centralDifferences(weight, 1e-2, objective),
+            recorder.gradientOfSize(weight.getShape().getTotalSize()), 0.01, 1e-3);
+}
+```
+
+`gradientOfSize` identifies a weight by its number of values and fails unless exactly one recorded
+gradient has that size.
+
 ### Utilities
 
 **Chart** - ASCII visualization:
