@@ -16,12 +16,14 @@
 
 package org.almostrealism.time;
 
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.compute.Process;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -50,7 +52,10 @@ import java.util.function.Supplier;
  *       {@link org.almostrealism.hardware.computations.Loop}. Such a loop lets every kernel thread
  *       iterate on its own with no barrier between iterations, which is correct only for
  *       element-local steps; a globally coupled step needs a global synchronization per step.
- *       There is deliberately no way to request several steps per dispatch.</li>
+ *       There is deliberately no way to request several steps per dispatch. The host does not
+ *       provide that synchronization by waiting: every step is submitted chained on the
+ *       completion of the work submitted before it, and the backend that runs it orders it
+ *       after that work (see {@link #run(long)}).</li>
  *   <li><strong>A device-resident step counter</strong> ({@link #getStep()}): a single-element
  *       collection that the system's own graph can consume, for example as time
  *       ({@link #time()}) for a driven input. It is reset by a compiled operation when the
@@ -78,8 +83,9 @@ import java.util.function.Supplier;
  *
  * <h2>Order of one step</h2>
  * <ol>
- *   <li>Boundary listeners that are due are called with the index of the step about to run.</li>
- *   <li>Boundary inputs that are due are dispatched.</li>
+ *   <li>Boundary listeners that are due are called with the index of the step about to run,
+ *       once every operation submitted before them has completed.</li>
+ *   <li>Boundary inputs that are due are submitted.</li>
  *   <li>The compiled step runs (the system's tick, then the counter advance).</li>
  *   <li>Recordings that are due write one sample.</li>
  * </ol>
@@ -327,6 +333,12 @@ public class SimulationRunner extends TemporalRunner {
 	 * writing into a collection that a boundary input folds into the state) is attached. A
 	 * listener must not read the system's state back from the device on every call.
 	 *
+	 * <p>The listener is submitted in the loop as a host operation (see
+	 * {@link Submittable#of(Runnable)}): it runs once everything submitted before it has
+	 * completed, so the host waits only at the steps where a listener is due. Work that should
+	 * stay on the device, such as folding an external collection into the state, belongs in an
+	 * {@link #addInput(int, Supplier) input}, which is chained like the step itself.</p>
+	 *
 	 * @param interval the number of steps between calls; must be positive
 	 * @param listener the listener
 	 * @throws IllegalArgumentException if {@code interval} is not positive
@@ -358,6 +370,19 @@ public class SimulationRunner extends TemporalRunner {
 	 * dispatches compiled operations and performs {@code long} arithmetic for scheduling, and
 	 * nothing in it evaluates a producer or reads device memory.
 	 *
+	 * <p>Everything the loop issues is a {@link Submittable}, submitted in the order of the loop
+	 * with the completion of the work submitted before it: due listeners, due inputs, the step
+	 * and due recordings. The loop itself never decides when to wait; each submission is ordered
+	 * after its dependency by whatever runs it. A compiled operation is submitted to its
+	 * backend, which chains it without a host wait (a backend that batches dispatches, such as
+	 * Metal, accumulates many steps into one command buffer). A boundary listener is host code,
+	 * so it takes part as a host submission (see {@link Submittable#of(Runnable)}), which waits
+	 * for the work ahead of it, runs, and leaves nothing in flight: that is the one place in a
+	 * step where the host waits, and only at steps where a listener is due. The run ends with a
+	 * single wait for the last completion, so the state may be read when this method returns.
+	 * If a submission fails, the work already submitted is waited for before the failure
+	 * propagates.</p>
+	 *
 	 * @param steps the number of steps to run; must not be negative
 	 * @throws IllegalArgumentException if {@code steps} is negative
 	 * @throws IllegalStateException    if a recording would exceed its capacity
@@ -372,24 +397,36 @@ public class SimulationRunner extends TemporalRunner {
 		}
 
 		runSetupIfPending();
-		Runnable compiledStep = super.getContinue();
+		Submittable compiledStep = Submittable.of(super.getContinue());
+		Semaphore pending = null;
 
-		for (long i = 0; i < steps; i++) {
-			for (Scheduled<LongConsumer> listener : listeners) {
-				if (listener.isDue(stepCount)) listener.getAction().accept(stepCount);
+		try {
+			for (long i = 0; i < steps; i++) {
+				long index = stepCount;
+
+				for (Scheduled<LongConsumer> listener : listeners) {
+					if (listener.isDue(index)) {
+						pending = Submittable.of(() -> listener.getAction().accept(index)).submit(pending);
+					}
+				}
+
+				for (Scheduled<Runnable> input : inputs) {
+					if (input.isDue(index)) pending = Submittable.of(input.getAction()).submit(pending);
+				}
+
+				pending = compiledStep.submit(pending);
+				stepCount++;
+
+				for (Recording recording : recordings) {
+					if (recording.isDue(stepCount)) pending = recording.write(pending);
+				}
 			}
-
-			for (Scheduled<Runnable> input : inputs) {
-				if (input.isDue(stepCount)) input.getAction().run();
-			}
-
-			compiledStep.run();
-			stepCount++;
-
-			for (Recording recording : recordings) {
-				if (recording.isDue(stepCount)) recording.write();
-			}
+		} catch (RuntimeException | Error e) {
+			if (pending != null) pending.waitForSettled(e);
+			throw e;
 		}
+
+		if (pending != null) pending.waitFor();
 	}
 
 	/**
@@ -637,10 +674,16 @@ public class SimulationRunner extends TemporalRunner {
 			}
 		}
 
-		/** Writes one sample. */
-		protected void write() {
-			write.run();
+		/**
+		 * Submits the write of one sample, ordered after {@code dependsOn}.
+		 *
+		 * @param dependsOn the completion the write must be ordered after, or {@code null}
+		 * @return the completion of the write, or {@code null} if it has already completed
+		 */
+		protected Semaphore write(Semaphore dependsOn) {
+			Semaphore written = Submittable.of(write).submit(dependsOn);
 			sampleCount++;
+			return written;
 		}
 
 		/** Returns the sample index to zero. */

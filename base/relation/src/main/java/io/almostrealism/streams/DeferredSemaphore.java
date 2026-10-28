@@ -18,6 +18,7 @@ package io.almostrealism.streams;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -25,7 +26,9 @@ import java.util.function.Supplier;
  * completed, started without holding up the thread that asked for it.
  *
  * <p>{@link Semaphore#then(Supplier)} returns one of these at once. When the dependency
- * completes, the work runs on {@link Semaphore#CALLBACK_EXECUTOR} and yields the
+ * completes (see {@link Semaphore#onSettled(Runnable)}, which holds no thread for a
+ * dependency that is told of its own settlement), the work runs on
+ * {@link Semaphore#CALLBACK_EXECUTOR} and yields the
  * semaphore of whatever it started (or {@code null} if it finished synchronously);
  * {@link #waitFor()} waits for the work to start and then for that semaphore. A
  * failure of the dependency or of the work is not swallowed: it is rethrown from
@@ -51,12 +54,55 @@ public class DeferredSemaphore implements Semaphore {
 	DeferredSemaphore(Semaphore dependsOn, Supplier<Semaphore> work) {
 		this.started = new CompletableFuture<>();
 
-		CALLBACK_EXECUTOR.execute(() -> {
+		dependsOn.onSettled(() -> {
 			try {
 				dependsOn.waitFor();
 				started.complete(work.get());
 			} catch (Throwable t) {
 				started.completeExceptionally(t);
+			}
+		});
+	}
+
+	/**
+	 * Runs {@code r} once the work has settled, without holding a thread meanwhile: the
+	 * callback is attached to the work's start and then to the completion of what it started,
+	 * so a chain of deferred work is a chain of registrations. It runs at once, on a callback
+	 * thread, for work that has already settled or that finished synchronously.
+	 *
+	 * @param r the callback to invoke once the work has settled
+	 */
+	@Override
+	public void onSettled(Runnable r) {
+		afterStart(r, completion -> completion.onSettled(r));
+	}
+
+	/**
+	 * Runs {@code r} once the work has settled, as {@link #onSettled(Runnable)} does, but
+	 * attached passively to the completion of what the work started (see
+	 * {@link Semaphore#whenSettled(Runnable)}), so registering it never drives that completion.
+	 *
+	 * @param r the callback to invoke once the work has settled
+	 */
+	@Override
+	public void whenSettled(Runnable r) {
+		afterStart(r, completion -> completion.whenSettled(r));
+	}
+
+	/**
+	 * Once the work has been started (or has failed to start), attaches {@code r} to the
+	 * completion of what it started with {@code attach}, or runs it on a callback thread when
+	 * there is nothing left to settle.
+	 *
+	 * @param r      the callback to invoke once the work has settled
+	 * @param attach registers {@code r} with the completion of the started work
+	 */
+	private void afterStart(Runnable r, Consumer<Semaphore> attach) {
+		started.whenComplete((completion, failure) -> {
+			if (completion == null) {
+				CALLBACK_EXECUTOR.execute(r);
+			} else {
+				attach.accept(completion);
 			}
 		});
 	}

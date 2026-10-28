@@ -38,7 +38,6 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiFunction;
 
 /**
  * Abstract base class for computations that aggregate elements of a {@link PackedCollection}
@@ -96,10 +95,18 @@ import java.util.function.BiFunction;
  *
  *     public CollectionSumComputation(Producer<PackedCollection> input) {
  *         super("sum", outputShape, elementCount,
- *             (args, index) -> new DoubleConstant(0.0),  // Initial value
- *             (accumulator, element) -> accumulator.add(element),  // Sum operation
  *             true,  // Enable loop replacement
  *             input);
+ *     }
+ *
+ *     @Override
+ *     protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+ *         return new DoubleConstant(0.0);  // Initial value
+ *     }
+ *
+ *     @Override
+ *     protected Expression<?> combine(Expression<?> accumulator, Expression<?> element) {
+ *         return accumulator.add(element);  // Sum operation
  *     }
  * }
  * }</pre>
@@ -183,12 +190,6 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 	public static boolean enableLogging = false;
 
 	/**
-	 * The aggregation expression that combines the accumulator with each new element.
-	 * This binary function is applied repeatedly: accumulator = expression(accumulator, element).
-	 */
-	private final BiFunction<Expression, Expression, Expression> expression;
-
-	/**
 	 * Flag indicating whether to replace the iterative loop with a direct memory access pattern.
 	 * When true and applicable, uses unique offset calculation for improved performance.
 	 * Fixed at construction because it participates in {@link #signature()}.
@@ -216,30 +217,22 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 	/**
 	 * Constructs an aggregated producer computation with specified aggregation parameters.
 	 *
-	 * <p>This constructor sets up the aggregation operation by defining:</p>
-	 * <ul>
-	 *   <li>The output shape (typically reduced from input size)</li>
-	 *   <li>The number of elements to aggregate per output element</li>
-	 *   <li>The initial accumulator value</li>
-	 *   <li>The aggregation expression applied iteratively</li>
-	 * </ul>
+	 * <p>The initial accumulator value and the operation that combines it with each element
+	 * are defined by the concrete subclass, through
+	 * {@link #getInitialValue(TraversableExpression[], Expression)} and
+	 * {@link #combine(Expression, Expression)}.</p>
 	 *
 	 * @param name The operation identifier (e.g., "sum", "max", "product")
 	 * @param shape The {@link TraversalPolicy} defining the output shape (typically smaller than input)
 	 * @param count The number of input elements to aggregate per output element
-	 * @param initial Function providing the initial accumulator value (e.g., 0.0 for sum, -infinity for max)
-	 * @param expression Binary function combining accumulator with each element:
-	 *                   {@code (accumulator, element) -> newAccumulator}
 	 * @param arguments The input {@link Producer}s providing data to aggregate
 	 *
 	 * @see CollectionSumComputation
 	 * @see CollectionMaxComputation
 	 */
 	protected AggregatedProducerComputation(String name, TraversalPolicy shape, int count,
-										 BiFunction<TraversableExpression[], Expression, Expression> initial,
-										 BiFunction<Expression, Expression, Expression> expression,
 										 Producer<PackedCollection>... arguments) {
-		this(name, shape, count, initial, expression, false, arguments);
+		this(name, shape, count, false, arguments);
 	}
 
 	/**
@@ -249,20 +242,14 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 	 * @param name The operation identifier (e.g., "sum", "max", "product")
 	 * @param shape The {@link TraversalPolicy} defining the output shape (typically smaller than input)
 	 * @param count The number of input elements to aggregate per output element
-	 * @param initial Function providing the initial accumulator value (e.g., 0.0 for sum, -infinity for max)
-	 * @param expression Binary function combining accumulator with each element:
-	 *                   {@code (accumulator, element) -> newAccumulator}
 	 * @param replaceLoop {@code true} to replace the iterative aggregation loop with
 	 *                    a direct memory access pattern when applicable
 	 * @param arguments The input {@link Producer}s providing data to aggregate
 	 */
 	protected AggregatedProducerComputation(String name, TraversalPolicy shape, int count,
-										 BiFunction<TraversableExpression[], Expression, Expression> initial,
-										 BiFunction<Expression, Expression, Expression> expression,
 										 boolean replaceLoop,
 										 Producer<PackedCollection>... arguments) {
-		super(name, shape, count, initial, arguments);
-		this.expression = expression;
+		super(name, shape, count, arguments);
 		this.count = count;
 		this.replaceLoop = replaceLoop;
 
@@ -275,6 +262,16 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 		// Refresh the signature captured before the aggregation state was assigned
 		init();
 	}
+
+	/**
+	 * Combines the accumulator with one more element of the group being aggregated. The
+	 * accumulator starts at {@link #getInitialValue(TraversableExpression[], Expression)}.
+	 *
+	 * @param accumulator the value aggregated so far
+	 * @param element     the next element of the group
+	 * @return the value aggregated after including the element
+	 */
+	protected abstract Expression<?> combine(Expression<?> accumulator, Expression<?> element);
 
 	/**
 	 * Returns whether loop replacement optimization is enabled for this aggregation.
@@ -439,12 +436,12 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 
 			TraversableExpression[] args = getTraversableArguments(index);
 
-			Expression value = initial.apply(args, e(0));
+			Expression value = getInitialValue(args, e(0));
 			if (enableLogging)
 				log("Generating values for aggregation " + getShape().toStringDetail());
 
 			for (int i = 0; i < count; i++) {
-				value = expression.apply(value, args[1].getValueAt(index.multiply(count).add(e(i))));
+				value = combine(value, args[1].getValueAt(index.multiply(count).add(e(i))));
 
 				if (enableLogging)
 					log("Added value " + i + "/" + count + " (" + value.countNodes() + " total nodes)");
@@ -472,7 +469,7 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 
 		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
 		Expression currentValue = var.reference(k.multiply(var.length()));
-		return expression.apply(currentValue, args[1].getValueAt(globalIndex.multiply(count).add(localIndex)));
+		return combine(currentValue, args[1].getValueAt(globalIndex.multiply(count).add(localIndex)));
 	}
 
 	@Override
@@ -527,16 +524,13 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 			return new CollectionSumComputation(shape(delta), delta)
 					.reshape(getShape().append(shape(target)));
 		} else {
-			delta = super.deltaMatrix(target);
-			if (delta instanceof ConstantRepeatedDeltaComputation) {
-				TraversableDeltaComputation traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
-						args -> CollectionExpression.create(getShape(), this::getValueAt), target,
-						getInputs().stream().skip(1).toArray(Producer[]::new));
-				traversable.addDependentLifecycle(this);
-				((ConstantRepeatedDeltaComputation) delta).setFallback(traversable);
-			}
-
-			return delta;
+			ConstantRepeatedDeltaComputation repeated = new ConstantRepeatedDeltaComputation(this, target);
+			TraversableDeltaComputation traversable = TraversableDeltaComputation.create("delta", getShape(), shape(target),
+					args -> CollectionExpression.create(getShape(), this::getValueAt), target,
+					getInputs().stream().skip(1).toArray(Producer[]::new));
+			traversable.addDependentLifecycle(this);
+			repeated.setFallback(traversable);
+			return repeated;
 		}
 	}
 
@@ -559,10 +553,6 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 	@Override
 	public String signature() {
 		if (!isSignatureSupported()) return null;
-
-		// Superclass construction requests the signature before the functions
-		// are assigned; the constructor refreshes it once they are
-		if (expression == null || initial == null) return null;
 
 		String signature = super.signature();
 		if (signature == null) return null;

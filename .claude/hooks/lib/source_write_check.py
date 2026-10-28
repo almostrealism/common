@@ -42,7 +42,8 @@ STATE_DIR = os.path.join(tempfile.gettempdir(), "ar-source-write-check")
 #: They filter by path themselves, so this list does not repeat their rules.
 REPLAYED_GUARDS = ("scan-producer-violations.sh",
                    "warn-assertion-free-test.sh",
-                   "warn-line-number-refs.sh")
+                   "warn-line-number-refs.sh",
+                   "block-async-bypass.sh")
 
 #: Most files to examine in one pass. A command that rewrites half the tree is
 #: not what this exists to catch, and running every guard over all of it would

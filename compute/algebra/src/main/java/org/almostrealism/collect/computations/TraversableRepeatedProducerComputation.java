@@ -26,7 +26,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.function.BiFunction;
 
 /**
  * A {@link ConstantRepeatedProducerComputation} that is also a {@link TraversableExpression},
@@ -82,16 +81,12 @@ public abstract class TraversableRepeatedProducerComputation
 	 * @param shape     the {@link TraversalPolicy} of the output
 	 * @param count     the number of iterations, which may trigger isolation as
 	 *                  {@link #isolationCountThreshold} describes
-	 * @param initial   the value of each output element before the first iteration, given
-	 *                  the traversable arguments and the index of the element, or null if
-	 *                  the subclass initializes its output itself
 	 * @param arguments the inputs of the computation
 	 */
 	@SafeVarargs
 	protected TraversableRepeatedProducerComputation(String name, TraversalPolicy shape, int count,
-													 BiFunction<TraversableExpression[], Expression, Expression> initial,
 													 Producer<PackedCollection>... arguments) {
-		super(name, shape, count, initial, null, arguments);
+		super(name, shape, count, arguments);
 		this.count = count;
 	}
 

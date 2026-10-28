@@ -17,12 +17,14 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.Algebraic;
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumExpression;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.DiagonalMatrixComputation;
 import org.almostrealism.algebra.computations.IdentityMatrixComputation;
+import org.almostrealism.algebra.computations.SegmentedWeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -224,6 +226,9 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 * The implementation includes several optimizations:
 	 * <ul>
 	 *   <li>Zero matrix detection -> returns zero result</li>
+	 *   <li>A matrix whose {@link TraversalOrdering} {@link TraversalOrdering#segments(int)
+	 *       enumerates its rows} (a sparse matrix) -> {@link SegmentedWeightedSumComputation},
+	 *       which visits only the stored entries</li>
 	 *   <li>Identity matrix detection -> returns input</li>
 	 *   <li>Diagonal matrix detection -> optimized scalar multiplication</li>
 	 *   <li>Vector-specific path -> uses element-wise multiply + sum instead of full matmul</li>
@@ -264,7 +269,14 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			return zeros(shape(mShape.length(0), vShape.length(1)));
 		}
 
-		if (mShape.getTotalSizeLong() == 1 || vShape.getTotalSizeLong() == 1) {
+		// A matrix whose ordering enumerates its rows (a sparse matrix) is multiplied by visiting
+		// only the entries it stores, never forming a logical index of the matrix
+		TraversalOrdering mOrder = mShape.getOrder();
+		if (mOrder != null && mShape.getDimensions() == 2 && mOrder.segments(mShape.length(1)).isPresent()
+				&& vShape.getDimensions() <= 2 && vShape.length(0) == mShape.length(1)) {
+			return new SegmentedWeightedSumComputation("matmul",
+					vShape.getDimensions() == 1 ? 1 : vShape.length(1), matrix, vector);
+		} else if (mShape.getTotalSizeLong() == 1 || vShape.getTotalSizeLong() == 1) {
 			return multiply(c(matrix), c(vector));
 		} else if (mShape.getDimensions() != 2) {
 			throw new IllegalArgumentException();

@@ -130,6 +130,16 @@ specification. Fix the production code to make the original test pass.
   training loops, PackedCollection is not a Java array, StateDictionary for
   weights, etc.)?
 - Is the level of abstraction appropriate?
+- **An abstraction break is a defect, not a design question.** Flag and fix any
+  change that lets calling code depend on which implementation sits behind an
+  interface: a method on an interface that asks about the mechanism behind it
+  (for example a `Semaphore` method reporting whether it is "ordered on the
+  device"), a second variant of an interface method whose meaning depends on the
+  backend, or a caller that waits, caps how much work it has in flight, or
+  branches on the type of a completion. These are workarounds for a broken
+  implementation; the review outcome is to find that implementation and fix it
+  (see docs/internals/asynchronous-submission.md), not to approve the workaround
+  and record the concern as a question for later.
 - Is there code duplication that should be extracted into a shared method?
 - **Method placement — OOP fundamentals**: Every method must live on the class
   it naturally belongs to. This is the most basic principle of object-oriented
