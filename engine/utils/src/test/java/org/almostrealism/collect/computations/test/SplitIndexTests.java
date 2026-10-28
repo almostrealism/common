@@ -305,6 +305,22 @@ public class SplitIndexTests extends TestSuiteBase {
 	}
 
 	/**
+	 * The host accessors return the stored positions: {@code getPositions} every one in order,
+	 * {@code getPosition} only the one asked for, including a position above the lane boundary,
+	 * a negative (absent) one, and the first and last entries.
+	 */
+	@Test(timeout = 60000)
+	public void positionsReadBackFromHost() {
+		int[] positions = { 3, -1, SINGLE_PRECISION_LIMIT + 1, 0, SplitIndexTraversalOrdering.BASE };
+		SplitIndexTraversalOrdering order = SplitIndexTraversalOrdering.of(positions);
+
+		Assert.assertArrayEquals(positions, order.getPositions());
+		for (int i = 0; i < positions.length; i++) {
+			Assert.assertEquals(positions[i], order.getPosition(i));
+		}
+	}
+
+	/**
 	 * The gather {@code c(shape, collection, index)} respects the ordering of its collection
 	 * argument: indexing a view that reads {@code data} at positions {@code [5, 3, 1]} with
 	 * {@code [2, 0]} selects {@code data[1]} and {@code data[5]}.
