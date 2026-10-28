@@ -156,14 +156,7 @@ public interface JobFactory {
 
             while (!end) {
                 data = data.substring(index + ENTRY_SEPARATOR.length());
-                index = data.indexOf(ENTRY_SEPARATOR);
-
-                // index < 0 means this is the last entry; re-searching would
-                // restart from the beginning and never terminate.
-                while (index >= 0 && (data.charAt(index + ENTRY_SEPARATOR.length()) == '/'
-                        || index > 0 && data.charAt(index - 1) == '\\')) {
-                    index = data.indexOf(ENTRY_SEPARATOR, index + 1);
-                }
+                index = nextEntrySeparator(data, data.indexOf(ENTRY_SEPARATOR));
 
                 String s;
 
@@ -194,6 +187,39 @@ public interface JobFactory {
         }
 
         return j;
+    }
+
+    /**
+     * Advances a located {@link #ENTRY_SEPARATOR} index past every occurrence that
+     * falls inside an entry's value, returning the index of the next separator that
+     * genuinely divides two entries.
+     *
+     * <p>{@link #encode()} may emit an {@code ENTRY_SEPARATOR} within a value; such an
+     * occurrence is marked either by a {@code /} immediately after the separator or by a
+     * {@code \} immediately before it, and does not divide two entries. Starting from
+     * {@code index} — a separator position obtained with {@link String#indexOf(String, int)}
+     * — the scan skips every such escaped occurrence and stops at the first separator that
+     * divides two entries, or when none remains.</p>
+     *
+     * <p>The guard on {@code index} is what keeps the scan terminating: once the search
+     * reports no further separator ({@code index < 0}), re-searching would restart from the
+     * beginning of {@code data} and spin forever on a final entry whose second character is
+     * {@code /}. A negative {@code index} is therefore returned unchanged, signalling that
+     * the remainder of {@code data} is a single trailing entry.</p>
+     *
+     * @param data  the encoded string being scanned
+     * @param index the position of a located {@code ENTRY_SEPARATOR}, or a negative value
+     *              when none was found
+     * @return the position of the next separator that divides two entries, or a negative
+     *         value when the remainder of {@code data} is a single trailing entry
+     */
+    static int nextEntrySeparator(String data, int index) {
+        while (index >= 0 && (data.charAt(index + ENTRY_SEPARATOR.length()) == '/'
+                || index > 0 && data.charAt(index - 1) == '\\')) {
+            index = data.indexOf(ENTRY_SEPARATOR, index + 1);
+        }
+
+        return index;
     }
 
     /**
