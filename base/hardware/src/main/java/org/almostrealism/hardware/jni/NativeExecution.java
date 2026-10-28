@@ -189,10 +189,10 @@ public class NativeExecution extends HardwareOperator {
 	 * Executor for dispatch coordination: each {@link #accept(Object[], Semaphore)} without a
 	 * dependency runs its worker submission and completion bookkeeping on one of these threads so
 	 * the submitting thread never blocks (a dispatch with a dependency is coordinated on the
-	 * thread its dependency's settlement starts, see {@link Semaphore#onSettled(Runnable)}). Kept separate from the fixed-size {@link #executor}
-	 * worker pool because coordinators block on their latch &mdash; running them on the worker
-	 * pool could occupy every thread with waiting coordinators and starve the workers they wait
-	 * for.
+	 * thread its dependency's settlement starts, see {@link Semaphore#onSettled(Runnable)}). Kept
+	 * separate from the fixed-size {@link #executor} worker pool because coordinators block on
+	 * their latch &mdash; running them on the worker pool could occupy every thread with waiting
+	 * coordinators and starve the workers they wait for.
 	 */
 	private static ExecutorService dispatchExecutor = Executors.newCachedThreadPool();
 
