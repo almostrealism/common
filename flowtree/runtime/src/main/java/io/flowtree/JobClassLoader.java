@@ -56,13 +56,7 @@ class JobClassLoader {
 
             while (!end) {
                 data = data.substring(index + JobFactory.ENTRY_SEPARATOR.length());
-                index = data.indexOf(JobFactory.ENTRY_SEPARATOR);
-
-                while (data.charAt(index + JobFactory.ENTRY_SEPARATOR.length()) == '/'
-                        || index > 0 && data.charAt(index - 1) == '\\') {
-                    index = data.indexOf(JobFactory.ENTRY_SEPARATOR,
-                            index + JobFactory.ENTRY_SEPARATOR.length());
-                }
+                index = JobFactory.nextEntrySeparator(data, data.indexOf(JobFactory.ENTRY_SEPARATOR));
 
                 String s = null;
 

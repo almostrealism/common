@@ -21,11 +21,15 @@ import org.almostrealism.util.TestSuiteBase;
 
 import io.flowtree.Server;
 import io.flowtree.jobs.ExternalProcessJob;
+import io.flowtree.job.JobFactory;
 import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.util.Properties;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 /**
  * Tests for {@link io.flowtree.Server} startup and job instantiation behavior.
@@ -56,5 +60,27 @@ public class ServerTest extends TestSuiteBase {
 		String data = "io.flowtree.jobs.ExternalProcessJob::cmd:=c2xlZXA7MzA=";
 		ExternalProcessJob j = (ExternalProcessJob) Server.instantiateJobClass(data);
 		log(String.valueOf(j.getCommandString()));
+	}
+
+	/**
+	 * Regression: {@link Server#instantiateJobClass(String)} shares the
+	 * escape-aware separator scan with {@link JobFactory#decode(String)} through
+	 * {@link JobFactory#nextEntrySeparator(String, int)}. A final entry whose
+	 * second character is {@code /} previously spun forever here — the scan found
+	 * no further separator, then restarted the search from the same position —
+	 * while the factory decoder had already been guarded against it. The job must
+	 * now be instantiated, with the entries before the trailing one applied, and
+	 * the {@code timeout} fails the test if the old hang ever returns.
+	 */
+	@Test(timeout = 10000)
+	public void finalEntryWithSlashAsSecondCharacterTerminates() {
+		String data = "io.flowtree.jobs.ExternalProcessJob" + JobFactory.ENTRY_SEPARATOR
+				+ "cmd" + JobFactory.KEY_VALUE_SEPARATOR + "c2xlZXA7MzA="
+				+ JobFactory.ENTRY_SEPARATOR + "a/b" + JobFactory.KEY_VALUE_SEPARATOR + "c";
+
+		ExternalProcessJob j = (ExternalProcessJob) Server.instantiateJobClass(data);
+
+		assertNotNull("a trailing slash-bearing entry must not hang instantiation", j);
+		assertEquals("sleep;30", j.getCommandString());
 	}
 }
