@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-10-27
-closed:
+closed: 2026-10-27
 tracker: [97e964a3-4740-4e0b-846b-2a05c27e3da8]
 ---
 
@@ -315,6 +315,13 @@ hardware specific to one node, so this plan has no workstream settings file.
    calls library operations rather than raw feature defaults. That is a somewhat larger diff
    (the ten `FEATURES.` references in `PdslInterpreter` outside `normalizeToProducer`) but leaves no feature call outside a type that
    implements the features.
+
+   **Resolved by the design review.** The interpreter now asks the objects that own each
+   operation and calls no feature defaults at all. `accum_blocks` and `concat_blocks` call the new
+   `SequentialBlock.accum(List<Block>)` and `SequentialBlock.concat(List<Block>)` on the block
+   being built. Per-channel slicing uses the `CollectionProducer`'s own `getShape`, `reshape` and
+   `subset`. Shapes are built with `new TraversalPolicy(...)`. The `builtins` instance serves
+   only `call` and `normalizeToProducer`.
 4. **Existing test methods are edited.** Step 5 changes call sites inside three existing
    `@Test` methods of `Conv1dSnakePrimitivesTest` and one helper of
    `PdslLanguageReferenceExamplesTest`. This is allowed under the test-integrity rules (no
