@@ -41,9 +41,10 @@ import java.util.function.DoubleUnaryOperator;
  *
  * <h2>Audio Selection</h2>
  *
- * <p>The {@code audioSelection} function maps a double value [0, 1) to a {@link PatternNoteAudio}.
- * This is typically constructed from a list of available notes, with the selection value
- * indexing into the list.</p>
+ * <p>The {@code audioSelection} function maps a double value in the closed interval
+ * {@code [0, 1]} to a {@link PatternNoteAudio}. This is typically constructed from a list
+ * of available notes, with the selection value indexing into the list; the maximum value
+ * {@code 1.0} (which the selection producers can attain) maps to the final note.</p>
  *
  * <h2>Voicing Details Creation</h2>
  *
@@ -92,7 +93,8 @@ public class NoteAudioContext implements ConsoleFeatures {
 							List<PatternNoteAudio> audioChoices,
 							DoubleUnaryOperator nextNotePosition) {
 		this(voicing, audioChannel,
-				c -> audioChoices.isEmpty() ? null : audioChoices.get((int) (c * audioChoices.size())),
+				c -> audioChoices.isEmpty() ? null
+						: audioChoices.get(Math.min((int) (c * audioChoices.size()), audioChoices.size() - 1)),
 				nextNotePosition);
 	}
 

@@ -216,7 +216,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 * This method provides collection-aware indexing by:
 	 * <ul>
 	 *   <li>Delegating to the underlying {@link TraversableExpression} if the producer supports it</li>
-	 *   <li>Handling single-element shapes specially</li>
+	 *   <li>Reading element 0 of a fixed-count single-element shape for every index</li>
 	 *   <li>Applying modular arithmetic for fixed-count collections</li>
 	 *   <li>Transforming indices according to the shape's traversal order, reading zero for
 	 *       an index that ordering does not contain (an absent element of a compact or sparse
@@ -240,19 +240,17 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 		boolean fixedCount = isFixedCount();
 
 		if (getShape().getTotalSize() == 1 && fixedCount) {
-			return (Expression) reference(e(0));
-		} else {
-			if (getShape().getSize() != 1 || fixedCount) {
-				index = index.toInt().imod(getShape().getTotalSize());
-			}
-
-			TraversalOrdering order = getShape().getOrder();
-			if (order == null) {
-				return (Expression) reference(index);
-			}
-
-			return Mask.of(order.containsIndex(index), (Expression) reference(order.indexOf(index)));
+			index = e(0);
+		} else if (getShape().getSize() != 1 || fixedCount) {
+			index = index.toInt().imod(getShape().getTotalSize());
 		}
+
+		TraversalOrdering order = getShape().getOrder();
+		if (order == null) {
+			return (Expression) reference(index);
+		}
+
+		return Mask.of(order.containsIndex(index), (Expression) reference(order.indexOf(index)));
 	}
 
 	/**

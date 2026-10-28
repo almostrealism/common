@@ -361,6 +361,11 @@
           },
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-async-bypass.sh",
+            "description": "Detect caller-side workarounds for the asynchronous-submission contract in Java edits: BLOCK a backend query or a second submit method on Semaphore/Submittable (the isOrderedOnDevice/chainOnDevice pattern), a Semaphore instanceof or an in-flight cap in calling code, and waitFor() followed by submit(null); warn on a new waitFor() in code that submits \u2014 ordering, bounds and thread use belong to the receiver, see docs/internals/asynchronous-submission.md"
+          },
+          {
+            "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-computed-ingest.py\"",
             "description": "Block host-to-device ingest evasion in Java edits: reject a new read(ByteBuffer)/read(InputStream) collection ingest in a computation-layer file outside the ingest allowlist, and the ByteBuffer allocate->put*->read staging triple anywhere (even inside the allowlist) \u2014 mirror of the SetMemLiteralsDetector INGEST_OUTSIDE_SANCTIONED_SURFACE and COMPUTED_VALUE_STAGED_FOR_INGEST CI rules, sharing the same ingest-allowlist.txt"
           }

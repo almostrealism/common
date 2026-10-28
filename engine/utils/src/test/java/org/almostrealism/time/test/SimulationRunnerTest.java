@@ -16,10 +16,12 @@
 
 package org.almostrealism.time.test;
 
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.SimulationRunner;
@@ -30,6 +32,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
@@ -353,6 +356,147 @@ public class SimulationRunnerTest extends TestSuiteBase {
 		public Supplier<Runnable> tick() {
 			return a(cp(x), cp(x).add(1.0));
 		}
+	}
+
+	/**
+	 * A boundary input that records how it was issued: submitted, with the completion it was
+	 * chained on, or run on the host. It completes when the work it was chained on does.
+	 */
+	private static class ChainProbe implements Runnable, Submittable {
+		/** The completions the input was submitted with, one per due step. */
+		private final List<Semaphore> received = new ArrayList<>();
+		/** The number of times the input was run on the host instead of submitted. */
+		private final AtomicInteger hostRuns = new AtomicInteger();
+
+		@Override
+		public void run() { hostRuns.incrementAndGet(); }
+
+		@Override
+		public Semaphore submit(Semaphore dependsOn) {
+			received.add(dependsOn);
+			return dependsOn;
+		}
+	}
+
+	/**
+	 * The host does not wait for a step before submitting the next, on any backend: a boundary
+	 * input that can be submitted is chained on the completion of the step before it instead of
+	 * being run. The only host waits are the boundary listeners, which take part as host
+	 * submissions: each runs once the work ahead of it has completed and leaves nothing in
+	 * flight, so the input submitted after a due listener begins a new chain.
+	 */
+	@Test(timeout = 120000)
+	public void stepsAreChainedWithoutHostWaits() {
+		CountedSystem system = new CountedSystem();
+		SimulationRunner runner = new SimulationRunner(system, DT);
+		ChainProbe probe = new ChainProbe();
+		List<Long> calls = new ArrayList<>();
+		runner.addBoundaryListener(8, calls::add);
+		runner.addInput(1, () -> probe);
+
+		runner.run(10);
+
+		// Listeners are due before steps 0 and 8
+		List<Integer> waits = List.of(0, 8);
+		assertEquals(0, probe.hostRuns.get());
+		assertEquals(10, probe.received.size());
+		for (int step = 0; step < 10; step++) {
+			Semaphore dependsOn = probe.received.get(step);
+
+			if (waits.contains(step)) {
+				Assert.assertNull("the input at step " + step + " was chained past a due listener",
+						dependsOn);
+			} else {
+				Assert.assertNotNull("the input at step " + step + " was not chained on the step before it",
+						dependsOn);
+			}
+		}
+
+		assertEquals(List.of(0L, 8L), calls);
+		assertEquals(10, runner.getStepCount());
+		assertEquals(10, system.x.toDouble(0), 0.0);
+		runner.destroy();
+	}
+
+	/**
+	 * When dispatching fails partway through a step, {@code run} waits for the work already
+	 * dispatched before the failure propagates, so nothing is still running against state the
+	 * caller may release; a failure of that work is attached to the propagating one as
+	 * suppressed instead of replacing it, and the step that failed is not counted.
+	 */
+	@Test(timeout = 120000)
+	public void failedDispatchSettlesTheWorkInFlight() {
+		IllegalStateException inFlightFailure = new IllegalStateException("in flight");
+		FailingCompletion inFlight = new FailingCompletion(inFlightFailure);
+
+		RuntimeException dispatchFailure = new RuntimeException("dispatch");
+		List<Semaphore> received = new ArrayList<>();
+		Submittable dispatched = dependsOn -> inFlight;
+		Submittable failing = dependsOn -> {
+			received.add(dependsOn);
+			throw dispatchFailure;
+		};
+
+		CountedSystem system = new CountedSystem();
+		SimulationRunner runner = new SimulationRunner(system, DT);
+		runner.addInput(1, () -> new SubmittableInput(dispatched));
+		runner.addInput(1, () -> new SubmittableInput(failing));
+
+		try {
+			runner.run(5);
+			Assert.fail("the dispatch failure was not propagated");
+		} catch (RuntimeException e) {
+			Assert.assertSame(dispatchFailure, e);
+			Assert.assertArrayEquals(new Throwable[] { inFlightFailure }, e.getSuppressed());
+		}
+
+		Assert.assertEquals(List.of(inFlight), received);
+		assertEquals(1, inFlight.waits.get());
+		assertEquals(0, runner.getStepCount());
+		runner.destroy();
+	}
+
+	/**
+	 * A completion whose wait fails with a given exception, counting how many times it was
+	 * waited on.
+	 */
+	private static class FailingCompletion implements Semaphore {
+		/** The failure thrown by every wait. */
+		private final RuntimeException failure;
+		/** The number of times this completion was waited on. */
+		private final AtomicInteger waits = new AtomicInteger();
+
+		/**
+		 * @param failure the failure thrown by every wait
+		 */
+		FailingCompletion(RuntimeException failure) {
+			this.failure = failure;
+		}
+
+		@Override
+		public void waitFor() {
+			waits.incrementAndGet();
+			throw failure;
+		}
+	}
+
+	/** A boundary input that only submits through a given {@link Submittable}. */
+	private static class SubmittableInput implements Runnable, Submittable {
+		/** The submission performed by this input. */
+		private final Submittable submission;
+
+		/**
+		 * @param submission the submission performed by this input
+		 */
+		SubmittableInput(Submittable submission) {
+			this.submission = submission;
+		}
+
+		@Override
+		public void run() { throw new UnsupportedOperationException("the input must be submitted"); }
+
+		@Override
+		public Semaphore submit(Semaphore dependsOn) { return submission.submit(dependsOn); }
 	}
 
 	/**

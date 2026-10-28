@@ -89,14 +89,16 @@ public class SlackCostNotifierTest extends TestSuiteBase {
         eventWithCosts.withTimingInfo(0, 0, 1.75, 0);
         notifier.onJobCompleted(workstream.getWorkstreamId(), eventWithCosts);
 
-        assertTrue(messages.size() > 0);
+        // Summary to the channel, then the details as a reply to it
+        assertEquals(2, messages.size());
         String msg = messages.get(0);
-        assertTrue("Slack completion should include moneybag cost block",
-            msg.contains(":moneybag:"));
+        String details = messages.get(1);
+        assertTrue("Slack completion details should include moneybag cost block",
+            details.contains(":moneybag:"));
         assertTrue("Slack completion should include dollar total",
             msg.contains(":dollar:") || msg.contains("$"));
-        assertTrue("Slack completion should include per-model cost breakdown",
-            msg.contains("claude-opus-4-7"));
+        assertTrue("Slack completion details should include per-model cost breakdown",
+            details.contains("claude-opus-4-7"));
         assertTrue("Slack completion should include runner breakdown",
             msg.contains("claude") && msg.contains("opencode"));
     }
@@ -273,8 +275,9 @@ public class SlackCostNotifierTest extends TestSuiteBase {
     }
 
     /**
-     * Verifies that a job completion message is posted with {@code reply_broadcast=true}
-     * so it appears in the channel as well as the thread.
+     * Verifies that a job completion is posted to the thread as a details message
+     * followed by a summary, and that only the summary carries
+     * {@code reply_broadcast=true} so only it appears in the channel as well.
      */
     @Test(timeout = 10000)
     public void testCompletionMessageBroadcastsToChannel() {
@@ -299,14 +302,114 @@ public class SlackCostNotifierTest extends TestSuiteBase {
         completeEvent.withPullRequestUrl("https://github.com/test/repo/pull/123");
         notifier.onJobCompleted(workstream.getWorkstreamId(), completeEvent);
 
-        assertEquals(1, messages.size());
-        String message = messages.get(0);
+        assertEquals(2, messages.size());
+        String details = messages.get(0);
+        String message = messages.get(1);
         assertTrue("Message should have reply_broadcast=true",
             JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
         assertNotNull("Message should have thread_ts field",
             JsonFieldExtractor.extractString(message, "thread_ts"));
         assertTrue("Message should contain PR URL",
             message.contains("https://github.com/test/repo/pull/123"));
+        assertFalse("Details should NOT have reply_broadcast=true",
+            JsonFieldExtractor.extractBoolean(details, "reply_broadcast"));
+        Assert.assertEquals("Details should be in the same thread as the summary",
+            JsonFieldExtractor.extractString(message, "thread_ts"),
+            JsonFieldExtractor.extractString(details, "thread_ts"));
+    }
+
+    /**
+     * Verifies which lines of a job completion go to the broadcast summary and
+     * which stay in the thread-only details: the summary carries the outcome,
+     * branch, pull request, time and total cost, while the details carry the
+     * commit, stop reason, turns, per-model cost and permission denials.
+     */
+    @Test(timeout = 10000)
+    public void testCompletionSummaryAndDetailsSplit() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json ->
+            messages.add(JsonFieldExtractor.extractString(json, "text")));
+
+        Workstream workstream = new Workstream("C_SPLIT", "#split-test");
+        notifier.registerWorkstream(workstream);
+        notifier.onJobSubmitted(workstream.getWorkstreamId(),
+            JobCompletionEvent.started("job-split", "Split task"));
+        messages.clear();
+
+        CodingAgentJobEvent event = CodingAgentJobEvent.success("job-split", "Split task");
+        event.withGitInfo("feature/split", "8785769abcdef", List.of("a.java", "b.java"), List.of(), true);
+        event.withPullRequestUrl("https://github.com/test/repo/pull/773");
+        event.withTimingInfo(152000, 102000, 1.86, 34);
+        event.withSessionDetails("success", false, 1, List.of("Bash"));
+        Map<String, Double> costByModel = new HashMap<>();
+        costByModel.put("opus", 1.86);
+        event.withCostByModel(costByModel);
+        Map<String, Double> costByRunner = new HashMap<>();
+        costByRunner.put("claude", 1.86);
+        event.withCostByRunner(costByRunner);
+        notifier.onJobCompleted(workstream.getWorkstreamId(), event);
+
+        assertEquals(2, messages.size());
+        String details = messages.get(0);
+        String summary = messages.get(1);
+
+        assertTrue(summary.contains("Work complete"));
+        assertTrue(summary.contains("pushed 2 file(s)"));
+        assertTrue(summary.contains("Branch: `feature/split`"));
+        assertTrue(summary.contains("PR: https://github.com/test/repo/pull/773"));
+        assertTrue(summary.contains("Time: 2m 32s (API: 1m 42s)"));
+        assertTrue(summary.contains(":dollar: $1.86 total [claude $1.86]"));
+        assertFalse(summary.contains("Commit:"));
+        assertFalse(summary.contains("Stop reason:"));
+        assertFalse(summary.contains("Turns:"));
+        assertFalse(summary.contains(":moneybag:"));
+        assertFalse(summary.contains("Permission denials"));
+
+        assertTrue(details.contains("Commit: `8785769`"));
+        assertTrue(details.contains("Stop reason: completed normally"));
+        assertTrue(details.contains("Turns: 34"));
+        assertTrue(details.contains(":moneybag: $1.86 - opus"));
+        assertTrue(details.contains("Permission denials: 1 (`Bash`)"));
+        assertFalse(details.contains("Work complete"));
+        assertFalse(details.contains("Branch:"));
+        assertFalse(details.contains("PR:"));
+        assertFalse(details.contains("Time:"));
+        assertFalse(details.contains(":dollar:"));
+    }
+
+    /**
+     * Verifies that a completion which pushed nothing still shows its job
+     * description and pull request link in the broadcast summary.
+     */
+    @Test(timeout = 10000)
+    public void testNoChangesSummaryIncludesDescriptionAndPullRequest() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json ->
+            messages.add(JsonFieldExtractor.extractString(json, "text")));
+
+        Workstream workstream = new Workstream("C_NOCHANGE", "#no-change-test");
+        notifier.registerWorkstream(workstream);
+        notifier.onJobSubmitted(workstream.getWorkstreamId(),
+            JobCompletionEvent.started("job-nochange", "Review the open PR"));
+        messages.clear();
+
+        CodingAgentJobEvent event = CodingAgentJobEvent.success("job-nochange", "Review the open PR");
+        event.withPullRequestUrl("https://github.com/test/repo/pull/774");
+        event.withTimingInfo(60000, 30000, 0.50, 5);
+        notifier.onJobCompleted(workstream.getWorkstreamId(), event);
+
+        assertEquals(2, messages.size());
+        String details = messages.get(0);
+        String summary = messages.get(1);
+
+        assertTrue(summary.contains("no changes to push"));
+        assertTrue(summary.contains("Review the open PR"));
+        assertTrue(summary.contains("PR: https://github.com/test/repo/pull/774"));
+        assertFalse(details.contains("Review the open PR"));
+        assertFalse(details.contains("PR:"));
+        assertTrue(details.contains("Turns: 5"));
     }
 
     /**

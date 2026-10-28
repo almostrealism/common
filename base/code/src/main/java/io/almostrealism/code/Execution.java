@@ -32,10 +32,15 @@ import io.almostrealism.streams.Semaphore;
  * arguments. A range the backend cannot dispatch over is refused, when it is set or when
  * the execution is dispatched, and is never replaced by a different range.</p>
  *
+ * <p>This is a functional interface: {@link #accept(Object[], Semaphore)} is the only method
+ * an implementation must provide, so an execution of a single work item can be written as a
+ * lambda. Every other method, including those of {@link KernelWork}, has a default.</p>
+ *
  * @see InstructionSet
  * @see KernelWork
  * @see io.almostrealism.streams.Semaphore
  */
+@FunctionalInterface
 public interface Execution extends KernelWork {
 	/**
 	 * Executes this computation with the given arguments, with no predecessor dependency.

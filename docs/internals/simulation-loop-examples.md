@@ -98,6 +98,14 @@ Each boundary between operations is a global synchronization.
 3. The compiled step runs: the system's tick, then the counter advance.
 4. Recordings that are due write one sample.
 
+Every one of these is submitted, chained on the completion of the work submitted before it, and
+`run` waits once, after the last step (see [asynchronous-submission.md](asynchronous-submission.md)).
+A listener is host code, so it is submitted through `Submittable.of`: it runs once everything
+submitted before it has completed, and that is the only place the host waits inside a run. Device
+work a listener would do belongs in an input, so it stays on the chain. The runner never decides
+whether to wait from the kind of completion it holds and never limits how many steps it submits
+ahead; ordering and any bound on in-flight work are the backends' job.
+
 A listener or input with interval `k` is due before steps `0, k, 2k, ...`. A recording with
 interval `k` samples the state after steps `k, 2k, ...`, so sample `j` holds the state at time
 `(j + 1) * k * dt`. The system's setup (if it is a `Setup`) and the counter reset run once, before

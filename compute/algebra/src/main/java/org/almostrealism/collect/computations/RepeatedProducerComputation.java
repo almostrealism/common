@@ -33,8 +33,6 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
 import java.util.OptionalInt;
-import java.util.function.BiFunction;
-import java.util.function.Supplier;
 
 /**
  * A computation that performs repeated operations on {@link PackedCollection} data structures,
@@ -44,31 +42,45 @@ import java.util.function.Supplier;
  * with a specific pattern: initialize values, check continuation conditions, and apply expressions
  * repeatedly until the condition is no longer satisfied.
  * 
- * <p>The computation operates with three key functional components:
+ * <p>The loop is defined by three steps, each a protected method that a concrete subclass
+ * implements:
  * <ul>
- *   <li><strong>Initial:</strong> A {@link BiFunction} that defines how to initialize values
- *       at the start of the computation</li>
- *   <li><strong>Condition:</strong> A {@link BiFunction} that determines whether to continue
- *       the iteration based on current state</li>
- *   <li><strong>Expression:</strong> A {@link BiFunction} that defines the computation to
- *       perform in each iteration step</li>
+ *   <li><strong>Initial:</strong> {@link #getInitialValue(TraversableExpression[], Expression)}
+ *       defines the value of each output element before the first iteration</li>
+ *   <li><strong>Condition:</strong> {@link #getCondition(TraversableExpression[], Expression)}
+ *       determines whether to continue the iteration</li>
+ *   <li><strong>Expression:</strong> {@link #getExpression(TraversableExpression[], Expression, Expression)}
+ *       defines the computation performed in each iteration step</li>
  * </ul>
  * 
- * <p>This class is {@code abstract}: a concrete subclass supplies the initial, condition
- * and expression behaviour through the protected constructors (or the {@code setInitial}/
- * {@code setCondition} hooks) so that the behaviour of every instance is fixed by its class,
- * which, together with its name and inputs, is what its {@link #signature()} identifies.
+ * <p>This class is {@code abstract}, and the steps are methods rather than functions supplied
+ * at construction, so that the behaviour of every instance is fixed by its class, which,
+ * together with its name and inputs, is what its {@link #signature()} identifies. A step that
+ * depends on configuration reads that configuration from the subclass's own fields, which
+ * the subclass then includes in its signature.
  *
  * <p><strong>Subclass Implementation Pattern:</strong>
  * <pre>{@code
  * // A concrete repeated computation that accumulates values
  * public class AccumulateComputation extends RepeatedProducerComputation {
  *     public AccumulateComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
- *         super("accumulate", shape,
- *             (args, index) -> e(0.0),                      // Initialize to zero
- *             (args, index) -> index.lessThan(e(5)),        // Continue for 5 iterations
- *             (args, index) -> args[0].valueAt(index).add(e(1.0)),  // Add 1 each iteration
- *             input);
+ *         super("accumulate", shape, input);
+ *     }
+ *
+ *     @Override
+ *     protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+ *         return e(0.0);                                    // Initialize to zero
+ *     }
+ *
+ *     @Override
+ *     protected Expression<Boolean> getCondition(TraversableExpression[] args, Expression index) {
+ *         return index.lessThan(e(5));                      // Continue for 5 iterations
+ *     }
+ *
+ *     @Override
+ *     protected Expression<?> getExpression(TraversableExpression[] args,
+ *                                           Expression globalIndex, Expression localIndex) {
+ *         return args[1].getValueAt(localIndex).add(e(1.0)); // Add 1 each iteration
  *     }
  *
  *     @Override
@@ -91,52 +103,28 @@ import java.util.function.Supplier;
  * @see CollectionProducerComputationBase
  * @see ConstantRepeatedProducerComputation
  * @see TraversableRepeatedProducerComputation
- * @see BiFunction
  * @see TraversableExpression
  *
  * @author Michael Murray
  */
 public abstract class RepeatedProducerComputation extends CollectionProducerComputationBase {
-
-	/** Function that defines how to initialize values at the start of computation. */
-	protected BiFunction<TraversableExpression[], Expression, Expression> initial;
-	
-	/** Function that determines whether to continue the iteration based on current state. */
-	private BiFunction<TraversableExpression[], Expression, Expression> condition;
-	
-	/** Function that defines the computation to perform in each iteration step. */
-	protected BiFunction<TraversableExpression[], Expression, Expression> expression;
-	
 	/** The number of elements processed by each kernel thread for memory optimization. */
 	private final int memLength;
 
 	/**
 	 * Creates a repeated computation with default memory length of 1.
 	 * 
-	 * <p>This constructor creates a computation that will repeatedly apply the given
-	 * expression while the condition returns true, starting with values from the
-	 * initial function.
-	 * 
 	 * @param name The name identifier for this computation, used in generated code
 	 * @param shape The {@link TraversalPolicy} defining the multi-dimensional shape 
 	 *              and access pattern of the output data
-	 * @param initial Function to initialize values at computation start. Receives
-	 *                traversable arguments and current index, returns initialization expression
-	 * @param condition Function to check continuation. Receives traversable arguments  
-	 *                  and current index, returns boolean expression for continuation
-	 * @param expression Function defining the main computation. Receives traversable
-	 *                   arguments and current index, returns computed expression
-	 * @param args Variable number of input {@link Supplier}s providing evaluable collections
+	 * @param args Variable number of input {@link Producer}s providing evaluable collections
 	 * 
-	 * @see #RepeatedProducerComputation(String, TraversalPolicy, int, BiFunction, BiFunction, BiFunction, Producer[])
+	 * @see #RepeatedProducerComputation(String, TraversalPolicy, int, Producer[])
 	 */
 	@SafeVarargs
 	protected RepeatedProducerComputation(String name, TraversalPolicy shape,
-									   BiFunction<TraversableExpression[], Expression, Expression> initial,
-									   BiFunction<TraversableExpression[], Expression, Expression> condition,
-									   BiFunction<TraversableExpression[], Expression, Expression> expression,
 									   Producer<PackedCollection>... args) {
-		this(name, shape, 1, initial, condition, expression, args);
+		this(name, shape, 1, args);
 	}
 
 	/**
@@ -151,52 +139,13 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 	 * @param shape The {@link TraversalPolicy} defining the multi-dimensional shape
 	 *              and access pattern of the output data  
 	 * @param size The number of elements processed by each kernel thread (memory length)
-	 * @param initial Function to initialize values at computation start. Receives
-	 *                traversable arguments and current index, returns initialization expression
-	 * @param condition Function to check continuation. Receives traversable arguments
-	 *                  and current index, returns boolean expression for continuation
-	 * @param expression Function defining the main computation. Receives traversable
-	 *                   arguments and current index, returns computed expression
-	 * @param args Variable number of input {@link Supplier}s providing evaluable collections
+	 * @param args Variable number of input {@link Producer}s providing evaluable collections
 	 */
 	@SafeVarargs
 	protected RepeatedProducerComputation(String name, TraversalPolicy shape, int size,
-									   BiFunction<TraversableExpression[], Expression, Expression> initial,
-									   BiFunction<TraversableExpression[], Expression, Expression> condition,
-									   BiFunction<TraversableExpression[], Expression, Expression> expression,
 									   Producer<PackedCollection>... args) {
 		super(name, shape, args);
-		this.initial = initial;
-		this.condition = condition;
-		this.expression = expression;
 		this.memLength = size;
-	}
-
-	/**
-	 * Sets the initialization function for this computation.
-	 * 
-	 * <p>The initial function is called once at the beginning of the computation
-	 * to set up starting values before the main iteration loop begins.
-	 * 
-	 * @param initial Function that receives traversable arguments and index,
-	 *                returns expression for initial value setup
-	 */
-	protected void setInitial(BiFunction<TraversableExpression[], Expression, Expression> initial) {
-		this.initial = initial;
-	}
-
-	/**
-	 * Sets the condition function that controls iteration continuation.
-	 * 
-	 * <p>The condition function is evaluated before each iteration to determine
-	 * whether the computation should continue. When it returns false, the
-	 * iteration stops.
-	 * 
-	 * @param condition Function that receives traversable arguments and index,
-	 *                  returns boolean expression indicating whether to continue
-	 */
-	protected void setCondition(BiFunction<TraversableExpression[], Expression, Expression> condition) {
-		this.condition = condition;
 	}
 
 	/**
@@ -248,9 +197,9 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 	 * <p>This method creates a {@link Repeated} scope that contains the initialization
 	 * and iteration logic. The scope includes:
 	 * <ul>
-	 *   <li>Initialization statements using the initial function</li>
-	 *   <li>A condition check for continuation</li>
-	 *   <li>The main computation body with the expression function</li>
+	 *   <li>Initialization statements from {@link #getInitialValue}</li>
+	 *   <li>A condition check for continuation from {@link #getCondition}</li>
+	 *   <li>The main computation body from {@link #getExpression(TraversableExpression[], Expression, Expression)}</li>
 	 * </ul>
 	 * 
 	 * <p>The generated scope will be compiled into kernel code for execution
@@ -270,16 +219,17 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 
 		OptionalInt limit = getIndexLimit();
 		DefaultIndex ref = limit.isPresent() ? new DefaultIndex(i, limit.getAsInt()) : new DefaultIndex(i);
-		scope.setCondition(condition.apply(getTraversableArguments(ref), ref));
+		scope.setCondition(getCondition(getTraversableArguments(ref), ref));
 
 		Expression index = new KernelIndex(context).divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
 
-		if (initial != null) {
-			for (int j = 0; j < getMemLength(); j++) {
-				Expression<?> out = getDestination(new KernelIndex(context), e(0), e(j));
-				Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
-				scope.getStatements().add(out.assign(val));
-			}
+		TraversableExpression[] initialArgs = getTraversableArguments(index);
+		for (int j = 0; j < getMemLength(); j++) {
+			Expression<?> val = getInitialValue(initialArgs, ref.add(j));
+			if (val == null) break;
+
+			Expression<?> out = getDestination(new KernelIndex(context), e(0), e(j));
+			scope.getStatements().add(out.assign(val));
 		}
 
 		OperationMetadata bodyMetadata = new OperationMetadata
@@ -296,6 +246,25 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 		scope.add(body);
 		return scope;
 	}
+
+	/**
+	 * Returns the value each output element holds before the first iteration.
+	 *
+	 * @param args  the traversable arguments, positioned at the start of the output block
+	 * @param index the position within the output block
+	 * @return the initial value, or {@code null} if the computation does not initialize its
+	 *         output before the loop
+	 */
+	protected abstract Expression<?> getInitialValue(TraversableExpression[] args, Expression index);
+
+	/**
+	 * Returns the boolean expression that keeps the loop running.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the loop index
+	 * @return the continuation condition
+	 */
+	protected abstract Expression<Boolean> getCondition(TraversableExpression[] args, Expression index);
 
 	/**
 	 * Gets the expression for the computation at specified indices.
@@ -315,20 +284,16 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 	}
 
 	/**
-	 * Gets the expression for the computation with explicit traversable arguments.
+	 * Returns the expression for one iteration of the loop: the next value of the output
+	 * element at the given position.
 	 * 
-	 * <p>This method applies the computation expression function with the provided
-	 * arguments and local index. This is the core method where the actual
-	 * computation logic is evaluated.
-	 * 
-	 * @param args Array of {@link TraversableExpression}s representing input data
-	 * @param globalIndex The global index in the overall computation space (unused in base implementation)  
-	 * @param localIndex The local index within the current iteration
-	 * @return The computed {@link Expression} result from applying the expression function
+	 * @param args Array of {@link TraversableExpression}s, where {@code args[0]} is the output
+	 *             and the remainder are the inputs
+	 * @param globalIndex The global index in the overall computation space
+	 * @param localIndex The index of the iteration
+	 * @return The computed {@link Expression} result
 	 */
-	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		return expression.apply(args, localIndex);
-	}
+	protected abstract Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex);
 
 	/**
 	 * Gets the destination expression for writing computation results.
@@ -344,8 +309,8 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 	 */
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset)	{
 		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
-		Expression len = ((ArrayVariable<?>) getOutputVariable()).length();
-		return ((ArrayVariable) getOutputVariable()).reference(k.multiply(len).add(offset));
+		ArrayVariable<?> out = getOutputVariable();
+		return out.reference(k.multiply(out.length()).add(offset));
 	}
 
 	/**
@@ -353,7 +318,7 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 	 * 
 	 * <p>This method is used by the computation framework to create new instances
 	 * when the computation graph is modified or optimized. The new instance
-	 * maintains the same configuration (initial, condition, expression functions)
+	 * maintains the same configuration
 	 * but uses the provided child processes as inputs.
 	 * 
 	 * @param children List of {@link Process} instances to use as inputs for the new computation

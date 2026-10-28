@@ -21,6 +21,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.uml.Signature;
 
+import java.util.Optional;
 import java.util.OptionalInt;
 
 /**
@@ -121,6 +122,24 @@ public interface TraversalOrdering extends IndexSet, Signature {
 	 */
 	default OptionalInt getLength() {
 		return OptionalInt.empty();
+	}
+
+	/**
+	 * Returns an enumeration of the members of this ordering in segments of the given number of
+	 * consecutive logical indices, if this ordering stores the members of each such segment
+	 * contiguously and can locate them directly. A computation that needs only the members of
+	 * each segment (for example, a reduction of each row of a sparse matrix, whose segment length
+	 * is its number of columns) uses it to visit each member once, instead of reading every
+	 * logical index through {@link #indexOf(Expression)}; when it is empty, reading through
+	 * {@link #indexOf(Expression)} remains correct.
+	 *
+	 * <p>The default returns empty.</p>
+	 *
+	 * @param segmentLength the number of consecutive logical indices in each segment
+	 * @return the enumeration, or empty if this ordering cannot enumerate segments of that length
+	 */
+	default Optional<OrderingSegments> segments(int segmentLength) {
+		return Optional.empty();
 	}
 
 	/**

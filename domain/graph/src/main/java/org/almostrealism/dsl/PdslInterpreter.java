@@ -28,7 +28,6 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.model.WeightGroup;
-import org.almostrealism.time.TemporalFeatures;
 
 import static org.almostrealism.dsl.PdslPrimitiveContext.toDouble;
 import static org.almostrealism.dsl.PdslPrimitiveContext.toInt;
@@ -108,8 +107,11 @@ import java.util.function.Function;
  */
 public class PdslInterpreter {
 
-	/** Shared instance providing access to the framework feature default methods. */
-	private static final PdslFeatures FEATURES = PdslFeatures.INSTANCE;
+	/**
+	 * The built-in function library this interpreter dispatches to. It also normalizes producer
+	 * arguments for parameter binding and primitive dispatch.
+	 */
+	private final PdslBuiltins builtins = new PdslBuiltins();
 
 	/** The extensions on the classpath, discovered once and applied to every interpreter. */
 	private static final List<PdslExtension> EXTENSIONS = PdslExtension.discover();
@@ -238,51 +240,6 @@ public class PdslInterpreter {
 	}
 
 	/**
-	 * Normalises a heterogeneous PDSL argument value into a
-	 * {@link CollectionProducer}{@code <PackedCollection>} of the requested shape.
-	 * This is the single conversion point shared by parameter binding and primitive
-	 * dispatch — {@link PdslPrimitiveContext#toProducer toProducer} delegates here.
-	 *
-	 * @param value         the raw argument value
-	 * @param expectedShape the required shape
-	 * @param contextName   prefix used in error messages
-	 * @return a {@link CollectionProducer} of the declared shape
-	 * @throws PdslParseException if the value is unsupported or the shape mismatches
-	 */
-	static CollectionProducer normalizeToProducer(
-			Object value, TraversalPolicy expectedShape, String contextName) {
-		CollectionProducer base;
-		if (value instanceof Number) {
-			base = FEATURES.c(((Number) value).doubleValue());
-		} else if (value instanceof PackedCollection) {
-			base = FEATURES.cp((PackedCollection) value);
-		} else if (value instanceof Producer) {
-			base = FEATURES.c((Producer<PackedCollection>) value);
-		} else {
-			throw new PdslParseException(contextName + " expects Number, PackedCollection, or Producer; got "
-					+ (value == null ? "null" : value.getClass().getSimpleName()));
-		}
-
-		if (expectedShape == null) {
-			return base;
-		}
-
-		TraversalPolicy actual = FEATURES.shape(base);
-		if (actual.getTotalSize() == expectedShape.getTotalSize()) {
-			return actual.equals(expectedShape) ? base : base.reshape(expectedShape);
-		}
-		if (actual.getTotalSize() == 1) {
-			// Scalar broadcast: a size-1 value satisfies any declared shape. A
-			// per-channel argument (e.g. producer([channels])) supplied as a single
-			// scalar is shared across every channel — the per-channel subscript
-			// (arg[channel]) returns the scalar as-is for each channel.
-			return base;
-		}
-		throw new PdslParseException(contextName + " expects shape " + expectedShape
-				+ " but value has total size " + actual.getTotalSize());
-	}
-
-	/**
 	 * Build a {@link Block} from a named layer definition.
 	 *
 	 * @param name       the layer name as defined in the PDSL source
@@ -378,7 +335,7 @@ public class PdslInterpreter {
 	 * Binds a {@code producer([shape])} parameter to a {@link Producer} of
 	 * {@link PackedCollection}. The actual conversion (Number, PackedCollection, or
 	 * Producer with shape validation) is delegated to
-	 * {@link #normalizeToProducer(Object, TraversalPolicy, String)} so that parameter
+	 * {@link PdslBuiltins#normalizeToProducer(Object, TraversalPolicy, String)} so that parameter
 	 * binding and primitive-argument normalisation share one definition.
 	 *
 	 * @param param the parameter declaration (with declared shape)
@@ -393,7 +350,7 @@ public class PdslInterpreter {
 							+ "' declared as producer must have a shape, e.g. producer([1])");
 		}
 		TraversalPolicy declaredShape = evaluateShape((PdslNode.ShapeLiteral) param.getShape(), env);
-		return normalizeToProducer(value, declaredShape,
+		return builtins.normalizeToProducer(value, declaredShape,
 				"Parameter '" + param.getName() + "'");
 	}
 
@@ -840,7 +797,7 @@ public class PdslInterpreter {
 		if (subBlocks.isEmpty()) {
 			throw new PdslParseException("accum_blocks requires at least one branch body");
 		}
-		block.add(FEATURES.accumBlocks(inputShape, subBlocks));
+		block.accum(subBlocks);
 	}
 
 	/**
@@ -854,7 +811,7 @@ public class PdslInterpreter {
 		for (PdslNode.Expression expr : concatStmt.getBlocks()) {
 			subBlocks.add(expressionToBlock(expr, inputShape, env));
 		}
-		block.add(FEATURES.concatBlocks(inputShape, subBlocks));
+		block.concat(subBlocks);
 	}
 
 	// ---- Expression evaluation ----
@@ -905,12 +862,12 @@ public class PdslInterpreter {
 				int index = toInt(indexValue);
 				int channels = toInt(env.get("channels"));
 				int stride = coll.getShape().getSize() / channels;
-				return coll.range(FEATURES.shape(stride), index * stride);
+				return coll.range(new TraversalPolicy(stride), index * stride);
 			}
 			if (obj instanceof CollectionProducer) {
 				CollectionProducer producer = (CollectionProducer) obj;
 				int channels = toInt(env.get("channels"));
-				int totalSize = FEATURES.shape(producer).getTotalSize();
+				int totalSize = producer.getShape().getTotalSize();
 				if (totalSize < channels) {
 					// Scalar/sub-channel broadcast: a size-1 producer is shared
 					// across every channel, so each channel reads the same value.
@@ -918,8 +875,7 @@ public class PdslInterpreter {
 				}
 				int index = toInt(indexValue);
 				int stride = totalSize / channels;
-				CollectionProducer flat = producer.reshape(FEATURES.shape(totalSize));
-				return FEATURES.subset(FEATURES.shape(stride), flat, index * stride);
+				return producer.reshape(totalSize).subset(new TraversalPolicy(stride), index * stride);
 			}
 			throw new PdslParseException(
 					"Subscript not supported on " + (obj == null ? "null" : obj.getClass().getSimpleName()));
@@ -966,7 +922,7 @@ public class PdslInterpreter {
 		for (int i = 0; i < dims.length; i++) {
 			dims[i] = toInt(evaluateExpression(shape.getDimensions().get(i), env));
 		}
-		return FEATURES.shape(dims);
+		return new TraversalPolicy(dims);
 	}
 
 	/**
@@ -1121,7 +1077,7 @@ public class PdslInterpreter {
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
 	private Object tryCallBuiltin(String name, List<Object> args, Build build) {
-		return PdslBuiltins.call(name, args, build.consumedBranchOperands);
+		return builtins.call(name, args, build.consumedBranchOperands);
 	}
 
 	// ---- Multi-channel statement-level dispatch ----
@@ -1162,7 +1118,7 @@ public class PdslInterpreter {
 				Environment bankEnv = new Environment(env);
 				bankEnv.set("channel", ALL_CHANNELS);
 				SequentialBlock bankBlock =
-						new SequentialBlock(FEATURES.shape(channels, signalSize));
+						new SequentialBlock(new TraversalPolicy(channels, signalSize));
 				interpretBody(stmt.getBody(), bankBlock, bankEnv);
 				block.add(bankBlock);
 				Console.root().features(PdslInterpreter.class)
@@ -1178,7 +1134,7 @@ public class PdslInterpreter {
 			}
 		}
 
-		TraversalPolicy singleChannelShape = FEATURES.shape(1, signalSize);
+		TraversalPolicy singleChannelShape = new TraversalPolicy(1, signalSize);
 		List<Block> channelBlocks = new ArrayList<>();
 		for (int i = 0; i < channels; i++) {
 			Environment channelEnv = new Environment(env);
@@ -1411,9 +1367,9 @@ public class PdslInterpreter {
 	 * Adapter from a PDSL {@link Environment} to {@link PdslPrimitiveContext}, created
 	 * once per primitive call. Reads {@code channels} and {@code signal_size} from the
 	 * environment on demand and routes argument normalisation through
-	 * {@link #normalizeToProducer(Object, TraversalPolicy, String)}.
+	 * {@link PdslBuiltins#normalizeToProducer(Object, TraversalPolicy, String)}.
 	 */
-	private static class EnvContext implements PdslPrimitiveContext {
+	private class EnvContext implements PdslPrimitiveContext {
 		/** The interpreter's environment from the layer being built. */
 		private final Environment env;
 
@@ -1448,7 +1404,7 @@ public class PdslInterpreter {
 		public CollectionProducer toProducer(Object value,
 															  TraversalPolicy expectedShape,
 															  String contextName) {
-			return normalizeToProducer(value, expectedShape, contextName);
+			return builtins.normalizeToProducer(value, expectedShape, contextName);
 		}
 	}
 }

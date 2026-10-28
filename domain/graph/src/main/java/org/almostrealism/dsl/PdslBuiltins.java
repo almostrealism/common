@@ -28,8 +28,10 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.layers.LayerRoutingFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
+import org.almostrealism.time.TemporalFeatures;
 
 import static org.almostrealism.dsl.PdslPrimitiveContext.toDouble;
 import static org.almostrealism.dsl.PdslPrimitiveContext.toInt;
@@ -55,17 +57,31 @@ import java.util.function.Supplier;
  * as a {@link PdslExtension} (the machine-learning engine's attention and rotary position
  * primitives) or a {@link PdslLoader} registrar (audio DSP), instead of extending this class.
  *
- * <p>Every method is stateless: built-ins consume already-evaluated argument
+ * <p>The library is an instance type that implements the feature interfaces it needs, so its
+ * built-ins call the framework feature default methods directly. Each {@link PdslInterpreter}
+ * owns one instance, which it also uses to normalize producer arguments
+ * ({@link #normalizeToProducer(Object, TraversalPolicy, String)}). The interpreter does not use
+ * the instance as a source of feature operations: the language's block constructs it builds itself
+ * ({@code accum_blocks}, {@code concat_blocks}) are operations of the
+ * {@link org.almostrealism.model.SequentialBlock} it builds into. There is deliberately no shared
+ * instance or static accessor:
+ * the library holds no state, so one instance per interpreter costs a single small object and
+ * needs no global, and an interpreter-owned instance can later be configured per interpreter
+ * without changing any call site.</p>
+ *
+ * <p>The library holds no state: built-ins consume already-evaluated argument
  * values and return a {@link Block} or a block factory
- * ({@code Function<TraversalPolicy, Block>}) for the interpreter to attach.</p>
+ * ({@code Function<TraversalPolicy, Block>}) for the interpreter to attach. The only per-build
+ * state, the set of consumed branch operands, belongs to the interpreter's build and is passed
+ * to {@link #call(String, List, Set)} on every call.</p>
  */
-final class PdslBuiltins {
+final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 
-	/** Mixin instance providing the framework feature default methods. */
-	private static final PdslFeatures FEATURES = PdslFeatures.INSTANCE;
-
-	/** Built-ins are accessed only through {@link #call(String, List, Set)}. */
-	private PdslBuiltins() { }
+	/**
+	 * Creates the library. {@link PdslInterpreter} constructs the instance it owns, and tests in
+	 * the same package construct one directly to call {@link #call(String, List, Set)}.
+	 */
+	PdslBuiltins() { }
 
 
 	/**
@@ -80,7 +96,7 @@ final class PdslBuiltins {
 	 *                               first product's consumer
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
-	static Object call(String name, List<Object> args, Set<Block> consumedBranchOperands) {
+	Object call(String name, List<Object> args, Set<Block> consumedBranchOperands) {
 		switch (name) {
 			case "dense": return callDense(args);
 			case "conv1d": return callConv1d(args);
@@ -105,8 +121,8 @@ final class PdslBuiltins {
 			case "repeat_each": return callRepeatEach(args);
 			case "sum_channels": return callSumChannels(args);
 			case "capture": return callCapture(producerArg(args, 0, 1, "capture"));
-			case "cache_write": return callCacheRow("cache_write", args, FEATURES::cacheWrite);
-			case "cache_read": return callCacheRow("cache_read", args, FEATURES::cacheRead);
+			case "cache_write": return callCacheRow("cache_write", args, this::cacheWrite);
+			case "cache_read": return callCacheRow("cache_read", args, this::cacheRead);
 			case "scaled_dot_product": return callScaledDotProduct(args, consumedBranchOperands);
 			case "sqrt": return callSqrt(args);
 			case "shape": return callShape(args);
@@ -114,6 +130,53 @@ final class PdslBuiltins {
 			case "zeros": return callZeros(args);
 			default: return null;
 		}
+	}
+
+	/**
+	 * Normalises a heterogeneous PDSL argument value into a
+	 * {@link CollectionProducer}{@code <PackedCollection>} of the requested shape.
+	 * This is the single conversion point shared by parameter binding, primitive
+	 * dispatch and the built-ins — {@link PdslPrimitiveContext#toProducer toProducer}
+	 * delegates here.
+	 *
+	 * <p>A size-1 value satisfies any declared shape (scalar broadcast): a per-channel
+	 * argument such as {@code producer([channels])} supplied as a single scalar is shared
+	 * across every channel, and the per-channel subscript {@code arg[channel]} returns the
+	 * scalar as-is for each channel.</p>
+	 *
+	 * @param value         the raw argument value
+	 * @param expectedShape the required shape
+	 * @param contextName   prefix used in error messages
+	 * @return a {@link CollectionProducer} of the declared shape
+	 * @throws PdslParseException if the value is unsupported or the shape mismatches
+	 */
+	CollectionProducer normalizeToProducer(
+			Object value, TraversalPolicy expectedShape, String contextName) {
+		CollectionProducer base;
+		if (value instanceof Number) {
+			base = c(((Number) value).doubleValue());
+		} else if (value instanceof PackedCollection) {
+			base = cp((PackedCollection) value);
+		} else if (value instanceof Producer) {
+			base = c((Producer<PackedCollection>) value);
+		} else {
+			throw new PdslParseException(contextName + " expects Number, PackedCollection, or Producer; got "
+					+ (value == null ? "null" : value.getClass().getSimpleName()));
+		}
+
+		if (expectedShape == null) {
+			return base;
+		}
+
+		TraversalPolicy actual = shape(base);
+		if (actual.getTotalSize() == expectedShape.getTotalSize()) {
+			return actual.equals(expectedShape) ? base : base.reshape(expectedShape);
+		}
+		if (actual.getTotalSize() == 1) {
+			return base;
+		}
+		throw new PdslParseException(contextName + " expects shape " + expectedShape
+				+ " but value has total size " + actual.getTotalSize());
 	}
 
 	/**
@@ -129,14 +192,14 @@ final class PdslBuiltins {
 	 * @return the normalized producer
 	 * @throws PdslParseException if the arity does not match
 	 */
-	private static CollectionProducer producerArg(List<Object> args, int index,
+	private CollectionProducer producerArg(List<Object> args, int index,
 												  int expected, String name) {
 		if (args.size() != expected) {
 			throw new PdslParseException(name + "() expects " + expected
 					+ " argument" + (expected == 1 ? "" : "s")
 					+ ", got " + args.size());
 		}
-		return PdslInterpreter.normalizeToProducer(args.get(index), null,
+		return normalizeToProducer(args.get(index), null,
 				name + "() argument " + index);
 	}
 
@@ -148,12 +211,12 @@ final class PdslBuiltins {
 	 *         {@link org.almostrealism.layers.LayerFeatures#passThrough(TraversalPolicy)
 	 *         pass-through} block for any input shape
 	 */
-	private static Function<TraversalPolicy, Block> callIdentity(List<Object> args) {
+	private Function<TraversalPolicy, Block> callIdentity(List<Object> args) {
 		if (!args.isEmpty()) {
 			throw new PdslParseException(
 					"identity() expects no arguments, got " + args.size());
 		}
-		return FEATURES::passThrough;
+		return this::passThrough;
 	}
 
 	/**
@@ -166,7 +229,7 @@ final class PdslBuiltins {
 	 * @param args the multiplicative factor, or the per-position factors and their axis
 	 * @return a factory that creates the scale layer for any input shape
 	 */
-	private static Function<TraversalPolicy, Block> callScale(List<Object> args) {
+	private Function<TraversalPolicy, Block> callScale(List<Object> args) {
 		if (args.size() >= 2) {
 			return callScaleAlongAxis(args);
 		}
@@ -181,11 +244,11 @@ final class PdslBuiltins {
 			// [channels, signalSize] input in a single computation.
 			PdslChannelBank bank = (PdslChannelBank) args.get(0);
 			int channels = bank.getChannels();
-			CollectionProducer factors = PdslInterpreter.normalizeToProducer(bank.getSource(),
-					FEATURES.shape(channels), "scale() factor bank");
+			CollectionProducer factors = normalizeToProducer(bank.getSource(),
+					shape(channels), "scale() factor bank");
 			return (inputShape -> {
 				long rowSize = inputShape.getTotalSizeLong() / channels;
-				return FEATURES.layer("scale", inputShape, inputShape,
+				return layer("scale", inputShape, inputShape,
 						input -> new DefaultTraversableExpressionComputation("scaleBank",
 								inputShape,
 								(Function<TraversableExpression[], CollectionExpression>)
@@ -198,11 +261,11 @@ final class PdslBuiltins {
 			});
 		}
 
-		CollectionProducer factor = PdslInterpreter.normalizeToProducer(args.get(0),
-				FEATURES.shape(1), "scale() factor");
+		CollectionProducer factor = normalizeToProducer(args.get(0),
+				shape(1), "scale() factor");
 		return (inputShape ->
-				FEATURES.layer("scale", inputShape, inputShape,
-						input -> FEATURES.multiply(FEATURES.c(input).each(), factor)));
+				layer("scale", inputShape, inputShape,
+						input -> multiply(c(input).each(), factor)));
 	}
 
 	/**
@@ -225,11 +288,11 @@ final class PdslBuiltins {
 	 * @see org.almostrealism.layers.LayerFeatures#scale(TraversalPolicy, int, Producer, java.util.List,
 	 *      io.almostrealism.compute.ComputeRequirement...)
 	 */
-	private static Function<TraversalPolicy, Block> callScaleAlongAxis(List<Object> args) {
-		CollectionProducer factors = PdslInterpreter.normalizeToProducer(args.get(0), null,
+	private Function<TraversalPolicy, Block> callScaleAlongAxis(List<Object> args) {
+		CollectionProducer factors = normalizeToProducer(args.get(0), null,
 				"scale() factors");
 		int axis = toInt(args.get(1));
-		TraversalPolicy factorShape = FEATURES.shape(factors);
+		TraversalPolicy factorShape = shape(factors);
 		List<PackedCollection> weights = new ArrayList<>();
 		for (int i = 2; i < args.size(); i++) {
 			Object weight = args.get(i);
@@ -255,7 +318,7 @@ final class PdslBuiltins {
 						+ "] (one per batch entry and position of axis " + axis + " of "
 						+ inputShape + "), got " + factorShape);
 			}
-			return FEATURES.scale(inputShape, axis, factors, weights);
+			return scale(inputShape, axis, factors, weights);
 		};
 	}
 
@@ -273,7 +336,7 @@ final class PdslBuiltins {
 	 * @param args one argument: the integer repetition count {@code n}
 	 * @return a factory that creates the repeat layer for any 2-D input shape
 	 */
-	private static Function<TraversalPolicy, Block> callRepeat(List<Object> args) {
+	private Function<TraversalPolicy, Block> callRepeat(List<Object> args) {
 		if (args.size() != 1) {
 			throw new PdslParseException(
 					"repeat() expects 1 argument (n), got " + args.size());
@@ -286,13 +349,13 @@ final class PdslBuiltins {
 			}
 			int channels = inputShape.length(0);
 			int signalSize = inputShape.length(1);
-			TraversalPolicy singleShape = FEATURES.shape(channels, signalSize);
-			TraversalPolicy outputShape = FEATURES.shape(channels * n, signalSize);
-			return FEATURES.layer("repeat", inputShape, outputShape, input -> {
-				CollectionProducer combined = FEATURES.c(input).reshape(singleShape);
+			TraversalPolicy singleShape = shape(channels, signalSize);
+			TraversalPolicy outputShape = shape(channels * n, signalSize);
+			return layer("repeat", inputShape, outputShape, input -> {
+				CollectionProducer combined = c(input).reshape(singleShape);
 				for (int i = 1; i < n; i++) {
 					combined = (CollectionProducer)
-							FEATURES.concat(combined, FEATURES.c(input).reshape(singleShape));
+							concat(combined, c(input).reshape(singleShape));
 				}
 				return combined;
 			});
@@ -320,7 +383,7 @@ final class PdslBuiltins {
 	 * @param args must be empty
 	 * @return a factory that creates the sum-channels layer for any 2-D input shape
 	 */
-	private static Function<TraversalPolicy, Block> callSumChannels(List<Object> args) {
+	private Function<TraversalPolicy, Block> callSumChannels(List<Object> args) {
 		if (!args.isEmpty()) {
 			throw new PdslParseException(
 					"sum_channels() expects no arguments, got " + args.size());
@@ -332,13 +395,13 @@ final class PdslBuiltins {
 			}
 			int channels = inputShape.length(0);
 			int signalSize = inputShape.length(1);
-			TraversalPolicy singleShape = FEATURES.shape(1, signalSize);
-			return FEATURES.layer("sum_channels", inputShape, singleShape, input -> {
+			TraversalPolicy singleShape = shape(1, signalSize);
+			return layer("sum_channels", inputShape, singleShape, input -> {
 				// subset() positions are per-dimension coordinates — (i, 0) selects row i.
 				// A flat offset here resolved every term to row 0 (channels * row0).
-				CollectionProducer sum = FEATURES.subset(singleShape, FEATURES.c(input), 0, 0);
+				CollectionProducer sum = subset(singleShape, c(input), 0, 0);
 				for (int i = 1; i < channels; i++) {
-					sum = sum.add(FEATURES.subset(singleShape, FEATURES.c(input), i, 0));
+					sum = sum.add(subset(singleShape, c(input), i, 0));
 				}
 				return sum;
 			});
@@ -356,8 +419,8 @@ final class PdslBuiltins {
 	 * @param slot the destination slot, whose total size must match the input shape
 	 * @return a factory that creates the capture block for any input shape
 	 */
-	private static Function<TraversalPolicy, Block> callCapture(CollectionProducer slot) {
-		TraversalPolicy slotShape = FEATURES.shape(slot);
+	private Function<TraversalPolicy, Block> callCapture(CollectionProducer slot) {
+		TraversalPolicy slotShape = shape(slot);
 		return (inputShape -> {
 			if (slotShape.getTotalSize() != inputShape.getTotalSize()) {
 				throw new PdslParseException("capture() slot size "
@@ -368,8 +431,8 @@ final class PdslBuiltins {
 					(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 							Supplier<Runnable>>) (in, next) -> {
 						OperationList ops = new OperationList("capture");
-						ops.add(FEATURES.into("capture-" + slotShape.getTotalSize(),
-								FEATURES.c(in).reshape(slotShape), slot, false));
+						ops.add(into("capture-" + slotShape.getTotalSize(),
+								c(in).reshape(slotShape), slot, false));
 						ops.add(next.push(in));
 						return ops;
 					});
@@ -387,11 +450,11 @@ final class PdslBuiltins {
 	 * @param args Evaluated arguments: weight tensor, and optionally bias tensor
 	 * @return A dense {@link Block}
 	 */
-	private static Function<TraversalPolicy, CellularLayer> callDense(List<Object> args) {
+	private Function<TraversalPolicy, CellularLayer> callDense(List<Object> args) {
 		if (args.size() == 1) {
-			return FEATURES.dense((PackedCollection) args.get(0));
+			return dense((PackedCollection) args.get(0));
 		} else if (args.size() == 2) {
-			return FEATURES.dense(
+			return dense(
 					(PackedCollection) args.get(0),
 					(PackedCollection) args.get(1));
 		}
@@ -418,7 +481,7 @@ final class PdslBuiltins {
 	 *         input shape
 	 * @see org.almostrealism.layers.ConvolutionLayerFeatures#convolution1d
 	 */
-	private static Function<TraversalPolicy, Block> callConv1d(List<Object> args) {
+	private Function<TraversalPolicy, Block> callConv1d(List<Object> args) {
 		ConvolutionArguments conv = new ConvolutionArguments("conv1d", args,
 				"[out_channels, in_channels, kernel]", "stride", "padding");
 		int outChannels = conv.weightLength(0);
@@ -426,7 +489,7 @@ final class PdslBuiltins {
 		int kernelSize = conv.weightLength(2);
 		return inputShape -> {
 			conv.checkInput(inputShape, inChannels);
-			return FEATURES.convolution1d(inputShape.length(0), inChannels, outChannels,
+			return convolution1d(inputShape.length(0), inChannels, outChannels,
 					inputShape.length(2), kernelSize, conv.setting(0), conv.setting(1),
 					conv.weights, conv.bias);
 		};
@@ -451,7 +514,7 @@ final class PdslBuiltins {
 	 *         {@code [batch, channels, length]} input shape
 	 * @see org.almostrealism.layers.ConvolutionLayerFeatures#convTranspose1d
 	 */
-	private static Function<TraversalPolicy, Block> callConvTranspose1d(List<Object> args) {
+	private Function<TraversalPolicy, Block> callConvTranspose1d(List<Object> args) {
 		ConvolutionArguments conv = new ConvolutionArguments("conv_transpose1d", args,
 				"[in_channels, out_channels, kernel]", "stride", "padding", "output_padding");
 		int inChannels = conv.weightLength(0);
@@ -459,7 +522,7 @@ final class PdslBuiltins {
 		int kernelSize = conv.weightLength(2);
 		return inputShape -> {
 			conv.checkInput(inputShape, inChannels);
-			return FEATURES.convTranspose1d(inputShape.length(0), inChannels, outChannels,
+			return convTranspose1d(inputShape.length(0), inChannels, outChannels,
 					inputShape.length(2), kernelSize, conv.setting(0), conv.setting(1),
 					conv.setting(2), conv.weights, conv.bias);
 		};
@@ -569,7 +632,7 @@ final class PdslBuiltins {
 	 * @see org.almostrealism.layers.NormalizationLayerFeatures#rmsnorm(TraversalPolicy,
 	 *      PackedCollection, PackedCollection, double, io.almostrealism.compute.ComputeRequirement...)
 	 */
-	private static Function<TraversalPolicy, CellularLayer> callRmsnorm(List<Object> args) {
+	private Function<TraversalPolicy, CellularLayer> callRmsnorm(List<Object> args) {
 		if (args.size() != 2 && args.size() != 3) {
 			throw new PdslParseException("rmsnorm() expects (weights, epsilon) or "
 					+ "(weights, biases, epsilon), got " + args.size() + " arguments");
@@ -577,7 +640,7 @@ final class PdslBuiltins {
 		PackedCollection weights = (PackedCollection) args.get(0);
 		PackedCollection biases = args.size() == 3 ? (PackedCollection) args.get(1) : null;
 		double epsilon = toDouble(args.get(args.size() - 1));
-		return shape -> FEATURES.rmsnorm(shape, weights, biases, epsilon);
+		return shape -> rmsnorm(shape, weights, biases, epsilon);
 	}
 
 	/**
@@ -593,7 +656,7 @@ final class PdslBuiltins {
 	 * @see org.almostrealism.layers.NormalizationLayerFeatures#norm(PackedCollection,
 	 *      PackedCollection, double, io.almostrealism.compute.ComputeRequirement...)
 	 */
-	private static Function<TraversalPolicy, CellularLayer> callLayernorm(List<Object> args) {
+	private Function<TraversalPolicy, CellularLayer> callLayernorm(List<Object> args) {
 		if (args.size() != 3) {
 			throw new PdslParseException(
 					"layernorm() expects 3 arguments (weights, biases, epsilon), got " + args.size());
@@ -609,7 +672,7 @@ final class PdslBuiltins {
 			throw new PdslParseException("layernorm() biases " + biases.getShape()
 					+ " do not match the weights " + weights.getShape());
 		}
-		Function<TraversalPolicy, CellularLayer> norm = FEATURES.norm(weights, biases, toDouble(args.get(2)));
+		Function<TraversalPolicy, CellularLayer> norm = norm(weights, biases, toDouble(args.get(2)));
 		return shape -> {
 			if (shape.getTotalSize() % size != 0) {
 				throw new PdslParseException("layernorm() normalizes runs of " + size
@@ -640,12 +703,12 @@ final class PdslBuiltins {
 	 * @see org.almostrealism.layers.NormalizationLayerFeatures#dynamicTanh(PackedCollection,
 	 *      PackedCollection, PackedCollection, io.almostrealism.compute.ComputeRequirement...)
 	 */
-	private static Function<TraversalPolicy, CellularLayer> callDynamicTanh(List<Object> args) {
+	private Function<TraversalPolicy, CellularLayer> callDynamicTanh(List<Object> args) {
 		if (args.size() != 3) {
 			throw new PdslParseException(
 					"dynamic_tanh() expects 3 arguments (alpha, weights, biases), got " + args.size());
 		}
-		return FEATURES.dynamicTanh((PackedCollection) args.get(0),
+		return dynamicTanh((PackedCollection) args.get(0),
 				(PackedCollection) args.get(1), (PackedCollection) args.get(2));
 	}
 
@@ -657,7 +720,7 @@ final class PdslBuiltins {
 	 * @param args Must be empty
 	 * @return A factory that creates the row-wise softmax layer for any input of at least two dimensions
 	 */
-	private static Function<TraversalPolicy, CellularLayer> callSoftmax(List<Object> args) {
+	private Function<TraversalPolicy, CellularLayer> callSoftmax(List<Object> args) {
 		if (!args.isEmpty()) {
 			throw new PdslParseException(
 					"softmax() expects 0 arguments, got " + args.size());
@@ -667,7 +730,7 @@ final class PdslBuiltins {
 				throw new PdslParseException(
 						"softmax() expects a [rows, size] input shape, got " + shape);
 			}
-			return FEATURES.softmax(shape, true);
+			return softmax(shape, true);
 		};
 	}
 
@@ -680,7 +743,7 @@ final class PdslBuiltins {
 	 * @return a factory that creates the duplication for any 2-D input shape
 	 * @see org.almostrealism.layers.LayerFeatures#repeatEach
 	 */
-	private static Function<TraversalPolicy, Block> callRepeatEach(List<Object> args) {
+	private Function<TraversalPolicy, Block> callRepeatEach(List<Object> args) {
 		if (args.size() != 1) {
 			throw new PdslParseException(
 					"repeat_each() expects 1 argument (n), got " + args.size());
@@ -692,10 +755,10 @@ final class PdslBuiltins {
 					throw new PdslParseException(
 							"repeat_each() expects a [rows, size] input shape, got " + inputShape);
 				}
-				return FEATURES.passThrough(inputShape);
+				return passThrough(inputShape);
 			};
 		}
-		return inputShape -> FEATURES.repeatEach(inputShape, n);
+		return inputShape -> repeatEach(inputShape, n);
 	}
 
 	/**
@@ -719,16 +782,16 @@ final class PdslBuiltins {
 	 * @see org.almostrealism.layers.LayerFeatures#cacheWrite
 	 * @see org.almostrealism.layers.LayerFeatures#cacheRead
 	 */
-	private static Function<TraversalPolicy, Block> callCacheRow(String name, List<Object> args,
+	private Function<TraversalPolicy, Block> callCacheRow(String name, List<Object> args,
 																 CacheRowOperation operation) {
 		if (args.size() != 2) {
 			throw new PdslParseException(
 					name + "() expects 2 arguments (cache, position), got " + args.size());
 		}
-		CollectionProducer cache = PdslInterpreter.normalizeToProducer(args.get(0), null,
+		CollectionProducer cache = normalizeToProducer(args.get(0), null,
 				name + "() cache");
-		CollectionProducer position = PdslInterpreter.normalizeToProducer(args.get(1),
-				FEATURES.shape(1), name + "() position");
+		CollectionProducer position = normalizeToProducer(args.get(1),
+				shape(1), name + "() position");
 		return inputShape -> operation.create(inputShape, cache, position);
 	}
 
@@ -776,7 +839,7 @@ final class PdslBuiltins {
 	 * @see org.almostrealism.layers.LayerRoutingFeatures#compose(String, TraversalPolicy, Block,
 	 *      TraversalPolicy, io.almostrealism.relation.Composition, io.almostrealism.compute.ComputeRequirement...)
 	 */
-	private static Function<TraversalPolicy, Block> callScaledDotProduct(
+	private Function<TraversalPolicy, Block> callScaledDotProduct(
 			List<Object> args, Set<Block> consumedBranchOperands) {
 		if (args.size() != 2) {
 			throw new PdslParseException(
@@ -795,16 +858,16 @@ final class PdslBuiltins {
 						+ " for each product that reads it");
 			}
 			return scaledDotProductLayer(branch.getOutputShape(), transpose, (inputShape, outputShape) ->
-					FEATURES.compose("scaledDotProduct", inputShape, branch, outputShape,
-							(input, other) -> FEATURES.scaledDotProduct(
-									FEATURES.c(input), FEATURES.c(other), transpose)));
+					compose("scaledDotProduct", inputShape, branch, outputShape,
+							(input, other) -> scaledDotProduct(
+									c(input), c(other), transpose)));
 		}
 
 		CollectionProducer other =
-				PdslInterpreter.normalizeToProducer(args.get(0), null, "scaled_dot_product() other");
-		return scaledDotProductLayer(FEATURES.shape(other), transpose, (inputShape, outputShape) ->
-				FEATURES.layer("scaledDotProduct", inputShape, outputShape,
-						input -> FEATURES.scaledDotProduct(FEATURES.c(input), other, transpose)));
+				normalizeToProducer(args.get(0), null, "scaled_dot_product() other");
+		return scaledDotProductLayer(shape(other), transpose, (inputShape, outputShape) ->
+				layer("scaledDotProduct", inputShape, outputShape,
+						input -> scaledDotProduct(c(input), other, transpose)));
 	}
 
 	/**
@@ -819,7 +882,7 @@ final class PdslBuiltins {
 	 * @throws PdslParseException if the operand, or later the input shape, is not 4-D, or the two
 	 *                            disagree on the batch, head or contracted axis
 	 */
-	private static Function<TraversalPolicy, Block> scaledDotProductLayer(
+	private Function<TraversalPolicy, Block> scaledDotProductLayer(
 			TraversalPolicy otherShape, boolean transpose,
 			BiFunction<TraversalPolicy, TraversalPolicy, Block> product) {
 		if (otherShape.getDimensions() != 4) {
@@ -845,7 +908,7 @@ final class PdslBuiltins {
 				throw new PdslParseException("scaled_dot_product() input " + inputShape
 						+ " is incompatible with other " + otherShape + " for transpose=" + transpose);
 			}
-			return product.apply(inputShape, FEATURES.shape(inputShape.length(0), inputShape.length(1),
+			return product.apply(inputShape, shape(inputShape.length(0), inputShape.length(1),
 					inputShape.length(2), cols));
 		};
 	}
@@ -857,7 +920,7 @@ final class PdslBuiltins {
 	 * @param args one numeric argument
 	 * @return the square root as a {@link Double}
 	 */
-	private static Double callSqrt(List<Object> args) {
+	private Double callSqrt(List<Object> args) {
 		if (args.size() != 1) {
 			throw new PdslParseException("sqrt() expects 1 argument, got " + args.size());
 		}
@@ -870,13 +933,13 @@ final class PdslBuiltins {
 	 * @param type One of {@code "silu"}, {@code "relu"}, or {@code "gelu"}
 	 * @return The corresponding activation {@link Block}
 	 */
-	private static Function<TraversalPolicy, CellularLayer> callActivation(String type) {
+	private Function<TraversalPolicy, CellularLayer> callActivation(String type) {
 		switch (type) {
-			case "silu": return FEATURES.silu();
-			case "relu": return FEATURES.relu();
-			case "gelu": return FEATURES.gelu();
-			case "sigmoid": return FEATURES.sigmoid();
-			case "tanh_act": return FEATURES.tanh();
+			case "silu": return silu();
+			case "relu": return relu();
+			case "gelu": return gelu();
+			case "sigmoid": return sigmoid();
+			case "tanh_act": return tanh();
 			default:
 				throw new PdslParseException("Unknown activation: " + type);
 		}
@@ -896,12 +959,12 @@ final class PdslBuiltins {
 	 * @see org.almostrealism.layers.ActivationFeatures#snake(PackedCollection, PackedCollection,
 	 *      io.almostrealism.compute.ComputeRequirement...)
 	 */
-	private static Function<TraversalPolicy, CellularLayer> callSnake(List<Object> args) {
+	private Function<TraversalPolicy, CellularLayer> callSnake(List<Object> args) {
 		if (args.size() != 2) {
 			throw new PdslParseException(
 					"snake() expects 2 arguments (alpha, beta), got " + args.size());
 		}
-		return FEATURES.snake((PackedCollection) args.get(0), (PackedCollection) args.get(1));
+		return snake((PackedCollection) args.get(0), (PackedCollection) args.get(1));
 	}
 
 	/**
@@ -917,7 +980,7 @@ final class PdslBuiltins {
 	 * @param args {@code (offset, size)}, or a shape followed by one position per axis
 	 * @return a factory that creates the slice for the input shape where it is placed
 	 */
-	private static Function<TraversalPolicy, Block> callSlice(List<Object> args) {
+	private Function<TraversalPolicy, Block> callSlice(List<Object> args) {
 		if (!args.isEmpty() && args.get(0) instanceof TraversalPolicy) {
 			return callSliceAt((TraversalPolicy) args.get(0), toInts(args.subList(1, args.size())));
 		}
@@ -925,7 +988,7 @@ final class PdslBuiltins {
 			int offset = toInt(args.get(0));
 			int size = toInt(args.get(1));
 			return
-					(inputShape -> FEATURES.subset(inputShape, FEATURES.shape(size), offset));
+					(inputShape -> subset(inputShape, shape(size), offset));
 		}
 		throw new PdslParseException("slice() expects (offset, size) or ([shape], position...), got "
 				+ args.size() + " arguments");
@@ -943,7 +1006,7 @@ final class PdslBuiltins {
 	 * @return a factory that creates the slice for the input shape where it is placed
 	 * @see org.almostrealism.layers.LayerFeatures#subset(TraversalPolicy, TraversalPolicy, int...)
 	 */
-	private static Function<TraversalPolicy, Block> callSliceAt(TraversalPolicy shape, int[] position) {
+	private Function<TraversalPolicy, Block> callSliceAt(TraversalPolicy shape, int[] position) {
 		if (position.length != shape.getDimensions()) {
 			throw new PdslParseException("slice() of " + shape + " expects one position per axis, got "
 					+ position.length);
@@ -959,7 +1022,7 @@ final class PdslBuiltins {
 							+ Arrays.toString(position) + " does not lie inside the input shape " + inputShape);
 				}
 			}
-			return FEATURES.subset(inputShape, shape, position);
+			return subset(inputShape, shape, position);
 		};
 	}
 
@@ -973,7 +1036,7 @@ final class PdslBuiltins {
 	 * @return a factory that creates the permutation for an input with as many axes as the order names
 	 * @see org.almostrealism.layers.LayerFeatures#permute(TraversalPolicy, int...)
 	 */
-	private static Function<TraversalPolicy, Block> callPermute(List<Object> args) {
+	private Function<TraversalPolicy, Block> callPermute(List<Object> args) {
 		if (args.isEmpty()) {
 			throw new PdslParseException("permute() expects the axis order, got no arguments");
 		}
@@ -991,7 +1054,7 @@ final class PdslBuiltins {
 				throw new PdslParseException("permute() orders " + order.length
 						+ " axes but the input shape " + inputShape + " has " + inputShape.getDimensions());
 			}
-			return FEATURES.permute(inputShape, order);
+			return permute(inputShape, order);
 		};
 	}
 
@@ -1001,11 +1064,11 @@ final class PdslBuiltins {
 	 * @param args one integer argument: hidden_size
 	 * @return a factory that creates the lerp layer for any (3 * hidden_size) input shape
 	 */
-	private static Function<TraversalPolicy, Block> callLerp(List<Object> args) {
+	private Function<TraversalPolicy, Block> callLerp(List<Object> args) {
 		if (args.size() == 1) {
 			int hiddenSize = toInt(args.get(0));
 			return 
-					(inputShape -> FEATURES.lerpLayer(inputShape, hiddenSize));
+					(inputShape -> lerpLayer(inputShape, hiddenSize));
 		}
 		throw new PdslParseException(
 				"lerp() expects 1 argument (hidden_size), got " + args.size());
@@ -1021,17 +1084,17 @@ final class PdslBuiltins {
 	// Returns Object because the two forms genuinely differ: the one-argument form defers to a
 	// Function<TraversalPolicy, Block> (the input shape is supplied later) while the two-argument
 	// form already has both shapes and returns a Block directly. Both are valid dispatch results.
-	private static Object callReshape(List<Object> args) {
+	private Object callReshape(List<Object> args) {
 		if (args.size() == 1 && args.get(0) instanceof TraversalPolicy) {
 			TraversalPolicy outputShape = (TraversalPolicy) args.get(0);
 			return (Function<TraversalPolicy, Block>)
-					(inputShape -> FEATURES.reshape(inputShape, outputShape));
+					(inputShape -> reshape(inputShape, outputShape));
 		} else if (args.size() == 2
 				&& args.get(0) instanceof TraversalPolicy
 				&& args.get(1) instanceof TraversalPolicy) {
 			TraversalPolicy inputShape = (TraversalPolicy) args.get(0);
 			TraversalPolicy outputShape = (TraversalPolicy) args.get(1);
-			return FEATURES.reshape(inputShape, outputShape);
+			return reshape(inputShape, outputShape);
 		}
 		throw new PdslParseException(
 				"reshape() expects 1 or 2 shape arguments, got " + args.size());
@@ -1043,8 +1106,8 @@ final class PdslBuiltins {
 	 * @param args Evaluated integer dimension values
 	 * @return The corresponding traversal policy
 	 */
-	private static TraversalPolicy callShape(List<Object> args) {
-		return FEATURES.shape(toInts(args));
+	private TraversalPolicy callShape(List<Object> args) {
+		return shape(toInts(args));
 	}
 
 	/**
@@ -1054,7 +1117,7 @@ final class PdslBuiltins {
 	 * @param args [source: PackedCollection, shape: TraversalPolicy, offset: int]
 	 * @return a zero-copy {@link PackedCollection} view of the requested sub-region
 	 */
-	private static PackedCollection callRange(List<Object> args) {
+	private PackedCollection callRange(List<Object> args) {
 		if (args.size() == 3) {
 			PackedCollection source = (PackedCollection) args.get(0);
 			TraversalPolicy shape = (TraversalPolicy) args.get(1);
@@ -1074,7 +1137,7 @@ final class PdslBuiltins {
 	 * @param args [shape: TraversalPolicy]
 	 * @return the zero-filled collection
 	 */
-	private static PackedCollection callZeros(List<Object> args) {
+	private PackedCollection callZeros(List<Object> args) {
 		if (args.size() != 1 || !(args.get(0) instanceof TraversalPolicy)) {
 			throw new PdslParseException("zeros() expects one shape argument, such as zeros([rows, size])");
 		}
