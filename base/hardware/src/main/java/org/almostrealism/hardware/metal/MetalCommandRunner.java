@@ -98,16 +98,17 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * memory bound (it caps how much encoded-but-uncompleted work and how large an autorelease pool
 	 * accumulate), not a behavioural switch — correctness does not depend on its value.
 	 */
-	private static final int MAX_OPEN = 256;
+	public static final int MAX_OPEN = 256;
 
 	/**
-	 * Maximum closed buffers that may wait for their host-signaled bridges before a further
-	 * bridged dispatch waits, on its submitting thread, for the oldest of them to be committed.
-	 * A command queue allows a bounded number of command buffers that have not completed (64 by
-	 * default), and opening one beyond it blocks; this keeps the buffers waiting for the host well
-	 * within that bound, so the executor can always open the buffer a dispatch needs.
+	 * Maximum closed buffers that may wait for host-signaled bridges before a further dispatch
+	 * that would open a new buffer waits, on its submitting thread, for the oldest of them to be
+	 * committed. A command queue allows a bounded number of command buffers that have not
+	 * completed (64 by default), and opening one beyond it blocks; this keeps the buffers waiting
+	 * for the host well within that bound, so the executor can always open the buffer a dispatch
+	 * needs. Like {@link #MAX_OPEN}, a resource bound, not a behavioural switch.
 	 */
-	private static final int MAX_HELD = 16;
+	public static final int MAX_HELD = 16;
 
 	/** Total dispatches encoded across all runners since the last reset. */
 	public static final AtomicLong totalDispatchCount = new AtomicLong();
@@ -239,8 +240,9 @@ public class MetalCommandRunner implements ConsoleFeatures {
 
 	/**
 	 * The closed buffers not yet committed because they, or a buffer closed before them, still
-	 * wait for a host-signaled bridge, oldest first: the tail of {@link #committed}. At most
-	 * {@link #MAX_HELD} of them are created by bridged dispatches (see {@link #encode}).
+	 * wait for a host-signaled bridge, oldest first: the tail of {@link #committed}. No buffer is
+	 * opened while {@link #MAX_HELD} of them wait (see {@link #encode}), so there are at most one
+	 * more than that: the buffer that was open when the bound was reached, once it is closed.
 	 * Executor-thread only.
 	 */
 	private final ArrayDeque<CommittedBuffer> held = new ArrayDeque<>();
@@ -285,7 +287,9 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * foreign work settles, via {@link Semaphore#onSettled(Runnable)}. The dispatch is
 	 * therefore ordered after the foreign work with no host wait. The buffer holding it is not
 	 * committed until the signal has been given (see the class documentation), so the GPU never
-	 * waits for the host, however far ahead of the foreign work dispatches are submitted. If the
+	 * waits for the host, however far ahead of the foreign work dispatches are submitted. Once
+	 * {@link #MAX_HELD} closed buffers wait in this way, a dispatch that would open another
+	 * waits, on the calling thread, for the oldest of them to be committed. If the
 	 * foreign work never settles, the buffer is never committed, and a wait for it waits for the
 	 * foreign work &mdash; the same exposure a blocking bridge has. With bridges disabled, the
 	 * foreign dependency is waited on the calling thread before the dispatch is encoded.</p>
@@ -363,13 +367,17 @@ public class MetalCommandRunner implements ConsoleFeatures {
 
 	/**
 	 * Encodes one dispatch on the executor's thread for {@link #submit}, adding its completion
-	 * semaphore to {@code result}, unless the dispatch is bridged and {@link #MAX_HELD} buffers
-	 * already wait for their bridges. A bridged dispatch closes the open buffer and opens another,
-	 * and a command queue allows only a bounded number of command buffers that have not completed:
-	 * opening one beyond that blocks the executor's thread until one completes, and a buffer
-	 * waiting for its bridges never completes while the executor that would commit it is blocked.
-	 * The dispatch is then not encoded, and the oldest waiting buffer is returned for the caller
-	 * to wait for, on its own thread, before trying again.
+	 * semaphore to {@code result}, unless the dispatch would open a new command buffer while
+	 * {@link #MAX_HELD} closed buffers already wait for a host-signaled bridge. A dispatch opens a
+	 * buffer when it is bridged (it closes the open buffer and starts another) or when no buffer
+	 * is open (the last one was closed at {@link #MAX_OPEN} or by a host wait). Every buffer closed
+	 * behind one that waits for its bridge waits as well, whatever closed it, and a command queue
+	 * allows only a bounded number of command buffers that have not completed: opening one beyond
+	 * that blocks the executor's thread until one completes, and a buffer waiting for its bridges
+	 * never completes while the executor that would commit it is blocked. The dispatch is then not
+	 * encoded, and the oldest waiting buffer is returned for the caller to wait for, on its own
+	 * thread, before trying again. A dispatch that joins the still-open buffer is never held back,
+	 * so work the foreign dependency itself encodes there can always proceed.
 	 *
 	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}
 	 * @param command    encodes the kernel into the supplied command buffer
@@ -388,7 +396,10 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			MetalSemaphore dependency = sameRunner ? (MetalSemaphore) dependsOn : null;
 			Semaphore foreign = dependsOn != null && !sameRunner ? dependsOn : null;
 
-			if (foreign != null && held.size() >= MAX_HELD) {
+			// A bridged dispatch always opens a fresh buffer (see below); any other opens one
+			// when the previous buffer was closed
+			boolean opensBuffer = foreign != null || openBuffer == null;
+			if (opensBuffer && held.size() >= MAX_HELD) {
 				blocking.set(held.peekFirst());
 				return;
 			}
@@ -448,7 +459,6 @@ public class MetalCommandRunner implements ConsoleFeatures {
 
 			result.add(new MetalSemaphore(requester, this, openBuffer, event, signaled));
 
-			// TODO(review): this closure can grow held past MAX_HELD (only bridged dispatches check it), risking a queue.commandBuffer() block on the executor
 			if (openCount >= MAX_OPEN && commitOpenOnExecutor()) {
 				maxOpenCommits++;
 			}

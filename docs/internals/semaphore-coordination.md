@@ -82,8 +82,11 @@ must respect it:
   buffer is committed only once every bridge in it has been signaled, in the order buffers were
   closed, so the GPU never waits for the host however far ahead of the foreign work a caller
   submits. A command queue allows a bounded number of uncompleted command buffers, and opening
-  one beyond it blocks the runner's thread, so at most `MAX_HELD` buffers wait for bridges; a
-  further bridged dispatch waits on its submitting thread for the oldest to be committed.
+  one beyond it blocks the runner's thread. Every buffer closed behind one that waits for a
+  bridge waits as well, whether a bridge, the `MAX_OPEN` bound or a host wait closed it, so
+  once `MAX_HELD` buffers wait, any dispatch that would open a new buffer (bridged or not)
+  waits on its submitting thread for the oldest to be committed. A dispatch that joins the
+  still-open buffer never waits.
 
 Two rules follow:
 
