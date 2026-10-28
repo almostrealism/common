@@ -284,7 +284,7 @@ public class PdslLanguageReferenceExamplesTest extends TestSuiteBase {
 	 */
 	private static boolean dispatches(String name) {
 		try {
-			return PdslBuiltins.call(name, new ArrayList<>(), new HashSet<>()) != null;
+			return new PdslBuiltins().call(name, new ArrayList<>(), new HashSet<>()) != null;
 		} catch (RuntimeException rejectedArguments) {
 			return true;
 		}

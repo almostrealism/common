@@ -59,10 +59,10 @@
  *       {@code for each channel}, supplied by a domain module</li>
  * </ul>
  *
- * <p>The built-in function library ({@code PdslBuiltins}) and the feature mixin it and the
- * interpreter use ({@code PdslFeatures}) are package-private implementation details: programs
- * reach the built-ins by name, and domains add functions through {@code PdslPrimitive} rather
- * than by extending the library.</p>
+ * <p>The built-in function library ({@code PdslBuiltins}) is a package-private implementation
+ * detail: an instance type, owned by each interpreter, that implements the feature interfaces it
+ * needs. Programs reach the built-ins by name, and domains add functions through
+ * {@code PdslPrimitive} rather than by extending the library.</p>
  *
  * <p>The language core lives here, beside the {@link org.almostrealism.model.Block} and
  * {@link org.almostrealism.model.Model} types it builds, so that any module from this layer up can
