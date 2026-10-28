@@ -88,6 +88,43 @@ public class MetalCommandFailureTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A failure covers only the failed buffer's dispatches and those after it: a dispatch in an
+	 * earlier buffer, which executed, still completes normally, both when its buffer is drained by
+	 * the wait that records the later failure and when it is waited for afterwards.
+	 */
+	@Test(timeout = 60000)
+	public void earlierDispatchIsNotFailed() {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
+		MetalCommandRunner.enableHostSignaledBridges = true;
+		FailingRunner runner = new FailingRunner(metal.getMtlQueue());
+
+		try {
+			MetalSemaphore earlier = runner.submit(null, NOTHING, null, null);
+
+			// A bridged dispatch closes the open buffer, so the failed one is a buffer of its own
+			MetalSemaphore failed = runner.submit(null, NOTHING, settled(), null);
+			assertNotSame(earlier.getCommandBuffer(), failed.getCommandBuffer());
+			runner.failBufferOf(failed);
+
+			assertMetalFailure(NativeExecutionFailureTest.failureOf(failed));
+			assertEquals(1, runner.getErrorCompletionCount());
+
+			earlier.waitFor();
+		} finally {
+			runner.destroy();
+			MetalCommandRunner.enableHostSignaledBridges = bridges;
+		}
+
+		assertEquals(1, runner.getErrorCompletionCount());
+	}
+
+	/**
 	 * Several threads waiting for the failed buffer at once all throw, not only the one that
 	 * happens to drain it.
 	 */
