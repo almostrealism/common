@@ -80,9 +80,8 @@ public abstract class PrefixAccumulationComputation extends TraversableRepeatedP
 	 */
 	public PrefixAccumulationComputation(String name, TraversalPolicy shape, boolean pad,
 										 Producer<PackedCollection> input) {
-		super(name, shape, shape.getTotalSize(), null, input);
+		super(name, shape, shape.getTotalSize(), input);
 		this.pad = pad;
-		setInitial((args, index) -> identity());
 
 		// The base constructor captures the metadata signature before this constructor body
 		// has assigned pad, so it must be refreshed now that the flag is set
@@ -96,6 +95,18 @@ public abstract class PrefixAccumulationComputation extends TraversableRepeatedP
 	 * @return An {@link Expression} for the identity value
 	 */
 	protected abstract Expression<?> identity();
+
+	/**
+	 * Returns the {@link #identity()}: every output element starts the accumulation empty.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the position within the output block
+	 * @return the identity of {@link #combine}
+	 */
+	@Override
+	protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+		return identity();
+	}
 
 	/**
 	 * Returns the accumulator after absorbing one term.

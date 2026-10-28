@@ -188,18 +188,21 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	 * Initializes backing memory if no delegate has been set.
 	 *
 	 * <p>If a delegate exists, does nothing. Otherwise allocates memory from the
-	 * default provider or heap.</p>
+	 * default provider or heap. The memory allocated is the {@link #getDelegatedLength()
+	 * delegated length}, which is less than the {@link #getMemLength() length} when an ordering
+	 * addresses fewer physical elements than there are logical ones.</p>
 	 */
 	protected void init() {
 		if (getDelegate() == null) {
 			Heap heap = getDefaultDelegate();
+			int length = getDelegatedLength();
 
 			if (heap == null) {
-				init(Hardware.getLocalHardware().getMemoryProvider(getMemLength()).allocate(getMemLength()));
+				init(Hardware.getLocalHardware().getMemoryProvider(length).allocate(length));
 			} else {
-				Bytes data = heap.allocate(getMemLength());
+				Bytes data = heap.allocate(length);
 				setDelegate(data.getDelegate(), data.getDelegateOffset(), data.getDelegateOrdering());
-				setMem(new double[getMemLength()]);
+				setMem(new double[length]);
 			}
 		}
 	}
@@ -243,13 +246,19 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		this.delegateOrder = order;
 
 		if (m != null) {
+			// A view of a root spans either its logical elements, which a view without an ordering
+			// reads through the root's ordering (so a compact root storing 3 of 9 still has 9), or
+			// its backing memory, the delegated length, which a gather makes the longer of the two
+			int extent = m.getDelegate() == null ?
+					Math.max(m.getMemLength(), m.getDelegatedLength()) : m.getMemLength();
+
 			if (m == this) {
 				throw new IllegalArgumentException("Circular delegate reference");
 			} else if (m.getDelegateDepth() > 25) {
 				throw new IllegalStateException("Delegation depth exceeded");
-			} else if (offset >= m.getMemLength()) {
+			} else if (offset >= extent) {
 				throw new HardwareException("Delegate offset is out of bounds");
-			} else if (offset + getDelegatedLength() > m.getMemLength()) {
+			} else if (offset + getDelegatedLength() > extent) {
 				throw new HardwareException("MemoryData extends beyond the length of the delegate");
 			}
 		}
@@ -277,7 +286,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	public void setMem(int offset, double value) {
 		MemoryData root = getRootDelegate();
 
-		if (getOffset() - root.getOffset() + offset + 1 > root.getMemLength()) {
+		if (getOffset() - root.getOffset() + offset + 1 > root.getDelegatedLength()) {
 			throw new IllegalArgumentException("Offset is beyond the length of this MemoryData");
 		}
 
@@ -323,7 +332,9 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	 * subclass. See {@link #setMem(double[])} for the routes available to everyone
 	 * else.</p>
 	 *
-	 * <p>The write must stay within the region this {@link MemoryData} owns, as well as
+	 * <p>The write must stay within the region this {@link MemoryData} owns, its
+	 * {@link #getDelegatedLength() delegated length} (which an ordering can make shorter or
+	 * longer than its logical length), as well as
 	 * within the underlying storage it delegates to. The second alone would let a write
 	 * into one entry of a bank continue into the entries that follow it, since those are
 	 * part of the same storage.</p>
@@ -333,13 +344,13 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	 * @throws IllegalArgumentException if the write extends beyond this memory or its storage
 	 */
 	protected void setMem(int offset, double[] source) {
-		if (offset < 0 || offset + source.length > getMemLength()) {
+		if (offset < 0 || offset + source.length > getDelegatedLength()) {
 			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
 		}
 
 		MemoryData root = getRootDelegate();
 
-		if (getOffset() - root.getOffset() + offset + source.length > root.getMemLength()) {
+		if (getOffset() - root.getOffset() + offset + source.length > root.getDelegatedLength()) {
 			throw new IllegalArgumentException("Array extends beyond the length of the underlying storage");
 		}
 
@@ -378,7 +389,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 			MemoryData.super.reallocate(provider);
 		} else {
 			Memory mem = memVersions.get(provider);
-			mem.getProvider().setMem(mem, 0, this.mem, 0, getMemLength());
+			mem.getProvider().setMem(mem, 0, this.mem, 0, getDelegatedLength());
 			reassign(mem);
 			memVersions.remove(provider);
 		}
@@ -425,7 +436,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 			memVersions = new HashMap<>();
 
 		if (memVersions == null) {
-			this.mem.getProvider().deallocate(getMemLength(), this.mem);
+			this.mem.getProvider().deallocate(getDelegatedLength(), this.mem);
 		} else {
 			memVersions.put(this.mem.getProvider(), this.mem);
 		}
@@ -444,7 +455,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		}
 
 		if (mem != null) {
-			if (memOwned) mem.getProvider().deallocate(getMemLength(), mem);
+			if (memOwned) mem.getProvider().deallocate(getDelegatedLength(), mem);
 			mem = null;
 			memOwned = false;
 		}
@@ -453,7 +464,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 			Map<MemoryProvider, Memory> versions = memVersions;
 			memVersions = null;
 			for (Memory cached : versions.values()) {
-				cached.getProvider().deallocate(getMemLength(), cached);
+				cached.getProvider().deallocate(getDelegatedLength(), cached);
 			}
 			versions.clear();
 		}

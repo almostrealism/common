@@ -278,10 +278,13 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * allocates new memory, copies existing data, and reassigns this {@link MemoryData} to
 	 * reference the new memory.</p>
 	 *
+	 * <p>What moves is the backing memory, its {@link #getDelegatedLength() delegated length},
+	 * which an ordering can make shorter or longer than the logical length.</p>
+	 *
 	 * @param provider The target memory provider (e.g., GPU memory)
 	 */
 	default void reallocate(MemoryProvider<?> provider) {
-		reassign(provider.reallocate(getMem(), getOffset(), getMemLength()));
+		reassign(provider.reallocate(getMem(), getOffset(), getDelegatedLength()));
 	}
 
 	/**
@@ -833,6 +836,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	/**
 	 * Copies a range from another {@link MemoryData} to this memory.
 	 *
+	 * <p>The copy moves backing memory, so both ranges are bounded by the
+	 * {@link #getDelegatedLength() delegated length} of their {@link MemoryData}, which an
+	 * ordering can make shorter or longer than its logical length.</p>
+	 *
 	 * @param offset Starting index in this memory
 	 * @param src Source memory data
 	 * @param srcOffset Starting index in source
@@ -840,9 +847,9 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @throws IllegalArgumentException If source or destination ranges are invalid
 	 */
 	default void setFrom(int offset, MemoryData src, int srcOffset, int length) {
-		if (src.getMemLength() < srcOffset + length) {
+		if (src.getDelegatedLength() < srcOffset + length) {
 			throw new IllegalArgumentException("Source MemoryData is not long enough to provide the requested data");
-		} else if (offset + length > getMemLength()) {
+		} else if (offset + length > getDelegatedLength()) {
 			throw new IllegalArgumentException("MemoryData region extends beyond the length of this MemoryData");
 		}
 
