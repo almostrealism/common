@@ -147,11 +147,11 @@ public class LatchSemaphore implements Semaphore {
 	 * Records the completions this latch is counted down for, as the composite that
 	 * {@link Semaphore#all(List, java.util.function.IntFunction)} builds over them.
 	 *
-	 * <p>{@code all} still starts a thread for each member that waits for it and counts this
-	 * latch down: those waits are what drive a member whose completion has to be requested
-	 * (a Metal dispatch whose command buffer is still open, for example) as soon as the
-	 * composite exists, and the latch they count down remains a valid completion for anything
-	 * that observes it. Knowing the members only changes how {@link #waitFor()} waits: it
+	 * <p>{@code all} still counts this latch down from each member's
+	 * {@link Semaphore#onSettled(Runnable)} callback: that registration is what drives a member
+	 * whose completion has to be requested (a Metal dispatch whose command buffer is still open,
+	 * for example) as soon as the composite exists, and the latch it counts down remains a valid
+	 * completion for anything that observes it. Knowing the members only changes how {@link #waitFor()} waits: it
 	 * settles each member itself, so the waiter is released by the last member's completion
 	 * directly, instead of by the thread that observed that completion counting the latch
 	 * down &mdash; one thread hand-off fewer on the path of every wait for a composite.</p>
