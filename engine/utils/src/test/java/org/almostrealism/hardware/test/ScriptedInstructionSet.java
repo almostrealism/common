@@ -34,8 +34,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 class ScriptedInstructionSet implements NativeInstructionSet {
 	/** Number of times the kernel has been invoked. */
 	private final AtomicInteger invocations = new AtomicInteger();
-	/** The failure every invocation throws, or {@code null} to complete normally. */
-	private final RuntimeException failure;
+	/**
+	 * The failure every invocation throws, a {@link RuntimeException} or an {@link Error}, or
+	 * {@code null} to complete normally.
+	 */
+	private final Throwable failure;
 
 	/** The compute context whose memory providers the execution accepts. */
 	private ComputeContext<MemoryData> context = Hardware.getLocalHardware().getComputeContext();
@@ -48,9 +51,15 @@ class ScriptedInstructionSet implements NativeInstructionSet {
 	 * Creates an instruction set.
 	 *
 	 * @param parallelism the number of workers a dispatch is split across
-	 * @param failure     the failure every invocation throws, or {@code null} to complete normally
+	 * @param failure     the failure every invocation throws, a {@link RuntimeException} or an
+	 *                    {@link Error}, or {@code null} to complete normally
+	 * @throws IllegalArgumentException if {@code failure} is a checked exception
 	 */
-	ScriptedInstructionSet(int parallelism, RuntimeException failure) {
+	ScriptedInstructionSet(int parallelism, Throwable failure) {
+		if (failure != null && !(failure instanceof RuntimeException) && !(failure instanceof Error)) {
+			throw new IllegalArgumentException("A kernel can only throw an unchecked failure");
+		}
+
 		this.parallelism = parallelism;
 		this.failure = failure;
 	}
@@ -76,7 +85,8 @@ class ScriptedInstructionSet implements NativeInstructionSet {
 	@Override
 	public void apply(long idx, long kernelSize, MemoryData... args) {
 		invocations.incrementAndGet();
-		if (failure != null) throw failure;
+		if (failure instanceof RuntimeException) throw (RuntimeException) failure;
+		if (failure instanceof Error) throw (Error) failure;
 	}
 
 	@Override

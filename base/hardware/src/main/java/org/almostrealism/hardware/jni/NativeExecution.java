@@ -147,7 +147,7 @@ import java.util.stream.Collectors;
  * <pre>{@code
  * try {
  *     inst.apply(globalId, kernelSize, data);
- * } catch (Exception e) {
+ * } catch (Exception | Error e) {
  *     latch.fail(e);
  *     warn("Operation " + id + " of " + workSize + " failed", e);
  * } finally {
@@ -409,8 +409,7 @@ public class NativeExecution extends HardwareOperator {
 			if (enableVerboseLog) {
 				log(getName() + " result0=" + data[0].toDouble(0));
 			}
-		} catch (Exception e) {
-			// TODO(review): an Error bypasses latch.fail and reports success
+		} catch (Exception | Error e) {
 			// Recorded before the count-downs below release the dispatch's waiters
 			latch.fail(e);
 			warn(getName() + " dispatch failed", e);
@@ -440,7 +439,7 @@ public class NativeExecution extends HardwareOperator {
 		return () -> {
 			try {
 				inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
-			} catch (Exception e) {
+			} catch (Exception | Error e) {
 				latch.fail(e);
 				warn("Operation " + id + " of " +
 						getGlobalWorkSize() + " failed", e);

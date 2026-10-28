@@ -649,7 +649,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * @param bridgedValue the timeline value of the dispatch bridged on it
 	 */
 	private void recordForeignFailure(Semaphore foreign, long bridgedValue) {
-		// TODO(review): a foreign failure poisons the shared runner forever; bound it?
+		// TODO(review): a foreign failure stays recorded for the runner's lifetime; tracked as task b765c052.
 		try {
 			foreign.waitFor();
 		} catch (RuntimeException | Error e) {

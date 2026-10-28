@@ -76,6 +76,42 @@ public class NativeExecutionFailureTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A dispatch whose single worker (run on the coordinating thread) throws an {@link Error}
+	 * reports that error from its completion, rather than settling as if the work had run.
+	 */
+	@Test(timeout = 60000)
+	public void inlineWorkerErrorIsRethrownByDispatch() {
+		assertWorkerFailureRethrown(1, new AssertionError("inline worker error"));
+	}
+
+	/**
+	 * A dispatch whose workers, run on the worker pool, throw an {@link Error} reports it from
+	 * its completion.
+	 */
+	@Test(timeout = 60000)
+	public void pooledWorkerErrorIsRethrownByDispatch() {
+		assertWorkerFailureRethrown(2, new AssertionError("pooled worker error"));
+	}
+
+	/**
+	 * A dispatch whose dependency failed with an {@link Error} does not run its workers, its
+	 * completion rethrows that error, and its memory reservation is still released.
+	 */
+	@Test(timeout = 60000)
+	public void dependencyErrorIsRethrownByDispatch() {
+		Error cause = new AssertionError("dependency error");
+		ScriptedInstructionSet kernel = new ScriptedInstructionSet(2, null);
+
+		try (PackedCollection arg = new PackedCollection(4)) {
+			Semaphore done = kernel.execution().accept(new Object[] { arg }, failed(cause));
+
+			assertSame(cause, failureOf(done));
+			assertEquals(0, kernel.getInvocations());
+			awaitGuardReleased(arg);
+		}
+	}
+
+	/**
 	 * A failure propagates along a chain: a dispatch chained on a failed dispatch does not run,
 	 * and the single wait at the end of the chain reports the original failure.
 	 */
@@ -130,7 +166,17 @@ public class NativeExecutionFailureTest extends TestSuiteBase {
 	 * @param parallelism the number of workers the dispatch is split across
 	 */
 	private void assertWorkerFailureRethrown(int parallelism) {
-		RuntimeException cause = new RuntimeException("worker failed");
+		assertWorkerFailureRethrown(parallelism, new RuntimeException("worker failed"));
+	}
+
+	/**
+	 * Dispatches a kernel whose every worker throws the given failure and checks that the
+	 * completion rethrows that same failure and the memory reservation is released.
+	 *
+	 * @param parallelism the number of workers the dispatch is split across
+	 * @param cause       the unchecked failure every worker throws
+	 */
+	private void assertWorkerFailureRethrown(int parallelism, Throwable cause) {
 		ScriptedInstructionSet kernel = new ScriptedInstructionSet(parallelism, cause);
 
 		try (PackedCollection arg = new PackedCollection(4)) {
@@ -148,7 +194,7 @@ public class NativeExecutionFailureTest extends TestSuiteBase {
 	 * @param cause the failure
 	 * @return a settled, failed completion
 	 */
-	static Semaphore failed(RuntimeException cause) {
+	static Semaphore failed(Throwable cause) {
 		DefaultLatchSemaphore failed = new DefaultLatchSemaphore((Semaphore) null, 1);
 		failed.fail(cause);
 		failed.countDown();
@@ -164,7 +210,7 @@ public class NativeExecutionFailureTest extends TestSuiteBase {
 	static Throwable failureOf(Semaphore completion) {
 		try {
 			completion.waitFor();
-		} catch (RuntimeException e) {
+		} catch (RuntimeException | Error e) {
 			return e;
 		}
 
