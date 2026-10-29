@@ -288,6 +288,35 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 	}
 
 	/**
+	 * Conforms these samples to a fixed {@code [channels, frames]} tensor: a source
+	 * with fewer channels than {@code channels} has its last channel duplicated (so a
+	 * mono source fills every channel), a source with more is truncated to
+	 * {@code channels}, and each channel is truncated or zero-padded to {@code frames}.
+	 *
+	 * <p>This reshapes the audio to a target channel count and clip length without
+	 * resampling; callers needing a different sample rate must resample first.</p>
+	 *
+	 * @param channels the target channel count
+	 * @param frames   the target frame count
+	 * @return the conformed samples, shape {@code [channels, frames]}
+	 */
+	public PackedCollection conform(int channels, int frames) {
+		int sourceChannels = getChannelCount();
+		int copy = Math.min(frames, getFrameCount());
+
+		double[] buffer = new double[channels * frames];
+		for (int c = 0; c < channels; c++) {
+			int sourceChannel = Math.min(c, sourceChannels - 1);
+			double[] channelData = getChannelData(sourceChannel).toArray(0, copy);
+			System.arraycopy(channelData, 0, buffer, c * frames, copy);
+		}
+
+		PackedCollection conformed = new PackedCollection(new TraversalPolicy(channels, frames));
+		conformed.set(0, buffer);
+		return conformed;
+	}
+
+	/**
 	 * Applies a factor to each frame of the specified channel and returns a new WaveData.
 	 *
 	 * @param channel   channel index to process
