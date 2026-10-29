@@ -11,6 +11,9 @@ tracker: [b3b032a7-3081-4001-a692-1dad640e4ffa]
 machinery (threading, queuing, failure propagation, teardown) out of the per-backend
 ComputeContext runners* — release **Common 0.76** (the release this repository's master is
 building).
+<!-- TODO(review): "Common 0.76" hardcodes a version number; per CLAUDE.md "Never Reference
+     Version Numbers", drop the number and point to the tracker release / root pom.xml. -->
+
 
 ## Motivation
 
@@ -49,13 +52,18 @@ Paths are under `base/hardware/src/main/java/org/almostrealism/hardware/`.
 - **`cuda/CudaStreamRunner`** — a completion thread, an **unbounded** `held` deque, a
   `dependencyWaits` pool that **parks a thread** in `head.dependsOn.waitFor()` (contrary to
   invariant 5 of `semaphore-coordination.md`), and per-completion `LatchSemaphore.fail`.
-  `release(...)` starts the held same-stream submissions after a failed head with a `null`
-  failure, so **a dependent of a failed submission reports success**; the class javadoc
-  still claims Metal does not propagate failures either, which is no longer true.
-  <!-- TODO(review): re-verify the CUDA same-stream `release(...)` null-failure defect against
-       current master before relying on "Phase A fixes it" — merged cuda-async-runner notes
-       assert the foreign-dependency FIFO hold DOES propagate a head failure via the shared
-       latch, so confirm this is the distinct same-stream release path, not that path. -->
+  When the foreign dependency of a held head fails, the head never launches and its own
+  semaphore reports the failure — but `release(...)` then starts every same-runner submission
+  held behind it with a `null` failure (`start(next, null)`), so **a submission that depended on
+  the failed head launches and reports success**. This diverges from invariant 7 of
+  `semaphore-coordination.md` ("a failure reaches every waiter downstream of it"), which Metal
+  now satisfies through its sticky `RecordedFailure`: a failure recorded at a timeline value is
+  reported by `requireNoFailure` for every wait at or after that value. The gap is specific to
+  this never-launched-head path; work that launches and then faults is still caught, because
+  each submission's event is synchronized on the completion thread. The class javadoc still
+  states that a failure is not propagated through same-runner dependencies "as it is not on
+  Metal," which is stale — Metal propagates a failure to every later dispatch of its runner
+  (semaphore-coordination.md, invariant 7 and "A failed command buffer fails loudly").
 
 - **`cl/CLSemaphore`** — `waitFor()` never reads `CL_EVENT_COMMAND_EXECUTION_STATUS`, so a
   failed OpenCL event settles as success; if `clWaitForEvents` throws, the guard release and
@@ -160,9 +168,11 @@ one test seam on the record or the stream.
 - **Metal** replaces its private failure machinery with the shared record, behaviour-preserving
   (same sticky, ordered-by-timeline-value semantics; the commit-cause warning stays beside it).
 - **CUDA** adopts it so a failure at sequence `K` fails every completion at sequence ≥ K: this
-  removes the `release(...)` path that starts held same-stream submissions with a `null` failure,
-  and fixes the dependent-of-a-failed-submission-reports-success defect. The stale class javadoc
-  is corrected.
+  removes the `release(...)` path that starts same-runner submissions held behind a failed foreign
+  head with a `null` failure, and fixes the dependent-of-a-failed-head-reports-success defect. The
+  stale class javadoc is corrected. (This also poisons independent work held behind the failure —
+  see the CUDA over-propagation open question — so the coarse-vs-precise decision must be settled
+  before this lands.)
 - **OpenCL** adopts it in `CLSemaphore.waitFor`: read `CL_EVENT_COMMAND_EXECUTION_STATUS`, record
   a failure for a failed event, and release the guard and the event on the throwing path too.
 - **JNI** already records at the latch; it consults the same record where a native op is chained
@@ -265,6 +275,17 @@ A reviewer can confirm the task is done when:
   `semaphore-coordination.md` is false, which was itself unconfirmed. **Decision needed**, and it
   must be the single policy for all adopting backends. `b765c052` should be closed as absorbed, or
   re-scoped to "define the shared reset policy"; this plan does not modify that task.
+- **CUDA over-propagation once it adopts the sticky record.** Today CUDA's `release(...)` lets a
+  submission merely *ordered behind* a failed foreign head — one that does not depend on the head —
+  launch and settle correctly. A "failure at ordinal `K` reports for every ordinal ≥ K" record
+  poisons *every* submission held behind the failure, independent work included, which is the cost
+  Metal already documents as accepted ("an independent later dispatch, whose work did run, is also
+  reported as failed"). For a genuine dependent this is the fix the plan wants; for independent
+  held-behind work it is a behaviour change from current CUDA. Because the same-runner dependency
+  is dropped to `null` at submit time (`ordersAfter`), the runner cannot tell a true dependent from
+  an order-held independent once a submission is held, so coarse poison is the only option unless
+  dependency identity is retained. **Decision needed:** accept the coarse poison for CUDA (matching
+  Metal), or retain enough dependency identity to fail only true dependents.
 - **How far to unify Metal's batching into the core.** Recommendation: the core unifies the
   coordination skeleton (ordinal, `ordersAfter`/`merge`, off-thread guard, admission/destroy,
   bounded hold, failure record, thread source, drain-on-destroy); Metal's command-buffer batching
