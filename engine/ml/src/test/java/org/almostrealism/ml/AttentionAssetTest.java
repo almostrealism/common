@@ -278,6 +278,65 @@ public class AttentionAssetTest extends TestSuiteBase implements AttentionFeatur
 	}
 
 	/**
+	 * The caller-supplied-cache {@code attentionArguments(...)} overload binds the caller's own
+	 * {@code keyCache}/{@code valueCache} as the layer's {@code key_cache}/{@code value_cache}
+	 * rather than allocating a fresh pair — the ownership invariant this change establishes. A caller
+	 * that holds these instances (for example {@link org.almostrealism.ml.CausalLanguageModel#decodeModel})
+	 * can therefore clear or release the exact buffers the compiled block reads and writes.
+	 */
+	@Test(timeout = 60000)
+	public void attentionArgumentsBindsCallerSuppliedCaches() {
+		Weights w = new Weights(2, 2, 4, false, false, 47L);
+		PackedCollection position = new PackedCollection(shape(1));
+		PackedCollection keyCache = new PackedCollection(shape(SEQ_LEN, w.dim));
+		PackedCollection valueCache = new PackedCollection(shape(SEQ_LEN, w.dim));
+
+		Map<String, Object> args = attentionArguments(w.heads, w.kvHeads, w.rms,
+				w.wk, w.wv, w.wq, w.wo, SEQ_LEN, p(position), EPSILON, keyCache, valueCache);
+
+		Assert.assertSame("key_cache must be the caller-supplied instance", keyCache, args.get("key_cache"));
+		Assert.assertSame("value_cache must be the caller-supplied instance", valueCache, args.get("value_cache"));
+	}
+
+	/**
+	 * The caller-supplied-cache {@code attentionArguments(...)} overload rejects a null cache and a
+	 * cache whose shape is not {@code (seqLen, dim)} with {@link IllegalArgumentException}, so a
+	 * mis-wired caller is told at construction time rather than failing deep in compilation.
+	 */
+	@Test(timeout = 60000)
+	public void attentionArgumentsRejectsInvalidCallerSuppliedCaches() {
+		Weights w = new Weights(2, 2, 4, false, false, 47L);
+		PackedCollection position = new PackedCollection(shape(1));
+		PackedCollection keyCache = new PackedCollection(shape(SEQ_LEN, w.dim));
+		PackedCollection valueCache = new PackedCollection(shape(SEQ_LEN, w.dim));
+
+		try {
+			attentionArguments(w.heads, w.kvHeads, w.rms, w.wk, w.wv, w.wq, w.wo,
+					SEQ_LEN, p(position), EPSILON, null, valueCache);
+			Assert.fail("attentionArguments() should reject a null key cache");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		try {
+			attentionArguments(w.heads, w.kvHeads, w.rms, w.wk, w.wv, w.wq, w.wo,
+					SEQ_LEN, p(position), EPSILON, keyCache, null);
+			Assert.fail("attentionArguments() should reject a null value cache");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		PackedCollection misShaped = new PackedCollection(shape(SEQ_LEN + 1, w.dim));
+		try {
+			attentionArguments(w.heads, w.kvHeads, w.rms, w.wk, w.wv, w.wq, w.wo,
+					SEQ_LEN, p(position), EPSILON, misShaped, valueCache);
+			Assert.fail("attentionArguments() should reject a key cache not of shape (seqLen, dim)");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * {@code attention(...)} requires both QK-Norm weights or neither: a caller that supplies
 	 * only one (for example, a partially wired model builder) gets a clear rejection instead
 	 * of a normalization silently applied to just the query or just the key.
