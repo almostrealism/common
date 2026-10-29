@@ -108,6 +108,10 @@ public class WorkstreamMetadataStore extends ControllerDatabase {
         + " WHEN NOT MATCHED THEN INSERT (workstream_id, name, meta_value, updated_at)"
         + "  VALUES (v.workstream_id, v.name, v.meta_value, v.updated_at)";
 
+    /** Removes one value, used to clear a field a workstream now carries as empty. */
+    private static final String DELETE_VALUE =
+        "DELETE FROM workstream_metadata WHERE workstream_id = ? AND name = ?";
+
     /**
      * Creates a store backed by the HSQLDB file database at {@code dbPath}.
      *
@@ -180,14 +184,19 @@ public class WorkstreamMetadataStore extends ControllerDatabase {
 
     /**
      * Stores values of one metadata field for several workstreams as a single
-     * transaction: either every value is committed or none is. Values equal to
-     * what is already stored are not rewritten. A {@code null} or empty value
-     * is skipped rather than treated as a deletion; values are removed only by
-     * {@link #removeWorkstream(String)}.
+     * transaction: either every change is committed or none is. Values equal to
+     * what is already stored are not rewritten.
+     *
+     * <p>The two absent-value cases are distinguished so a caller can clear a
+     * field without deleting the whole workstream. A {@code null} value means
+     * the workstream does not carry this field — its stored row, if any, is
+     * left untouched. An <em>empty</em> value is an explicit clear: the stored
+     * row is removed. (A workstream is removed whole by
+     * {@link #removeWorkstream(String)}.)</p>
      *
      * @param name   the metadata name, e.g. {@link #PLAN_INSTRUCTIONS}
      * @param values the values keyed by workstream ID
-     * @return the number of values written
+     * @return the number of rows written or removed
      * @throws IOException when the transaction cannot be committed; nothing
      *                     is written in that case
      */
@@ -198,17 +207,28 @@ public class WorkstreamMetadataStore extends ControllerDatabase {
         int written = 0;
         try {
             connection().setAutoCommit(false);
-            try (PreparedStatement ps = connection().prepareStatement(MERGE_VALUE)) {
+            try (PreparedStatement merge = connection().prepareStatement(MERGE_VALUE);
+                 PreparedStatement delete = connection().prepareStatement(DELETE_VALUE)) {
                 for (Map.Entry<String, String> e : values.entrySet()) {
+                    String key = e.getKey();
                     String value = e.getValue();
-                    // TODO(review): skipping empty values means a stored value can never be cleared short of deleting the workstream
-                    if (e.getKey() == null || value == null || value.isEmpty()) continue;
-                    if (value.equals(current.get(e.getKey()))) continue;
-                    ps.setString(1, e.getKey());
-                    ps.setString(2, name);
-                    ps.setString(3, value);
-                    ps.setTimestamp(4, now);
-                    ps.executeUpdate();
+                    // A null value is "no value carried" and leaves the row in place.
+                    if (key == null || value == null) continue;
+                    if (value.isEmpty()) {
+                        // An empty value is an explicit clear: remove any stored row.
+                        if (!current.containsKey(key)) continue;
+                        delete.setString(1, key);
+                        delete.setString(2, name);
+                        delete.executeUpdate();
+                        written++;
+                        continue;
+                    }
+                    if (value.equals(current.get(key))) continue;
+                    merge.setString(1, key);
+                    merge.setString(2, name);
+                    merge.setString(3, value);
+                    merge.setTimestamp(4, now);
+                    merge.executeUpdate();
                     written++;
                 }
             }
@@ -250,11 +270,12 @@ public class WorkstreamMetadataStore extends ControllerDatabase {
 
     /**
      * Writes the metadata the workstreams carry, through {@link #putAll}: only
-     * changed values are written, and a workstream carrying no value leaves
-     * its stored value in place.
+     * changed values are written, a workstream carrying no value ({@code null})
+     * leaves its stored value in place, and one carrying an empty value has its
+     * stored value cleared.
      *
      * @param workstreams the workstreams whose metadata to persist
-     * @return the number of values written
+     * @return the number of rows written or removed
      * @throws IOException when the values cannot be committed; nothing is
      *                     written in that case
      */

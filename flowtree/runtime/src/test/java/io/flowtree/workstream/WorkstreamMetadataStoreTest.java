@@ -123,9 +123,13 @@ public class WorkstreamMetadataStoreTest extends TestSuiteBase {
         assertEquals(values, all);
     }
 
-    /** An unchanged value is not rewritten, a changed one is, and null or empty never deletes. */
+    /**
+     * An unchanged value is not rewritten and a changed one is; a {@code null}
+     * value leaves the stored row in place while an empty value clears it, and
+     * an empty value for a workstream with no stored row writes nothing.
+     */
     @Test(timeout = 30000)
-    public void putAllWritesOnlyChangesAndNeverDeletes() throws IOException {
+    public void putAllWritesChangesAndClearsEmptyValues() throws IOException {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("ws-1", "first");
         values.put("ws-2", "second");
@@ -136,18 +140,51 @@ public class WorkstreamMetadataStoreTest extends TestSuiteBase {
         next.put("ws-2", "revised");
         next.put("ws-3", null);
         next.put("ws-4", "");
-        assertEquals("only ws-2 changed", 1,
+        assertEquals("ws-2 changed; null and an empty-with-no-row write nothing", 1,
                 store.putAll(WorkstreamMetadataStore.PLAN_INSTRUCTIONS, next));
 
+        // A null leaves ws-1 untouched; an empty value clears ws-2's stored row.
         Map<String, String> cleared = new LinkedHashMap<>();
         cleared.put("ws-1", null);
         cleared.put("ws-2", "");
-        assertEquals(0, store.putAll(WorkstreamMetadataStore.PLAN_INSTRUCTIONS, cleared));
+        assertEquals("only ws-2 is cleared", 1,
+                store.putAll(WorkstreamMetadataStore.PLAN_INSTRUCTIONS, cleared));
 
         Map<String, String> all = store.getAll(WorkstreamMetadataStore.PLAN_INSTRUCTIONS);
-        assertEquals(2, all.size());
+        assertEquals(1, all.size());
+        // A null value never deletes, so ws-1 keeps its value; the empty value cleared ws-2.
         assertEquals("first", all.get("ws-1"));
-        assertEquals("revised", all.get("ws-2"));
+        assertNull("an empty value clears the stored row", all.get("ws-2"));
+
+        // Clearing an already-absent row is a no-op rather than a spurious write.
+        assertEquals(0, store.putAll(WorkstreamMetadataStore.PLAN_INSTRUCTIONS,
+                Map.of("ws-2", "")));
+    }
+
+    /**
+     * A value cleared through {@link WorkstreamConfig#syncAndSave} with a store
+     * attached stays cleared across a restart, rather than the old stored value
+     * reappearing — the operator {@code /config} clear path end to end.
+     */
+    @Test(timeout = 30000)
+    public void clearingPlanInstructionsSurvivesRestart() throws IOException {
+        File yaml = writeYaml(LEGACY_YAML);
+        WorkstreamConfig config = WorkstreamConfig.loadFromYaml(yaml);
+        config.attachMetadataStore(store, yaml);
+        assertEquals("Investigate the flaky retry loop.",
+                store.get("ws-a", WorkstreamMetadataStore.PLAN_INSTRUCTIONS));
+
+        List<Workstream> workstreams = config.toWorkstreams();
+        byId(workstreams, "ws-a").setPlanInstructions("");
+        config.syncAndSave(workstreams, yaml);
+        assertNull("clearing removes the stored row",
+                store.get("ws-a", WorkstreamMetadataStore.PLAN_INSTRUCTIONS));
+
+        restartStore();
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(yaml);
+        reloaded.attachMetadataStore(store, yaml);
+        assertNull("the cleared value must not reappear after a restart",
+                byId(reloaded.toWorkstreams(), "ws-a").getPlanInstructions());
     }
 
     /** A value far larger than a YAML scalar should carry is stored and read back intact. */
