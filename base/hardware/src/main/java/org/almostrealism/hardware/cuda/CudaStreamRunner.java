@@ -60,7 +60,10 @@ import java.util.function.Consumer;
  * exactly as the GPU-side wait of a Metal bridge holds every command buffer committed after it.
  * Work already on the stream is never held back, so a foreign dependency that itself waits for
  * earlier work on this runner still completes. At most {@link #MAX_HELD} submissions are held; a
- * submission that would be held beyond that waits, on its submitting thread, for room.</p>
+ * submission that would be held beyond that waits, on its submitting thread, for room. The one
+ * exception is a submission made from a completion callback, which is held beyond the bound
+ * instead: room is made by a dependency settling, which may itself wait for the completion thread
+ * to observe earlier work.</p>
  *
  * <h2>Failures</h2>
  *
@@ -214,7 +217,6 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 					});
 
 			if (admitted != null) break;
-			// TODO(review): submit is allowed on the completion thread, but this wait must not run there (see SubmissionStream javadoc)
 			awaitHoldCapacityUninterruptibly();
 		}
 
@@ -238,7 +240,10 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 	 * Admits one submission under this stream's admission lock: launches it at once
 	 * when nothing it depends on is outstanding, settles it unlaunched when an earlier submission
 	 * has failed, and otherwise holds it. A submission that would be held while {@link #MAX_HELD}
-	 * already are is not admitted, and its caller waits for room before trying again.
+	 * already are is not admitted, and its caller waits for room before trying again, unless it is
+	 * made from a completion callback: the completion thread must not wait for room, since the
+	 * dependency that frees it may need that thread to observe an earlier completion, so such a
+	 * submission is held beyond the bound.
 	 *
 	 * @param requester  the operation submitting the work, or {@code null}
 	 * @param command    enqueues the work on the stream
@@ -251,7 +256,7 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 	private synchronized Submission admit(OperationMetadata requester, Consumer<CUStream> command,
 										  Semaphore foreign, Runnable onHeld, Runnable onComplete) {
 		boolean immediate = foreign == null && held.isEmpty();
-		if (!immediate && !hasHoldCapacity()) return null;
+		if (!immediate && !hasHoldCapacity() && !isStreamThread()) return null;
 
 		CudaSemaphore completion = new CudaSemaphore(requester, this, nextOrdinal());
 		Submission submission = new Submission(completion, command, foreign, onComplete);

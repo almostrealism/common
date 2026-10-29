@@ -1073,6 +1073,46 @@ public class CudaStreamRunnerSyncTest {
 	}
 
 	/**
+	 * A submission made from a completion callback while {@link CudaStreamRunner#MAX_HELD}
+	 * submissions are already held is held beyond the bound rather than waiting for room. Here the
+	 * held head depends on a latch that only a later completion callback of the same runner counts
+	 * down, so a completion thread that waited for room would never observe that completion and
+	 * the runner would deadlock.
+	 */
+	@Test(timeout = 60000)
+	public void completionCallbackSubmissionIsHeldBeyondTheBound() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CountDownLatch entered = new CountDownLatch(1);
+		CountDownLatch gate = new CountDownLatch(1);
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new ArrayList<>(), entered, gate));
+		LatchSemaphore releasedByLaterCallback = new LatchSemaphore(1);
+		AtomicReference<Semaphore> beyond = new AtomicReference<>();
+		AtomicReference<Integer> heldAfterBeyond = new AtomicReference<>();
+
+		runner.submit(null, stream -> { }, null, () -> {
+			beyond.set(runner.submit(null, stream -> events.add("beyond"), null, null));
+			heldAfterBeyond.set(runner.getHeldCount());
+		});
+		runner.submit(null, stream -> { }, null, releasedByLaterCallback::countDown);
+		runner.submit(null, stream -> events.add("head"), releasedByLaterCallback, null);
+		for (int i = 1; i < CudaStreamRunner.MAX_HELD; i++) {
+			runner.submit(null, stream -> { }, null, null);
+		}
+
+		Assert.assertEquals(CudaStreamRunner.MAX_HELD, runner.getHeldCount());
+
+		gate.countDown();
+		releasedByLaterCallback.waitFor();
+		Assert.assertNotNull("The callback's submission must return rather than wait", beyond.get());
+		beyond.get().waitFor();
+
+		Assert.assertEquals(Integer.valueOf(CudaStreamRunner.MAX_HELD + 1), heldAfterBeyond.get());
+		Assert.assertEquals(List.of("head", "beyond"), events);
+		Assert.assertEquals(0, runner.getHeldCount());
+		runner.destroy();
+	}
+
+	/**
 	 * Returns whether {@code t} or any of its causes has the given message.
 	 *
 	 * @param t       a failure
