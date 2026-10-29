@@ -42,6 +42,8 @@ import org.almostrealism.io.Console;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -303,17 +305,17 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 	public PackedCollection conform(int channels, int frames) {
 		int sourceChannels = getChannelCount();
 		int copy = Math.min(frames, getFrameCount());
+		TraversalPolicy shape = new TraversalPolicy(channels, frames);
 
-		double[] buffer = new double[channels * frames];
+		List<Producer<?>> rows = new ArrayList<>();
 		for (int c = 0; c < channels; c++) {
 			int sourceChannel = Math.min(c, sourceChannels - 1);
-			double[] channelData = getChannelData(sourceChannel).toArray(0, copy);
-			System.arraycopy(channelData, 0, buffer, c * frames, copy);
+			PackedCollection channelData =
+					getChannelData(sourceChannel).range(new TraversalPolicy(copy), 0);
+			rows.add(pad(shape, cp(channelData).reshape(1, copy), c, 0));
 		}
 
-		PackedCollection conformed = new PackedCollection(new TraversalPolicy(channels, frames));
-		conformed.set(0, buffer);
-		return conformed;
+		return add(rows).evaluate();
 	}
 
 	/**

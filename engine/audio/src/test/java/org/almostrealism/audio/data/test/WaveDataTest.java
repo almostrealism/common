@@ -218,6 +218,25 @@ public class WaveDataTest extends TestSuiteBase implements TestAudioDataFeatures
 	}
 
 	/**
+	 * Tests that a source with more channels than the target is truncated to the
+	 * target channel count, keeping the leading channels and dropping the rest.
+	 */
+	@Test(timeout = 30000)
+	public void conformTruncatesExtraChannels() {
+		// Channel-major: channel 0 = [1,2,3,4], channel 1 = [5,6,7,8].
+		WaveData stereo = waveData(2, 4, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+
+		PackedCollection conformed = stereo.conform(1, 4);
+
+		Assert.assertEquals(1, conformed.getShape().length(0));
+		Assert.assertEquals(4, conformed.getShape().length(1));
+		Assert.assertEquals(1.0, conformed.toDouble(0), 1e-9);
+		Assert.assertEquals(2.0, conformed.toDouble(1), 1e-9);
+		Assert.assertEquals(3.0, conformed.toDouble(2), 1e-9);
+		Assert.assertEquals(4.0, conformed.toDouble(3), 1e-9);
+	}
+
+	/**
 	 * Tests BufferDetails retrieval.
 	 */
 	@Test(timeout = 30000)
