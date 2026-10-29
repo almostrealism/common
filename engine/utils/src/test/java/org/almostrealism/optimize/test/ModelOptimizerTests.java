@@ -16,6 +16,8 @@
 
 package org.almostrealism.optimize.test;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.LoRALinear;
@@ -316,6 +318,110 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 		log("Improvement ratio: " + result.getImprovementRatio());
 
 		log("TrainingResult metrics test passed");
+	}
+
+	/**
+	 * Passes of a {@link CompiledModel} issued as a chain produce exactly what the same passes
+	 * produce when each one is waited for. Every forward pass here is issued after a backward pass
+	 * that has not been waited for, so it must see that pass's parameter updates, and the input it
+	 * records must not overwrite the one the earlier backward pass reads.
+	 */
+	@Test(timeout = 120000)
+	public void chainedPassesMatchBlockingPasses() {
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(12);
+		Evaluable<PackedCollection> gradient = new MeanSquaredError(shape(3).traverseEach())
+				.gradient(cv(shape(3).traverseEach(), 0), cv(shape(3).traverseEach(), 1)).get();
+
+		PackedCollection blockingWeights = initialWeights();
+		CompiledModel blocking = denseModel(blockingWeights);
+		for (ValueTarget<PackedCollection> sample : samples) {
+			PackedCollection out = blocking.forward(sample.getInput());
+			blocking.backward(gradient.evaluate(out.each(), sample.getExpectedOutput().each()));
+		}
+
+		PackedCollection chainedWeights = initialWeights();
+		CompiledModel chained = denseModel(chainedWeights);
+		Semaphore pending = null;
+		for (ValueTarget<PackedCollection> sample : samples) {
+			pending = chained.submitForward(pending, sample.getInput());
+			if (pending != null) pending.waitFor();
+
+			PackedCollection grad = gradient.evaluate(chained.getOutput().each(), sample.getExpectedOutput().each());
+			pending = chained.submitBackward(pending, grad);
+		}
+
+		if (pending != null) pending.waitFor();
+
+		Assert.assertTrue("Training did not change the weights", compare(initialWeights(), blockingWeights) > 1e-4);
+		assertEquals(blockingWeights, chainedWeights);
+	}
+
+	/**
+	 * An epoch of {@link ModelOptimizer} training, which issues the passes of each sample as one
+	 * chain, leaves the model with the same parameters, and reports the same loss, as running the
+	 * forward pass, the loss and its gradient, and the backward pass of each sample in turn and
+	 * waiting for each of them.
+	 */
+	@Test(timeout = 120000)
+	public void optimizerMatchesBlockingTrainingSteps() {
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(12);
+		MeanSquaredError mse = new MeanSquaredError(shape(3).traverseEach());
+		Evaluable<PackedCollection> gradient = mse.gradient(
+				cv(shape(3).traverseEach(), 0), cv(shape(3).traverseEach(), 1)).get();
+
+		PackedCollection referenceWeights = initialWeights();
+		CompiledModel reference = denseModel(referenceWeights);
+		double referenceLoss = 0.0;
+		for (ValueTarget<PackedCollection> sample : samples) {
+			PackedCollection out = reference.forward(sample.getInput());
+			PackedCollection grad = gradient.evaluate(out.each(), sample.getExpectedOutput().each());
+			referenceLoss += mse.loss(out.each(), sample.getExpectedOutput().each());
+			reference.backward(grad);
+		}
+
+		PackedCollection trainedWeights = initialWeights();
+		ModelOptimizer optimizer = new ModelOptimizer(denseModel(trainedWeights), () -> Dataset.of(samples));
+		optimizer.setLossFunction(mse);
+		optimizer.setLogFrequency(0);
+		TrainingResult result = optimizer.optimize(1);
+
+		assertEquals(referenceLoss / samples.size(), result.getFinalTrainLoss(), 1e-6);
+		Assert.assertTrue("Training did not change the weights", compare(initialWeights(), referenceWeights) > 1e-4);
+		assertEquals(referenceWeights, trainedWeights);
+	}
+
+	/**
+	 * Returns fresh weights for {@link #denseModel(PackedCollection)}, the same values every call.
+	 */
+	private PackedCollection initialWeights() {
+		return pack(0.12, -0.31, 0.25, 0.08, -0.17, 0.22, -0.05, 0.41, 0.33, -0.26, 0.14, -0.09)
+				.reshape(shape(3, 4));
+	}
+
+	/**
+	 * Compiles a model of one dense layer from four inputs to three outputs with the given weights.
+	 */
+	private CompiledModel denseModel(PackedCollection weights) {
+		Model model = new Model(shape(4), 1e-2);
+		model.add(dense(weights, pack(0.05, -0.1, 0.02)));
+		return model.compile();
+	}
+
+	/**
+	 * Creates regression samples with random inputs of size four and random targets of size three.
+	 */
+	private List<ValueTarget<PackedCollection>> regressionSamples(int count) {
+		List<ValueTarget<PackedCollection>> samples = new ArrayList<>();
+		for (int i = 0; i < count; i++) {
+			PackedCollection input = new PackedCollection(shape(4));
+			input.randnFill(random);
+
+			PackedCollection target = new PackedCollection(shape(3));
+			target.randnFill(random);
+			samples.add(ValueTarget.of(input, target));
+		}
+
+		return samples;
 	}
 
 	/**

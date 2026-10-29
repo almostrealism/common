@@ -16,10 +16,12 @@
 
 package org.almostrealism.optimize;
 
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.profile.OperationProfile;
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionHandle;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.io.Console;
 import org.almostrealism.model.CompiledModel;
@@ -29,7 +31,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -126,11 +127,23 @@ public class ModelOptimizer implements CodeFeatures {
 	/** Optional custom log consumer; when null, uses the default console logger. */
 	private Consumer<String> log;
 
-	/** Compiled evaluable for the gradient of the loss with respect to model outputs. */
-	private Evaluable<PackedCollection> dloss;
+	/** The loss function the model is trained with. */
+	private LossProvider lossFunction;
 
-	/** Function that computes the scalar loss value from model output and target. */
-	private BiFunction<PackedCollection, PackedCollection, Double> loss;
+	/**
+	 * The gradient of the loss with respect to the model output, written for each sample by
+	 * {@link #lossGradient}, or {@code null} until that operation is first needed.
+	 */
+	private PackedCollection gradient;
+
+	/** Handle of the expected output of the sample being trained, which {@link #lossGradient} binds when it is issued. */
+	private final CollectionHandle expectedOutput;
+
+	/**
+	 * Compiled operation that writes the gradient of the loss for {@link #expectedOutput} into
+	 * {@link #gradient}, or {@code null} until it is first needed for the current loss function.
+	 */
+	private Submittable lossGradient;
 
 	/** Running average loss from the most recent training iteration. */
 	private double averageLoss;
@@ -216,6 +229,7 @@ public class ModelOptimizer implements CodeFeatures {
 	public ModelOptimizer(CompiledModel model, Supplier<Dataset<?>> dataset) {
 		this.model = model;
 		this.averageLoss = -1;
+		this.expectedOutput = handle(model.getOutputShape().traverseEach());
 
 		setDataset(dataset);
 		setLossFunction(new MeanSquaredError(model.getOutputShape().traverseEach()));
@@ -236,10 +250,28 @@ public class ModelOptimizer implements CodeFeatures {
 	 * @param lossFunction the loss function to use
 	 */
 	public void setLossFunction(LossProvider lossFunction) {
-		this.loss = (out, valid) -> lossFunction.loss(out, valid);
-		this.dloss = lossFunction.gradient(
-								cv(model.getOutputShape().traverseEach(), 0),
-								cv(model.getOutputShape().traverseEach(), 1)).get();
+		this.lossFunction = lossFunction;
+		this.lossGradient = null;
+	}
+
+	/**
+	 * Returns the operation that writes the gradient of the loss, for the model output and the
+	 * collection set on {@link #expectedOutput} when it is issued, into {@link #gradient},
+	 * compiling it for the current loss function on first use. The gradient is allocated once,
+	 * with the first operation, and every later operation writes the same collection.
+	 *
+	 * @return the loss gradient operation
+	 */
+	private Submittable lossGradient() {
+		if (lossGradient == null) {
+			if (gradient == null) gradient = new PackedCollection(model.getOutputShape());
+
+			// TODO(review): a setLossFunction call after first use recompiles without destroying the previous operation.
+			lossGradient = Submittable.of(a("Loss Gradient", p(gradient.each()),
+					lossFunction.gradient(p(model.getOutput().each()), expectedOutput)).get());
+		}
+
+		return lossGradient;
 	}
 
 	/**
@@ -457,6 +489,15 @@ public class ModelOptimizer implements CodeFeatures {
 	 *   <li>Parameter updates</li>
 	 * </ol>
 	 * <p>
+	 * The passes of a sample are issued as one chain (see {@link CompiledModel#submitForward}):
+	 * the loss gradient is ordered after the forward pass, the backward pass after the gradient,
+	 * and the next sample's forward pass after the backward pass. The host waits only where it
+	 * reads a result: once per sample, before the {@link LossProvider#loss loss} it needs to skip
+	 * a sample with an undefined loss and to average over the epoch, and once at the end of each
+	 * epoch, so no training work is in flight when validation, the progress callback or the
+	 * caller observes the model.
+	 * </p>
+	 * <p>
 	 * Training stops early if:
 	 * </p>
 	 * <ul>
@@ -494,42 +535,55 @@ public class ModelOptimizer implements CodeFeatures {
 			double totalLoss = 0.0;
 			int count = 0;
 
-			v: for (ValueTarget<?> target : data) {
-				// Input
-				PackedCollection input = target.getInput();
-				PackedCollection[] arguments = target.getArguments();
+			Semaphore pending = null;
 
-				// Target
-				PackedCollection valid = target.getExpectedOutput();
+			try {
+				v: for (ValueTarget<?> target : data) {
+					// Input
+					PackedCollection input = target.getInput();
+					PackedCollection[] arguments = target.getArguments();
 
-				// Forward pass and loss
-				PackedCollection out = model.forward(input, arguments);
-				PackedCollection grad = dloss.evaluate(out.each(), valid.each());
+					// Target
+					PackedCollection valid = target.getExpectedOutput();
 
-				double ls = loss.apply(out.each(), valid.each());
-				if (Double.isNaN(ls)) continue v;
+					// Forward pass and loss gradient
+					expectedOutput.set(valid.each());
+					pending = lossGradient().submit(model.submitForward(pending, input, arguments));
+					if (pending != null) pending.waitFor();
 
-				if (i == 0 && count == 0 && logIteration(totalIterations + 1))
-					log("loss = " + ls);
+					PackedCollection out = model.getOutput();
+					double ls = lossFunction.loss(out.each(), valid.each());
+					if (Double.isNaN(ls)) continue v;
 
-				totalLoss += ls;
-				count++;
+					if (i == 0 && count == 0 && logIteration(totalIterations + 1))
+						log("loss = " + ls);
 
-				if (receptor != null)
-					receptor.push(() -> args -> ls).get().run();
+					totalLoss += ls;
+					count++;
 
-				model.backward(grad);
+					if (receptor != null)
+						receptor.push(() -> args -> ls).get().run();
 
-				if (first) {
-					out = model.forward(input, arguments);
-					updatedLoss = loss.apply(out, valid);
+					pending = model.submitBackward(pending, gradient);
 
-					if ((ls - updatedLoss) < 0.0) {
-						throw new RuntimeException("Loss increased from " + ls + " to " + updatedLoss);
+					if (first) {
+						pending = model.submitForward(pending, input, arguments);
+						if (pending != null) pending.waitFor();
+						updatedLoss = lossFunction.loss(out, valid);
+
+						if ((ls - updatedLoss) < 0.0) {
+							throw new RuntimeException("Loss increased from " + ls + " to " + updatedLoss);
+						}
+
+						first = false;
 					}
-
-					first = false;
 				}
+
+				if (pending != null) pending.waitFor();
+			} catch (RuntimeException | Error e) {
+				// Work issued before the failure may still be running
+				if (pending != null) pending.waitForSettled(e);
+				throw e;
 			}
 
 			if (count == 0) {
@@ -631,7 +685,7 @@ public class ModelOptimizer implements CodeFeatures {
 			PackedCollection[] arguments = target.getArguments();
 
 			PackedCollection output = model.forward(input, arguments);
-			double ls = loss.apply(output, expected);
+			double ls = lossFunction.loss(output, expected);
 
 			if (!Double.isNaN(ls)) {
 				totalLoss += ls;
@@ -678,7 +732,7 @@ public class ModelOptimizer implements CodeFeatures {
 
 			PackedCollection valid = target.getExpectedOutput();
 			PackedCollection out = model.forward(input);
-			double ls = loss.apply(out, valid);
+			double ls = lossFunction.loss(out, valid);
 			count++;
 
 			if (validator.test(target.getExpectedOutput(), out))

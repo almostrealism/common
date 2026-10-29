@@ -19,12 +19,14 @@ package org.almostrealism.model;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.collect.computations.CollectionHandle;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
@@ -34,9 +36,6 @@ import org.almostrealism.layers.LayerFeatures;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * An optimized, executable version of a {@link Model} that is ready for inference
@@ -96,25 +95,20 @@ import java.util.stream.Collectors;
  * @author Michael Murray
  */
 public class CompiledModel implements Destroyable, CodeFeatures {
-	/** Shapes of all inputs (primary followed by auxiliary). */
-	private final List<TraversalPolicy> inputShapes;
-	/** Shape of the primary output collection. */
-	private final TraversalPolicy outputShape;
+	/** Handles of the inputs the forward pass reads (primary followed by auxiliary). */
+	private final List<InputHandle> inputs;
+	/** The collection the forward pass writes the model output into. */
+	private final PackedCollection output;
 
 	/** One-time setup/reset operation run before the first forward pass. */
 	private final Runnable setup;
-
-	/** Per-input consumers that stage data before each forward pass. */
-	private final List<? extends Consumer<PackedCollection>> updateInput;
-	/** Retrieves the output collection after the forward pass completes. */
-	private final Supplier<PackedCollection> retrieveOutput;
 	/** Compiled forward-pass operation. */
 	private final Runnable forward;
 
-	/** Stages the incoming gradient before the backward pass. */
-	private final Consumer<PackedCollection> updateGradient;
-	/** Retrieves the input gradient after the backward pass completes; may be {@code null}. */
-	private final Supplier<PackedCollection> retrieveGradient;
+	/** Handle of the gradient with respect to the model output, which the backward pass reads. */
+	private final InputHandle outputGradient;
+	/** The collection the backward pass writes the gradient with respect to the input into; may be {@code null}. */
+	private final PackedCollection inputGradient;
 	/** Compiled backward-pass operation; {@code null} when backprop is disabled. */
 	private final Runnable backward;
 
@@ -122,31 +116,25 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * Creates a new compiled model with all required components.
 	 * This constructor is typically called by {@link #compile(Model, boolean, boolean, OperationProfile)}.
 	 *
-	 * @param inputShapes the shapes of all inputs (primary + auxiliary)
-	 * @param outputShape the output shape
-	 * @param setup the setup/reset operation
-	 * @param updateInput functions to update input values before forward pass
-	 * @param retrieveOutput function to retrieve output after forward pass
-	 * @param forward the compiled forward pass operation
-	 * @param updateGradient function to update gradient before backward pass
-	 * @param retrieveGradient function to retrieve input gradient after backward pass
-	 * @param backward the compiled backward pass operation
+	 * @param inputs         handles of all inputs the forward pass reads (primary + auxiliary)
+	 * @param output         the collection the forward pass writes the output into
+	 * @param setup          the setup/reset operation
+	 * @param forward        the compiled forward pass operation
+	 * @param outputGradient handle of the gradient with respect to the output that the backward pass reads
+	 * @param inputGradient  the collection the backward pass writes the gradient with respect to the
+	 *                       input into, or {@code null} if the model does not return it
+	 * @param backward       the compiled backward pass operation, or {@code null} without backprop
 	 */
-	protected CompiledModel(List<TraversalPolicy> inputShapes, TraversalPolicy outputShape,
-							Runnable setup, List<? extends Consumer<PackedCollection>> updateInput,
-							Supplier<PackedCollection> retrieveOutput,
-							Runnable forward,
-							Consumer<PackedCollection> updateGradient,
-							Supplier<PackedCollection> retrieveGradient,
+	protected CompiledModel(List<InputHandle> inputs, PackedCollection output,
+							Runnable setup, Runnable forward,
+							InputHandle outputGradient, PackedCollection inputGradient,
 							Runnable backward) {
-		this.inputShapes = inputShapes;
-		this.outputShape = outputShape;
+		this.inputs = inputs;
+		this.output = output;
 		this.setup = setup;
-		this.updateInput = updateInput;
-		this.retrieveOutput = retrieveOutput;
 		this.forward = forward;
-		this.updateGradient = updateGradient;
-		this.retrieveGradient = retrieveGradient;
+		this.outputGradient = outputGradient;
+		this.inputGradient = inputGradient;
 		this.backward = backward;
 	}
 
@@ -155,14 +143,14 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 *
 	 * @return the shape expected for the first input
 	 */
-	public TraversalPolicy getInputShape() { return inputShapes.get(0); }
+	public TraversalPolicy getInputShape() { return getInputShape(0); }
 
 	/**
 	 * Returns the number of inputs this model expects.
 	 *
 	 * @return the number of inputs (primary + auxiliary)
 	 */
-	public int getInputCount() { return inputShapes.size(); }
+	public int getInputCount() { return inputs.size(); }
 
 	/**
 	 * Returns the shape of a specific input.
@@ -170,35 +158,64 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * @param index the input index (0 = primary input)
 	 * @return the shape expected for that input
 	 */
-	public TraversalPolicy getInputShape(int index) { return inputShapes.get(index); }
+	public TraversalPolicy getInputShape(int index) { return inputs.get(index).getShape(); }
 
 	/**
 	 * Returns the output shape.
 	 *
 	 * @return the shape of the model output
 	 */
-	public TraversalPolicy getOutputShape() { return outputShape; }
+	public TraversalPolicy getOutputShape() { return output.getShape(); }
 
 	/**
-	 * Executes the forward pass with the given inputs.
+	 * Returns the collection the forward pass writes the model output into. It is the same
+	 * collection for every pass, and holds a pass's result once that pass has completed.
+	 *
+	 * @return the output collection
+	 */
+	public PackedCollection getOutput() { return output; }
+
+	/**
+	 * Executes the forward pass with the given inputs: the pass is issued as by
+	 * {@link #submitForward(Semaphore, PackedCollection, PackedCollection...)} and waited for.
 	 *
 	 * @param input the primary input data
 	 * @param args additional inputs for multi-input models
 	 * @return the model output
 	 */
 	public PackedCollection forward(PackedCollection input, PackedCollection... args) {
-		updateInput.get(0).accept(input);
-		for (int i = 1; i < updateInput.size(); i++) {
-			int a = i - 1;
-			updateInput.get(i).accept(a < args.length ? args[a] : null);
-		}
-
-		forward.run();
-		return retrieveOutput.get();
+		Semaphore completion = submitForward(null, input, args);
+		if (completion != null) completion.waitFor();
+		return getOutput();
 	}
 
 	/**
-	 * Executes the backward pass with the given gradient.
+	 * Issues the forward pass with the given inputs, ordered after {@code dependsOn}, and returns
+	 * its completion without waiting for it, so that a caller running several passes in sequence
+	 * waits only where it reads a result on the host.
+	 *
+	 * <p>The inputs are bound to the pass as it is issued, so the next pass may be given other
+	 * inputs as soon as this returns; the contents of these inputs must not change, and the
+	 * {@link #getOutput() output} must not be read, until the returned completion has fired.</p>
+	 *
+	 * @param dependsOn the completion the pass must be ordered after, or {@code null}
+	 * @param input     the primary input data
+	 * @param args      additional inputs for multi-input models
+	 * @return the completion of the pass, or {@code null} if nothing it issued remains in flight
+	 */
+	public Semaphore submitForward(Semaphore dependsOn, PackedCollection input, PackedCollection... args) {
+		inputs.get(0).set(input);
+		for (int i = 1; i < inputs.size(); i++) {
+			int a = i - 1;
+			inputs.get(i).set(a < args.length ? args[a] : null);
+		}
+
+		return Submittable.of(forward).submit(dependsOn);
+	}
+
+	/**
+	 * Executes the backward pass with the given gradient: the pass is issued as by
+	 * {@link #submitBackward(Semaphore, PackedCollection)} and waited for.
 	 * This computes gradients and updates model parameters according to the
 	 * parameter update strategy set during model construction.
 	 *
@@ -206,9 +223,27 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * @return the gradient with respect to input, or null if not configured to return gradients
 	 */
 	public PackedCollection backward(PackedCollection gradient) {
-		updateGradient.accept(gradient);
-		backward.run();
-		return retrieveGradient == null ? null : retrieveGradient.get();
+		Semaphore completion = submitBackward(null, gradient);
+		if (completion != null) completion.waitFor();
+		return inputGradient;
+	}
+
+	/**
+	 * Issues the backward pass with the given gradient, ordered after {@code dependsOn}, and
+	 * returns its completion without waiting for it. The parameter updates of the pass are made
+	 * by the time the completion fires, so a forward pass that must see them is ordered after it.
+	 *
+	 * <p>The gradient is bound to the pass as it is issued; its contents must not change, and the
+	 * gradient with respect to the input (when the model returns one) must not be read, until the
+	 * returned completion has fired.</p>
+	 *
+	 * @param dependsOn the completion the pass must be ordered after, or {@code null}
+	 * @param gradient  the gradient of the loss with respect to model output
+	 * @return the completion of the pass, or {@code null} if nothing it issued remains in flight
+	 */
+	public Semaphore submitBackward(Semaphore dependsOn, PackedCollection gradient) {
+		outputGradient.set(gradient);
+		return Submittable.of(backward).submit(dependsOn);
 	}
 
 	/**
@@ -275,11 +310,11 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 
 		Runnable setup = Process.optimized(model.setup()).get();
 
-		List<InputManager> in = new ArrayList<>();
-		in.add(new InputManager(model.firstBlock().getInputShape()));
-		model.getInputs().forEach(p -> in.add(new InputManager(p.getInputShape())));
+		List<InputHandle> inputs = new ArrayList<>();
+		inputs.add(new InputHandle(model.firstBlock().getInputShape()));
+		model.getInputs().forEach(p -> inputs.add(new InputHandle(p.getInputShape())));
 
-		InputManager grad = new InputManager(model.lastBlock().getOutputShape());
+		InputHandle outputGradient = new InputHandle(model.lastBlock().getOutputShape());
 
 		PackedCollection output = new PackedCollection(model.lastBlock().getOutputShape());
 		Receptor<PackedCollection> outputReceptor = out ->
@@ -312,7 +347,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		List<Cell<PackedCollection>> cells = model.forward();
 		OperationList forward = new OperationList("CompiledModel Forward");
 		for (int i = cells.size() - 1; i >= 0; i--) {
-			forward.add(cells.get(i).push(in.get(i).get()));
+			forward.add(cells.get(i).push(inputs.get(i)));
 		}
 
 		ParallelProcess<?, Runnable> p = forward.flatten().optimize();
@@ -320,7 +355,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		ParallelProcess<?, Runnable> q;
 
 		if (backprop) {
-			q = (ParallelProcess<?, Runnable>) model.backward().push(grad.get());
+			q = (ParallelProcess<?, Runnable>) model.backward().push(outputGradient);
 			if (q instanceof OperationList) q = ((OperationList) q).flatten();
 			q = q.optimize();
 		} else {
@@ -330,71 +365,55 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
 		if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
 
-		CompiledModel compiled = new CompiledModel(in.stream().map(InputManager::getShape).collect(Collectors.toList()),
-				grad.getShape(),
-				setup, in,
-				() -> output, p.get(), grad,
-				gradOut == null ? null : () -> gradOut,
-				q == null ? null : q.get());
+		CompiledModel compiled = new CompiledModel(inputs, output, setup, p.get(),
+				outputGradient, gradOut, q == null ? null : q.get());
 		compiled.reset();
 		return compiled;
 	}
 
 	/**
-	 * Manages a single kernel input slot: holds the current {@link PackedCollection} and
-	 * exposes it as a {@link DynamicCollectionProducer} that is evaluated lazily at run time.
+	 * The {@link CollectionHandle} of one input of a compiled pass: an input of the forward pass, or
+	 * the gradient the backward pass receives. A pass binds the collection set on it as the pass is
+	 * issued, and a copy of that collection is ordered after the work the pass depends on by the
+	 * backend, rather than waiting for that work on the host before the collection is resolved.
+	 *
+	 * <p>It refuses a collection whose shape differs from the one the model was compiled for.</p>
 	 */
-	protected static class InputManager implements Consumer<PackedCollection>,
-			Supplier<DynamicCollectionProducer>, ConsoleFeatures {
-		/** The expected shape of this input slot. */
-		private final TraversalPolicy shape;
-		/** The most recently provided input collection. */
-		private PackedCollection input;
-
+	protected static class InputHandle extends CollectionHandle implements ConsoleFeatures {
 		/**
-		 * Creates an {@link InputManager} for a slot of the given shape.
+		 * Creates the handle of an input of the given shape.
 		 *
-		 * @param shape the expected traversal shape of this input
+		 * @param shape the shape of the input the model was compiled for
 		 */
-		public InputManager(TraversalPolicy shape) {
-			this.shape = shape;
+		public InputHandle(TraversalPolicy shape) {
+			super(shape);
 		}
 
 		/**
-		 * Returns the expected shape of this input slot.
+		 * Sets the collection the next pass reads for this input. A missing input is reported
+		 * but accepted.
 		 *
-		 * @return the traversal policy describing this input's shape
+		 * <p>The compiled graph was built for the shape of this input, so an input whose shape
+		 * (including its number of dimensions) differs is rejected rather than silently reshaped:
+		 * a mismatched input means the caller built the wrong tensor, and conforming it here would
+		 * only hide the defect and produce a cryptic failure deeper in the graph (for example
+		 * {@code traverse(3)} on a rank-2 collection).</p>
+		 *
+		 * @param input the collection the next pass reads for this input
+		 * @throws IllegalArgumentException if the shape of {@code input} differs from the shape
+		 *                                  of this input, ignoring the traversal axis
 		 */
-		public TraversalPolicy getShape() { return shape; }
-
 		@Override
-		public void accept(PackedCollection input) {
+		public void set(PackedCollection input) {
 			if (input == null) {
 				warn("null input");
-			} else if (!input.getShape().equalsIgnoreAxis(shape)) {
-				// The compiled graph was built for `shape`. Reject any input whose shape
-				// (including its number of dimensions) differs, rather than silently
-				// reshaping it: a mismatched input means the caller built the wrong
-				// tensor, and conforming it here only hides the defect and produces a
-				// cryptic failure deeper in the graph (e.g. traverse(3) on a rank-2
-				// collection). The caller must supply a correctly-shaped input.
+			} else if (!input.getShape().equalsIgnoreAxis(getShape())) {
 				throw new IllegalArgumentException(
-						"Model input shape mismatch: expected " + shape +
+						"Model input shape mismatch: expected " + getShape() +
 						" but received " + input.getShape());
 			}
 
-			this.input = input;
-		}
-
-		/**
-		 * Returns a {@link DynamicCollectionProducer} that supplies the most recently
-		 * accepted input collection at evaluation time.
-		 *
-		 * @return a producer backed by the current input
-		 */
-		@Override
-		public DynamicCollectionProducer get() {
-			return new DynamicCollectionProducer(shape, args -> input);
+			super.set(input);
 		}
 
 		@Override

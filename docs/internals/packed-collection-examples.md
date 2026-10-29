@@ -229,6 +229,21 @@ The `cp()` method (from `CollectionFeatures`) wraps a `PackedCollection` in a
 `CollectionProducer`. From there, chain operations to build an expression graph.
 Call `.evaluate()` once at the end to execute the entire graph on the hardware.
 
+When one compiled operation must run over a different collection each time (the input
+of a model pass, the target of a training sample), compile it once against a
+`CollectionHandle` from `handle(shape)` and `set` the collection before each run, rather
+than building a new graph per collection:
+
+```java
+CollectionHandle input = handle(shape(3));
+Runnable doubled = a(cp(result), input.multiply(2.0)).get();  // compiled once
+
+input.set(first);
+doubled.run();
+input.set(second);
+doubled.run();  // reads second without compiling again
+```
+
 ```java
 // WRONG: toArray() + manipulation + setMem() forces CPU round-trip
 double[] data = collection.toArray();  // GPU -> CPU
