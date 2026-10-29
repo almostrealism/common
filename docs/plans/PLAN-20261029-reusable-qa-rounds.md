@@ -67,7 +67,8 @@ In scope (all on the `ci/reusable-qa-rounds` branch, under the CI-file lock):
    `test_automated_intake.py` and `test_reusable_workflows.py` keep holding by
    following each QA caller into the workflow it calls, and a new test proves a
    non-Maven fixture repository can render at least the defect hunt and the doc
-   QA for real.
+   QA for real (or the defect hunt alone, if Open question 3 narrows the first
+   offered set).
 6. **Documentation**: `.github/CLAUDE.md` (the Master Agent Dispatch section and
    "The other reusable workflows"), `tools/ci/README.md` ("Reusable workflows"),
    and `flowtree/runtime/docs/ci-integration.md`.
@@ -359,7 +360,9 @@ A reviewer can confirm the task is done when:
    Open question 1 is decided the other way).
 3. A consuming repository can run at least the defect hunt and the doc QA with
    only a caller job and inputs, proven by the new non-Maven fixture test running
-   those rounds' gate and prompt-render steps for real.
+   those rounds' gate and prompt-render steps for real. (If Open question 3 is
+   decided to offer only the defect hunt first, this criterion narrows to the
+   defect hunt alone, as that question notes.)
 4. `test_reusable_workflows.py` pins the trust rule for `qa-round.yaml` (and any
    other new reusable workflow).
 5. `test_master_agent_dispatch.py` and `test_automated_intake.py` pass and still
