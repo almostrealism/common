@@ -142,11 +142,13 @@ import java.util.stream.Collectors;
  *
  * <h2>Error Handling</h2>
  *
- * <p>Exceptions during native execution are caught and logged:</p>
+ * <p>Exceptions during native execution, and a failure of the dependency, are logged and
+ * recorded on the dispatch's latch, whose {@code waitFor()} then rethrows the first of them:</p>
  * <pre>{@code
  * try {
  *     inst.apply(globalId, kernelSize, data);
- * } catch (Exception e) {
+ * } catch (Exception | Error e) {
+ *     latch.fail(e);
  *     warn("Operation " + id + " of " + workSize + " failed", e);
  * } finally {
  *     latch.countDown();  // Ensure latch progresses
@@ -159,7 +161,7 @@ import java.util.stream.Collectors;
  * <pre>{@code
  * recordDuration(latch, () -> {
  *     // Submit tasks...
- *     latch.waitFor();
+ *     latch.awaitCountDown();
  * });
  * // Duration includes submission + execution + wait
  * }</pre>
@@ -362,6 +364,13 @@ public class NativeExecution extends HardwareOperator {
 	 * freed, and a worker still inside the kernel would then be reading a block that has
 	 * gone.</p>
 	 *
+	 * <p>A failure of the dependency, of submitting the workers, or of a worker is recorded on
+	 * the latch with {@link DefaultLatchSemaphore#fail(Throwable)} before the latch reaches zero,
+	 * so the dispatch's {@link DefaultLatchSemaphore#waitFor()} rethrows it, and anything chained
+	 * after the dispatch sees it, rather than the skipped or broken work reporting success. The
+	 * coordinator's own waits use {@link DefaultLatchSemaphore#awaitCountDown()}, which does not
+	 * rethrow, so a recorded failure cannot skip releasing the guard.</p>
+	 *
 	 * @param data      the resolved kernel arguments
 	 * @param args      the original arguments (retained so backing memory stays reachable)
 	 * @param dependsOn the completion this dispatch is ordered after, or {@code null}
@@ -394,20 +403,22 @@ public class NativeExecution extends HardwareOperator {
 					}
 				}
 
-				latch.waitFor();
+				latch.awaitCountDown();
 			});
 
 			if (enableVerboseLog) {
 				log(getName() + " result0=" + data[0].toDouble(0));
 			}
-		} catch (Exception e) {
+		} catch (Exception | Error e) {
+			// Recorded before the count-downs below release the dispatch's waiters
+			latch.fail(e);
 			warn(getName() + " dispatch failed", e);
 		} finally {
 			for (int i = submitted.get(); i < p; i++) {
 				latch.countDown();
 			}
 
-			latch.waitFor();
+			latch.awaitCountDown();
 			guard.release();
 		}
 
@@ -428,7 +439,8 @@ public class NativeExecution extends HardwareOperator {
 		return () -> {
 			try {
 				inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
-			} catch (Exception e) {
+			} catch (Exception | Error e) {
+				latch.fail(e);
 				warn("Operation " + id + " of " +
 						getGlobalWorkSize() + " failed", e);
 			} finally {
