@@ -124,6 +124,30 @@ public class ShapeRequirementTests extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link Shape#requireShape(String, Object, TraversalPolicy)} returns the value when its shape
+	 * matches the required one, ignoring the traversal axis.
+	 */
+	@Test(timeout = 30000)
+	public void requireShapeAcceptsMatchingShape() {
+		PackedCollection value = new PackedCollection(shape(4, 6));
+		Assert.assertSame(value, Shape.requireShape("Test", value, shape(4, 6)));
+		Assert.assertSame(value, Shape.requireShape("Test", value, shape(4, 6).traverse(1)));
+	}
+
+	/**
+	 * {@link Shape#requireShape(String, Object, TraversalPolicy)} rejects a value whose shape differs
+	 * from the required one, or that is not a {@link Shape} at all, naming the operation.
+	 */
+	@Test(timeout = 30000)
+	public void requireShapeRejectsMismatchedShape() {
+		PackedCollection value = new PackedCollection(shape(4, 6));
+		assertRejected("Cache must have shape " + shape(4, 8) + ", got " + shape(4, 6),
+				() -> Shape.requireShape("Cache", value, shape(4, 8)));
+		assertRejected("Cache cannot be performed without a TraversalPolicy",
+				() -> Shape.requireShape("Cache", shapeless(), shape(4, 6)));
+	}
+
+	/**
 	 * Both {@link Shape#asShape} and {@link Shape#requireShape} reject a value
 	 * that is not a {@link Shape}, including {@code null}, naming the operation
 	 * given as the first argument.

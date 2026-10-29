@@ -49,10 +49,11 @@ import java.util.Random;
  * to zero and {@link #advance()} adds one, both as compiled operations, so no position value is
  * staged from the host. {@link #reset()} additionally clears every layer's key and value cache, so a
  * new sequence starts clean and cannot read a previous sequence's cached keys and values. The caches
- * live inside the compiled decode model (the attention layer allocates them), which is why this
- * dedicated subclass, rather than the {@link AutoregressiveModel#of factory generator}, is needed to
- * decode: the factory owns only its input buffer, position, temperature and sampling, and has no
- * handle with which to clear the caches on reset.</p>
+ * are the per-layer buffers {@link CausalLanguageModel#decodeModel} supplies to the attention layers
+ * and hands back, which this generator holds and the compiled decode model reads and writes, which is
+ * why this dedicated subclass, rather than the {@link AutoregressiveModel#of factory generator}, is
+ * needed to decode: the factory owns only its input buffer, position, temperature and sampling, and
+ * has no handle with which to clear the caches on reset.</p>
  *
  * <p>Sampling uses {@link AutoregressiveModel#sampleToken}: a temperature of zero (the initial value)
  * selects the most probable token, and a positive temperature samples from the tempered distribution,
