@@ -248,6 +248,47 @@ public class SubmissionStreamTest {
 		}
 	}
 
+	/**
+	 * A release racing a submitter that is about to wait for room is never lost. With a bound of
+	 * one, a submitter repeatedly waits for room and holds while another thread releases each hold
+	 * as soon as it appears, so nearly every release races a waiter entering or leaving the wait.
+	 * A lost wakeup leaves the submitter parked with nothing held, and the submitter never finishes.
+	 *
+	 * @throws InterruptedException if interrupted while joining the threads
+	 */
+	@Test(timeout = 30000)
+	public void releaseRacingAWaiterIsNeverLost() throws InterruptedException {
+		int rounds = 20000;
+		TestStream s = stream(1);
+
+		Thread submitter = new Thread(() -> {
+			for (int i = 0; i < rounds; i++) {
+				s.awaitHoldCapacityUninterruptibly();
+				s.hold();
+			}
+		});
+
+		Thread releaser = new Thread(() -> {
+			for (int i = 0; i < rounds; i++) {
+				while (s.getHeldCount() == 0) Thread.onSpinWait();
+				s.release();
+			}
+		});
+
+		submitter.setDaemon(true);
+		releaser.setDaemon(true);
+		submitter.start();
+		releaser.start();
+		submitter.join(20000);
+		releaser.join(5000);
+
+		Assert.assertFalse("The submitter must not be left waiting for a release it missed",
+				submitter.isAlive());
+		Assert.assertFalse("Every hold must have been released", releaser.isAlive());
+		Assert.assertEquals(0, s.getHeldCount());
+		Assert.assertTrue(s.hasHoldCapacity());
+	}
+
 	/** A stream must allow at least one held unit of work. */
 	@Test(timeout = 10000)
 	public void holdBoundMustBePositive() {
