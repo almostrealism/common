@@ -362,6 +362,47 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link ConfinedExecutor#isConfinedThread()} is true only for a task running on the confined
+	 * thread, including after the executor has been destroyed underneath that task, and a rejected
+	 * {@link ConfinedExecutor#requireOffConfinedThread()} reports
+	 * {@link ConfinedExecutor#CONFINED_THREAD_WAIT}.
+	 */
+	@Test(timeout = 10000)
+	public void isConfinedThreadIdentifiesOnlyTheConfinedThread() {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		ConfinedExecutor other = new ConfinedExecutor();
+		List<Boolean> observed = Collections.synchronizedList(new ArrayList<>());
+		AtomicReference<RuntimeException> failure = new AtomicReference<>();
+
+		try {
+			assertFalse(executor.isConfinedThread());
+
+			executor.run(() -> {
+				observed.add(executor.isConfinedThread());
+				observed.add(other.isConfinedThread());
+
+				try {
+					executor.requireOffConfinedThread();
+				} catch (RuntimeException e) {
+					failure.set(e);
+				}
+
+				executor.destroy();
+				observed.add(executor.isConfinedThread());
+			});
+
+			assertEquals(List.of(true, false, true), observed);
+			assertTrue("Expected IllegalStateException but got " + failure.get(),
+					failure.get() instanceof IllegalStateException);
+			assertEquals(ConfinedExecutor.CONFINED_THREAD_WAIT, failure.get().getMessage());
+			assertFalse(executor.isConfinedThread());
+		} finally {
+			executor.destroy();
+			other.destroy();
+		}
+	}
+
+	/**
 	 * Destroying without a final task waits for nothing, so it is allowed from the confined
 	 * thread: the executor stops accepting work and the calling task completes normally.
 	 */
