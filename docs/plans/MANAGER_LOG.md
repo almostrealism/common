@@ -28,87 +28,105 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
-### 2026-10-28 (later) — Give the attention key/value caches an owner the caller can clear and release
+### 2026-10-29 — Make the key/value-cache decode faster than the sliding window
 
-**Category:** Code Quality (correctness)
-**Branch:** `project/plan-20261028-165007`
-**Plan:** [`PLAN-20261028-attention-cache-ownership.md`](PLAN-20261028-attention-cache-ownership.md)
+**Category:** Performance (serving the self-hosted LM generation arc)
+**Branch:** `project/plan-20261029-151904`
+**Plan:** [`PLAN-20261029-kv-cache-decode-host-copies.md`](PLAN-20261029-kv-cache-decode-host-copies.md)
 
 #### What changed since last cycle
 
-The decode-throughput measurement landed (PR #768, merged): `CausalLanguageModelDecodeThroughputTest`
-now measures both decode paths on the documentation-run configuration, the Generation section of
-`training-a-language-model.md` states the measured figures, and `OperationProfileNode.getRunCount()`
-and `ByteTokenizer.isValidUtf8()` are new. The measurement cashed the arc — but with an honest and
-unexpected result: the key/value-cache decode is **~4× slower** than the sliding window on Metal
-(~50 vs ~190 bytes/second), dispatch- and host-wait-bound on ~30 host-blocking `mtlCopy` waits per
-byte. That overturned the premise the whole KV-cache cycle rode on (that the cache is cheaper per
-byte), so the benchmark asserts only path agreement and reports the rest. Two follow-ups were filed:
-`d8ad5001` (remove the host-blocking copies so the cache is actually faster — Performance, Metal) and
-`9825196c` (the decode model's caches have no owner — Code Quality).
+The attention-cache-ownership fix landed (PR #773, merged): `CausalLanguageModel.decodeModel`
+now hands the caches it owns to a caller-supplied-cache `attention(...)`/`attentionArguments`
+overload, so the decode graph reads and writes the same buffers the generator's `reset()` clears
+and `destroy()` releases — the orphan-allocation no-op/leak is gone, pinned by the ownership guard.
+That closes the correctness defect the throughput measurement exposed and, as that plan intended,
+hands this cycle a decode graph whose cache buffers have a clear owner.
 
 #### Category assessment (priority order)
 
-- **Documentation — excellent and current.** I verified the newest surface rather than taking it on
-  faith: the Generation section was just rewritten from measurement, `ml-inference-pipeline.md` has
-  the single-position KV-cache decode section, and `consult` finds no flagship gap. The 2026-09 doc
-  caveat about cache zero-initialization is long resolved (caches are `calloc`-backed). Moved on.
-- **Code quality — a real correctness defect, and it decided the cycle.** `9825196c`:
-  `CausalLanguageModel.decodeModel` allocates per-layer key/value caches and hands them back, but the
-  `attention(...)` overload it builds takes no cache arguments — the caches the compiled decode model
-  reads and writes are the ones `AttentionFeatures.attentionArguments` allocates internally. So the
-  generator's `reset()` clears orphan buffers (the real caches are never cleared; it passes its guard
-  only because the causal mask hides unwritten rows and decode overwrites in order), `destroy()`
-  leaks the real caches, and the javadoc/training-doc describe a mechanism that does not exist. The
-  root cause is general — `attentionArguments` allocates caches with no owner, so every caller of the
-  Java `attention(...)`/`transformer(...)` builders (`Llama2`, `MoonbeamMidi`) is in the same position
-  — which is what lifts it above a one-line patch. (`Qwen3` and `SkyTntMidi` build through PDSL and do
-  not reach `attentionArguments`; `SkyTntMidi` already binds caches it owns.)
-- **Performance — live, deliberately deferred.** `d8ad5001` (the ~4× slowdown) is the sharpest
-  performance lever on the board, but it is Metal-gated and ranks below an open correctness defect
-  under the priority order. It is next cycle's work, and fixing ownership first hands it a decode
-  graph whose cache buffers have a clear owner.
-- **Proof of value — not reachable this cycle.** The connectome proof-of-value steps still wait on
-  the sparse product merging and the owner's MaleCNS tables; conditional diffusion training is heavy.
+- **Documentation — excellent and current.** I re-checked rather than taking it on faith: `consult`
+  finds no flagship internals gap; every recently-landed capability (the Metal command-buffer
+  batching rewrite, automatic-differentiation verification, the PDSL builtin catalog, the
+  neural-population simulation page) has internals or tutorial coverage, and a docs-QA round merged
+  this week (PR #778). Moved on.
+- **Code quality — strong, and the backlog lags it.** The gradient-correctness arc is closed. I
+  verified two standing backlog code-quality tasks are already resolved in the tree: the convolution
+  filter gradient that was identically zero is fixed (`631386849`, provider matching now recognizes
+  views of the same memory via `MemoryData.hasSameElements`, and `ConvolutionJacobianGradientTest.filterGradient`
+  asserts it), and `PdslBuiltins` is already an instance type that `implements LayerRoutingFeatures,
+  TemporalFeatures` with `PdslInterpreter` holding an instance (the `PdslFeatures` singleton is gone)
+  after the PDSL core moved to `domain/graph`. The remaining code-quality items are either mechanical
+  OOP static-holder refactors drained by the per-class `ObjectOrientedDesignRule` review, or
+  hardware-specific defects not reachable here (the CUDA `Loop`-over-cell silence bug `b0186c98` was
+  found only under CUDA). No reachable flagship defect. Moved on.
+- **Performance — the category, and a sharp, well-evidenced instance.** PR #768's
+  `CausalLanguageModelDecodeThroughputTest` measured the premise the whole key/value-cache cycle rode
+  on and found it false: the cache decode, which does 1/64th of the arithmetic per byte, is ~4× slower
+  than the sliding window on Metal (~50 vs ~190 bytes/s), because it issues ~30 host-blocking `mtlCopy`
+  waits per byte (plus a `collectionConcatenate` batch) where the sliding path issues one. Each host
+  wait drains the open command buffer and forces a commit, so the decode is dispatch/host-wait bound.
+- **Proof of value — live, deliberately deferred.** The sliding (rolling) key/value cache only
+  matters once the cache path beats the sliding window at every length, which is what this task
+  establishes; the connectome proof-of-value steps still wait on the owner's MaleCNS tables and a
+  Brian2 reference; conditional diffusion is heavy.
 
 #### Why this task
 
-It is the disciplined pick: the earliest category (after documentation, which is covered) with
-genuine, reachable, high-leverage work. The defect sits directly beneath the flagship LM generation
-path — a `reset()` that is a no-op by accident and a `destroy()` that leaks — and its fix is a
-general improvement to `AttentionFeatures`, not a local patch: give the caller a way to own the
-caches the attention block actually uses, the honest form of "own your collaborators." It is
-additive and backward compatible (every self-allocating caller is untouched), and its drift guard
-asserts the ownership invariant structurally so it cannot be satisfied by the causal-mask accident
-that masks the bug today — the test is written to **fail on `master`** first. Small–Medium, and it
-**runs on any backend** (no Metal, no workstream settings file), unlike the performance follow-up.
+It is the disciplined pick and the log's own earmarked next step: the earliest category (after
+documentation and code quality, both covered) with genuine, reachable, high-leverage work, and the
+sharpest lever for the central self-understanding aim — making the self-hosted LM generate about
+itself at a usable rate rather than ~4× slower than the path it was built to beat. The work is
+grounded, not speculative: the benchmark already localizes the cost to ~30 `mtlCopy` host waits per
+byte and the generated decode graph's cache-write path (`branch keys`/`branch values` →
+`repeat_each` → `cache_write`), so the plan is evidence-first (`ar-profile-analyzer` on the recorded
+profile before any hand-instrumentation, per Rule 3b) and fixes at the shared PDSL construct so every
+attention-based model benefits. It is guarded by a backend-independent `runsPerByte` assertion
+(strictly fewer kernels per byte than the sliding window), not a flaky wall-clock threshold, and the
+byte-identical-to-full-forward guard keeps the decode numerically unchanged.
 
 #### Balance across categories
 
-The last cycle was proof of value (the throughput measurement); the two before it documentation. This
-returns to the foundation for one cycle to close the correctness defect that same measurement exposed
-before building the performance work on top of it. That is sequencing, not drift: fix what the
-benchmark found is wrong, then make the path fast. The next cycle should take `d8ad5001` on a Metal
-node.
+The last cycle returned to the foundation to fix the ownership defect the throughput measurement
+exposed; this cycle builds the performance work on top of it, exactly the sequence that entry set
+out. That is not drift toward the exciting category — documentation and code quality were both
+genuinely re-checked and found covered, and performance is the first category with reachable
+high-leverage work. It is a medium–large task that needs a macOS/Metal node for the measurement
+(workstream settings file present), as the throughput measurement before it did.
 
 #### What comes next
 
-1. This plan: the caller-supplied-cache `attentionArguments`/`attention` overload, its use from
-   `decodeModel`, the orphan-allocation deletion, the javadoc/doc correction, and the fail-on-master
-   ownership guard.
-2. **Performance, Metal (`d8ad5001`):** remove the ~30 host-blocking `mtlCopy` waits per byte from the
-   decode graph so the cache path is actually faster, then add the strictly-fewer-kernels-per-byte
-   assertion to `CausalLanguageModelDecodeThroughputTest` and update the Generation-section figures.
-3. **Proof of value, if the cache then beats the sliding window but the `seqLen` cap binds long-form
-   speed:** a sliding (rolling, position-remapped) key/value cache — filed from `d8ad5001`'s numbers,
-   not before.
-4. **Proof of value, connectome:** once the CSR sparse product merges and the owner provides the
-   MaleCNS tables and a Brian2 reference, the ingest into CSR form and the Shiu et al. reproduction.
-5. **Proof of value:** conditional diffusion training.
-6. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
-7. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
+1. This plan: trace the ~30 host-blocking copies to their PDSL construct, make them batch (or remove
+   them), add the strictly-fewer-`runsPerByte` assertion, and rewrite the Generation-section figures.
+2. **Proof of value, if the `seqLen` cap then binds:** a sliding (rolling, position-remapped)
+   key/value cache so long-form generation runs at cache speed past `seqLen` — reachable only once
+   the cache path is faster than the sliding window at every length.
+3. **Proof of value, connectome:** the MaleCNS ingest into CSR form and the Shiu et al. reproduction,
+   once the owner provides the MaleCNS tables and a Brian2 reference.
+4. **Proof of value:** conditional diffusion training.
+5. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000),
+   and a reduced form for the convolution input gradient, which still contracts the full Jacobian.
+6. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
    package split; the unbuilt PDSL research/education features; letting a trained model read the
    platform's own *source*, the deepest self-understanding aim.
+
+### 2026-10-28 (later) — Give the attention key/value caches an owner the caller can clear and release (condensed)
+
+**Category:** Code Quality (correctness) · **Branch:** `project/plan-20261028-165007` ·
+**Plan:** [`PLAN-20261028-attention-cache-ownership.md`](PLAN-20261028-attention-cache-ownership.md)
+
+The decode-throughput measurement (PR #768) had cashed the KV-cache arc with an unexpected result
+and exposed a correctness defect beneath the flagship LM generation path: `CausalLanguageModel.decodeModel`
+allocated per-layer caches and handed them back, but the `attention(...)` overload it built took no
+cache arguments, so the compiled decode read and wrote the caches `AttentionFeatures.attentionArguments`
+allocated internally. The generator's `reset()` therefore cleared orphan buffers (passing its guard
+only because the causal mask hides unwritten rows and decode overwrites in order) and `destroy()`
+leaked the real caches. The root cause was general — `attentionArguments` allocated caches with no
+owner, so every Java `attention(...)`/`transformer(...)` caller (`Llama2`, `MoonbeamMidi`) was in the
+same position. The plan added a caller-supplied-cache `attentionArguments`/`attention` overload, used
+it from `decodeModel`, deleted the orphan allocation, corrected the javadoc/doc, and added a
+fail-on-`master` ownership guard (PR #773, merged). It runs on any backend and hands the performance
+follow-up (`d8ad5001`) a decode graph whose cache buffers have a clear owner.
 
 ### 2026-10-28 — Measure the self-hosted LM's key/value-cache decode speed, and generate prose about the platform at that speed
 
