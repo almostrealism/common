@@ -63,9 +63,10 @@ Paths are under `base/hardware/src/main/java/org/almostrealism/hardware/`.
   Metal," which is stale — Metal propagates a failure to every later dispatch of its runner
   (semaphore-coordination.md, invariant 7 and "A failed command buffer fails loudly").
 
-- **`cl/CLSemaphore`** — `waitFor()` never reads `CL_EVENT_COMMAND_EXECUTION_STATUS`, so a
-  failed OpenCL event settles as success; if `clWaitForEvents` throws, the guard release and
-  the event release are skipped.
+- **`cl/CLSemaphore`** — `waitFor()` delegates to `CLComputeContext.processEvent`, which waits
+  with `clWaitForEvents` but never reads `CL_EVENT_COMMAND_EXECUTION_STATUS`, so a failed OpenCL
+  event settles as success; if `clWaitForEvents` throws, the event release (`clReleaseEvent`) and
+  `waitFor()`'s own `processed` guard are both skipped.
 - **`jni/NativeExecution`** — records failures at the latch level
   (`DefaultLatchSemaphore.fail`/`awaitCountDown`), started from `dependsOn.onSettled` with no
   parked thread; its two static pools are never shut down.
@@ -171,8 +172,9 @@ one test seam on the record or the stream.
   stale class javadoc is corrected. (This also poisons independent work held behind the failure —
   see the CUDA over-propagation open question — so the coarse-vs-precise decision must be settled
   before this lands.)
-- **OpenCL** adopts it in `CLSemaphore.waitFor`: read `CL_EVENT_COMMAND_EXECUTION_STATUS`, record
-  a failure for a failed event, and release the guard and the event on the throwing path too.
+- **OpenCL** adopts it on the `CLSemaphore.waitFor` → `CLComputeContext.processEvent` path: read
+  `CL_EVENT_COMMAND_EXECUTION_STATUS`, record a failure for a failed event, and release the event
+  (and settle `waitFor()`'s `processed` guard) on the throwing path too.
 - **JNI** already records at the latch; it consults the same record where a native op is chained
   after a failed completion.
 
