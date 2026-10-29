@@ -293,6 +293,89 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 		assertRejected(null);
 	}
 
+	/**
+	 * The core of the opencode brace-in-string fix: a {@code '}'} inside a
+	 * string value is a literal, not the object's close, so a single balanced
+	 * object is returned intact rather than truncated at the literal brace.
+	 */
+	@Test(timeout = 10000)
+	public void topLevelObjectsIgnoresBraceInStringValue() {
+		String json = "{\"note\":\"a } b\"}";
+
+		Assert.assertEquals(List.of(json), JsonFieldExtractor.topLevelObjects(json));
+	}
+
+	/**
+	 * An object nested inside another is part of that object and is not returned
+	 * on its own; the scan descends into the outer object's braces as a unit.
+	 */
+	@Test(timeout = 10000)
+	public void topLevelObjectsDoesNotReturnNestedObjectsSeparately() {
+		String json = "{\"outer\":{\"inner\":1}}";
+
+		Assert.assertEquals(List.of(json), JsonFieldExtractor.topLevelObjects(json));
+	}
+
+	/**
+	 * Several independent objects — here separated by surrounding noise and a
+	 * newline, as a log stream would carry them — are each returned, in the
+	 * order they appear in the document.
+	 */
+	@Test(timeout = 10000)
+	public void topLevelObjectsReturnsEachObjectInOrder() {
+		String json = "prefix {\"a\":1}\nmiddle {\"b\":2} suffix";
+
+		Assert.assertEquals(List.of("{\"a\":1}", "{\"b\":2}"),
+				JsonFieldExtractor.topLevelObjects(json));
+	}
+
+	/**
+	 * An object that appears as an array element is returned, because the array
+	 * brackets are not an object the scan descends into.
+	 */
+	@Test(timeout = 10000)
+	public void topLevelObjectsReturnsObjectsInsideArrays() {
+		String json = "[{\"a\":1},{\"b\":2}]";
+
+		Assert.assertEquals(List.of("{\"a\":1}", "{\"b\":2}"),
+				JsonFieldExtractor.topLevelObjects(json));
+	}
+
+	/**
+	 * An unbalanced trailing {@code '{'} with no matching close ends the scan,
+	 * but the balanced objects found before it are still returned.
+	 */
+	@Test(timeout = 10000)
+	public void topLevelObjectsReturnsObjectsBeforeUnbalancedBrace() {
+		String json = "{\"a\":1} {\"b\":";
+
+		Assert.assertEquals(List.of("{\"a\":1}"),
+				JsonFieldExtractor.topLevelObjects(json));
+	}
+
+	/**
+	 * An escaped quote inside a string value does not end the string, so a brace
+	 * after it remains inside the literal and is not mistaken for structure.
+	 */
+	@Test(timeout = 10000)
+	public void topLevelObjectsHandlesEscapedQuoteInStringValue() {
+		String json = "{\"note\":\"a \\\" } b\"}";
+
+		Assert.assertEquals(List.of(json), JsonFieldExtractor.topLevelObjects(json));
+	}
+
+	/** A {@code null} source yields an empty list rather than throwing. */
+	@Test(timeout = 10000)
+	public void topLevelObjectsReturnsEmptyListForNull() {
+		Assert.assertEquals(List.of(), JsonFieldExtractor.topLevelObjects(null));
+	}
+
+	/** Text with no object at all yields an empty list. */
+	@Test(timeout = 10000)
+	public void topLevelObjectsReturnsEmptyListWhenNoObjectPresent() {
+		Assert.assertEquals(List.of(), JsonFieldExtractor.topLevelObjects("no objects here"));
+	}
+
 	/** Asserts that the strict extractor refuses {@code json}'s {@code roles} field. */
 	private static void assertRejected(String json) {
 		try {
