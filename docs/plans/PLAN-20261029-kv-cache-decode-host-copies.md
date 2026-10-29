@@ -71,7 +71,13 @@ Concrete, actionable items:
    construct in `attention.pdsl`. The candidates named by the measurement are the
    `branch keys` / `branch values` stages — `dense → rotate_heads/reshape → repeat_each →
    cache_write(cache, position)` — and the residual wrappers that join a branch's output
-   back onto the main path.
+   back onto the main path. Note the measured configuration is not grouped-query:
+   `decodeModel` builds the layer with `attention(config.headCount, config.headCount, ...)`,
+   so `repeat_each(heads / kv_heads)` is `repeat_each(1)`, which `attention.pdsl` documents
+   as passing the rows through untouched. The ~30 measured copies therefore cannot come from
+   `repeat_each` in this config — the live candidates here are `cache_write`, the `reshape`
+   view on the values branch, the branch/residual joins and the `collectionConcatenate`.
+   `repeat_each` is only active, and so only a candidate, for grouped-query models.
 
 3. **Remove or batch those copies** so they stop host-blocking. The target is that each
    per-step buffer copy either (a) is expressed as a dispatch that chains on the
@@ -79,9 +85,12 @@ Concrete, actionable items:
    path (so it batches into the open command buffer instead of draining it), or (b) is
    eliminated where the copy is only there to materialize a view that the consumer could
    read directly. `cache_write` writing row `position` of a caller-owned
-   `[seq_len, dim]` cache, and `repeat_each` duplicating KV heads for grouped-query
-   attention, are the first places to look: a write into a persistent buffer and a
-   broadcast should not require a host round-trip.
+   `[seq_len, dim]` cache is the first place to look: a write into a persistent buffer
+   should not require a host round-trip. `repeat_each` duplicating KV heads for
+   grouped-query attention is the same shape of concern — a broadcast should not host-block
+   either — but it is inert in the measured configuration (see item 2) and matters only to
+   grouped-query models reached by the shared fix, so verify it against a grouped-query
+   profile rather than this benchmark's.
 
 4. **Keep the decode numerically identical.** The existing
    `keyValueCacheDecodeMatchesFullForward` assertion (byte-identical to the full forward
