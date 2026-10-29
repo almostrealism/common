@@ -18,6 +18,7 @@ package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.streams.Semaphore;
 
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -85,11 +86,25 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	/** Whether the stream refuses further submissions. Guarded by {@link #admission}. */
 	private boolean closed;
 
-	/** Guards {@link #held} and is notified when it decreases. */
+	/**
+	 * The number of units of work currently held. Read and updated without a lock, because it is
+	 * checked on every submission and released on every commit; only a submitter that has to wait
+	 * for room takes {@link #holdLock}.
+	 */
+	private final AtomicInteger held = new AtomicInteger();
+
+	/**
+	 * Monitor a submitter waits on for room in the hold bound, notified by {@link #release()} only
+	 * while {@link #waiting} reports such a submitter.
+	 */
 	private final Object holdLock = new Object();
 
-	/** The number of units of work currently held. Guarded by {@link #holdLock}. */
-	private int held;
+	/**
+	 * The number of submitters waiting on {@link #holdLock}. Incremented before a waiter checks
+	 * {@link #held}, and read by {@link #release()} after it decrements {@link #held}, so a release
+	 * that finds no waiter is one every later waiter's check observes.
+	 */
+	private final AtomicInteger waiting = new AtomicInteger();
 
 	/**
 	 * Creates a stream.
@@ -258,9 +273,7 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	 * @return true while fewer than {@link #getMaxHeld()} units are held
 	 */
 	protected boolean hasHoldCapacity() {
-		synchronized (holdLock) {
-			return held < maxHeld;
-		}
+		return held.get() < maxHeld;
 	}
 
 	/**
@@ -269,24 +282,26 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	 * @return the held count
 	 */
 	public int getHeldCount() {
-		synchronized (holdLock) {
-			return held;
-		}
+		return held.get();
 	}
 
 	/** Counts one unit of work as held. */
 	protected void hold() {
-		synchronized (holdLock) {
-			held++;
-		}
+		held.incrementAndGet();
 	}
 
-	/** Counts one held unit of work as released, waking any submitter waiting for room. */
+	/**
+	 * Counts one held unit of work as released, waking any submitter waiting for room. The monitor
+	 * is taken only when a submitter is waiting, so a commit with no waiter costs one atomic update.
+	 */
 	protected void release() {
-		synchronized (holdLock) {
-			if (held <= 0) throw new IllegalStateException("No held work to release");
-			held--;
-			holdLock.notifyAll();
+		int previous = held.getAndUpdate(h -> h > 0 ? h - 1 : h);
+		if (previous <= 0) throw new IllegalStateException("No held work to release");
+
+		if (waiting.get() > 0) {
+			synchronized (holdLock) {
+				holdLock.notifyAll();
+			}
 		}
 	}
 
@@ -300,12 +315,18 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 		boolean interrupted = false;
 
 		synchronized (holdLock) {
-			while (held >= maxHeld) {
-				try {
-					holdLock.wait();
-				} catch (InterruptedException e) {
-					interrupted = true;
+			waiting.incrementAndGet();
+
+			try {
+				while (held.get() >= maxHeld) {
+					try {
+						holdLock.wait();
+					} catch (InterruptedException e) {
+						interrupted = true;
+					}
 				}
+			} finally {
+				waiting.decrementAndGet();
 			}
 		}
 
