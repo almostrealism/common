@@ -57,6 +57,12 @@ In scope (all on the `ci/reusable-qa-rounds` branch, under the CI-file lock):
 4. **Generalising the Java/Maven-specific wording** of the built-in templates
    offered to consumers, via a caller-selectable language fragment and/or
    template variables, so a non-Maven repository gets correct instructions.
+   Which of the four templates in item 3 can be made honestly generic — and
+   whether only the defect hunt (and perhaps the flaky hunt) is offered first,
+   leaving `doc-qa` and `consolidation` as this repository's own callers until
+   a concrete non-Maven consumer appears — is Open question 3; the "Generalising
+   the built-in templates" section shows why the `doc-qa` and `consolidation`
+   templates are the doubtful ones.
 5. **Test changes** so that `test_master_agent_dispatch.py`,
    `test_automated_intake.py` and `test_reusable_workflows.py` keep holding by
    following each QA caller into the workflow it calls, and a new test proves a
