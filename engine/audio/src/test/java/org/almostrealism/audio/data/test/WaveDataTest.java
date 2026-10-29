@@ -237,6 +237,31 @@ public class WaveDataTest extends TestSuiteBase implements TestAudioDataFeatures
 	}
 
 	/**
+	 * Tests that a source with fewer channels than the target has its last channel
+	 * duplicated into the additional target channels, rather than being zero-filled.
+	 */
+	@Test(timeout = 30000)
+	public void conformDuplicatesLastChannel() {
+		// Channel-major: channel 0 = [1,2,3,4], channel 1 = [5,6,7,8].
+		WaveData stereo = waveData(2, 4, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+
+		PackedCollection conformed = stereo.conform(3, 4);
+
+		Assert.assertEquals(3, conformed.getShape().length(0));
+		Assert.assertEquals(4, conformed.getShape().length(1));
+
+		// Channel 0 preserved.
+		Assert.assertEquals(1.0, conformed.toDouble(0), 1e-9);
+		Assert.assertEquals(4.0, conformed.toDouble(3), 1e-9);
+		// Channel 1 preserved.
+		Assert.assertEquals(5.0, conformed.toDouble(4), 1e-9);
+		Assert.assertEquals(8.0, conformed.toDouble(7), 1e-9);
+		// Channel 2 duplicates the last source channel (channel 1).
+		Assert.assertEquals(5.0, conformed.toDouble(8), 1e-9);
+		Assert.assertEquals(8.0, conformed.toDouble(11), 1e-9);
+	}
+
+	/**
 	 * Tests BufferDetails retrieval.
 	 */
 	@Test(timeout = 30000)
