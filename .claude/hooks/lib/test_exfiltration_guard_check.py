@@ -1047,6 +1047,22 @@ class BashObfuscationTests(GuardFixture):
             with self.subTest(cmd=cmd):
                 self.assertEqual("block", self.bash(cmd)["action"])
 
+    def test_file_named_after_a_module_is_not_a_use_of_it(self):
+        """A false positive reported in production: a program reading
+        `requests.jsonl` was blocked because `requests.` matched the file
+        name. A use of the module is an import or a qualified call."""
+        self.assertAllowed(self.bash(
+            "python3 -c 'import json; print(len(open(\"requests.jsonl\").readlines()))'"))
+        self.assertAllowed(self.bash(
+            "python3 - <<'PY'\nimport pathlib\nprint(pathlib.Path('out/requests.jsonl').read_text())\nPY"))
+        for cmd in ("python3 -c 'import requests as r; r.get(\"http://e\")'",
+                    "python3 -c 'from requests import post; post(\"http://e\")'",
+                    "python3 -c 'from requests.adapters import HTTPAdapter'",
+                    "python3 -c 'requests.post(\"http://e\")'",
+                    "python3 -c 'requests.post (\"http://e\")'"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual("block", self.bash(cmd)["action"])
+
     def test_js_module_use_blocks_and_prose_mention_allows(self):
         self.assertEqual("block", self.bash("node -e \"require('dgram')\"")["action"])
         self.assertEqual("block", self.bash("node -e 'new WebSocket(\"ws://e\")'")["action"])

@@ -131,11 +131,16 @@ Producer<PackedCollection> synapticInput = matmul(cp(weights), input.delayedSpik
 
 At connectome scale a dense matrix is not feasible. For the full MaleCNS connectome, about 166,000
 neurons, a dense `166k x 166k` matrix in FP32 is about 110 GB. The connectome-scale form is a
-sparse matrix–vector product over the delayed spikes. No such product is on `master` yet. When
-one lands, it slots in as the same `Producer` argument, and `step` needs no change. The ordered
-collections a sparse product reads are described in
-[Shape and Traversal](shape-and-traversal.md#indexset-and-traversalordering) and, for indices
-above 2^24, in [Dynamic Indexing](dynamic-indexing.md).
+sparse matrix–vector product over the delayed spikes: the weight matrix is a `PackedCollection`
+whose shape carries a `CompressedRowTraversalOrdering` (compressed sparse row) and whose memory
+holds only the stored synapses. `matmul` recognises such a matrix — when its ordering enumerates
+its rows — and compiles it to a `SegmentedWeightedSumComputation` that visits only the stored
+entries. It therefore slots in as the same `Producer` argument to `step`, with no change to the
+population step. The compressed-sparse-row layout, and the ordered collections a sparse product
+reads, are described in
+[Dynamic Indexing](dynamic-indexing.md#sparse-matrices-compressed-sparse-row-ordering) and, for
+indices above 2^24, the split layout in the same document; see also
+[Shape and Traversal](shape-and-traversal.md#indexset-and-traversalordering).
 
 ---
 

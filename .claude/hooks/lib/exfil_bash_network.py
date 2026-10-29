@@ -50,7 +50,7 @@ from exfil_bash_lex import GuardError, normalize_host
 # identifier, on the same accepted-cost basis as everywhere else in this
 # list -- see docs/internals/exfiltration-guard.md for which ones.
 NETWORK_CODE_PATTERNS = [re.compile(p) for p in (
-    r"\brequests\.",
+    r"\bimport\s+requests\b|\bfrom\s+requests(?:\.\w+)*\s+import\b|\brequests\.\w+\s*\(",
     r"\bimport\s+urllib\b|\bfrom\s+urllib\s+import\b|\burllib\.\w+",
     r"\bhttp\.client\b",
     r"\bimport\s+httplib\b|\bfrom\s+httplib\s+import\b|\bhttplib\.\w+",
