@@ -22,8 +22,8 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ReshapeProducer;
 
-import java.util.Comparator;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.function.BiFunction;
 
 /**
@@ -184,7 +184,21 @@ public interface CollectionTraversalFeatures extends TraversalPolicyFeatures {
 	 * @return the {@link TraversalPolicy} with the greatest total size
 	 */
 	default <PackedCollection> TraversalPolicy largestTotalSize(List<Producer<PackedCollection>> producers) {
-		return producers.stream().map(this::shape).max(Comparator.comparing(TraversalPolicy::getTotalSizeLong)).get();
+		TraversalPolicy result = null;
+		long best = Long.MIN_VALUE;
+
+		for (int i = 0; i < producers.size(); i++) {
+			TraversalPolicy s = shape(producers.get(i));
+			long size = s.getTotalSizeLong();
+
+			if (result == null || size > best) {
+				result = s;
+				best = size;
+			}
+		}
+
+		if (result == null) throw new NoSuchElementException();
+		return result;
 	}
 
 	/**
@@ -196,7 +210,16 @@ public interface CollectionTraversalFeatures extends TraversalPolicyFeatures {
 	 * @return the minimum count across all producer shapes
 	 */
 	default <PackedCollection> long lowestCount(List<Producer<PackedCollection>> producers) {
-		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).min().getAsLong();
+		if (producers.isEmpty()) throw new NoSuchElementException();
+
+		long result = Long.MAX_VALUE;
+
+		for (int i = 0; i < producers.size(); i++) {
+			long count = shape(producers.get(i)).getCountLong();
+			if (count < result) result = count;
+		}
+
+		return result;
 	}
 
 	/**
@@ -208,7 +231,16 @@ public interface CollectionTraversalFeatures extends TraversalPolicyFeatures {
 	 * @return the maximum count across all producer shapes
 	 */
 	default <PackedCollection> long highestCount(List<Producer<PackedCollection>> producers) {
-		return producers.stream().map(this::shape).mapToLong(TraversalPolicy::getCountLong).max().getAsLong();
+		if (producers.isEmpty()) throw new NoSuchElementException();
+
+		long result = Long.MIN_VALUE;
+
+		for (int i = 0; i < producers.size(); i++) {
+			long count = shape(producers.get(i)).getCountLong();
+			if (count > result) result = count;
+		}
+
+		return result;
 	}
 
 	/**
