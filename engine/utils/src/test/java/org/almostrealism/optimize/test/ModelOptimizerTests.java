@@ -24,6 +24,8 @@ import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.optimize.Dataset;
+import org.almostrealism.optimize.LossProvider;
+import org.almostrealism.optimize.MeanAbsoluteError;
 import org.almostrealism.optimize.MeanSquaredError;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.TrainingResult;
@@ -366,18 +368,10 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	public void optimizerMatchesBlockingTrainingSteps() {
 		List<ValueTarget<PackedCollection>> samples = regressionSamples(12);
 		MeanSquaredError mse = new MeanSquaredError(shape(3).traverseEach());
-		Evaluable<PackedCollection> gradient = mse.gradient(
-				cv(shape(3).traverseEach(), 0), cv(shape(3).traverseEach(), 1)).get();
 
 		PackedCollection referenceWeights = initialWeights();
 		CompiledModel reference = denseModel(referenceWeights);
-		double referenceLoss = 0.0;
-		for (ValueTarget<PackedCollection> sample : samples) {
-			PackedCollection out = reference.forward(sample.getInput());
-			PackedCollection grad = gradient.evaluate(out.each(), sample.getExpectedOutput().each());
-			referenceLoss += mse.loss(out.each(), sample.getExpectedOutput().each());
-			reference.backward(grad);
-		}
+		double referenceLoss = blockingEpoch(reference, mse, samples);
 
 		PackedCollection trainedWeights = initialWeights();
 		ModelOptimizer optimizer = new ModelOptimizer(denseModel(trainedWeights), () -> Dataset.of(samples));
@@ -388,6 +382,91 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 		assertEquals(referenceLoss / samples.size(), result.getFinalTrainLoss(), 1e-6);
 		Assert.assertTrue("Training did not change the weights", compare(initialWeights(), referenceWeights) > 1e-4);
 		assertEquals(referenceWeights, trainedWeights);
+	}
+
+	/**
+	 * A loss function set after the optimizer has already trained is the one the next epoch is
+	 * trained with: the loss gradient operation compiled for the previous loss function is not
+	 * reused. Training one epoch with mean squared error and then one with mean absolute error
+	 * leaves the same parameters, and reports the same losses, as running those epochs one pass
+	 * at a time.
+	 */
+	@Test(timeout = 120000)
+	public void lossFunctionSetAfterTrainingIsUsed() {
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(8);
+		MeanSquaredError mse = new MeanSquaredError(shape(3).traverseEach());
+		MeanAbsoluteError mae = new MeanAbsoluteError(shape(3).traverseEach());
+
+		PackedCollection referenceWeights = initialWeights();
+		CompiledModel reference = denseModel(referenceWeights);
+		double referenceMse = blockingEpoch(reference, mse, samples);
+		double referenceMae = blockingEpoch(reference, mae, samples);
+
+		PackedCollection trainedWeights = initialWeights();
+		ModelOptimizer optimizer = new ModelOptimizer(denseModel(trainedWeights), () -> Dataset.of(samples));
+		optimizer.setLossFunction(mse);
+		optimizer.setLogFrequency(0);
+		TrainingResult first = optimizer.optimize(1);
+
+		optimizer.setLossFunction(mae);
+		TrainingResult second = optimizer.optimize(1);
+
+		assertEquals(referenceMse / samples.size(), first.getFinalTrainLoss(), 1e-6);
+		assertEquals(referenceMae / samples.size(), second.getFinalTrainLoss(), 1e-6);
+		Assert.assertNotEquals(first.getFinalTrainLoss(), second.getFinalTrainLoss(), 1e-6);
+		assertEquals(referenceWeights, trainedWeights);
+	}
+
+	/**
+	 * A compiled model refuses an input whose shape differs from the one it was compiled for,
+	 * whether the pass is issued with {@link CompiledModel#submitForward} or run with
+	 * {@link CompiledModel#forward}, and the same holds for the gradient of a backward pass.
+	 */
+	@Test(timeout = 60000)
+	public void mismatchedInputShapeIsRejected() {
+		CompiledModel model = denseModel(initialWeights());
+
+		assertRejected("submitForward", () -> model.submitForward(null, new PackedCollection(shape(5))));
+		assertRejected("forward", () -> model.forward(new PackedCollection(shape(2, 2))));
+		assertRejected("submitBackward", () -> model.submitBackward(null, new PackedCollection(shape(4))));
+
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0);
+		PackedCollection expected = matmul(cp(initialWeights()), cp(input))
+				.add(cp(pack(0.05, -0.1, 0.02))).reshape(model.getOutputShape()).evaluate();
+		assertEquals(expected, model.forward(input));
+	}
+
+	/**
+	 * Asserts that {@code action}, which issues the named {@code pass}, throws an
+	 * {@link IllegalArgumentException}.
+	 */
+	private void assertRejected(String pass, Runnable action) {
+		try {
+			action.run();
+		} catch (IllegalArgumentException e) {
+			return;
+		}
+
+		Assert.fail(pass + " accepted an input of the wrong shape");
+	}
+
+	/**
+	 * Runs one epoch over the samples one pass at a time, waiting for each forward and backward
+	 * pass, and returns the total loss of the samples before each was trained on.
+	 */
+	private double blockingEpoch(CompiledModel model, LossProvider loss, List<ValueTarget<PackedCollection>> samples) {
+		Evaluable<PackedCollection> gradient = loss.gradient(
+				cv(shape(3).traverseEach(), 0), cv(shape(3).traverseEach(), 1)).get();
+
+		double total = 0.0;
+		for (ValueTarget<PackedCollection> sample : samples) {
+			PackedCollection out = model.forward(sample.getInput());
+			PackedCollection grad = gradient.evaluate(out.each(), sample.getExpectedOutput().each());
+			total += loss.loss(out.each(), sample.getExpectedOutput().each());
+			model.backward(grad);
+		}
+
+		return total;
 	}
 
 	/**
