@@ -26,7 +26,7 @@ import io.almostrealism.streams.Semaphore;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.CollectionHandle;
+import org.almostrealism.collect.computations.CollectionContainer;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
@@ -95,8 +95,8 @@ import java.util.List;
  * @author Michael Murray
  */
 public class CompiledModel implements Destroyable, CodeFeatures {
-	/** Handles of the inputs the forward pass reads (primary followed by auxiliary). */
-	private final List<InputHandle> inputs;
+	/** Containers of the inputs the forward pass reads (primary followed by auxiliary). */
+	private final List<InputContainer> inputs;
 	/** The collection the forward pass writes the model output into. */
 	private final PackedCollection output;
 
@@ -105,8 +105,8 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	/** Compiled forward-pass operation. */
 	private final Runnable forward;
 
-	/** Handle of the gradient with respect to the model output, which the backward pass reads. */
-	private final InputHandle outputGradient;
+	/** Container of the gradient with respect to the model output, which the backward pass reads. */
+	private final InputContainer outputGradient;
 	/** The collection the backward pass writes the gradient with respect to the input into; may be {@code null}. */
 	private final PackedCollection inputGradient;
 	/** Compiled backward-pass operation; {@code null} when backprop is disabled. */
@@ -116,18 +116,18 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * Creates a new compiled model with all required components.
 	 * This constructor is typically called by {@link #compile(Model, boolean, boolean, OperationProfile)}.
 	 *
-	 * @param inputs         handles of all inputs the forward pass reads (primary + auxiliary)
+	 * @param inputs         containers of all inputs the forward pass reads (primary + auxiliary)
 	 * @param output         the collection the forward pass writes the output into
 	 * @param setup          the setup/reset operation
 	 * @param forward        the compiled forward pass operation
-	 * @param outputGradient handle of the gradient with respect to the output that the backward pass reads
+	 * @param outputGradient container of the gradient with respect to the output that the backward pass reads
 	 * @param inputGradient  the collection the backward pass writes the gradient with respect to the
 	 *                       input into, or {@code null} if the model does not return it
 	 * @param backward       the compiled backward pass operation, or {@code null} without backprop
 	 */
-	protected CompiledModel(List<InputHandle> inputs, PackedCollection output,
+	protected CompiledModel(List<InputContainer> inputs, PackedCollection output,
 							Runnable setup, Runnable forward,
-							InputHandle outputGradient, PackedCollection inputGradient,
+							InputContainer outputGradient, PackedCollection inputGradient,
 							Runnable backward) {
 		this.inputs = inputs;
 		this.output = output;
@@ -310,11 +310,11 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 
 		Runnable setup = Process.optimized(model.setup()).get();
 
-		List<InputHandle> inputs = new ArrayList<>();
-		inputs.add(new InputHandle(model.firstBlock().getInputShape()));
-		model.getInputs().forEach(p -> inputs.add(new InputHandle(p.getInputShape())));
+		List<InputContainer> inputs = new ArrayList<>();
+		inputs.add(new InputContainer(model.firstBlock().getInputShape()));
+		model.getInputs().forEach(p -> inputs.add(new InputContainer(p.getInputShape())));
 
-		InputHandle outputGradient = new InputHandle(model.lastBlock().getOutputShape());
+		InputContainer outputGradient = new InputContainer(model.lastBlock().getOutputShape());
 
 		PackedCollection output = new PackedCollection(model.lastBlock().getOutputShape());
 		Receptor<PackedCollection> outputReceptor = out ->
@@ -372,32 +372,27 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	}
 
 	/**
-	 * The {@link CollectionHandle} of one input of a compiled pass: an input of the forward pass, or
+	 * The {@link CollectionContainer} of one input of a compiled pass: an input of the forward pass, or
 	 * the gradient the backward pass receives. A pass binds the collection set on it as the pass is
 	 * issued, and a copy of that collection is ordered after the work the pass depends on by the
 	 * backend, rather than waiting for that work on the host before the collection is resolved.
 	 *
 	 * <p>It refuses a collection whose shape differs from the one the model was compiled for.</p>
 	 */
-	protected static class InputHandle extends CollectionHandle implements ConsoleFeatures {
+	protected static class InputContainer extends CollectionContainer implements ConsoleFeatures {
 		/**
-		 * Creates the handle of an input of the given shape.
+		 * Creates the container of an input of the given shape.
 		 *
 		 * @param shape the shape of the input the model was compiled for
 		 */
-		public InputHandle(TraversalPolicy shape) {
+		public InputContainer(TraversalPolicy shape) {
 			super(shape);
 		}
 
 		/**
 		 * Sets the collection the next pass reads for this input. A missing input is reported
-		 * but accepted.
-		 *
-		 * <p>The compiled graph was built for the shape of this input, so an input whose shape
-		 * (including its number of dimensions) differs is rejected rather than silently reshaped:
-		 * a mismatched input means the caller built the wrong tensor, and conforming it here would
-		 * only hide the defect and produce a cryptic failure deeper in the graph (for example
-		 * {@code traverse(3)} on a rank-2 collection).</p>
+		 * but accepted; an input of a different shape is rejected, as by any
+		 * {@link CollectionContainer}.
 		 *
 		 * @param input the collection the next pass reads for this input
 		 * @throws IllegalArgumentException if the shape of {@code input} differs from the shape
@@ -405,14 +400,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		 */
 		@Override
 		public void set(PackedCollection input) {
-			if (input == null) {
-				warn("null input");
-			} else if (!input.getShape().equalsIgnoreAxis(getShape())) {
-				throw new IllegalArgumentException(
-						"Model input shape mismatch: expected " + getShape() +
-						" but received " + input.getShape());
-			}
-
+			if (input == null) warn("null input");
 			super.set(input);
 		}
 

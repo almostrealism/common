@@ -26,12 +26,12 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Tests for {@link CollectionHandle}: an operation compiled once against a handle reads, each time
- * it is issued, the collection set on the handle at that moment.
+ * Tests for {@link CollectionContainer}: an operation compiled once against a container reads, each time
+ * it is issued, the collection set on the container at that moment.
  */
-public class CollectionHandleTest extends TestSuiteBase {
+public class CollectionContainerTest extends TestSuiteBase {
 	/**
-	 * A compiled operation run again after another collection has been set on the handle it uses
+	 * A compiled operation run again after another collection has been set on the container it uses
 	 * reads that collection, without being compiled again.
 	 */
 	@Test(timeout = 30000)
@@ -41,7 +41,7 @@ public class CollectionHandleTest extends TestSuiteBase {
 		PackedCollection second = pack(10.0, 20.0, 30.0);
 		PackedCollection result = new PackedCollection(shape);
 
-		CollectionHandle input = handle(shape);
+		CollectionContainer input = container(shape);
 		Runnable doubled = a(cp(result), input.multiply(2.0)).get();
 
 		input.set(first);
@@ -56,26 +56,51 @@ public class CollectionHandleTest extends TestSuiteBase {
 	}
 
 	/**
-	 * The evaluable of a handle is a {@link FixedEvaluable}, so an operation binds its value as a
+	 * The evaluable of a container is a {@link FixedEvaluable}, so an operation binds its value as a
 	 * resolved argument when it is issued, but not a {@link Provider}, whose value an operation may
 	 * treat as known when it is compiled. Evaluating it returns whichever collection is set at that
 	 * moment, rather than the one set when the evaluable was obtained.
 	 */
 	@Test(timeout = 30000)
-	public void evaluableIsFixedHandleOfCollectionSet() {
+	public void evaluableIsFixedContainerOfCollectionSet() {
 		TraversalPolicy shape = new TraversalPolicy(4);
 		PackedCollection first = new PackedCollection(shape);
 		PackedCollection second = new PackedCollection(shape);
 
-		CollectionHandle handle = handle(shape);
-		handle.set(first);
+		CollectionContainer container = container(shape);
+		container.set(first);
 
-		Evaluable<PackedCollection> evaluable = handle.get();
+		Evaluable<PackedCollection> evaluable = container.get();
 		Assert.assertTrue(evaluable instanceof FixedEvaluable);
 		Assert.assertFalse(evaluable instanceof Provider);
 		Assert.assertSame(first, evaluable.evaluate());
 
-		handle.set(second);
+		container.set(second);
 		Assert.assertSame(second, evaluable.evaluate());
+	}
+
+	/**
+	 * Setting a collection cannot change the shape of a container: a collection of the same size
+	 * but a different shape is rejected, and the collection set before it remains set.
+	 */
+	@Test(timeout = 30000)
+	public void setRejectsDifferentShape() {
+		PackedCollection first = new PackedCollection(new TraversalPolicy(2, 3));
+		PackedCollection reshaped = new PackedCollection(new TraversalPolicy(3, 2));
+
+		CollectionContainer container = container(new TraversalPolicy(2, 3));
+		container.set(first);
+
+		try {
+			container.set(reshaped);
+			Assert.fail("A collection of shape " + reshaped.getShape() + " was accepted");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("shape mismatch"));
+		}
+
+		Assert.assertEquals(new TraversalPolicy(2, 3), container.getShape());
+		Assert.assertSame(first, container.get().evaluate());
+
+		container.set(new PackedCollection(new TraversalPolicy(2, 3).traverseEach()));
 	}
 }

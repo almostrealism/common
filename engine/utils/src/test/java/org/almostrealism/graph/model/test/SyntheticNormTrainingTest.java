@@ -122,7 +122,7 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 							.into(input.traverseEach()).evaluate();
 					return input;
 				})
-				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
+				.map(input -> ValueTarget.of(input, linearFunc.apply(input).range(shape(outputSize))))
 				.collect(Collectors.toList()));
 
 		// Train using existing infrastructure
@@ -171,7 +171,7 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 							.into(input.traverseEach()).evaluate();
 					return input;
 				})
-				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
+				.map(input -> ValueTarget.of(input, linearFunc.apply(input).range(shape(outputSize))))
 				.collect(Collectors.toList()));
 
 		// Train

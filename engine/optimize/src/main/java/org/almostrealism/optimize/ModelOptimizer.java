@@ -17,11 +17,12 @@
 package org.almostrealism.optimize;
 
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.CollectionHandle;
+import org.almostrealism.collect.computations.CollectionContainer;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.io.Console;
 import org.almostrealism.model.CompiledModel;
@@ -136,14 +137,14 @@ public class ModelOptimizer implements CodeFeatures {
 	 */
 	private PackedCollection gradient;
 
-	/** Handle of the expected output of the sample being trained, which {@link #lossGradient} binds when it is issued. */
-	private final CollectionHandle expectedOutput;
+	/** Container of the expected output of the sample being trained, which {@link #lossGradient} binds when it is issued. */
+	private final CollectionContainer expectedOutput;
 
 	/**
 	 * Compiled operation that writes the gradient of the loss for {@link #expectedOutput} into
 	 * {@link #gradient}, or {@code null} until it is first needed for the current loss function.
 	 */
-	private Submittable lossGradient;
+	private Runnable lossGradient;
 
 	/** Running average loss from the most recent training iteration. */
 	private double averageLoss;
@@ -229,7 +230,7 @@ public class ModelOptimizer implements CodeFeatures {
 	public ModelOptimizer(CompiledModel model, Supplier<Dataset<?>> dataset) {
 		this.model = model;
 		this.averageLoss = -1;
-		this.expectedOutput = handle(model.getOutputShape().traverseEach());
+		this.expectedOutput = container(model.getOutputShape().traverseEach());
 
 		setDataset(dataset);
 		setLossFunction(new MeanSquaredError(model.getOutputShape().traverseEach()));
@@ -246,11 +247,17 @@ public class ModelOptimizer implements CodeFeatures {
 	 *   <li>{@link MeanAbsoluteError} - For robust regression</li>
 	 *   <li>{@link NegativeLogLikelihood} - For classification</li>
 	 * </ul>
+	 * <p>
+	 * The loss gradient operation compiled for the previous loss function, if any, is destroyed;
+	 * the operation for the new one is compiled when it is next needed. The loss function must
+	 * not be changed while a call to {@link #optimize(int)} is in progress.
+	 * </p>
 	 *
 	 * @param lossFunction the loss function to use
 	 */
 	public void setLossFunction(LossProvider lossFunction) {
 		this.lossFunction = lossFunction;
+		Destroyable.destroy(lossGradient);
 		this.lossGradient = null;
 	}
 
@@ -266,12 +273,11 @@ public class ModelOptimizer implements CodeFeatures {
 		if (lossGradient == null) {
 			if (gradient == null) gradient = new PackedCollection(model.getOutputShape());
 
-			// TODO(review): a setLossFunction call after first use recompiles without destroying the previous operation.
-			lossGradient = Submittable.of(a("Loss Gradient", p(gradient.each()),
-					lossFunction.gradient(p(model.getOutput().each()), expectedOutput)).get());
+			lossGradient = a("Loss Gradient", p(gradient.each()),
+					lossFunction.gradient(p(model.getOutput().each()), expectedOutput)).get();
 		}
 
-		return lossGradient;
+		return Submittable.of(lossGradient);
 	}
 
 	/**
@@ -546,8 +552,9 @@ public class ModelOptimizer implements CodeFeatures {
 					// Target
 					PackedCollection valid = target.getExpectedOutput();
 
-					// Forward pass and loss gradient
-					expectedOutput.set(valid.each());
+					// Forward pass and loss gradient; the target is compared element-wise with
+					// the output, so it is read in the output's shape and must match its size
+					expectedOutput.set(valid.reshape(expectedOutput.getShape()));
 					pending = lossGradient().submit(model.submitForward(pending, input, arguments));
 					if (pending != null) pending.waitFor();
 

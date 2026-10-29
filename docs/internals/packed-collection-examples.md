@@ -231,11 +231,11 @@ Call `.evaluate()` once at the end to execute the entire graph on the hardware.
 
 When one compiled operation must run over a different collection each time (the input
 of a model pass, the target of a training sample), compile it once against a
-`CollectionHandle` from `handle(shape)` and `set` the collection before each run, rather
+`CollectionContainer` from `container(shape)` and `set` the collection before each run, rather
 than building a new graph per collection:
 
 ```java
-CollectionHandle input = handle(shape(3));
+CollectionContainer input = container(shape(3));
 Runnable doubled = a(cp(result), input.multiply(2.0)).get();  // compiled once
 
 input.set(first);

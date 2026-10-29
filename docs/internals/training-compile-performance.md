@@ -79,7 +79,7 @@ The cold first backward took about 7.9 s; warm backward about 0.15 s.
    Any signature that omits an input must also include every property of that input that
    changes the generated code.
 3. **Input shape drift.** After batched-input validation was added to the model's input
-   handles (now `CompiledModel.InputHandle`), `DiffusionTrainingDataset` still produced a bare `(1)`
+   handles (now `CompiledModel.InputContainer`), `DiffusionTrainingDataset` still produced a bare `(1)`
    timestep instead of `(batchSize, 1)`, so every `ModelOptimizer` run over it failed
    immediately (`DiffusionTrainingDatasetTest`). Global conditioning must likewise be
    `(batchSize, globalCondDim)`.

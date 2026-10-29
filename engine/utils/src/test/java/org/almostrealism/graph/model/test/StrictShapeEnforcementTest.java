@@ -145,7 +145,7 @@ public class StrictShapeEnforcementTest extends TestSuiteBase implements ModelTe
 					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
 					return input;
 				})
-				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
+				.map(input -> ValueTarget.of(input, linearFunc.apply(input).range(shape(outputSize))))
 				.collect(Collectors.toList()));
 
 		train("syntheticDense_currentMode", model, data, epochs, steps, 2.0, 1.0);

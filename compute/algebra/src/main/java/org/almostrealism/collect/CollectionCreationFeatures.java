@@ -25,7 +25,7 @@ import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
-import org.almostrealism.collect.computations.CollectionHandle;
+import org.almostrealism.collect.computations.CollectionContainer;
 import org.almostrealism.collect.computations.CollectionProvider;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
@@ -555,7 +555,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 *   <li>The resulting computation will read the CURRENT contents of the
 	 *       collection each time it runs</li>
 	 *   <li>To run one compiled computation over a different collection each time,
-	 *       rather than over new contents of the same one, use {@link #handle(TraversalPolicy)}</li>
+	 *       rather than over new contents of the same one, use {@link #container(TraversalPolicy)}</li>
 	 * </ul>
 	 *
 	 * <p><b>Example:</b></p>
@@ -659,17 +659,17 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	}
 
 	/**
-	 * Creates a {@link CollectionHandle}: a producer of the collection most recently
-	 * {@link CollectionHandle#set(PackedCollection) set} on it, which an operation using it binds
+	 * Creates a {@link CollectionContainer}: a producer of the collection most recently
+	 * {@link CollectionContainer#set(PackedCollection) set} on it, which an operation using it binds
 	 * each time it is issued. Use it for a value the host chooses before each issue, such as the
 	 * input of a model pass, so that one compiled operation can be run over different collections.
 	 *
-	 * @param shape the {@link TraversalPolicy} of the collections set on the handle
-	 * @return a new handle with no collection set
+	 * @param shape the {@link TraversalPolicy} of the collections set on the container
+	 * @return a new container with no collection set
 	 * @see #cp(PackedCollection)
 	 */
-	default CollectionHandle handle(TraversalPolicy shape) {
-		return new CollectionHandle(shape);
+	default CollectionContainer container(TraversalPolicy shape) {
+		return new CollectionContainer(shape);
 	}
 
 	/**
