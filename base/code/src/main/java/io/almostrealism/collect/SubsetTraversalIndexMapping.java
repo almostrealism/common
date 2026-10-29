@@ -17,8 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
-
-import java.util.Arrays;
+import io.almostrealism.expression.IntegerConstant;
 
 /**
  * A {@link TraversableExpression} that maps output indices to operand indices for a fixed
@@ -35,9 +34,6 @@ import java.util.Arrays;
  * index should I read for member {@code k}?"</p>
  */
 public class SubsetTraversalIndexMapping extends SubsetTraversalExpression implements TraversableExpression<Number> {
-	/** Whether to emit diagnostic logging during index computation. */
-	public static boolean enableLogging = false;
-
 	/** The fixed group member index this mapping corresponds to. */
 	private final int groupIndex;
 
@@ -70,29 +66,11 @@ public class SubsetTraversalIndexMapping extends SubsetTraversalExpression imple
 	public Expression<Number> getValueAt(Expression<?> outputIndex) {
 		int[] groupPosition = groupShape.position(groupIndex);
 
-		Expression[] subsetPosition = getPositionOfGroup(outputIndex);
-
-		if (enableLogging) {
-			log("Operand " + operandShape +
-					" in " + groupShape + " group over " + positions +
-					" [member " + groupIndex + "] is in position " + Arrays.toString(groupPosition));
+		Expression[] position = new Expression[groupPosition.length];
+		for (int i = 0; i < position.length; i++) {
+			position[i] = new IntegerConstant(groupPosition[i]);
 		}
 
-		// Find the location in the input of the current group member,
-		// within the subset of the input that is being operated on
-		// to produce the provided outputIndex. This is composed of
-		// the position of the subset extended along each dimension
-		// by the relative position of the group member
-		Expression[] inputPosition = new Expression[operandShape.getDimensions()];
-		for (int i = 0; i < inputPosition.length; i++) {
-			inputPosition[i] = subsetPosition[i].add(groupPosition[i]);
-
-			if (enableLogging)
-				log("\t" + i + " " + Arrays.toString(inputPosition[i].sequence().toArray()));
-		}
-
-		// Provide the index in the operand that is associated
-		// with that position for the current group member
-		return operandShape.index(inputPosition);
+		return getInputIndex(groupIndex, position, outputIndex);
 	}
 }

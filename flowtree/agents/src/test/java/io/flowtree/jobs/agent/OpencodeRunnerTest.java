@@ -16,20 +16,25 @@
 
 package io.flowtree.jobs.agent;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
+import io.flowtree.JsonFieldExtractor;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -71,8 +76,8 @@ public class OpencodeRunnerTest extends TestSuiteBase {
 
     /**
      * Command line matches opencode 1.x: {@code run}, {@code --model}, {@code --format json},
-     * {@code --dangerously-skip-permissions}, and the prompt — with the config path
-     * intentionally absent (it is injected via {@code OPENCODE_CONFIG} at launch).
+     * {@code --dangerously-skip-permissions}, and the prompt — with the config
+     * intentionally absent (it is passed in {@code OPENCODE_CONFIG_CONTENT} at launch).
      */
     @Test(timeout = 5000)
     public void buildCommandLineIncludesCoreFlags() {
@@ -83,10 +88,8 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .mcpConfigJson("{\"mcpServers\":{}}")
                 .model("default")
                 .build();
-        Path configPath = Paths.get("/tmp/opencode-config.json");
 
-        List<String> cmd = runner.buildCommandLine(
-                FAKE_BINARY, req, configPath, "local/default");
+        List<String> cmd = runner.buildCommandLine(FAKE_BINARY, req, "local/default");
 
         Assert.assertEquals(FAKE_BINARY.toString(), cmd.get(0));
         Assert.assertEquals("run", cmd.get(1));
@@ -119,10 +122,8 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .model("default")
                 .workingDirectory(workDir)
                 .build();
-        Path configPath = Paths.get("/tmp/opencode-config.json");
 
-        List<String> cmd = runner.buildCommandLine(
-                FAKE_BINARY, req, configPath, "local/default");
+        List<String> cmd = runner.buildCommandLine(FAKE_BINARY, req, "local/default");
 
         assertFlagFollows(cmd, "--dir", workDir.toString());
         Assert.assertEquals("do the thing", cmd.get(cmd.size() - 1));
@@ -361,6 +362,68 @@ public class OpencodeRunnerTest extends TestSuiteBase {
             assertNotNull(expected.getMessage());
             assertTrue("message should name the URL: " + expected.getMessage(),
                     expected.getMessage().contains(url));
+        }
+    }
+
+    /**
+     * The synthesized config reaches opencode in {@code OPENCODE_CONFIG_CONTENT},
+     * which opencode merges after the project's own {@code .opencode/opencode.json}.
+     * Passed as an {@code OPENCODE_CONFIG} file instead, a project that declares
+     * an MCP server under the same name (this repository declares a local
+     * {@code ar-manager}) overrides the runner's authenticated remote entry and
+     * the session silently loses that server's tools. A stand-in binary echoes
+     * the environment it was launched with so the test reads exactly what
+     * opencode would.
+     */
+    @Test(timeout = 10000)
+    public void runPassesConfigInConfigContentVariable() throws Exception {
+        Path dir = Files.createTempDirectory("opencode-runner-test-");
+        Path binary = dir.resolve("opencode");
+        Files.writeString(binary, "#!/bin/sh\n"
+                + "if [ \"$1\" = \"--version\" ]; then echo test; exit 0; fi\n"
+                + "echo \"config_file=${OPENCODE_CONFIG}\"\n"
+                + "echo \"$OPENCODE_CONFIG_CONTENT\"\n");
+        assertTrue(binary.toFile().setExecutable(true));
+
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.start();
+        try {
+            Map<String, String> env = new HashMap<>();
+            env.put(OpencodeConfigBuilder.ENV_PROVIDER_URL,
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
+            OpencodeRunner runner = new OpencodeRunner(
+                    () -> new OpencodeBinaryLocator(
+                            name -> "OPENCODE_BIN".equals(name) ? binary.toString() : null,
+                            name -> dir.toString(),
+                            p -> p.equals(binary)),
+                    () -> new OpencodeConfigBuilder(env::get));
+
+            AgentRunRequest req = AgentRunRequest.builder()
+                    .prompt("p")
+                    .allowedTools("Read,mcp__ar-manager__send_message")
+                    .mcpConfigJson("{\"mcpServers\":{\"ar-manager\":{\"type\":\"http\","
+                            + "\"url\":\"http://controller:8010/mcp\","
+                            + "\"headers\":{\"Authorization\":\"Bearer job-token\"}}}}")
+                    .workingDirectory(dir)
+                    .outputCapturePath(dir.resolve("output.log"))
+                    .build();
+
+            String output = runner.run(req, SILENT).rawOutput();
+
+            assertTrue("no config file should be named: " + output,
+                    output.contains("config_file=\n"));
+            JsonNode config = JsonFieldExtractor.MAPPER.readTree(
+                    output.substring(output.indexOf('{')));
+            JsonNode manager = config.path("mcp").path("ar-manager");
+            Assert.assertEquals("remote", manager.path("type").asText());
+            Assert.assertEquals("http://controller:8010/mcp", manager.path("url").asText());
+            Assert.assertEquals("Bearer job-token",
+                    manager.path("headers").path("Authorization").asText());
+        } finally {
+            server.stop(0);
+            try (Stream<Path> paths = Files.walk(dir)) {
+                paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+            }
         }
     }
 

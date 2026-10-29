@@ -145,6 +145,8 @@ ScopeInstructionsManager<K> manager = new ScopeInstructionsManager<>(
 // First getOperator() call triggers compilation
 synchronized Execution getOperator(K key) {
     if (operators == null || operators.isDestroyed()) {
+        // An interrupted thread never starts a compilation (see below)
+        CompilationInterruptedException.throwIfInterrupted(name);
         // Compilation happens HERE — scope → native code
         operators = getComputeContext().deliver(getScope());
         HardwareOperator.recordCompilation(!getComputeContext().isCPU());
@@ -276,6 +278,21 @@ public interface ComputeContext {
 
 The `deliver()` method is where compilation happens — it takes a `Scope` and returns
 an `InstructionSet` containing the compiled kernel.
+
+**Interrupted threads do not start compilations.** `ScopeInstructionsManager` checks the
+calling thread's interrupt status before it calls `getScope()` and `deliver()`, so on every
+backend (OpenCL, Metal, CUDA, native/JNI, external) an interrupted thread that needs a new
+kernel fails with `CompilationInterruptedException` (a `HardwareException`) instead of
+compiling it. The interrupt status is only read, never cleared, and nothing is cached for the
+cancelled attempt, so a later call on an uninterrupted thread compiles normally. Reusing an
+already compiled kernel is not affected; an interrupt there is reported at dispatch by
+`AcceleratedOperation.awaitCompletion`. OpenCL repeats the check in `CLOperatorMap.init`
+(before a `cl_program` is created) and in `CLProgram.compile()` (before the build thread
+starts). A build that has already started is never abandoned: `CLProgram.compile()` waits for
+it uninterruptibly and restores the interrupt afterwards, so a loop that compiles a kernel per
+iteration stops at the next compilation after the interrupt. What happens to a compilation
+already running when the interrupt arrives otherwise still depends on the backend (the native
+compiler's `Process.waitFor()`, for example, is interruptible).
 
 ### AbstractComputeContext — Thread Pool Management
 

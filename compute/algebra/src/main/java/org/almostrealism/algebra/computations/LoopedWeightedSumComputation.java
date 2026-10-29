@@ -140,10 +140,7 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 										WeightIndexer weightIndexer,
 										Producer<PackedCollection> input,
 										Producer<PackedCollection> weights) {
-		super(name, outputShape, outerCount,
-				(args, index) -> new DoubleConstant(0.0),
-				(accumulator, element) -> accumulator.add(element),
-				input, weights);
+		super(name, outputShape, outerCount, input, weights);
 		this.innerCount = innerCount;
 		this.inputShape = inputShape;
 		this.weightShape = weightShape;
@@ -152,6 +149,30 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 
 		// Refresh the signature captured before the indexers were assigned
 		init();
+	}
+
+	/**
+	 * Returns zero: every output element starts the weighted sum empty.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the position within the output block
+	 * @return the constant {@code 0.0}
+	 */
+	@Override
+	protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+		return new DoubleConstant(0.0);
+	}
+
+	/**
+	 * Adds the inner sum of one outer iteration to the accumulator.
+	 *
+	 * @param accumulator the weighted sum so far
+	 * @param element     the inner sum of the next outer iteration
+	 * @return {@code accumulator + element}
+	 */
+	@Override
+	protected Expression<?> combine(Expression<?> accumulator, Expression<?> element) {
+		return accumulator.add(element);
 	}
 
 	/**
@@ -196,11 +217,10 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		TraversableExpression[] args = getTraversableArguments(index);
-		Expression<?> result = new DoubleConstant(0.0);
+		Expression<?> result = getInitialValue(args, index);
 		for (int outer = 0; outer < count; outer++) {
 			Expression<Integer> outerIdx = new IntegerConstant(outer);
-			Expression<?> innerSum = computeInnerSum(args, index, outerIdx);
-			result = result.add(innerSum);
+			result = combine(result, computeInnerSum(args, index, outerIdx));
 			result = result.generate(result.flatten());
 		}
 
@@ -221,11 +241,10 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		ArrayVariable<?> out = (ArrayVariable<?>) getOutputVariable();
+		ArrayVariable<?> out = getOutputVariable();
 		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
 		Expression currentValue = out.reference(k.multiply(out.length()));
-		Expression<?> innerSum = computeInnerSum(args, globalIndex, localIndex);
-		return currentValue.add(innerSum);
+		return combine(currentValue, computeInnerSum(args, globalIndex, localIndex));
 	}
 
 	/**

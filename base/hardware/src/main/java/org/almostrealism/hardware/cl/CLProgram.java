@@ -18,6 +18,7 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.hardware.CompilationInterruptedException;
 import org.almostrealism.hardware.HardwareException;
 import org.jocl.CL;
 import org.jocl.CLException;
@@ -145,9 +146,20 @@ public class CLProgram implements OperationInfo {
 	 * how the call behaved before it acquired a thread of its own. The thread is a daemon
 	 * so that it can never on its own be the reason a JVM stays alive.</p>
 	 *
+	 * <p>Because a build that has started is never abandoned, an interrupt is honoured only
+	 * before the build starts: if the calling thread's interrupt status is already set when
+	 * this method is called, no build is started and a {@link CompilationInterruptedException}
+	 * is thrown with the interrupt status left set. An interrupt that arrives during the build
+	 * lets the build finish, is restored on return, and so stops the next compilation the
+	 * thread attempts.</p>
+	 *
+	 * @throws CompilationInterruptedException if the calling thread is interrupted before
+	 *                                         the build starts
 	 * @throws HardwareException if compilation fails, with the source code attached for debugging
 	 */
 	public void compile() {
+		CompilationInterruptedException.throwIfInterrupted(getMetadata().getDisplayName());
+
 		Throwable[] failure = new Throwable[1];
 
 		Thread compilation = new Thread(null, () -> {

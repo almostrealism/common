@@ -559,27 +559,15 @@ final class OpencodeOutputParser {
                 }
             }
         }
-        // Otherwise, look for the last top-level brace and parse from there.
-        int end = raw.lastIndexOf('}');
-        while (end > 0) {
-            int depth = 0;
-            int start = -1;
-            for (int i = end; i >= 0; i--) {
-                char c = raw.charAt(i);
-                if (c == '}') depth++;
-                else if (c == '{') {
-                    depth--;
-                    if (depth == 0) {
-                        start = i;
-                        break;
-                    }
-                }
-            }
-            if (start < 0) break;
+        // Otherwise, scan for balanced JSON objects — ignoring braces that
+        // appear inside string values, which a raw brace-depth scan would
+        // miscount — and return the last one that parses.
+        List<String> objects = JsonFieldExtractor.topLevelObjects(raw);
+        for (int i = objects.size() - 1; i >= 0; i--) {
             try {
-                return MAPPER.readTree(raw.substring(start, end + 1));
+                return MAPPER.readTree(objects.get(i));
             } catch (Exception ignored) {
-                end = raw.lastIndexOf('}', start - 1);
+                // fall through to an earlier object
             }
         }
         return null;

@@ -14,7 +14,7 @@ You are not scoped to recent changes. Anything in the repository is in scope.
 
 ## Why this round exists
 
-PDSL (the Producer DSL, `engine/ml/src/main/java/org/almostrealism/ml/dsl/`) is the language
+PDSL (the Producer DSL, whose language core is `domain/graph/src/main/java/org/almostrealism/dsl/`) is the language
 the platform intends to use to describe most of its compute-pipeline structure — everything
 from an audio effects chain to the forward pass of an autoregressive language model. A `.pdsl`
 file is meant to be a readable asset: someone opening it should be able to see how data flows
@@ -46,11 +46,12 @@ success. It goes like this: you find `SomethingBlock` built in Java, you registe
 `something(args)`, you point the caller at the asset, and you report that `Something` has been
 migrated to PDSL. **It has not.** The structure is exactly where it was; the asset is a
 one-line alias for a Java method, and the language has gained a word that means nothing to
-anyone who was not migrating that class. The repository already carries a few of these —
-`attention()`, `transformer()`, and `feed_forward()` in `PdslBuiltins` — and they are debt
-from the language's first weeks, not a pattern to follow. (`transformer_block.pdsl` shows both
-sides in one file: `swiglu_ffn` is a real composition of `rmsnorm`, `dense`, `silu`, and
-`product`; the `attention(...)` call beneath it is the escape hatch.)
+anyone who was not migrating that class. The language started with a few of these —
+`attention()`, `transformer()`, and `feed_forward()` built-ins — and later rounds paid that
+debt down: they are now `attention.pdsl`, `transformer.pdsl`, and `feed_forward.pdsl`, layers
+written out of normalization, projections, rotation, cache writes, and score stages. Read those
+files for what a finished migration looks like, and do not re-create the built-ins they
+replaced.
 
 Apply these tests to every primitive you are tempted to add, and to every primitive you
 decide to keep calling:
@@ -80,7 +81,7 @@ would be its own mistake:
 
 - Loading weights (`StateDictionary`), slicing and reshaping them for binding, and building
   the argument map an asset is bound with. (Zero-copy weight views can and should be
-  expressed in a `data` block with `range()` — see `gru_block.pdsl` — when the slicing is part
+  expressed in a `data` block with `range()` — see `test_data_block.pdsl` — when the slicing is part
   of how the structure reads.)
 - The autoregressive loop, token selection, sampling, tokenization, and anything else that
   happens *between* forward passes rather than inside one. `ModelOptimizer` and
@@ -100,12 +101,16 @@ interpreter's rendering of your `.pdsl` file.
 
 **1. Survey the language before you survey the candidates.**
 
-Read `PdslBuiltins` (what every asset can call), `PdslInterpreter` (the statements: `let`,
-`branch`, `accum`, `product`, `accum_blocks`, `concat_blocks`, `for`, `for each channel`, and
-the `config`/`data`/`state`/`layer`/`model` definitions), `PdslPrimitive` and
-`PdslInterpreter.registerPrimitive` (how a domain library adds primitives — `AudioDspPrimitives`
-in `studio/compose` is the example), and `docs/internals/pdsl-audio-dsp.md`. Read every
-existing `.pdsl` under `engine/ml/src/main/resources/pdsl/` and the test resources. You need
+Read `PdslBuiltins` (the domain-agnostic built-ins every asset can call), `PdslInterpreter`
+(the statements: `let`, `branch`, `accum`, `product`, `accum_blocks`, `concat_blocks`, `for`,
+`for each channel`, and the `config`/`data`/`state`/`layer`/`model` definitions), and
+`PdslPrimitive` and `PdslInterpreter.registerPrimitive`, which is how a higher module adds
+primitives. There are two ways to register: a `PdslExtension` registers with every interpreter
+whenever its module is on the classpath, as `AttentionPrimitives` in `engine/ml` does for the
+attention and rotary position stages; a `PdslLoader` registrar is opt-in, as `AudioDspPrimitives`
+in `studio/compose` is for audio. Read `docs/internals/pdsl-language.md` and
+`docs/internals/pdsl-audio-dsp.md`. Read every existing `.pdsl` under
+`engine/ml/src/main/resources/pdsl/` and the test resources. You need
 to know what the language can already say before you can tell whether a candidate is
 expressible in it, and you will otherwise re-add something that exists under another name.
 
@@ -113,19 +118,17 @@ expressible in it, and you will otherwise re-add something that exists under ano
 
 Do not read files at random. Look where structure is assembled in Java:
 
-- `Features` mixins that return a `Block` built from smaller blocks — `AttentionFeatures`
-  (`attention`, `transformer`, and everything they are built from), `FeedForwardFeatures`,
-  `DiffusionTransformerFeatures`, `TransformerResamplingFeatures`, `DifferentialAttentionFeatures`.
+- `Features` mixins that return a `Block` built from smaller blocks — what still assembles
+  blocks in Java in `AttentionFeatures` and `FeedForwardFeatures` (their `attention`,
+  `transformer`, and SwiGLU feed-forward are already PDSL), `DiffusionTransformerFeatures`,
+  `TransformerResamplingFeatures`. Check for an asset in flight on an open branch before you
+  choose one.
 - Model classes that build their own graph — `Qwen3`, `Llama2`, `DiffusionTransformer`,
   `OobleckEncoder`/`OobleckDecoder`/`OobleckCodec`, `GRUDecoder`, `MoonbeamMidi`, the
   bottlenecks and conditioners in `engine/ml/.../audio`.
 - Audio signal paths still assembled as `CellList` chains or Java-side `Cell` composition in
-  `engine/audio` and `studio/` — `docs/plans/audio-scene-redesign/PDSL_DIFFERENCES.md` maps
+  `engine/audio` and `studio/` — `docs/internals/pdsl-audio-dsp.md` describes
   what has moved and what has not.
-- **Existing `.pdsl` assets that lean on a monolith built-in.** Decomposing
-  `attention(...)` in `skytnt_block.pdsl` or `transformer_block.pdsl` into the normalization,
-  projections, rotation, cache writes, and score computation it actually performs is squarely
-  in scope, and is the clearest illustration of what this round is for.
 
 Prefer a candidate that is (a) a composition of several things, so the asset will read as a
 data-flow diagram; (b) covered by tests on ${BASE_BRANCH}, so you have a baseline to pin
@@ -143,8 +146,10 @@ be written is a gap, and you must classify each one honestly:
 - *A missing basic block.* One operation the language genuinely lacks — a per-head reshape,
   a cache write at a position, a batched matrix product against a cache, a 1-D
   convolution, a transpose. (Scores → scale → softmax → weighted sum is *not* one thing; it
-  is four, and the asset should show them.) Add it as a primitive, in the right home: `PdslBuiltins` when it is
-  domain-agnostic tensor work, a registered domain library when it belongs to one domain.
+  is four, and the asset should show them.) Add it as a primitive, in the right home: `PdslBuiltins`
+  in `domain/graph` when it is domain-agnostic tensor work, a registered domain library when it
+  belongs to one domain (machine-learning stages in `AttentionPrimitives`, audio in
+  `AudioDspPrimitives`).
   A primitive is basic if it passes the four tests above; give it its own tests, independent
   of the migration. Walk up the generality ladder from the root `CLAUDE.md` when placing it.
 - *A missing composition construct.* Something about how pieces are wired that the language
@@ -194,9 +199,9 @@ of the asset — it parses the `.pdsl`, binds its arguments, returns the block �
 still exactly one definition of the structure. Say in your summary which callers remain and
 why.
 
-Where the migrated structure had a monolith built-in standing in for it (`attention`,
-`transformer`, `feed_forward`), and your work leaves that built-in with no remaining caller,
-remove it and its dispatch entry. If callers remain, leave it and list them.
+Where the migrated structure had a monolith built-in or primitive standing in for it, and your
+work leaves it with no remaining caller, remove it and its dispatch entry. If callers remain,
+leave it and list them.
 
 **6. Fix what you find.**
 
@@ -257,8 +262,10 @@ an honest report would.
 - Behavior-preserving, except for defects you demonstrate and call out.
 - Do not create a Maven module, modify any `pom.xml`, or add a dependency. `.pdsl` assets
   live under `src/main/resources/pdsl/` of the module that owns the structure; a primitive
-  lives in `PdslBuiltins` when domain-agnostic and in a registered domain library otherwise,
-  and the module it lives in must already depend on what it needs.
+  lives in `PdslBuiltins` (`domain/graph`) when domain-agnostic and in a registered domain
+  library otherwise, and the module it lives in must already depend on what it needs.
+  `PdslBuiltins` can reach only what `ar-graph` depends on, which is why attention and rotary
+  position stages live in `engine/ml`.
 - Do not modify CI workflow files or anything under `tools/ci/`.
 - Do not weaken, disable, or narrow an existing test. If one fails while you work, that is a
   finding to report, not an obstacle to remove.

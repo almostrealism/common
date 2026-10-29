@@ -4,6 +4,7 @@ Split from ``test_server.py``, which had grown past the file-length cap. The
 tests are unchanged; shared fixtures live in ``manager_test_support``.
 """
 
+import base64
 import json
 import os
 import subprocess
@@ -293,6 +294,72 @@ class TestProjectCommitPlan(unittest.TestCase):
             workstream_id="ws-test", content="x" * 100_001)
         self.assertFalse(result["ok"])
         self.assertIn("maximum length", result["error"])
+
+    def _committed_text(self, mock_gh):
+        payload = mock_gh.call_args_list[-1][0][2]
+        return base64.b64decode(payload["content"]).decode("utf-8")
+
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_github_request")
+    def test_plan_without_header_gets_proposed_header(self, mock_gh, mock_find):
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+        }
+        mock_gh.side_effect = [{}, {"content": {"sha": "new"}, "commit": {"sha": "c"}}]
+        result = server.project_commit_plan(
+            workstream_id="ws-test", content="# Plan\nDo stuff",
+            path="docs/plans/PLAN-x.md")
+        self.assertTrue(result["ok"])
+        text = self._committed_text(mock_gh)
+        self.assertTrue(text.startswith("---\nstatus: proposed\ncreated: "), text)
+        self.assertIn("\nclosed: \ntracker: []\n---\n\n# Plan\nDo stuff", text)
+
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_github_request")
+    def test_plan_with_valid_header_is_committed_unchanged(self, mock_gh, mock_find):
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+        }
+        mock_gh.side_effect = [{}, {"content": {"sha": "new"}, "commit": {"sha": "c"}}]
+        content = ("---\nstatus: approved\ncreated: 2026-10-01\nclosed:\n"
+                   "tracker: [abc]\n---\n\n# Plan\n")
+        result = server.project_commit_plan(
+            workstream_id="ws-test", content=content, path="docs/plans/PLAN-x.md")
+        self.assertTrue(result["ok"])
+        self.assertEqual(self._committed_text(mock_gh), content)
+
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_github_request")
+    def test_plan_with_malformed_header_is_refused(self, mock_gh, mock_find):
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+        }
+        content = "---\nstatus: completed\ncreated: 2026-10-01\nclosed:\ntracker: []\n---\n"
+        result = server.project_commit_plan(
+            workstream_id="ws-test", content=content, path="docs/plans/PLAN-x.md")
+        self.assertFalse(result["ok"])
+        self.assertIn("requires a closed date", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_github_request")
+    def test_non_plan_path_gets_no_header(self, mock_gh, mock_find):
+        _grant_all_scopes()
+        mock_find.return_value = {
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+        }
+        mock_gh.side_effect = [{}, {"content": {"sha": "new"}, "commit": {"sha": "c"}}]
+        result = server.project_commit_plan(
+            workstream_id="ws-test", content="# Log\n", path="docs/plans/MANAGER_LOG.md")
+        self.assertTrue(result["ok"])
+        self.assertEqual(self._committed_text(mock_gh), "# Log\n")
 
 class TestProjectReadPlan(unittest.TestCase):
 

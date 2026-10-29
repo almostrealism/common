@@ -1,0 +1,404 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.almostrealism.dsl;
+
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.Block;
+import org.almostrealism.model.Model;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Keeps the PDSL tutorial, {@code docs/tutorials/10-pdsl-model-definitions.html}, from drifting
+ * away from the language the parser accepts and from the shipped assets it reads.
+ *
+ * <p>The page marks its code in three ways, and each is checked here against the page itself
+ * rather than against a copy:</p>
+ * <ul>
+ *   <li>{@code <code class="language-pdsl">} is a PDSL program the reader writes. Every one must
+ *       parse with {@link PdslLoader#parse(String)}. The last one is the complete model the page
+ *       builds up; it must build from a synthetic {@link StateDictionary} to the output shape the
+ *       page states, and every definition shown in an earlier step must appear in it unchanged.</li>
+ *   <li>{@code <code class="language-pdsl-asset" data-asset="/pdsl/...">} is an excerpt of a
+ *       shipped asset. Every line of it, apart from a {@code ...} elision line, must occur in that
+ *       asset in the same order, so an edit to the asset cannot leave a stale copy on the page.</li>
+ *   <li>Anything else ({@code language-text}, {@code language-java}) is a fragment and is not
+ *       checked.</li>
+ * </ul>
+ *
+ * <p>The page's code is HTML, so a shape annotation's arrow is written with the {@code gt} entity.
+ * Tags are stripped and entities decoded before anything is parsed or compared.</p>
+ */
+public class PdslTutorialExamplesTest extends TestSuiteBase {
+
+	/** Repository-relative path of the tutorial. */
+	private static final String TUTORIAL = "docs/tutorials/10-pdsl-model-definitions.html";
+
+	/** Classpath directory of the programs the failure tests build. */
+	private static final String TUTORIAL_FIXTURES = "/pdsl/tutorial/";
+
+	/** A PDSL program the reader writes. */
+	private static final Pattern PROGRAM = Pattern.compile(
+			"<pre><code class=\"language-pdsl\">(.*?)</code></pre>", Pattern.DOTALL);
+
+	/** An excerpt of a shipped asset, with the asset's classpath path. */
+	private static final Pattern EXCERPT = Pattern.compile(
+			"<pre><code class=\"language-pdsl-asset\" data-asset=\"([^\"]+)\">(.*?)</code></pre>",
+			Pattern.DOTALL);
+
+	/** A definition inside a program: its doc comment (if any) and its whole body. */
+	private static final Pattern DEFINITION = Pattern.compile(
+			"(?m)^(?:/\\*\\*.*?\\*/\\n)?(?:layer|model) [a-z_0-9]+\\(.*?^}", Pattern.DOTALL);
+
+	/** Every program the reader writes parses, and there are as many as the page's steps. */
+	@Test(timeout = 60000)
+	public void everyProgramParses() {
+		List<String> programs = programs();
+		Assert.assertTrue("the tutorial shows only " + programs.size() + " programs", programs.size() >= 4);
+
+		PdslLoader loader = new PdslLoader();
+		for (String program : programs) {
+			try {
+				Assert.assertNotNull(loader.parse(program));
+			} catch (PdslParseException e) {
+				Assert.fail("a program of the tutorial does not parse (" + e.getMessage() + "):\n" + program);
+			}
+		}
+	}
+
+	/** Every definition the page writes in a step appears, unchanged, in the final program. */
+	@Test(timeout = 60000)
+	public void everyStepIsPartOfTheFinalProgram() {
+		List<String> programs = programs();
+		String last = programs.get(programs.size() - 1);
+		int checked = 0;
+		for (String step : programs.subList(0, programs.size() - 1)) {
+			Matcher definition = DEFINITION.matcher(step);
+			while (definition.find()) {
+				Assert.assertTrue("the final program does not contain this step's definition:\n"
+						+ definition.group(), last.contains(definition.group()));
+				checked++;
+			}
+		}
+		Assert.assertTrue("only " + checked + " step definitions were found", checked >= 3);
+	}
+
+	/** Every line of every asset excerpt occurs in that asset, in the order the page shows it. */
+	@Test(timeout = 60000)
+	public void everyAssetExcerptMatchesItsAsset() {
+		Matcher excerpt = EXCERPT.matcher(tutorial());
+		PdslLoader loader = new PdslLoader();
+		int count = 0;
+		while (excerpt.find()) {
+			String resource = excerpt.group(1);
+			String asset = loader.readResource(resource);
+			int from = 0;
+			for (String line : decode(excerpt.group(2)).split("\n")) {
+				String text = line.trim();
+				if (text.isEmpty() || text.equals("...")) continue;
+				int at = indexOfLine(asset, text, from);
+				Assert.assertTrue("the tutorial quotes '" + text + "' from " + resource
+						+ ", which does not hold it there", at >= 0);
+				from = at + text.length();
+			}
+			count++;
+		}
+		Assert.assertTrue("the tutorial quotes only " + count + " asset excerpts", count >= 5);
+	}
+
+	/** The first program, the gated feed-forward layer, keeps the width of its input. */
+	@Test(timeout = 60000)
+	public void gatedMlpBuildsToItsDocumentedShape() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("norm", weights(4));
+		args.put("gate", weights(8, 4));
+		args.put("up", weights(8, 4));
+		args.put("down", weights(4, 8));
+		Block block = new PdslLoader().buildLayer(program("layer gated_mlp("), "gated_mlp",
+				new TraversalPolicy(1, 4), args);
+		Assert.assertArrayEquals(new int[] { 1, 4 }, block.getOutputShape().extent());
+	}
+
+	/** The cached attention layer maps one token vector to one token vector. */
+	@Test(timeout = 60000)
+	public void cachedAttentionBuildsToItsDocumentedShape() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("heads", 2);
+		args.put("head_size", 2);
+		args.put("norm", weights(4));
+		args.put("wq", weights(4, 4));
+		args.put("wk", weights(4, 4));
+		args.put("wv", weights(4, 4));
+		args.put("wo", weights(4, 4));
+		args.put("position", weights(1));
+		args.put("key_cache", weights(8, 4));
+		args.put("value_cache", weights(8, 4));
+		Block block = new PdslLoader().buildLayer(program("layer cached_attention("), "cached_attention",
+				new TraversalPolicy(1, 4), args);
+		Assert.assertArrayEquals(new int[] { 1, 4 }, block.getOutputShape().extent());
+	}
+
+	/**
+	 * The final model builds from a two-layer synthetic checkpoint: one block per stacked layer,
+	 * then the norm and the vocabulary projection, ending in one score per vocabulary entry.
+	 */
+	@Test(timeout = 120000)
+	public void finalModelBuildsOneBlockPerLayerAndScoresTheVocabulary() {
+		int dim = 4;
+		int hidden = 8;
+		int vocab = 16;
+		Map<String, PackedCollection> tensors = new HashMap<>();
+		for (int layer = 0; layer < 2; layer++) {
+			String prefix = "layers." + layer + ".";
+			tensors.put(prefix + "attn_norm.weight", weights(dim));
+			for (String projection : List.of("q", "k", "v", "o")) {
+				tensors.put(prefix + "attn." + projection + ".weight", weights(dim, dim));
+			}
+			tensors.put(prefix + "mlp_norm.weight", weights(dim));
+			tensors.put(prefix + "mlp.gate.weight", weights(hidden, dim));
+			tensors.put(prefix + "mlp.up.weight", weights(hidden, dim));
+			tensors.put(prefix + "mlp.down.weight", weights(dim, hidden));
+		}
+		tensors.put("norm.weight", weights(dim));
+		tensors.put("lm_head.weight", weights(vocab, dim));
+
+		Map<String, Object> settings = new HashMap<>();
+		settings.put("dim", dim);
+		settings.put("heads", 2);
+		settings.put("seq_len", 8);
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("settings", settings);
+		args.put("position", weights(1));
+
+		List<String> programs = programs();
+		PdslLoader loader = new PdslLoader();
+		Model model = loader.buildModel(loader.parse(programs.get(programs.size() - 1)), "toy_decoder",
+				new TraversalPolicy(1, dim), new StateDictionary(tensors), args);
+		Assert.assertEquals(4, model.getBlocks().size());
+		Assert.assertArrayEquals(new int[] { 1, vocab }, model.getOutputShape().extent());
+	}
+
+	/** An {@code accum} in a model body is rejected with the message the page quotes. */
+	@Test(timeout = 60000)
+	public void accumInAModelFailsAsThePageSays() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("w", weights(4, 4));
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = fixture(loader, "accum_in_model.pdsl");
+		String message = buildFailure(PdslParseException.class,
+				() -> loader.buildModel(program, "m", new TraversalPolicy(1, 4), args));
+		Assert.assertEquals("Unsupported statement in model body: AccumStatement", message);
+		assertPageQuotes("<code>Unsupported statement in model body: AccumStatement</code>");
+	}
+
+	/** A program parsed from a string does not resolve its import, so a call to an imported layer is unknown. */
+	@Test(timeout = 60000)
+	public void importFromAStringIsNotResolvedAsThePageSays() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("heads", 2);
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = fixture(loader, "unresolved_import.pdsl");
+		String message = buildFailure(PdslParseException.class,
+				() -> loader.buildLayer(program, "wrapper", new TraversalPolicy(1, 4), args));
+		Assert.assertEquals("Unknown function 'attention' at line " + 4, message);
+		assertPageQuotes("<code>Unknown function 'attention' at line N</code>");
+	}
+
+	/** A misspelled checkpoint path names the nearest keys and the line, as the page says. */
+	@Test(timeout = 60000)
+	public void misspelledCheckpointPathFailsAsThePageSays() {
+		Map<String, PackedCollection> tensors = new HashMap<>();
+		tensors.put("norm.weight", weights(4));
+		tensors.put("lm_head.weight", weights(16, 4));
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = fixture(loader, "misspelled_checkpoint_path.pdsl");
+		String message = buildFailure(PdslParseException.class,
+				() -> loader.buildModel(program, "m", new TraversalPolicy(1, 4),
+						new StateDictionary(tensors), new HashMap<>()));
+		Assert.assertTrue(message, message.startsWith("No weight named 'lm_haed' among 2 weights;"
+				+ " the closest names are lm_head.weight"));
+		Assert.assertTrue(message, message.endsWith(", at line " + 3));
+		assertPageQuotes("<code>No weight named '...' among N weights; the closest names are ...,");
+	}
+
+	/** A dense weight whose second axis is not the input width fails with no message, as the page says. */
+	@Test(timeout = 60000)
+	public void denseWidthMismatchFailsWithoutAMessageAsThePageSays() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("w", weights(8, 3));
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = fixture(loader, "dense_width_mismatch.pdsl");
+		String message = buildFailure(IllegalArgumentException.class,
+				() -> loader.buildLayer(program, "l", new TraversalPolicy(1, 4), args));
+		Assert.assertNull(message);
+		assertPageQuotes("<code>IllegalArgumentException</code> that has <em>no message</em>");
+	}
+
+	/**
+	 * Parses one of the tutorial's failure fixtures from its source text. The fixtures live in
+	 * {@code /pdsl/tutorial/} on the test classpath. They are read as text and parsed with
+	 * {@link PdslLoader#parse(String)}, the way the page's reader parses a program, so an
+	 * {@code import} in a fixture is not resolved.
+	 *
+	 * @param loader the loader to parse with
+	 * @param name   the fixture's file name
+	 * @return the parsed program
+	 */
+	private static PdslNode.Program fixture(PdslLoader loader, String name) {
+		return loader.parse(loader.readResource(TUTORIAL_FIXTURES + name));
+	}
+
+	/**
+	 * Runs a build that the page says fails, and returns the message of the exception it throws.
+	 *
+	 * @param type  the exception type the page says the reader will see
+	 * @param build the build to run
+	 * @return the exception's message, which may be {@code null}
+	 */
+	private static String buildFailure(Class<? extends RuntimeException> type, Runnable build) {
+		try {
+			build.run();
+		} catch (RuntimeException e) {
+			if (!type.isInstance(e)) {
+				throw new AssertionError("expected " + type.getSimpleName() + " but got " + e, e);
+			}
+			return e.getMessage();
+		}
+		throw new AssertionError("the build succeeded, but the tutorial says it fails with "
+				+ type.getSimpleName());
+	}
+
+	/**
+	 * Asserts that the page still shows {@code html}, so a test that pins a failure the page
+	 * describes cannot outlive the description.
+	 *
+	 * @param html the text as it appears in the page's HTML
+	 */
+	private static void assertPageQuotes(String html) {
+		Assert.assertTrue("the tutorial no longer shows '" + html + "'", tutorial().contains(html));
+	}
+
+	/**
+	 * Returns the position of {@code line} in {@code asset} at or after {@code from}, comparing
+	 * each asset line with its surrounding whitespace removed.
+	 *
+	 * @param asset the asset source
+	 * @param line  the trimmed line to find
+	 * @param from  the offset to search from
+	 * @return the offset of the line, or -1
+	 */
+	private static int indexOfLine(String asset, String line, int from) {
+		int at = asset.indexOf(line, from);
+		while (at >= 0) {
+			int start = asset.lastIndexOf('\n', at - 1) + 1;
+			int end = asset.indexOf('\n', at);
+			if (end < 0) end = asset.length();
+			if (asset.substring(start, end).trim().equals(line)) return at;
+			at = asset.indexOf(line, at + 1);
+		}
+		return -1;
+	}
+
+	/**
+	 * Parses the program of the page that contains {@code declaration}.
+	 *
+	 * @param declaration text that starts the definition, such as {@code "layer gated_mlp("}
+	 * @return the parsed program
+	 */
+	private static PdslNode.Program program(String declaration) {
+		for (String program : programs()) {
+			if (program.contains(declaration)) return new PdslLoader().parse(program);
+		}
+		throw new AssertionError("the tutorial has no program containing '" + declaration + "'");
+	}
+
+	/**
+	 * Returns every program of the page, in order, as PDSL source.
+	 *
+	 * @return the decoded text of each {@code language-pdsl} block
+	 */
+	private static List<String> programs() {
+		List<String> programs = new ArrayList<>();
+		Matcher block = PROGRAM.matcher(tutorial());
+		while (block.find()) programs.add(decode(block.group(1)));
+		if (programs.isEmpty()) {
+			throw new AssertionError(TUTORIAL + " marks no block as language-pdsl");
+		}
+		return programs;
+	}
+
+	/**
+	 * Turns the HTML text of a code block back into source: strips any markup and decodes the
+	 * entities HTML requires for {@code <}, {@code >}, {@code &} and quotes.
+	 *
+	 * @param html the inner HTML of a {@code <code>} element
+	 * @return the source text
+	 */
+	private static String decode(String html) {
+		return html.replaceAll("<[^>]+>", "")
+				.replace("&lt;", "<")
+				.replace("&gt;", ">")
+				.replace("&quot;", "\"")
+				.replace("&#39;", "'")
+				.replace("&amp;", "&");
+	}
+
+	/**
+	 * Reads the tutorial from the repository root, found by walking up from the working directory.
+	 *
+	 * @return the page's HTML
+	 */
+	private static String tutorial() {
+		Path start = Paths.get("").toAbsolutePath();
+		for (Path dir = start; dir != null; dir = dir.getParent()) {
+			Path page = dir.resolve(TUTORIAL);
+			if (!Files.isRegularFile(page)) continue;
+			try {
+				return Files.readString(page, StandardCharsets.UTF_8);
+			} catch (IOException e) {
+				throw new AssertionError("cannot read " + page, e);
+			}
+		}
+		throw new AssertionError(TUTORIAL + " not found above " + start);
+	}
+
+	/**
+	 * Allocates a zero-filled tensor.
+	 *
+	 * @param dims its shape
+	 * @return the tensor
+	 */
+	private static PackedCollection weights(int... dims) {
+		return new PackedCollection(new TraversalPolicy(dims));
+	}
+}

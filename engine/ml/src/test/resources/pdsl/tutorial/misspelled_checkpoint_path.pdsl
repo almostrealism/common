@@ -1,0 +1,4 @@
+model m(weights: checkpoint) {
+    rmsnorm(weights.norm.weight, 1e-6)
+    dense(weights.lm_haed.weight)
+}

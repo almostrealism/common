@@ -31,7 +31,7 @@
 // exits before the bash tool runs, so a future .after handler
 // is not required — there is no tool output to mutate.)
 //
-// See docs/plans/OPENCODE_HOOKS.md for the harness contract.
+// See docs/internals/agent-hooks.md for the harness contract.
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { spawnSync } from "node:child_process"

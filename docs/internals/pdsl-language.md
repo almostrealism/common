@@ -1,7 +1,9 @@
 # PDSL Language Reference
 
-PDSL (Producer DSL, package `org.almostrealism.ml.dsl` in `engine/ml`) is the language in which
-the platform describes its models. A `.pdsl` file declares layers, models and the configuration,
+PDSL (Producer DSL, package `org.almostrealism.dsl` in `domain/graph`) is the language in which
+the platform describes its models. The language core lives beside the `Block` and `Model` types it
+builds, so any module from the domain layer up can describe its models in PDSL; modules above it
+add primitives of their own (see [Extending PDSL](#extending-pdsl)). A `.pdsl` file declares layers, models and the configuration,
 data and state they read. The interpreter turns them into `Block` and `Model` graphs built from
 the same `CollectionProducer` framework as hand-written Java layers. Like Java code in this
 project, a PDSL program does not run the math itself. It describes a computation graph, and
@@ -31,7 +33,7 @@ source text --PdslLexer--> tokens --PdslParser--> PdslNode.Program --PdslInterpr
 | Lexing | `PdslLexer` | Turns source text into `PdslToken`s: keywords, identifiers, numbers, strings, operators. Skips whitespace and comments. |
 | Parsing | `PdslParser` | Recursive descent over the token list. Produces a `PdslNode.Program`: the program's `import`s and its definitions. |
 | Interpretation | `PdslInterpreter` | Indexes the definitions by kind and name, then builds a `Block` (`buildLayer`) or `Model` (`buildModel`), or evaluates a `config`, `data` or `state` block to a map. |
-| Loading | `PdslLoader` | The public entry point. It parses source text, files and classpath resources, resolves imports, creates an interpreter per build, and applies a registrar that installs domain primitives. |
+| Loading | `PdslLoader` | The public entry point. It parses source text, files and classpath resources, resolves imports, creates an interpreter per build, and applies a registrar that installs domain primitives. Every interpreter also registers the primitives of each `PdslExtension` on the classpath. |
 
 The common Java entry points:
 
@@ -248,7 +250,7 @@ A program is a set of named definitions. Each kind has its own namespace: a `lay
 | `data Name { p: type; d = expr }` | Program-level bindings. The parameters (`p: type`) come from the build's argument map. The derivations (`d = expr`) are evaluated in declaration order, each seeing the entries before it. | Every build binds every `data` block into the program scope, so each block's parameters must be present in the arguments of every `buildLayer`/`buildModel`. `evaluateDataDef` returns one block's entries as a map. |
 | `state Name { ... }` | The same grammar and evaluation as `data`. The different node type (`StateDef`) signals that the entries are written during execution: caches, ring buffers, filter histories. | Bound into the program scope only when *all* of the block's parameters are in the build's arguments. Otherwise the block is skipped, so a program can declare state that only some of its layers use. `PdslInterpreter.evaluateStateDef` returns its entries. |
 | `layer name(params) [-> shape] { body }` | A `SequentialBlock` holding the body's stages. | `buildLayer(program, name, inputShape, args[, requirements])`, or a call `name(args)` from another layer or model. |
-| `model name(params) { body }` | A `Model` whose blocks are the body's stages. | `buildModel(program, name, inputShape, args)`, or `buildModel(program, name, inputShape, stateDict, extraArgs, requirements)`, which binds the `StateDictionary` to every parameter typed `checkpoint`. |
+| `model name(params) { body }` | A `Model` whose blocks are the body's stages. | `buildModel(program, name, inputShape, args)`, or `buildModel(program, name, inputShape, weights, extraArgs, requirements)`, which binds the `WeightGroup` (a `StateDictionary`, for example) to every parameter typed `checkpoint`. |
 
 **The shape annotation.** `layer f(...) -> [s] { }` declares the *input* shape `f` is built for
 **when another layer or model calls it**: the call builds `f` for `[s]`, evaluated with the
@@ -270,14 +272,15 @@ annotation documents the expected value but does not check it.
 |------|----------------|---------------------|-------|
 | `weight`, `weight [shape]` | A `PackedCollection` (or `null` for an omitted optional tensor) | Graph operand. A built-in such as `dense` or `rmsnorm` registers it as a trainable weight, or reads it as a constant (see the catalog). | The optional shape is parsed but not checked. |
 | `scalar` | A number, or a `PackedCollection`/`Producer` of size 1 (a position, for example) | Either | A position usually arrives as a shape-`[1]` collection that is updated between forward passes. |
-| `producer([shape])` | A `Number`, `PackedCollection` or `Producer<PackedCollection>` | Graph operand | Converted by `PdslInterpreter.normalizeToProducer` to a `CollectionProducer` of the declared shape. A value of the same total size is reshaped. A size-1 value is broadcast. Any other size is rejected. A literal folds to a constant. |
+| `producer([shape])` | A `Number`, `PackedCollection` or `Producer<PackedCollection>` | Graph operand | Converted by `PdslBuiltins.normalizeToProducer` to a `CollectionProducer` of the declared shape. A value of the same total size is reshaped. A size-1 value is broadcast. Any other size is rejected. A literal folds to a constant. |
 | `int`, `float`, `bool` | A Java number or boolean | Build time | Used in shape and arithmetic expressions and as build-time built-in arguments. |
 | `[shape]` | Anything | Build time | Parsed with the type name `shape`. No conversion. |
-| any identifier (`checkpoint`, `model_settings`, ...) | Anything | Build time | Documentary, except `checkpoint` on a model parameter: `buildModel(..., StateDictionary, ...)` binds the dictionary to every parameter of that type. A config-like value is passed as a `Map` (e.g. `TransformerConfig.toPdslSettings()`) and read with `settings.dim`. |
+| any identifier (`checkpoint`, `model_settings`, ...) | Anything | Build time | Documentary, except `checkpoint` on a model parameter: `buildModel(..., WeightGroup, ...)` binds the weights to every parameter of that type. A config-like value is passed as a `Map` (e.g. `TransformerConfig.toPdslSettings()`) and read with `settings.dim`. |
 
-**Checkpoint paths.** On a `StateDictionary` value, `x.f` returns the tensor named `f` if there
-is one. Otherwise it returns the group of everything under `f.` (`StateDictionary.group`), and if
-that is empty it fails with the closest weight names. So `weights.model.norm.weight` is a tensor,
+**Checkpoint paths.** On a `WeightGroup` value (such as a `StateDictionary`), `x.f` returns the
+tensor named `f` if there is one. Otherwise it returns the group of everything under `f.`
+(`WeightGroup.group`), and if that is empty it fails through `WeightGroup.require`, which names the
+closest weight names. So `weights.model.norm.weight` is a tensor,
 and `weights.model.layers` is the group that `stack` repeats over.
 
 ## Statements and their block semantics
@@ -298,7 +301,7 @@ output shape. Anything else fails with "Cannot add *type* to block".
 | `accum_blocks(a, b, ...)` | `LayerRoutingFeatures.accumBlocks`: every part receives the same input, and the outputs are summed element-wise. The backward pass gives each part the full output gradient and sums their input gradients. | All parts start at the current shape. The parts' outputs must agree. |
 | `concat_blocks(a, b, ...)` | `LayerRoutingFeatures.concatBlocks`: every part receives the same input, and the outputs are concatenated. | Output: the flat `[sum of the parts' sizes]`. |
 | `for i in a..b { body }` | Interprets `body` once for each integer `i` from `a` (inclusive) to `b` (exclusive), each time in a new scope that binds `i`. Unrolled at build time. | Stages append in sequence. |
-| `stack group as m { body }` | Evaluates `group` to a `StateDictionary` group and interprets `body` once per member, in `StateDictionary.members()` order (numeric names sorted numerically), with `m` bound to that member's sub-dictionary. The body has no index to compute with. | Stages append in sequence. |
+| `stack group as m { body }` | Evaluates `group` to a `WeightGroup` and interprets `body` once per member, in `WeightGroup.members()` order (numeric names sorted numerically), with `m` bound to that member's sub-dictionary. The body has no index to compute with. | Stages append in sequence. |
 | `for each channel { body }` | Needs `channels` in scope and a `PdslMultiChannelDispatcher` installed (the audio registrar installs one). See [pdsl-audio-dsp.md](pdsl-audio-dsp.md#multi-channel-constructs). | `[C, S]` → per-channel body output. |
 
 **Model bodies** accept only expression statements, `let`, `for` and `stack`. Each expression
@@ -400,7 +403,10 @@ layer block_with_imports(size: int) {
 
 ## Builtin catalog
 
-The 40 built-ins dispatched by `PdslBuiltins` (package-private). The interpreter itself evaluates
+The 30 built-ins dispatched by `PdslBuiltins` (package-private). These are the domain-agnostic
+core, available to every program. The attention and rotary position primitives of the
+machine-learning engine are an extension, cataloged under
+[The machine-learning extension](#the-machine-learning-extension). The interpreter itself evaluates
 the four arithmetic operators `+ - * /` and unary `-`. Unless noted, a built-in returns a block
 factory, so its shape checks run when the stage is placed, not at the call. "Input" means the
 signal the stage receives.
@@ -421,6 +427,7 @@ means neither the code nor a test settles it.
 | `conv_transpose1d` | `conv_transpose1d(w, b, stride, padding, output_padding)`, `conv_transpose1d(w, stride, padding, output_padding)` | `[batch, in_ch, len]` → `[batch, out_ch, (len - 1) * stride - 2 * padding + kernel + output_padding]`, with `w` `[in_ch, out_ch, kernel]` | `ConvolutionLayerFeatures.convTranspose1d` | input: passes; `w`, `b`: trains (registered weights); no PDSL gradient test |
 | `rmsnorm` | `rmsnorm(w, eps)`, `rmsnorm(w, b, eps)` (`b` may be `null`) | shape preserved; normalizes runs of `w`'s last-axis length | `NormalizationLayerFeatures.rmsnorm` | input: passes; `w`, `b`: trains (registered weights); `eps`: build-time constant |
 | `layernorm` | `layernorm(w, b, eps)` (`b` may be `null`; `w` required) | shape preserved; runs of `size(w)` must tile the input | `NormalizationLayerFeatures.norm` | input: passes (`SequenceAttentionAssetTest.qkLayerNormGradientsMatchJavaAssembly`); `w`, `b`: trains (registered weights) |
+| `dynamic_tanh` | `dynamic_tanh(alpha, w, b)` (`w` and `b` may be `null`; `alpha` required, one value or one per feature) | shape preserved; every element becomes `w ⊙ tanh(alpha · x) + b`, with runs of `size(w)` (or `size(b)`) tiling the input; DynamicTanh (DyT) normalization, which computes no statistic | `NormalizationLayerFeatures.dynamicTanh` | input: passes; `alpha`, `w`, `b`: trains (registered weights) (`DynamicTanhPrimitiveTest.dynamicTanhTrainsAlphaAndItsAffine`) |
 | `softmax` | `softmax()` | `[rows, size]` (≥ 2 axes) preserved; max-subtracted, over the last axis | `ActivationFeatures.softmax(shape, true)` | input: passes |
 | `silu` | `silu()` | preserved | `ActivationFeatures.silu` | input: passes |
 | `relu` | `relu()` | preserved | `ActivationFeatures.relu` | input: passes |
@@ -445,23 +452,13 @@ means neither the code nor a test settles it.
 | `sum_channels` | `sum_channels()` | `[C, S]` → `[1, S]` | `LayerFeatures.layer` around `subset` sums | input: passes; not verified by a test |
 | `capture` | `capture(slot)` | preserved; copies the input into `slot` (same total size) | `PdslBuiltins.callCapture` (`DefaultBlock`) | **none.** The backward cell is empty, so a `capture` cuts the gradient to everything upstream of it. |
 
-### Attention and positional encoding
+### Caches and batched products
 
 | Builtin | Call forms | Input → output | Lowers to | Gradient |
 |---------|------------|----------------|-----------|----------|
 | `cache_write` | `cache_write(cache, position)` | preserved; the input fills one row of the `[rows, size]` cache | `LayerFeatures.cacheWrite` | input: passes unchanged (pass-through backward); `cache`, `position`: constant |
 | `cache_read` | `cache_read(cache, position)` | any → `[size]` (row `position`; the input is not read) | `LayerFeatures.cacheRead` | input: none (the output does not depend on it); `cache`, `position`: constant |
-| `attention_scores` | `attention_scores(keys)` | `[heads, head_size]` → `[heads, seq_len]` against the `[seq_len, heads * head_size]` key cache | `AttentionFeatures.attentionScores` | input: passes; `keys`: constant |
-| `causal_mask` | `causal_mask(position)` | `[heads, seq_len]` preserved; columns after `position` penalized | `AttentionFeatures.causalMask` | input: passes; `position`: constant |
-| `weighted_values` | `weighted_values(values)` | `[heads, seq_len]` → `[1, heads * head_size]` | `AttentionFeatures.weightedValues` | input: passes; `values`: constant |
-| `sequence_causal_mask` | `sequence_causal_mask()` | `[batch, heads, queries, keys]` preserved | `SequenceAttentionFeatures.causalLogitMask` | input: passes (`SequenceAttentionAssetTest.causalGradientsMatchJavaAssembly`) |
-| `key_mask` | `key_mask(mask)` | `[batch, heads, queries, keys]` preserved; `mask` `[batch, keys]`, with 1 for valid and 0 for masked | `LayerFeatures.layer` adding `(mask - 1) * MASKED_LOGIT_PENALTY` | input: passes; `mask`: constant |
 | `scaled_dot_product` | `scaled_dot_product(other, transpose)` | `transpose = true`: `[b, h, q, d]` × `[b, h, k, d]` → `[b, h, q, k]`; `false`: `[b, h, q, k]` × `[b, h, k, d]` → `[b, h, q, d]` | `MatrixFeatures.scaledDotProduct`; a branch operand is wired in with `LayerRoutingFeatures.compose` | input: passes. `other` as a **branch**: trains, because the gradient is carried into the branch (`SdpaPrimitivesTest.branchOperandCarriesTheGradientIntoTheBranch`, `SequenceAttentionAssetTest.assetCarriesGradientsIntoKeysAndValues`). `other` as a **tensor or producer**: constant. A branch feeds one product only, and a second use is rejected. |
-| `rope_rotation` | `rope_rotation([heads, head_size / 2, 2], freq_cis, position)`, which returns a `Block` | preserved | `RotationFeatures.ropeRotation` | input: passes; not verified by a test; `freq_cis`, `position`: constant |
-| `sequence_rope` | `sequence_rope(inv_freq)` | `[batch, heads, seq_len, head_dim]` preserved; the leading `2 * size(inv_freq)` features rotate | `RotationFeatures.applyRotaryPositionEmbedding` | input: passes (`SequenceAttentionAssetTest` gradient tests); `inv_freq`: constant |
-| `mra_rope_rotation` | `mra_rope_rotation([heads, head_size / 2, 2], head_groups)`, which returns a `Block`; `head_groups` is a Java `HeadGroupConfig[]` argument | preserved | `RotationFeatures.mraRopeRotation` | input: not verified; group tables: constant |
-| `split_half_rope` | `split_half_rope(heads, head_size)` | total `heads * head_size` → `[heads, head_size / 2, 2]` | `RotationFeatures.reshapeToSplitHalfRope` | input: not verified |
-| `merge_half_rope` | `merge_half_rope(heads, head_size)`, which returns a `Block` | `[heads, head_size / 2, 2]` → `[heads, head_size]` | `RotationFeatures.reshapeFromSplitHalfRope` | input: not verified |
 
 ### Build-time values
 
@@ -474,7 +471,6 @@ part of a backward pass.
 | `shape` | `shape(d0, d1, ...)` (integers, not a shape literal) | `TraversalPolicy` | `TraversalPolicy` constructor | not a graph value |
 | `range` | `range(source, [shape], offset)` | a zero-copy `PackedCollection` view | `PackedCollection.range` | not a graph value; a view of `source` that trains with `source` wherever it is used as a weight |
 | `zeros` | `zeros([shape])` | a new zero-filled `PackedCollection`, one per call | `PackedCollection` + `clear()` | not a graph value (state storage) |
-| `rope_freqs` | `rope_freqs(theta, head_size, seq_len)` | `CollectionProducer` `[seq_len, head_size / 2, 2]` | `RotationFeatures.computeRopeFreqs` | constant |
 
 ## Extending PDSL
 
@@ -502,10 +498,17 @@ PdslLoader loader = new PdslLoader(MyPrimitives::registerWith);
   type itself. `channels()`, `signalSize()` and `setChannels(int)` read and update the
   multi-channel environment. The static `toInt`, `toInts` and `toDouble` are the shared numeric
   coercions.
-- **Registration.** `PdslLoader(Consumer<PdslInterpreter>)` applies the registrar to every
-  interpreter the loader creates, before any build. `AudioDspPrimitives::registerWith` is the
-  canonical example: it registers the audio primitives and installs the
-  `PdslMultiChannelDispatcher` that `for each channel` needs.
+- **Registration.** There are two ways to register, and they differ in who decides.
+  - *An extension, present whenever its module is.* A module whose primitives belong in every
+    program that can see it implements `PdslExtension` and names the class in
+    `META-INF/services/org.almostrealism.dsl.PdslExtension`. Every `PdslInterpreter` discovers the
+    extensions on the classpath through `java.util.ServiceLoader` and registers them as it is
+    constructed, so no caller has to ask for them. `AttentionPrimitives` in `engine/ml` is the
+    example (see [The machine-learning extension](#the-machine-learning-extension)).
+  - *A registrar, chosen per loader.* `PdslLoader(Consumer<PdslInterpreter>)` applies the
+    registrar to every interpreter the loader creates, before any build, after the extensions.
+    `AudioDspPrimitives::registerWith` is the canonical example: it registers the audio
+    primitives and installs the `PdslMultiChannelDispatcher` that `for each channel` needs.
 - **Resolution.** A registered primitive is consulted after the program's own layers and before
   the built-ins, so it may shadow a built-in. See
   [Name resolution and scope](#name-resolution-and-scope).
@@ -516,6 +519,30 @@ PdslLoader loader = new PdslLoader(MyPrimitives::registerWith);
 - **Vectorized `for each channel`.** A primitive that accepts a `PdslChannelBank` (one value per
   channel) can apply the whole bank in one computation. Any other primitive rejects the bank,
   and the interpreter falls back to per-channel dispatch.
+- **Weights.** A model's `checkpoint` parameter is bound to a `WeightGroup` (in `domain/graph`),
+  the interface the interpreter reads weights through. `StateDictionary` in `engine/ml` implements
+  it; any other weight store can too.
+
+### The machine-learning extension
+
+`AttentionPrimitives` (`engine/ml`, package `org.almostrealism.ml.dsl`) is a `PdslExtension`, so
+these primitives are available to every program whenever `engine/ml` is on the classpath. Each one
+lowers to the `AttentionFeatures`, `SequenceAttentionFeatures` or `RotationFeatures` method of the
+same purpose, and normalizes its tensor arguments through `PdslPrimitiveContext.toProducer`.
+
+| Primitive | Call forms | Input → output | Lowers to | Gradient |
+|-----------|------------|----------------|-----------|----------|
+| `attention_scores` | `attention_scores(keys)` | `[heads, head_size]` → `[heads, seq_len]` against the `[seq_len, heads * head_size]` key cache | `AttentionFeatures.attentionScores` | input: passes; `keys`: constant |
+| `causal_mask` | `causal_mask(position)` | `[heads, seq_len]` preserved; columns after `position` penalized | `AttentionFeatures.causalMask` | input: passes; `position`: constant |
+| `weighted_values` | `weighted_values(values)` | `[heads, seq_len]` → `[1, heads * head_size]` | `AttentionFeatures.weightedValues` | input: passes; `values`: constant |
+| `sequence_causal_mask` | `sequence_causal_mask()` | `[batch, heads, queries, keys]` preserved | `SequenceAttentionFeatures.causalLogitMask` | input: passes (`SequenceAttentionAssetTest.causalGradientsMatchJavaAssembly`) |
+| `key_mask` | `key_mask(mask)` | `[batch, heads, queries, keys]` preserved; `mask` `[batch, keys]`, with 1 for valid and 0 for masked | `LayerFeatures.layer` adding `(mask - 1) * MASKED_LOGIT_PENALTY` | input: passes; `mask`: constant |
+| `rope_rotation` | `rope_rotation([heads, head_size / 2, 2], freq_cis, position)`, which returns a `Block` | preserved | `RotationFeatures.ropeRotation` | input: passes; not verified by a test; `freq_cis`, `position`: constant |
+| `sequence_rope` | `sequence_rope(inv_freq)` | `[batch, heads, seq_len, head_dim]` preserved; the leading `2 * size(inv_freq)` features rotate | `RotationFeatures.applyRotaryPositionEmbedding` | input: passes (`SequenceAttentionAssetTest` gradient tests); `inv_freq`: constant |
+| `mra_rope_rotation` | `mra_rope_rotation([heads, head_size / 2, 2], head_groups)`, which returns a `Block`; `head_groups` is a Java `HeadGroupConfig[]` argument | preserved | `RotationFeatures.mraRopeRotation` | input: not verified; group tables: constant |
+| `split_half_rope` | `split_half_rope(heads, head_size)` | total `heads * head_size` → `[heads, head_size / 2, 2]` | `RotationFeatures.reshapeToSplitHalfRope` | input: not verified |
+| `merge_half_rope` | `merge_half_rope(heads, head_size)`, which returns a `Block` | `[heads, head_size / 2, 2]` → `[heads, head_size]` | `RotationFeatures.reshapeFromSplitHalfRope` | input: not verified |
+| `rope_freqs` | `rope_freqs(theta, head_size, seq_len)`, a build-time value | `CollectionProducer` `[seq_len, head_size / 2, 2]` | `RotationFeatures.computeRopeFreqs` | constant |
 
 ## Errors and diagnostics
 
@@ -532,10 +559,14 @@ depends on where the error comes from:
 | Built-ins | none, often with shapes | "dense() expects 1 or 2 arguments, got 0"; "softmax() expects a [rows, size] input shape, got [4]"; "scaled_dot_product() operand is a branch already consumed by another product ..." |
 | Loader | none | "'x' is defined more than once (in /a.pdsl and /b.pdsl)"; "'/a.pdsl' imports itself (/a.pdsl -> /b.pdsl -> /a.pdsl) ..."; a missing resource is an `IllegalStateException` ("PDSL resource not found on classpath: ...") |
 
-Two other failure modes are not `PdslParseException`s. A size mismatch caught by `SequentialBlock`
+Three other failure modes are not `PdslParseException`s. A size mismatch caught by `SequentialBlock`
 (for example an `accum` body whose output size differs from its input) is an
-`IllegalArgumentException` with no message. A built-in that casts its argument (see below) throws
-`ClassCastException` when given the wrong kind of value.
+`IllegalArgumentException` with no message. A built-in whose layer checks its own parameters
+reports a bad parameter as that layer does for a Java caller: `dynamic_tanh` leaves its
+parameters to `NormalizationLayerFeatures.dynamicTanhSize`, so a missing `alpha`, or weights and
+biases whose runs do not tile the input, are an `IllegalArgumentException` with a message when the
+stage is placed. A built-in that casts its argument (see below) throws `ClassCastException` when
+given the wrong kind of value.
 
 ## Worked examples
 
@@ -680,8 +711,11 @@ The platform's shipped assets, under `engine/ml/src/main/resources/pdsl/`, are t
 examples. `attention.pdsl` and `transformer.pdsl` are the autoregressive attention block and
 pre-norm transformer layer. `sequence_attention.pdsl`, `sdpa.pdsl` and
 `differential_attention.pdsl` are full-sequence attention. `feed_forward.pdsl` holds the
-feed-forward networks. `qwen2.pdsl`, `qwen3.pdsl` and `t5gemma_encoder.pdsl` are whole models and
-encoders. `midi/` and `audio/` hold the SkyTNT, GRU decoder, Oobleck codec and mixdown assets.
+feed-forward networks. `resampling_transformer.pdsl` is one layer of a learned-resampling
+transformer: differential attention within each attention chunk and a gated feed-forward, both
+normalized with `dynamic_tanh`. `qwen2.pdsl`, `qwen3.pdsl` and `t5gemma_encoder.pdsl` are whole
+models and encoders. `midi/` and `audio/` hold the SkyTNT, GRU decoder, Oobleck codec and mixdown
+assets.
 
 ## Known limits
 
@@ -703,9 +737,15 @@ Each limit below is recorded with its evidence. Fixing any of them changes this 
 - **Parameter types are not checked**, except `producer([shape])`. A `weight [shape]` shape is
   parsed and ignored. A wrong value surfaces later, as a cast or shape error inside a built-in.
 - **Several built-ins cast instead of normalizing.** `dense`, `conv1d`, `conv_transpose1d`,
-  `rmsnorm`, `layernorm`, `snake`, `sequence_rope` and `range` cast their tensor arguments to
-  `PackedCollection`, so a producer argument fails with `ClassCastException`, not a
+  `rmsnorm`, `layernorm`, `dynamic_tanh`, `snake`, `sequence_rope` and `range` cast their tensor
+  arguments to `PackedCollection`, so a producer argument fails with `ClassCastException`, not a
   `PdslParseException`.
+- **A checkpoint path cannot name a numeric segment.** After a `.` the parser accepts an
+  identifier or a keyword, and `0` lexes as a number, so `weights.ff.0.proj.weight` (the index of a
+  module in a PyTorch `nn.Sequential`) is a parse error. Only `stack` reaches numbered members, and
+  it reaches all of them. A layer reading weights below a numbered segment takes that group as an
+  argument of its own: `resampling_transformer.pdsl` is given `ff.ff.0.proj` and `ff.ff.2` as
+  `ff_in` and `ff_out`.
 - **`snake` parameters do not train.** `ActivationFeatures.snake` evaluates the broadcast of
   `alpha` and `beta` once, at build time, and registers no weights. A later change to `alpha` or
   `beta` is not seen by the built layer either.
@@ -731,6 +771,8 @@ Each limit below is recorded with its evidence. Fixing any of them changes this 
 
 ## Related documentation
 
+- [Tutorial 10: Writing Models in PDSL](../tutorials/10-pdsl-model-definitions.html): a guided,
+  progressive read of the shipped assets that ends in a small model built from a checkpoint
 - [PDSL Audio DSP Reference](pdsl-audio-dsp.md): audio primitives, `for each channel`,
   producer-valued arguments, state blocks for DSP
 - [ML Inference Pipeline](ml-inference-pipeline.md): which assets build which attention and

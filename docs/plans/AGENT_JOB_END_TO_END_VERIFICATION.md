@@ -1,3 +1,10 @@
+---
+status: in-progress
+created: 2026-09-24
+closed:
+tracker: []
+---
+
 # End-to-end verification for agent jobs
 
 Written after an outage in which every FlowTree agent job failed for a full

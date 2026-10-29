@@ -132,6 +132,47 @@ public class JobFactoryDecodeTest extends TestSuiteBase {
     }
 
     /**
+     * {@link JobFactory#nextEntrySeparator(String, int)} returns a separator that
+     * genuinely divides two entries unchanged.
+     */
+    @Test(timeout = 10000)
+    public void nextEntrySeparatorReturnsDividingSeparator() {
+        assertEquals(3, JobFactory.nextEntrySeparator("key" + JobFactory.ENTRY_SEPARATOR + "value",
+                "key".length()));
+    }
+
+    /**
+     * {@link JobFactory#nextEntrySeparator(String, int)} skips a separator that a
+     * value escapes with a leading {@code /} and reports the next dividing one.
+     */
+    @Test(timeout = 10000)
+    public void nextEntrySeparatorSkipsSlashEscapedSeparator() {
+        String data = "a::/b::c";
+        assertEquals(5, JobFactory.nextEntrySeparator(data, data.indexOf(JobFactory.ENTRY_SEPARATOR)));
+    }
+
+    /**
+     * {@link JobFactory#nextEntrySeparator(String, int)} skips a separator that a
+     * value escapes with a preceding {@code \} and reports the next dividing one.
+     */
+    @Test(timeout = 10000)
+    public void nextEntrySeparatorSkipsBackslashEscapedSeparator() {
+        String data = "a\\::b::c";
+        assertEquals(5, JobFactory.nextEntrySeparator(data, data.indexOf(JobFactory.ENTRY_SEPARATOR)));
+    }
+
+    /**
+     * {@link JobFactory#nextEntrySeparator(String, int)} returns a negative index
+     * unchanged, which is how it terminates on a final entry whose second character
+     * is {@code /} rather than restarting the search and spinning forever.
+     */
+    @Test(timeout = 10000)
+    public void nextEntrySeparatorReturnsNegativeWhenNoneRemains() {
+        assertTrue(JobFactory.nextEntrySeparator("a/b", "a/b".indexOf(JobFactory.ENTRY_SEPARATOR)) < 0);
+        assertTrue(JobFactory.nextEntrySeparator("a/b", -1) < 0);
+    }
+
+    /**
      * A factory whose {@link #set(String, String)} throws for one key, standing
      * in for a real factory that validates the values it is given.
      */

@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Producer;
@@ -26,7 +27,7 @@ import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
-import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
@@ -747,6 +748,60 @@ public interface AttentionFeatures extends SequenceAttentionFeatures {
 	}
 
 	/**
+	 * Multi-head attention over caller-owned key and value caches.
+	 *
+	 * <p>Identical to the {@link #attention(int, int, PackedCollection, PackedCollection,
+	 * PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection,
+	 * PackedCollection, PackedCollection, PackedCollection, CollectionProducer, Producer, double,
+	 * ComputeRequirement...) self-allocating overload} except that the block reads and writes the
+	 * caller-supplied {@code keyCache} and {@code valueCache} instead of a pair the layer allocates
+	 * internally. This gives the caller an owner for the decode state: it can clear the caches at a
+	 * sequence boundary and release them when the compiled block is destroyed, rather than having them
+	 * sealed inside the block. The caches must have shape {@code (seqLen, dim)}, where {@code seqLen}
+	 * is the rotary table's row count and {@code dim} the model dimension.</p>
+	 *
+	 * @param heads number of query attention heads
+	 * @param kvHeads number of key/value heads (for GQA, use heads for standard MHA)
+	 * @param rmsAttWeight pre-attention RMSNorm weights
+	 * @param wk key projection weights
+	 * @param wv value projection weights
+	 * @param wq query projection weights
+	 * @param wo output projection weights
+	 * @param bk key projection bias (null if not used)
+	 * @param bv value projection bias (null if not used)
+	 * @param bq query projection bias (null if not used)
+	 * @param qkNormQ query normalization weights (null to skip QK-Norm)
+	 * @param qkNormK key normalization weights (null to skip QK-Norm)
+	 * @param freqCis RoPE frequency embeddings
+	 * @param position current position in sequence
+	 * @param epsilon RMSNorm epsilon
+	 * @param keyCache caller-owned key cache of shape {@code (seqLen, dim)}
+	 * @param valueCache caller-owned value cache of shape {@code (seqLen, dim)}
+	 * @param requirements compute requirements, applied to every layer the attention asset builds
+	 * @return attention block reading and writing the caller-owned caches
+	 * @throws IllegalArgumentException if only one of the QK-Norm weights is given, or either cache is
+	 *         null or not of shape {@code (seqLen, dim)}
+	 */
+	default Block attention(int heads, int kvHeads,
+							PackedCollection rmsAttWeight,
+							PackedCollection wk, PackedCollection wv,
+							PackedCollection wq, PackedCollection wo,
+							PackedCollection bk, PackedCollection bv,
+							PackedCollection bq,
+							PackedCollection qkNormQ, PackedCollection qkNormK,
+							CollectionProducer freqCis,
+							Producer<PackedCollection> position,
+							double epsilon,
+							PackedCollection keyCache, PackedCollection valueCache,
+							ComputeRequirement... requirements) {
+		return attentionLayer(qkNormQ == null ? "attention" : "attention_qk_norm",
+				attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+						bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon,
+						keyCache, valueCache),
+				requirements);
+	}
+
+	/**
 	 * Attention with per-head-group rotary embeddings (Multidimensional Relative Attention).
 	 *
 	 * <p>Unlike standard attention which applies a single RoPE uniformly to all heads,
@@ -801,8 +856,16 @@ public interface AttentionFeatures extends SequenceAttentionFeatures {
 	/**
 	 * Binds the arguments every layer of {@link #ATTENTION_ASSET} takes: the head geometry,
 	 * the normalization and projection weights, the position, the RMSNorm epsilon, and a
-	 * freshly allocated key cache and value cache of {@code (seqLen, heads * headSize)} rows —
-	 * the state the block writes on every forward pass and reads on every later one.
+	 * freshly allocated and cleared key cache and value cache of {@code (seqLen, heads * headSize)}
+	 * rows — the state the block writes on every forward pass and reads on every later one.
+	 *
+	 * <p>This is the sole cache allocation site of the cached attention family: it allocates the two
+	 * caches, clears them, and delegates to the
+	 * {@link #attentionArguments(int, int, PackedCollection, PackedCollection, PackedCollection,
+	 * PackedCollection, PackedCollection, int, Producer, double, PackedCollection, PackedCollection)
+	 * caller-supplied-cache overload}, which builds the map. A caller that wants to own the caches —
+	 * to clear them at a sequence boundary or release them at end of life — calls that overload
+	 * directly with its own collections, and no allocation happens here.</p>
 	 *
 	 * @param heads number of query heads
 	 * @param kvHeads number of key/value heads
@@ -826,6 +889,53 @@ public interface AttentionFeatures extends SequenceAttentionFeatures {
 												   int seqLen, Producer<PackedCollection> position,
 												   double epsilon) {
 		int dim = rmsAttWeight.getShape().length(0);
+		PackedCollection keyCache = new PackedCollection(shape(seqLen, dim));
+		PackedCollection valueCache = new PackedCollection(shape(seqLen, dim));
+		keyCache.clear();
+		valueCache.clear();
+		return attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				seqLen, position, epsilon, keyCache, valueCache);
+	}
+
+	/**
+	 * Binds the arguments every layer of {@link #ATTENTION_ASSET} takes, using the caller-supplied
+	 * {@code keyCache} and {@code valueCache} as the layer's {@code key_cache}/{@code value_cache}
+	 * state rather than allocating a fresh pair. This is the single place the argument map is built,
+	 * and the path that gives a caller an owner for the caches the compiled block reads and writes, so
+	 * it can clear them at a sequence boundary and release them at end of life instead of having them
+	 * sealed inside the block. The self-allocating overload above delegates here after allocating and
+	 * clearing a pair.
+	 *
+	 * <p>Both caches must have shape {@code (seqLen, heads * headSize)} — the same {@code (seqLen,
+	 * dim)} the self-allocating overload would allocate. A null or mis-shaped cache is rejected here
+	 * with a clear message rather than failing deep in compilation.</p>
+	 *
+	 * @param heads number of query heads
+	 * @param kvHeads number of key/value heads
+	 * @param rmsAttWeight pre-attention RMSNorm weights, whose length is the model dimension
+	 * @param wk key projection weights
+	 * @param wv value projection weights
+	 * @param wq query projection weights
+	 * @param wo output projection weights
+	 * @param seqLen number of cache rows (the maximum sequence length)
+	 * @param position producer of the current position
+	 * @param epsilon RMSNorm epsilon
+	 * @param keyCache caller-owned key cache of shape {@code (seqLen, dim)}
+	 * @param valueCache caller-owned value cache of shape {@code (seqLen, dim)}
+	 * @return the argument bindings, to be completed with the layer-specific weights
+	 * @throws IllegalArgumentException if the head count is not positive, the model dimension is not a
+	 *         multiple of the head count, the query head count is not a positive multiple of the KV
+	 *         head count, or either cache is null or not of shape {@code (seqLen, dim)}
+	 */
+	default Map<String, Object> attentionArguments(int heads, int kvHeads,
+												   PackedCollection rmsAttWeight,
+												   PackedCollection wk, PackedCollection wv,
+												   PackedCollection wq, PackedCollection wo,
+												   int seqLen, Producer<PackedCollection> position,
+												   double epsilon,
+												   PackedCollection keyCache,
+												   PackedCollection valueCache) {
+		int dim = rmsAttWeight.getShape().length(0);
 		if (heads <= 0) {
 			throw new IllegalArgumentException("Heads must be positive, got " + heads);
 		} else if (dim % heads != 0) {
@@ -834,12 +944,12 @@ public interface AttentionFeatures extends SequenceAttentionFeatures {
 		} else if (kvHeads <= 0 || heads % kvHeads != 0) {
 			throw new IllegalArgumentException(heads + " query heads is not a positive multiple of "
 					+ kvHeads + " KV heads");
+		} else if (keyCache == null || valueCache == null) {
+			throw new IllegalArgumentException("Caller-supplied key_cache and value_cache must not be null");
 		}
 
-		PackedCollection keyCache = new PackedCollection(shape(seqLen, dim));
-		PackedCollection valueCache = new PackedCollection(shape(seqLen, dim));
-		keyCache.clear();
-		valueCache.clear();
+		Shape.requireShape("key_cache", keyCache, shape(seqLen, dim));
+		Shape.requireShape("value_cache", valueCache, shape(seqLen, dim));
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("heads", heads);
@@ -885,6 +995,63 @@ public interface AttentionFeatures extends SequenceAttentionFeatures {
 
 		Map<String, Object> args = attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
 				freqCis.getShape().length(0), position, epsilon);
+		return addProjectionAndRotaryArguments(args, bk, bv, bq, qkNormQ, qkNormK, freqCis);
+	}
+
+	/**
+	 * Caller-supplied-cache sibling of the QK-Norm/bias {@link #attentionArguments} overload above: it
+	 * binds the same arguments, but over the caller-owned {@code keyCache} and {@code valueCache}
+	 * rather than a freshly allocated pair, so a caller such as {@link CausalLanguageModel#decodeModel}
+	 * owns the caches the compiled attention layer reads and writes. The caches are validated against
+	 * the rotary table's row count. Parameters are as in {@link #attention}.
+	 *
+	 * @param keyCache caller-owned key cache of shape {@code (freqCis rows, dim)}
+	 * @param valueCache caller-owned value cache of shape {@code (freqCis rows, dim)}
+	 * @return the argument bindings
+	 * @throws IllegalArgumentException if only one of the QK-Norm weights is given, the head geometry
+	 *         is invalid, or either cache is null or mis-shaped
+	 */
+	default Map<String, Object> attentionArguments(int heads, int kvHeads,
+												   PackedCollection rmsAttWeight,
+												   PackedCollection wk, PackedCollection wv,
+												   PackedCollection wq, PackedCollection wo,
+												   PackedCollection bk, PackedCollection bv,
+												   PackedCollection bq,
+												   PackedCollection qkNormQ, PackedCollection qkNormK,
+												   CollectionProducer freqCis,
+												   Producer<PackedCollection> position,
+												   double epsilon,
+												   PackedCollection keyCache,
+												   PackedCollection valueCache) {
+		if ((qkNormQ == null) != (qkNormK == null)) {
+			throw new IllegalArgumentException("QK-Norm requires both query and key weights");
+		}
+
+		Map<String, Object> args = attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				freqCis.getShape().length(0), position, epsilon, keyCache, valueCache);
+		return addProjectionAndRotaryArguments(args, bk, bv, bq, qkNormQ, qkNormK, freqCis);
+	}
+
+	/**
+	 * Completes an attention argument map built by one of the core {@link #attentionArguments}
+	 * overloads with the projection biases, rotary frequency table and optional QK-Norm weights that
+	 * the {@code attention}/{@code attention_qk_norm} layers also take. Shared by the self-allocating
+	 * and caller-supplied QK-Norm/bias overloads so the map is completed in exactly one place.
+	 *
+	 * @param args the core argument map to complete, from a cache-binding overload
+	 * @param bk key projection bias ({@code null} if unused)
+	 * @param bv value projection bias ({@code null} if unused)
+	 * @param bq query projection bias ({@code null} if unused)
+	 * @param qkNormQ query normalization weights ({@code null} to skip QK-Norm)
+	 * @param qkNormK key normalization weights ({@code null} to skip QK-Norm)
+	 * @param freqCis the rotary frequency table
+	 * @return the completed argument map (the same instance)
+	 */
+	private static Map<String, Object> addProjectionAndRotaryArguments(Map<String, Object> args,
+																	   PackedCollection bk, PackedCollection bv,
+																	   PackedCollection bq,
+																	   PackedCollection qkNormQ, PackedCollection qkNormK,
+																	   CollectionProducer freqCis) {
 		args.put("bq", bq);
 		args.put("bk", bk);
 		args.put("bv", bv);

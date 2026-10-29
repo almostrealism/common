@@ -115,6 +115,14 @@ import java.util.stream.Stream;
  * );
  * }</pre>
  *
+ * <h2>Iterations and Coupled Steps</h2>
+ * <p>When the tick is a {@link io.almostrealism.code.Computation}, {@code iter > 1} wraps it in a
+ * hardware {@link org.almostrealism.hardware.computations.Loop}, which repeats the tick inside one
+ * kernel with no barrier between iterations. Each kernel thread then advances on its own, so this
+ * is correct only for element-local steps, where every element reads only its own previous value.
+ * A globally coupled step must be run one step per dispatch; {@link SimulationRunner} owns that
+ * loop.</p>
+ *
  * <h2>Configuration Flags</h2>
  * <p>Static configuration flags control runner behavior:</p>
  * <ul>
@@ -442,6 +450,20 @@ public class TemporalRunner implements OperationComputation<Void>, Setup, Tempor
 	public Runnable getContinue() {
 		compile();
 		return r;
+	}
+
+	/**
+	 * Returns a runnable that executes only the setup, compiling the runner if needed.
+	 *
+	 * <p>{@link #get()} runs the setup before every tick sequence. A subclass that decides for
+	 * itself when setup runs (for example, once per simulation rather than on every invocation)
+	 * dispatches the compiled setup through this method instead of compiling its own.</p>
+	 *
+	 * @return A runnable that executes only the setup
+	 */
+	protected Runnable getCompiledSetup() {
+		compile();
+		return s;
 	}
 
 	/**

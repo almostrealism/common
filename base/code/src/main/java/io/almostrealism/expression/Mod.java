@@ -527,7 +527,11 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * {@link #enableRedundantModReplacement}) {@code m} is a multiple of it, the
 	 * outer modulus cannot change the result and this expression is returned
 	 * unchanged. When this modulus is a multiple of {@code m}, the inner modulus
-	 * is redundant and the dividend is reduced by {@code m} directly.</p>
+	 * is redundant and the dividend is reduced by {@code m} directly. That
+	 * reduction is built by {@link #create(Expression, Expression, boolean)}, so it
+	 * is simplified exactly as a modulus of the dividend by {@code m} would be: in
+	 * {@code ((g * 288 + i) % 5308416) % 288}, with {@code i} below {@code 288}, the
+	 * multiple of {@code 288} is dropped and the result is {@code i}.</p>
 	 *
 	 * <p>A zero modulus on either side has no defined result, so no reduction
 	 * is attempted and the divisibility checks never divide by zero.</p>
@@ -543,7 +547,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (n == m || (enableRedundantModReplacement && m % n == 0)) {
 			return Optional.of(this);
 		} else if (n % m == 0) {
-			return Optional.of(new Mod(getLeft(), ExpressionFeatures.getInstance().e(m), false));
+			return Optional.of(create(getLeft(), ExpressionFeatures.getInstance().e(m), false));
 		}
 
 		return Optional.empty();

@@ -1,7 +1,7 @@
 {
   "uid": "fleet-capacity",
   "title": "Runner Fleet \u2014 Capacity",
-  "description": "Do we need more runner hardware? Wait for a runner against runners available, per lane; host headroom; where CI time goes. docs/plans/RUNNER_FLEET_MONITORING.md \u00a73.",
+  "description": "Do we need more runner hardware? Wait for a runner against runners available, per lane; host headroom; where CI time goes. See tools/fleet/README.md.",
   "tags": [
     "fleet"
   ],

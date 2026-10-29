@@ -94,6 +94,21 @@ public class ByteTokenizerTest extends TestSuiteBase {
 		Assert.assertEquals("x�y", tokenizer.decodeAsLong(new long[] { 'x', 0xFF, 'y' }));
 	}
 
+	/**
+	 * The strict validity check accepts well-formed UTF-8, including multi-byte characters and the
+	 * empty sequence, and rejects a truncated multi-byte sequence and a byte that never begins one.
+	 */
+	@Test(timeout = 10000)
+	public void strictUtf8Validity() {
+		ByteTokenizer tokenizer = new ByteTokenizer();
+		Assert.assertTrue(tokenizer.isValidUtf8(tokenizer.encodeAsInt("Producer € 😀")));
+		Assert.assertTrue(tokenizer.isValidUtf8(new int[0]));
+		Assert.assertFalse(tokenizer.isValidUtf8(new int[] { 0xE2, 0x82, 'A' }));
+		Assert.assertFalse(tokenizer.isValidUtf8(new int[] { 'x', 0xFF, 'y' }));
+		Assert.assertFalse(tokenizer.isValidUtf8(new int[] { 'a', 0xE2 }));
+		assertRejected(() -> tokenizer.isValidUtf8(new int[] { 256 }));
+	}
+
 	/** Ids outside {@code 0..255} are rejected rather than narrowed onto a valid byte. */
 	@Test(timeout = 10000)
 	public void outOfRangeIdsRejected() {

@@ -102,24 +102,18 @@ public interface ModelTestFeatures extends TestFeatures {
 	}
 
 	/**
-	 * Returns a {@link ParameterUpdate} that leaves every weight unchanged and instead records
-	 * the gradient it receives. When the model wires each weight's update, one collection of that
-	 * weight's shape is appended to {@code recorded}, in the order the model wires its layers.
-	 * Each backward pass then copies the weight's gradient into that same collection, overwriting
-	 * what the previous pass recorded, so the list always holds the gradients of the most recent
-	 * pass rather than a history. This makes the analytic gradient of a model available for
-	 * comparison against finite differences.
+	 * Returns a {@link GradientRecorder}, a {@link ParameterUpdate} that leaves every weight unchanged
+	 * and instead records the gradient it receives, adding each gradient it records to
+	 * {@code recorded}: one collection of each weight's shape, in the order the model wires its
+	 * layers, holding the gradient of the most recent backward pass. A test that does not read the
+	 * gradients in wiring order creates a {@link GradientRecorder#GradientRecorder() GradientRecorder}
+	 * of its own and asks it for each gradient instead.
 	 *
 	 * @param recorded the list receiving one gradient collection per weight
 	 * @return a parameter update that records gradients rather than applying them
 	 */
-	default ParameterUpdate<PackedCollection> gradientRecorder(List<PackedCollection> recorded) {
-		return (name, weights, gradient) -> {
-			PackedCollection buffer = new PackedCollection(shape(weights));
-			recorded.add(buffer);
-			return a(name + " (recorded gradient)", p(buffer.each()),
-					c(gradient).reshape(buffer.getShape()).each());
-		};
+	default GradientRecorder gradientRecorder(List<PackedCollection> recorded) {
+		return new GradientRecorder(recorded);
 	}
 
 	/**

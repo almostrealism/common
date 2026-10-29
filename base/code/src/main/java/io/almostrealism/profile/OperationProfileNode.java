@@ -156,6 +156,9 @@ public class OperationProfileNode extends OperationProfile
 	 */
 	public static boolean allowMultipleSources = SystemUtils.isEnabled("AR_PROFILE_MULTIPLE_SOURCES").orElse(true);
 
+	/** Suffix of the metric entries {@link #getRuntimeListener()} records for each operation invocation. */
+	public static final String RUN_SUFFIX = " run";
+
 	/**
 	 * Default function that formats an {@link OperationMetadata} into a short display string
 	 * by appending the context name and output shape to the description or display name.
@@ -416,6 +419,31 @@ public class OperationProfileNode extends OperationProfile
 	@Override
 	public double getTotalDuration() {
 		return getSelfDuration() + getChildDuration();
+	}
+
+	/**
+	 * Returns the number of operation invocations recorded by {@link #getRuntimeListener()} in the
+	 * subtree rooted at this node: the counts of this node's {@link #RUN_SUFFIX run} entries plus
+	 * those of every descendant. Compilation and stage entries are not counted. Every compiled
+	 * kernel reports its runs through that listener on every backend, so this is a
+	 * backend-independent count of the kernels a profiled workload executed. The runtime listener
+	 * may record into the counts concurrently, so each node's counts are read under their lock.
+	 *
+	 * @return the number of recorded operation invocations
+	 */
+	public long getRunCount() {
+		Map<String, Integer> counts = getMetricCounts();
+		long self = 0;
+		if (counts != null) {
+			synchronized (counts) {
+				self = counts.entrySet().stream()
+						.filter(entry -> entry.getKey().endsWith(RUN_SUFFIX))
+						.mapToLong(Map.Entry::getValue)
+						.sum();
+			}
+		}
+
+		return self + getChildren().stream().mapToLong(OperationProfileNode::getRunCount).sum();
 	}
 
 	/**
@@ -694,7 +722,7 @@ public class OperationProfileNode extends OperationProfile
 		return (requesterMetadata, operationMetadata, nanos) -> {
 			OperationProfileNode node = getProfileNode(requesterMetadata, operationMetadata);
 			node.initMetric();
-			node.getMetric().addEntry(getIdentifier().apply(operationMetadata) + " run", nanos);
+			node.getMetric().addEntry(getIdentifier().apply(operationMetadata) + RUN_SUFFIX, nanos);
 		};
 	}
 

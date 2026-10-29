@@ -403,6 +403,65 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link io.almostrealism.streams.LatchSemaphore#awaitCountDown()} waits only for the
+	 * count-down: it does not return while the latch is still held, returns {@code true} once it
+	 * reaches zero, and does not rethrow a recorded failure, which {@code waitFor()} still
+	 * reports to the latch's consumers.
+	 */
+	@Test(timeout = 30000)
+	public void awaitCountDownIgnoresRecordedFailure() throws InterruptedException {
+		IllegalStateException failure = new IllegalStateException("work failed");
+		DefaultLatchSemaphore latch = new DefaultLatchSemaphore((Semaphore) null, 2);
+		latch.fail(failure);
+
+		AtomicReference<Boolean> result = new AtomicReference<>();
+		AtomicReference<Throwable> thrown = new AtomicReference<>();
+		Thread coordinator = new Thread(() -> result.set(latch.awaitCountDown()),
+				"SemaphoreCompositionTest coordinator");
+		coordinator.setUncaughtExceptionHandler((t, e) -> thrown.set(e));
+		coordinator.setDaemon(true);
+		coordinator.start();
+
+		latch.countDown();
+		coordinator.join(200);
+		assertTrue("The wait must not end before the latch reaches zero", coordinator.isAlive());
+
+		latch.countDown();
+		coordinator.join(10000);
+
+		assertFalse(coordinator.isAlive());
+		Assert.assertNull("awaitCountDown must not rethrow the recorded failure", thrown.get());
+		Assert.assertEquals(Boolean.TRUE, result.get());
+
+		try {
+			latch.waitFor();
+			Assert.fail("waitFor must rethrow the recorded failure");
+		} catch (IllegalStateException e) {
+			assertTrue(e == failure);
+		}
+	}
+
+	/**
+	 * {@link io.almostrealism.streams.LatchSemaphore#awaitCountDown()} on an interrupted thread
+	 * returns {@code false} at once, with the interrupt status still set, while the latch is held.
+	 */
+	@Test(timeout = 30000)
+	public void interruptedAwaitCountDownReturnsFalse() {
+		DefaultLatchSemaphore latch = new DefaultLatchSemaphore((Semaphore) null, 1);
+
+		Thread.currentThread().interrupt();
+		try {
+			assertFalse(latch.awaitCountDown());
+			assertTrue("The interrupt status must be kept", Thread.currentThread().isInterrupted());
+		} finally {
+			Thread.interrupted();
+		}
+
+		latch.countDown();
+		assertTrue(latch.awaitCountDown());
+	}
+
+	/**
 	 * A completion that records every thread that waits for it, and completes (or fails) once
 	 * {@link #release()} is called.
 	 */

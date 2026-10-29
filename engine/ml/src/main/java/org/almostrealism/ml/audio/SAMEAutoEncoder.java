@@ -16,14 +16,17 @@
 
 package org.almostrealism.ml.audio;
 
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.ResamplingConfig;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.TransformerResamplingFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * A transformer-resampling audio autoencoder: a {@link PatchedPretransform} folds samples into
@@ -62,6 +65,9 @@ public class SAMEAutoEncoder implements TransformerResamplingFeatures, LayerFeat
 
 	/** The latent-boundary transform. */
 	private final Bottleneck bottleneck;
+
+	/** The asset whose {@code channel_projection} layers define the per-frame channel projection. */
+	private static final String CHANNEL_PROJECTION_ASSET = "/pdsl/channel_projection.pdsl";
 
 	/**
 	 * Creates an autoencoder from its parts.
@@ -221,6 +227,12 @@ public class SAMEAutoEncoder implements TransformerResamplingFeatures, LayerFeat
 	 * A per-frame linear projection of a channels-first sequence, {@code [batch, in, len]} to
 	 * {@code [batch, out, len]}, reading {@code key.weight} ({@code [out, in]}) and {@code key.bias}.
 	 *
+	 * <p>The permute &rarr; dense &rarr; permute structure is defined by the
+	 * {@value #CHANNEL_PROJECTION_ASSET} asset; this method reads the projection's weight (and optional
+	 * bias) from the checkpoint, validates the weight shape, and builds the asset's biased or unbiased
+	 * layer accordingly. The batch and length are read from the input shape, and the output channel
+	 * count from the weight, so the asset names neither.</p>
+	 *
 	 * @param key       weight key prefix
 	 * @param batchSize batch size
 	 * @param in        input channels
@@ -230,15 +242,18 @@ public class SAMEAutoEncoder implements TransformerResamplingFeatures, LayerFeat
 	 */
 	protected Block channelProjection(String key, int batchSize, int in, int out, int len) {
 		PackedCollection weight = weights.get(key + ".weight");
-		PackedCollection bias = weights.containsKey(key + ".bias") ? weights.get(key + ".bias") : null;
+		boolean hasBias = weights.containsKey(key + ".bias");
 
 		if (weight == null || weight.getShape().getTotalSize() != out * in) {
 			throw new IllegalArgumentException(key + ".weight must have shape [" + out + ", " + in + "]");
 		}
 
-		TraversalPolicy inShape = shape(batchSize, in, len);
-		TraversalPolicy outShape = shape(batchSize, out, len);
-		return layer(key, inShape, outShape,
-				x -> permute(linear(permute(c(x), 0, 2, 1), weight.reshape(out, in), bias), 0, 2, 1));
+		Map<String, Object> args = new HashMap<>();
+		args.put("projection", weights.group(key));
+
+		PdslLoader loader = new PdslLoader();
+		String layerName = hasBias ? "channel_projection" : "channel_projection_no_bias";
+		return loader.buildLayer(loader.parseResource(CHANNEL_PROJECTION_ASSET), layerName,
+				shape(batchSize, in, len), args);
 	}
 }

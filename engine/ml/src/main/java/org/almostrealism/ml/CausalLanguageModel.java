@@ -17,11 +17,14 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.model.Model;
 
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -219,5 +222,97 @@ public final class CausalLanguageModel extends Model implements TransformerBlock
 		add(dense(weights.get(OUTPUT_KEY)));
 		add(reshape(logitShape, config.getOutputShape()));
 		add(logSoftmax(config.getOutputShape()));
+	}
+
+	/**
+	 * Builds the single-position key/value-cache decode variant of this model over its own weights,
+	 * for one token at a time rather than a whole window. The variant takes one token's
+	 * {@code (1, dim)} residual-stream embedding at the sequence {@code position} and returns the
+	 * {@code (vocabSize)} log-probabilities of the next token, reading and writing a per-layer key and
+	 * value cache so that each step scores the new position against the cached past instead of
+	 * recomputing the whole window.
+	 *
+	 * <p>It is the decode counterpart of the training layers assembled in {@link #addLayers()}: the
+	 * same embedding weights feed it (the caller supplies the embedding, as the generator does), the
+	 * feed-forward of each block is the identical {@link #gatedLinearFeedForward gated feed-forward}
+	 * over a single position, and the final normalization, output projection and log-softmax are the
+	 * same. Only the attention changes — from the full-window {@link #transformerBlock causal
+	 * self-attention} to the cached single-position {@link AttentionFeatures#attention attention}. The
+	 * attention weights are the same: the fused {@code qkv} {@code (3 * dim, dim)}
+	 * weight is exposed as three contiguous {@code (dim, dim)} query, key and value views without a
+	 * copy (section 0 is the query, 1 the key, 2 the value, as the training path's
+	 * {@code sequence_attention} slices it), and the position-indexed rotary frequencies are derived
+	 * from the stored {@link #INV_FREQ_KEY rotary inverse frequencies} with
+	 * {@link #computeRopeFreqs(int, PackedCollection)}, which produces exactly the rotation the
+	 * full-sequence path applies at the same row, so greedy decoding agrees with the full forward.</p>
+	 *
+	 * <p>The returned model is <em>not</em> compiled; the caller compiles and owns it. No weights are
+	 * copied: the variant is built over this model's {@link StateDictionary}, which stays the caller's,
+	 * exactly as a second training compilation would be. The per-layer caches, one cleared
+	 * {@code (seqLen, dim)} key cache and value cache per block, are appended in block order to
+	 * {@code keyCaches} and {@code valueCaches} (which must be empty and mutable) and bound as the
+	 * {@code key_cache}/{@code value_cache} each block's attention layer reads and writes, so that the
+	 * caller can clear them when a new sequence starts and release them when the decode model is
+	 * destroyed — they are decode state, not model state.</p>
+	 *
+	 * @param position   the device-resident single-element sequence position the attention reads;
+	 *                   the caller advances and resets it per step and per sequence
+	 * @param keyCaches   an empty, mutable list that receives the per-block key caches in block order
+	 * @param valueCaches an empty, mutable list that receives the per-block value caches in block order
+	 * @return the uncompiled single-position decode model, input {@code (1, dim)} and output
+	 *         {@code (1, vocabSize)}, the {@code vocabSize} next-token log-probabilities
+	 * @throws IllegalArgumentException if {@code position}, {@code keyCaches} or {@code valueCaches} is
+	 *                                  null, or if either cache list is not empty
+	 */
+	public Model decodeModel(PackedCollection position,
+							 List<PackedCollection> keyCaches, List<PackedCollection> valueCaches) {
+		if (position == null) {
+			throw new IllegalArgumentException("position must not be null");
+		} else if (keyCaches == null || valueCaches == null) {
+			throw new IllegalArgumentException("cache lists must not be null");
+		} else if (!keyCaches.isEmpty() || !valueCaches.isEmpty()) {
+			throw new IllegalArgumentException("cache lists must be empty");
+		}
+
+		int dim = config.dim;
+		CollectionProducer freqCis = computeRopeFreqs(config.seqLen, weights.get(INV_FREQ_KEY));
+		TraversalPolicy tokenShape = shape(1, dim);
+		TraversalPolicy ffnShape = shape(1, 1, dim);
+
+		Model model = new Model(tokenShape);
+
+		for (int i = 0; i < config.layerCount; i++) {
+			PackedCollection qkv = weights.get(config.layerKey(i, "qkv"));
+			PackedCollection wq = qkv.range(shape(dim, dim), 0);
+			PackedCollection wk = qkv.range(shape(dim, dim), dim * dim);
+			PackedCollection wv = qkv.range(shape(dim, dim), 2 * dim * dim);
+
+			PackedCollection keyCache = new PackedCollection(shape(config.seqLen, dim));
+			PackedCollection valueCache = new PackedCollection(shape(config.seqLen, dim));
+			keyCache.clear();
+			valueCache.clear();
+			keyCaches.add(keyCache);
+			valueCaches.add(valueCache);
+
+			model.add(residual(attention(config.headCount, config.headCount,
+					weights.get(config.layerKey(i, "attention_norm")),
+					wk, wv, wq, weights.get(config.layerKey(i, "wo")),
+					null, null, null, null, null,
+					freqCis, p(position), 1e-5,
+					keyCache, valueCache)));
+
+			model.add(reshape(tokenShape, ffnShape));
+			model.add(residual(gatedLinearFeedForward(ffnShape, NormalizationType.RMS,
+					weights.get(config.layerKey(i, "ffn_norm")), null,
+					weights.get(config.layerKey(i, "w1")), null,
+					weights.get(config.layerKey(i, "w2")), null,
+					null, null, silu(), ProjectionFactory.dense())));
+			model.add(reshape(ffnShape, tokenShape));
+		}
+
+		model.add(norm(NormalizationType.RMS, weights.get(FINAL_NORM_KEY), null));
+		model.add(dense(weights.get(OUTPUT_KEY)));
+		model.add(logSoftmax(shape(1, config.vocabSize)));
+		return model;
 	}
 }

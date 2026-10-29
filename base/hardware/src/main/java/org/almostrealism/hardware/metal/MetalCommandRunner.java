@@ -22,13 +22,16 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -47,11 +50,24 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link MetalSemaphore#getPriorBufferValue() prior buffer value}, if any, is waited for); a
  * dependency in an earlier, committed buffer is honored by encoding a wait for its event value, so
  * the GPU serializes the dependent after the dependency across buffers without a host stall. Only a
- * foreign dependency commits the open buffer first (see {@link #submit}).</p>
+ * foreign dependency closes the open buffer first (see {@link #submit}).</p>
+ *
+ * <h2>Closed and committed buffers</h2>
+ *
+ * <p>A buffer stops accepting dispatches when it is <em>closed</em> (a host wait, the
+ * {@link #MAX_OPEN} bound, or a bridged dispatch that must start a fresh buffer), and is
+ * <em>committed</em> to the GPU only once every host-signaled bridge encoded into it has been
+ * signaled, in the order the buffers were closed. The GPU therefore never holds a buffer that waits
+ * for the host: a caller may submit dispatches ahead of the foreign work they depend on, and the
+ * buffers wait on the host side, where no watchdog applies, rather than on the GPU, where a buffer
+ * that waits longer than the GPU timeout is killed and its dispatches never run. Up to
+ * {@link #MAX_HELD} buffers wait in this way; beyond that, a dispatch that would open another
+ * waits on its submitting thread for the foreign work (see {@link #encode}), so foreign work that
+ * the same thread would only start later must be started before that bound is reached.</p>
  *
  * <h2>Timeline signals</h2>
  *
- * <p>A command buffer signals the timeline once, when it is committed: the signal carries the value
+ * <p>A command buffer signals the timeline once, encoded when it is closed: the signal carries the value
  * of the last dispatch encoded into it and fires when all of the buffer's work has completed (see
  * {@link #commitOpenOnExecutor()}). The timeline is only ever waited on from a later command buffer,
  * for a dispatch in a buffer that has already been committed, so that one signal releases every
@@ -63,6 +79,20 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>{@link MetalSemaphore#waitFor()} is the only thing that blocks the host: it commits the
  * dispatch's buffer if still open and waits for it (and every buffer committed before it, since the
  * queue is serial) to complete.</p>
+ *
+ * <h2>Failures</h2>
+ *
+ * <p>A command buffer that Metal reports as failed (a GPU fault, or the watchdog killing a
+ * stalled buffer) ran none of its dispatches, wrote none of their destinations and never
+ * signaled its timeline value. The failure is recorded on the runner, keyed by the timeline
+ * value of the first dispatch in the failed buffer, and every wait for a dispatch at or after
+ * that value throws it as a {@link HardwareException} &mdash; a waiter that drained the buffer, a
+ * concurrent one, and one that arrives after the buffer was drained alike. The record is sticky:
+ * a later buffer that encoded a GPU wait for one of the failed values can still complete without
+ * an error of its own (the shared timeline is released by any higher value an independent
+ * buffer signals), so its own status cannot be trusted and only the record can report it. A
+ * failure of the foreign work a bridged dispatch waits for is recorded the same way, for the
+ * bridged dispatch's value (see {@link #submit}).</p>
  *
  * <h2>Memory lifetime</h2>
  *
@@ -86,7 +116,17 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * memory bound (it caps how much encoded-but-uncompleted work and how large an autorelease pool
 	 * accumulate), not a behavioural switch — correctness does not depend on its value.
 	 */
-	private static final int MAX_OPEN = 256;
+	public static final int MAX_OPEN = 256;
+
+	/**
+	 * Maximum closed buffers that may wait for host-signaled bridges before a further dispatch
+	 * that would open a new buffer waits, on its submitting thread, for the oldest of them to be
+	 * committed. A command queue allows a bounded number of command buffers that have not
+	 * completed (64 by default), and opening one beyond it blocks; this keeps the buffers waiting
+	 * for the host well within that bound, so the executor can always open the buffer a dispatch
+	 * needs. Like {@link #MAX_OPEN}, a resource bound, not a behavioural switch.
+	 */
+	public static final int MAX_HELD = 16;
 
 	/** Total dispatches encoded across all runners since the last reset. */
 	public static final AtomicLong totalDispatchCount = new AtomicLong();
@@ -185,6 +225,13 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	private volatile long bridgeCommits;
 
 	/**
+	 * The host-signaled bridges encoded into the open buffer that have not been signaled yet.
+	 * Replaced when the buffer is closed, so each closed buffer keeps the count of its own bridges.
+	 * Executor-thread only.
+	 */
+	private PendingBridges openBridges = new PendingBridges();
+
+	/**
 	 * Foreign-completion signals that arrived after their bridge event was already
 	 * released (the bridged buffer finished by an error or teardown path first).
 	 * Written from completion-callback threads.
@@ -197,18 +244,41 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * Written on the executor thread; read from diagnostic threads.
 	 */
 	private final AtomicLong errorCompletions = new AtomicLong();
+
+	/**
+	 * The failure with the lowest timeline value recorded so far, or {@code null} while nothing
+	 * has failed. Every wait for a dispatch at or after its value throws it (see
+	 * {@link #complete}). Written from the executor thread and from bridge callbacks.
+	 */
+	private final AtomicReference<RecordedFailure> failure = new AtomicReference<>();
+
+	/** Timeline value of the first dispatch encoded into the open buffer. Executor-thread only. */
+	private long openFirstValue;
 	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
 	private int openCount;
 	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
 	private List<Runnable> openOnComplete = new ArrayList<>();
 
-	/** Committed-but-not-yet-completed buffers, in commit (queue) order. Executor-thread only. */
+	/**
+	 * Closed-but-not-yet-completed buffers, in the order they were closed, which is also the order
+	 * they are committed in: every buffer already committed comes before every buffer still waiting
+	 * for its bridges. Executor-thread only.
+	 */
 	private final List<CommittedBuffer> committed = new ArrayList<>();
 
 	/**
-	 * True while an open (created but not yet committed) command buffer exists. Enforces the
+	 * The closed buffers not yet committed because they, or a buffer closed before them, still
+	 * wait for a host-signaled bridge, oldest first: the tail of {@link #committed}. No buffer is
+	 * opened while {@link #MAX_HELD} of them wait (see {@link #encode}), so there are at most one
+	 * more than that: the buffer that was open when the bound was reached, once it is closed.
+	 * Executor-thread only.
+	 */
+	private final ArrayDeque<CommittedBuffer> held = new ArrayDeque<>();
+
+	/**
+	 * True while an open (created but not yet closed) command buffer exists. Enforces the
 	 * one-open-buffer-per-{@link MetalComputeContext} invariant: a single context must never have a
-	 * second uncommitted command buffer in flight (cross-buffer coordination is only meaningful
+	 * second command buffer accepting dispatches (cross-buffer coordination is only meaningful
 	 * <em>between</em> contexts, and a Computation tree compiles against a single Metal context).
 	 * Tracked explicitly so an attempt to open a second buffer fails fast instead of silently
 	 * producing the kind of wedged-completion state this work has repeatedly hit.
@@ -242,11 +312,15 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * <p>A foreign dependency (any other {@link Semaphore}) is bridged without blocking when
 	 * {@link #enableHostSignaledBridges} is set: the dispatch's buffer encodes a GPU wait on a
 	 * fresh per-bridge {@link MTLEvent}, and the event is signaled from the host when the
-	 * foreign work completes, via {@link Semaphore#onComplete(Runnable)}. The dispatch is
-	 * therefore ordered after the foreign work with no host wait and no forced commit. If the
-	 * foreign work never completes, the buffer never completes — the same exposure a blocking
-	 * bridge has, moved onto the GPU. With bridges disabled, the foreign dependency is waited
-	 * on the calling thread before the dispatch is encoded.</p>
+	 * foreign work settles, via {@link Semaphore#onSettled(Runnable)}. The dispatch is
+	 * therefore ordered after the foreign work with no host wait. The buffer holding it is not
+	 * committed until the signal has been given (see the class documentation), so the GPU never
+	 * waits for the host, however far ahead of the foreign work dispatches are submitted. Once
+	 * {@link #MAX_HELD} closed buffers wait in this way, a dispatch that would open another
+	 * waits, on the calling thread, for the oldest of them to be committed. If the
+	 * foreign work never settles, the buffer is never committed, and a wait for it waits for the
+	 * foreign work &mdash; the same exposure a blocking bridge has. With bridges disabled, the
+	 * foreign dependency is waited on the calling thread before the dispatch is encoded.</p>
 	 *
 	 * <p>Neither that wait nor the wait for the dispatch to be encoded is ended by an interrupt
 	 * of the calling thread, whose interrupt status is restored before this method returns: a
@@ -270,6 +344,12 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * native state; such skipped signals are counted by {@link #getLateBridgeSignalCount()}.
 	 * A skipped signal has no observer to lose: the event's only encoded wait was in the
 	 * buffer whose completion released it.</p>
+	 *
+	 * <p><b>Foreign failure:</b> the bridge is signaled when the foreign work settles, whether
+	 * it completed or failed, so a failed dependency never leaves the GPU waiting for a watchdog
+	 * kill. The bridged dispatch then runs on inputs that were never produced, so the foreign
+	 * failure is first recorded on this runner for the bridged dispatch's value (see the class
+	 * documentation): a wait for that dispatch, or any later one, throws it.</p>
 	 *
 	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}; carried by
 	 *                   the returned semaphore so a later commit-forcing wait can be attributed to it
@@ -296,11 +376,16 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			order = null;
 		}
 
-		synchronized (admission) {
-			encode(requester, command, order, onComplete, result);
-		}
+		while (true) {
+			CommittedBuffer blocking;
 
-		return result.get(0);
+			synchronized (admission) {
+				blocking = encode(requester, command, order, onComplete, result);
+			}
+
+			if (blocking == null) return result.get(0);
+			blocking.awaitSubmittedUninterruptibly();
+		}
 	}
 
 	/**
@@ -316,21 +401,42 @@ public class MetalCommandRunner implements ConsoleFeatures {
 
 	/**
 	 * Encodes one dispatch on the executor's thread for {@link #submit}, adding its completion
-	 * semaphore to {@code result}.
+	 * semaphore to {@code result}, unless the dispatch would open a new command buffer while
+	 * {@link #MAX_HELD} closed buffers already wait for a host-signaled bridge. A dispatch opens a
+	 * buffer when it is bridged (it closes the open buffer and starts another) or when no buffer
+	 * is open (the last one was closed at {@link #MAX_OPEN} or by a host wait). Every buffer closed
+	 * behind one that waits for its bridge waits as well, whatever closed it, and a command queue
+	 * allows only a bounded number of command buffers that have not completed: opening one beyond
+	 * that blocks the executor's thread until one completes, and a buffer waiting for its bridges
+	 * never completes while the executor that would commit it is blocked. The dispatch is then not
+	 * encoded, and the oldest waiting buffer is returned for the caller to wait for, on its own
+	 * thread, before trying again. A dispatch that joins the still-open buffer is never held back,
+	 * so work the foreign dependency itself encodes there can always proceed.
 	 *
 	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}
 	 * @param command    encodes the kernel into the supplied command buffer
 	 * @param dependsOn  a prior {@link Semaphore} this dispatch depends on, or {@code null}
 	 * @param onComplete released-memory callback to run after this dispatch's buffer completes, or null
 	 * @param result     receives the dispatch's completion semaphore
+	 * @return the buffer to wait for before encoding the dispatch, or {@code null} once it is encoded
 	 */
-	private void encode(OperationMetadata requester, MetalCommand command,
-						Semaphore dependsOn, Runnable onComplete, List<MetalSemaphore> result) {
+	private CommittedBuffer encode(OperationMetadata requester, MetalCommand command,
+								   Semaphore dependsOn, Runnable onComplete, List<MetalSemaphore> result) {
+		AtomicReference<CommittedBuffer> blocking = new AtomicReference<>();
+
 		// Uninterruptible: submit returns the completion this task adds to result
 		executor.runUninterruptibly(() -> {
 			boolean sameRunner = ordersAfter(dependsOn);
 			MetalSemaphore dependency = sameRunner ? (MetalSemaphore) dependsOn : null;
 			Semaphore foreign = dependsOn != null && !sameRunner ? dependsOn : null;
+
+			// A bridged dispatch always opens a fresh buffer (see below); any other opens one
+			// when the previous buffer was closed
+			boolean opensBuffer = foreign != null || openBuffer == null;
+			if (opensBuffer && held.size() >= MAX_HELD) {
+				blocking.set(held.peekFirst());
+				return;
+			}
 
 			// The timeline value to wait for, or 0; see the submit javadoc for the open-buffer case
 			long waitValue = 0;
@@ -344,8 +450,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			// this runner's own semaphores resolves by completing their whole buffer), and a
 			// buffer that contains both those dispatches and the bridge wait can never complete.
 			// The GPU watchdog then kills the stalled buffer and the gated work silently never
-			// runs. Committing first makes the cycle impossible; it costs the same commit the
-			// old blocking bridge caused, without blocking the host.
+			// runs. Closing first makes the cycle impossible.
 			if (foreign != null && openCount > 0 && commitOpenOnExecutor()) {
 				bridgeCommits++;
 			}
@@ -363,10 +468,25 @@ public class MetalCommandRunner implements ConsoleFeatures {
 				MTLEvent bridge = queue.getDevice().newSharedEvent();
 				openBuffer.encodeWaitForEvent(bridge, 1);
 				openOnComplete.add(bridge::release);
-				foreign.onComplete(() -> {
+
+				PendingBridges pending = openBridges;
+				pending.add();
+
+				// The value this dispatch takes below
+				long bridgedValue = signaled + 1;
+				foreign.onSettled(() -> {
+					// Recorded before the signal, so no waiter of the bridged dispatch can
+					// observe its completion without the failure
+					recordForeignFailure(foreign, bridgedValue);
+
 					if (!bridge.signal(1)) {
 						lateBridgeSignals.incrementAndGet();
 					}
+
+					executor.runOrElseUninterruptibly(() -> {
+						pending.signaled();
+						commitReadyOnExecutor();
+					}, () -> { });
 				});
 			}
 
@@ -384,25 +504,17 @@ public class MetalCommandRunner implements ConsoleFeatures {
 				maxOpenCommits++;
 			}
 		});
+
+		return blocking.get();
 	}
 
 	/**
 	 * Commits (if still open) the buffer the given dispatch was encoded into and blocks until it,
 	 * and every buffer committed before it, has completed; then runs their released-memory
-	 * callbacks. Invoked by {@link MetalSemaphore#waitFor()}.
-	 *
-	 * @param commandBuffer the dispatch's command buffer
-	 */
-	public void complete(MTLCommandBuffer commandBuffer) {
-		complete(commandBuffer, null);
-	}
-
-	/**
-	 * Commits (if still open) the buffer the given dispatch was encoded into and blocks until it,
-	 * and every buffer committed before it, has completed; then runs their released-memory
-	 * callbacks. When the wait forces a commit, the commit is attributed to {@code requester} in
-	 * {@link #hostCompleteRequesters} so batching-breaking waits can be traced to the operations
-	 * responsible for them.
+	 * callbacks. When the wait forces a commit, the commit is attributed to the dispatch's
+	 * {@link MetalSemaphore#getRequester() requester} in {@link #hostCompleteRequesters} so
+	 * batching-breaking waits can be traced to the operations responsible for them. Invoked by
+	 * {@link MetalSemaphore#waitFor()}.
 	 *
 	 * <p>The wait for the GPU happens on the calling thread, never on the executor's thread. A
 	 * committed buffer can be held on the GPU by a host-signaled bridge (see {@link #submit}),
@@ -421,36 +533,143 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * thread only after the executor has run every queued task, so the registration it withdraws
 	 * has been made by then.</p>
 	 *
+	 * <p>A buffer that is closed but still waits for a host-signaled bridge is not on the GPU yet,
+	 * so the caller first waits, on its own thread, until the bridge has been signaled and the
+	 * buffer committed (see the class documentation); an interrupt during that wait abandons it
+	 * as well.</p>
+	 *
 	 * <p>{@link #destroy()} may run while a caller is still waiting here. Its final task drains
 	 * every committed buffer, including the one being waited for, but leaves it retained for the
 	 * waiter; the executor is then gone, so the waiter withdraws itself on its own thread (see
 	 * {@link ConfinedExecutor#runOrElse}) and the buffer is released there. The caller returns
 	 * normally.</p>
 	 *
-	 * @param commandBuffer the dispatch's command buffer
-	 * @param requester     metadata of the operation waiting for completion, or {@code null}
+	 * <p><b>Failure.</b> A wait for a dispatch at or after the value of a recorded failure (see
+	 * the class documentation) throws it, before waiting when it is already recorded, and
+	 * otherwise once the buffers have been drained, which is what records one. The caller waits
+	 * for every committed buffer up to its own in queue order and stops at the first that
+	 * failed: a buffer that encoded a GPU wait for a failed buffer's value would otherwise stall
+	 * until the watchdog killed it too, and only then would the earlier failure be seen. An
+	 * interrupted caller returns without throwing; the failure stays recorded for the next
+	 * waiter.</p>
+	 *
+	 * @param dispatch the completion of a dispatch this runner encoded (see {@link #submit})
+	 * @throws HardwareException if the dispatch, or one it may depend on, did not execute
 	 */
-	public void complete(MTLCommandBuffer commandBuffer, OperationMetadata requester) {
-		AtomicReference<Waiter> registered = new AtomicReference<>();
-		executor.run(() -> registered.set(commitForWait(commandBuffer, requester)));
+	public void complete(MetalSemaphore dispatch) {
+		long value = dispatch.getValue();
+		OperationMetadata requester = dispatch.getRequester();
+		requireNoFailure(value);
+
+		AtomicReference<List<Waiter>> registered = new AtomicReference<>();
+		executor.run(() -> registered.set(commitForWait(dispatch.getCommandBuffer(), requester)));
 
 		if (Thread.currentThread().isInterrupted()) {
 			Runnable withdrawal = () -> {
-				Waiter abandoned = registered.get();
-				if (abandoned != null) abandoned.withdraw();
+				List<Waiter> abandoned = registered.get();
+				if (abandoned != null) abandoned.forEach(Waiter::withdraw);
 			};
 			executor.runOrElse(withdrawal, withdrawal);
 			return;
 		}
 
-		Waiter pending = registered.get();
-		if (pending == null) return;
+		List<Waiter> pending = registered.get();
+		if (pending != null && !awaitInOrder(pending, requester)) return;
+
+		requireNoFailure(value);
+	}
+
+	/**
+	 * Waits, on the calling thread, for each of the given committed buffers in queue order,
+	 * stopping after the first that failed, then drains every buffer up to the last one waited
+	 * for and withdraws every waiter. Part of {@link #complete}.
+	 *
+	 * @param waiters   waiters registered on the oldest committed buffers, in queue order, the
+	 *                  last on the buffer being waited for
+	 * @param requester metadata of the operation waiting for completion, or {@code null}
+	 * @return true if the wait ended normally, false if it was abandoned by an interrupt
+	 */
+	private boolean awaitInOrder(List<Waiter> waiters, OperationMetadata requester) {
+		Runnable withdrawal = () -> waiters.forEach(Waiter::withdraw);
+		Waiter completed = null;
+		boolean interrupted = false;
 
 		try {
-			pending.getBuffer().waitUntilCompleted();
+			for (Waiter w : waiters) {
+				if (!w.getCommitted().awaitSubmitted()) {
+					interrupted = true;
+					break;
+				}
+
+				w.getBuffer().waitUntilCompleted();
+				completed = w;
+				if (errorOf(w.getBuffer()) != null) break;
+			}
 		} finally {
-			executor.runOrElse(() -> drainThrough(pending, requester), pending::withdraw);
+			CommittedBuffer through = completed == null ? null : completed.getCommitted();
+			if (through == null) {
+				executor.runOrElse(withdrawal, withdrawal);
+			} else {
+				executor.runOrElse(() -> drainThrough(through, requester, waiters), withdrawal);
+			}
 		}
+
+		return !interrupted;
+	}
+
+	/**
+	 * Throws the recorded failure if it is at or before the given timeline value.
+	 *
+	 * @param value the timeline value of the dispatch being waited for
+	 * @throws HardwareException if a failure is recorded at or before {@code value}
+	 */
+	private void requireNoFailure(long value) {
+		RecordedFailure recorded = failure.get();
+		if (recorded != null && recorded.covers(value)) throw recorded.report();
+	}
+
+	/**
+	 * Records a failure for the given timeline value, unless one is already recorded at or
+	 * before it, so that every wait for that value or a later one throws it.
+	 *
+	 * @param value     the timeline value of the first dispatch that did not execute
+	 * @param exception the failure to report to waiters
+	 */
+	private void recordFailure(long value, HardwareException exception) {
+		RecordedFailure recorded = new RecordedFailure(value, exception);
+		failure.accumulateAndGet(recorded, (current, next) -> next.precedes(current) ? next : current);
+	}
+
+	/**
+	 * Records the failure of the foreign work a bridged dispatch waits for, if it failed, for the
+	 * bridged dispatch's value. Called once the foreign work has settled, so its
+	 * {@link Semaphore#waitFor()} returns or throws at once.
+	 *
+	 * @param foreign      the settled foreign completion
+	 * @param bridgedValue the timeline value of the dispatch bridged on it
+	 */
+	private void recordForeignFailure(Semaphore foreign, long bridgedValue) {
+		// TODO(review): a foreign failure stays recorded for the runner's lifetime; tracked as task b765c052.
+		try {
+			foreign.waitFor();
+		} catch (RuntimeException | Error e) {
+			warn("bridgedDependencyFailed value=" + bridgedValue, e);
+			recordFailure(bridgedValue, new HardwareException(
+					"The foreign dependency of a bridged Metal dispatch failed: " + e.getMessage(), e));
+		}
+	}
+
+	/**
+	 * Returns the error a completed command buffer finished with, or {@code null} if it
+	 * executed. A failed buffer ran none of its dispatches (see the class documentation). This
+	 * is the single point at which the runner reads a buffer's Metal status, so a subclass can
+	 * report a failure the GPU did not produce and exercise the failure path deterministically.
+	 *
+	 * @param buffer a command buffer that has completed
+	 * @return the Metal error description, or {@code null} if the buffer executed
+	 */
+	protected String errorOf(MTLCommandBuffer buffer) {
+		return buffer.isError() ? buffer.getError() : null;
 	}
 
 	/**
@@ -462,10 +681,11 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * already completed and been drained runs the callback immediately. Invoked by
 	 * {@link MetalSemaphore#whenComplete(Runnable)}.
 	 *
-	 * @param commandBuffer the dispatch's command buffer
-	 * @param callback      the callback to run after that buffer completes
+	 * @param dispatch the completion of a dispatch this runner encoded (see {@link #submit})
+	 * @param callback the callback to run after the dispatch's buffer completes
 	 */
-	public void whenComplete(MTLCommandBuffer commandBuffer, Runnable callback) {
+	public void whenComplete(MetalSemaphore dispatch, Runnable callback) {
+		MTLCommandBuffer commandBuffer = dispatch.getCommandBuffer();
 		executor.run(() -> {
 			if (commandBuffer == openBuffer) {
 				openOnComplete.add(callback);
@@ -493,6 +713,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			}
 
 			openBuffer = queue.commandBuffer();
+			openFirstValue = signaled + 1;
 			openCount = 0;
 			bufferOpen = true;
 		}
@@ -552,54 +773,75 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	public long getLateBridgeSignalCount() { return lateBridgeSignals.get(); }
 
 	/**
-	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
-	 * completion. Must run on the executor thread.
+	 * Closes the open buffer (if any), moves it to the committed list, and commits it at once
+	 * unless it, or a buffer closed before it, still waits for a host-signaled bridge (see
+	 * {@link #commitReadyOnExecutor()}). Does not wait for completion. Must run on the executor
+	 * thread.
 	 *
-	 * <p>Before committing, the buffer is made to signal the timeline to the value of the last
-	 * dispatch encoded so far. That signal fires once every command before it in the buffer has
-	 * completed, which is what releases a later buffer's wait for any of this buffer's dispatches
-	 * (see the class documentation). The value never decreases from one buffer to the next, and a
-	 * buffer committed without a dispatch of its own signals the previous buffer's value again.</p>
+	 * <p>On closing, the buffer is made to signal the timeline to the value of the last dispatch
+	 * encoded so far. That signal fires once every command before it in the buffer has completed,
+	 * which is what releases a later buffer's wait for any of this buffer's dispatches (see the
+	 * class documentation). The value never decreases from one buffer to the next, and a buffer
+	 * closed without a dispatch of its own signals the previous buffer's value again.</p>
 	 *
-	 * @return true if a commit was performed, false if no buffer was open
+	 * @return true if a buffer was closed, false if no buffer was open
 	 */
 	private boolean commitOpenOnExecutor() {
 		if (openBuffer == null) return false;
 
-		totalCommitCount.incrementAndGet();
-		commitCount++;
-
 		openBuffer.encodeSignalEvent(event, signaled);
-		openBuffer.commit();
 		bufferOpen = false;
 
-		committed.add(new CommittedBuffer(openBuffer, openOnComplete));
+		CommittedBuffer closed = new CommittedBuffer(openBuffer, openFirstValue, openOnComplete, openBridges);
+		committed.add(closed);
+		held.addLast(closed);
 		openBuffer = null;
 		openCount = 0;
 		openOnComplete = new ArrayList<>();
+		openBridges = new PendingBridges();
+
+		commitReadyOnExecutor();
 		return true;
 	}
 
 	/**
-	 * Commits the target buffer if it is still open and registers a waiter on it, so that it is
-	 * not released while the waiter waits for it off the executor thread. Must run on the
-	 * executor thread.
+	 * Commits, in the order they were closed, every closed buffer whose host-signaled bridges have
+	 * all been signaled, stopping at the first that still waits for one: a buffer committed ahead
+	 * of one closed before it would run ahead of it on the queue. Must run on the executor thread.
+	 */
+	private void commitReadyOnExecutor() {
+		while (!held.isEmpty() && held.peekFirst().isReady()) {
+			held.removeFirst().submit();
+			totalCommitCount.incrementAndGet();
+			commitCount++;
+		}
+	}
+
+	/**
+	 * Commits the target buffer if it is still open and registers a waiter on it and on every
+	 * buffer committed before it, so that none of them is released while the caller waits for
+	 * them, in queue order, off the executor thread. Must run on the executor thread.
 	 *
 	 * @param target    the buffer to wait for
 	 * @param requester metadata of the operation waiting for completion, or {@code null}
-	 * @return the waiter registered on the target, or {@code null} if it has already completed
-	 *         and been drained by an earlier wait
+	 * @return the waiters registered on the oldest committed buffers up to and including the
+	 *         target, in queue order, or {@code null} if the target has already completed and
+	 *         been drained by an earlier wait
 	 */
-	private Waiter commitForWait(MTLCommandBuffer target, OperationMetadata requester) {
+	private List<Waiter> commitForWait(MTLCommandBuffer target, OperationMetadata requester) {
 		if (target == openBuffer && commitOpenOnExecutor()) {
 			hostCompleteCommits++;
 			hostCompleteRequesters.addEntry(
 					requester == null ? "unknown" : requester.getDisplayName(), 1);
 		}
 
-		for (CommittedBuffer c : committed) {
-			if (c.getBuffer() == target) {
-				return new Waiter(c);
+		for (int i = 0; i < committed.size(); i++) {
+			if (committed.get(i).getBuffer() == target) {
+				List<Waiter> waiters = new ArrayList<>(i + 1);
+				for (int j = 0; j <= i; j++) {
+					waiters.add(new Waiter(committed.get(j)));
+				}
+				return waiters;
 			}
 		}
 
@@ -607,9 +849,9 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	}
 
 	/**
-	 * Drains every committed buffer up to and including {@code waiter}'s, which has completed,
-	 * running their callbacks in order, and then withdraws the waiter registered by
-	 * {@link #commitForWait}. Must run on the executor thread.
+	 * Drains every committed buffer up to and including {@code through}, which has completed,
+	 * running their callbacks in order, and then withdraws the waiters registered for the wait.
+	 * Must run on the executor thread.
 	 *
 	 * <p>The command queue is serial, so every buffer committed before a completed buffer has
 	 * completed too and none of these drains waits for the GPU. A buffer another waiter already
@@ -618,16 +860,17 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * one buffer) does not skip the callbacks and buffer release of the later ones; the first
 	 * failure is rethrown once all have drained, with any later ones attached as suppressed.</p>
 	 *
-	 * @param waiter    the waiter whose buffer the caller has finished waiting for
+	 * @param through   the buffer the caller has finished waiting for
 	 * @param requester metadata of the operation that waited, or {@code null}
+	 * @param waiters   the waiters registered for the wait
 	 */
-	private void drainThrough(Waiter waiter, OperationMetadata requester) {
-		int count = committed.indexOf(waiter.getCommitted()) + 1;
+	private void drainThrough(CommittedBuffer through, OperationMetadata requester, List<Waiter> waiters) {
+		int count = committed.indexOf(through) + 1;
 		List<Runnable> drains = new ArrayList<>(count);
 		for (int i = 0; i < count; i++) {
 			drains.add(() -> drainOldestCommitted(requester));
 		}
-		Destroyable.releaseAll(drains, waiter::withdraw);
+		Destroyable.releaseAll(drains, () -> waiters.forEach(Waiter::withdraw));
 	}
 
 	/**
@@ -639,7 +882,11 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * every dispatch in the buffer silently never ran, its destinations were never
 	 * written, and its timeline-event signals never fired, which permanently stalls any
 	 * later dispatch that encoded a wait on those values. Detecting the error status
-	 * here is what turns that silent-wrong-data state into a visible failure.</p>
+	 * here is what turns that silent-wrong-data state into a visible failure: it is
+	 * recorded on the runner for the buffer's first timeline value, so that every wait
+	 * for that dispatch or a later one throws it (see {@link #complete}). Only the
+	 * record is made here; the buffer is drained exactly as one that executed, so its
+	 * memory and bridge events are still released.</p>
 	 *
 	 * @param requester metadata of the operation whose wait forced this drain, or null
 	 */
@@ -648,12 +895,15 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		MTLCommandBuffer buffer = c.getBuffer();
 		buffer.waitUntilCompleted();
 
-		if (buffer.isError()) {
+		String error = errorOf(buffer);
+		if (error != null) {
 			errorCompletions.incrementAndGet();
-			warn("commandBufferError=\"" + buffer.getError() + "\" requester=" +
-					(requester == null ? "unknown" : requester.getDisplayName()) +
+			String name = requester == null ? "unknown" : requester.getDisplayName();
+			warn("commandBufferError=\"" + error + "\" requester=" + name +
 					" commitCount=" + commitCount +
 					" errorCompletions=" + errorCompletions.get());
+			recordFailure(c.getFirstValue(), new HardwareException("Metal command buffer failed and " +
+					"none of its dispatches executed: " + error + " (requester " + name + ")"));
 		}
 
 		c.drain();
@@ -714,7 +964,8 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		try {
 			while (awaitLastCommittedOrDestroy(last)) {
 				Waiter pending = last.get();
-				executor.runOrElseUninterruptibly(() -> drainThrough(pending, null), pending::withdraw);
+				executor.runOrElseUninterruptibly(() -> drainThrough(pending.getCommitted(), null,
+						List.of(pending)), pending::withdraw);
 			}
 		} finally {
 			try {
@@ -759,6 +1010,7 @@ public class MetalCommandRunner implements ConsoleFeatures {
 			}
 		}
 
+		last.get().getCommitted().awaitSubmittedUninterruptibly();
 		last.get().getBuffer().waitUntilCompleted();
 		return true;
 	}
@@ -767,10 +1019,16 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * Destroys the executor with a final task that commits anything still open, drains every
 	 * committed buffer running its callbacks, and releases the timeline event. Destroying an
 	 * executor that is already destroyed does nothing.
+	 *
+	 * <p>A closed buffer whose bridge was never signaled is committed by the final task as well:
+	 * left uncommitted, draining it would wait forever, while committed it completes (by error,
+	 * once the GPU gives up on the wait) like any other.</p>
 	 */
 	private void destroyExecutor() {
 		executor.destroy(() -> {
 			if (commitOpenOnExecutor()) destroyCommits++;
+
+			while (!held.isEmpty()) held.removeFirst().submit();
 
 			List<Runnable> drains = new ArrayList<>(committed.size());
 			for (int i = committed.size(); i > 0; i--) {
@@ -794,24 +1052,87 @@ public class MetalCommandRunner implements ConsoleFeatures {
 	 * outliving a destroyed executor withdraws on its own thread.</p>
 	 */
 	private static final class CommittedBuffer {
-		/** The committed command buffer. */
+		/** The closed command buffer. */
 		private final MTLCommandBuffer buffer;
+		/** The timeline value of the first dispatch encoded into the buffer. */
+		private final long firstValue;
 		/** Released-memory callbacks to run once the buffer completes. */
 		private final List<Runnable> onComplete;
+		/** The host-signaled bridges encoded into the buffer. */
+		private final PendingBridges bridges;
+		/** Released once the buffer has been committed to the GPU. */
+		private final CountDownLatch submitted = new CountDownLatch(1);
 		/** Threads currently waiting for the buffer outside the executor thread. */
 		private int waiters;
 		/** Whether the buffer has been drained (its callbacks have run). */
 		private boolean drained;
 
 		/**
-		 * Creates a committed-buffer record.
+		 * Creates a record for a buffer that has just been closed.
 		 *
-		 * @param buffer     the committed command buffer
+		 * @param buffer     the closed command buffer
+		 * @param firstValue the timeline value of the first dispatch encoded into it
 		 * @param onComplete callbacks to run once it completes
+		 * @param bridges    the host-signaled bridges encoded into it
 		 */
-		private CommittedBuffer(MTLCommandBuffer buffer, List<Runnable> onComplete) {
+		private CommittedBuffer(MTLCommandBuffer buffer, long firstValue, List<Runnable> onComplete,
+								PendingBridges bridges) {
 			this.buffer = buffer;
+			this.firstValue = firstValue;
 			this.onComplete = onComplete;
+			this.bridges = bridges;
+		}
+
+		/**
+		 * Returns the timeline value of the first dispatch encoded into the buffer, the lowest
+		 * value that does not execute if the buffer fails.
+		 *
+		 * @return the buffer's first timeline value
+		 */
+		private long getFirstValue() { return firstValue; }
+
+		/**
+		 * Returns whether every host-signaled bridge in the buffer has been signaled, so that
+		 * committing it cannot leave the GPU waiting for the host. Executor-thread only.
+		 *
+		 * @return true if the buffer may be committed
+		 */
+		private boolean isReady() { return bridges.isSignaled(); }
+
+		/** Commits the buffer to the GPU and releases any thread awaiting that. Executor-thread only. */
+		private void submit() {
+			buffer.commit();
+			submitted.countDown();
+		}
+
+		/**
+		 * Blocks until the buffer has been committed, which is what makes waiting for its
+		 * completion meaningful. Ends early if the calling thread is interrupted, restoring the
+		 * interrupt status.
+		 *
+		 * @return true once the buffer has been committed, false if the wait was interrupted
+		 */
+		private boolean awaitSubmitted() {
+			try {
+				submitted.await();
+				return true;
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return false;
+			}
+		}
+
+		/**
+		 * Blocks until the buffer has been committed, as {@link #awaitSubmitted()} does, without
+		 * being ended by an interrupt; an interrupt received meanwhile is restored afterwards.
+		 */
+		private void awaitSubmittedUninterruptibly() {
+			boolean interrupted = Thread.interrupted();
+			while (!awaitSubmitted()) {
+				Thread.interrupted();
+				interrupted = true;
+			}
+			if (interrupted) Thread.currentThread().interrupt();
 		}
 
 		/**
@@ -860,6 +1181,79 @@ public class MetalCommandRunner implements ConsoleFeatures {
 		/** Releases the native buffer once it is drained and no thread waits on it. */
 		private void releaseIfUnused() {
 			if (drained && waiters == 0) buffer.release();
+		}
+	}
+
+	/**
+	 * The number of host-signaled bridges encoded into one command buffer that have not been
+	 * signaled yet. Executor-thread only: a bridge is counted when it is encoded, and its signal is
+	 * counted by a task the foreign completion's callback runs on the executor.
+	 */
+	private static final class PendingBridges {
+		/** Bridges encoded and not yet signaled. */
+		private int pending;
+
+		/** Counts a bridge encoded into the buffer. */
+		private void add() { pending++; }
+
+		/** Counts the signal of one of the buffer's bridges. */
+		private void signaled() { pending--; }
+
+		/**
+		 * Returns whether every bridge encoded into the buffer has been signaled.
+		 *
+		 * @return true if no bridge is still pending
+		 */
+		private boolean isSignaled() { return pending == 0; }
+	}
+
+	/**
+	 * A failure recorded on the runner: the timeline value of the first dispatch that did not
+	 * execute, and the exception that every wait for that value or a later one reports.
+	 */
+	private static final class RecordedFailure {
+		/** The timeline value of the first dispatch that did not execute. */
+		private final long value;
+		/** The failure reported to waiters. */
+		private final HardwareException exception;
+
+		/**
+		 * Creates a record.
+		 *
+		 * @param value     the timeline value of the first dispatch that did not execute
+		 * @param exception the failure reported to waiters
+		 */
+		private RecordedFailure(long value, HardwareException exception) {
+			this.value = value;
+			this.exception = exception;
+		}
+
+		/**
+		 * Returns whether a dispatch with the given timeline value is at or after the first
+		 * dispatch that did not execute, so a wait for it must report this failure.
+		 *
+		 * @param dispatchValue the timeline value of a dispatch
+		 * @return true if the failure covers that dispatch
+		 */
+		private boolean covers(long dispatchValue) { return dispatchValue >= value; }
+
+		/**
+		 * Returns whether this record is for an earlier timeline value than {@code other}, and
+		 * so takes its place as the runner's record.
+		 *
+		 * @param other the currently recorded failure, or {@code null}
+		 * @return true if this record should replace {@code other}
+		 */
+		private boolean precedes(RecordedFailure other) { return other == null || value < other.value; }
+
+		/**
+		 * Returns a new exception for one waiter, carrying the recorded failure as its cause,
+		 * so concurrent waiters do not share (and mutate) a single throwable.
+		 *
+		 * @return the exception to throw to a waiter
+		 */
+		private HardwareException report() {
+			return new HardwareException(exception.getMessage(), exception);
 		}
 	}
 

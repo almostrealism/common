@@ -670,12 +670,8 @@ public class McpConfigBuilder implements ConsoleFeatures {
             // one of two sets at compile time, and they continue to
             // pass because the conditional append happens at
             // buildAllowedTools time, not at the classification step.
-            // The opencode harness filters per-SERVER rather than
-            // per-tool (see OpencodeConfigBuilder.translateAllowlist),
-            // so the dispatch-flag has no precision for opencode
-            // sessions at the harness layer — the controller-side
-            // check on the calling workstream's dispatchCapable flag
-            // is the real backstop there.
+            // The controller's dispatchCapable check is the backstop
+            // for either harness.
             if (dispatchCapable) {
                 for (String name : DISPATCH_AR_MANAGER_TOOLS) {
                     sb.append(",mcp__ar-manager__").append(name);

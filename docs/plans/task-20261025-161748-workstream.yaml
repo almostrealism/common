@@ -1,0 +1,3 @@
+# Per-step dispatch overhead must be measured on Metal, which only macOS nodes provide.
+requiredLabels:
+  platform: macos

@@ -77,7 +77,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/memory-reminder.sh",
-            "description": "Soft nudge the agent to call memory_store (or consultant remember) when a long stretch of work has happened without one \u2014 see docs/plans/MEMORY_REMINDER_HOOK.md"
+            "description": "Soft nudge the agent to call memory_store when a long stretch of work has happened without one \u2014 see docs/internals/agent-hooks.md"
           }
         ]
       },
@@ -102,7 +102,12 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-mvn-test-direct.sh",
-            "description": "Block direct mvn test \u2014 must use mcp__ar-test-runner__start_test_run"
+            "description": "Block direct mvn test (or verify/install/package/deploy without -DskipTests) and any AR_TEST_GROUP assignment \u2014 must use mcp__ar-test-runner__start_test_run"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pytest-broad-run.sh",
+            "description": "Block a pytest run that is not a bounded selection (no path, a directory, more than 5 test files or 40 node ids)"
           },
           {
             "type": "command",
@@ -353,6 +358,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-interface-bypass.py\"",
             "description": "Detect interface-contract bypass in Java edits: BLOCK new members that re-expose a concrete class the constructor adapts behind an interface (the getStemOutput pattern), warn on abstraction-level forks (getStemOutput beside getStem) and new instanceof checks against repo classes \u2014 an API that traffics in an interface must stay correct for every implementation"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-async-bypass.sh",
+            "description": "Detect caller-side workarounds for the asynchronous-submission contract in Java edits: BLOCK a backend query or a second submit method on Semaphore/Submittable (the isOrderedOnDevice/chainOnDevice pattern), a Semaphore instanceof or an in-flight cap in calling code, and waitFor() followed by submit(null); warn on a new waitFor() in code that submits \u2014 ordering, bounds and thread use belong to the receiver, see docs/internals/asynchronous-submission.md"
           },
           {
             "type": "command",

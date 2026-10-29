@@ -237,9 +237,9 @@ def workstream_register(
     # Controller-side enforcement: a job-scoped agent on a workstream
     # that is not dispatch-capable cannot register workstreams. The
     # harness-CSV half of the contract is in
-    # ``McpConfigBuilder.buildAllowedTools``; this is the backstop
-    # for the opencode harness's per-SERVER filtering (see
-    # ``OpencodeConfigBuilder.translateAllowlist``). Admin / operator
+    # ``McpConfigBuilder.buildAllowedTools`` (applied per tool by both
+    # Claude Code and, via ``OpencodeConfigBuilder.translateAllowlist``,
+    # opencode); this is the backstop for either harness. Admin / operator
     # callers (no caller workstream bound) are always permitted.
     server._require_dispatch_capable()
     # Rejected rather than forwarded. Nothing about workspace identity is
@@ -535,7 +535,7 @@ def workstream_update_config(
     # that is not dispatch-capable cannot update workstreams. The
     # harness-CSV half of the contract is in
     # ``McpConfigBuilder.buildAllowedTools``; this is the backstop
-    # for the opencode harness's per-SERVER filtering. Admin / operator
+    # for either harness. Admin / operator
     # callers (no caller workstream bound) are always permitted.
     server._require_dispatch_capable()
     err = server._reject_removed_config_params(

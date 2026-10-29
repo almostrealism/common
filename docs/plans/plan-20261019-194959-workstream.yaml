@@ -1,7 +1,0 @@
-# The self-hosted LM is trained and generated on Metal with AR_HARDWARE_MEMORY_SCALE=6; the
-# documented trainOnDocumentation run takes about 21 minutes on Apple silicon, and the recipe/
-# scale sweep and greedy-generation diagnosis both need that backend. The implementation must
-# therefore run on a macOS node. See
-# docs/plans/PLAN-20261019-self-hosted-lm-nontrivial-generation.md (Dependencies).
-requiredLabels:
-  platform: macos

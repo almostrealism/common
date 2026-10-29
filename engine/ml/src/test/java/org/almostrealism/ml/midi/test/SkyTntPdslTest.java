@@ -18,9 +18,9 @@ package org.almostrealism.ml.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.dsl.PdslInterpreter;
-import org.almostrealism.ml.dsl.PdslLoader;
-import org.almostrealism.ml.dsl.PdslNode;
+import org.almostrealism.dsl.PdslInterpreter;
+import org.almostrealism.dsl.PdslLoader;
+import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;

@@ -77,9 +77,20 @@ public class IndexOfMaxComputation extends TraversableRepeatedProducerComputatio
 	 * @param input the {@link Producer} of the collection to search
 	 */
 	protected IndexOfMaxComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
-		super("indexOfMax", shape.replace(new TraversalPolicy(1)), shape.getSize(),
-				(args, index) -> new IntegerConstant(0), input);
+		super("indexOfMax", shape.replace(new TraversalPolicy(1)), shape.getSize(), input);
 		this.size = shape.getSize();
+	}
+
+	/**
+	 * Returns zero: the search starts at the first element of each group.
+	 *
+	 * @param args  the traversable arguments
+	 * @param index the position within the output block
+	 * @return the constant {@code 0}
+	 */
+	@Override
+	protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
+		return new IntegerConstant(0);
 	}
 
 	/**
@@ -93,7 +104,7 @@ public class IndexOfMaxComputation extends TraversableRepeatedProducerComputatio
 	public Expression<Double> getValueAt(Expression index) {
 		TraversableExpression[] args = getTraversableArguments(index);
 
-		Expression value = initial.apply(args, e(0));
+		Expression value = getInitialValue(args, e(0));
 
 		for (int i = 0; i < count; i++) {
 			value = step(args, index, value, e(i));

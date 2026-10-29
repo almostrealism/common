@@ -449,6 +449,24 @@ Claude config so the token (a secret) never lands in a committed file.
    this exposes the token to every child process of that shell, which is why the
    literal-in-config form above is usually preferable.
 
+   *opencode:* the repo's `.opencode/opencode.json` does not define `ar-manager`
+   either. Add it to your user config (`~/.config/opencode/opencode.json`) as a
+   remote server:
+
+   ```json
+   "mcp": {
+     "ar-manager": {
+       "type": "remote",
+       "url": "https://<your-public-ar-manager-url>/",
+       "oauth": false,
+       "headers": { "Authorization": "Bearer armt_…" }
+     }
+   }
+   ```
+
+   FlowTree jobs need none of this: the job runner supplies its own
+   `ar-manager` entry with the job's token.
+
 **Over SSH this just works.** A static bearer needs no browser and no localhost
 redirect, so a remote Claude Code session over SSH authenticates exactly the same
 way — there is no OAuth callback to forward. (This is why repo-originated access

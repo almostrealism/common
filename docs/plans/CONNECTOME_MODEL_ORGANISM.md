@@ -1,3 +1,10 @@
+---
+status: proposed
+created: 2026-10-21
+closed:
+tracker: []
+---
+
 # A Connectome Model Organism for Brain–Computer Interface Research
 
 **Status:** Proposal. Nothing here is implemented. The tracker tasks for Phase 1 are filed in the
@@ -84,7 +91,7 @@ What the connectome does **not** give, and the simulation must therefore assume:
    is probably the finding that transfers best to real intelligence augmentation.
 3. **The work is general.** Sparse matrices, integer-exact indexing and recurrent simulation are
    missing capabilities that many other workloads also need: graph models, sparse attention, and
-   sparse Jacobians in automatic differentiation (`SPARSE_GRADIENTS.md`).
+   sparse Jacobians in automatic differentiation.
 
 ## Where the platform is today
 
@@ -105,7 +112,7 @@ or recurrent-training parts.
   plus `exp`, `max`, `min`, `bound` and `rectify`.
 - **Backends.** Metal, OpenCL (including the AMD Halo runner), native, and CUDA on the DGX Spark.
   CUDA has its native bridge, code generation and an asynchronous runner. Breadth, performance and
-  CI are still open (`CUDA_BACKEND.md`).
+  CI are still open (tracker tasks for the CUDA backend).
 - **Trainable transformers, partially.** A small byte-level causal transformer trains end to end
   and beats its unigram baseline (`docs/internals/training-a-language-model.md`). Gradients reach
   the keys and values of sequence and differential attention. Matrix-multiply weight gradients are
@@ -240,7 +247,7 @@ it can move as a unit: no dependencies from other `engine/ml` code onto it.
 | Counter-based device random | `compute/algebra` (next to `Random`) or `compute/stats` | General |
 | Integer dtypes in safetensors and protobuf | `engine/ml` | Where both readers live today |
 | Spiking and rate neuron population dynamics | `domain/graph` | Neural computation graphs; no format knowledge |
-| Simulation loop owner | Where the type it extends lives (decided in its task) | General, not connectome-specific |
+| Simulation loop owner | `compute/time`: `SimulationRunner extends TemporalRunner` (`org.almostrealism.time`) | General, not connectome-specific; the lowest module holding `Temporal`, reachable from `domain/physics` and `domain/graph` |
 | Connectome loading | `engine/ml` for now; possibly a future `engine/` module | Depends on third-party formats |
 | Feather → safetensors conversion | a Python script under `tools/` | Reading Arrow from Java would need a new third-party dependency |
 

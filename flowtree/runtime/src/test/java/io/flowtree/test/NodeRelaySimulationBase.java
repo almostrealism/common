@@ -68,14 +68,19 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       waiting on.</li>
  * </ul>
  *
- * <p>What remains unexplained: five jobs still take a floor of ten seconds to
- * complete, roughly two seconds each, and that per-job cost is what the
- * timeout is really spent on.  Both the group's dispatch and the relay node's
- * forwarding handle one job per iteration, which at 400 ms accounts for under
- * a second of it.  The next step is to instrument the wait itself — time until
- * the controller's relay node first holds a peer {@link io.flowtree.msg.Connection},
- * then per-job completion timestamps — rather than to reason further from the
- * code.</p>
+ * <p>The per-job cost of roughly two seconds that the timeout was really spent
+ * on came from the agent's worker {@link Node}s: an idle worker slept a fixed
+ * five seconds between polls of its queue, and {@link Node#addJob} did not wake
+ * it, so each job relayed to an idle worker waited a uniformly distributed
+ * zero to five seconds before it ran.  The worker now waits on its queue and
+ * is woken by the job's arrival.  Measured on {@code a04}, {@code a06},
+ * {@code a09} and {@code a10}, 10 repetitions each: before the change
+ * {@code a06} passed 80%, {@code a09} and {@code a10} 90%, with means of
+ * 13.4 to 17.3 seconds; after it all four passed every repetition, with means
+ * of 9.1 to 12.1 seconds.  The remaining spread (a coefficient of variation
+ * near 30%) has not yet been attributed; peer connection establishment, which
+ * is probabilistic per activity-thread iteration, is the next thing to
+ * measure.</p>
  *
  * @author Michael Murray
  */

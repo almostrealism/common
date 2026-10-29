@@ -428,13 +428,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	public void releaseResourcesAfterFailure(Throwable failure, Semaphore inflight) {
 		if (!hasResources()) return;
 
-		if (inflight != null) {
-			try {
-				inflight.waitFor();
-			} catch (RuntimeException | Error settled) {
-				if (settled != failure) failure.addSuppressed(settled);
-			}
-		}
+		if (inflight != null) inflight.waitForSettled(failure);
 
 		try {
 			releaseResources();

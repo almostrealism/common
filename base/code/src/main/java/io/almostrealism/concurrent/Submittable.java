@@ -16,6 +16,10 @@
 
 package io.almostrealism.concurrent;
 
+import io.almostrealism.profile.OperationInfo;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.profile.OperationTimingListener;
+import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.streams.Semaphore;
 
 import java.util.ArrayList;
@@ -39,6 +43,10 @@ import java.util.List;
  * OpenCL {@code cl_event}, a Metal {@code MTLSharedEvent}, ...); a provider that does not
  * returns an already-completed semaphore, so chaining degrades transparently to sequential
  * synchronous execution.</p>
+ *
+ * <p>An operation that cannot be submitted at all takes part through {@link #of(Runnable)}: it
+ * can only run on the host, so its submission waits for the work it depends on, runs it, and
+ * leaves nothing in flight.</p>
  */
 public interface Submittable {
 
@@ -54,6 +62,65 @@ public interface Submittable {
 	 *         publishes no completion handle (fully synchronous execution)
 	 */
 	Semaphore submit(Semaphore dependsOn);
+
+	/**
+	 * Submits this operation as {@link #submit(Semaphore)} does, recording with {@code timing}
+	 * the time the host takes to issue it.
+	 *
+	 * <p>The time is recorded under this operation's {@link OperationInfo#getMetadata() metadata},
+	 * when it has any, as an operation run by {@code requester}, so a profile attributes it to the
+	 * operation rather than to an anonymous entry created afresh for every call. Only the issue is
+	 * timed; work that completes asynchronously finishes after the time is recorded.</p>
+	 *
+	 * @param requester the metadata of the operation issuing this one, or {@code null}
+	 * @param dependsOn the completion this operation must be ordered after, or {@code null}
+	 * @param timing    the listener that records the time taken to issue this operation
+	 * @return this operation's completion, as {@link #submit(Semaphore)} returns it
+	 */
+	default Semaphore submit(OperationMetadata requester, Semaphore dependsOn, OperationTimingListener timing) {
+		Semaphore[] completion = { dependsOn };
+		Runnable submission = () -> completion[0] = submit(completion[0]);
+
+		OperationMetadata metadata = OperationInfo.metadataForValue(this);
+		timing.recordDuration(requester,
+				metadata == null ? submission : OperationWithInfo.RunnableWithInfo.of(metadata, submission));
+		return completion[0];
+	}
+
+	/**
+	 * Returns {@code operation} as a {@link Submittable}: the operation itself when it is one, and
+	 * otherwise its submission as an operation that can only run on the host.
+	 *
+	 * <p>Running on the host requires everything ahead of the operation to be complete, so such a
+	 * submission waits for its dependency, runs the operation synchronously and returns
+	 * {@code null}, because nothing remains in flight. This is how a composite issues an
+	 * arbitrary sequence of operations while waiting only where a member actually requires it.
+	 * Its {@link #submit(OperationMetadata, Semaphore, OperationTimingListener) timed submission}
+	 * records the run of the operation itself, under the operation's own metadata, and not the
+	 * wait for the work ahead of it.</p>
+	 *
+	 * @param operation the operation to submit
+	 * @return {@code operation} itself if it is {@link Submittable}, otherwise a submission that
+	 *         runs it on the host
+	 */
+	static Submittable of(Runnable operation) {
+		if (operation instanceof Submittable) return (Submittable) operation;
+
+		return new Submittable() {
+			@Override
+			public Semaphore submit(Semaphore dependsOn) {
+				if (dependsOn != null) dependsOn.waitFor();
+				operation.run();
+				return null;
+			}
+
+			@Override
+			public Semaphore submit(OperationMetadata requester, Semaphore dependsOn,
+									OperationTimingListener timing) {
+				return Submittable.of(() -> timing.recordDuration(requester, operation)).submit(dependsOn);
+			}
+		};
+	}
 
 	/**
 	 * Submits a group of independent operations that share a single upstream dependency, returning
@@ -98,14 +165,7 @@ public interface Submittable {
 			}
 		} catch (RuntimeException | Error e) {
 			for (Semaphore started : completions) {
-				if (started == null) continue;
-
-				try {
-					started.waitFor();
-				} catch (RuntimeException | Error settled) {
-					// A member sharing the failing dependency may rethrow the very same instance
-					if (settled != e) e.addSuppressed(settled);
-				}
+				if (started != null) started.waitForSettled(e);
 			}
 
 			throw e;

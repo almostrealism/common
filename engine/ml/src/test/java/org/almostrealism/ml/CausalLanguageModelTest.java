@@ -40,9 +40,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -84,19 +81,19 @@ import java.util.stream.IntStream;
  */
 public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestFeatures {
 	/** Byte vocabulary size. */
-	private static final int VOCAB = ByteTokenizer.VOCAB_SIZE;
+	static final int VOCAB = ByteTokenizer.VOCAB_SIZE;
 	/** Positions per window. */
-	private static final int SEQ_LEN = 64;
+	static final int SEQ_LEN = 64;
 	/** Model dimension. */
-	private static final int DIM = 64;
+	static final int DIM = 64;
 	/** Attention heads. */
-	private static final int HEADS = 4;
+	static final int HEADS = 4;
 	/** Transformer blocks. */
-	private static final int DEPTH = 2;
+	static final int DEPTH = 2;
 	/** Feed-forward hidden width (2 x embed). */
-	private static final int FF_DIM = 128;
+	static final int FF_DIM = 128;
 	/** Rotary embedding base. */
-	private static final double ROPE_BASE = 10000.0;
+	static final double ROPE_BASE = 10000.0;
 	/** Seed of the weight initialization. */
 	private static final long SEED = 20260930L;
 	/** Adam learning rate of the first epoch. */
@@ -118,7 +115,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	/** Fraction of the corpus bytes in the training region. */
 	private static final double TRAIN_FRACTION = 0.9;
 	/** The documentation-style prompt the trained model continues. */
-	private static final String GENERATION_PROMPT = "The computation graph is compiled to ";
+	static final String GENERATION_PROMPT = "The computation graph is compiled to ";
 	/**
 	 * A verbatim fragment of the first training page, continued alongside
 	 * {@link #GENERATION_PROMPT} so that the log shows how generation differs between text the
@@ -782,6 +779,372 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	}
 
 	/**
+	 * The single-position key/value-cache decode decodes exactly the full-sequence forward pass: on a
+	 * miniature configuration with random weights, every greedily generated token — including those
+	 * generated after the first, where the cache is the only thing carrying the past — is the most
+	 * probable token of the last filled row of an independent inference compilation of the same weights
+	 * run over the preceding tokens, with the remaining positions padded by a different filler than the
+	 * generator uses, which the causal mask must ignore. Greedy decoding is reproducible after
+	 * {@link AutoregressiveModel#reset()}. This is the committed proof that the fused-QKV +
+	 * {@code rope_inv_freq} bridge, the cache advance and the rotary rotation at each position all agree
+	 * with the trained full-window path; it is the counterpart of
+	 * {@link #slidingWindowGenerationMatchesFullForward()} for the cache decode.
+	 */
+	@Test(timeout = 15 * 60000)
+	public void keyValueCacheDecodeMatchesFullForward() {
+		int seq = 12;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 2, 8, ROPE_BASE, new Random(5));
+		CompiledModel inference = lm.compile(false);
+
+		try {
+			int[] prompt = new ByteTokenizer().encodeAsInt("Pro");
+			int generated = 8;
+			int[] first;
+			int[] second;
+			try (AutoregressiveModel<Integer> generator = new KeyValueCacheAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
+				first = generate(generator, prompt, generated);
+				second = generate(generator, prompt, generated);
+			}
+			Assert.assertArrayEquals("greedy decoding is not reproducible", first, second);
+
+			int[] sequence = IntStream.concat(IntStream.of(prompt), IntStream.of(first)).toArray();
+			for (int p = prompt.length; p < sequence.length; p++) {
+				int filled = p;
+				int[] padded = IntStream.rangeClosed(0, seq)
+						.map(i -> i < filled ? sequence[i] : VOCAB - 1).toArray();
+				try (NextTokenDataset window = new NextTokenDataset(padded, VOCAB, seq, seq, 1)) {
+					PackedCollection row = inference.forward(window.iterator().next().getInput())
+							.range(shape(VOCAB), (filled - 1) * VOCAB);
+					Assert.assertEquals("token at position " + p, sequence[p],
+							AutoregressiveModel.sampleToken(row, VOCAB, 0.0, 1.0, null));
+				}
+			}
+		} finally {
+			inference.destroy();
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * The key/value-cache generator's {@link AutoregressiveModel#reset()} clears the per-layer caches,
+	 * so a sequence decoded after a previous one is byte-identical to the same sequence decoded by a
+	 * fresh generator: the previous sequence's cached keys and values do not leak into it.
+	 */
+	@Test(timeout = 15 * 60000)
+	public void keyValueCacheResetClearsCacheAcrossSequences() {
+		// seq must hold the longer prompt and its generated tokens, since the cache is bounded by it.
+		int seq = 20;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 2, 8, ROPE_BASE, new Random(5));
+
+		try {
+			int[] promptA = new ByteTokenizer().encodeAsInt("Longer prompt");
+			int[] promptB = new ByteTokenizer().encodeAsInt("Pro");
+			int generated = 4;
+			int[] reusedB;
+			int[] freshB;
+			try (AutoregressiveModel<Integer> generator = new KeyValueCacheAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
+				generate(generator, promptA, generated);
+				reusedB = generate(generator, promptB, generated);
+			}
+			try (AutoregressiveModel<Integer> fresh = new KeyValueCacheAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
+				freshB = generate(fresh, promptB, generated);
+			}
+
+			Assert.assertArrayEquals("reset must clear the cache so a previous sequence does not leak",
+					freshB, reusedB);
+		} finally {
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * A later position reads the key and value an earlier position wrote to the cache: decoding the
+	 * same token at position one, after two different tokens at position zero, gives two different
+	 * output rows, which can only be because position one attends to the entry position zero cached.
+	 * This is the cache-causality counterpart of the SkyTnt
+	 * {@code laterPositionsReadEarlierCachedEntries} test, driven directly over the decode model so it
+	 * does not depend on greedy argmax divergence.
+	 */
+	@Test(timeout = 10 * 60000)
+	public void keyValueCacheLaterPositionsReadEarlierEntries() {
+		int seq = 8;
+		int dim = 8;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, dim, 2, 1, 8, ROPE_BASE, new Random(5));
+		PackedCollection position = new PackedCollection(1);
+		List<PackedCollection> keyCaches = new ArrayList<>();
+		List<PackedCollection> valueCaches = new ArrayList<>();
+		CompiledModel decode = null;
+
+		try {
+			decode = lm.decodeModel(position, keyCaches, valueCaches).compile(false);
+			PackedCollection embedding = lm.getWeights().get(CausalLanguageModel.EMBEDDING_KEY);
+			PackedCollection input = new PackedCollection(shape(1, dim));
+
+			double[] afterLow = decodeRow(decode, position, keyCaches, valueCaches, embedding, input,
+					new int[] { 10, 42 }, dim);
+			double[] afterHigh = decodeRow(decode, position, keyCaches, valueCaches, embedding, input,
+					new int[] { 200, 42 }, dim);
+
+			double maxDifference = 0.0;
+			for (int i = 0; i < VOCAB; i++) {
+				maxDifference = Math.max(maxDifference, Math.abs(afterLow[i] - afterHigh[i]));
+			}
+
+			log("maxDifference between position-1 rows for different position-0 tokens = " + maxDifference);
+			Assert.assertTrue("position 1 output must depend on the token cached at position 0",
+					maxDifference > 1e-4);
+		} finally {
+			Destroyable.destroy(decode);
+			position.destroy();
+			keyCaches.forEach(PackedCollection::destroy);
+			valueCaches.forEach(PackedCollection::destroy);
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * The caches {@link CausalLanguageModel#decodeModel} appends to the caller's lists are the buffers
+	 * the compiled decode model actually reads and writes — the ownership invariant this change
+	 * establishes — and clearing them erases the past the decode attends to. This fails on the
+	 * pre-change code, where {@code decodeModel} handed back a parallel set of caches that nothing was
+	 * bound to: the handed-back caches stayed zero (first assertion), and clearing them did nothing to
+	 * the caches the decode really used (second assertion).
+	 *
+	 * <p>It asserts the invariant structurally rather than through decoded bytes, so it cannot be
+	 * satisfied by the causal-mask accident that lets {@code keyValueCacheResetClearsCacheAcrossSequences}
+	 * pass without the binding: after decoding a few positions it reads the held buffers back and
+	 * requires the written rows to be non-zero, then clears those same buffers and decodes at a later
+	 * position <em>without</em> re-decoding the earlier ones, and requires the output to match a freshly
+	 * compiled decode model whose caches are all zero. With the binding the cleared earlier rows are
+	 * zero in both, so the rows agree; without it the decode still attends to the earlier sequence's
+	 * rows and the rows differ.</p>
+	 */
+	@Test(timeout = 10 * 60000)
+	public void decodeModelBindsAndClearsTheCachesItHandsBack() {
+		int seq = 8;
+		int dim = 8;
+		int written = 3;
+		int laterPosition = written;
+		int laterToken = 123;
+		int[] earlierTokens = { 11, 47, 99 };
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, dim, 2, 2, 8, ROPE_BASE, new Random(5));
+
+		PackedCollection position = new PackedCollection(1);
+		List<PackedCollection> keyCaches = new ArrayList<>();
+		List<PackedCollection> valueCaches = new ArrayList<>();
+		CompiledModel decode = null;
+
+		PackedCollection freshPosition = new PackedCollection(1);
+		List<PackedCollection> freshKeyCaches = new ArrayList<>();
+		List<PackedCollection> freshValueCaches = new ArrayList<>();
+		CompiledModel freshDecode = null;
+
+		try {
+			decode = lm.decodeModel(position, keyCaches, valueCaches).compile(false);
+			PackedCollection embedding = lm.getWeights().get(CausalLanguageModel.EMBEDDING_KEY);
+			PackedCollection input = new PackedCollection(shape(1, dim));
+
+			// Decode the first `written` positions, then read the held buffers back.
+			decodeRow(decode, position, keyCaches, valueCaches, embedding, input, earlierTokens, dim);
+
+			for (int l = 0; l < keyCaches.size(); l++) {
+				Assert.assertTrue("decode must write the key cache decodeModel handed back (layer " + l + ")",
+						cacheMagnitude(keyCaches.get(l), written, dim) > 0.0);
+				Assert.assertTrue("decode must write the value cache decodeModel handed back (layer " + l + ")",
+						cacheMagnitude(valueCaches.get(l), written, dim) > 0.0);
+			}
+
+			// Clear the held buffers (what reset() does) and decode straight at a later position.
+			keyCaches.forEach(PackedCollection::clear);
+			valueCaches.forEach(PackedCollection::clear);
+			position.fill((double) laterPosition);
+			input.setFrom(0, embedding.range(shape(dim), laterToken * dim), 0, dim);
+			double[] afterClear = decode.forward(input).toArray(0, VOCAB);
+
+			freshDecode = lm.decodeModel(freshPosition, freshKeyCaches, freshValueCaches).compile(false);
+			PackedCollection freshInput = new PackedCollection(shape(1, dim));
+			freshPosition.fill((double) laterPosition);
+			freshInput.setFrom(0, embedding.range(shape(dim), laterToken * dim), 0, dim);
+			double[] fresh = freshDecode.forward(freshInput).toArray(0, VOCAB);
+
+			double maxDifference = 0.0;
+			for (int i = 0; i < VOCAB; i++) {
+				maxDifference = Math.max(maxDifference, Math.abs(fresh[i] - afterClear[i]));
+			}
+			log("maxDifference after clearing the held caches = " + maxDifference);
+
+			Assert.assertArrayEquals("clearing the buffers decodeModel handed back must erase the past the "
+							+ "decode attends to, so a later-position decode matches a fresh all-zero-cache model",
+					fresh, afterClear, 1e-4);
+		} finally {
+			Destroyable.destroy(decode);
+			Destroyable.destroy(freshDecode);
+			position.destroy();
+			freshPosition.destroy();
+			keyCaches.forEach(PackedCollection::destroy);
+			valueCaches.forEach(PackedCollection::destroy);
+			freshKeyCaches.forEach(PackedCollection::destroy);
+			freshValueCaches.forEach(PackedCollection::destroy);
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * The rotary frequency table the decode path indexes by position is built from the model's stored
+	 * inverse frequencies and holds exactly {@code cos(position * invFreq[i])} and
+	 * {@code sin(position * invFreq[i])}, the same angles the full-sequence rotation applies at that
+	 * row. This pins the {@code rope_inv_freq}-to-{@code freqCis} half of the bridge numerically,
+	 * independently of the end-to-end decode match.
+	 */
+	@Test(timeout = 60000)
+	public void decodeRopeFrequenciesMatchStoredInverseFrequencies() {
+		int headDim = 8;
+		int seqLen = 5;
+		CausalLanguageModel lm = new CausalLanguageModel(2, seqLen, headDim, 1, 0, 1, ROPE_BASE, new Random(SEED));
+		PackedCollection invFreq = lm.getWeights().get(CausalLanguageModel.INV_FREQ_KEY);
+		int freqDim = headDim / 2;
+		Assert.assertEquals(freqDim, invFreq.getShape().getTotalSize());
+
+		PackedCollection freqCis = RotationFeatures.getInstance().computeRopeFreqs(seqLen, invFreq).evaluate();
+		Assert.assertArrayEquals(new int[] { seqLen, freqDim, 2 }, freqCis.getShape().extent());
+
+		for (int p = 0; p < seqLen; p++) {
+			for (int i = 0; i < freqDim; i++) {
+				double angle = p * invFreq.toDouble(i);
+				Assert.assertEquals("cos at position " + p + " pair " + i,
+						Math.cos(angle), freqCis.toDouble((p * freqDim + i) * 2), 1e-5);
+				Assert.assertEquals("sin at position " + p + " pair " + i,
+						Math.sin(angle), freqCis.toDouble((p * freqDim + i) * 2 + 1), 1e-5);
+			}
+		}
+
+		lm.getWeights().destroy();
+	}
+
+	/**
+	 * Destroying a key/value-cache generator releases the decode compilation, the input buffer, the
+	 * per-layer caches and the position, and leaves the weights of its model usable for another
+	 * generator; a second destroy is harmless, and a generator over the same weights reproduces the
+	 * decoded tokens.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void destroyingKeyValueCacheGeneratorReleasesItsBuffers() {
+		int seq = 8;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+
+		try {
+			int[] prompt = new ByteTokenizer().encodeAsInt("Pro");
+			AutoregressiveModel<Integer> generator = new KeyValueCacheAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null);
+			int[] before = generate(generator, prompt, 2);
+			PackedCollection position = generator.getPosition();
+			Assert.assertFalse(position.isDestroyed());
+
+			generator.destroy();
+			Assert.assertTrue("generator position was not released", position.isDestroyed());
+			Assert.assertFalse("model weights were released",
+					lm.getWeights().get(CausalLanguageModel.EMBEDDING_KEY).isDestroyed());
+			generator.destroy();
+
+			try (AutoregressiveModel<Integer> next = new KeyValueCacheAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
+				Assert.assertArrayEquals(before, generate(next, prompt, 2));
+			}
+		} finally {
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * The key/value-cache generator decodes the first {@code seqLen} positions without error and then
+	 * refuses to decode further: its per-layer caches are fixed {@code (seqLen, dim)} buffers, so a step
+	 * at or beyond {@code seqLen} would index past them, and is rejected with an
+	 * {@link IllegalStateException} rather than left to corrupt memory. A generator advanced to exactly
+	 * {@code seqLen} positions is the boundary, and the next step is the one that throws.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void keyValueCacheRefusesDecodingPastSeqLen() {
+		int seq = 4;
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+
+		try {
+			int[] prompt = new ByteTokenizer().encodeAsInt("Pr");
+			try (AutoregressiveModel<Integer> generator = new KeyValueCacheAutoregressiveModel(
+					new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null)) {
+				generator.reset();
+				generator.setPrompt(IntStream.of(prompt).boxed().toArray(Integer[]::new), prompt.length);
+				for (int i = 0; i < seq; i++) {
+					generator.next();
+				}
+				Assert.assertEquals(seq, generator.getCurrentStep());
+
+				try {
+					generator.next();
+					Assert.fail("decoding at seqLen must throw rather than index past the cache");
+				} catch (IllegalStateException expected) {
+					Assert.assertTrue("message should name the cache size",
+							expected.getMessage().contains(String.valueOf(seq)));
+				}
+			}
+		} finally {
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * Decodes a fixed sequence of tokens through a compiled decode model, driving the position by hand,
+	 * and returns the output row of the last token. The caches are cleared first so each call starts a
+	 * new sequence.
+	 *
+	 * @param decode      the compiled decode model
+	 * @param position    the device-resident position the decode model reads
+	 * @param keyCaches   the per-layer key caches to clear before decoding
+	 * @param valueCaches the per-layer value caches to clear before decoding
+	 * @param embedding   the token embedding table
+	 * @param input       the model input buffer, {@code (1, dim)}
+	 * @param tokens      the token ids to feed at positions {@code 0, 1, ...}
+	 * @param dim         the model dimension
+	 * @return the {@code (vocabSize)} output row of the last token
+	 */
+	private double[] decodeRow(CompiledModel decode, PackedCollection position,
+							   List<PackedCollection> keyCaches, List<PackedCollection> valueCaches,
+							   PackedCollection embedding, PackedCollection input, int[] tokens, int dim) {
+		keyCaches.forEach(PackedCollection::clear);
+		valueCaches.forEach(PackedCollection::clear);
+
+		double[] row = null;
+		for (int s = 0; s < tokens.length; s++) {
+			position.fill((double) s);
+			input.setFrom(0, embedding.range(shape(dim), tokens[s] * dim), 0, dim);
+			row = decode.forward(input).toArray(0, VOCAB);
+		}
+
+		return row;
+	}
+
+	/**
+	 * Returns the sum of the absolute values of the first {@code rows} rows of a cache, a scalar that is
+	 * zero exactly when those rows are all zero. Used to assert that a decode wrote the cache rows it
+	 * was expected to.
+	 *
+	 * @param cache the {@code (seqLen, dim)} cache to measure
+	 * @param rows  the number of leading rows to include
+	 * @param dim   the cache column count
+	 * @return the summed magnitude of the first {@code rows} rows
+	 */
+	private double cacheMagnitude(PackedCollection cache, int rows, int dim) {
+		double[] data = cache.toArray(0, rows * dim);
+		double magnitude = 0.0;
+		for (double value : data) {
+			magnitude += Math.abs(value);
+		}
+		return magnitude;
+	}
+
+	/**
 	 * A generator built by {@link AutoregressiveModel#of} releases only what it created: after it
 	 * is destroyed, the caller's position and token embedding are still live, and the compiled
 	 * model still produces the same tokens for a second generator.
@@ -873,22 +1236,10 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 			second = generate(generator, promptTokens, length);
 		}
 
-		byte[] bytes = new byte[first.length];
-		IntStream.range(0, first.length).forEach(i -> bytes[i] = (byte) first[i]);
-		String validity;
-		try {
-			StandardCharsets.UTF_8.newDecoder()
-					.onMalformedInput(CodingErrorAction.REPORT)
-					.onUnmappableCharacter(CodingErrorAction.REPORT)
-					.decode(ByteBuffer.wrap(bytes));
-			validity = "valid";
-		} catch (CharacterCodingException e) {
-			validity = "invalid (" + e.getMessage() + ")";
-		}
-
+		ByteTokenizer tokenizer = new ByteTokenizer();
 		log("generationSeconds=" + seconds + " bytesPerSecond=" + (promptTokens.length + length) / seconds +
-				" utf8=" + validity);
-		log("generated=" + prompt + new String(bytes, StandardCharsets.UTF_8));
+				" utf8=" + (tokenizer.isValidUtf8(first) ? "valid" : "invalid"));
+		log("generated=" + prompt + tokenizer.decodeAsInt(first));
 		return new int[][] { first, second };
 	}
 
@@ -947,7 +1298,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	 * @param length    the number of tokens to generate
 	 * @return the generated tokens
 	 */
-	private int[] generate(AutoregressiveModel<Integer> generator, int[] prompt, int length) {
+	static int[] generate(AutoregressiveModel<Integer> generator, int[] prompt, int length) {
 		generator.reset();
 		generator.setPrompt(IntStream.of(prompt).boxed().toArray(Integer[]::new), prompt.length);
 		IntStream.range(0, prompt.length).forEach(i -> generator.next());

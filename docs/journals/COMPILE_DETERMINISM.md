@@ -8,7 +8,6 @@ byte-identical at an even one. Same compiled graph re-run = `0.0`, so it is a **
 runtime, problem.
 
 Companion repro test: `engine/ml/src/test/java/org/almostrealism/ml/CompileDeterminismReproductionTest.java`
-Prior diagnosis doc: `docs/plans/compile-determinism/REPRODUCTION_AND_DIAGNOSIS.md`
 Prior memories: `1bd55507` (root-cause matrix), `475e154b` (review note), `1528de11` (precedent
 `KernelTraversalOperationGenerator` IdentityHashMap fix), `8d6744b3` (progress).
 

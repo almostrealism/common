@@ -77,6 +77,18 @@ over the one that special-cases this test's shape. A plan that only
 makes this one test fast is worth less than one that makes a class of
 computations faster.
 
+Do not trade one backend against another by adding a path around one of
+them. If a change makes Metal faster by using an interface the way it is
+meant to be used (chaining `Submittable.submit` and waiting once, say) and
+that exposes a backend that cannot keep up, the slow backend is broken and
+fixing it is part of the change: find where it spends the time (a thread
+dump of a long chain in flight shows a receiver that holds a thread per
+pending submission) and fix it there. Never preserve the old behaviour for
+one backend with a query on a semaphore, a second submit method, a
+backend-dependent wait, or a cap on how far ahead the caller runs; the
+guard in `.claude/hooks/block-async-bypass.sh` blocks those shapes. See
+`docs/internals/asynchronous-submission.md`.
+
 Keep the fundamental rule in view: Java is orchestration, not execution.
 The computation is described as `Producer` compositions and compiled to
 native code, and that is where the time goes. The improvements that

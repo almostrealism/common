@@ -1,3 +1,10 @@
+---
+status: completed
+created: 2026-10-22
+closed: 2026-10-22
+tracker: []
+---
+
 # Train the learned lambda of differential attention
 
 **Category:** Code Quality (correctness — a silent zero-gradient defect in the attention backward pass)

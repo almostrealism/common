@@ -596,8 +596,6 @@ for FILE in $MODIFIED_TEST_FILES; do
     #     existed on base AND whose stripped content is code-shaped
     #     (has parens, semicolons, assertX, Assert., return, throw, …).
     #     Excludes prose docstrings for brand-new test methods.
-    # See docs/plans/TEST_INTEGRITY_CHECK_IMPROVEMENTS.md for the
-    # full rationale and Phase-2 backup plans.
     UNPAIRED_DELETIONS=$(count_unpaired_removals "$DIFF")
     SUSPICIOUS_COMMENTS=$(count_codelike_comments_in_existing "$ADDED_IN_EXISTING")
     if [ "$UNPAIRED_DELETIONS" -gt 5 ] && [ "$SUSPICIOUS_COMMENTS" -gt "$((UNPAIRED_DELETIONS / 2))" ]; then

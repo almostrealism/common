@@ -12,6 +12,7 @@ import base64
 from urllib.parse import quote
 
 import github_api
+import plan_front_matter
 import server
 from server import mcp
 
@@ -281,6 +282,11 @@ def project_commit_plan(
     ``project_verify_branch`` find the document without a separate
     ``workstream_update_config`` call.
 
+    A plan under ``docs/plans/`` must start with the lifecycle front matter
+    (status, created, closed, tracker) described in ``docs/plans/CLAUDE.md``.
+    Content without it gets a ``status: proposed`` header dated today;
+    content with a malformed header is refused.
+
     Args:
         workstream_id: Workstream with repo_url (from workstream_list).
         content: The markdown content of the plan document.
@@ -384,6 +390,21 @@ def project_commit_plan(
             return {
                 "ok": False,
                 "error": f"Invalid path: cannot target '{prefix}' directory",
+            }
+
+    # A plan carries the lifecycle header the docs/plans sweep reads: one is
+    # added when the content has none, and a malformed one is refused.
+    if plan_front_matter.is_plan_path(normalized):
+        today = server.datetime.now(server.timezone.utc).date()
+        content, problems = plan_front_matter.with_header(content, today)
+        if problems:
+            return {
+                "ok": False,
+                "error": "Invalid plan front matter: " + "; ".join(problems),
+                "next_steps": [
+                    "Fix the header (status, created, closed, tracker) as described "
+                    "in docs/plans/CLAUDE.md, or omit it to have a 'proposed' header added",
+                ],
             }
 
     if not commit_message:

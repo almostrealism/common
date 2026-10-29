@@ -517,6 +517,24 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	}
 
 	/**
+	 * Tests that a modulus of a modulus, where the inner divisor is a multiple of the outer
+	 * one, is simplified by the same rules as a modulus taken directly: the multiple of the
+	 * outer divisor is dropped from the index, and a remainder already below the divisor
+	 * needs no modulus at all.
+	 */
+	@Test(timeout = 30000)
+	public void nestedModulusSimplifiesAsDirectModulus() {
+		KernelIndex kernel = kernel().withLimit(142737408);
+		DefaultIndex idx = new DefaultIndex("ind0", 288);
+		Expression<?> position = kernel.multiply(288).add(idx);
+		Expression<?> inner = position.imod(5308416);
+
+		Assert.assertTrue(inner instanceof Mod);
+		Assert.assertEquals("ind0", inner.imod(288).getExpression(lang));
+		Assert.assertEquals("ind0 % 32", inner.imod(32).getExpression(lang));
+	}
+
+	/**
 	 * Tests mod sum operation 1.
 	 */
 	@Test(timeout = 30000)

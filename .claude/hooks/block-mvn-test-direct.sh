@@ -2,8 +2,8 @@
 # PreToolUse — Bash: block a genuine direct `mvn test` invocation.
 #
 # Agents must use mcp__ar-test-runner__start_test_run to run tests.
-# `mvn install -DskipTests`, `mvn compile`, `mvn clean install`, `mvn
-# test-compile`, etc. are allowed.
+# `mvn install -DskipTests`, `mvn compile`, `mvn test-compile`, etc. are
+# allowed; install/verify/package/deploy without -DskipTests are not.
 #
 # This is a thin shell wrapper. The decision logic lives in
 # .claude/hooks/lib/mvn_test_check.py — the single source of
@@ -23,6 +23,6 @@
 # the harness's stdin JSON to the core. exec replaces the shell so
 # there is no extra process layer between the harness and Python.
 #
-# See docs/plans/OPENCODE_HOOKS.md for the architecture.
+# See docs/internals/agent-hooks.md for the architecture.
 set -euo pipefail
 exec python3 "$(cd "$(dirname "$0")" && pwd)/lib/mvn_test_check.py" --stdin

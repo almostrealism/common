@@ -64,6 +64,102 @@ Producer<?> gathered = traverse(0, c(p(data), shape(10),
                                       traverseEach(p(indices))));
 ```
 
+### Integer-Exact Indices Above 2^24 (Split-Index Ordering)
+
+Index data is ordinarily held in a floating-point `PackedCollection`. On a single-precision
+backend (Metal, or any FP32 context) a `float` represents integers exactly only up to
+`2^24` (16,777,216), so an index above that bound is **rounded when it is stored** — before
+any kernel runs. A gather over a table with more than `2^24` elements then reads the wrong
+element: `2^24 + 1` is stored as `2^24`, and `2^24 + 5` as `2^24 + 4`. The same applies to the
+positions of an `ExplicitIndexTraversalOrdering`.
+
+For such positions, read the table through a `SplitIndexTraversalOrdering`
+(`compute/algebra`, `org.almostrealism.collect`). A gather is then nothing more than a
+collection configured with that ordering: every computation that reads it respects the
+ordering, so there is no special-purpose gather operation.
+
+```java
+// gathered[i] = data[positions[i]], exact for every int position
+SplitIndexTraversalOrdering order = SplitIndexTraversalOrdering.of(16777216, 16777217, 16777221);
+PackedCollection gathered = new PackedCollection(shape(3), 0, data, 0, order);
+
+// Any computation reads it through the ordering, including the index argument of c()
+Producer<?> doubled = cp(gathered).multiply(2.0);
+```
+
+Computations never refer to a particular ordering. The ordering travels with the collection's
+shape, and when a kernel is compiled the ordering's lane collection is delivered as a kernel
+argument through `TraversalOrdering.bind`, exactly as for `ExplicitIndexTraversalOrdering`.
+`c(shape, collection, index)` therefore respects an ordering on either its collection or its
+index argument.
+
+**Representation.** Each integer position `v` is stored as two values, interleaved so logical
+index `i` occupies elements `2i` and `2i + 1` of an `(n, 2)` lane collection:
+
+```
+hi = floorDiv(v, BASE)
+lo = floorMod(v, BASE)
+v  = hi * BASE + lo
+```
+
+`BASE` is `SplitIndexTraversalOrdering.BASE = 2^12`. For any `int` position the high lane's
+magnitude is at most `2^19` and the low lane lies in `[0, 2^12)`, so both lanes are exactly
+representable in FP32 (any power of two in `[2^12, 2^24]` would also work; `2^12` leaves the
+widest margin on the low lane). A negative position marks an absent element, which reads as
+zero; the high lane carries the sign. The ordering owns both directions of the layout:
+`SplitIndexTraversalOrdering.encode(int...)` produces the lanes, `of(int...)` stores them in one
+transfer (through the host ingest factory `PackedCollection.ofSplitIndices`), and `indexOf`
+decodes them. The constructor rejects a lane collection whose last
+dimension is not `LANES = 2`, so an ordinary single-lane index table cannot be misread as lanes.
+
+**Exactness guarantee.** `SplitIndexTraversalOrdering.indexOf` reads both lanes, converts each to
+an integer, and computes `hi * BASE + lo` on integer expressions inside the kernel — the same
+technique `CollectionFeatures.rows` uses for row addresses — so the position never passes back
+through a floating-point value. The reconstruction is exact for the full `int` range
+(below `2^31`); positions beyond that would need a `long` reconstruction, which is not provided.
+
+**When to use it.** Prefer the split ordering for positions that can exceed `2^24`: sparse row
+offsets, edge lists, and gathers over large flat tables. For small position sets
+`ExplicitIndexTraversalOrdering` or the plain gather `c(shape, collection, index)` is simpler and
+equivalent. The representation is opt-in — ordinary collections keep their precision.
+
+**Testing on FP32.** A position above `2^24` cannot be read back from an FP32 output buffer, and a
+table holding `data[i] = i` rounds its payload exactly as a float index rounds the address, so
+the bug is invisible with such data. Exactness is observable only through *which element* is
+read, using a payload that is exact and distinct between adjacent addresses (for example the
+address modulo 16, computed from the integer kernel index). See `SplitIndexTests`.
+
+### Sparse Matrices (Compressed-Sparse-Row Ordering)
+
+A sparse matrix is an ordinary `PackedCollection` whose shape carries a
+`CompressedRowTraversalOrdering` (`compute/algebra`, `org.almostrealism.collect`). The ordering
+holds the compressed-sparse-row index structure — row offsets and the column of each entry, both
+in the split layout above — and the collection's memory holds only the entries:
+
+```java
+// [[1, 0, 2],
+//  [0, 0, 0],
+//  [0, 3, 0]]
+CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(3,
+        new int[] { 0, 2, 2, 3 }, new int[] { 0, 2, 1 });
+PackedCollection matrix = new PackedCollection(new TraversalPolicy(order, 3, 3));
+matrix.fill(1.0, 2.0, 3.0);   // the three stored entries
+```
+
+Every existing computation reads the collection as the dense matrix: `indexOf(i * cols + j)`
+searches row `i` for column `j` and an absent element reads as zero (see
+`CompressedRowOrderedComputationTests`, which checks dozens of computations against the dense
+equivalent). That search costs one comparison per entry of the longest row.
+
+A computation that needs only the stored entries asks the ordering for an enumeration of its
+rows with `TraversalOrdering.segments(cols)`, which gives the start and length of each row and
+the column of each entry. `matmul` does this: when the matrix's ordering enumerates its rows, the
+product is a `SegmentedWeightedSumComputation` — one kernel thread per output element, whose
+native loop bound (the row length) is read from device memory, each output written once with no
+atomics. It never forms a logical index of the matrix, so the matrix's logical size may exceed
+the range of an `int` (only its memory, the entries, is bounded by `int`); because its iteration
+count is data-dependent, it is always compiled into a kernel of its own.
+
 ### Scatter (Writing with Dynamic Indices)
 
 Write to positions specified by an index array:
@@ -142,6 +238,20 @@ See `CollectionComputationTests.java`:
 - `integersIndex` - Basic reading with integers()
 - `integersIndexAssignment` - Writing with dynamic indices
 - `integersRangeLarge` - Large-scale integer sequences
+
+See `SplitIndexTests.java`:
+- `storageIsExactAboveSinglePrecision` - Split lanes recover positions above 2^24 exactly
+- `readIsExactAboveSinglePrecision` - A kernel reading through the split ordering selects the exact element above 2^24
+- `kernelReadsEveryStoredPosition` - Reads across the lane boundary (`BASE - 1`, `BASE`, `BASE + 1`)
+- `gatherRespectsOrderedCollection` / `gatherRespectsOrderedIndex` - `c(shape, collection, index)` respects an ordering on either argument
+- `retraversedViewReadsTheSameElements` - Re-traversing an ordered view keeps reading the same elements
+- `reshapedOffsetViewReadsTheSameElements` - Reshaping an ordered view at a non-zero offset, at traversal axis 0 or beyond the first dimension, keeps the offset and applies the ordering once
+- `negativePositionIsAbsent` - Negative positions keep their sign in the high lane and read as zero
+- `storageRoundTripsIntExtremes` - `Integer.MAX_VALUE` and `Integer.MIN_VALUE` round-trip with a high lane of magnitude at most 2^19
+- `lengthCoversLargestPosition` - The ordering addresses one more position than the largest stored
+- `lengthIsZeroWhenEveryPositionIsAbsent` - An ordering whose positions are all negative addresses no positions rather than reporting a negative length
+- `lengthDoesNotOverflowAtIntLimit` - The length is computed without `int` overflow; a stored `Integer.MAX_VALUE` is rejected
+- `rejectsIndexWithoutTwoLanes` - The ordering refuses a lane collection whose last dimension is not 2
 
 ## See Also
 

@@ -31,6 +31,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.List;
 
@@ -105,7 +106,7 @@ public class CounterRandom extends TraversableExpressionComputation implements R
 	private final boolean owned;
 
 	/** The compiled device-side increment of the counter, created on first refresh. */
-	private Runnable advance;
+	private Runnable compiledAdvance;
 
 	/**
 	 * Creates a counter-based generator with its own seed and counter, the counter starting
@@ -221,17 +222,42 @@ public class CounterRandom extends TraversableExpressionComputation implements R
 	public PackedCollection getCounter() { return counter; }
 
 	/**
+	 * Returns the device-side increment of the counter as an {@link Assignment} operation, so a
+	 * caller composing one larger compiled operation (for example a single simulation step) can
+	 * advance this generator's stream in order with its other state updates. Unlike
+	 * {@link #refresh()}, this neither compiles nor runs the assignment &mdash; the caller owns
+	 * when it is compiled and when it runs.
+	 *
+	 * @return the counter increment assignment
+	 */
+	public Assignment<PackedCollection> advance() {
+		return a(p(counter), add(p(counter), c(1.0)));
+	}
+
+	/**
+	 * Returns the reset of the counter to its initial value of zero as an {@link Assignment}
+	 * operation, for a caller that composes the counter's state into a larger reset operation of
+	 * its own. This neither compiles nor runs the assignment.
+	 *
+	 * @return the counter reset assignment
+	 */
+	public Assignment<PackedCollection> resetCounter() {
+		return a(p(counter), c(0.0));
+	}
+
+	/**
 	 * Advances the counter by one with a compiled device-side assignment, so the next
-	 * evaluation produces the next stream. The assignment is compiled on the first call and
-	 * reused afterwards.
+	 * evaluation produces the next stream. The assignment is {@link #advance() the same}
+	 * increment used when composing a larger operation, compiled on the first call and reused
+	 * afterwards.
 	 */
 	@Override
 	public void refresh() {
-		if (advance == null) {
-			advance = a(p(counter), add(p(counter), c(1.0))).get();
+		if (compiledAdvance == null) {
+			compiledAdvance = advance().get();
 		}
 
-		advance.run();
+		compiledAdvance.run();
 	}
 
 	/**
@@ -242,8 +268,8 @@ public class CounterRandom extends TraversableExpressionComputation implements R
 	@Override
 	public void destroy() {
 		super.destroy();
-		Destroyable.destroy(advance);
-		advance = null;
+		Destroyable.destroy(compiledAdvance);
+		compiledAdvance = null;
 
 		if (owned) {
 			seed.destroy();

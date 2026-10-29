@@ -29,12 +29,13 @@
 - [stats](compute/stats/README.md): Probability distributions, statistical sampling | [Details](docs/modules/stats.html)
 
 ### domain/ — Domain Models
-- [graph](domain/graph/README.md): Cell-Receptor-Transmitter pattern, neural network layers, backpropagation | [Details](docs/modules/graph.html)
+- [graph](domain/graph/README.md): Cell-Receptor-Transmitter pattern, neural network layers, backpropagation, the PDSL language core (`org.almostrealism.dsl`), neural population dynamics (LIF and rate populations) | [Details](docs/modules/graph.html)
 - [color](domain/color/README.md): RGB/RGBA, lighting, shaders, textures | [Details](docs/modules/color.html)
 - [physics](domain/physics/README.md): Rigid body dynamics, absorbers, photon fields, physical constants | [Details](docs/modules/physics.html)
 - [space](domain/space/README.md): Scene management, meshes, spatial acceleration | [Details](docs/modules/space.html)
 - [heredity](domain/heredity/README.md): Genetic algorithms, Gene/Chromosome/Genome hierarchy | [Details](docs/modules/heredity.html)
 - [chemistry](domain/chemistry/README.md): Periodic table (Element enum), atomic structure, molecular modeling | [Details](docs/modules/chemistry.html)
+- [biology](domain/biology/README.md): Neurons, synapses, cell types, connectomes and their dynamics
 
 ### engine/ — Applications & Training
 - [ml](engine/ml/README.md): Transformer models (Qwen3), StateDictionary, attention, diffusion | [Details](docs/modules/ml.html)
@@ -53,6 +54,7 @@
 - [music](studio/music/README.md): Pattern-based music composition, notes, arrangements | [Details](docs/modules/music.html)
 - [compose](studio/compose/README.md): Audio scene orchestration, generative audio, ML integration | [Details](docs/modules/compose.html)
 - [spatial](studio/spatial/README.md): Spatial audio visualization | [Details](docs/modules/music.html)
+- [bioscience](studio/bioscience/README.md): Biological models combined with the ML engine; connectome loaders (`CellTypeConnectome`) and dataset conversion scripts
 
 ### Standalone
 - [tools](tools/README.md): MCP servers, profiling UI
@@ -79,6 +81,10 @@
 - [Process Optimization Pipeline](docs/internals/process-optimization-pipeline.md): CascadingOptimizationStrategy, parallelism scoring
 - [Backend Compilation and Dispatch](docs/internals/backend-compilation-and-dispatch.md): ComputationScopeCompiler, ExecutionKey caching, native code generation
 - [Native Runtime Lifecycle](docs/internals/native-runtime-lifecycle.md): Generated kernel library lifetime, off-heap memory budget and enforcement, GC-driven release, kernel reentrancy, and native-crash triage
+- [Asynchronous Submission](docs/internals/asynchronous-submission.md): The Submittable contract — chain every submission, wait once at a host boundary, host work via Submittable.of; ordering, bounds and thread use are the receiving backend's job, and a chain that is slow or wrong is a backend defect
+- [Semaphore Coordination](docs/internals/semaphore-coordination.md): The dependsOn/completion Semaphore model — invariants, how each backend chains work, and why Metal bridged dependencies must be actively driven
+- [Argument Binding Lifecycle](docs/internals/argument-binding-lifecycle.md): How compiled operations bind and prepare arguments, ordering argument evaluation after dependencies, and rebinding after instruction-cache eviction
+- [Host→Device Write Policy](docs/internals/host-device-write-policy.md): The narrow sanctioned paths for host data to reach device memory (fill/pack/setMem/ingest), how SetMemLiteralsDetector enforces them, and the laundering failure modes to avoid
 
 ### Automatic Differentiation
 - [Automatic Differentiation](docs/internals/automatic-differentiation.md): The backward half of the pipeline — the `CollectionProducer.delta`/`ReduceAxis` contract, the computation extension points (`deltaDependent`, `deltaElement`, `deltaMatrix`), the expression-level Jacobian (`ExpressionMatrix`), how `DefaultGradientPropagation` and the backward cells feed `ModelOptimizer`, how to verify a derivative, and the known limits
@@ -96,18 +102,27 @@
 - [CellList Realtime Streaming](docs/internals/celllist-realtime-streaming.md): Low-latency audio output
 - [CellList Tick Ordering](docs/internals/celllist-tick-ordering.md): Execution ordering in cell graphs
 - [PDSL Language Reference](docs/internals/pdsl-language.md): The PDSL language — grammar, keywords, statements and the blocks they build, name resolution, imports, the built-in catalog with gradient behavior, extending PDSL with primitives, errors, known limits
+- [Tutorial 10: Writing Models in PDSL](docs/tutorials/10-pdsl-model-definitions.html): A worked tutorial that reads the shipped feed-forward, attention, transformer and Qwen3 assets and builds a small stacked decoder from a checkpoint, step by step
 - [PDSL Audio DSP](docs/internals/pdsl-audio-dsp.md): The PDSL audio substrate — primitives, multi-channel constructs, producer-valued arguments, ring-sizing invariant
 
 ### ML and Training
 - [ML Inference Pipeline](docs/internals/ml-inference-pipeline.md): From loaded weights to generated tokens
 - [Training Loop Examples](docs/internals/training-loop-examples.md): ModelOptimizer patterns
+- [Training Compile Performance](docs/internals/training-compile-performance.md): Measuring and attributing first-step training compile cost, with the defects that once made fine-tuning look infeasible
 - [Sampling Loop Examples](docs/internals/sampling-loop-examples.md): DiffusionSampler patterns
+
+### Simulation
+- [Simulation Loop Examples](docs/internals/simulation-loop-examples.md): SimulationRunner patterns — the loop owner for recurrent dynamical systems, the step contract, boundary inputs, recording, measured dispatch overhead
+- [Simulating a Spiking Neural Population](docs/internals/neural-population-simulation.md): A tested worked example from device-resident state to recorded spikes — the LIF step, synaptic delay through the ring buffer, connectivity, reproducible random drive (`RandomProducer`, `AR_RANDOM`, `CounterRandom`), driving it with SimulationRunner, rate populations, and known limits
 
 ### Testing and Profiling
 - [Test Examples](docs/internals/test-examples.md): TestSuiteBase, @TestDepth usage
 - [Test Skip-Gating Prevention](docs/internals/test-skip-gating-prevention.md): Failure-to-skip concealment (Assume/@Disabled gating) — the shape of the attack, the inventory of every route that stops a test executing in CI, and the threat model
 - [Profiling](docs/internals/profiling.md): Operation profiling infrastructure
 - [Profiling Examples](docs/internals/profiling-examples.md): Timing analysis patterns
+- [Optimization Feasibility Gate](docs/internals/optimization-feasibility-gate.md): Before optimizing toward a quantitative target, show the current structure can reach it — decompose the cost, compute the ceiling, and treat small local gains against a large gap as a stop signal
+- [Static Analysis](docs/internals/static-analysis.md): Active and deliberately deferred Error Prone checks, with rationale and fix patterns
+- [Agent Hooks](docs/internals/agent-hooks.md): Shared-core hook architecture for the Claude Code and opencode harnesses, choosing a force level, the memory reminder and test-execution hooks
 
 ## Key Patterns
 

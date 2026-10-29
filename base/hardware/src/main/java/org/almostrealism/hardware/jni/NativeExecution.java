@@ -54,10 +54,11 @@ import java.util.stream.Collectors;
  *
  * <p>When {@link #accept(Object[], Semaphore)} is called:</p>
  * <pre>
- * 1. Wait for dependencies   dependsOn.waitFor() if present
+ * 1. Order after dependency  started by dependsOn.onSettled() if present
  * 2. Prepare arguments       MemoryData[] from Object[]
  * 3. Calculate parallelism   min(workSize, configured parallelism)
  * 4. Submit tasks           p tasks to executor, each runs inst.apply()
+ *                           (a single task runs on the coordinating thread instead)
  * 5. Wait for completion    latch.waitFor()
  * 6. Return semaphore       For downstream dependencies
  * </pre>
@@ -141,11 +142,13 @@ import java.util.stream.Collectors;
  *
  * <h2>Error Handling</h2>
  *
- * <p>Exceptions during native execution are caught and logged:</p>
+ * <p>Exceptions during native execution, and a failure of the dependency, are logged and
+ * recorded on the dispatch's latch, whose {@code waitFor()} then rethrows the first of them:</p>
  * <pre>{@code
  * try {
  *     inst.apply(globalId, kernelSize, data);
- * } catch (Exception e) {
+ * } catch (Exception | Error e) {
+ *     latch.fail(e);
  *     warn("Operation " + id + " of " + workSize + " failed", e);
  * } finally {
  *     latch.countDown();  // Ensure latch progresses
@@ -158,7 +161,7 @@ import java.util.stream.Collectors;
  * <pre>{@code
  * recordDuration(latch, () -> {
  *     // Submit tasks...
- *     latch.waitFor();
+ *     latch.awaitCountDown();
  * });
  * // Duration includes submission + execution + wait
  * }</pre>
@@ -186,12 +189,22 @@ public class NativeExecution extends HardwareOperator {
 	private static ExecutorService executor = Executors.newFixedThreadPool(KernelPreferences.getCpuParallelism());
 
 	/**
-	 * Executor for dispatch coordination: each {@link #accept(Object[], Semaphore)} runs its
-	 * dependency wait, worker submission, and completion bookkeeping on one of these threads so
-	 * the submitting thread never blocks. Kept separate from the fixed-size {@link #executor}
-	 * worker pool because coordinators block on their latch &mdash; running them on the worker
-	 * pool could occupy every thread with waiting coordinators and starve the workers they wait
-	 * for.
+	 * Permits for single-worker kernels, which run on their coordinating thread rather than on
+	 * the {@link #executor} (see {@link #coordinate}). Coordinating threads come from unbounded
+	 * pools, so without these permits any number of such kernels could run at once; there are as
+	 * many as the {@link #executor} has threads.
+	 */
+	private static final java.util.concurrent.Semaphore inlineWorkers =
+			new java.util.concurrent.Semaphore(KernelPreferences.getCpuParallelism());
+
+	/**
+	 * Executor for dispatch coordination: each {@link #accept(Object[], Semaphore)} without a
+	 * dependency runs its worker submission and completion bookkeeping on one of these threads so
+	 * the submitting thread never blocks (a dispatch with a dependency is coordinated on the
+	 * thread its dependency's settlement starts, see {@link Semaphore#onSettled(Runnable)}). Kept
+	 * separate from the fixed-size {@link #executor} worker pool because coordinators block on
+	 * their latch &mdash; running them on the worker pool could occupy every thread with waiting
+	 * coordinators and starve the workers they wait for.
 	 */
 	private static ExecutorService dispatchExecutor = Executors.newCachedThreadPool();
 
@@ -252,12 +265,21 @@ public class NativeExecution extends HardwareOperator {
 	 * Dispatches the native kernel and returns its completion {@link Semaphore} without
 	 * blocking the submitting thread.
 	 *
-	 * <p>When {@link #enableExecutor} is true, a coordinator task (on the
-	 * {@link #dispatchExecutor}) waits for {@code dependsOn}, submits the parallel worker
-	 * tasks, and releases the dispatch's memory guard once every worker has finished; the
+	 * <p>When {@link #enableExecutor} is true, a coordinator task submits the parallel worker
+	 * tasks and releases the dispatch's memory guard once every worker has finished; the
 	 * returned latch fires at that point, so a caller (or a dependent operation receiving it
 	 * as {@code dependsOn}) waits on genuine completion. When {@link #enableExecutor} is
 	 * false, execution is fully synchronous and the returned latch has already fired.</p>
+	 *
+	 * <p>Ordering after {@code dependsOn} is this backend's job, and it must not cost a thread
+	 * per dispatch: a caller may issue any number of dependent dispatches before it waits, and
+	 * a coordinator parked in {@code dependsOn.waitFor()} for each of them would hold one
+	 * thread for every dispatch issued ahead of its dependency. The coordinator is therefore
+	 * started by the dependency's settlement (see {@link Semaphore#onSettled(Runnable)}). A
+	 * completion that is told when its work settles (this backend's own latches, a composite of
+	 * them, work deferred after them) registers it and holds no thread meanwhile; one that only
+	 * completes when it is waited for (a Metal command buffer is committed by its wait) is
+	 * waited for on a callback thread, which is what bridges it to this backend.</p>
 	 *
 	 * @param args      the kernel arguments
 	 * @param dependsOn the completion this dispatch must be ordered after, or {@code null}
@@ -295,7 +317,13 @@ public class NativeExecution extends HardwareOperator {
 		DefaultLatchSemaphore latch = new DefaultLatchSemaphore(dependsOn, p);
 
 		if (enableExecutor) {
-			dispatchExecutor.submit(() -> coordinate(data, args, dependsOn, guard, latch, p));
+			Runnable coordination = () -> coordinate(data, args, dependsOn, guard, latch, p);
+
+			if (dependsOn == null) {
+				dispatchExecutor.submit(coordination);
+			} else {
+				dependsOn.onSettled(coordination);
+			}
 		} else {
 			try {
 				if (dependsOn != null) dependsOn.waitFor();
@@ -318,16 +346,30 @@ public class NativeExecution extends HardwareOperator {
 	}
 
 	/**
-	 * Coordinates one dispatch on a {@link #dispatchExecutor} thread: waits for the dispatch's
-	 * dependency, submits the parallel worker tasks, waits for them all, and releases the
-	 * memory guard. The latch always reaches zero &mdash; workers count down in their own
-	 * finally blocks, and any workers that could not be submitted are counted down here &mdash;
-	 * so no waiter can hang on a failed dispatch.
+	 * Coordinates one dispatch: confirms the dispatch's dependency completed (it has already
+	 * settled, since its settlement started this coordination), submits the parallel worker
+	 * tasks, waits for them all, and releases the memory guard. The latch always reaches zero
+	 * &mdash; workers count down in their own finally blocks, and any workers that could not be
+	 * submitted are counted down here &mdash; so no waiter can hang on a failed dispatch.
+	 *
+	 * <p>A dispatch with a single worker runs it on this thread rather than on the
+	 * {@link #executor}: handing it off would leave this thread nothing to do but wait for it,
+	 * so running it here saves a thread hand-off on every such dispatch (a scalar result, for
+	 * example). Coordinating threads are not bounded, so a worker run here first takes one of
+	 * the {@link #inlineWorkers} permits: at most as many single-worker kernels run at once as
+	 * the {@link #executor} has threads, the bound they had when they ran there.</p>
 	 *
 	 * <p>The guard comes off only once the latch has reached zero, on the failure path as
 	 * well as the ordinary one. Releasing it is what allows this dispatch's memory to be
 	 * freed, and a worker still inside the kernel would then be reading a block that has
 	 * gone.</p>
+	 *
+	 * <p>A failure of the dependency, of submitting the workers, or of a worker is recorded on
+	 * the latch with {@link DefaultLatchSemaphore#fail(Throwable)} before the latch reaches zero,
+	 * so the dispatch's {@link DefaultLatchSemaphore#waitFor()} rethrows it, and anything chained
+	 * after the dispatch sees it, rather than the skipped or broken work reporting success. The
+	 * coordinator's own waits use {@link DefaultLatchSemaphore#awaitCountDown()}, which does not
+	 * rethrow, so a recorded failure cannot skip releasing the guard.</p>
 	 *
 	 * @param data      the resolved kernel arguments
 	 * @param args      the original arguments (retained so backing memory stays reachable)
@@ -344,42 +386,67 @@ public class NativeExecution extends HardwareOperator {
 			if (dependsOn != null) dependsOn.waitFor();
 
 			recordDuration(latch, () -> {
-				for (int i = 0; i < p; i++) {
-					int id = i;
+				if (p == 1) {
+					// The only worker would leave this thread nothing to do but wait for it
+					inlineWorkers.acquireUninterruptibly();
 
-					executor.submit(() -> {
-						try {
-							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
-						} catch (Exception e) {
-							warn("Operation " + id + " of " +
-									getGlobalWorkSize() + " failed", e);
-						} finally {
-							latch.countDown();
-						}
-					});
-
-					submitted.incrementAndGet();
+					try {
+						submitted.incrementAndGet();
+						work(data, latch, 0).run();
+					} finally {
+						inlineWorkers.release();
+					}
+				} else {
+					for (int i = 0; i < p; i++) {
+						executor.submit(work(data, latch, i));
+						submitted.incrementAndGet();
+					}
 				}
 
-				latch.waitFor();
+				latch.awaitCountDown();
 			});
 
 			if (enableVerboseLog) {
 				log(getName() + " result0=" + data[0].toDouble(0));
 			}
-		} catch (Exception e) {
+		} catch (Exception | Error e) {
+			// Recorded before the count-downs below release the dispatch's waiters
+			latch.fail(e);
 			warn(getName() + " dispatch failed", e);
 		} finally {
 			for (int i = submitted.get(); i < p; i++) {
 				latch.countDown();
 			}
 
-			latch.waitFor();
+			latch.awaitCountDown();
 			guard.release();
 		}
 
 		Reference.reachabilityFence(data);
 		Reference.reachabilityFence(args);
+	}
+
+	/**
+	 * Returns the worker task that runs one slice of a dispatch and counts its latch down,
+	 * whether the kernel completed or failed, so no waiter can hang on a failed worker.
+	 *
+	 * @param data  the resolved kernel arguments
+	 * @param latch the dispatch's completion latch
+	 * @param id    the index of the worker within the dispatch
+	 * @return the worker task
+	 */
+	private Runnable work(MemoryData[] data, DefaultLatchSemaphore latch, int id) {
+		return () -> {
+			try {
+				inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
+			} catch (Exception | Error e) {
+				latch.fail(e);
+				warn("Operation " + id + " of " +
+						getGlobalWorkSize() + " failed", e);
+			} finally {
+				latch.countDown();
+			}
+		};
 	}
 
 }

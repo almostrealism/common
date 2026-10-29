@@ -119,10 +119,13 @@ public class MetalSemaphore implements OperationSemaphore {
 
 	/**
 	 * Blocks until the dispatch's command buffer is committed and has completed on the GPU.
+	 *
+	 * @throws org.almostrealism.hardware.HardwareException if the dispatch, or one recorded as
+	 *         failed before it on the same runner, did not execute (see {@link MetalCommandRunner})
 	 */
 	@Override
 	public void waitFor() {
-		runner.complete(commandBuffer, requester);
+		runner.complete(this);
 	}
 
 	/**
@@ -135,7 +138,7 @@ public class MetalSemaphore implements OperationSemaphore {
 	 */
 	@Override
 	public void whenComplete(Runnable r) {
-		runner.whenComplete(commandBuffer, r);
+		runner.whenComplete(this, r);
 	}
 
 	/**
@@ -150,7 +153,7 @@ public class MetalSemaphore implements OperationSemaphore {
 	 */
 	@Override
 	public void whenSettled(Runnable r) {
-		runner.whenComplete(commandBuffer, r);
+		runner.whenComplete(this, r);
 	}
 
 	/**

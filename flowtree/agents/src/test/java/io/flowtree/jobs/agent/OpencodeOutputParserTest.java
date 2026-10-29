@@ -155,6 +155,33 @@ public class OpencodeOutputParserTest extends TestSuiteBase {
     }
 
     /**
+     * A single JSON object that is not isolatable as one clean NDJSON line —
+     * here pretty-printed across several lines — must still be found and
+     * parsed when one of its string values contains a {@code '}'} character.
+     * {@code findLastJsonObject}'s documented contract is to locate the last
+     * <em>well-formed</em> JSON object, and {@code {"note":"a } b"}} is
+     * well-formed: the brace inside the string is a literal, not the object's
+     * close. Scanning brace depth without tracking string literals miscounts
+     * the depth at that literal brace and fails to find the object, dropping
+     * every field the legacy single-object path supplies ({@code session_id},
+     * {@code stopReason}, denials, response text).
+     */
+    @Test(timeout = 5000)
+    public void findsMultiLineObjectWithBraceInStringValue() {
+        String prettyPrinted = "{\n"
+                + "  \"session_id\": \"opc-brace\",\n"
+                + "  \"stopReason\": \"done\",\n"
+                + "  \"note\": \"text with a brace } inside\"\n"
+                + "}\n";
+
+        AgentRunResult result = OpencodeOutputParser.parse(
+                prettyPrinted, 0, false, 100L, Collections.emptyMap(), SILENT);
+
+        assertEquals("opc-brace", result.sessionId());
+        assertEquals("done", result.stopReason());
+    }
+
+    /**
      * Real opencode 1.15.4 output: NDJSON event stream with top-level
      * {@code type} / {@code sessionID} / {@code part}. Captured from
      * {@code opencode run --format json} against a local llama.cpp endpoint.

@@ -35,6 +35,7 @@ import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.hardware.mem.RAM;
+import org.almostrealism.io.CallOrigin;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
@@ -52,6 +53,7 @@ import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
@@ -241,6 +243,13 @@ public class PackedCollection extends MemoryDataAdapter
 	/** The traversal policy describing the shape and traversal axis of this collection. */
 	private final TraversalPolicy shape;
 
+	/**
+	 * The number of elements of backing memory, fixed when the collection is created so that
+	 * bounds checks on every write do not ask the ordering again (which may read its index
+	 * collections back to the host); see {@link #computePhysicalLength()}.
+	 */
+	private final long physicalLength;
+
 	/** Optional factory function for creating sub-collection delegates at a given offset. */
 	private Function<DelegateSpec, PackedCollection> supply;
 
@@ -335,17 +344,49 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 
 		this.shape = shape.traverse(order).traverse(traversalAxis);
+		this.physicalLength = computePhysicalLength();
 		setDelegate(delegate, delegateOffset);
 		init();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Only the backing memory is bounded by {@code int}: the logical shape of a collection
+	 * whose ordering addresses fewer elements, such as a sparse matrix, may be larger.</p>
+	 */
 	@Override
 	protected void init() {
-		if (shape.getTotalInputSizeLong() > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException(String.valueOf(shape.getTotalInputSizeLong()));
+		if (physicalLength > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException(String.valueOf(physicalLength));
 		}
 
 		super.init();
+	}
+
+	/**
+	 * Computes the number of elements of backing memory for this collection's shape: the
+	 * {@link TraversalOrdering#getLength() physical length} of the shape's ordering when it
+	 * reports one (at least one element, since memory cannot be empty), so that a compact or
+	 * sparse collection stores only its entries, and otherwise the
+	 * {@link TraversalPolicy#getTotalInputSizeLong() total input size}.
+	 *
+	 * @return the length of the backing memory
+	 */
+	private long computePhysicalLength() {
+		OptionalInt physical = shape.getOrder() == null ? OptionalInt.empty() : shape.getOrder().getLength();
+		return physical.isPresent() ? Math.max(1, physical.getAsInt()) : shape.getTotalInputSizeLong();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>This is the {@link #computePhysicalLength() length of the backing memory},
+	 * which is what is allocated for a collection that has no delegate.</p>
+	 */
+	@Override
+	public int getDelegatedLength() {
+		return Math.toIntExact(physicalLength);
 	}
 
 	/**
@@ -598,16 +639,21 @@ public class PackedCollection extends MemoryDataAdapter
 	 * arithmetic. Anything larger is a tensor, where zeroing is a kernel's
 	 * worth of work and the report is worth making.</p>
 	 *
+	 * <p>The elements filled are those of the backing memory, so a collection read through an
+	 * ordering that stores only some of its elements (a compact or sparse collection) is filled
+	 * entry by entry, in the order the ordering stores them.</p>
+	 *
 	 * @param value the values to cycle through; repeated if shorter than the collection
 	 * @return this collection
 	 * @see #enableFillOrigin
 	 */
 	public PackedCollection fill(double... value) {
-		if (getMemLength() > 3 && DoubleStream.of(value).allMatch(v -> v == 0.0)) {
+		int length = getDelegatedLength();
+		if (length > 3 && DoubleStream.of(value).allMatch(v -> v == 0.0)) {
 			reportFillWithZeros();
 		}
 
-		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
+		double[] data = IntStream.range(0, length).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(data);
 		return this;
 	}
@@ -677,62 +723,8 @@ public class PackedCollection extends MemoryDataAdapter
 			return;
 		}
 
-		StackTraceElement[] stack = new Exception().getStackTrace();
-		warn(message + " (from " + originOf(stack) + ")" + callersOf(stack));
-	}
-
-	/**
-	 * Returns the first frame outside this class, which is the call that filled.
-	 *
-	 * @param stack the stack to read
-	 * @return a description of the calling frame, or "unknown origin"
-	 */
-	private String originOf(StackTraceElement[] stack) {
-		for (StackTraceElement frame : stack) {
-			if (!PackedCollection.class.getName().equals(frame.getClassName())) {
-				return frame.toString();
-			}
-		}
-
-		return "unknown origin";
-	}
-
-	/**
-	 * Returns the calls that led here, as lines of the report itself.
-	 *
-	 * <p>Carried in the message rather than attached as an exception, because
-	 * an attached one is printed straight to the error stream and never
-	 * reaches the console — so it misses whatever the console has been asked
-	 * to write to, which for a packaged application is the only place anyone
-	 * reads. A stack that goes somewhere nobody is looking is no better than
-	 * no stack.</p>
-	 *
-	 * <p>Begins above the origin, which the report has already named. Repeating
-	 * it would put the same frame on two consecutive lines of every report, and
-	 * these are read in numbers.</p>
-	 *
-	 * @param stack the stack to read
-	 * @return the frames above the origin, one per line
-	 */
-	private String callersOf(StackTraceElement[] stack) {
-		StringBuilder callers = new StringBuilder();
-		boolean atOrigin = true;
-		int shown = 0;
-
-		for (StackTraceElement frame : stack) {
-			if (PackedCollection.class.getName().equals(frame.getClassName())) continue;
-
-			if (atOrigin) {
-				atOrigin = false;
-				continue;
-			}
-
-			if (shown++ >= ORIGIN_FRAMES) break;
-
-			callers.append("\n    at ").append(frame);
-		}
-
-		return callers.toString();
+		CallOrigin origin = new CallOrigin(PackedCollection.class, ORIGIN_FRAMES);
+		warn(message + " (from " + origin.getOrigin() + ")" + origin.getCallers());
 	}
 
 	/**
@@ -1054,29 +1046,40 @@ public class PackedCollection extends MemoryDataAdapter
 		return reshape(getShape().traverse(axis));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>If the new shape carries the ordering through which this collection reads its delegate,
+	 * the result views the delegate through that ordering; nesting it in this collection would
+	 * apply the ordering twice.</p>
+	 */
 	@Override
 	public PackedCollection reshape(TraversalPolicy shape) {
-		if (shape.getTotalSize() != getMemLength()) {
-			throw new IllegalArgumentException("Shape size (" + shape.getSize() +
-					") does not match collection size (" + getMemLength() + ")");
+		if (shape.getTotalSizeLong() != getShape().getTotalInputSizeLong()) {
+			throw new IllegalArgumentException("Shape size (" + shape.getTotalSizeLong() +
+					") does not match collection size (" + getShape().getTotalInputSizeLong() + ")");
 		} else if (getShape().equals(shape)) {
 			return this;
 		}
 
+		boolean sameOrderedView = getDelegate() != null && getDelegateOrdering() != null
+				&& shape.getOrder() == getDelegateOrdering();
+		MemoryData target = sameOrderedView ? getDelegate() : this;
+		int offset = sameOrderedView ? getDelegateOffset() : 0;
 		int axis = shape.getTraversalAxis();
 
 		if (axis <= 0) {
-			return new PackedCollection(shape, axis, this, 0);
+			return new PackedCollection(shape, axis, target, offset);
 		} else if (axis == 1) {
 			return new PackedCollection(shape, axis,
 					delegateSpec ->
 							new PackedCollection(shape.subset(1), 0,
 									delegateSpec.getDelegate(), delegateSpec.getOffset()),
-					this, 0);
+					target, offset);
 		} else {
 			// TODO  This could also provide the supply argument, so that PackedCollection::get is supported
 			// TODO  it's just a little more complicated to implement
-			return new PackedCollection(shape, axis, this, 0);
+			return new PackedCollection(shape, axis, target, offset);
 		}
 	}
 
@@ -1181,13 +1184,15 @@ public class PackedCollection extends MemoryDataAdapter
 
 	/**
 	 * Returns a shallow clone of this collection with all data copied to new memory.
+	 * What is copied is the backing memory, which the clone reads through the same
+	 * ordering.
 	 *
 	 * @return a new collection with the same shape and values
 	 */
 	@Override
 	public PackedCollection clone() {
 		PackedCollection clone = new PackedCollection(getShape(), getShape().getTraversalAxis());
-		clone.setFrom(0, this, 0, getMemLength());
+		clone.setFrom(0, this, 0, getDelegatedLength());
 		return clone;
 	}
 
@@ -1251,6 +1256,19 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	public static PackedCollection of(long... values) {
 		return of(doubles(values));
+	}
+
+	/**
+	 * Uploads the given integer positions, in one transfer, as the {@code (n, 2)} lane collection
+	 * of a {@link SplitIndexTraversalOrdering} (see {@link SplitIndexTraversalOrdering#encode(int...)}).
+	 * Unlike {@link #of(int...)}, positions above {@code 2^24} stay exact in FP32 memory.
+	 *
+	 * @param values the integer positions to store
+	 * @return a new {@link PackedCollection} of shape {@code (values.length, 2)}
+	 */
+	public static PackedCollection ofSplitIndices(int... values) {
+		return of(SplitIndexTraversalOrdering.encode(values))
+				.reshape(new TraversalPolicy(values.length, SplitIndexTraversalOrdering.LANES));
 	}
 
 	/**

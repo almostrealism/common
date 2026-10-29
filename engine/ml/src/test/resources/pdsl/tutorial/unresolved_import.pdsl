@@ -1,0 +1,5 @@
+import "/pdsl/attention.pdsl"
+
+layer wrapper(heads: int) {
+    attention(heads)
+}

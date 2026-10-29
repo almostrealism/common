@@ -1,0 +1,1410 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.almostrealism.dsl;
+
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.SystemUtils;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.model.Block;
+import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.model.WeightGroup;
+
+import static org.almostrealism.dsl.PdslPrimitiveContext.toDouble;
+import static org.almostrealism.dsl.PdslPrimitiveContext.toInt;
+
+import java.util.Objects;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+
+/**
+ * Interprets a parsed PDSL program to construct {@link Block} and {@link Model}
+ * objects using the AlmostRealism producer framework. The interpreter maps
+ * DSL function calls to layer constructors of the framework, building computation
+ * graphs that can be compiled and executed on GPU/CPU hardware.
+ *
+ * <p>Built-in primitive operations:
+ * <ul>
+ *   <li>{@code dense(weights)} / {@code dense(weights, biases)}</li>
+ *   <li>{@code conv1d(weight[, bias], stride, padding)},
+ *       {@code conv_transpose1d(weight[, bias], stride, padding, output_padding)} - 1-D
+ *       convolutions over a {@code [batch, channels, length]} signal</li>
+ *   <li>{@code rmsnorm(weights, epsilon)}, {@code rmsnorm(weights, biases, epsilon)},
+ *       {@code layernorm(weights, biases, epsilon)}</li>
+ *   <li>{@code softmax()}, {@code silu()}, {@code relu()}, {@code gelu()},
+ *       {@code sigmoid()}, {@code tanh_act()}, {@code snake(alpha, beta)}</li>
+ *   <li>{@code slice(offset, size)} - extract a 1-D sub-range;
+ *       {@code slice([shape], position...)} - extract the sub-tensor of {@code shape} at a position</li>
+ *   <li>{@code lerp(hidden_size)} - linear interpolation from [from|weight|to] input</li>
+ *   <li>{@code reshape(shape)}, {@code permute(axes...)} - reorder the input's axes</li>
+ *   <li>{@code identity()} - pass-through block, forward and backward unchanged</li>
+ *   <li>{@code scale(factor)} - element-wise multiply by a scalar producer;
+ *       {@code scale(factors, axis)} - multiply by one factor per position along an axis</li>
+ *   <li>{@code repeat(n)} - replicate the input along axis 0 to produce {@code n}
+ *       times as many leading rows (equivalent to {@code CollectionProducer.repeat(0, n)})</li>
+ *   <li>{@code sum_channels()} - collapse a {@code [C, S]} tensor to {@code [1, S]}
+ *       by summing along axis 0</li>
+ *   <li>{@code repeat_each(n)} - duplicate every row of a {@code [rows, size]} input
+ *       {@code n} consecutive times</li>
+ *   <li>{@code cache_write(cache, position)} - record the input as row {@code position}
+ *       of a caller-owned {@code [rows, size]} cache and pass it through</li>
+ *   <li>{@code cache_read(cache, position)} - output row {@code position} of a caller-owned
+ *       {@code [rows, size]} cache as a {@code [size]} vector, without reading the input</li>
+ *   <li>{@code scaled_dot_product(other, transpose)} - a batched matrix product with a tensor or
+ *       with a branch the layer has split off</li>
+ *   <li>{@code sqrt(x)} - numeric square root in configuration arithmetic</li>
+ * </ul>
+ *
+ * <p>Domain-specific primitives are not defined in this class. They are contributed by
+ * higher-level modules via {@link #registerPrimitive(String, PdslPrimitive)} so that the
+ * interpreter core stays free of any domain-specific dispatch. A module whose primitives belong
+ * in every program that can see it is a {@link PdslExtension}, applied to every interpreter as it
+ * is constructed (the machine-learning engine contributes its attention and rotary position
+ * primitives this way). A module whose primitives a caller opts into is applied through a
+ * {@link PdslLoader} registrar (see {@code org.almostrealism.studio.dsl.audio.AudioDspPrimitives}
+ * for the audio set).</p>
+ *
+ * <p>Composition constructs:
+ * <ul>
+ *   <li>{@code branch name { ... }} - parallel path</li>
+ *   <li>{@code accum { ... }} - residual connection</li>
+ *   <li>{@code product(blockA, blockB)} - element-wise multiply</li>
+ *   <li>{@code accum_blocks(blockA, blockB, ...)} - element-wise addition of N blocks</li>
+ *   <li>{@code concat_blocks(blockA, blockB, ...)} - concatenation of N blocks' outputs</li>
+ *   <li>{@code for i in a..b { ... }}, {@code stack group as name { ... }},
+ *       {@code for each channel { ... }} - build-time repetition</li>
+ * </ul>
+ *
+ * <p>Function calls resolve to a layer the program defines, then a registered primitive, then a
+ * built-in. The language as a whole is described in {@code docs/internals/pdsl-language.md}.</p>
+ */
+public class PdslInterpreter {
+
+	/**
+	 * The built-in function library this interpreter dispatches to. It also normalizes producer
+	 * arguments for parameter binding and primitive dispatch.
+	 */
+	private final PdslBuiltins builtins = new PdslBuiltins();
+
+	/** The extensions on the classpath, discovered once and applied to every interpreter. */
+	private static final List<PdslExtension> EXTENSIONS = PdslExtension.discover();
+
+	/**
+	 * Registry of domain primitives contributed by higher-level modules via
+	 * {@link #registerPrimitive(String, PdslPrimitive)}. The interpreter consults
+	 * this map after the program's own layers and before the built-ins, so domain
+	 * primitives can shadow built-in names if needed. The registry is heterogeneous — each
+	 * primitive declares its own result type via the {@code T} parameter on
+	 * {@link PdslPrimitive} — so the map values are typed as
+	 * {@code PdslPrimitive<?>}.
+	 */
+	private final Map<String, PdslPrimitive<?>> registeredPrimitives;
+
+	/**
+	 * When true, {@code for each channel} first attempts to compile its body ONCE over
+	 * the full {@code [channels, signalSize]} shape, with {@code [channel]} subscripts
+	 * yielding whole {@link PdslChannelBank banks} for bank-aware primitives. Bodies
+	 * containing any construct that cannot take the bank form fall back to the
+	 * per-channel dispatch automatically (the bank wrapper cannot pass through the
+	 * standard argument paths, so non-bank-aware primitives fail loudly rather than
+	 * misinterpret it). Vectorized bodies avoid the per-channel slice/dispatch/concat
+	 * structure, whose per-stage dispatch overhead dominates small per-channel kernels.
+	 *
+	 * <p>ON BY DEFAULT (disable via {@code AR_PDSL_VECTOR_FOREACH=disabled}). An earlier
+	 * defect made this unsafe: structurally-identical vectorized bodies from different
+	 * models share a signature, and the instruction-set cache was keyed by signature
+	 * alone, so the second model adopted a kernel bound to the first model's compute
+	 * context and its dispatches were never executed (silent zero output). The cache is
+	 * now scoped per compute context, which makes cross-model structural twins safe.</p>
+	 */
+	public static boolean enableVectorizedForEach =
+			SystemUtils.isEnabled("AR_PDSL_VECTOR_FOREACH").orElse(true);
+
+	/**
+	 * Sentinel bound to {@code channel} during vectorized {@code for each channel}
+	 * interpretation; subscripts that resolve their index to this value produce a
+	 * {@link PdslChannelBank} instead of a single channel's row.
+	 */
+	private static final Object ALL_CHANNELS = new Object();
+
+	/** Builds the multi-channel block backing the {@code for each channel} statement. */
+	private PdslMultiChannelDispatcher multiChannelDispatcher;
+
+	/** Layer definitions keyed by name, built from the parsed program. */
+	private final Map<String, PdslNode.LayerDef> layerDefs;
+
+	/** Config definitions keyed by name, built from the parsed program. */
+	private final Map<String, PdslNode.ConfigDef> configDefs;
+
+	/** Model definitions keyed by name, built from the parsed program. */
+	private final Map<String, PdslNode.ModelDef> modelDefs;
+
+	/** Data block definitions keyed by name, built from the parsed program. */
+	private final Map<String, PdslNode.DataDef> dataDefs;
+
+	/** State block definitions keyed by name, built from the parsed program. */
+	private final Map<String, PdslNode.StateDef> stateDefs;
+
+	/**
+	 * Create an interpreter for the given parsed program, with the primitives of every
+	 * {@link PdslExtension} on the classpath registered.
+	 *
+	 * @param program the parsed AST
+	 */
+	public PdslInterpreter(PdslNode.Program program) {
+		this.layerDefs = new HashMap<>();
+		this.configDefs = new HashMap<>();
+		this.modelDefs = new HashMap<>();
+		this.dataDefs = new LinkedHashMap<>();
+		this.stateDefs = new LinkedHashMap<>();
+		this.registeredPrimitives = new HashMap<>();
+		for (PdslNode.Definition def : program.getDefinitions()) {
+			if (def instanceof PdslNode.LayerDef) {
+				layerDefs.put(def.getName(), (PdslNode.LayerDef) def);
+			} else if (def instanceof PdslNode.ConfigDef) {
+				configDefs.put(def.getName(), (PdslNode.ConfigDef) def);
+			} else if (def instanceof PdslNode.ModelDef) {
+				modelDefs.put(def.getName(), (PdslNode.ModelDef) def);
+			} else if (def instanceof PdslNode.StateDef) {
+				// Check StateDef before DataDef since StateDef extends DataDef
+				stateDefs.put(def.getName(), (PdslNode.StateDef) def);
+			} else if (def instanceof PdslNode.DataDef) {
+				dataDefs.put(def.getName(), (PdslNode.DataDef) def);
+			}
+		}
+		EXTENSIONS.forEach(extension -> extension.registerWith(this));
+	}
+
+	/** Returns the names of all layer definitions. */
+	public Set<String> getLayerNames() { return layerDefs.keySet(); }
+
+	/** Returns the names of all model definitions. */
+	public Set<String> getModelNames() { return modelDefs.keySet(); }
+
+	/** Returns the names of all config definitions. */
+	public Set<String> getConfigNames() { return configDefs.keySet(); }
+
+	/** Returns the names of all data block definitions. */
+	public Set<String> getDataDefNames() { return dataDefs.keySet(); }
+
+	/** Returns the names of all state block definitions. */
+	public Set<String> getStateDefNames() { return stateDefs.keySet(); }
+
+	/**
+	 * Register a domain-specific primitive. The interpreter consults the registry
+	 * before any built-in dispatch so a registered primitive shadows any built-in
+	 * of the same name.
+	 *
+	 * @param name      the function name as it appears in PDSL source
+	 * @param primitive the dispatcher for this primitive
+	 */
+	public <T> void registerPrimitive(String name, PdslPrimitive<T> primitive) {
+		registeredPrimitives.put(Objects.requireNonNull(name, "name"),
+				Objects.requireNonNull(primitive, "primitive"));
+	}
+
+	/**
+	 * Set the dispatcher used to interpret the {@code for each channel} statement.
+	 *
+	 * @param dispatcher the multi-channel dispatcher; may be {@code null} to detach
+	 */
+	public void setMultiChannelDispatcher(PdslMultiChannelDispatcher dispatcher) {
+		this.multiChannelDispatcher = dispatcher;
+	}
+
+	/**
+	 * Build a {@link Block} from a named layer definition.
+	 *
+	 * @param name       the layer name as defined in the PDSL source
+	 * @param inputShape the input tensor shape for the block
+	 * @param args       parameter bindings (name to value)
+	 * @return the constructed Block
+	 */
+	public Block buildLayer(String name, TraversalPolicy inputShape,
+							Map<String, Object> args) {
+		return buildLayer(name, inputShape, args, new ComputeRequirement[0]);
+	}
+
+	/**
+	 * Build a {@link Block} from a named layer definition, applying {@code requirements} to
+	 * every layer the definition constructs, via {@link SequentialBlock#setComputeRequirements}.
+	 * The requirements are applied to each layer called during the build as soon as it is
+	 * built, not only to the outer block, because some compositions ({@code accum_blocks},
+	 * {@code concat_blocks}) capture the blocks they combine and do not forward requirements
+	 * to them.
+	 *
+	 * @param name         the layer name as defined in the PDSL source
+	 * @param inputShape   the input tensor shape for the block
+	 * @param args         parameter bindings (name to value)
+	 * @param requirements compute requirements applied to every constructed layer
+	 * @return the constructed Block
+	 */
+	public Block buildLayer(String name, TraversalPolicy inputShape,
+							Map<String, Object> args, ComputeRequirement... requirements) {
+		PdslNode.LayerDef def = layerDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("Layer '" + name + "' not found");
+		}
+		return buildLayer(def, inputShape, args, programScope(args, requirements));
+	}
+
+	/**
+	 * Creates the program scope of one build: the outermost {@link Environment}, holding the
+	 * entries of every {@code data} and {@code state} block of the program, bound from
+	 * {@code args}, and the {@link Build} state shared by every scope of the build. Every
+	 * layer interpreted during the build, including a layer called from another layer's body,
+	 * reads these entries through its enclosing scopes, so a block declared once at program
+	 * level means the same thing to every layer that names it.
+	 *
+	 * @param args         the arguments of the layer or model being built
+	 * @param requirements compute requirements applied to every layer the build constructs
+	 * @return the program scope
+	 */
+	private Environment programScope(Map<String, Object> args, ComputeRequirement... requirements) {
+		Environment scope = new Environment(new Build(requirements));
+		populateDataDefs(args, scope);
+		return scope;
+	}
+
+	/**
+	 * Builds a layer definition in a scope of its own, directly inside the program scope: the
+	 * body sees its parameters and the program's {@code data} and {@code state} entries, and
+	 * nothing of the layer that called it. The build's compute requirements are applied to the
+	 * block as soon as it is complete, so they reach it wherever the caller places it,
+	 * including inside a composition that does not forward requirements to its parts.
+	 *
+	 * @param def          the layer definition
+	 * @param inputShape   the input tensor shape for the block
+	 * @param args         parameter bindings (name to value)
+	 * @param programScope the program scope of the build, from {@link #programScope}
+	 * @return the constructed block
+	 */
+	private SequentialBlock buildLayer(PdslNode.LayerDef def, TraversalPolicy inputShape,
+									   Map<String, Object> args, Environment programScope) {
+		Environment env = new Environment(programScope);
+		for (PdslNode.Parameter param : def.getParameters()) {
+			Object value = args.get(param.getName());
+			if (value == null && !args.containsKey(param.getName())) {
+				throw new PdslParseException(
+						"Missing argument '" + param.getName() + "' for layer '" + def.getName() + "'");
+			}
+			if ("producer".equals(param.getTypeName())) {
+				value = bindProducerParameter(param, value, env);
+			}
+			env.set(param.getName(), value);
+		}
+		SequentialBlock block = new SequentialBlock(inputShape);
+		programScope.build.enter(def.getName());
+		try {
+			interpretBody(def.getBody(), block, env);
+		} finally {
+			programScope.build.exit();
+		}
+		programScope.build.applyRequirements(block);
+		return block;
+	}
+
+	/**
+	 * Binds a {@code producer([shape])} parameter to a {@link Producer} of
+	 * {@link PackedCollection}. The actual conversion (Number, PackedCollection, or
+	 * Producer with shape validation) is delegated to
+	 * {@link PdslBuiltins#normalizeToProducer(Object, TraversalPolicy, String)} so that parameter
+	 * binding and primitive-argument normalisation share one definition.
+	 *
+	 * @param param the parameter declaration (with declared shape)
+	 * @param value the caller-supplied value from the args map
+	 * @param env   current environment, used to evaluate the declared shape expression
+	 * @return a {@link Producer} of {@link PackedCollection}
+	 */
+	private Object bindProducerParameter(PdslNode.Parameter param, Object value, Environment env) {
+		if (param.getShape() == null) {
+			throw new PdslParseException(
+					"Parameter '" + param.getName()
+							+ "' declared as producer must have a shape, e.g. producer([1])");
+		}
+		TraversalPolicy declaredShape = evaluateShape((PdslNode.ShapeLiteral) param.getShape(), env);
+		return builtins.normalizeToProducer(value, declaredShape,
+				"Parameter '" + param.getName() + "'");
+	}
+
+	/**
+	 * Build a {@link Model} from a named model definition.
+	 *
+	 * @param name       the model name as defined in the PDSL source
+	 * @param inputShape the input tensor shape
+	 * @param args       parameter bindings
+	 * @return the constructed Model
+	 */
+	public Model buildModel(String name, TraversalPolicy inputShape,
+							Map<String, Object> args) {
+		return buildModel(name, inputShape, args, new ComputeRequirement[0]);
+	}
+
+	/**
+	 * Build a {@link Model} from a named model definition, applying {@code requirements} to
+	 * every layer the model constructs, as {@link #buildLayer(String, TraversalPolicy, Map,
+	 * ComputeRequirement...)} does for a single layer.
+	 *
+	 * @param name         the model name as defined in the PDSL source
+	 * @param inputShape   the input tensor shape
+	 * @param args         parameter bindings
+	 * @param requirements compute requirements applied to every constructed layer
+	 * @return the constructed Model
+	 */
+	public Model buildModel(String name, TraversalPolicy inputShape,
+							Map<String, Object> args, ComputeRequirement... requirements) {
+		PdslNode.ModelDef def = modelDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("Model '" + name + "' not found");
+		}
+		Environment env = new Environment(programScope(args, requirements));
+		for (PdslNode.Parameter param : def.getParameters()) {
+			if (!args.containsKey(param.getName())) {
+				throw new PdslParseException(
+						"Missing argument '" + param.getName() + "' for model '" + name + "'");
+			}
+			env.set(param.getName(), args.get(param.getName()));
+		}
+		Model model = new Model(inputShape);
+		interpretModelBody(def.getBody(), model, env);
+		return model;
+	}
+
+	/**
+	 * Build a {@link Model} whose weights come from a {@link WeightGroup}: the group is
+	 * bound to every parameter the model declares with the type {@code checkpoint}, and the
+	 * model body reads each weight from it by name.
+	 *
+	 * @param name         the model name as defined in the PDSL source
+	 * @param inputShape   the input tensor shape
+	 * @param stateDict    weight source
+	 * @param extraArgs    the model's other parameter bindings
+	 * @param requirements compute requirements applied to every constructed layer
+	 * @return the constructed Model
+	 * @throws PdslParseException if the model does not exist or declares no {@code checkpoint}
+	 *         parameter
+	 */
+	public Model buildModel(String name, TraversalPolicy inputShape, WeightGroup stateDict,
+							Map<String, Object> extraArgs, ComputeRequirement... requirements) {
+		PdslNode.ModelDef def = modelDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("Model '" + name + "' not found");
+		}
+
+		Map<String, Object> args = new HashMap<>(extraArgs);
+		boolean bound = false;
+		for (PdslNode.Parameter param : def.getParameters()) {
+			if ("checkpoint".equals(param.getTypeName())) {
+				args.put(param.getName(), stateDict);
+				bound = true;
+			}
+		}
+		if (!bound) {
+			throw new PdslParseException("Model '" + name
+					+ "' declares no checkpoint parameter to bind the weights to");
+		}
+
+		return buildModel(name, inputShape, args, requirements);
+	}
+
+	/**
+	 * Evaluate a config definition and return its entries as a map.
+	 *
+	 * @param name the config name
+	 * @return config entries as name-value pairs
+	 */
+	public Map<String, Object> evaluateConfig(String name) {
+		PdslNode.ConfigDef def = configDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("Config '" + name + "' not found");
+		}
+		Environment env = new Environment(new Build());
+		Map<String, Object> result = new HashMap<>();
+		for (Map.Entry<String, PdslNode.Expression> entry : def.getEntries().entrySet()) {
+			Object value = evaluateExpression(entry.getValue(), env);
+			result.put(entry.getKey(), value);
+			env.set(entry.getKey(), value);
+		}
+		return result;
+	}
+
+	/**
+	 * Evaluate a named data block, binding external inputs from {@code args}
+	 * and computing all derived views in declaration order.
+	 *
+	 * @param name the data block name
+	 * @param args external input values (name → value)
+	 * @return all data block entries (parameters + derivations) as a map
+	 */
+	public Map<String, Object> evaluateDataDef(String name, Map<String, Object> args) {
+		PdslNode.DataDef def = dataDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("Data block '" + name + "' not found");
+		}
+		return evaluateDefEntries(def, args);
+	}
+
+	/**
+	 * Evaluate a named state block, binding external inputs from {@code args}
+	 * and computing all derived views in declaration order.
+	 *
+	 * @param name the state block name
+	 * @param args external input values (name → value)
+	 * @return all state block entries (parameters + derivations) as a map
+	 */
+	public Map<String, Object> evaluateStateDef(String name, Map<String, Object> args) {
+		PdslNode.StateDef def = stateDefs.get(name);
+		if (def == null) {
+			throw new PdslParseException("State block '" + name + "' not found");
+		}
+		return evaluateDefEntries(def, args);
+	}
+
+	/**
+	 * Evaluates the entries of a data or state block definition by binding external inputs
+	 * from {@code args} and computing derived views in declaration order.
+	 *
+	 * @param def  the data or state block definition
+	 * @param args external input values (name → value)
+	 * @return all block entries (parameters + derivations) as a linked map preserving order
+	 */
+	private Map<String, Object> evaluateDefEntries(PdslNode.DataDef def,
+													Map<String, Object> args) {
+		Environment env = new Environment(new Build());
+		Map<String, Object> result = new LinkedHashMap<>();
+		for (PdslNode.Parameter param : def.getParameters()) {
+			if (!args.containsKey(param.getName())) {
+				throw new PdslParseException(
+						"Missing argument '" + param.getName()
+								+ "' for block '" + def.getName() + "'");
+			}
+			Object value = args.get(param.getName());
+			env.set(param.getName(), value);
+			result.put(param.getName(), value);
+		}
+		for (Map.Entry<String, PdslNode.Expression> entry : def.getDerivations().entrySet()) {
+			Object value = evaluateExpression(entry.getValue(), env);
+			env.set(entry.getKey(), value);
+			result.put(entry.getKey(), value);
+		}
+		return result;
+	}
+
+	/**
+	 * Pre-populates an environment with all entries from every data block in this
+	 * program. External inputs are resolved from {@code args}; derived views are
+	 * computed in declaration order so that earlier entries are visible to later ones.
+	 *
+	 * @param args external input values
+	 * @param env  target environment (mutated in-place)
+	 */
+	private void populateDataDefs(Map<String, Object> args, Environment env) {
+		for (PdslNode.DataDef def : dataDefs.values()) {
+			for (PdslNode.Parameter param : def.getParameters()) {
+				if (!args.containsKey(param.getName())) {
+					throw new PdslParseException(
+							"Missing argument '" + param.getName()
+									+ "' required by data block '" + def.getName() + "'");
+				}
+				env.set(param.getName(), args.get(param.getName()));
+			}
+			for (Map.Entry<String, PdslNode.Expression> entry : def.getDerivations().entrySet()) {
+				Object value = evaluateExpression(entry.getValue(), env);
+				env.set(entry.getKey(), value);
+			}
+		}
+		for (PdslNode.StateDef def : stateDefs.values()) {
+			// Skip state blocks whose parameters are not in args; this state block
+			// is not used by the layer being built and its variables need not be
+			// populated into the environment.
+			boolean allPresent = true;
+			for (PdslNode.Parameter param : def.getParameters()) {
+				if (!args.containsKey(param.getName())) {
+					allPresent = false;
+					break;
+				}
+			}
+			if (!allPresent) continue;
+
+			for (PdslNode.Parameter param : def.getParameters()) {
+				env.set(param.getName(), args.get(param.getName()));
+			}
+			for (Map.Entry<String, PdslNode.Expression> entry : def.getDerivations().entrySet()) {
+				Object value = evaluateExpression(entry.getValue(), env);
+				env.set(entry.getKey(), value);
+			}
+		}
+	}
+
+	// ---- Body interpretation ----
+
+	/**
+	 * Interprets each statement in a layer body, appending operations to the given block.
+	 *
+	 * @param stmts List of statements to execute
+	 * @param block Target sequential block
+	 * @param env   Current variable environment
+	 */
+	private void interpretBody(List<PdslNode.Statement> stmts,
+							   SequentialBlock block, Environment env) {
+		for (PdslNode.Statement stmt : stmts) {
+			interpretStatement(stmt, block, env);
+		}
+	}
+
+	/**
+	 * Interprets each statement in a model body, adding blocks or inputs to the model.
+	 *
+	 * @param stmts List of statements to execute
+	 * @param model Target model under construction
+	 * @param env   Current variable environment
+	 */
+	private void interpretModelBody(List<PdslNode.Statement> stmts,
+									Model model, Environment env) {
+		for (PdslNode.Statement stmt : stmts) {
+			if (stmt instanceof PdslNode.ExpressionStatement) {
+				Object result = evaluateExpression(
+						((PdslNode.ExpressionStatement) stmt).getExpression(), env);
+				addToModel(model, result);
+			} else if (stmt instanceof PdslNode.LetStatement) {
+				PdslNode.LetStatement let = (PdslNode.LetStatement) stmt;
+				Object value = evaluateExpression(let.getValue(), env);
+				env.set(let.getName(), value);
+			} else if (stmt instanceof PdslNode.ForStatement) {
+				PdslNode.ForStatement forStmt = (PdslNode.ForStatement) stmt;
+				int start = toInt(evaluateExpression(forStmt.getStart(), env));
+				int end = toInt(evaluateExpression(forStmt.getEnd(), env));
+				for (int i = start; i < end; i++) {
+					Environment loopEnv = new Environment(env);
+					loopEnv.set(forStmt.getVariable(), i);
+					interpretModelBody(forStmt.getBody(), model, loopEnv);
+				}
+			} else if (stmt instanceof PdslNode.StackStatement) {
+				PdslNode.StackStatement stack = (PdslNode.StackStatement) stmt;
+				for (Environment memberEnv : stackMembers(stack, env)) {
+					interpretModelBody(stack.getBody(), model, memberEnv);
+				}
+			} else {
+				throw new PdslParseException(
+						"Unsupported statement in model body: " + stmt.getClass().getSimpleName());
+			}
+		}
+	}
+
+	/**
+	 * Dispatches a single statement to its specific handler.
+	 *
+	 * @param stmt  Statement to interpret
+	 * @param block Target sequential block
+	 * @param env   Current variable environment
+	 */
+	private void interpretStatement(PdslNode.Statement stmt,
+									SequentialBlock block, Environment env) {
+		if (stmt instanceof PdslNode.ExpressionStatement) {
+			Object result = evaluateExpression(
+					((PdslNode.ExpressionStatement) stmt).getExpression(), env);
+			addToBlock(block, result);
+		} else if (stmt instanceof PdslNode.LetStatement) {
+			interpretLet((PdslNode.LetStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.BranchStatement) {
+			interpretBranch((PdslNode.BranchStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.AccumStatement) {
+			interpretAccum((PdslNode.AccumStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.ProductStatement) {
+			interpretProduct((PdslNode.ProductStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.AccumBlocksStatement) {
+			interpretAccumBlocks((PdslNode.AccumBlocksStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.ConcatBlocksStatement) {
+			interpretConcatBlocks((PdslNode.ConcatBlocksStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.ForEachChannelStatement) {
+			interpretForEachChannel((PdslNode.ForEachChannelStatement) stmt, block, env);
+		} else if (stmt instanceof PdslNode.ForStatement) {
+			PdslNode.ForStatement forStmt = (PdslNode.ForStatement) stmt;
+			int start = toInt(evaluateExpression(forStmt.getStart(), env));
+			int end = toInt(evaluateExpression(forStmt.getEnd(), env));
+			for (int i = start; i < end; i++) {
+				Environment loopEnv = new Environment(env);
+				loopEnv.set(forStmt.getVariable(), i);
+				interpretBody(forStmt.getBody(), block, loopEnv);
+			}
+		} else if (stmt instanceof PdslNode.StackStatement) {
+			PdslNode.StackStatement stack = (PdslNode.StackStatement) stmt;
+			for (Environment memberEnv : stackMembers(stack, env)) {
+				interpretBody(stack.getBody(), block, memberEnv);
+			}
+		} else if (stmt instanceof PdslNode.ReturnStatement) {
+			// Return is handled by evaluating and adding the final expression
+			Object result = evaluateExpression(
+					((PdslNode.ReturnStatement) stmt).getValue(), env);
+			addToBlock(block, result);
+		} else {
+			throw new PdslParseException(
+					"Unsupported statement: " + stmt.getClass().getSimpleName());
+		}
+	}
+
+	/**
+	 * Evaluates the weight group of a {@code stack} statement and returns one scope per member,
+	 * in the group's {@link WeightGroup#members() order}, each binding the statement's name
+	 * to that member's weights. The body is interpreted once in each scope.
+	 *
+	 * @param stack The stack statement
+	 * @param env   The scope the statement appears in
+	 * @return one scope per member of the group
+	 * @throws PdslParseException if the group is not a weight group, or has no members
+	 */
+	private List<Environment> stackMembers(PdslNode.StackStatement stack, Environment env) {
+		Object group = evaluateExpression(stack.getGroup(), env);
+		if (!(group instanceof WeightGroup)) {
+			throw new PdslParseException("stack repeats over a group of weights, such as "
+					+ "weights.model.layers, but was given "
+					+ (group == null ? "null" : group.getClass().getSimpleName())
+					+ " at line " + stack.getLine());
+		}
+
+		WeightGroup weights = (WeightGroup) group;
+		List<String> members = weights.members();
+		if (members.isEmpty()) {
+			throw new PdslParseException("stack was given a group with no weights at line " + stack.getLine());
+		}
+
+		List<Environment> scopes = new ArrayList<>();
+		for (String member : members) {
+			Environment memberEnv = new Environment(env);
+			memberEnv.set(stack.getName(), weights.group(member));
+			scopes.add(memberEnv);
+		}
+		return scopes;
+	}
+
+	/**
+	 * Interprets a {@code let} variable binding, creating an inline branch if the value
+	 * is an {@link PdslNode.InlineBlock}, or evaluating the expression otherwise.
+	 *
+	 * @param let   The let statement
+	 * @param block Target sequential block (used when value is an inline block)
+	 * @param env   Current variable environment (updated with the new binding)
+	 */
+	private void interpretLet(PdslNode.LetStatement let,
+							  SequentialBlock block, Environment env) {
+		if (let.getValue() instanceof PdslNode.InlineBlock) {
+			PdslNode.InlineBlock inlineBlock = (PdslNode.InlineBlock) let.getValue();
+			SequentialBlock branch = block.branch();
+			interpretBody(inlineBlock.getBody(), branch, new Environment(env));
+			env.set(let.getName(), branch);
+		} else {
+			Object value = evaluateExpression(let.getValue(), env);
+			env.set(let.getName(), value);
+		}
+	}
+
+	/**
+	 * Interprets a {@code branch} statement, creating a sub-block and registering it in the
+	 * environment under the branch name.
+	 *
+	 * @param branchStmt The branch statement
+	 * @param block      Target sequential block that owns the branch
+	 * @param env        Current variable environment (updated with the branch block)
+	 */
+	private void interpretBranch(PdslNode.BranchStatement branchStmt,
+								 SequentialBlock block, Environment env) {
+		SequentialBlock branch = block.branch();
+		interpretBody(branchStmt.getBody(), branch, new Environment(env));
+		if (branchStmt.getName() != null) {
+			env.set(branchStmt.getName(), branch);
+		}
+	}
+
+	/**
+	 * Interprets an {@code accum} (residual connection) statement, adding the sub-block's
+	 * output to the main block's current output.
+	 *
+	 * @param accumStmt The accumulation statement
+	 * @param block     Target sequential block
+	 * @param env       Current variable environment
+	 */
+	private void interpretAccum(PdslNode.AccumStatement accumStmt,
+								SequentialBlock block, Environment env) {
+		// Optimize: single expression → use directly as Block
+		if (accumStmt.getBody().size() == 1
+				&& accumStmt.getBody().get(0) instanceof PdslNode.ExpressionStatement) {
+			PdslNode.Expression expr =
+					((PdslNode.ExpressionStatement) accumStmt.getBody().get(0)).getExpression();
+			Object result = evaluateExpression(expr, env);
+			Block accumBlock = objectToBlock(result, block.getOutputShape());
+			block.accum(accumBlock);
+		} else {
+			SequentialBlock subBlock = new SequentialBlock(block.getOutputShape());
+			interpretBody(accumStmt.getBody(), subBlock, new Environment(env));
+			block.accum(subBlock);
+		}
+	}
+
+	/**
+	 * Interprets a {@code product} statement, computing element-wise multiplication of two
+	 * sub-blocks and appending the result to the target block.
+	 *
+	 * @param prodStmt The product statement
+	 * @param block    Target sequential block
+	 * @param env      Current variable environment
+	 */
+	private void interpretProduct(PdslNode.ProductStatement prodStmt,
+								  SequentialBlock block, Environment env) {
+		TraversalPolicy shape = block.getOutputShape();
+		Block left = expressionToBlock(prodStmt.getLeft(), shape, env);
+		Block right = expressionToBlock(prodStmt.getRight(), shape, env);
+		block.product(left, right);
+	}
+
+	/**
+	 * Interprets an {@code accum_blocks} statement by applying N sub-blocks to the
+	 * same input and accumulating their outputs element-wise.
+	 */
+	private void interpretAccumBlocks(PdslNode.AccumBlocksStatement accumStmt,
+									  SequentialBlock block, Environment env) {
+		TraversalPolicy inputShape = block.getOutputShape();
+		List<Block> subBlocks = new ArrayList<>();
+		for (PdslNode.Expression expr : accumStmt.getBlocks()) {
+			subBlocks.add(expressionToBlock(expr, inputShape, env));
+		}
+		if (subBlocks.isEmpty()) {
+			throw new PdslParseException("accum_blocks requires at least one branch body");
+		}
+		block.accum(subBlocks);
+	}
+
+	/**
+	 * Interprets a {@code concat_blocks} statement by applying N sub-blocks to the same input
+	 * and concatenating their outputs.
+	 */
+	private void interpretConcatBlocks(PdslNode.ConcatBlocksStatement concatStmt,
+										SequentialBlock block, Environment env) {
+		TraversalPolicy inputShape = block.getOutputShape();
+		List<Block> subBlocks = new ArrayList<>();
+		for (PdslNode.Expression expr : concatStmt.getBlocks()) {
+			subBlocks.add(expressionToBlock(expr, inputShape, env));
+		}
+		block.concat(subBlocks);
+	}
+
+	// ---- Expression evaluation ----
+
+	/**
+	 * Evaluates an AST expression node to a Java value.
+	 *
+	 * @param expr The expression node to evaluate
+	 * @param env  Current variable environment
+	 * @return The evaluated value (may be a Number, String, Boolean, Block, PackedCollection, etc.)
+	 */
+	private Object evaluateExpression(PdslNode.Expression expr, Environment env) {
+		if (expr instanceof PdslNode.NumberLiteral) {
+			return ((PdslNode.NumberLiteral) expr).getValue();
+		} else if (expr instanceof PdslNode.StringLiteral) {
+			return ((PdslNode.StringLiteral) expr).getValue();
+		} else if (expr instanceof PdslNode.BoolLiteral) {
+			return ((PdslNode.BoolLiteral) expr).getValue();
+		} else if (expr instanceof PdslNode.NullLiteral) {
+			return null;
+		} else if (expr instanceof PdslNode.Identifier) {
+			return resolveIdentifier(((PdslNode.Identifier) expr).getName(), env);
+		} else if (expr instanceof PdslNode.ShapeLiteral) {
+			return evaluateShape((PdslNode.ShapeLiteral) expr, env);
+		} else if (expr instanceof PdslNode.FunctionCall) {
+			return evaluateFunctionCall((PdslNode.FunctionCall) expr, env);
+		} else if (expr instanceof PdslNode.BinaryOp) {
+			return evaluateBinaryOp((PdslNode.BinaryOp) expr, env);
+		} else if (expr instanceof PdslNode.UnaryOp) {
+			return evaluateUnaryOp((PdslNode.UnaryOp) expr, env);
+		} else if (expr instanceof PdslNode.FieldAccess) {
+			return evaluateFieldAccess((PdslNode.FieldAccess) expr, env);
+		} else if (expr instanceof PdslNode.WeightRef) {
+			return evaluateWeightRef((PdslNode.WeightRef) expr, env);
+		} else if (expr instanceof PdslNode.Subscript) {
+			PdslNode.Subscript subscript = (PdslNode.Subscript) expr;
+			Object obj = evaluateExpression(subscript.getObject(), env);
+			Object indexValue = evaluateExpression(subscript.getIndex(), env);
+			if (indexValue == ALL_CHANNELS
+					&& (obj instanceof PackedCollection || obj instanceof CollectionProducer)) {
+				// Vectorized for-each: the subscript covers every channel at once, so the
+				// whole per-channel bank is handed to the primitive (wrapped, so only
+				// bank-aware primitives can accept it).
+				return new PdslChannelBank(obj, toInt(env.get("channels")));
+			}
+			if (obj instanceof PackedCollection) {
+				PackedCollection coll = (PackedCollection) obj;
+				int index = toInt(indexValue);
+				int channels = toInt(env.get("channels"));
+				int stride = coll.getShape().getSize() / channels;
+				return coll.range(new TraversalPolicy(stride), index * stride);
+			}
+			if (obj instanceof CollectionProducer) {
+				CollectionProducer producer = (CollectionProducer) obj;
+				int channels = toInt(env.get("channels"));
+				int totalSize = producer.getShape().getTotalSize();
+				if (totalSize < channels) {
+					// Scalar/sub-channel broadcast: a size-1 producer is shared
+					// across every channel, so each channel reads the same value.
+					return producer;
+				}
+				int index = toInt(indexValue);
+				int stride = totalSize / channels;
+				return producer.reshape(totalSize).subset(new TraversalPolicy(stride), index * stride);
+			}
+			throw new PdslParseException(
+					"Subscript not supported on " + (obj == null ? "null" : obj.getClass().getSimpleName()));
+		} else if (expr instanceof PdslNode.InlineBlock) {
+			return expr; // returned as-is for product args
+		} else {
+			throw new PdslParseException(
+					"Unsupported expression: " + expr.getClass().getSimpleName()
+							+ " at line " + expr.getLine());
+		}
+	}
+
+	/**
+	 * Resolves an identifier name to a value using the current environment or config definitions.
+	 * A name that is bound to {@code null} (an optional weight the caller left out, for example)
+	 * resolves to {@code null}; only a name with no binding at all is undefined.
+	 *
+	 * @param name Identifier to resolve
+	 * @param env  Current variable environment
+	 * @return The resolved value, possibly {@code null}
+	 * @throws PdslParseException If the identifier is not defined
+	 */
+	private Object resolveIdentifier(String name, Environment env) {
+		if (env.has(name)) return env.get(name);
+
+		// Check if it's a config name
+		if (configDefs.containsKey(name)) {
+			return evaluateConfig(name);
+		}
+
+		throw new PdslParseException("Undefined identifier: '" + name + "'");
+	}
+
+	/**
+	 * Evaluates a shape literal to a {@link TraversalPolicy} by resolving each dimension.
+	 *
+	 * @param shape The shape literal node
+	 * @param env   Current variable environment for dimension expressions
+	 * @return The evaluated traversal policy
+	 */
+	private TraversalPolicy evaluateShape(PdslNode.ShapeLiteral shape,
+										  Environment env) {
+		int[] dims = new int[shape.getDimensions().size()];
+		for (int i = 0; i < dims.length; i++) {
+			dims[i] = toInt(evaluateExpression(shape.getDimensions().get(i), env));
+		}
+		return new TraversalPolicy(dims);
+	}
+
+	/**
+	 * Evaluates a function call expression, dispatching to a layer the program defines, a
+	 * registered domain primitive or a built-in, in that order.
+	 *
+	 * <p>A layer the program defines is the most specific meaning of its name, so it is
+	 * resolved first: a program may name a layer after a library function and still call it
+	 * from another layer ({@code attention.pdsl} defines a layer named {@code attention}, which
+	 * {@code transformer.pdsl} calls). Registered domain primitives (audio DSP, multi-channel
+	 * routing, etc.) are looked up before built-ins so that they may shadow built-in names.</p>
+	 *
+	 * <p>A layer under construction is not a meaning of its name inside its own construction,
+	 * directly or through the layers it calls: layers are built eagerly, so reaching it again
+	 * could never finish. Such a call resolves to the registered primitive or built-in of that
+	 * name, which lets a layer wrap the library function it shadows
+	 * ({@code layer relu(...) { relu() ... }}), and is rejected when there is none.</p>
+	 *
+	 * @param call The function call node
+	 * @param env  Current variable environment
+	 * @return The result of the function call (a Block, PackedCollection, Number, etc.)
+	 */
+	private Object evaluateFunctionCall(PdslNode.FunctionCall call,
+										Environment env) {
+		String name = call.getName();
+		List<Object> args = new ArrayList<>();
+		for (PdslNode.Expression argExpr : call.getArguments()) {
+			args.add(evaluateExpression(argExpr, env));
+		}
+
+		boolean constructing = env.build.isConstructing(name);
+		if (layerDefs.containsKey(name) && !constructing) {
+			return callUserLayer(name, args, env);
+		}
+
+		PdslPrimitive<?> registered = registeredPrimitives.get(name);
+		if (registered != null) {
+			return registered.dispatch(args, new EnvContext(env));
+		}
+
+		Object builtinResult = tryCallBuiltin(name, args, env.build);
+		if (builtinResult != null) return builtinResult;
+
+		if (constructing) {
+			throw new PdslParseException("Layer '" + name + "' calls itself (" + env.build.cycle(name)
+					+ ") at line " + call.getLine() + "; layers are built eagerly, so a layer cannot"
+					+ " be constructed inside its own construction");
+		}
+
+		throw new PdslParseException(
+				"Unknown function '" + name + "' at line " + call.getLine());
+	}
+
+	/**
+	 * Evaluates a binary arithmetic operation ({@code +}, {@code -}, {@code *}, {@code /}).
+	 *
+	 * @param op  The binary operation node
+	 * @param env Current variable environment
+	 * @return The numeric result as a {@code Double}
+	 */
+	private Object evaluateBinaryOp(PdslNode.BinaryOp op, Environment env) {
+		Object left = evaluateExpression(op.getLeft(), env);
+		Object right = evaluateExpression(op.getRight(), env);
+		double l = toDouble(left);
+		double r = toDouble(right);
+		switch (op.getOperator()) {
+			case "+": return l + r;
+			case "-": return l - r;
+			case "*": return l * r;
+			case "/": return l / r;
+			default:
+				throw new PdslParseException("Unknown operator: " + op.getOperator());
+		}
+	}
+
+	/**
+	 * Evaluates a unary operation (currently only negation {@code -}).
+	 *
+	 * @param op  The unary operation node
+	 * @param env Current variable environment
+	 * @return The numeric result as a {@code Double}
+	 */
+	private Object evaluateUnaryOp(PdslNode.UnaryOp op, Environment env) {
+		Object operand = evaluateExpression(op.getOperand(), env);
+		if ("-".equals(op.getOperator())) {
+			return -toDouble(operand);
+		}
+		throw new PdslParseException("Unknown unary operator: " + op.getOperator());
+	}
+
+	/**
+	 * Evaluates a field access expression ({@code config.field}) by looking up
+	 * the field name in the evaluated object (expected to be a config map).
+	 *
+	 * @param access The field access node
+	 * @param env    Current variable environment
+	 * @return The field value from the config map
+	 */
+	private Object evaluateFieldAccess(PdslNode.FieldAccess access,
+									   Environment env) {
+		Object obj = evaluateExpression(access.getObject(), env);
+		if (obj instanceof WeightGroup) {
+			// A path into a checkpoint: weights.model.norm.weight is the tensor of that name,
+			// and weights.model.layers is the group of everything under it.
+			WeightGroup weights = (WeightGroup) obj;
+			if (weights.containsKey(access.getField())) return weights.get(access.getField());
+			WeightGroup group = weights.group(access.getField());
+			if (group.size() > 0) return group;
+			try {
+				return weights.require(access.getField());
+			} catch (IllegalArgumentException e) {
+				throw new PdslParseException(e.getMessage() + ", at line " + access.getLine());
+			}
+		}
+		if (obj instanceof Map) {
+			Object value = ((Map<String, Object>) obj).get(access.getField());
+			if (value == null) {
+				throw new PdslParseException(
+						"Field '" + access.getField() + "' not found in config");
+			}
+			return value;
+		}
+		throw new PdslParseException(
+				"Cannot access field on " + obj.getClass().getSimpleName());
+	}
+
+	/**
+	 * Evaluates a weight reference expression, returning a prefixed key string
+	 * that the caller resolves against a {@link WeightGroup}.
+	 *
+	 * @param ref The weight reference node
+	 * @param env Current variable environment
+	 * @return A {@code "weight:<key>"} string identifying the weight
+	 */
+	private Object evaluateWeightRef(PdslNode.WeightRef ref, Environment env) {
+		Object key = evaluateExpression(ref.getKeyExpression(), env);
+		// WeightRef returns the key string; the loader resolves it via a WeightGroup
+		return "weight:" + key.toString();
+	}
+
+	// ---- Built-in function dispatch ----
+
+	/**
+	 * Attempts to resolve and execute a built-in function by name. The built-in
+	 * library itself lives in {@link PdslBuiltins}; the interpreter only routes
+	 * already-evaluated arguments to it.
+	 *
+	 * @param name  Name of the function
+	 * @param args  Evaluated arguments
+	 * @param build the state of the current build, whose record of the branches already consumed as
+	 *              a {@code scaled_dot_product} operand lets that built-in reject reuse of a branch
+	 * @return The result of the built-in, or {@code null} if the name is not a built-in
+	 */
+	private Object tryCallBuiltin(String name, List<Object> args, Build build) {
+		return builtins.call(name, args, build.consumedBranchOperands);
+	}
+
+	// ---- Multi-channel statement-level dispatch ----
+	//
+	// `for each channel { ... }` is a language-level statement (a PdslNode.Statement)
+	// rather than a primitive call. The body of the per-channel sub-block is
+	// interpreted here (it requires interpretBody recursion, which is private to the
+	// interpreter), but the multi-channel block factory is delegated through
+	// {@link PdslMultiChannelDispatcher} so the interpreter does not have to know
+	// about audio-domain block construction.
+
+	/** Interprets {@code for each channel}, vectorizing the body when its primitives allow. */
+	private void interpretForEachChannel(PdslNode.ForEachChannelStatement stmt,
+										  SequentialBlock block, Environment env) {
+		if (multiChannelDispatcher == null) {
+			throw new PdslParseException(
+					"`for each channel` requires a PdslMultiChannelDispatcher to be registered "
+							+ "via PdslInterpreter.setMultiChannelDispatcher(...)");
+		}
+		int channels = toInt(env.get("channels"));
+		TraversalPolicy currentShape = block.getOutputShape();
+		int signalSize = currentShape.getDimensions() >= 2
+				? currentShape.length(currentShape.getDimensions() - 1)
+				: currentShape.getSize() / channels;
+
+		// Vectorization assumes the upstream signal actually spans `channels` rows; a
+		// rectangular route can leave a DIFFERENT channel count flowing into a later
+		// for-each, which only the per-channel dispatch handles.
+		boolean channelAligned = currentShape.getDimensions() >= 2
+				&& currentShape.length(0) == channels;
+
+		if (enableVectorizedForEach && channelAligned) {
+			// Attempt to compile the body ONCE over [channels, signalSize]: subscripted
+			// per-channel arguments resolve to whole banks, and bank-aware primitives
+			// apply them in a single computation. Any construct that cannot take the
+			// bank form rejects it, and the per-channel dispatch below applies instead.
+			try {
+				Environment bankEnv = new Environment(env);
+				bankEnv.set("channel", ALL_CHANNELS);
+				SequentialBlock bankBlock =
+						new SequentialBlock(new TraversalPolicy(channels, signalSize));
+				interpretBody(stmt.getBody(), bankBlock, bankEnv);
+				block.add(bankBlock);
+				Console.root().features(PdslInterpreter.class)
+						.log("forEachChannel vectorized=true channels=" + channels
+								+ " signalSize=" + signalSize);
+				return;
+			} catch (PdslParseException | UnsupportedOperationException
+					| IllegalArgumentException e) {
+				Console.root().features(PdslInterpreter.class)
+						.log("forEachChannel vectorized=false channels=" + channels
+								+ " signalSize=" + signalSize + " cause=" + e.getMessage());
+				// Fall through to per-channel dispatch.
+			}
+		}
+
+		TraversalPolicy singleChannelShape = new TraversalPolicy(1, signalSize);
+		List<Block> channelBlocks = new ArrayList<>();
+		for (int i = 0; i < channels; i++) {
+			Environment channelEnv = new Environment(env);
+			channelEnv.set("channel", i);
+			SequentialBlock channelBlock = new SequentialBlock(singleChannelShape);
+			interpretBody(stmt.getBody(), channelBlock, channelEnv);
+			channelBlocks.add(channelBlock);
+		}
+		block.add(multiChannelDispatcher.perChannel(channelBlocks, channels, signalSize));
+	}
+
+	// ---- User-defined layer calls ----
+
+	/**
+	 * Instantiates a user-defined layer called from another layer's (or a model's) body by
+	 * binding arguments to its parameters and interpreting its body. The called layer is
+	 * built inside the program scope of the build that reached the call, so it sees the
+	 * program's {@code data} and {@code state} entries exactly as it would if it were built
+	 * directly, and it does not see the caller's parameters or local names.
+	 *
+	 * <p>A layer that declares its input shape with a {@code -> [shape]} annotation is built for
+	 * that shape. A layer that declares none is built for the signal at the point where the call
+	 * is placed — after the stages before it in a body, or as the input of the {@code accum},
+	 * {@code product}, {@code accum_blocks} or {@code concat_blocks} that holds it — so the call
+	 * yields a factory of that shape, as a built-in does, and a layer over
+	 * {@code [batch, channels, length]} signals nests as readily as one over a {@code [1, dim]}
+	 * vector.</p>
+	 *
+	 * @param name          Name of the layer definition to call
+	 * @param evaluatedArgs Already-evaluated argument values
+	 * @param callerEnv     The environment of the call site
+	 * @return the layer ({@link Block}) when it declares its input shape, otherwise a factory
+	 *         ({@code Function<TraversalPolicy, Block>}) that builds it for the shape where it is placed
+	 */
+	private Object callUserLayer(String name, List<Object> evaluatedArgs, Environment callerEnv) {
+		PdslNode.LayerDef def = layerDefs.get(name);
+		List<PdslNode.Parameter> params = def.getParameters();
+
+		if (evaluatedArgs.size() != params.size()) {
+			throw new PdslParseException(
+					"Layer '" + name + "' expects " + params.size()
+							+ " arguments, got " + evaluatedArgs.size());
+		}
+
+		Map<String, Object> args = new HashMap<>();
+		for (int i = 0; i < params.size(); i++) {
+			args.put(params.get(i).getName(), evaluatedArgs.get(i));
+		}
+
+		Environment programScope = callerEnv.root();
+		if (def.getReturnShape() == null) {
+			return (Function<TraversalPolicy, Block>) inputShape -> buildLayer(def, inputShape, args, programScope);
+		}
+		return buildLayer(def, declaredInputShape(def, args, programScope), args, programScope);
+	}
+
+	/**
+	 * Evaluates the input shape a layer declares with its {@code -> [shape]} annotation, with the
+	 * call's arguments and the program's {@code data} and {@code state} entries in scope.
+	 *
+	 * @param def          The layer definition, which carries the annotation
+	 * @param args         Bound argument values keyed by parameter name
+	 * @param programScope The program scope the annotation may also refer to
+	 * @return The declared input {@link TraversalPolicy}
+	 */
+	private TraversalPolicy declaredInputShape(PdslNode.LayerDef def,
+											   Map<String, Object> args,
+											   Environment programScope) {
+		Environment tempEnv = new Environment(programScope);
+		for (Map.Entry<String, Object> entry : args.entrySet()) {
+			tempEnv.set(entry.getKey(), entry.getValue());
+		}
+		return evaluateShape((PdslNode.ShapeLiteral) def.getReturnShape(), tempEnv);
+	}
+
+	// ---- Block construction helpers ----
+
+	/**
+	 * Appends a computed result to a sequential block, unwrapping factory functions if needed.
+	 *
+	 * @param block  Target block
+	 * @param result Block, factory function, or other supported result type
+	 */
+	private void addToBlock(SequentialBlock block, Object result) {
+		if (result instanceof Block) {
+			block.add((Block) result);
+		} else if (result instanceof Function) {
+			block.add((Function<TraversalPolicy, ? extends Block>) result);
+		} else {
+			throw new PdslParseException(
+					"Cannot add " + (result == null ? "null" : result.getClass().getSimpleName())
+							+ " to block");
+		}
+	}
+
+	/**
+	 * Adds a computed result to a model as a block layer, unwrapping factory functions if needed.
+	 *
+	 * @param model  Target model
+	 * @param result Block or factory function to add
+	 */
+	private void addToModel(Model model, Object result) {
+		if (result instanceof Block) {
+			model.add((Block) result);
+		} else if (result instanceof Function) {
+			model.add((Function<TraversalPolicy, ? extends Block>) result);
+		} else {
+			throw new PdslParseException(
+					"Cannot add " + (result == null ? "null" : result.getClass().getSimpleName())
+							+ " to model");
+		}
+	}
+
+	/**
+	 * Evaluates an expression and wraps the result as a {@link Block} with the given input shape.
+	 *
+	 * @param expr       Expression to evaluate (may be an inline block or a named block/factory)
+	 * @param inputShape Input shape for factory-function blocks
+	 * @param env        Current variable environment
+	 * @return The resulting block
+	 */
+	private Block expressionToBlock(PdslNode.Expression expr,
+									TraversalPolicy inputShape, Environment env) {
+		if (expr instanceof PdslNode.InlineBlock) {
+			PdslNode.InlineBlock inline = (PdslNode.InlineBlock) expr;
+			SequentialBlock subBlock = new SequentialBlock(inputShape);
+			interpretBody(inline.getBody(), subBlock, new Environment(env));
+			return subBlock;
+		}
+		Object result = evaluateExpression(expr, env);
+		return objectToBlock(result, inputShape);
+	}
+
+	/**
+	 * Converts a generic object to a {@link Block}, applying factory functions if needed.
+	 *
+	 * @param result     Block or factory function
+	 * @param inputShape Input shape to pass to factory functions
+	 * @return The resulting block
+	 */
+	private Block objectToBlock(Object result, TraversalPolicy inputShape) {
+		if (result instanceof Block) return (Block) result;
+		if (result instanceof Function) {
+			Function<TraversalPolicy, ? extends Block> factory =
+					(Function<TraversalPolicy, ? extends Block>) result;
+			return factory.apply(inputShape);
+		}
+		throw new PdslParseException(
+				"Expected Block but got "
+						+ (result == null ? "null" : result.getClass().getSimpleName()));
+	}
+
+	// ---- Environment ----
+
+	/** Scoped variable environment with parent chain for PDSL layer interpretation. */
+	private static class Environment {
+		/** Variable bindings in the current scope. */
+		private final Map<String, Object> bindings = new HashMap<>();
+		/** Enclosing scope, or {@code null} for the top-level scope. */
+		private final Environment parent;
+		/** State of the build this scope belongs to, shared by every scope of that build. */
+		private final Build build;
+		/** Creates a new scope with the given enclosing scope, belonging to the same build. */
+		Environment(Environment parent) {
+			this.parent = Objects.requireNonNull(parent);
+			this.build = parent.build;
+		}
+		/** Creates the top-level scope of {@code build}. */
+		Environment(Build build) {
+			this.parent = null;
+			this.build = build;
+		}
+		/** Returns the value bound to {@code name}, walking the parent chain. */
+		Object get(String name) {
+			if (bindings.containsKey(name)) return bindings.get(name);
+			return parent != null ? parent.get(name) : null;
+		}
+		/** Returns whether {@code name} is bound in this scope or an enclosing one, even to {@code null}. */
+		boolean has(String name) {
+			if (bindings.containsKey(name)) return true;
+			return parent != null && parent.has(name);
+		}
+		/** Returns the outermost enclosing scope: the program scope of the build this scope belongs to. */
+		Environment root() { return parent == null ? this : parent.root(); }
+		/** Binds a name to a value in the current scope. */
+		void set(String name, Object value) { bindings.put(name, value); }
+	}
+
+	/**
+	 * State of one build (one {@link #buildLayer} or {@link #buildModel} call) that every layer
+	 * interpreted during it shares: the compute requirements the caller asked for, and the
+	 * layers currently under construction, outermost first.
+	 */
+	private static class Build {
+		/** Compute requirements applied to every layer the build constructs; empty for none. */
+		private final ComputeRequirement[] requirements;
+		/** Names of the layers whose bodies are being interpreted, outermost first. */
+		private final List<String> constructing = new ArrayList<>();
+		/**
+		 * Branch {@link Block}s already consumed as a {@code scaled_dot_product} operand in this
+		 * build, identified by reference. {@code compose} wires a branch in by replacing its forward
+		 * receptor, so a branch read by a second product would silently displace the first product's
+		 * consumer; {@code scaled_dot_product} adds each branch operand here and rejects a second use.
+		 */
+		private final Set<Block> consumedBranchOperands =
+				Collections.newSetFromMap(new IdentityHashMap<>());
+		/** Creates a build with the given compute requirements. */
+		Build(ComputeRequirement... requirements) { this.requirements = requirements; }
+		/** Returns whether the layer {@code name} is under construction. */
+		boolean isConstructing(String name) { return constructing.contains(name); }
+		/** Records that the body of layer {@code name} is being interpreted. */
+		void enter(String name) { constructing.add(name); }
+		/** Records that the innermost layer under construction is complete. */
+		void exit() { constructing.remove(constructing.size() - 1); }
+		/** Describes the chain of layers under construction that leads back to {@code name}. */
+		String cycle(String name) {
+			List<String> chain = new ArrayList<>(constructing.subList(constructing.indexOf(name), constructing.size()));
+			chain.add(name);
+			return String.join(" -> ", chain);
+		}
+		/** Applies the build's compute requirements, if any, to {@code block}. */
+		void applyRequirements(Block block) {
+			if (requirements.length > 0) {
+				block.setComputeRequirements(requirements);
+			}
+		}
+	}
+
+	/**
+	 * Adapter from a PDSL {@link Environment} to {@link PdslPrimitiveContext}, created
+	 * once per primitive call. Reads {@code channels} and {@code signal_size} from the
+	 * environment on demand and routes argument normalisation through
+	 * {@link PdslBuiltins#normalizeToProducer(Object, TraversalPolicy, String)}.
+	 */
+	private class EnvContext implements PdslPrimitiveContext {
+		/** The interpreter's environment from the layer being built. */
+		private final Environment env;
+
+		EnvContext(Environment env) { this.env = env; }
+
+		@Override
+		public int channels() {
+			Object value = env.get("channels");
+			if (value == null) {
+				throw new PdslParseException(
+						"Primitive requires `channels` to be defined in the PDSL environment");
+			}
+			return toInt(value);
+		}
+
+		@Override
+		public int signalSize() {
+			Object value = env.get("signal_size");
+			if (value == null) {
+				throw new PdslParseException(
+						"Primitive requires `signal_size` to be defined in the PDSL environment");
+			}
+			return toInt(value);
+		}
+
+		@Override
+		public void setChannels(int channels) {
+			env.set("channels", channels);
+		}
+
+		@Override
+		public CollectionProducer toProducer(Object value,
+															  TraversalPolicy expectedShape,
+															  String contextName) {
+			return builtins.normalizeToProducer(value, expectedShape, contextName);
+		}
+	}
+}

@@ -89,10 +89,11 @@ common/
 ├── domain/                        # Layer 3 — Domain Models
 │   ├── color/                     #   ar-color: RGB/RGBA, lighting, shaders, textures
 │   ├── heredity/                  #   ar-heredity: Genetic algorithms, evolutionary computation
-│   ├── graph/                     #   ar-graph: Neural network layers, computation graphs, autodiff
+│   ├── graph/                     #   ar-graph: Neural network layers, computation graphs, autodiff, PDSL language core
 │   ├── physics/                   #   ar-physics: Atomic structures, photon fields, rigid body dynamics
 │   ├── space/                     #   ar-space: 3D scenes, meshes, CSG, spatial acceleration
-│   └── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
+│   ├── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
+│   └── biology/                   #   ar-biology: Neurons, synapses, connectomes; biological dynamics
 │
 ├── engine/                        # Layer 4 — Applications & Training
 │   ├── optimize/                  #   ar-optimize: Adam, evolutionary algorithms, training loops
@@ -110,7 +111,8 @@ common/
 ├── studio/                        # Layer 6 — Multimedia Composition
 │   ├── music/                     #   ar-music: Pattern-based music composition
 │   ├── spatial/                   #   ar-spatial: Spatial audio visualization
-│   └── compose/                   #   ar-compose: Audio scene orchestration, arrangement
+│   ├── compose/                   #   ar-compose: Audio scene orchestration, arrangement
+│   └── bioscience/                #   ar-bioscience: Biological models combined with the ML engine
 │
 ├── flowtree/                      # Standalone (above engine) — Workflow Orchestration
 │   ├── api/                       #   ar-flowtreeapi: protocol & API abstractions
@@ -476,15 +478,14 @@ running everything, which is the pipeline's job. They are not meant to stop you 
 code you just touched, so a class, or a few classes, or a list of methods is an ordinary
 invocation. The caps below are where "a targeted check" stops and "the suite" begins.
 
-A `PreToolUse` Bash hook (`.claude/hooks/block-mvn-test-direct.sh`) also blocks a direct
-`mvn test`/`mvn integration-test` invocation, but it does not yet cover the full rule above:
-it does not block `verify`/`install`/`package`/`deploy` (which also run tests unless
-`-DskipTests` is set), does not block a bare `AR_TEST_GROUP`/`AR_TEST_GROUPS` reference, and
-has no equivalent hook for a broad `pytest`/`python -m pytest` invocation. The exact diff to
-close this gap has been recorded for a human to apply by hand — coding-agent sessions cannot
-write under `.claude/hooks/` or `.claude/settings.json`. Until that diff lands, a direct agent Bash command can still slip a
-broad Maven phase, `AR_TEST_GROUP`, or a broad pytest run past the hook layer; the three
-surfaces above remain the only ones with no bypass.
+Two `PreToolUse` Bash hooks apply the same rule to commands an agent runs directly.
+`.claude/hooks/block-mvn-test-direct.sh` blocks `mvn test`/`integration-test`, and
+`verify`/`install`/`package`/`deploy` unless `-DskipTests` (or `-Dmaven.test.skip`) is set,
+and any command that assigns `AR_TEST_GROUP`/`AR_TEST_GROUPS` (reading or searching for the
+name is not blocked). `.claude/hooks/block-pytest-broad-run.sh` blocks a `pytest`/`python -m
+pytest` run that is not a bounded selection: one with no path, with a directory, or with
+more than 5 test files or 40 node ids. Both are backstops, parsed from the command text, so
+the three surfaces above remain the only ones with no bypass.
 
 - **A bounded selection per invocation: at most 5 test classes and at most 40 named methods.**
   Naming a class is fine — `-Dtest=FooTest`, or `test_classes: ["FooTest"]` — and so is naming
@@ -586,6 +587,10 @@ Consult the linked references before writing related code.
 
 **Sampling Loops:** `DiffusionSampler` owns the loop. Never write `for (int step = 0; ...)` outside it. See [docs/internals/sampling-loop-examples.md](docs/internals/sampling-loop-examples.md).
 
+**Simulation Loops:** `SimulationRunner` owns the simulation loop for recurrent dynamical systems (neural populations, physical systems, ODE integrators). Never write `for (long step = 0; ...)` around a compiled step outside it, and never use `buffer(n)`/`Loop` for a globally coupled step. See [docs/internals/simulation-loop-examples.md](docs/internals/simulation-loop-examples.md).
+
+**Asynchronous Submission:** To run operations asynchronously, chain `Submittable.submit(dependsOn)`, keep only the latest completion, submit host code through `Submittable.of`, and call `waitFor()` once at a true host boundary. Ordering, bounds on in-flight work and thread use belong to the receiving implementation. Never inspect a `Semaphore` (its class, its backend, a "is it ordered on the device" query) to decide whether to wait, never wait before submitting, never add a caller-side "steps in flight" cap, and never add a second submit method whose meaning depends on the backend. If chaining is slow, wrong, or grows threads, a receiver is broken: find it with a thread dump and fix it there. See [docs/internals/asynchronous-submission.md](docs/internals/asynchronous-submission.md).
+
 **PackedCollection is NOT a Java Array.** It is a handle to potentially GPU-resident memory. Never use `System.arraycopy`, `Arrays.copyOf`, or tight `setMem` loops. Use the Producer pattern: `cp(source).multiply(2.0).evaluate()`. See [docs/internals/packed-collection-examples.md](docs/internals/packed-collection-examples.md).
 
 **PackedCollection and Model are AutoCloseable** via `Destroyable` (a subinterface of `AutoCloseable` in `io.almostrealism.lifecycle`). Both hold GPU/native memory that should be released when no longer needed. Use try-with-resources for short-lived local instances. Do NOT use try-with-resources when the collection or model is captured by a computation graph, stored as a field, passed to a block/layer, or returned from a method — in those cases the caller is responsible for lifecycle management. When in doubt: if you created it just to use it within a single method and it won't escape, close it.
@@ -609,7 +614,7 @@ Consult the linked references before writing related code.
 - **No utility/helper/exporter/converter classes.** If you need to add behavior that operates on an existing type, add it as a method on that type. A `PatternElement` that can produce MIDI events has a `toMidiEvents()` method — it does NOT have a `PatternMidiExporter` that operates on it from the outside. Before creating a new class, ask: "Does this behavior belong on an existing type?" If yes, add it there. New classes are for genuinely new concepts, not for wrapping operations on existing concepts. Organize code around the concepts it represents, not around the operations being performed.
 - **Module placement matters.** Code belongs in the module that matches its conceptual domain. MIDI data types and I/O are music concepts and belong in the music module, not the ML module. A model that combines ML and music belongs in a module that has both as dependencies (e.g., compose). Think about what a class *is*, not just what it *uses*.
 - **Placement is a generality decision, made BEFORE writing.** For every new method or capability, walk UP the generality ladder and stop at the highest rung where it still makes sense: (1) an equivalent may already exist — search first; (2) behavior that reads another type's state belongs on that type; (3) domain-agnostic behavior belongs in the general layer (core builtins, base features mixins), never in the domain-specific module where today's task happened to surface — a PDSL primitive that is not audio-specific belongs in the core builtin library, not the audio-side registration, even when the general home costs more edits; (4) place it where the NEXT consumer will look for it, not where today's diff is smallest. Your trained-in instinct optimizes for closing the current task; the project pays for narrow placement for years. Treat the first location that occurs to you as suspect, and be prepared to defend the placement in review — an argument about convenience or diff size is not a defense.
-- **Honor the interface, not the implementation you happen to have.** When a class's contract is expressed through an interface (it routes to, returns, or accepts `Receptor`, `Producer`, `Cell`, ...), every member of that class must remain correct for EVERY implementation of that interface. Never add a member that returns the concrete class a constructor merely adapts, never `instanceof`/cast to a particular implementation, and never write a code path that silently does nothing (or throws) unless one specific implementation is present. If the interface cannot express an operation you need, that is a design question to raise about the interface — not a license to reach around it. Enforced by `block-interface-bypass.py`.
+- **Honor the interface, not the implementation you happen to have.** When a class's contract is expressed through an interface (it routes to, returns, or accepts `Receptor`, `Producer`, `Cell`, ...), every member of that class must remain correct for EVERY implementation of that interface. Never add a member that returns the concrete class a constructor merely adapts, never `instanceof`/cast to a particular implementation, and never write a code path that silently does nothing (or throws) unless one specific implementation is present. If the interface cannot express an operation you need, that is a design question to raise about the interface — not a license to reach around it. Enforced by `block-interface-bypass.py`. The same holds for data layouts: a computation never refers to a particular `TraversalOrdering` — it respects whatever ordering its arguments carry. A new representation is a collection configured with an ordering; if an existing operation (e.g. `c(shape, collection, index)`) reads it wrongly, fix that operation — never add a parallel variant of it.
 - **A class IS what its name says.** A class named `...Model` extends the model type it names (`Model`, `AutoregressiveModel`); `...Config` is a configuration (extend `TransformerConfig` or the existing config base for that domain); `...Block`/`...Cell` implement `Block`/`Cell`. A class that builds and returns another type either *is* that type or is named `...Factory`. A class that holds weights and hands out a `Model` from `buildModel()` is neither, and has been rejected in review.
 - **Own your collaborators.** A public method must not accept, as a parameter, an object the receiver should derive from its own state. `generator(CompiledModel inference)` on a language model lets a caller pass any compiled model at all; the model compiles itself (or the generator compiles the model it is given). If an argument must correspond to `this`, `this` produces it — and then there is nothing to validate.
 - **Never reach into another object's fields, and never build an object just to pull a field out of it.** `return new SlidingWindow(inference, random).generator;` means `SlidingWindow` should have *been* the generator: extend the framework type and override its steps (add protected template-method hooks to the supertype if it has none) instead of wiring lambdas that close over a helper object.

@@ -26,25 +26,18 @@
       "command": ["python3", "tools/mcp/jmx/server.py"],
       "enabled": true
     },
-    "ar-manager": {
-      "type": "local",
-      "command": ["python3", "tools/mcp/manager/server.py"],
-      "enabled": true,
-      "env": {
-        "AR_CONTROLLER_URL": "http://mac-studio:7780"
-      }
-    },
     "onyx": {
       "type": "local",
-      "command": ["/Users/Shared/flowtree/tools/OnyxMCP"],
+      "command": ["/Users/Shared/.onyx/bin/OnyxMCP"],
       "enabled": true,
-      "env": {
+      "environment": {
         "ONYX_MCP_PORT": "19432"
       }
     }
   },
   "plugin": [
     "./plugins/block-mvn-test-direct.ts",
+    "./plugins/block-pytest-broad-run.ts",
     "./plugins/block-git-commit.ts",
     "./plugins/block-git-worktree.ts",
     "./plugins/warn-git-log.ts",

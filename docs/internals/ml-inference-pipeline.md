@@ -369,6 +369,33 @@ return AutoregressiveModel.of(
 `PackedCollection` and passed to attention as `p(position)` so the model reads the
 current step from the device.
 
+### Single-Position KV-Cache Decode for the Self-Hosted LM
+
+`KeyValueCacheAutoregressiveModel` is the cache-decode counterpart of
+`SlidingWindowAutoregressiveModel` for the self-hosted `CausalLanguageModel`. Where the
+sliding-window generator re-runs a full `(seqLen, vocabSize)` forward pass per byte, this
+generator decodes one position at a time, scoring the new position against each layer's
+cached keys and values. It is a dedicated `AutoregressiveModel<Integer>` subclass rather
+than an `of()` wrapper because the per-layer caches live inside the compiled decode model
+(the attention layer allocates them), and `reset()` must clear them so a new sequence does
+not read a previous one's cached entries — a handle the `of()` factory, which owns only its
+input buffer, position, temperature and sampling, does not have.
+
+The decode model is built by `CausalLanguageModel.decodeModel`, which the generator compiles
+and owns. It bridges the trained weight layout to the cached `AttentionFeatures.attention`
+overloads without copying a weight: the fused QKV `(3·dim, dim)` weight of each block is
+exposed as three contiguous `(dim, dim)` query, key and value views (sections 0, 1 and 2, as
+the full-sequence `sequence_attention` slices them), and the position-indexed rotary
+`freqCis` the cached overload expects is derived from the stored `rope_inv_freq` with
+`RotationFeatures.computeRopeFreqs(seqLen, invFreq)`. That rotation equals the one the
+full-sequence `sequence_rope` applies at the same row (both use the split-half convention
+with angle `position · invFreq[i]`), so greedy decoding agrees with the full forward. The
+feed-forward, final normalization, output projection and log-softmax are the trained ones.
+No weights are copied: the decode variant is built over the model's own `StateDictionary`,
+which stays the caller's, exactly as a second training compilation would be. Because each
+layer's cache is a fixed `(seqLen, dim)` that does not slide, the decode is bounded to
+`seqLen` positions; longer generation uses the sliding window.
+
 ### Two-Phase Operation
 
 The `next()` method of `AutoregressiveModel` implements two distinct phases:
@@ -903,6 +930,18 @@ the soft-capped `sequence_attention_softcapped` layer, then an `accum` around th
 layer of `feed_forward.pdsl` with a GELU gate, each sub-layer sandwiched between two RMS norms that
 share the checkpoint's one epsilon. `T5GemmaEncoder` binds each layer's weights, the prompt mask (as
 the key mask) and an all-ones value mask, and builds that layer once per layer.
+
+The learned-resampling transformer of the SAME autoencoder
+(`TransformerResamplingFeatures.resamplingLayerBlock`) is a layer of
+`engine/ml/src/main/resources/pdsl/resampling_transformer.pdsl`: a `dynamic_tanh` pre-norm and the
+fused projection of five sections laid out `Q1 K1 V Q2 K2`, then `accum_blocks` over two
+`attention_map_qk_dyt` maps of `differential_attention.pdsl` (the second negated, a lambda of one),
+the head merge and the output projection, all inside an `accum`; then an `accum` around a
+`dynamic_tanh` norm and the `glu_feed_forward` layer of `feed_forward.pdsl` with a SiLU gate. Every
+attention chunk is a batch entry of the attention. `resamplingLayerBlock` binds the chunk geometry,
+the layer's group of the checkpoint (each stage reads its tensors by path), the groups of the two
+feed-forward projections and an all-ones mask; `addResamplingTransformerStack` builds one layer per
+layer, the second half of them over chunks shifted by half a chunk.
 
 ---
 
