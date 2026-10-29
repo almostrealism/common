@@ -94,8 +94,10 @@ import java.util.function.Consumer;
 public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements ConsoleFeatures {
 	/**
 	 * Maximum submissions that may be held behind a foreign dependency before a further submission
-	 * that would be held waits, on its submitting thread, for room. A resource bound, not a
-	 * behavioural switch: it caps the memory held submissions and their reservations pin.
+	 * that would be held waits, on its submitting thread, for room. A submission made from a
+	 * completion callback is held beyond the bound instead, since the completion thread must not
+	 * wait for room (see the class documentation). A resource bound, not a behavioural switch: it
+	 * caps the memory held submissions and their reservations pin.
 	 */
 	public static final int MAX_HELD = 4096;
 

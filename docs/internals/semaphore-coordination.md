@@ -109,6 +109,9 @@ protected members of the stream, so they are reachable only from the runner itse
   so none is admitted after the runner found itself idle), and the hold bound (how many units of
   work may wait for a foreign dependency before a further submission that would add one waits on
   its submitting thread: `MAX_HELD` command buffers on Metal, `MAX_HELD` submissions on CUDA).
+  A runner never waits for room on its own thread: Metal refuses submission from its executor
+  thread outright, and CUDA holds a submission made from a completion callback beyond the bound,
+  since the dependency that frees room may need the completion thread to observe earlier work.
   Completions of a stream implement `StreamCompletion`, which records a failure at its own
   ordinal (`recordFailure`) and reports the recorded failure that covers it
   (`getRecordedFailure`).
