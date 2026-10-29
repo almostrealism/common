@@ -437,6 +437,70 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	}
 
 	/**
+	 * A sample whose loss is undefined is skipped by chained training: its loss gradient is
+	 * computed, but no backward pass is issued for it and it does not count toward the average
+	 * loss, so the epoch leaves the same parameters, and reports the same loss, as a blocking
+	 * epoch over the remaining samples.
+	 */
+	@Test(timeout = 120000)
+	public void undefinedLossSampleIsSkipped() {
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(8);
+		MeanSquaredError mse = new MeanSquaredError(shape(3).traverseEach());
+
+		PackedCollection referenceWeights = initialWeights();
+		double referenceLoss = blockingEpoch(denseModel(referenceWeights), mse, samples);
+
+		PackedCollection nanInput = new PackedCollection(shape(4));
+		nanInput.randnFill(random);
+		List<ValueTarget<PackedCollection>> withUndefined = new ArrayList<>(samples);
+		withUndefined.add(3, ValueTarget.of(nanInput, pack(1.0, Double.NaN, 0.5)));
+
+		PackedCollection trainedWeights = initialWeights();
+		ModelOptimizer optimizer = new ModelOptimizer(denseModel(trainedWeights), () -> Dataset.of(withUndefined));
+		optimizer.setLossFunction(mse);
+		optimizer.setLogFrequency(0);
+		TrainingResult result = optimizer.optimize(1);
+
+		assertEquals(referenceLoss / samples.size(), result.getFinalTrainLoss(), 1e-6);
+		Assert.assertFalse(Double.isNaN(result.getFinalTrainLoss()));
+		assertEquals(referenceWeights, trainedWeights);
+	}
+
+	/**
+	 * When a sample fails partway through a chained epoch, the failure reaches the caller, and
+	 * the backward passes issued for the earlier samples, which were not waited for, have all
+	 * completed by then: the parameters equal those of a blocking epoch over the samples before
+	 * the failing one.
+	 */
+	@Test(timeout = 120000)
+	public void failureMidEpochSettlesIssuedPasses() {
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(6);
+		MeanSquaredError mse = new MeanSquaredError(shape(3).traverseEach());
+
+		PackedCollection referenceWeights = initialWeights();
+		blockingEpoch(denseModel(referenceWeights), mse, samples);
+
+		List<ValueTarget<PackedCollection>> failing = new ArrayList<>(samples);
+		failing.add(ValueTarget.of(new PackedCollection(shape(5)), pack(0.1, 0.2, 0.3)));
+		failing.addAll(regressionSamples(2));
+
+		PackedCollection trainedWeights = initialWeights();
+		ModelOptimizer optimizer = new ModelOptimizer(denseModel(trainedWeights), () -> Dataset.of(failing));
+		optimizer.setLossFunction(mse);
+		optimizer.setLogFrequency(0);
+
+		try {
+			optimizer.optimize(1);
+			Assert.fail("Training accepted an input of the wrong shape");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("shape mismatch"));
+		}
+
+		Assert.assertTrue("Training did not change the weights", compare(initialWeights(), referenceWeights) > 1e-4);
+		assertEquals(referenceWeights, trainedWeights);
+	}
+
+	/**
 	 * Asserts that {@code action}, which issues the named {@code pass}, throws an
 	 * {@link IllegalArgumentException}.
 	 */
