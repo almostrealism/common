@@ -595,6 +595,50 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Returns every balanced JSON object — each {@code {...}} that is not
+	 * contained within an object already returned — found in {@code s}, in the
+	 * order they appear.
+	 *
+	 * <p>Braces inside string literals are ignored via the same
+	 * {@link #skipString(CharSequence, int)} scan the other structural lookups
+	 * use, so a {@code '{'} or {@code '}'} inside a string value neither starts
+	 * nor ends an object. This is the string-aware counterpart to a raw
+	 * brace-depth scan, which miscounts depth at a literal brace and so fails
+	 * to locate an object whose string values carry one — {@code {"note":"a } b"}}
+	 * is a single balanced object, not a truncated one.</p>
+	 *
+	 * <p>An object nested inside a returned object is part of that object and is
+	 * not returned separately; an object that appears inside an array element is
+	 * returned, since the array is not itself an object the scan descends into.
+	 * An unbalanced trailing {@code '{'} with no matching {@code '}'} ends the
+	 * scan, so the objects found before it are still returned.</p>
+	 *
+	 * @param s the source text; {@code null} yields an empty list
+	 * @return the balanced JSON objects in document order
+	 */
+	public static List<String> topLevelObjects(CharSequence s) {
+		List<String> objects = new ArrayList<>();
+		if (s == null) return objects;
+
+		int i = 0;
+		while (i < s.length()) {
+			char c = s.charAt(i);
+			if (c == '"') {
+				i = skipString(s, i);
+			} else if (c == '{') {
+				int end = matchingDelimiter(s, i, '{', '}');
+				if (end < 0) break;
+				objects.add(s.subSequence(i, end + 1).toString());
+				i = end + 1;
+			} else {
+				i++;
+			}
+		}
+
+		return objects;
+	}
+
+	/**
 	 * Escapes a string for safe inclusion in a JSON string literal. The
 	 * encoding itself is {@link JsonString#escaped()}, shared with JSON
 	 * writers outside flowtree; this entry point remains because it is where
