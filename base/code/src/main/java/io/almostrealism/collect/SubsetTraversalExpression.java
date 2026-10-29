@@ -193,12 +193,13 @@ public class SubsetTraversalExpression implements ConsoleFeatures {
 	 * shared index computation used both by {@link #getInputIndex(Expression, Expression)} and
 	 * by {@link SubsetTraversalIndexMapping#getValueAt(Expression)}.
 	 *
+	 * @param <T>           the static type of the group member label at the call site
 	 * @param member        a label identifying the group member, used only for diagnostic logging
 	 * @param groupPosition the member's position coordinates within the group window
 	 * @param outputIndex   the flat output index expression
 	 * @return the flat operand index expression
 	 */
-	protected Expression getInputIndex(Object member, Expression[] groupPosition, Expression<?> outputIndex) {
+	protected <T> Expression getInputIndex(T member, Expression[] groupPosition, Expression<?> outputIndex) {
 		Expression[] subsetPosition = getPositionOfGroup(outputIndex);
 
 		if (enableLogging) {
