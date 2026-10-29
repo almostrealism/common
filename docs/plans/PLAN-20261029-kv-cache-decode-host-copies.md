@@ -41,7 +41,7 @@ The path that does far less arithmetic issues *more* kernels, dispatches and com
 byte. The benchmark attributed the cause (`MetalCommandRunner.hostCompleteRequesters`
 delta, logged as `commitForcingWaits=`): the cache path takes **~30 host-blocking buffer
 copies per byte** attributed to `mtlCopy` (`MetalComputeContext.copy`), plus a batch of
-waits attributed to a `collectionConcatenate` computation — against **1** `mtlCopy` per
+waits attributed to a `concat` computation (`CollectionConcatenateComputation`) — against **1** `mtlCopy` per
 byte on the sliding path (the token load). Each host-waiting copy drains the open Metal
 command buffer and forces a commit, so the GPU never overlaps work with the CPU encoding
 the next step: the decode is dispatch- and host-wait-bound, not arithmetic-bound.
@@ -67,7 +67,7 @@ Concrete, actionable items:
 2. **Locate the ~30 host-blocking copies in the compiled decode graph** using
    `ar-profile-analyzer` on the benchmark's recorded operation profile (Rule 3b:
    profile-analyzer before any hand-instrumentation). Read the generated kernel source and
-   argument bindings to attribute each `mtlCopy`/`collectionConcatenate` host wait to a
+   argument bindings to attribute each `mtlCopy`/`concat` host wait to a
    construct in `attention.pdsl`. The candidates named by the measurement are the
    `branch keys` / `branch values` stages — `dense → rotate_heads/reshape → repeat_each →
    cache_write(cache, position)` — and the residual wrappers that join a branch's output
@@ -76,7 +76,7 @@ Concrete, actionable items:
    so `repeat_each(heads / kv_heads)` is `repeat_each(1)`, which `attention.pdsl` documents
    as passing the rows through untouched. The ~30 measured copies therefore cannot come from
    `repeat_each` in this config — the live candidates here are `cache_write`, the `reshape`
-   view on the values branch, the branch/residual joins and the `collectionConcatenate`.
+   view on the values branch, the branch/residual joins and the `concat` operation.
    `repeat_each` is only active, and so only a candidate, for grouped-query models.
 
 3. **Remove or batch those copies** so they stop host-blocking. The target is that each
@@ -122,7 +122,8 @@ Concrete, actionable items:
   execution ordering — read it off the generated source.
 
 - **Fix at the construct, not at the caller.** When a host-blocking copy is traced to a
-  PDSL builtin (`cache_write`, `repeat_each`, a reshape view, `collectionConcatenate`),
+  PDSL builtin (`cache_write`, `repeat_each`) or a lower-level collection computation (a
+  reshape view, the `concat` of `CollectionConcatenateComputation`),
   the fix belongs on that construct / its lowering so every model that uses the
   `attention` layer family benefits — `Llama2`, `SkyTntMidi`, `MoonbeamMidi`, `Qwen3` all
   decode through `attention.pdsl`. Avoid a decode-model-specific special case.

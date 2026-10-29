@@ -64,7 +64,7 @@ hands this cycle a decode graph whose cache buffers have a clear owner.
   `CausalLanguageModelDecodeThroughputTest` measured the premise the whole key/value-cache cycle rode
   on and found it false: the cache decode, which does 1/64th of the arithmetic per byte, is ~4× slower
   than the sliding window on Metal (~50 vs ~190 bytes/s), because it issues ~30 host-blocking `mtlCopy`
-  waits per byte (plus a `collectionConcatenate` batch) where the sliding path issues one. Each host
+  waits per byte (plus a `concat` batch) where the sliding path issues one. Each host
   wait drains the open command buffer and forces a commit, so the decode is dispatch/host-wait bound.
 - **Proof of value — live, deliberately deferred.** The sliding (rolling) key/value cache only
   matters once the cache path beats the sliding window at every length, which is what this task
