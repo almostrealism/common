@@ -1,0 +1,47 @@
+/**
+ * Per-frame linear projection of a channels-first sequence: the learned map that changes the
+ * channel count of a [batch, channels, length] tensor while leaving the length untouched, applied
+ * independently at every position. This is the "mapping" / "latent projection" that sits between a
+ * channels-first transformer width and a latent width in a transformer audio autoencoder (the
+ * encoder's channels -> latent map and the decoder's latent -> channels map of the SAME autoencoder).
+ *
+ * This file replaces the Java assembly that used to live in SAMEAutoEncoder.channelProjection, which
+ * built a single layer whose body was a permute of the last two axes, a linear (dense) projection and
+ * a permute back. SAMEAutoEncoder.channelProjection now only reads the projection's weight (and
+ * optional bias) from the checkpoint, binds them, and builds one of the layers below, so there is one
+ * definition of the structure and it is here. SAMEAutoEncoder.encoder and SAMEAutoEncoder.decoder each
+ * still place this projection in their stage sequence in Java, once per direction.
+ *
+ * A dense projects the last axis, but the sequence is channels-first, so the projection is bracketed
+ * by two transposes: swap the channel and length axes so the channels are last, project the channels,
+ * then swap them back. The weight has PyTorch-linear orientation [out, in] and the projection is
+ * y = x . weight^T (+ bias); the optional bias is a per-output-channel vector of shape [out].
+ */
+
+/**
+ * Projection with a bias. [batch, in, length] -> [batch, out, length].
+ *
+ *   permute    channels-first -> channels-last (swap the last two axes)   [batch, length, in]
+ *   dense      per-position linear map over the channel axis, + bias      [batch, length, out]
+ *   permute    channels-last -> channels-first (swap the last two axes)   [batch, out, length]
+ */
+layer channel_projection(projection: checkpoint) {
+    permute(0, 2, 1)
+    dense(projection.weight, projection.bias)
+    permute(0, 2, 1)
+}
+
+/**
+ * Projection without a bias; otherwise identical to channel_projection. The bias is a separate layer
+ * body rather than a flag so that a reader sees which form a given checkpoint uses.
+ * [batch, in, length] -> [batch, out, length].
+ *
+ *   permute    channels-first -> channels-last (swap the last two axes)   [batch, length, in]
+ *   dense      per-position linear map over the channel axis              [batch, length, out]
+ *   permute    channels-last -> channels-first (swap the last two axes)   [batch, out, length]
+ */
+layer channel_projection_no_bias(projection: checkpoint) {
+    permute(0, 2, 1)
+    dense(projection.weight)
+    permute(0, 2, 1)
+}
