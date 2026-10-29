@@ -214,6 +214,28 @@ public class LatchSemaphore implements Semaphore {
 	}
 
 	/**
+	 * Blocks until the latch has been counted down to zero, without rethrowing a recorded
+	 * failure and without settling a composite's members.
+	 *
+	 * <p>This is the wait of the party that performs the guarded work, not of its consumers: a
+	 * coordinator that must know every piece of the work has finished (to release resources
+	 * held for it) while the failure it may have recorded with {@link #fail(Throwable)} belongs
+	 * to the semaphore's waiters, who receive it from {@link #waitFor()}. An interrupt ends the
+	 * wait early with the interrupt status set.</p>
+	 *
+	 * @return true once the latch has reached zero, false if the wait was interrupted
+	 */
+	public boolean awaitCountDown() {
+		try {
+			latch.await();
+			return true;
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return false;
+		}
+	}
+
+	/**
 	 * Registers {@code r} to run on {@link Semaphore#CALLBACK_EXECUTOR} once the latch reaches
 	 * zero, whether the guarded work completed or failed, without holding a thread meanwhile.
 	 * The callback runs promptly, because the latch is counted down by the work itself. A latch
