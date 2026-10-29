@@ -17,6 +17,7 @@
 package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.SubsetTraversalExpression;
+import io.almostrealism.collect.SubsetTraversalIndexMapping;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.WeightedSumDeltaExpression;
 import io.almostrealism.expression.Expression;
@@ -107,5 +108,86 @@ public class SubsetTraversalTests extends TestSuiteBase {
 		Expression<?> filterIndex = exp.getValueAt(e(index));
 		log(filterIndex.getExpressionSummary());
 		Assert.assertEquals("2", filterIndex.getExpressionSummary());
+	}
+
+	/**
+	 * Pins the operand index expression produced by
+	 * {@link SubsetTraversalIndexMapping#getValueAt(Expression)} for every group member and
+	 * output index of a simple 2D geometry. With a {@code 4x2} operand traversed by a
+	 * {@code 1x2} window, the flat operand index for member {@code m} and output row
+	 * {@code o} is {@code o * 2 + m}; each index folds to a constant expression.
+	 */
+	@Test(timeout = 10000)
+	public void indexMappingConstants() {
+		TraversalPolicy resultShape = shape(4, 1);
+		TraversalPolicy operandShape = shape(4, 2);
+		TraversalPolicy groupShape = shape(1, 2);
+		TraversalPolicy positions = shape(4, 1);
+
+		for (int member = 0; member < groupShape.getTotalSize(); member++) {
+			SubsetTraversalIndexMapping mapping =
+					new SubsetTraversalIndexMapping(resultShape, operandShape, groupShape, positions, member);
+
+			for (int output = 0; output < resultShape.getTotalSize(); output++) {
+				String child = mapping.getValueAt(e(output)).getExpressionSummary();
+				Assert.assertEquals(String.valueOf(output * 2 + member), child);
+			}
+		}
+	}
+
+	/**
+	 * Pins the invariant that {@link SubsetTraversalIndexMapping#getValueAt(Expression)} for a
+	 * fixed group member produces the same operand index expression as the parent
+	 * {@link SubsetTraversalExpression#getInputIndex(Expression, Expression)} invoked with that
+	 * member index. The two share the same index geometry; this asserts they stay in agreement
+	 * across both a simple 2D traversal and a 5D convolution traversal.
+	 */
+	@Test(timeout = 10000)
+	public void indexMappingMatchesParent() {
+		assertMappingMatchesParent(shape(4, 1), shape(4, 2), shape(1, 2), shape(4, 1));
+
+		int batch = 1;
+		int channels = 1;
+		int height = 4;
+		int width = 4;
+		int filterCount = 1;
+		int size = 2;
+		int outHeight = 3;
+		int outWidth = 3;
+
+		TraversalPolicy convResult = shape(batch, filterCount, 1, outHeight, outWidth);
+		TraversalPolicy convPositions = convResult
+				.withRate(1, 1, filterCount)
+				.withRate(2, channels, 1);
+		TraversalPolicy convOperand = shape(batch, 1, channels, height, width);
+		TraversalPolicy convGroup = shape(1, 1, channels, size, size);
+
+		assertMappingMatchesParent(convResult, convOperand, convGroup, convPositions);
+	}
+
+	/**
+	 * Asserts that the per-member index mapping agrees with the parent's {@code getInputIndex}
+	 * for every group member and output index of the supplied geometry.
+	 *
+	 * @param resultShape  the output shape of the traversal
+	 * @param operandShape the operand collection shape
+	 * @param groupShape   the sliding window shape
+	 * @param positions    the anchor positions of the window over the operand
+	 */
+	private void assertMappingMatchesParent(TraversalPolicy resultShape, TraversalPolicy operandShape,
+											TraversalPolicy groupShape, TraversalPolicy positions) {
+		SubsetTraversalExpression parent =
+				new SubsetTraversalExpression(resultShape, operandShape, groupShape, positions);
+
+		for (int member = 0; member < groupShape.getTotalSize(); member++) {
+			SubsetTraversalIndexMapping mapping =
+					new SubsetTraversalIndexMapping(resultShape, operandShape, groupShape, positions, member);
+
+			for (int output = 0; output < resultShape.getTotalSize(); output++) {
+				String child = mapping.getValueAt(e(output)).getExpressionSummary();
+				String viaParent = parent.getInputIndex(e(member), e(output)).getExpressionSummary();
+				Assert.assertEquals("member=" + member + " output=" + output, viaParent, child);
+			}
+		}
 	}
 }
