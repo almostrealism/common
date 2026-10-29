@@ -74,9 +74,9 @@ def _require_person(tool: str) -> None:
     """Raise :class:`PermissionError` when an agent job calls a tool left to
     people.
 
-    The Claude Code harness never offers these tools to an agent, but a harness
-    that filters by server rather than by tool would, so the refusal is made
-    here as well.
+    Neither harness offers these tools to an agent, since neither allowlist
+    names them, but the server does not rely on every harness honouring the
+    allowlist, so the refusal is made here as well.
     """
     if server._get_token_workstream_id():
         raise PermissionError(
