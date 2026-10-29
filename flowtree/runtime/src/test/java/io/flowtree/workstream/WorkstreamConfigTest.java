@@ -308,7 +308,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
      * Verifies that {@code planInstructions} set on a live {@link Workstream}
      * is persisted into its config entry and survives a save-and-reload
      * round-trip back into a {@link Workstream}. This exercises both the
-     * {@link Workstream}-to-entry copy ({@code populateEntry}) and the
+     * {@link Workstream}-to-entry copy ({@code WorkstreamEntry.populateFrom}) and the
      * entry-to-{@link Workstream} mapping ({@code toWorkstream}) that persist
      * this branch's original-intent record.
      */

@@ -64,7 +64,8 @@ branches — goes through `workstream_register` directly:
 - `workstream_register(..., plan_instructions=...)` when the operator wants an
   agent to write the plan from a natural-language brief: a coding job is
   submitted to draft and commit it. `plan_instructions` is also persisted on
-  the workstream (returned by `workstream_list`, updatable via
+  the workstream, in the controller's workstream metadata database rather than
+  the workstreams YAML (returned by `workstream_list`, updatable via
   `workstream_update_config`) as a record of the intent that seeded the
   work — not a specification anything verifies against.
 

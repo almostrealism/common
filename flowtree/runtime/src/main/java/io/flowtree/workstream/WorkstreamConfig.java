@@ -67,6 +67,15 @@ import io.flowtree.submission.SubmissionRunnerResolver;
  *     gitUserEmail: "ci-bot@example.com"
  * </pre>
  *
+ * <p>The YAML holds workstream <em>configuration</em> only. Workstream
+ * <em>metadata</em>, such as plan instructions, is kept in a
+ * {@link WorkstreamMetadataStore}, whose documentation states the rule a field
+ * is classified by. Once a store is attached ({@link #attachMetadataStore}),
+ * {@link #toWorkstreams()} reads metadata from it and {@link #syncAndSave}
+ * writes it there before the YAML. Without a store (a configuration built in
+ * code, or a database that could not be opened) metadata stays in the YAML
+ * entry, so nothing is ever dropped.</p>
+ *
  * @author Michael Murray
  * @see Workstream
  */
@@ -108,7 +117,12 @@ public class WorkstreamConfig {
      */
     private List<WorkspaceEntry> workspaces = new ArrayList<>();
 
-
+    /**
+     * Where workstream metadata is persisted, or {@code null} when it stays in
+     * the YAML entries. Never serialized.
+     */
+    @JsonIgnore
+    private WorkstreamMetadataStore metadataStore;
 
     /**
      * Configuration entry for a single workstream.
@@ -158,6 +172,11 @@ public class WorkstreamConfig {
          * workstream. See {@link Workstream#getPlanInstructions()} for the full
          * semantics — this is a record of how the work began, not a specification
          * the branch must conform to.
+         *
+         * <p>This is metadata, not configuration: it is held here only until a
+         * {@link WorkstreamMetadataStore} is attached, which moves it out of the
+         * YAML (see {@link WorkstreamConfig#attachMetadataStore}). A YAML written
+         * before the store existed still loads with it.</p>
          */
         private String planInstructions;
         /**
@@ -599,6 +618,58 @@ public class WorkstreamConfig {
             }
             return ws;
         }
+
+        /**
+         * Copies every mutable field from a live {@link Workstream} onto this
+         * entry, the inverse of {@link #toWorkstream()}. Shared by
+         * {@link WorkstreamConfig#addWorkstream} (which creates a new entry) and
+         * {@link WorkstreamConfig#syncFromWorkstreams} (which updates an existing
+         * one) so the canonical field list is maintained in exactly one place.
+         *
+         * @param ws              the live workstream whose current state to copy
+         * @param includeMetadata whether to copy the workstream's metadata as
+         *                        well; {@code false} when a
+         *                        {@link WorkstreamMetadataStore} holds it, in
+         *                        which case this entry carries none
+         */
+        void populateFrom(Workstream ws, boolean includeMetadata) {
+            setWorkstreamId(ws.getWorkstreamId());
+            setChannelId(ws.getChannelId());
+            setChannelName(ws.getChannelName());
+            setDefaultBranch(ws.getDefaultBranch());
+            setBaseBranch(ws.getBaseBranch());
+            setPushToOrigin(ws.isPushToOrigin());
+            setWorkingDirectory(ws.getWorkingDirectory());
+            setRepoUrl(ws.getRepoUrl());
+            setAllowedTools(ws.getAllowedTools());
+            setMaxTurns(ws.getMaxTurns());
+            setMaxBudgetUsd(ws.getMaxBudgetUsd());
+            setGitUserName(ws.getGitUserName());
+            setGitUserEmail(ws.getGitUserEmail());
+            setEnv(ws.getEnv());
+            setPlanningDocument(ws.getPlanningDocument());
+            setPlanInstructions(includeMetadata ? ws.getPlanInstructions() : null);
+            setGithubOrg(ws.getGithubOrg());
+            setDependentRepos(ws.getDependentRepos());
+            setRequiredLabels(ws.getRequiredLabels());
+            setWorkspaceId(ws.getWorkspaceId());
+            setDefaultRunner(ws.getDefaultRunner());
+            setRunners(ws.getRunners());
+            // Per-phase configuration round-trips through phaseConfigs alone: the
+            // legacy runners map is write-only and no longer serialized, so a
+            // per-phase runner not carried by the bundle would be lost on save.
+            PhaseConfigBundle bundle = ws.getPhaseConfigBundle();
+            (bundle == null ? PhaseConfigBundle.EMPTY : bundle)
+                    .applyTo(this);
+            setArchived(ws.isArchived());
+            setCompletionListeners(ws.getCompletionListeners());
+            setAgentPermissionBypassBranches(ws.getAgentPermissionBypassBranches());
+            setDispatchCapable(ws.isDispatchCapable());
+            setTrackerCapabilities(ws.getTrackerCapabilities());
+            setUseTmux(ws.isUseTmux());
+            setMaxWallClockHours(ws.getMaxWallClockHours());
+            setDormantForCompletionListeners(ws.isDormantForCompletionListeners());
+        }
     }
 
     /**
@@ -840,10 +911,7 @@ public class WorkstreamConfig {
      * @throws IOException if the file cannot be read or parsed
      */
     public static WorkstreamConfig loadFromYaml(File file) throws IOException {
-        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        WorkstreamConfig config = mapper.readValue(file, WorkstreamConfig.class);
-        config.validateWorkspaceRunners();
-        return config;
+        return new ObjectMapper(new YAMLFactory()).readValue(file, WorkstreamConfig.class).validated();
     }
 
     /**
@@ -854,10 +922,7 @@ public class WorkstreamConfig {
      * @throws IOException if the stream cannot be read or parsed
      */
     public static WorkstreamConfig loadFromYaml(InputStream inputStream) throws IOException {
-        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        WorkstreamConfig config = mapper.readValue(inputStream, WorkstreamConfig.class);
-        config.validateWorkspaceRunners();
-        return config;
+        return new ObjectMapper(new YAMLFactory()).readValue(inputStream, WorkstreamConfig.class).validated();
     }
 
     /**
@@ -868,10 +933,7 @@ public class WorkstreamConfig {
      * @throws IOException if the content cannot be parsed
      */
     public static WorkstreamConfig loadFromYamlString(String yaml) throws IOException {
-        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        WorkstreamConfig config = mapper.readValue(yaml, WorkstreamConfig.class);
-        config.validateWorkspaceRunners();
-        return config;
+        return new ObjectMapper(new YAMLFactory()).readValue(yaml, WorkstreamConfig.class).validated();
     }
 
     /**
@@ -882,10 +944,7 @@ public class WorkstreamConfig {
      * @throws IOException if the file cannot be read or parsed
      */
     public static WorkstreamConfig loadFromJson(File file) throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
-        WorkstreamConfig config = mapper.readValue(file, WorkstreamConfig.class);
-        config.validateWorkspaceRunners();
-        return config;
+        return new ObjectMapper().readValue(file, WorkstreamConfig.class).validated();
     }
 
     /**
@@ -896,10 +955,18 @@ public class WorkstreamConfig {
      * @throws IOException if the content cannot be parsed
      */
     public static WorkstreamConfig loadFromJsonString(String json) throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
-        WorkstreamConfig config = mapper.readValue(json, WorkstreamConfig.class);
-        config.validateWorkspaceRunners();
-        return config;
+        return new ObjectMapper().readValue(json, WorkstreamConfig.class).validated();
+    }
+
+    /**
+     * Validates this just-parsed configuration, shared by every loader above.
+     *
+     * @return this configuration
+     * @throws IOException if a workspace names an unknown runner
+     */
+    private WorkstreamConfig validated() throws IOException {
+        validateWorkspaceRunners();
+        return this;
     }
 
     /**
@@ -1053,7 +1120,69 @@ public class WorkstreamConfig {
         for (WorkstreamEntry entry : workstreams) {
             result.add(entry.toWorkstream());
         }
+        if (metadataStore != null) metadataStore.loadMetadata(result);
         return result;
+    }
+
+    /**
+     * Attaches the store that holds workstream metadata, and moves any metadata
+     * still held in this configuration's YAML entries into it.
+     *
+     * <p>The move is ordered so that a failure at any point loses nothing:
+     * the values are committed to the store first, as one transaction, and
+     * only then are they removed from the entries and {@code file} rewritten
+     * (atomically, by {@link #saveToYaml}). When the store write fails the
+     * store is detached again and the entries keep their values, so the
+     * controller continues on the YAML exactly as before. When the YAML
+     * rewrite fails the values are already in the store, and the next start
+     * moves them again — an idempotent upsert of identical values.</p>
+     *
+     * <p>Attaching to a configuration whose YAML holds no metadata — every
+     * start after the first — writes nothing and does not rewrite the file.</p>
+     *
+     * @param store the open metadata store
+     * @param file  the YAML file this configuration was loaded from, rewritten
+     *              without the moved values; {@code null} skips the rewrite
+     * @return the number of workstreams whose metadata was moved
+     * @throws IOException when the store write or the YAML rewrite fails
+     */
+    public synchronized int attachMetadataStore(WorkstreamMetadataStore store, File file)
+            throws IOException {
+        this.metadataStore = store;
+        Map<String, String> legacy = new LinkedHashMap<>();
+        for (WorkstreamEntry entry : workstreams) {
+            String value = entry.getPlanInstructions();
+            if (entry.getWorkstreamId() == null || value == null || value.isEmpty()) continue;
+            // A later duplicate entry overrides an earlier one, matching the
+            // entry dedupeWorkstreamsKeepingLast keeps.
+            legacy.put(entry.getWorkstreamId(), value);
+        }
+        if (legacy.isEmpty()) return 0;
+
+        try {
+            store.putAll(WorkstreamMetadataStore.PLAN_INSTRUCTIONS, legacy);
+        } catch (IOException e) {
+            this.metadataStore = null;
+            throw e;
+        }
+        for (WorkstreamEntry entry : workstreams) {
+            if (legacy.containsKey(entry.getWorkstreamId())) entry.setPlanInstructions(null);
+        }
+        if (file != null) saveToYaml(file);
+        return legacy.size();
+    }
+
+    /**
+     * Removes a deleted workstream's metadata from the attached store. Call it
+     * after the workstream's removal from the YAML has been persisted, so a
+     * failed YAML write never leaves a live workstream without its metadata.
+     * A no-op without a store.
+     *
+     * @param workstreamId the deleted workstream
+     * @throws IOException when the store cannot be updated
+     */
+    public void removeWorkstreamMetadata(String workstreamId) throws IOException {
+        if (metadataStore != null) metadataStore.removeWorkstream(workstreamId);
     }
 
     /**
@@ -1132,7 +1261,7 @@ public class WorkstreamConfig {
      */
     public synchronized void addWorkstream(Workstream ws) {
         WorkstreamEntry entry = new WorkstreamEntry();
-        populateEntry(entry, ws);
+        entry.populateFrom(ws, metadataStore == null);
         String id = entry.getWorkstreamId();
         if (id != null) {
             for (int i = 0; i < workstreams.size(); i++) {
@@ -1143,54 +1272,6 @@ public class WorkstreamConfig {
             }
         }
         workstreams.add(entry);
-    }
-
-    /**
-     * Copies every mutable field from a live {@link Workstream} onto the
-     * supplied {@link WorkstreamEntry}. Shared by {@link #addWorkstream} (which
-     * creates a new entry) and {@link #syncFromWorkstreams} (which updates an
-     * existing one) so the canonical field list is maintained in exactly one place.
-     *
-     * @param entry the entry to populate
-     * @param ws    the live workstream whose current state to copy
-     */
-    private static void populateEntry(WorkstreamEntry entry, Workstream ws) {
-        entry.setWorkstreamId(ws.getWorkstreamId());
-        entry.setChannelId(ws.getChannelId());
-        entry.setChannelName(ws.getChannelName());
-        entry.setDefaultBranch(ws.getDefaultBranch());
-        entry.setBaseBranch(ws.getBaseBranch());
-        entry.setPushToOrigin(ws.isPushToOrigin());
-        entry.setWorkingDirectory(ws.getWorkingDirectory());
-        entry.setRepoUrl(ws.getRepoUrl());
-        entry.setAllowedTools(ws.getAllowedTools());
-        entry.setMaxTurns(ws.getMaxTurns());
-        entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
-        entry.setGitUserName(ws.getGitUserName());
-        entry.setGitUserEmail(ws.getGitUserEmail());
-        entry.setEnv(ws.getEnv());
-        entry.setPlanningDocument(ws.getPlanningDocument());
-        entry.setPlanInstructions(ws.getPlanInstructions());
-        entry.setGithubOrg(ws.getGithubOrg());
-        entry.setDependentRepos(ws.getDependentRepos());
-        entry.setRequiredLabels(ws.getRequiredLabels());
-        entry.setWorkspaceId(ws.getWorkspaceId());
-        entry.setDefaultRunner(ws.getDefaultRunner());
-        entry.setRunners(ws.getRunners());
-        // Per-phase configuration round-trips through phaseConfigs alone: the
-        // legacy runners map is write-only and no longer serialized, so a
-        // per-phase runner not carried by the bundle would be lost on save.
-        PhaseConfigBundle bundle = ws.getPhaseConfigBundle();
-        (bundle == null ? PhaseConfigBundle.EMPTY : bundle)
-                .applyTo(entry);
-        entry.setArchived(ws.isArchived());
-        entry.setCompletionListeners(ws.getCompletionListeners());
-        entry.setAgentPermissionBypassBranches(ws.getAgentPermissionBypassBranches());
-        entry.setDispatchCapable(ws.isDispatchCapable());
-        entry.setTrackerCapabilities(ws.getTrackerCapabilities());
-        entry.setUseTmux(ws.isUseTmux());
-        entry.setMaxWallClockHours(ws.getMaxWallClockHours());
-        entry.setDormantForCompletionListeners(ws.isDormantForCompletionListeners());
     }
 
     /**
@@ -1214,7 +1295,7 @@ public class WorkstreamConfig {
                 addWorkstream(ws);
                 continue;
             }
-            populateEntry(entry, ws);
+            entry.populateFrom(ws, metadataStore == null);
         }
     }
 
@@ -1236,12 +1317,18 @@ public class WorkstreamConfig {
      * survives. Collapsing first guarantees the sync updates the single entry
      * that is persisted.</p>
      *
+     * <p>With a {@link WorkstreamMetadataStore} attached, the workstreams'
+     * metadata is committed to the store first; when that fails nothing is
+     * written to the YAML and the failure is thrown, so a caller never reports
+     * a change as saved that was only half written.</p>
+     *
      * @param activeWorkstreams the current in-memory workstreams
      * @param file              the target YAML file
-     * @throws IOException if the file cannot be written
+     * @throws IOException if the metadata or the file cannot be written
      */
     public synchronized void syncAndSave(Collection<Workstream> activeWorkstreams,
                                          File file) throws IOException {
+        if (metadataStore != null) metadataStore.saveMetadata(activeWorkstreams);
         dedupeWorkstreamsKeepingLast();
         syncFromWorkstreams(activeWorkstreams);
         saveToYaml(file);
