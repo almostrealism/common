@@ -501,6 +501,46 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	}
 
 	/**
+	 * The expected output of a sample is read in the shape of the model output: a target with the
+	 * same number of elements but another shape trains exactly as one of the output's shape, while
+	 * a target with a different number of elements is rejected rather than partially read.
+	 */
+	@Test(timeout = 120000)
+	public void expectedOutputIsReadInOutputShape() {
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(6);
+		MeanSquaredError mse = new MeanSquaredError(shape(3).traverseEach());
+
+		PackedCollection referenceWeights = initialWeights();
+		double referenceLoss = blockingEpoch(denseModel(referenceWeights), mse, samples);
+
+		List<ValueTarget<PackedCollection>> reshaped = new ArrayList<>();
+		for (ValueTarget<PackedCollection> sample : samples) {
+			reshaped.add(ValueTarget.of(sample.getInput(), sample.getExpectedOutput().reshape(shape(1, 3))));
+		}
+
+		PackedCollection trainedWeights = initialWeights();
+		ModelOptimizer optimizer = new ModelOptimizer(denseModel(trainedWeights), () -> Dataset.of(reshaped));
+		optimizer.setLossFunction(mse);
+		optimizer.setLogFrequency(0);
+		TrainingResult result = optimizer.optimize(1);
+
+		assertEquals(referenceLoss / samples.size(), result.getFinalTrainLoss(), 1e-6);
+		assertEquals(referenceWeights, trainedWeights);
+
+		List<ValueTarget<PackedCollection>> oversized = new ArrayList<>();
+		oversized.add(ValueTarget.of(samples.get(0).getInput(), pack(0.1, 0.2, 0.3, 0.4)));
+		ModelOptimizer rejecting = new ModelOptimizer(denseModel(initialWeights()), () -> Dataset.of(oversized));
+		rejecting.setLogFrequency(0);
+
+		try {
+			rejecting.optimize(1);
+			Assert.fail("Training accepted a target with more elements than the model output");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("does not match collection size"));
+		}
+	}
+
+	/**
 	 * Asserts that {@code action}, which issues the named {@code pass}, throws an
 	 * {@link IllegalArgumentException}.
 	 */
