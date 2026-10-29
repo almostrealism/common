@@ -19,6 +19,8 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.hardware.ctx.StreamCompletion;
+import org.almostrealism.hardware.ctx.SubmissionStream;
 
 /**
  * {@link OperationSemaphore} backed by a Metal {@link MTLEvent} timeline value — the Metal analog of
@@ -36,7 +38,7 @@ import io.almostrealism.profile.OperationMetadata;
  * {@link #merge(Semaphore)}), in which case it is the completion of the latest of them and
  * {@link #getPriorBufferValue()} records what else a dependent must wait for.</p>
  */
-public class MetalSemaphore implements OperationSemaphore {
+public class MetalSemaphore implements OperationSemaphore, StreamCompletion {
 	/** Metadata identifying the operation this completion belongs to, or {@code null}. */
 	private final OperationMetadata requester;
 	/** The command runner that owns the command buffer. */
@@ -114,6 +116,14 @@ public class MetalSemaphore implements OperationSemaphore {
 	/** Returns the command runner that owns the command buffer. */
 	public MetalCommandRunner getRunner() { return runner; }
 
+	/** Returns the runner that encoded the dispatch, which is the submission stream it belongs to. */
+	@Override
+	public SubmissionStream<MetalSemaphore> getStream() { return runner; }
+
+	/** Returns the dispatch's timeline value, which is its ordinal in the runner's stream. */
+	@Override
+	public long getOrdinal() { return value; }
+
 	@Override
 	public OperationMetadata getRequester() { return requester; }
 
@@ -179,12 +189,10 @@ public class MetalSemaphore implements OperationSemaphore {
 	 */
 	@Override
 	public Semaphore merge(Semaphore other) {
-		if (!(other instanceof MetalSemaphore)) return null;
+		MetalSemaphore metal = getStream().own(other);
+		if (metal == null) return null;
 
-		MetalSemaphore metal = (MetalSemaphore) other;
-		if (metal.getRunner() != runner) return null;
-
-		MetalSemaphore later = metal.getValue() > value ? metal : this;
+		MetalSemaphore later = getStream().later(this, metal);
 		MetalSemaphore earlier = later == this ? metal : this;
 
 		long prior = Math.max(later.priorBufferValue,

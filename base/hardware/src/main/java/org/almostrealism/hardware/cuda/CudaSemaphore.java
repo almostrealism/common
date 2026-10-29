@@ -19,6 +19,8 @@ package org.almostrealism.hardware.cuda;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.streams.Semaphore;
+import org.almostrealism.hardware.ctx.StreamCompletion;
+import org.almostrealism.hardware.ctx.SubmissionStream;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -39,7 +41,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link #getSequence() sequence number} is what lets two completions of the same runner merge
  * into one (see {@link #merge(Semaphore)}).</p>
  */
-public class CudaSemaphore extends DefaultLatchSemaphore {
+public class CudaSemaphore extends DefaultLatchSemaphore implements StreamCompletion {
 	/** The runner the work was submitted to. */
 	private final CudaStreamRunner runner;
 
@@ -81,6 +83,14 @@ public class CudaSemaphore extends DefaultLatchSemaphore {
 	/** Returns the position of the submission among all submissions to its runner. */
 	public long getSequence() { return sequence; }
 
+	/** Returns the runner the work was submitted to, which is the submission stream it belongs to. */
+	@Override
+	public SubmissionStream<CudaSemaphore> getStream() { return runner; }
+
+	/** Returns the submission's {@link #getSequence() sequence number}, its ordinal in the runner's stream. */
+	@Override
+	public long getOrdinal() { return sequence; }
+
 	/** Returns true once the submission has settled, successfully or not. */
 	public boolean isSettled() { return getLatch().getCount() == 0; }
 
@@ -98,7 +108,7 @@ public class CudaSemaphore extends DefaultLatchSemaphore {
 	 */
 	@Override
 	public void waitFor() {
-		if (!isSettled()) runner.requireOffCompletionThread();
+		if (!isSettled()) runner.requireOffStreamThread();
 		super.waitFor();
 	}
 
@@ -114,12 +124,7 @@ public class CudaSemaphore extends DefaultLatchSemaphore {
 	 */
 	@Override
 	public Semaphore merge(Semaphore other) {
-		if (!(other instanceof CudaSemaphore)) return null;
-
-		CudaSemaphore cuda = (CudaSemaphore) other;
-		if (cuda.runner != runner) return null;
-
-		return cuda.sequence > sequence ? cuda : this;
+		return getStream().later(this, other);
 	}
 
 	@Override
