@@ -108,16 +108,46 @@ oa, na = acount(old), acount(new)
 if existing_context and na < oa:
     soft.append(f"assertion/verify count dropped {oa} -> {na} (weakened verification?)")
 
-# 5. assertEquals/assertArrayEquals tolerance widening (3-arg delta form)
+# 5. assertEquals/assertArrayEquals tolerance widening (3-arg delta form).
+# The delta is the last of three or more top-level arguments, and only when
+# it is a literal; assertEquals(2, x.size()) has no delta, so its 2 is not one.
+def call_args(s, i):
+    args, cur, depth, quote = [], [], 0, None
+    while i < len(s):
+        c = s[i]
+        if quote:
+            if c == "\\":
+                cur.append(s[i:i + 2])
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in "\"'":
+            quote = c
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            if depth == 0:
+                args.append("".join(cur).strip())
+                return args
+            depth -= 1
+        elif c == "," and depth == 0:
+            args.append("".join(cur).strip())
+            cur = []
+            i += 1
+            continue
+        cur.append(c)
+        i += 1
+    return []
+
+NUMBER = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?[dDfF]?")
+
 def tols(s):
     out = []
-    for m in re.finditer(r"assert(?:Equals|ArrayEquals)\s*\((.*?)\)\s*;", s, re.S):
-        nums = re.findall(r"\d+\.\d+(?:[eE][-+]?\d+)?|\d+(?:[eE][-+]?\d+)?", m.group(1))
-        if nums:
-            try:
-                out.append(float(nums[-1]))
-            except Exception:
-                pass
+    for m in re.finditer(r"assert(?:Equals|ArrayEquals)\s*\(", s):
+        args = call_args(s, m.end())
+        if len(args) >= 3 and NUMBER.fullmatch(args[-1]):
+            out.append(float(args[-1].rstrip("dDfF")))
     return out
 ot, nt = tols(old), tols(new)
 if ot and nt and max(nt) > max(ot) * 2:

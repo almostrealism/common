@@ -466,6 +466,34 @@ public class MyTest {
 }'
 }
 
+# ── Scenario: expected count raised in a two-argument assertEquals — NO FALSE POSITIVE ──
+#
+# assertEquals(2, x.size()) -> assertEquals(7, x.size()) changes an expected
+# value, not a tolerance: the call has no delta argument. The in-session
+# hook once read the last number in any assertEquals as a tolerance and
+# blocked this edit as "widened > 2x"; this detector must not do the same.
+setup_expected_count_raised() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(2, keys.size());
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(7, keys.size());
+    }
+}'
+}
+
 # ── Scenario: no test files changed — CLEAN BRANCH ─────────────────────────
 setup_no_test_changes() {
     mkdir -p src/main/java
@@ -497,6 +525,7 @@ run_case "moved-wrapped-assert-helper-declaration [false-positive regression]" 0
 run_case "moved-typed-assert-helper-declaration [false-positive regression]" 0 setup_moved_typed_assert_helper_declaration
 run_case "helper-body-loses-assertion [true positive]"      2 setup_helper_body_loses_assertion
 run_case "test-body-assertion-removed-with-helper [true positive]" 2 setup_test_body_assertion_removed_with_helper
+run_case "expected-count-raised [no false positive]"        0 setup_expected_count_raised
 run_case "no-test-changes [clean branch]"                   0 setup_no_test_changes
 
 echo ""

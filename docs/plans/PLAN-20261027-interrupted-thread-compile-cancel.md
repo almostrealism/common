@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-10-27
-closed:
+closed: 2026-10-29
 tracker: [f86ab017-e3c2-48a3-a906-943491d6aad1]
 ---
 
