@@ -51,7 +51,7 @@ In scope (all on the `ci/reusable-qa-rounds` branch, under the CI-file lock):
    precedent), so the intake / cadence / archive / branch / register / submit /
    summary steps live only in the reusable workflow.
 3. **Built-in, framework-provided prompt templates** the reusable workflow can
-   render (defect hunt, doc QA, consolidation, flaky hunt, retrospective), plus a
+   render (defect hunt, doc QA, consolidation, flaky hunt), plus a
    mechanism for a caller to supply its own template from its own repository,
    **read as data, never executed**.
 4. **Generalising the Java/Maven-specific wording** of the built-in templates
@@ -76,8 +76,10 @@ widened into here):
   creation (see Approach); forcing it into the single-job generic shape is a
   larger change and is treated as an open question, with a recommendation to
   leave it dedicated/inline for this change.
-- **Making `performance-qa` / `pdsl-qa` into *offered* built-in rounds.** Their
-  prompts are about this framework's own concerns (Metal, PDSL). They can still
+- **Making `performance-qa` / `pdsl-qa` / `qa-retrospective` into *offered*
+  built-in rounds.** Their prompts are about this framework's own concerns (Metal,
+  PDSL; the retrospective's `docs/qa/retrospectives/` ledger, `ci/qa-` branches
+  and the `flowtree/` / `tools/mcp/` harness layout). They can still
   *call* the reusable workflow to remove the duplicated plumbing, passing their
   own local template as data, but they are not generalised into templates a
   consumer would select.
@@ -127,18 +129,28 @@ current workflow:
 
 ### The reusable workflow: `qa-round.yaml`
 
-One `workflow_call` workflow with a **single job** holding steps 2–8 above (the
-caller does the master checkout only to create the branch — in the reusable
-workflow the checkout uses `github.event.repository.default_branch`, not a
-literal `master`, and a second `persist-credentials: false` checkout of the
-framework at `framework-ref` supplies every script and template). Inputs,
-grouped:
+One `workflow_call` workflow with a **single job** holding all of steps 1–8
+above. A caller job that `uses:` a reusable workflow cannot run steps of its own,
+so the checkout of the caller's tree (step 1) happens inside the reusable job:
+it checks out `github.event.repository.default_branch`, not a literal `master`,
+with credentials persisted so the job can push the round's branch; a second
+`persist-credentials: false` checkout of the framework at `framework-ref`
+supplies every script and template (the layout `task-planning.yaml` already
+uses). Inputs, grouped:
 
 - **Identity / cadence:** `round-name` (used in labels, descriptions and the
   concurrency group), `branch-prefix`, `min-interval-days`, `grace-hours`
   (default 24), `max-open-prs` (default 7), `force`, `ignore-interval`.
+  A caller's workflow-level `env` does not reach a called workflow, and the
+  called job must not read the caller's dispatch inputs by name (it sees the
+  caller's `github.event`, but `ignore_interval_docs` and friends are this
+  repository's names, not a contract), so each caller passes these explicitly: `max-open-prs` as the same literal the
+  workflow's `MAX_OPEN_PRS` holds (as `plan-release-task` already does with a
+  comment pointing at it), and `force` / `ignore-interval` as
+  `${{ github.event.inputs.<name> || 'false' }}`, since on a `push` event the
+  dispatch inputs are empty.
 - **Prompt:** `prompt` — a selector for a built-in template
-  (`defect-hunt` | `doc-qa` | `consolidation` | `flaky-hunt` | `retrospective`),
+  (`defect-hunt` | `doc-qa` | `consolidation` | `flaky-hunt`),
   or a caller-supplied template **path** within the caller's checkout. Plus
   `template-vars` — a small JSON map (e.g. `{"REVIEW_SINCE": "...", "QA_PREFIXES":
   "..."}`) rendered into the chosen template. A built-in template is read and
@@ -146,6 +158,24 @@ grouped:
   the caller's tree and rendered by the framework's builder — it is never
   executed, exactly as `implement-plan.yaml` reads a dispatched branch's plan as
   data.
+
+  *"The framework's builder" does not exist yet.* Today each round has its own
+  `build-<round>-prompt.sh` that validates a fixed list of variables
+  (`for var in ...`) and substitutes them with a hand-written `sed` — none of
+  the QA builders (`build-doc-qa-prompt.sh`, `build-defect-hunt-prompt.sh`,
+  `build-consolidation-prompt.sh`, `build-flaky-hunt-prompt.sh`,
+  `build-retrospective-prompt.sh`, `build-performance-prompt.sh`,
+  `build-pdsl-migration-prompt.sh`) sources `prompt-render.sh`. The
+  implementation therefore adds one generic builder (e.g.
+  `build-qa-round-prompt.sh`) that turns `template-vars` into environment
+  variables, always supplies `BRANCH`, `BASE_BRANCH` and `REPO_URL`, renders
+  through `render_prompt`, and fails if any `${...}` placeholder survives. That
+  builder does not fit the shape `test_prompt_builders.py` checks for (a fixed
+  `for var in ...` list documented in a `Required environment variables:`
+  header), so the plan must say whether the per-round builders are kept as thin
+  wrappers that pass their fixed variable list to the generic builder (keeping
+  those tests meaningful), or are deleted and the builder tests extended to
+  cover the generic one (see Open questions).
 - **Submission settings:** `protect-test-files`, `enforce-changes`,
   `max-enforce-changes-retries`, `phase-configs`, `required-labels` (and the
   matching workstream `required-labels-json`), `description`. `pr-draft` is not
@@ -198,23 +228,51 @@ name with `agent: project-manager`) keeps working.
 
 ### Generalising the built-in templates
 
-<!-- TODO(review): retrospective classification is inconsistent — it is listed as an offered
-built-in selector (above) and "offered as-is" here, but §"Which rounds become callers" puts
-qa-retrospective in the local/not-offered bucket. retrospective.txt also does carry a
-framework-specific reference ("harness Java under flowtree/, MCP tools under tools/mcp/"), so
-"carries none" is inaccurate. Decide offered-generic vs local-only and reconcile lines 142/204/178-181. -->
-`defect-hunt.txt` carries no codebase terms (confirmed by grep) and
-`retrospective.txt` carries none either; they are offered as-is. `doc-qa.txt`,
-`consolidation.txt` and `flaky-hunt.txt` carry Java/Maven/`TestSuiteBase`/
-`ar-test-runner` wording (confirmed). The plan moves that language into a
-caller-selectable `@include` fragment (the `prompt-render.sh` mechanism already
-supports one-level `@include <file>` fragment expansion and `${VAR}`
-substitution) — e.g. a `test-runner-guidance` fragment with a Maven/Java default
-that this repository selects, so a non-Maven consumer selects its own (or a
-neutral) fragment and does not receive instructions to run `mvn` or extend
-`TestSuiteBase`. Fragments live in `tools/ci/prompts/` and are rendered from the
-framework checkout like every other template. Rounds whose templates cannot be
-made honestly generic stay local (see above).
+No built-in QA template is generic today. What each one carries that a
+non-Maven consumer must not receive:
+
+- `defect-hunt.txt` is the closest: no Java/Maven/`pom.xml` wording, but its
+  step 3 names this framework's `ar-profile-analyzer` ("reads the generated
+  kernel source and argument bindings") and "the MCP test runner". Those two
+  sentences move into the fragment below; the rest is offered as-is.
+- `flaky-hunt.txt` — "a new Maven module is out of scope" and two
+  `mcp__ar-test-runner__start_test_run module:... test_classes:[...]` examples.
+- `consolidation.txt` — reading both `pom.xml` files to verify a dependency
+  edge, "no Maven module / `pom.xml` / dependency", `timeout 2400 mvn clean
+  install -DskipTests`, and the Java code standards (no `var`, no
+  `@SuppressWarnings`, Javadoc, `@Test` timeouts, `TestSuiteBase`).
+- `doc-qa.txt` — more than test-runner wording: its review *scope* is Java
+  (`git diff ... -- '**/*.java' '**/pom.xml'`, Javadoc on public classes,
+  `pom.xml` as the source of truth for versions and module structure,
+  `mvn install -DskipTests` after a Javadoc edit).
+- `retrospective.txt` is **not** offered (see "Which rounds become callers"): it
+  is built around this repository's `docs/qa/retrospectives/ledger.tsv`, the
+  `ci/qa-` branch convention and CI-file lock, "harness Java under `flowtree/`,
+  MCP tools under `tools/mcp/`", and the root `CLAUDE.md` "This Repository Is
+  Public" section.
+
+The plan moves that language into caller-selectable fragments rendered by
+`prompt-render.sh`, which already supports one-level `@include <file>`
+expansion and `${VAR}` substitution — e.g. a `test-runner-guidance` fragment
+with a Maven/Java default that this repository selects, so a non-Maven consumer
+selects its own (or a neutral) fragment and does not receive instructions to
+run `mvn` or extend `TestSuiteBase`. Two mechanical constraints the
+implementation has to handle:
+
+- `expand_prompt_includes` resolves an `@include` line *before* any `${VAR}` is
+  substituted, and only from `tools/ci/prompts/` of the framework checkout. A
+  line like `@include ${TEST_RUNNER_FRAGMENT}` therefore does not work today;
+  either the generic builder picks the fragment and substitutes it as a
+  variable, or the renderer learns to substitute a fragment name first.
+- Because a caller template is rendered with the same `render_prompt`, an
+  `@include ../...` line in it would read any file of the framework checkout.
+  That is not a secret leak (the checkout is public and holds no credentials),
+  but the renderer should reject a fragment name containing `/` so a caller
+  template can include only the framework's published fragments.
+
+`doc-qa.txt`'s Java scope may not reduce to one fragment at all (see Open
+questions). Rounds whose templates cannot be made honestly generic stay local
+(see above).
 
 ### Trust rule (unchanged from the existing four)
 
@@ -226,7 +284,7 @@ inputs (default to this repository's tunnel / an empty string); the client secre
 is the declared `workflow_call` secret. A caller-supplied prompt template is read
 as data and rendered by the framework's builder.
 
-### Test adaptation (assertions unchanged, discovery extended)
+### Test adaptation (guarantees unchanged, discovery extended)
 
 `test_master_agent_dispatch.py` and `test_automated_intake.py` already follow a
 caller into the workflow it calls via `called_job()` and `controller_url()` (that
@@ -239,7 +297,25 @@ same:
   `agent` selectors) and resolve each into `qa-round.yaml`'s single job, reading
   the caller's `with:` where the inline job read a step `env` — exactly the
   mapping `controller_url(caller, env)` already performs for the controller URL.
-- The existing assertions then stay as they are: unique branch prefixes
+- Discovery has to return a **mixed** set: the callers resolved into
+  `qa-round.yaml`, plus `coverage-qa` still inline with its `BRANCH_PREFIX`
+  env. `test_the_flaky_pilot_does_not_raise_the_open_pr_limit` counts seven
+  full-cadence rounds and `test_the_qa_jobs_are_found` guards against vacuous
+  passes, so a discovery that finds only one of the two kinds must fail.
+- Several assertions read a value the reusable job now receives as an input, and
+  need the caller-`with:` mapping `test_both_planning_rounds_share_one_backlog_limit`
+  already applies to `plan-release-task` (where the called job's value is
+  `${{ inputs.max-open-prs }}` and the real number is the caller's `with:`):
+  `test_every_qa_round_applies_the_shared_backlog_limit` (today it asserts no
+  `MAX_OPEN_PRS` in the job or gate `env`; in `qa-round.yaml` the gate *must*
+  carry it from the input, and the check becomes "every caller passes the
+  workflow's value"), `test_every_qa_job_builds_a_prompt_that_exists` (today it
+  expects exactly one `build-<round>-prompt.sh` per job; with a generic builder
+  it must check the caller's `prompt` selector or template path instead), and
+  the per-round submission settings below (read from `with:` instead of the
+  submit step's `env`). The guarantee each asserts is unchanged; the place it
+  reads the value from changes.
+- The remaining assertions stay as they are: unique branch prefixes
   (`test_every_qa_job_has_its_own_branch_prefix`), the documented interval map
   (`test_qa_intervals_match_the_documented_cadence`), a per-round
   `ignore_interval_*` boolean input, a positive `PR_GRACE_HOURS`, no `PR_DRAFT`
@@ -268,18 +344,21 @@ A reviewer can confirm the task is done when:
 1. `.github/workflows/qa-round.yaml` exists, is `workflow_call`-only, and its
    header shows a complete caller example (as `task-planning.yaml`'s header
    does).
-2. Every QA round in `master-agent-dispatch.yaml` that can be generic calls
-   `qa-round.yaml`; the rounds that stay inline (`coverage-qa`, and the
-   framework-specific `performance-qa` / `pdsl-qa` content) are listed with their
-   reasons. The duplicated intake / cadence / archive / branch / register /
-   submit / summary steps exist once.
+2. Every QA round in `master-agent-dispatch.yaml` except `coverage-qa` calls
+   `qa-round.yaml` (seven callers); `coverage-qa` stays inline, and the rounds
+   whose *templates* stay local (`performance-qa`, `pdsl-qa`,
+   `qa-retrospective`) are listed with their reasons in `.github/CLAUDE.md`. The
+   intake / cadence / archive / branch / register / submit / summary steps exist
+   once in `qa-round.yaml`, plus the one remaining copy in `coverage-qa` (unless
+   Open question 1 is decided the other way).
 3. A consuming repository can run at least the defect hunt and the doc QA with
    only a caller job and inputs, proven by the new non-Maven fixture test running
    those rounds' gate and prompt-render steps for real.
 4. `test_reusable_workflows.py` pins the trust rule for `qa-round.yaml` (and any
    other new reusable workflow).
 5. `test_master_agent_dispatch.py` and `test_automated_intake.py` pass and still
-   assert everything they assert today, following each QA caller into
+   assert every guarantee they assert today (reading a value from the caller's
+   `with:` where it moved there, never dropping the check), following each QA caller into
    `qa-round.yaml` as they already do for `plan-release-task`. In particular every
    guarantee the task enumerates still holds: intake checked before anything is
    created and reported in every summary; per-round `ignore_interval_*` +
@@ -296,7 +375,7 @@ A reviewer can confirm the task is done when:
 
 The relevant tests to run (bounded selections, each within limits): the three
 pinning tests named above, plus `test_qa_cadence.py` and `test_prompt_builders.py`
-if the fragment change touches the builders. These are Python tests under
+(the generic builder and the fragment change both touch the builders). These are Python tests under
 `tools/tests/`, run as individual pytest node ids — broad verification is CI's
 job.
 
@@ -323,10 +402,30 @@ job.
    that is a larger surface and should be decided here.
 3. **Language-fragment granularity.** Is a single `test-runner-guidance` fragment
    enough, or do consumers need finer control (build command, test framework,
-   style rules) as separate fragments / template vars? The plan assumes one
-   fragment is enough for the offered built-ins; refine if a concrete non-Maven
-   consumer's needs are known.
-4. **Follow-up filed:** none at this time. If, during implementation, the
+   style rules) as separate fragments / template vars? The template survey
+   above suggests one fragment is not enough: `consolidation.txt` needs a
+   build command, a dependency-verification rule and code standards, and
+   `doc-qa.txt`'s whole review scope (`*.java`, Javadoc, `pom.xml`) is
+   language-specific. A smaller first step the approver may prefer: offer only
+   `defect-hunt` (two sentences to move) and, if needed, `flaky-hunt` (one
+   sentence and two examples), and keep `doc-qa` and `consolidation` as callers
+   with this repository's templates until a concrete non-Maven consumer's needs
+   are known. That would change success criterion 3 to the defect hunt alone.
+4. **What happens to the per-round builders.** Keep each
+   `build-<round>-prompt.sh` as a thin wrapper over the generic builder (so
+   `test_prompt_builders.py`'s required-variable and no-leftover-placeholder
+   checks keep covering each round's template), or delete them and extend the
+   builder tests to the generic builder plus each built-in template. The plan
+   leans towards keeping thin wrappers, because the builder tests are how a
+   template placeholder without a matching variable is caught today.
+5. **`qa-retrospective`'s `QA_PREFIXES`.** It lists every QA round's prefix by
+   hand, and `test_the_retrospective_survey_covers_every_qa_prefix` already
+   pins that it covers every discovered `BRANCH_PREFIX` plus `ci/qa-`. That
+   test reads the list from the job's `env` and the build step's `env`; after
+   extraction the list arrives through `template-vars`, so this is a fourth
+   assertion that needs the caller-`with:` mapping. It must not be dropped:
+   it is what stops a new round from silently falling out of the survey.
+6. **Follow-up filed:** none at this time. If, during implementation, the
    `performance-qa` / `pdsl-qa` template content turns out to be partially
    generalisable, that improvement should be filed as a separate backlog task
    rather than widening this change.
@@ -334,8 +433,8 @@ job.
 ## Estimated complexity
 
 **Large.** The reusable workflow itself is moderate (it mirrors `task-planning.yaml`),
-but the breadth makes it large: seven or eight caller rewrites in a ~2000-line
+but the breadth makes it large: seven caller rewrites in a ~2000-line
 file, a new prompt-fragment mechanism for language-specific wording, a careful
-rework of the three pinning tests' *discovery* (while leaving their assertions
-intact), a new fixture test, and three documentation updates — all under the
+rework of the three pinning tests' *discovery* (while keeping every guarantee
+they assert), a new fixture test, and three documentation updates — all under the
 CI-file lock where a mistake fails the pipeline before anything builds.
