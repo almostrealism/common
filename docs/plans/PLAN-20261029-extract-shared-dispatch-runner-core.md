@@ -9,10 +9,8 @@ tracker: [b3b032a7-3081-4001-a692-1dad640e4ffa]
 
 **Tracker task:** `b3b032a7-3081-4001-a692-1dad640e4ffa` — *Extract the shared dispatch
 machinery (threading, queuing, failure propagation, teardown) out of the per-backend
-ComputeContext runners* — release **Common 0.76** (the release this repository's master is
-building).
-<!-- TODO(review): "Common 0.76" hardcodes a version number; per CLAUDE.md "Never Reference
-     Version Numbers", drop the number and point to the tracker release / root pom.xml. -->
+ComputeContext runners* — targeted at the release this repository's master is building (the
+tracker release whose name matches the version in the root `pom.xml`).
 
 
 ## Motivation
