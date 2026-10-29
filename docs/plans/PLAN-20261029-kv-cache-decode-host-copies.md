@@ -155,6 +155,28 @@ Concrete, actionable items:
 - `mcp__ar-build-validator__start_validation` is clean (checkstyle, code_policy,
   test_timeouts, duplicate_code).
 
+## Open questions
+
+- **Does the diagnosed fix move the asserted metric?** The success gate asserts on
+  `runsPerByte` (a kernel-run count, `OperationProfileNode.getRunCount()` delta per byte:
+  109 for the cache path vs 86 for the sliding window), but the diagnosed cost is
+  host-blocking *commits/waits* (commitsPerByte 45 vs 7). These are different counters.
+  Approach 3(a) — re-expressing a copy as a dispatch that chains on the surrounding work so
+  it batches into the open command buffer instead of draining it — reduces commits,
+  dispatches and host waits (and so bytes/s), but a copy that still executes as a profiled
+  operation keeps contributing to `getRunCount()`, so 3(a) alone may leave `runsPerByte`
+  unchanged at 109. Only approach 3(b) — eliminating a copy (or removing a counted
+  operation such as the `CollectionConcatenateComputation`, which is a profiled op) —
+  reduces the run count. The implementation must confirm from the profile which of the ~30
+  copies are counted runs and whether eliminating them is enough to cross below the sliding
+  window's 86, rather than assuming batching alone satisfies the gate. If the ~30 copies
+  turn out not to be counted runs, the metric the mechanism actually moves is
+  `dispatchesPerByte` (181 vs 135) — but that is a Metal counter, not backend-independent,
+  so asserting on it reopens exactly the host-dependent-threshold concern the `runsPerByte`
+  gate was chosen to avoid. The gate must be chosen to match what the fix demonstrably
+  changes; if nothing backend-independent moves, that is a signal the mechanism needs
+  rethinking, not a licence to assert a Metal-specific threshold.
+
 ## Dependencies
 
 - **A macOS / Metal node.** The ~30 host-blocking copies, the commit counts and the
