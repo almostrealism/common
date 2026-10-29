@@ -87,6 +87,31 @@ public interface Shape<T> extends Traversable<T>, IndexSet, Describable {
 	}
 
 	/**
+	 * Requires that a value has the given {@link TraversalPolicy shape}, returning the value so the
+	 * validated input can be used inline. The dimensions, order and rates must match; the traversal
+	 * axis is ignored, so a value traversed along a different axis still satisfies the requirement as
+	 * long as its dimensions agree. A null or mis-shaped value is rejected here with a clear message
+	 * rather than failing further on.
+	 *
+	 * @param operation the name of the operation, used in the error message
+	 * @param value     the input the operation requires to have a particular shape
+	 * @param shape     the shape {@code value} is required to have
+	 * @param <T>       the declared type of {@code value}
+	 * @return {@code value}
+	 * @throws IllegalArgumentException if {@code value} is not a {@link Shape}, or its shape does not
+	 *                                  match {@code shape}
+	 * @see #requireShape(String, Object)
+	 */
+	static <T> T requireShape(String operation, T value, TraversalPolicy shape) {
+		TraversalPolicy actual = requireShape(operation, value);
+		if (!shape.equalsIgnoreAxis(actual)) {
+			throw new IllegalArgumentException(operation + " must have shape " + shape + ", got " + actual);
+		}
+
+		return value;
+	}
+
+	/**
 	 * Reshapes this object to the specified dimensions. The total number of elements
 	 * must remain the same. A dimension value of -1 indicates that dimension should
 	 * be inferred from the total size and other dimensions.

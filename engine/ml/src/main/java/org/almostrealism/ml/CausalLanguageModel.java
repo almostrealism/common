@@ -250,9 +250,10 @@ public final class CausalLanguageModel extends Model implements TransformerBlock
 	 * copied: the variant is built over this model's {@link StateDictionary}, which stays the caller's,
 	 * exactly as a second training compilation would be. The per-layer caches, one cleared
 	 * {@code (seqLen, dim)} key cache and value cache per block, are appended in block order to
-	 * {@code keyCaches} and {@code valueCaches} (which must be empty and mutable) so that the caller
-	 * can clear them when a new sequence starts and release them when the decode model is destroyed —
-	 * they are decode state, not model state.</p>
+	 * {@code keyCaches} and {@code valueCaches} (which must be empty and mutable) and bound as the
+	 * {@code key_cache}/{@code value_cache} each block's attention layer reads and writes, so that the
+	 * caller can clear them when a new sequence starts and release them when the decode model is
+	 * destroyed — they are decode state, not model state.</p>
 	 *
 	 * @param position   the device-resident single-element sequence position the attention reads;
 	 *                   the caller advances and resets it per step and per sequence
@@ -297,7 +298,8 @@ public final class CausalLanguageModel extends Model implements TransformerBlock
 					weights.get(config.layerKey(i, "attention_norm")),
 					wk, wv, wq, weights.get(config.layerKey(i, "wo")),
 					null, null, null, null, null,
-					freqCis, p(position))));
+					freqCis, p(position), 1e-5,
+					keyCache, valueCache)));
 
 			model.add(reshape(tokenShape, ffnShape));
 			model.add(residual(gatedLinearFeedForward(ffnShape, NormalizationType.RMS,

@@ -184,21 +184,31 @@ public class SubsetTraversalExpression implements ConsoleFeatures {
 	 * @return the flat operand index expression
 	 */
 	public Expression getInputIndex(Expression<?> groupIndex, Expression<?> outputIndex) {
-		Expression[] groupPosition = groupShape.position(groupIndex);
+		return getInputIndex(groupIndex, groupShape.position(groupIndex), outputIndex);
+	}
 
+	/**
+	 * Combines a group member's position within the window with the window anchor derived from
+	 * the given output index to produce the flat operand index for that member. This is the
+	 * shared index computation used both by {@link #getInputIndex(Expression, Expression)} and
+	 * by {@link SubsetTraversalIndexMapping#getValueAt(Expression)}.
+	 *
+	 * @param <T>           the static type of the group member label at the call site
+	 * @param member        a label identifying the group member, used only for diagnostic logging
+	 * @param groupPosition the member's position coordinates within the group window
+	 * @param outputIndex   the flat output index expression
+	 * @return the flat operand index expression
+	 */
+	protected <T> Expression getInputIndex(T member, Expression[] groupPosition, Expression<?> outputIndex) {
 		Expression[] subsetPosition = getPositionOfGroup(outputIndex);
 
 		if (enableLogging) {
 			log("Operand " + operandShape +
 					" in " + groupShape + " group over " + positions +
-					" [member " + groupIndex + "] is in position " + Arrays.toString(groupPosition));
+					" [member " + member + "] is in position " + Arrays.toString(groupPosition));
 		}
 
-		// Find the location in the input of the current group member,
-		// within the subset of the input that is being operated on
-		// to produce the provided outputIndex. This is composed of
-		// the position of the subset extended along each dimension
-		// by the relative position of the group member
+		// Offset each subset anchor coordinate by the member's position within the window
 		Expression[] inputPosition = new Expression[operandShape.getDimensions()];
 		for (int i = 0; i < inputPosition.length; i++) {
 			inputPosition[i] = subsetPosition[i].add(groupPosition[i]);
@@ -207,8 +217,6 @@ public class SubsetTraversalExpression implements ConsoleFeatures {
 				log("\t" + i + " " + Arrays.toString(inputPosition[i].sequence().toArray()));
 		}
 
-		// Provide the index in the operand that is associated
-		// with that position for the current group member
 		return operandShape.index(inputPosition);
 	}
 }
