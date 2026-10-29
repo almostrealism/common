@@ -906,6 +906,93 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	}
 
 	/**
+	 * The caches {@link CausalLanguageModel#decodeModel} appends to the caller's lists are the buffers
+	 * the compiled decode model actually reads and writes — the ownership invariant this change
+	 * establishes — and clearing them erases the past the decode attends to. This fails on the
+	 * pre-change code, where {@code decodeModel} handed back a parallel set of caches that nothing was
+	 * bound to: the handed-back caches stayed zero (first assertion), and clearing them did nothing to
+	 * the caches the decode really used (second assertion).
+	 *
+	 * <p>It asserts the invariant structurally rather than through decoded bytes, so it cannot be
+	 * satisfied by the causal-mask accident that lets {@code keyValueCacheResetClearsCacheAcrossSequences}
+	 * pass without the binding: after decoding a few positions it reads the held buffers back and
+	 * requires the written rows to be non-zero, then clears those same buffers and decodes at a later
+	 * position <em>without</em> re-decoding the earlier ones, and requires the output to match a freshly
+	 * compiled decode model whose caches are all zero. With the binding the cleared earlier rows are
+	 * zero in both, so the rows agree; without it the decode still attends to the earlier sequence's
+	 * rows and the rows differ.</p>
+	 */
+	@Test(timeout = 10 * 60000)
+	public void decodeModelBindsAndClearsTheCachesItHandsBack() {
+		int seq = 8;
+		int dim = 8;
+		int written = 3;
+		int laterPosition = written;
+		int laterToken = 123;
+		int[] earlierTokens = { 11, 47, 99 };
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, seq, dim, 2, 2, 8, ROPE_BASE, new Random(5));
+
+		PackedCollection position = new PackedCollection(1);
+		List<PackedCollection> keyCaches = new ArrayList<>();
+		List<PackedCollection> valueCaches = new ArrayList<>();
+		CompiledModel decode = null;
+
+		PackedCollection freshPosition = new PackedCollection(1);
+		List<PackedCollection> freshKeyCaches = new ArrayList<>();
+		List<PackedCollection> freshValueCaches = new ArrayList<>();
+		CompiledModel freshDecode = null;
+
+		try {
+			decode = lm.decodeModel(position, keyCaches, valueCaches).compile(false);
+			PackedCollection embedding = lm.getWeights().get(CausalLanguageModel.EMBEDDING_KEY);
+			PackedCollection input = new PackedCollection(shape(1, dim));
+
+			// Decode the first `written` positions, then read the held buffers back.
+			decodeRow(decode, position, keyCaches, valueCaches, embedding, input, earlierTokens, dim);
+
+			for (int l = 0; l < keyCaches.size(); l++) {
+				Assert.assertTrue("decode must write the key cache decodeModel handed back (layer " + l + ")",
+						cacheMagnitude(keyCaches.get(l), written, dim) > 0.0);
+				Assert.assertTrue("decode must write the value cache decodeModel handed back (layer " + l + ")",
+						cacheMagnitude(valueCaches.get(l), written, dim) > 0.0);
+			}
+
+			// Clear the held buffers (what reset() does) and decode straight at a later position.
+			keyCaches.forEach(PackedCollection::clear);
+			valueCaches.forEach(PackedCollection::clear);
+			position.fill((double) laterPosition);
+			input.setFrom(0, embedding.range(shape(dim), laterToken * dim), 0, dim);
+			double[] afterClear = decode.forward(input).toArray(0, VOCAB);
+
+			freshDecode = lm.decodeModel(freshPosition, freshKeyCaches, freshValueCaches).compile(false);
+			PackedCollection freshInput = new PackedCollection(shape(1, dim));
+			freshPosition.fill((double) laterPosition);
+			freshInput.setFrom(0, embedding.range(shape(dim), laterToken * dim), 0, dim);
+			double[] fresh = freshDecode.forward(freshInput).toArray(0, VOCAB);
+
+			double maxDifference = 0.0;
+			for (int i = 0; i < VOCAB; i++) {
+				maxDifference = Math.max(maxDifference, Math.abs(fresh[i] - afterClear[i]));
+			}
+			log("maxDifference after clearing the held caches = " + maxDifference);
+
+			Assert.assertArrayEquals("clearing the buffers decodeModel handed back must erase the past the "
+							+ "decode attends to, so a later-position decode matches a fresh all-zero-cache model",
+					fresh, afterClear, 1e-4);
+		} finally {
+			Destroyable.destroy(decode);
+			Destroyable.destroy(freshDecode);
+			position.destroy();
+			freshPosition.destroy();
+			keyCaches.forEach(PackedCollection::destroy);
+			valueCaches.forEach(PackedCollection::destroy);
+			freshKeyCaches.forEach(PackedCollection::destroy);
+			freshValueCaches.forEach(PackedCollection::destroy);
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
 	 * The rotary frequency table the decode path indexes by position is built from the model's stored
 	 * inverse frequencies and holds exactly {@code cos(position * invFreq[i])} and
 	 * {@code sin(position * invFreq[i])}, the same angles the full-sequence rotation applies at that
@@ -1036,6 +1123,25 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		}
 
 		return row;
+	}
+
+	/**
+	 * Returns the sum of the absolute values of the first {@code rows} rows of a cache, a scalar that is
+	 * zero exactly when those rows are all zero. Used to assert that a decode wrote the cache rows it
+	 * was expected to.
+	 *
+	 * @param cache the {@code (seqLen, dim)} cache to measure
+	 * @param rows  the number of leading rows to include
+	 * @param dim   the cache column count
+	 * @return the summed magnitude of the first {@code rows} rows
+	 */
+	private double cacheMagnitude(PackedCollection cache, int rows, int dim) {
+		double[] data = cache.toArray(0, rows * dim);
+		double magnitude = 0.0;
+		for (double value : data) {
+			magnitude += Math.abs(value);
+		}
+		return magnitude;
 	}
 
 	/**

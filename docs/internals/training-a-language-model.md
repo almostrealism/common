@@ -382,7 +382,9 @@ key/value-cache decode was added to avoid recomputing the window.
 position against each layer's cached keys and values instead of recomputing the whole window, so the
 work per byte is one position rather than one window. It is built by `CausalLanguageModel.decodeModel`,
 which bridges the trained weight layout to the cached `AttentionFeatures.attention` overloads without
-copying a weight: the fused QKV `(3·dim, dim)` weight of each block is exposed as three contiguous
+copying a weight, passing each block a caller-owned `(seqLen, dim)` key and value cache it appends to
+the generator's lists so the generator — not the block — owns them: the fused QKV `(3·dim, dim)`
+weight of each block is exposed as three contiguous
 `(dim, dim)` query, key and value views — the same sections the full-sequence path slices — and the
 position-indexed rotary `freqCis` the cached overload expects is derived from the stored
 `rope_inv_freq` with `RotationFeatures.computeRopeFreqs(seqLen, invFreq)`, which produces exactly the
