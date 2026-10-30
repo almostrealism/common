@@ -141,6 +141,17 @@ class QaRoundPromptBuildStepTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIsNone(prompt)
 
+    def test_invalid_template_vars_fail_the_step(self):
+        """A template-vars value the builder rejects must fail the step, even
+        when the template never names the rejected key, rather than rendering
+        on without it."""
+        result, prompt = self._render(
+            "qa/custom-round.txt",
+            template_vars={"lower": "x"},
+            caller_files={"qa/custom-round.txt": "Round on ${BRANCH}.\n"})
+        self.assertNotEqual(0, result.returncode)
+        self.assertIsNone(prompt)
+
     def test_a_template_path_that_climbs_out_of_the_checkout_is_refused(self):
         """Read-as-data must stay inside the caller's checkout."""
         result, prompt = self._render("../../../etc/passwd")

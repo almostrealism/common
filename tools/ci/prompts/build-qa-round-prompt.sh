@@ -88,15 +88,13 @@ fi
 # The names substituted into the template: the three the workflow always
 # supplies, plus every key the caller listed in TEMPLATE_VARS.
 NAMES=(BRANCH BASE_BRANCH REPO_URL)
+# TODO(review): TEMPLATE_VARS keys are exported unchecked, so PATH, BRANCH or TEST_RUNNER_FRAGMENT can be overridden; reject reserved names.
 
 if [ -n "${TEMPLATE_VARS:-}" ]; then
-    while IFS= read -r pair; do
-        [ -z "$pair" ] && continue
-        key="${pair%%=*}"
-        value="${pair#*=}"
-        export "${key}=${value}"
-        NAMES+=("$key")
-    done < <(python3 -c '
+    # Captured by command substitution rather than read from a process
+    # substitution, so that set -e fails the build when TEMPLATE_VARS is
+    # rejected instead of rendering on without it.
+    PAIRS="$(python3 -c '
 import json, os, sys
 raw = os.environ.get("TEMPLATE_VARS", "").strip()
 if not raw:
@@ -120,7 +118,14 @@ for key, value in data.items():
         sys.stderr.write("TEMPLATE_VARS value for %s must be a single line\n" % key)
         sys.exit(1)
     print("%s=%s" % (key, value))
-')
+')"
+    while IFS= read -r pair; do
+        [ -z "$pair" ] && continue
+        key="${pair%%=*}"
+        value="${pair#*=}"
+        export "${key}=${value}"
+        NAMES+=("$key")
+    done <<< "$PAIRS"
 fi
 
 # Render to a temporary file and move it into place only once it is whole, so a

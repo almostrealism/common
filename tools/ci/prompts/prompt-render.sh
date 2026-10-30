@@ -51,6 +51,7 @@ expand_prompt_includes() {
         case "$line" in
             "@include "*)
                 local name="${line#@include }"
+                # TODO(review): a value that contains its own ${NAME} (e.g. X='${X}') makes this loop spin forever; bound it.
                 while [[ "$name" == *'${'*'}'* ]]; do
                     local ref="${name#*'${'}"
                     ref="${ref%%\}*}"
