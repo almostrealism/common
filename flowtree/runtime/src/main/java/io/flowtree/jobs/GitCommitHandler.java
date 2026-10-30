@@ -97,6 +97,14 @@ class GitCommitHandler implements ConsoleFeatures {
     private final List<String> dependentRepoCommits = new ArrayList<>();
 
     /**
+     * One entry per dependent repository this handler actually pushed to; see
+     * {@link #getDependentRepoPushes()}. Empty on dry runs, push-disabled jobs,
+     * and repos where nothing was committed, because a companion pull request
+     * must only be opened for work that reached the remote.
+     */
+    private final List<DependentRepoPush> dependentRepoPushes = new ArrayList<>();
+
+    /**
      * Dependent repositories that had changes but did not publish them, each
      * with the reason; see {@link #getDependentRepoFailures()}.
      */
@@ -720,14 +728,25 @@ class GitCommitHandler implements ConsoleFeatures {
 
     /**
      * Handles git operations (stage, commit, push) for all dependent repos.
-     * Uses the same commit message as the primary repo. No-op when {@code depPaths} is empty.
+     * Uses the same commit message as the primary repo. No-op when the setup
+     * cloned no dependent repos.
      *
-     * @param depPaths resolved filesystem paths of dependent repositories
+     * <p>Takes the {@link GitRepositorySetup} rather than a bare list of paths
+     * so each repo's clone URL is recoverable: a push records a
+     * {@link DependentRepoPush} carrying the URL, branch, and pushed HEAD, which
+     * the controller needs to open a companion pull request. A push is recorded
+     * only after {@link GitPushReconciler#push} returns — that method throws when
+     * a push cannot converge, so a failed push never reaches the recording step
+     * and also ends the loop, leaving later dependent repos unpushed and the job
+     * failed (today's behaviour, preserved).</p>
+     *
+     * @param repoSetup the repository setup holding each dependent repo's path
+     *                  and clone URL
      * @throws IOException if a git operation fails
      * @throws InterruptedException if a command is interrupted
      */
-    void handleDependentRepos(List<String> depPaths) throws IOException, InterruptedException {
-        for (String depPath : depPaths) {
+    void handleDependentRepos(GitRepositorySetup repoSetup) throws IOException, InterruptedException {
+        for (String depPath : repoSetup.getDependentRepoPaths()) {
             GitOperations gitOps = job.gitOperations(depPath);
 
             String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
@@ -782,8 +801,45 @@ class GitCommitHandler implements ConsoleFeatures {
                 new GitPushReconciler(job, depPath, gitOps::execute, gitOps::executeWithOutput)
                         .push(job.getTargetBranch());
                 log("Pushed dependent repo: " + depPath);
+                String pushedHash = gitOps.executeWithOutput("rev-parse", "HEAD").trim();
+                dependentRepoPushes.add(new DependentRepoPush(
+                        repoSetup.getDependentRepoUrl(depPath), job.getTargetBranch(), pushedHash));
             }
         }
+    }
+
+    /**
+     * Returns the dependent repositories this handler pushed to, one entry per
+     * push. A companion pull request is opened (or reused) for each of these.
+     *
+     * @return the dependent-repo pushes, empty when none were pushed
+     */
+    List<DependentRepoPush> getDependentRepoPushes() {
+        return new ArrayList<>(dependentRepoPushes);
+    }
+
+    /**
+     * Populates {@code event} with everything this handler knows about the git
+     * work it performed: staged and skipped files, the primary commit hash, the
+     * push flag, a detected or created pull request URL, and the dependent-repo
+     * pushes.
+     *
+     * <p>This lives on the handler rather than on {@link GitManagedJob} because
+     * every value it sets is this handler's own state; moving it here keeps the
+     * job's completion path short and keeps the two from drifting apart.</p>
+     *
+     * @param event        the completion event to fill
+     * @param targetBranch the branch the job targeted
+     * @param pushToOrigin whether the job was configured to push to origin
+     */
+    void describe(JobCompletionEvent event, String targetBranch, boolean pushToOrigin) {
+        List<String> staged = getStagedFiles();
+        boolean pushed = successful && pushToOrigin && !staged.isEmpty();
+        event.withGitInfo(targetBranch, commitHash, staged, getSkippedFiles(), pushed);
+        if (pullRequestUrl != null) {
+            event.withPullRequestUrl(pullRequestUrl);
+        }
+        event.withDependentRepoPushes(getDependentRepoPushes());
     }
 
     /**

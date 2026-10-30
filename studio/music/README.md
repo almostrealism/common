@@ -344,6 +344,12 @@ Envelope generators for dynamic control:
 - `ParameterizedFilterEnvelope`
 - `ParameterizedLayerEnvelope`
 
+`ParameterizedEnvelope.createFilter(params, voicing)` returns a `ParameterizedEnvelopeFilter`,
+a `NoteAudioFilter` that reports the envelope that created it (`getEnvelope()`) together with
+the `ParameterSet` (`getParameters()`) and voicing (`getVoicing()`) it was created with. Passing
+those back to `createFilter` produces an equal filter, which is how the text format and the
+protobuf codec persist envelope-shaped notes exactly.
+
 ### ChordProgressionManager
 
 Manages chord changes throughout the scene:

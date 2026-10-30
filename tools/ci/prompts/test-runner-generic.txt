@@ -1,0 +1,4 @@
+Run tests with this repository's own test runner, naming a small, bounded
+selection rather than the whole suite and giving each run an explicit
+timeout. Read whatever profiling or diagnostic output the run produces as
+evidence rather than relying on your impression of what the code does.

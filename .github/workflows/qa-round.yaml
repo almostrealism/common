@@ -1,0 +1,340 @@
+name: "QA Round"
+
+# One recurring quality-assurance round, as a reusable workflow. Every QA round
+# runs the same ordered steps — ask the controller whether it accepts automated
+# jobs, decide from the shared cadence gate whether a round may start, archive
+# the rounds that are over, create a "<branch-prefix><UTC timestamp>" branch,
+# register its workstream, build a prompt, and submit a coding-agent job that
+# opens a pull request with whatever it finds. The only per-round differences —
+# the branch prefix, the interval, the prompt and its variables, and the
+# submission settings — are inputs, so this one workflow carries the plumbing
+# once instead of a copy per round.
+#
+# This repository calls it from Master Agent Dispatch for each of its own QA
+# rounds; another repository calls it the same way for a round of its own:
+#
+#   on:
+#     push:
+#       branches: [master]
+#     workflow_dispatch:
+#   jobs:
+#     defect-hunt:
+#       uses: almostrealism/common/.github/workflows/qa-round.yaml@master
+#       permissions:
+#         contents: write
+#         pull-requests: write
+#       with:
+#         round-name: "defect hunt"
+#         branch-prefix: "qa/defect-"
+#         min-interval-days: 2
+#         # The caller's own open-PR limit; a called workflow cannot read it.
+#         max-open-prs: 7
+#         # Empty on a push event, where the dispatch inputs do not exist.
+#         force: ${{ github.event.inputs.force || 'false' }}
+#         ignore-interval: ${{ github.event.inputs.ignore_interval_defect_hunt || 'false' }}
+#         # A built-in template selector, or a path to the caller's own template.
+#         prompt: defect-hunt
+#         description: "Hunt for a defect and prove it with a failing test"
+#         controller-url: ${{ vars.FLOWTREE_CONTROLLER_URL }}
+#         cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+#       secrets:
+#         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+#
+# The round is gated three ways, in order, by the shared cadence script
+# (tools/ci/qa-cadence.sh): no round of this prefix in progress — a previous
+# round's PR open, or its branch younger than grace-hours and not yet carrying
+# one — then room in the open-PR backlog (max-open-prs), then the interval
+# (min-interval-days). `force` lifts all three; `ignore-interval` lifts only the
+# interval. With the gate declined nothing is created: no branch, no workstream,
+# no agent job. A QA round's PR is real work meant to be merged as it stands, so
+# it is never opened as a draft.
+#
+# Trust: a plain checkout inside a called workflow fetches the *caller's*
+# repository, so every script and every built-in template here runs from an
+# explicit checkout of the framework repository at framework-ref
+# (persist-credentials: false), never from the caller's tree. The caller's
+# repository is checked out at its default branch only to create and push the
+# round's branch, and — when the caller supplies its own template by path — to
+# read that template as data, which the framework's builder renders but never
+# executes. No input is interpolated into a run: script; inputs reach scripts
+# through the environment.
+
+on:
+  workflow_call:
+    inputs:
+      round-name:
+        description: "Human-readable name of the round, used in the concurrency group and summary"
+        required: true
+        type: string
+      branch-prefix:
+        description: "Branch name prefix for this round's branches, e.g. \"qa/defect-\""
+        required: true
+        type: string
+      min-interval-days:
+        description: "Minimum days between rounds of this prefix"
+        required: true
+        type: number
+      grace-hours:
+        description: "A branch younger than this that has not opened a PR counts as a round in progress"
+        required: false
+        default: 24
+        type: number
+      max-open-prs:
+        description: "Above this many open pull requests against the default branch, no round starts"
+        required: false
+        default: 7
+        type: number
+      force:
+        description: "\"true\" starts a round even when one is in progress, the backlog is full, or the interval has not passed"
+        required: false
+        default: "false"
+        type: string
+      ignore-interval:
+        description: "\"true\" lifts only the interval; a round in progress still holds the round off"
+        required: false
+        default: "false"
+        type: string
+      prompt:
+        description: "A built-in template selector (defect-hunt | doc-qa | consolidation | flaky-hunt), or a path, relative to the caller's checkout, of the caller's own template"
+        required: true
+        type: string
+      template-vars:
+        description: "JSON object of extra ${NAME} substitutions for the template (keys upper-case identifiers), e.g. {\"REVIEW_SINCE\":\"14 days ago\"}"
+        required: false
+        default: "{}"
+        type: string
+      test-runner-fragment:
+        description: "Published fragment a built-in template includes for test-runner guidance (default test-runner-maven.txt; a non-Maven consumer passes test-runner-generic.txt)"
+        required: false
+        default: "test-runner-maven.txt"
+        type: string
+      protect-test-files:
+        description: "Keep every test method that exists on the base branch exactly as it is for this job"
+        required: false
+        default: "false"
+        type: string
+      enforce-changes:
+        description: "\"true\" re-runs a round that leaves no change, up to max-enforce-changes-retries, then reports it DEGRADED"
+        required: false
+        default: "false"
+        type: string
+      max-enforce-changes-retries:
+        description: "Cap on enforce-changes re-runs (non-negative integer); empty leaves the controller default"
+        required: false
+        default: ""
+        type: string
+      phase-configs:
+        description: "JSON object pinning per-phase runner/model/effort, e.g. {\"primary\":{\"runner\":\"claude\",\"model\":\"opus\",\"provider\":\"anthropic\"}}; empty leaves the workspace defaults"
+        required: false
+        default: ""
+        type: string
+      required-labels:
+        description: "JSON object of capability labels the executing Node must carry for this submission; empty lets any Node take it"
+        required: false
+        default: ""
+        type: string
+      required-labels-json:
+        description: "JSON object of capability labels every later job on the workstream must carry; empty leaves none"
+        required: false
+        default: ""
+        type: string
+      description:
+        description: "Short label for notifications, e.g. \"Hunt for a defect\""
+        required: true
+        type: string
+      framework-repository:
+        description: "The framework repository, owner/name: where the scripts and built-in templates come from"
+        required: false
+        default: "almostrealism/common"
+        type: string
+      framework-ref:
+        description: "Framework branch the scripts and built-in templates are run from"
+        required: false
+        default: "master"
+        type: string
+      controller-url:
+        description: "FlowTree controller base URL"
+        required: false
+        default: "https://flowtree.almostrealism.ai"
+        type: string
+      cf-access-client-id:
+        description: "Cloudflare Access service token client ID for the controller"
+        required: false
+        default: ""
+        type: string
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET:
+        description: "Cloudflare Access service token client secret for the controller"
+        required: false
+
+jobs:
+  round:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize per repository and round, so two merges to one repository cannot
+    # both pass this round's gate, while different rounds do not queue behind
+    # each other.
+    concurrency:
+      group: qa-round-${{ github.repository }}-${{ inputs.round-name }}
+      cancel-in-progress: false
+
+    env:
+      # BRANCH_PREFIX and MIN_INTERVAL_DAYS live at job level so a caller's QA
+      # job resolves to one carrying them, the way the inline rounds did.
+      BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+      MIN_INTERVAL_DAYS: ${{ inputs.min-interval-days }}
+      FRAMEWORK: ${{ github.workspace }}/.qa-round/framework
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The trusted copy of every script and built-in template this job runs.
+      - name: Checkout the framework
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.framework-repository }}
+          ref: ${{ inputs.framework-ref }}
+          path: .qa-round/framework
+          persist-credentials: false
+
+      # Ask before creating anything: a round the controller will refuse leaves
+      # an orphaned branch and workstream behind. See tools/ci/automated-intake.sh.
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: bash "$FRAMEWORK/tools/ci/automated-intake.sh"
+
+      - name: Decide whether to submit
+        id: decide
+        if: steps.intake.outputs.open == 'true'
+        env:
+          BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+          MIN_INTERVAL_DAYS: ${{ inputs.min-interval-days }}
+          PR_GRACE_HOURS: ${{ inputs.grace-hours }}
+          CHECK_BACKLOG: "true"
+          MAX_OPEN_PRS: ${{ inputs.max-open-prs }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          IGNORE_INTERVAL: ${{ inputs.ignore-interval }}
+          FORCE: ${{ inputs.force }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash "$FRAMEWORK/tools/ci/qa-cadence.sh"
+
+      # Retire the rounds that came before this one. Safe here because the gate
+      # above has established that none of them is in progress; a forced run
+      # skips that check, so it archives nothing. Archiving is reversible.
+      - name: Archive previous rounds
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.reason != 'forced'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: bash "$FRAMEWORK/tools/ci/archive-stale-workstreams.sh"
+
+      # A fresh branch for the agent. Pushed before submission so the agent's
+      # targetBranch exists; AUTO_CREATE_PR opens the PR once the agent commits.
+      - name: Create QA branch
+        if: steps.decide.outputs.run == 'true'
+        id: qa_branch
+        env:
+          BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          BRANCH_NAME="${BRANCH_PREFIX}${TIMESTAMP}"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        id: register
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          REQUIRED_LABELS_JSON: ${{ inputs.required-labels-json }}
+        run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
+
+      # The caller's checkout is the caller-root: a built-in selector names a
+      # framework template, a caller path names one in that checkout, read as
+      # data. Variables reach the builder only through the environment.
+      - name: Build the round's prompt
+        if: steps.decide.outputs.run == 'true'
+        env:
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          PROMPT: ${{ inputs.prompt }}
+          TEMPLATE_VARS: ${{ inputs.template-vars }}
+          TEST_RUNNER_FRAGMENT: ${{ inputs.test-runner-fragment }}
+        run: |
+          bash "$FRAMEWORK/tools/ci/prompts/build-qa-round-prompt.sh" \
+            "$GITHUB_WORKSPACE" "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Submit the round's agent job
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          DESCRIPTION: ${{ inputs.description }}
+          AUTO_CREATE_PR: "true"
+          PROTECT_TEST_FILES: ${{ inputs.protect-test-files }}
+          ENFORCE_CHANGES: ${{ inputs.enforce-changes }}
+          MAX_ENFORCE_CHANGES_RETRIES: ${{ inputs.max-enforce-changes-retries }}
+          PHASE_CONFIGS: ${{ inputs.phase-configs }}
+          REQUIRED_LABELS: ${{ inputs.required-labels }}
+        run: bash "$FRAMEWORK/tools/ci/submit-agent-job.sh" "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        env:
+          ROUND_NAME: ${{ inputs.round-name }}
+          INTAKE: ${{ steps.intake.outputs.open }}
+          RUN: ${{ steps.decide.outputs.run }}
+          REASON: ${{ steps.decide.outputs.reason }}
+          MIN_INTERVAL_DAYS: ${{ inputs.min-interval-days }}
+          MAX_OPEN_PRS: ${{ inputs.max-open-prs }}
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+        run: |
+          {
+            echo "## QA Round — ${ROUND_NAME}"
+            echo ""
+            echo "**Automated intake open:** \`${INTAKE:-not checked}\`"
+            echo "**Decision:** \`${RUN:-not run}\` (${REASON:-not run})"
+            echo "**Minimum interval:** ${MIN_INTERVAL_DAYS} days"
+            echo ""
+            if [ "$RUN" = "true" ]; then
+              echo "Created \`${BRANCH}\` and submitted a coding-agent job for the ${ROUND_NAME} round."
+            else
+              case "${REASON}" in
+                "") echo "Skipped: the cadence gate did not run — see Automated intake above." ;;
+                pr-open) echo "Skipped: a previous ${ROUND_NAME} PR is still open. Review or close it first." ;;
+                too-recent) echo "Skipped: the last ${ROUND_NAME} round is younger than the minimum interval." ;;
+                pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." ;;
+                pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." ;;
+                backlog-full) echo "Skipped: more than ${MAX_OPEN_PRS} PRs are open against the default branch. Review some first." ;;
+                backlog-query-failed) echo "Skipped: could not count the open PRs." ;;
+                *) echo "Skipped: ${REASON}" ;;
+              esac
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

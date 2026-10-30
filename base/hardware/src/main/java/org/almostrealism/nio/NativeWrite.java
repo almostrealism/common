@@ -18,7 +18,6 @@ package org.almostrealism.nio;
 
 import io.almostrealism.code.Precision;
 import org.almostrealism.c.BaseNative;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeCompiler;
 
 /**
@@ -52,15 +51,19 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  *
  * <h2>Bounds Checking</h2>
  *
- * <p>All write operations validate that the destination memory is large enough
- * for the requested write operation.</p>
+ * <p>All write operations validate that:
+ * <ul>
+ *   <li>The destination memory is large enough for the requested write</li>
+ *   <li>The source array holds the requested range</li>
+ * </ul>
  *
+ * @see NativeArrayCopy
  * @see NativeRead
  * @see NativeMemory
  * @see org.almostrealism.nio.NativeMemoryProvider
  * @see BaseNative
  */
-public class NativeWrite extends BaseNative {
+public class NativeWrite extends NativeArrayCopy {
 	/**
 	 * Creates a new NativeWrite operation using the specified compiler.
 	 *
@@ -70,95 +73,45 @@ public class NativeWrite extends BaseNative {
 	 */
 	public NativeWrite(NativeCompiler compiler) {
 		super(compiler);
-		initNative();
 	}
 
 	/**
 	 * Returns the C function definition for the native write operation.
 	 *
 	 * <p>Generates a JNI-compatible C function that writes data from a Java double array
-	 * into native memory. The function handles precision conversion:
-	 * FP64 mode writes doubles directly, FP32 mode converts doubles to floats.</p>
+	 * directly into native memory. FP64 mode copies the doubles in a single
+	 * {@code GetDoubleArrayRegion}; FP32 mode converts doubles to floats through a fixed-size
+	 * stack buffer of {@link #CONVERSION_CHUNK} values.</p>
+	 *
+	 * <p>The array is never pinned or copied as a whole, so nothing is allocated however long
+	 * the write is, and no pointer obtained from the JVM has to be handed back to it (the JVM's
+	 * array elements must be released through JNI, never passed to {@code free()}).</p>
 	 *
 	 * @return The C code defining the JNI write function
 	 */
 	@Override
 	public String getFunctionDefinition() {
+		String signature = getFunctionSignature();
+
 		if (getNativeCompiler().getPrecision() == Precision.FP64) {
-			return "JNIEXPORT void JNICALL " + getFunctionName() +
-					" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jdoubleArray target, jint toffset, jint len) {\n" +
-					(enableVerbose ? "\tprintf(\"nativeWrite(%lu) - %i values\\n\", arg, len);\n" : "") +
-					"\tdouble* input = (*env)->GetDoubleArrayElements(env, target, 0);\n" +
-					"\tdouble* output = (double *) arg;\n" +
-					"\tfor (int i = 0; i < len; i++) {\n" +
-					"\t\toutput[offset + i] = input[toffset + i];\n" +
-					"\t}" +
-					"\tfree(input);\n" +
+			return signature +
+					"\t(*env)->GetDoubleArrayRegion(env, target, toffset, len, ((jdouble *) arg) + offset);\n" +
 					"}\n";
 		} else {
-			return "JNIEXPORT void JNICALL " + getFunctionName() +
-					" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jdoubleArray target, jint toffset, jint len) {\n" +
-					(enableVerbose ? "\tprintf(\"nativeWrite(%lu) - %i values\\n\", arg, len);\n" : "") +
-					"\tdouble* input = (*env)->GetDoubleArrayElements(env, target, 0);\n" +
-					"\tfloat* output = (float *) arg;\n" +
-					"\tfor (int i = 0; i < len; i++) {\n" +
-					"\t\toutput[offset + i] = (float) input[toffset + i];\n" +
-					"\t}" +
-					"\tfree(input);\n" +
+			int chunk = CONVERSION_CHUNK;
+			return signature +
+					"\tfloat* output = ((float *) arg) + offset;\n" +
+					"\tjdouble values[" + chunk + "];\n" +
+					"\tfor (jint i = 0; i < len; i += " + chunk + ") {\n" +
+					"\t\tjint n = len - i < " + chunk + " ? len - i : " + chunk + ";\n" +
+					"\t\t(*env)->GetDoubleArrayRegion(env, target, toffset + i, n, values);\n" +
+					"\t\tif ((*env)->ExceptionCheck(env)) return;\n" +
+					"\t\tfor (jint j = 0; j < n; j++) {\n" +
+					"\t\t\toutput[i + j] = (float) values[j];\n" +
+					"\t\t}\n" +
+					"\t}\n" +
 					"}\n";
 		}
-	}
-
-	/**
-	 * Reads all data from a {@link MemoryData} into a new double array.
-	 *
-	 * <p><strong>Note:</strong> This method appears misnamed as it performs a read operation
-	 * rather than a write. Consider using {@link NativeRead} for reading operations.</p>
-	 *
-	 * @param mem The memory data to read from
-	 * @return A new array containing all values from the memory
-	 */
-	public double[] apply(MemoryData mem) {
-		double[] out = new double[mem.getMemLength()];
-		apply((NativeMemory) mem.getMem(), out);
-		return out;
-	}
-
-	/**
-	 * Writes all data from the target array to native memory starting at offset 0.
-	 *
-	 * @param mem    The native memory to write to
-	 * @param target The source array containing data to write
-	 */
-	public void apply(NativeMemory mem, double[] target) { apply(mem, 0, target); }
-
-	/**
-	 * Writes all data from the target array to native memory starting at the specified offset.
-	 *
-	 * @param mem    The native memory to write to
-	 * @param offset The starting offset in elements within native memory
-	 * @param target The source array containing data to write
-	 */
-	public void apply(NativeMemory mem, int offset, double[] target) {
-		apply(mem, offset, target, 0, target.length);
-	}
-
-	/**
-	 * Writes data from the target array to native memory with full control over offsets and lengths.
-	 *
-	 * @param mem     The native memory to write to
-	 * @param offset  The starting offset in elements within native memory
-	 * @param target  The source array containing data to write
-	 * @param toffset The starting offset in the source array
-	 * @param length  The number of elements to write
-	 * @throws IllegalArgumentException if the write would exceed memory bounds
-	 */
-	public void apply(NativeMemory mem, int offset, double[] target, int toffset, int length) {
-		if (mem.getSize() < (long) (offset + length) * getNativeCompiler().getPrecision().bytes()) {
-			throw new IllegalArgumentException("Attempt to write memory beyond the size of " + mem);
-		}
-
-		apply(mem.getContentPointer(), offset, target, toffset, length);
 	}
 
 	/**
@@ -173,5 +126,6 @@ public class NativeWrite extends BaseNative {
 	 * @param toffset The starting offset in the source array
 	 * @param length  The number of elements to write
 	 */
-	public native void apply(long arg, int offset, double[] target, int toffset, int length);
+	@Override
+	protected native void apply(long arg, int offset, double[] target, int toffset, int length);
 }

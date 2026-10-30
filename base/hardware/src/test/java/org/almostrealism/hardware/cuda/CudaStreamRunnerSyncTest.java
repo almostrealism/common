@@ -226,6 +226,30 @@ public class CudaStreamRunnerSyncTest {
 	}
 
 	/**
+	 * When the command fails and the completion callback then fails with an {@link Error}, the
+	 * Error is not buried as a suppressed detail of the command failure: the submitting thread
+	 * receives the Error itself, carrying the command failure as suppressed.
+	 */
+	@Test(timeout = 30000)
+	public void commandFailureGivesWayToCallbackError() {
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new ArrayList<>()));
+		AssertionError error = new AssertionError("callback error");
+
+		try {
+			runner.submit(null, stream -> { throw new IllegalStateException("launch failed"); },
+					null, () -> { throw error; });
+			Assert.fail("The callback error should propagate");
+		} catch (AssertionError expected) {
+			Assert.assertSame(error, expected);
+			Assert.assertEquals(1, expected.getSuppressed().length);
+			Assert.assertTrue(expected.getSuppressed()[0] instanceof IllegalStateException);
+			Assert.assertEquals("launch failed", expected.getSuppressed()[0].getMessage());
+		}
+
+		runner.destroy();
+	}
+
+	/**
 	 * When waiting for a submission's completion event fails and releasing that event then fails
 	 * too, the submission's semaphore reports the wait failure, carrying the release failure as
 	 * suppressed, so the operation that actually failed is not hidden by cleanup.
@@ -632,7 +656,7 @@ public class CudaStreamRunnerSyncTest {
 		CudaSemaphore view = (CudaSemaphore) completion.withRequester(reattributed);
 
 		Assert.assertNotSame("withRequester must return a distinct handle", completion, view);
-		Assert.assertSame("The view must keep the original runner", runner, view.getRunner());
+		Assert.assertSame("The view must keep the original runner", runner, view.getStream());
 		Assert.assertSame("The view must carry the new requester", reattributed, view.getRequester());
 		Assert.assertSame("The original must keep its own requester", original, completion.getRequester());
 
@@ -847,37 +871,284 @@ public class CudaStreamRunnerSyncTest {
 	}
 
 	/**
-	 * Destroying the runner while a submission is held behind a foreign dependency that never
-	 * completes cancels the wait for that dependency, and the wait runs on a daemon thread, so a
-	 * dependency that is never satisfied can neither keep a thread blocked nor keep the JVM alive.
+	 * Destroying the runner while a submission is held behind a foreign dependency that has not
+	 * completed cancels the wait for that dependency: the runner never parked a thread of its own
+	 * for it (the dependency is bridged through {@link Semaphore#onSettled(Runnable)}, which a
+	 * latch-backed dependency serves by registration alone), destruction returns without waiting
+	 * for the dependency, and when the dependency finally settles the abandoned submission is not
+	 * launched. A dependency that is never satisfied can therefore neither keep a runner thread
+	 * blocked nor launch work on a released stream.
 	 *
-	 * @throws InterruptedException if interrupted while waiting for the wait to be cancelled
+	 * @throws InterruptedException if interrupted while waiting for the late settlement
 	 */
 	@Test(timeout = 30000)
 	public void destroyCancelsDependencyWaitOnDaemonThread() throws InterruptedException {
-		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new CopyOnWriteArrayList<>()));
-		CountDownLatch waiting = new CountDownLatch(1);
-		CountDownLatch cancelled = new CountDownLatch(1);
-		AtomicReference<Thread> waiter = new AtomicReference<>();
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		LatchSemaphore pending = new LatchSemaphore(1);
 
-		Semaphore neverCompletes = () -> {
-			waiter.set(Thread.currentThread());
-			waiting.countDown();
-
-			try {
-				new CountDownLatch(1).await();
-			} catch (InterruptedException e) {
-				cancelled.countDown();
-			}
-		};
-
-		runner.submit(null, stream -> { }, neverCompletes, null);
-		waiting.await();
-		Assert.assertTrue("The dependency must be waited for on a daemon thread", waiter.get().isDaemon());
+		Semaphore held = runner.submit(null, stream -> events.add("held"), pending, null);
+		Assert.assertTrue("The runner must not park a thread to wait for the dependency",
+				dependencyWaitThreads().isEmpty());
 
 		runner.destroy();
-		Assert.assertTrue("Destroying the runner must cancel the dependency wait",
-				cancelled.await(10, TimeUnit.SECONDS));
+		Assert.assertTrue("Destroying the runner must settle the held submission without the dependency",
+				((CudaSemaphore) held).isSettled());
+
+		CountDownLatch settled = new CountDownLatch(1);
+		pending.countDown();
+		pending.onSettled(settled::countDown);
+		Assert.assertTrue(settled.await(10, TimeUnit.SECONDS));
+		Thread.sleep(100);
+
+		Assert.assertFalse("A dependency settling after destruction must not launch the abandoned work",
+				events.contains("held"));
+	}
+
+	/**
+	 * Returns every live thread the runner would once have parked in a foreign dependency's
+	 * {@link Semaphore#waitFor()}, by the name its pool gave them.
+	 *
+	 * @return the live dependency-wait threads
+	 */
+	private static List<Thread> dependencyWaitThreads() {
+		return Thread.getAllStackTraces().keySet().stream()
+				.filter(t -> t.getName().contains("dependency wait"))
+				.collect(Collectors.toList());
+	}
+
+	/**
+	 * The CUDA same-stream failure gap: a submission held behind a foreign dependency that fails
+	 * is not launched and reports the failure, and a later submission that depends on it through
+	 * the stream's own order (its {@code dependsOn} is the failed submission's completion, which the
+	 * runner drops as already ordered) must not launch and must report the failure too, rather than
+	 * running on inputs that were never produced and reporting success.
+	 */
+	@Test(timeout = 30000)
+	public void dependentOfFailedSubmissionReportsFailure() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		LatchSemaphore pending = new LatchSemaphore(1);
+
+		Semaphore head = runner.submit(null, stream -> events.add("head"), pending, null);
+		Semaphore dependent = runner.submit(null, stream -> events.add("dependent"), head,
+				() -> events.add("dependent complete"));
+
+		pending.fail(new IllegalStateException("dependency failed"));
+		pending.countDown();
+
+		try {
+			dependent.waitFor();
+			Assert.fail("A dependent of a failed submission must report the failure");
+		} catch (RuntimeException expected) {
+			Assert.assertTrue("The failure must carry the original cause: " + expected,
+					causedBy(expected, "dependency failed"));
+		}
+
+		Assert.assertFalse("The failed head must not launch", events.contains("head"));
+		Assert.assertFalse("The dependent of the failed head must not launch", events.contains("dependent"));
+		Assert.assertTrue("The dependent's callback must still run", events.contains("dependent complete"));
+		runner.destroy();
+	}
+
+	/**
+	 * A failure at sequence {@code K} is reported for every later submission of the runner, including
+	 * one submitted, with no dependency at all, after the failure was recorded: such a submission is
+	 * not launched, does not throw from {@code submit}, runs its callback and reports the failure from
+	 * its semaphore. An earlier submission that ran is not affected.
+	 */
+	@Test(timeout = 30000)
+	public void laterSubmissionsAfterLaunchFailureReportIt() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+
+		Semaphore earlier = runner.submit(null, stream -> events.add("earlier"), null, null);
+
+		try {
+			runner.submit(null, stream -> { throw new IllegalStateException("launch failed"); }, null, null);
+			Assert.fail("The immediate launch failure must reach the submitting thread");
+		} catch (IllegalStateException expected) {
+			Assert.assertEquals("launch failed", expected.getMessage());
+		}
+
+		Semaphore later = runner.submit(null, stream -> events.add("later"), null,
+				() -> events.add("later complete"));
+
+		earlier.waitFor();
+		try {
+			later.waitFor();
+			Assert.fail("A submission after a failed one must report the failure");
+		} catch (RuntimeException expected) {
+			Assert.assertTrue(causedBy(expected, "launch failed"));
+		}
+
+		Assert.assertTrue(events.contains("earlier"));
+		Assert.assertFalse("A submission covered by the failure must not launch", events.contains("later"));
+		Assert.assertTrue(events.contains("later complete"));
+		Assert.assertEquals(2, runner.getFailures().getFailedOrdinal());
+		runner.destroy();
+	}
+
+	/**
+	 * Once the runner has failed, a later submission with a foreign dependency that has not settled
+	 * is not held behind that dependency: it would only report the recorded failure, so it settles
+	 * with it at once, without launching.
+	 */
+	@Test(timeout = 30000)
+	public void poisonedSubmissionDoesNotWaitForItsDependency() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(events));
+		runner.getFailures().record(0, new IllegalStateException("injected"));
+
+		Semaphore poisoned = runner.submit(null, stream -> events.add("poisoned"), new LatchSemaphore(1), null);
+
+		try {
+			poisoned.waitFor();
+			Assert.fail("A submission after a recorded failure must report it");
+		} catch (RuntimeException expected) {
+			Assert.assertTrue(causedBy(expected, "injected"));
+		}
+
+		Assert.assertFalse(events.contains("poisoned"));
+		Assert.assertEquals(0, runner.getHeldCount());
+		runner.destroy();
+	}
+
+	/**
+	 * A failure observed only when the GPU work is waited for (a fault, rather than a launch error)
+	 * is recorded at that submission's sequence, so work already launched behind it on the same
+	 * stream reports it as well, even though its own event completed.
+	 */
+	@Test(timeout = 30000)
+	public void completionFailurePoisonsWorkLaunchedBehindIt() {
+		AtomicReference<Boolean> first = new AtomicReference<>(true);
+		CUStream faulting = new CUStream(null, 0L) {
+			@Override
+			public void synchronize() { }
+
+			@Override
+			public CUEvent recordEvent() {
+				if (first.getAndSet(false)) return new FailingCompletionEvent();
+				return new RecordingEvent(new ArrayList<>());
+			}
+
+			@Override
+			public void release() { }
+		};
+
+		CudaStreamRunner runner = new CudaStreamRunner(faulting);
+		Semaphore faulted = runner.submit(null, stream -> { }, null, null);
+		Semaphore behind = runner.submit(null, stream -> { }, null, null);
+
+		try {
+			faulted.waitFor();
+			Assert.fail("The faulted submission must report its failure");
+		} catch (IllegalStateException expected) {
+			Assert.assertEquals("sync failed", expected.getMessage());
+		}
+
+		try {
+			behind.waitFor();
+			Assert.fail("Work behind a faulted submission must report the fault");
+		} catch (RuntimeException expected) {
+			Assert.assertTrue(causedBy(expected, "sync failed"));
+		}
+
+		runner.destroy();
+	}
+
+	/**
+	 * Submissions held behind a foreign dependency are bounded by {@link CudaStreamRunner#MAX_HELD}:
+	 * one more waits on its submitting thread, without being held, until the dependency settles and
+	 * the held submissions launch, and then it is admitted.
+	 *
+	 * @throws InterruptedException if interrupted while waiting for the submitting thread
+	 */
+	@Test(timeout = 60000)
+	public void heldSubmissionsAreBounded() throws InterruptedException {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new ArrayList<>()));
+		LatchSemaphore pending = new LatchSemaphore(1);
+
+		runner.submit(null, stream -> { }, pending, null);
+		for (int i = 1; i < CudaStreamRunner.MAX_HELD; i++) {
+			runner.submit(null, stream -> { }, null, null);
+		}
+
+		Assert.assertEquals(CudaStreamRunner.MAX_HELD, runner.getHeldCount());
+
+		Thread submitting = new Thread(() -> {
+			Semaphore s = runner.submit(null, stream -> events.add("beyond"), null, null);
+			s.waitFor();
+			events.add("beyond settled");
+		});
+		submitting.start();
+		submitting.join(300);
+
+		Assert.assertTrue("A submission beyond the bound must wait for room", submitting.isAlive());
+		Assert.assertEquals(CudaStreamRunner.MAX_HELD, runner.getHeldCount());
+
+		pending.countDown();
+		submitting.join();
+
+		Assert.assertEquals(List.of("beyond", "beyond settled"), events);
+		Assert.assertEquals(0, runner.getHeldCount());
+		runner.destroy();
+	}
+
+	/**
+	 * A submission made from a completion callback while {@link CudaStreamRunner#MAX_HELD}
+	 * submissions are already held is held beyond the bound rather than waiting for room. Here the
+	 * held head depends on a latch that only a later completion callback of the same runner counts
+	 * down, so a completion thread that waited for room would never observe that completion and
+	 * the runner would deadlock.
+	 */
+	@Test(timeout = 60000)
+	public void completionCallbackSubmissionIsHeldBeyondTheBound() {
+		List<String> events = new CopyOnWriteArrayList<>();
+		CountDownLatch entered = new CountDownLatch(1);
+		CountDownLatch gate = new CountDownLatch(1);
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new ArrayList<>(), entered, gate));
+		LatchSemaphore releasedByLaterCallback = new LatchSemaphore(1);
+		AtomicReference<Semaphore> beyond = new AtomicReference<>();
+		AtomicReference<Integer> heldAfterBeyond = new AtomicReference<>();
+
+		runner.submit(null, stream -> { }, null, () -> {
+			beyond.set(runner.submit(null, stream -> events.add("beyond"), null, null));
+			heldAfterBeyond.set(runner.getHeldCount());
+		});
+		runner.submit(null, stream -> { }, null, releasedByLaterCallback::countDown);
+		runner.submit(null, stream -> events.add("head"), releasedByLaterCallback, null);
+		for (int i = 1; i < CudaStreamRunner.MAX_HELD; i++) {
+			runner.submit(null, stream -> { }, null, null);
+		}
+
+		Assert.assertEquals(CudaStreamRunner.MAX_HELD, runner.getHeldCount());
+
+		gate.countDown();
+		releasedByLaterCallback.waitFor();
+		Assert.assertNotNull("The callback's submission must return rather than wait", beyond.get());
+		beyond.get().waitFor();
+
+		Assert.assertEquals(Integer.valueOf(CudaStreamRunner.MAX_HELD + 1), heldAfterBeyond.get());
+		Assert.assertEquals(List.of("head", "beyond"), events);
+		Assert.assertEquals(0, runner.getHeldCount());
+		runner.destroy();
+	}
+
+	/**
+	 * Returns whether {@code t} or any of its causes has the given message.
+	 *
+	 * @param t       a failure
+	 * @param message the message to look for
+	 * @return true if the failure was caused by one with that message
+	 */
+	private static boolean causedBy(Throwable t, String message) {
+		for (Throwable c = t; c != null; c = c.getCause()) {
+			if (message.equals(c.getMessage())) return true;
+		}
+
+		return false;
 	}
 
 	/**

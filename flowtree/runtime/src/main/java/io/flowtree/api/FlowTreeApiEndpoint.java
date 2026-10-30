@@ -23,6 +23,7 @@ import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.CompletionListenerFanout;
+import io.flowtree.jobs.DependentRepoPush;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.jobs.PostCompletionCommandValidator;
@@ -170,8 +171,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Resolves a Slack workspace ID to its entry for the workspace runner layer. */
     private Function<String, WorkspaceEntry> workspaceLookup = id -> null;
-    /** Tracks which jobs should have a PR auto-created on success. */
-    private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
+    /** Opens the primary and companion pull requests for jobs that asked for them. */
+    private final AutoPullRequestPublisher autoPrPublisher;
 
     /**
      * Job IDs legitimately submitted with {@code selfNotify=true}, recorded at
@@ -324,6 +325,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         super(port);
         this.notifiers = new NotifierRegistry(primaryNotifier, notifiersByWorkspace);
         this.githubProxyHandler = new GitHubProxyHandler(githubOrgTokens);
+        this.autoPrPublisher = new AutoPullRequestPublisher(githubProxyHandler);
         this.secretsHandler = new SecretsRequestHandler(notifiers);
         this.jobQueryHandler = new JobQueryHandler(this.notifiers, () -> statsQueryHandler);
     }
@@ -1132,7 +1134,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (autoCreatePr) {
             factory.setAutoCreatePr(true);
             factory.setCreatePrAsDraft(createPrAsDraft);
-            autoCreatePrJobs.put(factory.getTaskId(), new AutoPrContext(
+            autoPrPublisher.register(factory.getTaskId(), new AutoPrContext(
                 factory.getRepoUrl(), factory.getBaseBranch(), workstream.getGithubOrg(),
                 factory.getDisplaySummary(), createPrAsDraft));
         }
@@ -1281,6 +1283,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (pullRequestUrl != null) {
             event.withPullRequestUrl(pullRequestUrl);
         }
+        // Commits the job pushed to dependent repos, for companion-PR handling.
+        event.withDependentRepoPushes(DependentRepoPush.listFromJson(body));
         // Resolved from the server-side registry populated at submission time,
         // NOT from the posted body -- see the selfNotifyJobs javadoc.
         event.withSelfNotify(jobId != null && selfNotifyJobs.remove(jobId));
@@ -1310,40 +1314,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
 
-        // Auto-create PR on successful completion if requested at submission time
+        // Open the primary and any companion pull requests for a job that asked
+        // for them; a non-success completion just discards the pending context.
         if (eventStatus == JobCompletionEvent.Status.SUCCESS && jobId != null) {
-            AutoPrContext prCtx = autoCreatePrJobs.remove(jobId);
-            if (prCtx != null && event.getTargetBranch() != null
-                    && event.getPullRequestUrl() == null) {
-                // Resolve org: explicit config first, then derive from repo URL
-                String effectiveOrg = prCtx.githubOrg;
-                if (effectiveOrg == null || effectiveOrg.isEmpty()) {
-                    effectiveOrg = GitHubProxyHandler.extractOrgFromRepoUrl(prCtx.repoUrl);
-                }
-                String token = githubProxyHandler.resolveGithubToken(effectiveOrg);
-                if (token != null) {
-                    String ownerRepo = GitHubProxyHandler.extractOwnerRepo(prCtx.repoUrl);
-                    if (ownerRepo != null) {
-                        String base = prCtx.baseBranch != null ? prCtx.baseBranch : "master";
-                        // The branch head stands in when the event carried no hash.
-                        String commitRef = event.getCommitHash() != null
-                                ? event.getCommitHash() : event.getTargetBranch();
-                        String prUrl = githubProxyHandler.createPullRequestFromCommit(
-                            ownerRepo, event.getTargetBranch(), base,
-                            commitRef, prCtx.description, prCtx.draft, token);
-                        if (prUrl != null) {
-                            event.withPullRequestUrl(prUrl);
-                        }
-                    } else {
-                        log("Cannot auto-create PR: unable to extract owner/repo from " + prCtx.repoUrl);
-                    }
-                } else {
-                    log("Cannot auto-create PR: no GitHub token available for org " + effectiveOrg);
-                }
-            }
+            autoPrPublisher.publish(event);
         } else if (jobId != null) {
-            // Clean up context for non-success completions
-            autoCreatePrJobs.remove(jobId);
+            autoPrPublisher.discard(jobId);
         }
 
         // Every status event is also a liveness signal, so the stuck-job

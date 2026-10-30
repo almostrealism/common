@@ -102,6 +102,19 @@ PackedCollection<?> gradient = computeLoss(output, target);
 PackedCollection<?> inputGradient = compiled.backward(gradient);
 ```
 
+`forward` and `backward` wait for their pass to complete. A caller that runs passes in
+sequence can issue each with `submitForward`/`submitBackward` instead, passing the previous
+completion, and wait only where it reads a result on the host; each wait costs a device round
+trip on a GPU backend. This is how `ModelOptimizer` runs a training step (see
+[asynchronous submission](../../docs/internals/asynchronous-submission.md)):
+
+```java
+Semaphore pending = compiled.submitForward(previous, input);
+pending.waitFor();                                     // the output is read on the host next
+pending = compiled.submitBackward(pending, gradient);  // not waited for
+pending = compiled.submitForward(pending, nextInput);  // ordered after the parameter updates
+```
+
 ### 3. Custom Cells
 
 ```java

@@ -555,7 +555,11 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
      * Writes the given YAML string to a temporary file and schedules it for deletion on JVM exit.
      */
     private File writeYamlTempFile(String yaml) throws IOException {
-        File tmp = File.createTempFile("flowtree-test-", ".yaml");
+        // Each file gets its own directory: the controller keeps its databases
+        // beside the YAML, and tests must not share one.
+        File dir = Files.createTempDirectory("flowtree-test-").toFile();
+        dir.deleteOnExit();
+        File tmp = new File(dir, "workstreams.yaml");
         tmp.deleteOnExit();
         Files.write(tmp.toPath(), yaml.getBytes());
         return tmp;
