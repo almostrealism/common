@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -51,5 +52,32 @@ public class MatrixCollectionTests extends TestSuiteBase {
 						assertEquals(output.valueAt(i, 0), v);
 					}
 				}, false, false, true);
+	}
+
+	/**
+	 * Scaling a constant too large to embed as an expression, such as a large identity matrix,
+	 * stays a constant computation evaluated by a kernel instead of being folded on the host
+	 * into a copied buffer, which would hold every element on the Java heap; a constant small
+	 * enough to embed is still folded. Both produce the scaled values.
+	 */
+	// TODO(review): assert the fold decision structurally (host-folded vs product), not only the scaled values
+	@Test(timeout = 60000)
+	public void scaledConstantFoldsOnlyWhenEmbeddable() {
+		int size = 64;
+		CollectionProducer scaled = identity(size).multiply(0.5);
+		assertTrue(scaled.isConstant());
+
+		PackedCollection matrix = scaled.evaluate();
+		for (int i = 0; i < size; i++) {
+			for (int j = 0; j < size; j++) {
+				assertEquals(i == j ? 0.5 : 0.0, matrix.valueAt(i, j));
+			}
+		}
+
+		PackedCollection small = identity(2).multiply(3.0).evaluate();
+		assertEquals(3.0, small.valueAt(0, 0));
+		assertEquals(0.0, small.valueAt(0, 1));
+		assertEquals(0.0, small.valueAt(1, 0));
+		assertEquals(3.0, small.valueAt(1, 1));
 	}
 }
