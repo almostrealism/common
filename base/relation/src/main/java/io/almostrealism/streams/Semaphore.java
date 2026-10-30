@@ -113,10 +113,9 @@ public interface Semaphore {
 	 */
 	default void onComplete(Runnable r) {
 		onSettled(() -> {
-			// TODO(review): a failure recorded as an Error (LatchSemaphore.fail rethrows Errors) still escapes the callback thread
 			try {
 				waitFor();
-			} catch (RuntimeException e) {
+			} catch (RuntimeException | Error e) {
 				// Reported to the operation's own waiters; the callback only follows success
 				return;
 			}

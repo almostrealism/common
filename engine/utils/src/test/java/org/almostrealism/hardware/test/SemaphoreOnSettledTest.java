@@ -22,6 +22,7 @@ import io.almostrealism.streams.DeferredSemaphore;
 import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
@@ -174,6 +175,27 @@ public class SemaphoreOnSettledTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void skippedCompletionCallbackDoesNotEscapeItsThread() throws InterruptedException {
+		assertSkippedCompletionStaysQuiet(new IllegalStateException("guarded work failed"));
+	}
+
+	/**
+	 * A latch that failed with an {@link Error} (which {@link LatchSemaphore#waitFor()} rethrows
+	 * as an Error) skips its completion callback just as quietly as one that failed with a
+	 * runtime exception: nothing escapes the callback thread, and the waiter still sees the Error.
+	 */
+	@Test(timeout = 30000)
+	public void skippedCompletionCallbackForErrorDoesNotEscapeItsThread() throws InterruptedException {
+		assertSkippedCompletionStaysQuiet(new AssertionError("guarded work failed"));
+	}
+
+	/**
+	 * Fails a latch with {@code failure}, verifies its {@link Semaphore#onComplete(Runnable)}
+	 * callback is skipped without any uncaught exception, and that the waiter receives
+	 * {@code failure} itself.
+	 *
+	 * @param failure the failure the guarded work records
+	 */
+	private void assertSkippedCompletionStaysQuiet(Throwable failure) throws InterruptedException {
 		List<Throwable> uncaught = new ArrayList<>();
 		Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
 		Thread.setDefaultUncaughtExceptionHandler((thread, t) -> {
@@ -187,13 +209,22 @@ public class SemaphoreOnSettledTest extends TestSuiteBase {
 			CountDownLatch completed = new CountDownLatch(1);
 			latch.onComplete(completed::countDown);
 
-			latch.fail(new IllegalStateException("guarded work failed"));
+			latch.fail(failure);
 			latch.countDown();
 
 			assertFalse(completed.await(QUIET_MILLIS, TimeUnit.MILLISECONDS));
 			synchronized (uncaught) {
 				assertTrue("uncaught: " + uncaught, uncaught.isEmpty());
 			}
+
+			Throwable seen = null;
+			try {
+				latch.waitFor();
+			} catch (RuntimeException | Error e) {
+				seen = e;
+			}
+
+			Assert.assertSame(failure, seen);
 		} finally {
 			Thread.setDefaultUncaughtExceptionHandler(previous);
 		}
