@@ -552,8 +552,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
                     commitHandler = new GitCommitHandler(this);
                     commitHandler.handle(repoSetup.hasMergeConflicts());
-                    List<String> depPaths = repoSetup.getDependentRepoPaths();
-                    commitHandler.handleDependentRepos(depPaths);
+                    commitHandler.handleDependentRepos(repoSetup);
                 }
             }
 
@@ -595,16 +594,13 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     protected void fireJobCompleted(Exception error) {
         JobCompletionEvent event = createEvent(error);
 
-        List<String> staged = commitHandler != null ? commitHandler.getStagedFiles() : new ArrayList<>();
-        List<String> skipped = commitHandler != null ? commitHandler.getSkippedFiles() : new ArrayList<>();
-        String commit = commitHandler != null ? commitHandler.getCommitHash() : null;
-        boolean pushed = commitHandler != null && commitHandler.isSuccessful()
-                && pushToOrigin && !staged.isEmpty();
-        String prUrl = commitHandler != null ? commitHandler.getPullRequestUrl() : null;
-
-        event.withGitInfo(targetBranch, commit, staged, skipped, pushed);
-        if (prUrl != null) {
-            event.withPullRequestUrl(prUrl);
+        // The git-info population reads only the handler's own state, so it
+        // lives on the handler (GitCommitHandler.describe). A job that never ran
+        // git operations has no handler and reports only its target branch.
+        if (commitHandler != null) {
+            commitHandler.describe(event, targetBranch, pushToOrigin);
+        } else {
+            event.withGitInfo(targetBranch, null, new ArrayList<>(), new ArrayList<>(), false);
         }
         populateEventDetails(event);
         postStatusEvent(event);

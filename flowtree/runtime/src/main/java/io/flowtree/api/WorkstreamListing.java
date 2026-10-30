@@ -445,7 +445,7 @@ final class WorkstreamListing {
                 String url = event.getPullRequestUrl();
                 if (url == null || url.isEmpty()) continue;
                 json.append(",\"pullRequest\":{\"url\":\"").append(url).append("\"");
-                int number = pullRequestNumber(url);
+                int number = PullRequest.numberFromUrl(url);
                 if (number > 0) json.append(",\"number\":").append(number);
                 json.append("}");
                 break;
@@ -460,20 +460,4 @@ final class WorkstreamListing {
      * that the read stays a single indexed query per workstream.
      */
     private static final int PR_SEARCH_DEPTH = 20;
-
-    /**
-     * Extracts the pull-request number from a GitHub pull-request URL.
-     *
-     * @param url the URL, expected to end in {@code /pull/{number}}
-     * @return the number, or {@code -1} when the URL does not carry one
-     */
-    private static int pullRequestNumber(String url) {
-        int slash = url.lastIndexOf('/');
-        if (slash < 0 || slash == url.length() - 1) return -1;
-        try {
-            return Integer.parseInt(url.substring(slash + 1));
-        } catch (NumberFormatException e) {
-            return -1;
-        }
-    }
 }

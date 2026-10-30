@@ -83,6 +83,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		int n = in.getMemLength();
 		return cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
 				.multiply(cp(in).reshape(shape(n)))
+				.reshape(shape(n))
 				.sum().evaluate();
 	};
 

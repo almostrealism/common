@@ -185,7 +185,7 @@ graph TB
                 </div>
 
                 <h3>domain &mdash; Domain Models</h3>
-                <p>Domain-specific functionality for graphics, physics, chemistry, genetics, neural networks, and native code generation.</p>
+                <p>Domain-specific functionality for graphics, physics, chemistry, biology, genetics, neural networks, and native code generation.</p>
                 <div class="mermaid">
 graph TB
     %% Entry points from compute layer
@@ -215,6 +215,10 @@ graph TB
     graphMod --> spaceMod["space<br/>3D scenes, meshes"]
     physics --> spaceMod
 
+    %% Biology
+    chemistry --> biology["biology<br/>neurons, connectomes"]
+    graphMod --> biology
+
     %% Styling
     classDef compute fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     classDef base fill:#e1f5ff,stroke:#0277bd,stroke-width:2px
@@ -222,7 +226,7 @@ graph TB
 
     class geometry,stats,time compute
     class hardware base
-    class color,physics,heredity,graphMod,chemistry,spaceMod domain
+    class color,physics,heredity,graphMod,chemistry,spaceMod,biology domain
                 </div>
 
                 <h3>engine &mdash; Applications &amp; Training</h3>
@@ -297,7 +301,7 @@ graph TB
                 </div>
 
                 <h3>studio &mdash; Multimedia Composition</h3>
-                <p>Audio composition, musical patterns, and spatial audio processing.</p>
+                <p>Audio composition, musical patterns, spatial audio processing, and biological models coupled to the ML engine.</p>
                 <div class="mermaid">
 graph TB
     %% Entry points from engine layer
@@ -314,12 +318,20 @@ graph TB
     %% Spatial
     compose --> spatial["spatial<br/>3D sound"]
 
+    %% Bioscience
+    biology["biology"]
+    ml["ml"]
+    biology --> bioscience["bioscience<br/>biology + ML"]
+    ml --> bioscience
+
     %% Styling
+    classDef domain fill:#fce4ec,stroke:#c2185b,stroke-width:2px
     classDef engine fill:#fff9c4,stroke:#f57f17,stroke-width:2px
     classDef studio fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
 
-    class audio,utils engine
-    class music,compose,spatial studio
+    class biology domain
+    class audio,utils,ml engine
+    class music,compose,spatial,bioscience studio
                 </div>
 
                 <p class="arch-note">

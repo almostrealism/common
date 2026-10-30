@@ -735,17 +735,20 @@ implementations.
 ### Slack Notification
 
 The `SlackNotifier` (a `JobCompletionListener` implementation on the controller) receives
-the event and formats an appropriate Slack message. The message includes:
+the event and formats the completion notice as two messages:
 
-- Job status (success/failure)
-- Branch name and commit hash
-- Number of staged/skipped files
-- Pull request URL (if detected)
-- Error message (if failed)
-- Claude Code session metrics (duration, cost, turns)
-- Permission denial warnings (if any)
+- A **summary** — the outcome (success, failure, cancelled, degraded), the
+  pushed file count and branch (or the job description when nothing was
+  pushed), error detail and job ID when applicable, the pull request URL (if
+  any), wall time, and total cost.
+- **Details** — the short commit hash and description, the stop reason, turn
+  count, per-model cost lines, and permission denial warnings (if any). This
+  message is omitted when there is nothing to put in it.
 
-The Slack message is posted to the workstream's configured Slack channel or thread.
+Only the summary reaches the channel. When the job has a Slack thread, the
+details are posted in that thread and the summary is posted as a thread reply
+that is also broadcast to the channel. Otherwise the summary is posted to the
+channel and the details are posted as a reply in the summary's thread.
 
 ### Pipeline Diagram
 

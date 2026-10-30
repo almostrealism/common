@@ -16,10 +16,19 @@
 
 package io.flowtree.github;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -155,5 +164,61 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
                     + "\"body\":\"line\\nbreak\"}",
                 GitHubProxyHandler.pullRequestPayload(
                         "a \"quoted\" title", "h", "master", "line\nbreak", false));
+    }
+
+    /** The default root is the public API; the two-argument form keeps it. */
+    @Test(timeout = 10000)
+    public void defaultRootIsThePublicApi() {
+        assertEquals("https://api.github.com/repos/almostrealism/common/commits/8b6d8e8a6",
+                GitHubProxyHandler.commitApiUrl("almostrealism/common", "8b6d8e8a6"));
+    }
+
+    /** A custom API root replaces the public host so a test can target a stub server. */
+    @Test(timeout = 10000)
+    public void customRootReplacesThePublicHost() {
+        assertEquals("http://127.0.0.1:8080/repos/almostrealism/common/commits/8b6d8e8a6",
+                GitHubProxyHandler.commitApiUrl("http://127.0.0.1:8080", "almostrealism/common", "8b6d8e8a6"));
+    }
+
+    /**
+     * {@code findOpenPullRequest} returns the open pull request on a branch and
+     * passes over a closed one, so a reused companion PR is never a stale closed
+     * one. The listing is served by a local stub against a custom API root.
+     */
+    @Test(timeout = 30000)
+    public void findOpenPullRequestSkipsClosedPulls() throws IOException {
+        String listing = "[{\"number\":4,\"state\":\"closed\",\"html_url\":\"http://x/pull/4\","
+                + "\"head\":{\"ref\":\"feature/x\"}},"
+                + "{\"number\":5,\"state\":\"open\",\"html_url\":\"http://x/pull/5\","
+                + "\"head\":{\"ref\":\"feature/x\"}}]";
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> respond(exchange, listing));
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+
+            PullRequest open = handler.findOpenPullRequest("almostrealism/common", "feature/x");
+            assertEquals(5, open.number());
+
+            PullRequest none = handler.findOpenPullRequest("almostrealism/common", "no/such");
+            assertNull("no open PR on a branch with none", none);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** Writes a JSON body, filtering an empty {@code head=} match to an empty listing. */
+    private static void respond(HttpExchange exchange, String listing) throws IOException {
+        // getQuery() returns the decoded query, so the branch reads as "no/such".
+        String query = exchange.getRequestURI().getQuery();
+        String body = query != null && query.contains("no/such") ? "[]" : listing;
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream out = exchange.getResponseBody()) {
+            out.write(bytes);
+        }
     }
 }

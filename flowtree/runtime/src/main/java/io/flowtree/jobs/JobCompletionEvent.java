@@ -133,6 +133,21 @@ public class JobCompletionEvent {
     private String pullRequestUrl;
 
     /**
+     * Commits this job pushed to dependent repositories, one entry per push.
+     * Written by the job and parsed by the controller, which opens a companion
+     * pull request for each. Never {@code null}; empty when the job pushed to
+     * no dependent repo.
+     */
+    private List<DependentRepoPush> dependentRepoPushes = Collections.emptyList();
+
+    /**
+     * URLs of the companion pull requests the controller opened or reused for
+     * this job's dependent-repo pushes. Populated controller-side after the
+     * event arrives, so notifiers can report them. Never {@code null}.
+     */
+    private List<String> companionPullRequestUrls = Collections.emptyList();
+
+    /**
      * Whether the completing job asked its own workstream to be notified
      * with a wake-up job when this event fires. A job-level opt-in,
      * currently only settable by {@link ShellCommandJob}; see
@@ -416,6 +431,21 @@ public class JobCompletionEvent {
     public String getPullRequestUrl() { return pullRequestUrl; }
 
     /**
+     * Returns the commits this job pushed to dependent repositories.
+     *
+     * @return the dependent-repo pushes, never {@code null}
+     */
+    public List<DependentRepoPush> getDependentRepoPushes() { return dependentRepoPushes; }
+
+    /**
+     * Returns the companion pull request URLs the controller opened or reused
+     * for this job's dependent-repo pushes.
+     *
+     * @return the companion PR URLs, never {@code null}
+     */
+    public List<String> getCompanionPullRequestUrls() { return companionPullRequestUrls; }
+
+    /**
      * Returns whether the completing job asked its own workstream to be
      * notified with a wake-up job when this event fires.
      *
@@ -566,6 +596,29 @@ public class JobCompletionEvent {
     }
 
     /**
+     * Sets the commits this job pushed to dependent repositories.
+     *
+     * @param pushes the dependent-repo pushes; {@code null} is treated as empty
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withDependentRepoPushes(List<DependentRepoPush> pushes) {
+        this.dependentRepoPushes = pushes != null ? pushes : Collections.emptyList();
+        return this;
+    }
+
+    /**
+     * Sets the companion pull request URLs opened or reused for this job's
+     * dependent-repo pushes.
+     *
+     * @param urls the companion PR URLs; {@code null} is treated as empty
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withCompanionPullRequestUrls(List<String> urls) {
+        this.companionPullRequestUrls = urls != null ? urls : Collections.emptyList();
+        return this;
+    }
+
+    /**
      * Sets whether the completing job asked its own workstream to be
      * notified with a wake-up job when this event fires.
      *
@@ -601,6 +654,10 @@ public class JobCompletionEvent {
         for (String f : skippedFiles) skippedArray.add(f);
 
         root.put("pullRequestUrl", pullRequestUrl);
+
+        ArrayNode pushesArray = root.putArray(DependentRepoPush.JSON_FIELD);
+        for (DependentRepoPush push : dependentRepoPushes) push.toJson(pushesArray);
+
         root.put("selfNotify", selfNotify);
         root.put("errorMessage", errorMessage);
 

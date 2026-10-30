@@ -705,7 +705,9 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * Together with {@link #getMaxOpenCommitCount()}, {@link #getBridgeCommitCount()} and
 	 * {@link #getDestroyCommitCount()} this partitions {@link #getCommitCount()} by cause:
 	 * host waits are the commits that break batching on demand, while {@link #MAX_OPEN}
-	 * commits are the expected steady-state cadence.
+	 * commits are the expected steady-state cadence. The causes are counted when a buffer is
+	 * closed, and {@link #getCommitCount()} when a closed buffer is committed, so while closed
+	 * buffers are held for a host-signaled bridge the causes sum to more than the total.
 	 *
 	 * @return the number of commits caused by host completion waits
 	 */

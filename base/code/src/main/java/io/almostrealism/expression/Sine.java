@@ -19,10 +19,8 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 /**
@@ -32,14 +30,14 @@ import java.util.OptionalLong;
  * {@code |sin(x)| <= 1}. If the operand is a constant, the value is folded at factory time.
  * The derivative is {@code cos(input) * d(input)}.</p>
  */
-public class Sine extends Expression<Double> {
+public class Sine extends UnaryMathFunction {
 	/**
 	 * Constructs a sine expression for the given operand.
 	 *
 	 * @param input the angle operand
 	 */
 	protected Sine(Expression<Double> input) {
-		super(Double.class, input);
+		super(input);
 	}
 
 	/** {@inheritDoc} Returns 25, reflecting the cost of the {@code sin()} transcendental. */
@@ -47,27 +45,19 @@ public class Sine extends Expression<Double> {
 	public int getComputeCost() { return 25; }
 
 	@Override
-	public String getExpression(LanguageOperations lang) {
-		return "sin(" + getChildren().get(0).getExpression(lang) + ")";
+	protected String getFunctionName() { return "sin"; }
+
+	@Override
+	protected double applyToDouble(double operand) { return Math.sin(operand); }
+
+	@Override
+	protected Expression<Double> createNode(Expression<?> input) {
+		return new Sine((Expression<Double>) input);
 	}
 
 	@Override
 	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return OptionalLong.of(1);
-	}
-
-	@Override
-	public Number evaluate(Number... children) {
-		return Math.sin(children[0].doubleValue());
-	}
-
-	@Override
-	public Expression<Double> recreate(List<Expression<?>> children) {
-		if (children.size() != 1) {
-			throw new UnsupportedOperationException();
-		}
-
-		return new Sine((Expression<Double>) children.get(0));
 	}
 
 	/** Chain rule: d/dx[sin(f)] = cos(f) * df/dx */
@@ -90,12 +80,6 @@ public class Sine extends Expression<Double> {
 	 * @return a constant if the input is a known constant, otherwise a {@link Sine}
 	 */
 	public static Expression<Double> of(Expression<Double> input) {
-		OptionalDouble d = input.doubleValue();
-
-		if (d.isPresent()) {
-			return new DoubleConstant(Math.sin(d.getAsDouble()));
-		}
-
-		return new Sine(input.toDouble());
+		return of(Math::sin, input, Sine::new);
 	}
 }
