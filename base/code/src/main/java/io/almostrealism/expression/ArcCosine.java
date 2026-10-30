@@ -19,10 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.lang.LanguageOperations;
 
-import java.util.List;
-import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 /**
@@ -32,43 +29,34 @@ import java.util.OptionalLong;
  * {@code [-1, 1]} and the result lies in {@code [0, pi]}, so the upper bound is 4
  * ({@code pi < 4}). If the operand is a constant, the value is folded at factory time.</p>
  */
-public class ArcCosine extends Expression<Double> {
+public class ArcCosine extends UnaryMathFunction {
 	/**
 	 * Constructs an arc-cosine expression for the given operand.
 	 *
 	 * @param input the operand, defined on {@code [-1, 1]}
 	 */
 	protected ArcCosine(Expression<Double> input) {
-		super(Double.class, input);
+		super(input);
 	}
 
 	/** {@inheritDoc} Returns 25, reflecting the cost of the {@code acos()} transcendental. */
 	@Override
 	public int getComputeCost() { return 25; }
 
-	/** {@inheritDoc} Returns {@code acos(input)}. */
 	@Override
-	public String getExpression(LanguageOperations lang) {
-		return "acos(" + getChildren().get(0).getExpression(lang) + ")";
+	protected String getFunctionName() { return "acos"; }
+
+	@Override
+	protected double applyToDouble(double operand) { return Math.acos(operand); }
+
+	@Override
+	protected Expression<Double> createNode(Expression<?> input) {
+		return new ArcCosine((Expression<Double>) input);
 	}
 
 	@Override
 	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return OptionalLong.of(4);
-	}
-
-	@Override
-	public Number evaluate(Number... children) {
-		return Math.acos(children[0].doubleValue());
-	}
-
-	@Override
-	public Expression<Double> recreate(List<Expression<?>> children) {
-		if (children.size() != 1) {
-			throw new UnsupportedOperationException();
-		}
-
-		return new ArcCosine((Expression<Double>) children.get(0));
 	}
 
 	/** Chain rule: d/dx[acos(f)] = -df/dx / sqrt(1 - f*f) */
@@ -97,12 +85,6 @@ public class ArcCosine extends Expression<Double> {
 	 * @return a constant if the input is a known constant, otherwise an {@link ArcCosine}
 	 */
 	public static Expression<Double> of(Expression<Double> input) {
-		OptionalDouble d = input.doubleValue();
-
-		if (d.isPresent()) {
-			return new DoubleConstant(Math.acos(d.getAsDouble()));
-		}
-
-		return new ArcCosine(input.toDouble());
+		return of(Math::acos, input, ArcCosine::new);
 	}
 }

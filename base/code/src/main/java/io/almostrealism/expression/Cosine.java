@@ -19,10 +19,8 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 /**
@@ -31,43 +29,34 @@ import java.util.OptionalLong;
  * <p>Generates code of the form {@code cos(input)}. The upper bound is always 1 since
  * {@code |cos(x)| <= 1}. If the operand is a constant, the value is folded at factory time.</p>
  */
-public class Cosine extends Expression<Double> {
+public class Cosine extends UnaryMathFunction {
 	/**
 	 * Constructs a cosine expression for the given operand.
 	 *
 	 * @param input the angle operand
 	 */
 	protected Cosine(Expression<Double> input) {
-		super(Double.class, input);
+		super(input);
 	}
 
 	/** {@inheritDoc} Returns 25, reflecting the cost of the {@code cos()} transcendental. */
 	@Override
 	public int getComputeCost() { return 25; }
 
-	/** {@inheritDoc} Returns {@code cos(input)}. */
 	@Override
-	public String getExpression(LanguageOperations lang) {
-		return "cos(" + getChildren().get(0).getExpression(lang) + ")";
+	protected String getFunctionName() { return "cos"; }
+
+	@Override
+	protected double applyToDouble(double operand) { return Math.cos(operand); }
+
+	@Override
+	protected Expression<Double> createNode(Expression<?> input) {
+		return new Cosine((Expression<Double>) input);
 	}
 
 	@Override
 	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return OptionalLong.of(1);
-	}
-
-	@Override
-	public Number evaluate(Number... children) {
-		return Math.cos(children[0].doubleValue());
-	}
-
-	@Override
-	public Expression<Double> recreate(List<Expression<?>> children) {
-		if (children.size() != 1) {
-			throw new UnsupportedOperationException();
-		}
-
-		return new Cosine((Expression<Double>) children.get(0));
 	}
 
 	/** Chain rule: d/dx[cos(f)] = -sin(f) * df/dx */
@@ -90,12 +79,6 @@ public class Cosine extends Expression<Double> {
 	 * @return a constant if the input is a known constant, otherwise a {@link Cosine}
 	 */
 	public static Expression<Double> of(Expression<Double> input) {
-		OptionalDouble d = input.doubleValue();
-
-		if (d.isPresent()) {
-			return new DoubleConstant(Math.cos(d.getAsDouble()));
-		}
-
-		return new Cosine(input.toDouble());
+		return of(Math::cos, input, Cosine::new);
 	}
 }

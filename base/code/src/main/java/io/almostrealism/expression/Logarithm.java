@@ -19,9 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.lang.LanguageOperations;
 
-import java.util.List;
 import java.util.OptionalLong;
 
 /**
@@ -30,7 +28,7 @@ import java.util.OptionalLong;
  * <p>Generates code of the form {@code log(input)}. The factory method cancels
  * {@code log(exp(x))} back to {@code x}. The derivative is {@code 1 / input}.</p>
  */
-public class Logarithm extends Expression<Double> {
+public class Logarithm extends UnaryMathFunction {
 
 	/**
 	 * Constructs a natural logarithm expression for the given operand.
@@ -38,7 +36,7 @@ public class Logarithm extends Expression<Double> {
 	 * @param input the operand whose logarithm is computed
 	 */
 	protected Logarithm(Expression<Double> input) {
-		super(Double.class, input);
+		super(input);
 	}
 
 	/** {@inheritDoc} Returns 15, reflecting the cost of the {@code log()} library call. */
@@ -46,27 +44,19 @@ public class Logarithm extends Expression<Double> {
 	public int getComputeCost() { return 15; }
 
 	@Override
-	public String getExpression(LanguageOperations lang) {
-		return "log(" + getChildren().get(0).getExpression(lang) + ")";
+	protected String getFunctionName() { return "log"; }
+
+	@Override
+	protected double applyToDouble(double operand) { return Math.log(operand); }
+
+	@Override
+	protected Expression<Double> createNode(Expression<?> input) {
+		return new Logarithm((Expression<Double>) input);
 	}
 
 	@Override
 	protected OptionalLong computeUpperBound(KernelStructureContext context) {
 		return OptionalLong.of(1);
-	}
-
-	@Override
-	public Number evaluate(Number... children) {
-		return Math.log(children[0].doubleValue());
-	}
-
-	@Override
-	public Expression<Double> recreate(List<Expression<?>> children) {
-		if (children.size() != 1) {
-			throw new UnsupportedOperationException();
-		}
-
-		return new Logarithm((Expression<Double>) children.get(0));
 	}
 
 	@Override
