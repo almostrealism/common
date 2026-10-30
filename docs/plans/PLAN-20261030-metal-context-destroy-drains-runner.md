@@ -10,7 +10,7 @@ tracker: [1f0095ae-3361-49ba-b1af-92f0d4f9ca6a]
 Plans tracker task **1f0095ae-3361-49ba-b1af-92f0d4f9ca6a** —
 *"Metal: MetalComputeContext.destroy() never destroys its MetalCommandRunner
 (runner thread outlives the context; queue released under a live runner)"* —
-in release **Common 0.76**.
+in the release currently under development.
 
 ## Motivation
 
