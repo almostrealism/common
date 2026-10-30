@@ -18,10 +18,8 @@ package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalDouble;
 
 /**
  * A tangent or hyperbolic-tangent expression applied to a single operand.
@@ -32,7 +30,7 @@ import java.util.OptionalDouble;
  * {@code (1 - tanh(input)^2) * d(input)} for the hyperbolic tangent and
  * {@code (1 + tan(input)^2) * d(input)} for the tangent.</p>
  */
-public class Tangent extends Expression<Double> {
+public class Tangent extends UnaryMathFunction {
 	/** When {@code true} this expression computes {@code tanh}; otherwise {@code tan}. */
 	private boolean hyperbolic;
 
@@ -52,7 +50,7 @@ public class Tangent extends Expression<Double> {
 	 * @param hyperbolic {@code true} for {@code tanh}, {@code false} for {@code tan}
 	 */
 	protected Tangent(Expression<Double> input, boolean hyperbolic) {
-		super(Double.class, input);
+		super(input);
 		this.hyperbolic = hyperbolic;
 	}
 
@@ -61,24 +59,16 @@ public class Tangent extends Expression<Double> {
 	public int getComputeCost() { return 30; }
 
 	@Override
-	public String getExpression(LanguageOperations lang) {
-		return (hyperbolic ? "tanh(" : "tan(") + getChildren().get(0).getExpression(lang) + ")";
+	protected String getFunctionName() { return hyperbolic ? "tanh" : "tan"; }
+
+	@Override
+	protected double applyToDouble(double operand) {
+		return hyperbolic ? Math.tanh(operand) : Math.tan(operand);
 	}
 
 	@Override
-	public Number evaluate(Number... children) {
-		return hyperbolic ?
-				Math.tanh(children[0].doubleValue()) :
-				Math.tan(children[0].doubleValue());
-	}
-
-	@Override
-	public Expression<Double> recreate(List<Expression<?>> children) {
-		if (children.size() != 1) {
-			throw new UnsupportedOperationException();
-		}
-
-		return new Tangent((Expression<Double>) children.get(0), hyperbolic);
+	protected Expression<Double> createNode(Expression<?> input) {
+		return new Tangent((Expression<Double>) input, hyperbolic);
 	}
 
 	/**
@@ -130,12 +120,6 @@ public class Tangent extends Expression<Double> {
 	 * @return a constant or a {@link Tangent} expression
 	 */
 	public static Expression<Double> of(Expression<Double> input, boolean hyperbolic) {
-		OptionalDouble d = input.doubleValue();
-
-		if (d.isPresent()) {
-			return new DoubleConstant(hyperbolic ? Math.tanh(d.getAsDouble()) : Math.tan(d.getAsDouble()));
-		}
-
-		return new Tangent(input.toDouble(), hyperbolic);
+		return of(hyperbolic ? Math::tanh : Math::tan, input, widened -> new Tangent(widened, hyperbolic));
 	}
 }
