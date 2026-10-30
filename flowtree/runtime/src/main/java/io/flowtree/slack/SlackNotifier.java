@@ -1154,16 +1154,12 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             sb.append("   :link: Companion PR: ").append(companion).append("\n");
         }
         // Dependent-repo commits that got no companion PR are unreviewed and
-        // cannot merge; name each so a human can act. TODO(review): a mixed
-        // outcome (one push companioned, another not) suppresses this entirely.
+        // cannot merge; name each so a human can act.
         List<DependentRepoPush> pushes = event.getDependentRepoPushes();
         if (!pushes.isEmpty() && event.getCompanionPullRequestUrls().isEmpty()) {
             for (DependentRepoPush push : pushes) {
-                String hash = push.commitHash();
-                String shortHash = hash != null && hash.length() > 7 ? hash.substring(0, 7) : hash;
                 sb.append("   :warning: Unreviewed dependent-repo commit: ")
-                        .append(push.repoUrl()).append(" ").append(push.branch())
-                        .append(" ").append(shortHash).append("\n");
+                        .append(push.describe()).append("\n");
             }
         }
 
