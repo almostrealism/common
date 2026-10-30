@@ -853,6 +853,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * completion becomes actionable, whereas a coding-agent job can already submit its own
      * follow-up as its last action. See {@link io.flowtree.jobs.CompletionListenerFanout#fanoutSelf}.</p>
      *
+     * <p>When resolution matches a workstream only because it lists the submitted {@code repoUrl}
+     * among its {@code dependentRepos} (see
+     * {@link WorkstreamRegistrationHandler.Registration#matchedAsDependentRepo()}), the job is
+     * <em>not</em> queued: that workstream's primary checkout is a different (downstream)
+     * repository, so auto-review / auto-resolve would act on the wrong repo. The response carries
+     * {@code skipped: true}, {@code matchedAsDependentRepo: true} and the owning workstream's id.
+     * The branch's work is coordinated on that workstream and the companion-PR mechanism.</p>
+     *
      * @param session          the HTTP session
      * @param pathWorkstreamId the workstream identifier from the URL path (fallback)
      * @return JSON response with {@code ok}, {@code jobId}, and {@code workstreamId}
@@ -911,6 +919,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         Workstream workstream = resolution.workstream();
         boolean workstreamCreated = !resolution.existing();
         String workstreamId = workstream.getWorkstreamId();
+
+        // Resolved only as a dependent-repo match: decline rather than review
+        // the wrong checkout (see method javadoc). Before the git-identity
+        // check — a job that is never queued needs no identity.
+        if (resolution.matchedAsDependentRepo()) {
+            String reason = "Branch " + targetBranch + " of " + bodyRepoUrl
+                + " is covered as a dependent repo of workstream " + workstreamId;
+            log("Skipping job submission — " + reason);
+            String json = "{\"ok\":true,\"skipped\":true,\"matchedAsDependentRepo\":true,"
+                + "\"workstreamId\":\"" + JsonFieldExtractor.escapeJson(workstreamId) + "\","
+                + "\"reason\":\"" + JsonFieldExtractor.escapeJson(reason) + "\"}";
+            return newFixedLengthResponse(Response.Status.OK, "application/json", json);
+        }
 
         // Validate git identity before submitting - commits will fail without it.
         // Shell-command jobs never commit, so git identity is not required.
