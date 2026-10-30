@@ -525,6 +525,41 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Finds a non-archived workstream whose {@code defaultBranch} matches
+     * {@code branch} and that lists {@code repoUrl} among its dependent
+     * repositories.
+     *
+     * <p>This recognises the case where a branch is already covered by a
+     * workstream whose primary repo is a downstream repository: the shared
+     * branch belongs to that workstream, which clones {@code repoUrl} as a
+     * dependent, rather than to a duplicate registered for {@code repoUrl}
+     * itself. The repository comparison is by identity (see
+     * {@link Workstream#dependsOnRepo(String)}), so SSH/HTTPS/{@code .git}
+     * spellings match. Archived workstreams are skipped so an archived
+     * downstream workstream never suppresses a fresh registration.</p>
+     *
+     * @param branch  the branch name to match
+     * @param repoUrl the repository URL to find among dependent repos
+     * @return the matching workstream, or {@code null} if none matches
+     */
+    public Workstream findWorkstreamByBranchAndDependentRepo(String branch, String repoUrl) {
+        if (branch == null || branch.isEmpty()) {
+            return null;
+        }
+        if (repoUrl == null || repoUrl.isEmpty()) {
+            return null;
+        }
+
+        for (Workstream ws : workstreams.values()) {
+            if (ws.isArchived()) continue;
+            if (!branch.equals(ws.getDefaultBranch())) continue;
+            if (ws.dependsOnRepo(repoUrl)) return ws;
+        }
+
+        return null;
+    }
+
+    /**
      * Sets a callback for receiving formatted messages (useful for testing).
      *
      * @param callback the callback to receive message text
