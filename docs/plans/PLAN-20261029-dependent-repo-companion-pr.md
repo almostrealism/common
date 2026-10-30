@@ -89,9 +89,15 @@ Changes:
   `getDependentRepoPaths()` as a view so `InvalidFileDetector` and other
   callers stay unchanged. It adds `getDependentRepoUrl(String path)`.
 - **`GitCommitHandler.handleDependentRepos`** records a `DependentRepoPush` after
-  the push returns, using `git rev-parse HEAD` in that repo for the hash. It
+  the push returns, using `git rev-parse HEAD` in that repo for the hash and
+  `job.getTargetBranch()` for the branch (the branch the push targets). It
   records nothing on dry runs, on push-disabled jobs, or when nothing was
-  committed. It exposes the list through `getDependentRepoPushes()`.
+  committed. It exposes the list through `getDependentRepoPushes()`. The method
+  is called today as `handleDependentRepos(repoSetup.getDependentRepoPaths())`,
+  so it receives only paths and has no way to recover each repo's URL; its
+  signature must change to carry the URL as well — either accept the ordered
+  path→URL map directly, or take the `GitRepositorySetup` and call
+  `getDependentRepoUrl(path)` per entry.
 - **`JobCompletionEvent`** gains `withDependentRepoPushes(List<DependentRepoPush>)`
   and a getter, and serializes them in `toJson()` as `"dependentRepoPushes"`.
 - **`GitManagedJob.fireJobCompleted`** attaches the pushes. `GitManagedJob` is at
@@ -109,9 +115,12 @@ Every API URL is hard-coded to `https://api.github.com`, so no test can point th
 
 - Add an API root field. The existing constructor defaults it to
   `https://api.github.com`, and a second constructor accepts it so tests can use a
-  local `com.sun.net.httpserver.HttpServer`. Every URL builder (including
-  `commitApiUrl`) uses it. The proxy endpoint's host check compares
-  against that root's host.
+  local `com.sun.net.httpserver.HttpServer`. Every URL builder uses it, and the
+  proxy endpoint's host check (currently a literal `"api.github.com"` comparison)
+  compares against that root's host instead. Note `commitApiUrl(ownerRepo, ref)`
+  is `static` today; to read the instance root it becomes an instance method (its
+  callers, `createPullRequestFromCommit` and the commit-fetch path, are already
+  instance methods), or it keeps the root as an explicit parameter.
 - New operations, each returning `null`/`false` on failure in the same style as
   the existing ones:
   - `fetchDefaultBranch(ownerRepo, token)`: `GET /repos/{o}/{r}`, `default_branch`.
@@ -248,7 +257,25 @@ label is needed.
 4. **Re-run with new commits on an already-open companion PR.** The plan reuses
    the PR and does not edit its title or body. Later commits show up in the PR
    naturally. It does not add a fresh comment on each run.
-   <!-- TODO(review): if the companion PR is opened before any primary PR exists, a later run that reuses it never adds the primary link or the reciprocal comment; decide whether reuse should backfill missing links. -->
+5. **Backfilling the cross-link when the companion predates the primary PR.**
+   Steps 5–6 of §3 add the primary-PR link (body suffix) and the reciprocal
+   comment on the primary PR *only when the companion PR is newly opened*. If an
+   earlier job opened the companion while no primary PR existed yet — the primary
+   was created later, or its creation failed per open question #2 — a later job
+   that creates or detects the primary PR takes the reuse path (step 4), records
+   the companion URL and stops, so the two are never linked. The companion body
+   has no primary link and the primary PR has no companion comment, which is the
+   invisible-change failure mode this plan exists to prevent, just one job later.
+   **Recommendation:** on reuse (step 4), when a primary PR now exists, check
+   whether the link already exists — the companion body already contains the
+   primary URL, or the primary PR already has a comment naming the companion —
+   and backfill the missing side once if it does not. This is idempotent (it
+   fires at most once per direction) so it does not reintroduce the duplicate
+   comment that open question #4 avoids. It does cost one more read than the
+   operations listed in §2 — either `findOpenPullRequest` must return the
+   companion's body (so the suffix can be detected) or a list-comments call on
+   the primary is needed to detect the existing comment. The approver should
+   decide whether the first cut carries this or defers it to a follow-up.
 
 ## Estimated complexity
 
