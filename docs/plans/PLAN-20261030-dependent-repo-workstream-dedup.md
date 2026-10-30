@@ -9,8 +9,7 @@ tracker: [2f28f6e8-9f84-427a-9861-8bcb2f87a4fb]
 
 **Tracker task:** `2f28f6e8-9f84-427a-9861-8bcb2f87a4fb` —
 "Don't auto-register a workstream when an existing one already covers the branch
-as a dependent repo"
-**Release:** Common 0.76
+as a dependent repo" (the tracker task records the release it is scheduled in)
 
 ## Motivation
 
