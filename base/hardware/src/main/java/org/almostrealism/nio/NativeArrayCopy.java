@@ -97,12 +97,16 @@ public abstract class NativeArrayCopy extends BaseNative {
 	 * @param array       the Java array
 	 * @param arrayOffset the starting offset in the array
 	 * @param length      the number of values to copy
-	 * @throws IllegalArgumentException if the copy would exceed the memory or the array
+	 * @throws IllegalArgumentException if an offset or the length is negative, or the copy would
+	 *                                  exceed the memory or the array
 	 */
 	public final void apply(NativeMemory mem, int offset, double[] array, int arrayOffset, int length) {
-		if (mem.getSize() < (long) (offset + length) * getNativeCompiler().getPrecision().bytes()) {
+		if (offset < 0 || arrayOffset < 0 || length < 0) {
+			throw new IllegalArgumentException("Negative offset or length: offset=" + offset +
+					", arrayOffset=" + arrayOffset + ", length=" + length);
+		} else if (mem.getSize() < ((long) offset + length) * getNativeCompiler().getPrecision().bytes()) {
 			throw new IllegalArgumentException("Attempt to access memory beyond the size of " + mem);
-		} else if (array.length < arrayOffset + length) {
+		} else if (array.length < (long) arrayOffset + length) {
 			throw new IllegalArgumentException("Attempt to access an array beyond its size");
 		}
 

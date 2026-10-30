@@ -126,6 +126,45 @@ public class NativeMemoryCopyTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A negative memory offset, array offset or length is rejected before the native copy can
+	 * touch memory outside the block, and a rejected write leaves the block unchanged.
+	 */
+	@Test(timeout = 60000)
+	public void negativeRangeIsRejected() {
+		NativeMemoryProvider provider = calloc();
+		RAM mem = provider.allocate(LENGTH);
+
+		try {
+			provider.setMem(mem, 0, filled(LENGTH, -1.0), 0, LENGTH);
+			double[] array = filled(LENGTH, 2.0);
+
+			int[][] ranges = { { -1, 0, 4 }, { 0, -1, 4 }, { 0, 0, -1 } };
+			for (int[] range : ranges) {
+				try {
+					provider.setMem(mem, range[0], array, range[1], range[2]);
+					Assert.fail("A write with offset=" + range[0] + ", arrayOffset=" + range[1] +
+							", length=" + range[2] + " was not rejected");
+				} catch (IllegalArgumentException expected) {
+					// expected
+				}
+
+				try {
+					provider.getMem(mem, range[0], array, range[1], range[2]);
+					Assert.fail("A read with offset=" + range[0] + ", arrayOffset=" + range[1] +
+							", length=" + range[2] + " was not rejected");
+				} catch (IllegalArgumentException expected) {
+					// expected
+				}
+			}
+
+			Assert.assertArrayEquals(filled(LENGTH, -1.0), provider.toArray(mem, 0, LENGTH), 0.0);
+			Assert.assertArrayEquals(filled(LENGTH, 2.0), array, 0.0);
+		} finally {
+			provider.deallocate(LENGTH, mem);
+		}
+	}
+
+	/**
 	 * Returns a provider that allocates with JNI calloc rather than direct buffers, at the
 	 * precision of the running hardware.
 	 *
