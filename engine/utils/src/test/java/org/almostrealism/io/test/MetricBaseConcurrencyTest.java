@@ -168,6 +168,51 @@ public class MetricBaseConcurrencyTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that the scalar aggregates {@link org.almostrealism.io.MetricBase#getCount()}
+	 * and {@link org.almostrealism.io.MetricBase#getTotal()} are consistent after concurrent
+	 * {@code addEntry} calls. Unlike the per-key counts (which live in synchronized maps whose
+	 * {@code merge} is atomic), {@code count} and {@code total} are plain scalar fields updated
+	 * with non-atomic read-modify-write. Without synchronization, concurrent increments lose
+	 * updates and the final values fall below the expected totals by a run-dependent amount —
+	 * a nondeterministic outcome the class's own thread-safety contract promises against.
+	 */
+	@Test(timeout = 30000) @TestDepth(2)
+	public void concurrentScalarCountAndTotal() throws Exception {
+		int threadCount = 8;
+		int entriesPerThread = 2000;
+		DistributionMetric metric = new DistributionMetric("scalar-test", 1.0);
+
+		ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+		CyclicBarrier barrier = new CyclicBarrier(threadCount);
+
+		List<Future<?>> futures = new ArrayList<>();
+		for (int t = 0; t < threadCount; t++) {
+			int threadId = t;
+			futures.add(executor.submit(() -> {
+				try {
+					barrier.await();
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+				for (int i = 0; i < entriesPerThread; i++) {
+					metric.addEntry("key-" + threadId, (long) 1);
+				}
+			}));
+		}
+
+		for (Future<?> f : futures) {
+			f.get(20, TimeUnit.SECONDS);
+		}
+		executor.shutdown();
+
+		long expected = (long) threadCount * entriesPerThread;
+		Assert.assertEquals("getCount lost updates under concurrency",
+				expected, metric.getCount());
+		Assert.assertEquals("getTotal lost updates under concurrency",
+				(double) expected, metric.getTotal(), 0.0);
+	}
+
+	/**
 	 * Verifies basic single-threaded MetricBase operations: addEntry,
 	 * getCount, getTotal, and clear.
 	 */
