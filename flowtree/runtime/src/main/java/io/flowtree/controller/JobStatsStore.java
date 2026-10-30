@@ -17,11 +17,8 @@
 package io.flowtree.controller;
 
 import io.flowtree.jobs.JobCompletionEvent;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Truncation;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -49,7 +46,7 @@ import io.flowtree.api.FlowTreeApiEndpoint;
  * @see SlackNotifier
  * @see FlowTreeApiEndpoint
  */
-public class JobStatsStore implements ConsoleFeatures {
+public class JobStatsStore extends ControllerDatabase {
 
     /** DDL statement that creates the {@code job_timing} table if it does not yet exist. */
     private static final String CREATE_TABLE = ""
@@ -142,14 +139,10 @@ public class JobStatsStore implements ConsoleFeatures {
     private static final String CLEAN_ORPHANS =
         "DELETE FROM job_timing WHERE status = 'STARTED' AND started_at < ?";
 
-    /** Filesystem path to the HSQLDB database file (without extension). */
-    private final String dbPath;
-    /** Active JDBC connection to the backing HSQLDB database. */
-    private Connection connection;
     /**
-     * Computes the weekly-statistics rollups. Recreated whenever
-     * {@link #connection} is opened and discarded when it is closed, so it
-     * always reads through the live connection. {@code null} until
+     * Computes the weekly-statistics rollups. Recreated whenever the
+     * connection is opened and discarded when it is closed, so it always
+     * reads through the live connection. {@code null} until
      * {@link #initialize()} has run.
      */
     private WeeklyStatsAggregator weeklyStatsAggregator;
@@ -171,68 +164,51 @@ public class JobStatsStore implements ConsoleFeatures {
      *               e.g. {@code ~/.flowtree/stats}
      */
     public JobStatsStore(String dbPath) {
-        this.dbPath = dbPath;
+        super(dbPath);
     }
 
     /**
-     * Initializes the database: creates tables and indexes, and
+     * Creates tables and indexes, applies the column migrations, and
      * cleans up orphaned STARTED rows older than 7 days.
      */
-    public void initialize() {
-        try {
-            String url = "jdbc:hsqldb:file:" + dbPath + ";shutdown=true";
-            connection = DriverManager.getConnection(url, "SA", "");
-
-            try (Statement stmt = connection.createStatement()) {
-                stmt.execute(CREATE_TABLE);
-                stmt.execute(CREATE_INDEX);
-                stmt.execute(CREATE_RUNNER_COST_TABLE);
-                stmt.execute(CREATE_MODEL_COST_TABLE);
-                for (String migration : SCHEMA_MIGRATIONS) {
-                    try {
-                        stmt.execute(migration);
-                    } catch (SQLException ignored) {
-                        // Column may already exist on databases that were
-                        // created with the updated CREATE TABLE statement
-                    }
+    @Override
+    protected void prepare() throws SQLException {
+        try (Statement stmt = connection().createStatement()) {
+            stmt.execute(CREATE_TABLE);
+            stmt.execute(CREATE_INDEX);
+            stmt.execute(CREATE_RUNNER_COST_TABLE);
+            stmt.execute(CREATE_MODEL_COST_TABLE);
+            for (String migration : SCHEMA_MIGRATIONS) {
+                try {
+                    stmt.execute(migration);
+                } catch (SQLException ignored) {
+                    // Column may already exist on databases that were
+                    // created with the updated CREATE TABLE statement
                 }
             }
-
-            // Clean orphaned STARTED rows older than 7 days
-            Instant cutoff = Instant.now().minusSeconds(7 * 24 * 3600);
-            try (PreparedStatement ps = connection.prepareStatement(CLEAN_ORPHANS)) {
-                ps.setTimestamp(1, Timestamp.from(cutoff));
-                int cleaned = ps.executeUpdate();
-                if (cleaned > 0) {
-                    log("Cleaned " + cleaned + " orphaned STARTED job(s)");
-                }
-            }
-
-            weeklyStatsAggregator = new WeeklyStatsAggregator(connection);
-
-            log("JobStatsStore initialized: " + dbPath);
-        } catch (SQLException e) {
-            warn("Failed to initialize JobStatsStore: " + e.getMessage());
         }
+
+        // Clean orphaned STARTED rows older than 7 days
+        Instant cutoff = Instant.now().minusSeconds(7 * 24 * 3600);
+        try (PreparedStatement ps = connection().prepareStatement(CLEAN_ORPHANS)) {
+            ps.setTimestamp(1, Timestamp.from(cutoff));
+            int cleaned = ps.executeUpdate();
+            if (cleaned > 0) {
+                log("Cleaned " + cleaned + " orphaned STARTED job(s)");
+            }
+        }
+
+        weeklyStatsAggregator = new WeeklyStatsAggregator(connection());
     }
 
     /**
-     * Shuts down the HSQLDB database and closes the connection.
+     * Shuts down the HSQLDB database, closes the connection, and discards
+     * the rollup aggregator that read through it.
      */
-    public void close() {
-        if (connection != null) {
-            try {
-                try (Statement stmt = connection.createStatement()) {
-                    stmt.execute("SHUTDOWN");
-                }
-                connection.close();
-                log("JobStatsStore closed");
-            } catch (SQLException e) {
-                warn("Error closing JobStatsStore: " + e.getMessage());
-            }
-            connection = null;
-            weeklyStatsAggregator = null;
-        }
+    @Override
+    public synchronized void close() {
+        super.close();
+        weeklyStatsAggregator = null;
     }
 
     /**
@@ -267,7 +243,7 @@ public class JobStatsStore implements ConsoleFeatures {
                                                 String description, String submittedBy,
                                                 Map<String, String> requiredLabels,
                                                 Instant submittedAt) {
-        if (connection == null || jobId == null || jobId.isEmpty()) return;
+        if (!isOpen() || jobId == null || jobId.isEmpty()) return;
         if (submittedAt == null) return;
 
         String pendingReason = pendingTriggerReasons.get(jobId);
@@ -280,7 +256,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "submitted_at, description, trigger_reason, submitted_by, required_labels) "
             + "VALUES (vals.jid, vals.wid, vals.sts, vals.sta, vals.sta, vals.dsc, vals.tr, vals.sby, vals.rl)";
 
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, jobId);
             ps.setString(2, workstreamId != null ? workstreamId : "unknown");
             ps.setString(3, "SUBMITTED");
@@ -356,7 +332,7 @@ public class JobStatsStore implements ConsoleFeatures {
     public synchronized void recordJobStarted(String jobId, String workstreamId,
                                                String description, String node,
                                                Instant startedAt) {
-        if (connection == null) return;
+        if (!isOpen()) return;
 
         String pendingReason = pendingTriggerReasons.remove(jobId);
         String triggerReason = (pendingReason != null && !pendingReason.isEmpty())
@@ -373,7 +349,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "description, trigger_reason, node) "
             + "VALUES (vals.jid, vals.wid, vals.sts, vals.sta, vals.dsc, vals.tr, vals.nd)";
 
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, jobId);
             ps.setString(2, workstreamId);
             ps.setString(3, "STARTED");
@@ -403,7 +379,7 @@ public class JobStatsStore implements ConsoleFeatures {
      *                        empty clears any pending reason
      */
     public synchronized void setTriggerReason(String jobId, String triggerReason) {
-        if (jobId == null || jobId.isEmpty() || connection == null) return;
+        if (jobId == null || jobId.isEmpty() || !isOpen()) return;
         if (triggerReason == null || triggerReason.isEmpty()) {
             pendingTriggerReasons.remove(jobId);
             return;
@@ -416,7 +392,7 @@ public class JobStatsStore implements ConsoleFeatures {
         // been recorded by the time the fan-out calls us.
         pendingTriggerReasons.put(jobId, trimmed);
         String updateSql = "UPDATE job_timing SET trigger_reason = ? WHERE job_id = ?";
-        try (PreparedStatement ps = connection.prepareStatement(updateSql)) {
+        try (PreparedStatement ps = connection().prepareStatement(updateSql)) {
             ps.setString(1, trimmed);
             ps.setString(2, jobId);
             ps.executeUpdate();
@@ -464,11 +440,11 @@ public class JobStatsStore implements ConsoleFeatures {
                                                  int permissionDenials,
                                                  String targetBranch, String commitHash,
                                                  String pullRequestUrl, String errorMessage) {
-        if (connection == null) return;
+        if (!isOpen()) return;
 
         // Compute wall_clock_ms in Java to avoid HSQLDB DATEDIFF compatibility issues
         long wallClockMs = 0;
-        try (PreparedStatement psQuery = connection.prepareStatement(
+        try (PreparedStatement psQuery = connection().prepareStatement(
                 "SELECT started_at FROM job_timing WHERE job_id = ?")) {
             psQuery.setString(1, jobId);
             try (ResultSet rs = psQuery.executeQuery()) {
@@ -501,7 +477,7 @@ public class JobStatsStore implements ConsoleFeatures {
         }
         updateSql.append(" WHERE job_id = ?");
 
-        try (PreparedStatement ps = connection.prepareStatement(updateSql.toString())) {
+        try (PreparedStatement ps = connection().prepareStatement(updateSql.toString())) {
             ps.setString(1, status);
             ps.setTimestamp(2, Timestamp.from(completedAt));
             ps.setLong(3, wallClockMs);
@@ -542,7 +518,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "target_branch, commit_hash, pull_request_url, error_message, description) "
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
+        try (PreparedStatement ps = connection().prepareStatement(insertSql)) {
             ps.setString(1, jobId);
             ps.setString(2, wsId);
             ps.setString(3, status);
@@ -620,9 +596,9 @@ public class JobStatsStore implements ConsoleFeatures {
      */
     private void recordCostsInTable(String jobId, String table, String keyColumn,
                                     int maxKeyLen, Map<String, Double> costs) {
-        if (connection == null || jobId == null) return;
+        if (!isOpen() || jobId == null) return;
 
-        try (PreparedStatement del = connection.prepareStatement(
+        try (PreparedStatement del = connection().prepareStatement(
                 "DELETE FROM " + table + " WHERE job_id = ?")) {
             del.setString(1, jobId);
             del.executeUpdate();
@@ -634,7 +610,7 @@ public class JobStatsStore implements ConsoleFeatures {
         if (costs == null || costs.isEmpty()) return;
 
         String sql = "INSERT INTO " + table + " (job_id, " + keyColumn + ", cost_usd) VALUES (?, ?, ?)";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             for (Map.Entry<String, Double> entry : costs.entrySet()) {
                 if (entry.getKey() == null) continue;
                 ps.setString(1, jobId);
@@ -675,12 +651,12 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param node  the worker identity when the signal carried one, else {@code null}
      */
     private void promoteToStarted(String jobId, Instant at, String node) {
-        if (connection == null || jobId == null || jobId.isEmpty() || at == null) return;
+        if (!isOpen() || jobId == null || jobId.isEmpty() || at == null) return;
 
         String sql = "UPDATE job_timing SET status = 'STARTED', started_at = ?, "
             + "node = COALESCE(?, node) "
             + "WHERE job_id = ? AND status = 'SUBMITTED' AND completed_at IS NULL";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setTimestamp(1, Timestamp.from(at));
             ps.setString(2, (node != null && !node.isEmpty()) ? truncate(node, 255) : null);
             ps.setString(3, jobId);
@@ -729,7 +705,7 @@ public class JobStatsStore implements ConsoleFeatures {
      *                    unchanged
      */
     public synchronized void recordHeartbeat(String jobId, Instant heartbeatAt, String node) {
-        if (jobId == null || jobId.isEmpty() || connection == null) return;
+        if (jobId == null || jobId.isEmpty() || !isOpen()) return;
         if (heartbeatAt == null) return;
 
         // A heartbeat proves liveness, so it promotes a SUBMITTED row first.
@@ -739,7 +715,7 @@ public class JobStatsStore implements ConsoleFeatures {
         String sql = withNode
             ? "UPDATE job_timing SET heartbeat_at = ?, node = ? WHERE job_id = ?"
             : "UPDATE job_timing SET heartbeat_at = ? WHERE job_id = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setTimestamp(1, Timestamp.from(heartbeatAt));
             if (withNode) {
                 ps.setString(2, truncate(node, 255));
@@ -773,14 +749,14 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param phase the phase description; {@code null} or empty is ignored
      */
     public synchronized void recordPhase(String jobId, String phase) {
-        if (jobId == null || jobId.isEmpty() || connection == null) return;
+        if (jobId == null || jobId.isEmpty() || !isOpen()) return;
         if (phase == null || phase.isEmpty()) return;
 
         // A phase update proves liveness; it names no node, promote on arrival.
         promoteToStarted(jobId, Instant.now(), null);
 
         String sql = "UPDATE job_timing SET phase = ? WHERE job_id = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, phase);
             ps.setString(2, jobId);
             ps.executeUpdate();
@@ -797,10 +773,10 @@ public class JobStatsStore implements ConsoleFeatures {
      *         or the store is unavailable
      */
     public synchronized String getJobPhase(String jobId) {
-        if (jobId == null || jobId.isEmpty() || connection == null) return null;
+        if (jobId == null || jobId.isEmpty() || !isOpen()) return null;
 
         String sql = "SELECT phase FROM job_timing WHERE job_id = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, jobId);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? rs.getString("phase") : null;
@@ -824,7 +800,7 @@ public class JobStatsStore implements ConsoleFeatures {
      *         unavailable
      */
     public synchronized List<ActiveJob> getActiveJobs(String workstreamId) {
-        if (connection == null) return Collections.emptyList();
+        if (!isOpen()) return Collections.emptyList();
 
         String sql = "SELECT job_id, workstream_id, started_at, heartbeat_at, description, node "
             + "FROM job_timing WHERE status = 'STARTED' AND completed_at IS NULL"
@@ -832,7 +808,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + " ORDER BY started_at DESC";
 
         List<ActiveJob> result = new ArrayList<>();
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             if (workstreamId != null) ps.setString(1, workstreamId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -865,14 +841,14 @@ public class JobStatsStore implements ConsoleFeatures {
      *         the store is unavailable
      */
     public synchronized List<JobInterval> getJobIntervals(Instant from, Instant to) {
-        if (connection == null) return Collections.emptyList();
+        if (!isOpen()) return Collections.emptyList();
 
         String sql = "SELECT job_id, workstream_id, status, started_at, completed_at, heartbeat_at, cost_usd "
             + "FROM job_timing WHERE status <> 'SUBMITTED' AND started_at < ? "
             + "AND (completed_at IS NULL OR completed_at >= ?)";
 
         List<JobInterval> result = new ArrayList<>();
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setTimestamp(1, Timestamp.from(to));
             ps.setTimestamp(2, Timestamp.from(from));
             try (ResultSet rs = ps.executeQuery()) {
@@ -905,7 +881,7 @@ public class JobStatsStore implements ConsoleFeatures {
      *         unavailable
      */
     public synchronized List<PendingJob> getPendingJobs(String workstreamId) {
-        if (connection == null) return Collections.emptyList();
+        if (!isOpen()) return Collections.emptyList();
 
         String sql = "SELECT job_id, workstream_id, submitted_at, submitted_by, "
             + "required_labels, description "
@@ -914,7 +890,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + " ORDER BY submitted_at DESC";
 
         List<PendingJob> result = new ArrayList<>();
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             if (workstreamId != null) ps.setString(1, workstreamId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -942,13 +918,13 @@ public class JobStatsStore implements ConsoleFeatures {
      * @return list of events, or empty list if none found or store unavailable
      */
     public synchronized List<JobCompletionEvent> getRecentJobs(String workstreamId, int limit) {
-        if (connection == null) return Collections.emptyList();
+        if (!isOpen()) return Collections.emptyList();
 
         String sql = "SELECT * FROM job_timing WHERE workstream_id = ? "
             + "ORDER BY COALESCE(completed_at, started_at) DESC LIMIT ?";
 
         List<JobCompletionEvent> result = new ArrayList<>();
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, workstreamId);
             ps.setInt(2, limit);
             try (ResultSet rs = ps.executeQuery()) {
@@ -969,10 +945,10 @@ public class JobStatsStore implements ConsoleFeatures {
      * @return the event, or null if the job is unknown or the store is unavailable
      */
     public synchronized JobCompletionEvent getJob(String jobId) {
-        if (connection == null) return null;
+        if (!isOpen()) return null;
 
         String sql = "SELECT * FROM job_timing WHERE job_id = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, jobId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -1067,9 +1043,9 @@ public class JobStatsStore implements ConsoleFeatures {
      */
     private Map<String, Double> queryCostForJob(String jobId, String table, String keyColumn) {
         Map<String, Double> result = new LinkedHashMap<>();
-        if (connection == null) return result;
+        if (!isOpen()) return result;
         String sql = "SELECT " + keyColumn + ", cost_usd FROM " + table + " WHERE job_id = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, jobId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -1100,7 +1076,7 @@ public class JobStatsStore implements ConsoleFeatures {
      * @return the aggregated stats
      */
     public synchronized WeeklyStats getWeeklyStats(String workstreamId, LocalDate weekStart) {
-        if (connection == null) return new WeeklyStats();
+        if (!isOpen()) return new WeeklyStats();
         return weeklyStatsAggregator.forWeek(workstreamId, weekStart);
     }
 
@@ -1163,7 +1139,7 @@ public class JobStatsStore implements ConsoleFeatures {
      * @return map of workstream ID to stats
      */
     public synchronized Map<String, WeeklyStats> getWeeklyStatsByWorkstream(LocalDate weekStart) {
-        if (connection == null) return new LinkedHashMap<>();
+        if (!isOpen()) return new LinkedHashMap<>();
         return weeklyStatsAggregator.byWorkstream(weekStart);
     }
 
@@ -1177,10 +1153,10 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param slackMessageTs the Slack message timestamp (e.g., {@code "1234567890.123456"})
      */
     public synchronized void updateJobSlackTs(String jobId, String slackMessageTs) {
-        if (connection == null || jobId == null || slackMessageTs == null) return;
+        if (!isOpen() || jobId == null || slackMessageTs == null) return;
 
         String sql = "UPDATE job_timing SET slack_message_ts = ? WHERE job_id = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, slackMessageTs);
             ps.setString(2, jobId);
             ps.executeUpdate();
@@ -1211,9 +1187,9 @@ public class JobStatsStore implements ConsoleFeatures {
      *         has been recorded for it, or the store is unavailable
      */
     public synchronized String getJobSlackTs(String jobId) {
-        if (connection == null || jobId == null) return null;
+        if (!isOpen() || jobId == null) return null;
         String sql = "SELECT slack_message_ts FROM job_timing WHERE job_id = ?";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, jobId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -1244,7 +1220,7 @@ public class JobStatsStore implements ConsoleFeatures {
      */
     public synchronized Map<String, WorkstreamActivity> getActiveWorkstreams(Instant since) {
         Map<String, WorkstreamActivity> result = new LinkedHashMap<>();
-        if (connection == null) return result;
+        if (!isOpen()) return result;
 
         String aggSql = "SELECT workstream_id, "
             + "COUNT(*) AS job_count, "
@@ -1256,7 +1232,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "GROUP BY workstream_id "
             + "ORDER BY job_count DESC";
 
-        try (PreparedStatement ps = connection.prepareStatement(aggSql)) {
+        try (PreparedStatement ps = connection().prepareStatement(aggSql)) {
             ps.setTimestamp(1, Timestamp.from(since));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -1280,7 +1256,7 @@ public class JobStatsStore implements ConsoleFeatures {
             + "ORDER BY COALESCE(completed_at, started_at) DESC LIMIT 5";
 
         for (WorkstreamActivity activity : result.values()) {
-            try (PreparedStatement ps = connection.prepareStatement(jobsSql)) {
+            try (PreparedStatement ps = connection().prepareStatement(jobsSql)) {
                 ps.setString(1, activity.workstreamId);
                 ps.setTimestamp(2, Timestamp.from(since));
                 try (ResultSet rs = ps.executeQuery()) {

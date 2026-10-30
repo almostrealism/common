@@ -96,6 +96,8 @@ machines with no inbound firewall rules required.
 - Docker with Compose v2
 - Java 17 + Maven (for the build step)
 - `/Users/Shared/flowtree/controller/workstreams.yaml` — workstream configuration
+  (the controller also keeps its `stats` and `workstream-metadata` databases in
+  this directory; back it up as a whole)
 - `/Users/Shared/flowtree/secrets/` — token files (auto-generated on first run)
 
 ### Start everything
