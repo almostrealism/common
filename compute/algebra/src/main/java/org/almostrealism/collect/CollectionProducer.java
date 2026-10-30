@@ -23,6 +23,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.calculus.ReduceAxis;
 
@@ -435,6 +436,13 @@ public interface CollectionProducer extends
 	 * scalar-by-collection product built by {@link #multiply(Producer, Producer)} goes
 	 * through this method.
 	 *
+	 * <p>A constant small enough to be embedded in an expression (fewer than
+	 * {@link ScopeSettings#maxConditionSize} elements, the same bound
+	 * {@link CollectionCreationFeatures#c(PackedCollection)} applies) is scaled once, on the host, and embedded. A larger
+	 * constant would only be embedded as a copied buffer, so folding it gains nothing and costs
+	 * evaluating every element onto the Java heap; it is scaled by the product instead, as any
+	 * other collection is.</p>
+	 *
 	 * @param <T>   the collection type
 	 * @param value the scalar multiplier
 	 * @return a producer for the scaled collection
@@ -446,7 +454,7 @@ public interface CollectionProducer extends
 			return this;
 		} else if (value == -1.0) {
 			return minus();
-		} else if (isConstant()) {
+		} else if (isConstant() && getShape().getTotalSizeLong() < ScopeSettings.maxConditionSize) {
 			return multiply(getShape(), value, get());
 		}
 

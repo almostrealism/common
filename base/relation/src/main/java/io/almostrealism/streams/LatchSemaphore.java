@@ -127,6 +127,14 @@ public class LatchSemaphore implements Semaphore {
 	protected AtomicReference<Throwable> getFailure() { return failure; }
 
 	/**
+	 * Returns true once the latch has been counted down to zero, that is, once the guarded work
+	 * has settled, successfully or not.
+	 *
+	 * @return whether the guarded work has settled
+	 */
+	public boolean isSettled() { return latch.getCount() == 0; }
+
+	/**
 	 * Decrements the latch count, releasing waiters once it reaches zero.
 	 */
 	public void countDown() { latch.countDown(); }

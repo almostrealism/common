@@ -16,12 +16,10 @@
 
 package org.almostrealism.hardware.cuda;
 
-import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
-
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
+import org.almostrealism.hardware.ctx.StreamSemaphore;
 
 /**
  * The completion handle for one submission to a {@link CudaStreamRunner}: the CUDA analog of
@@ -32,19 +30,17 @@ import java.util.concurrent.atomic.AtomicReference;
  * The runner counts it down once its completion thread has observed the work finish on the GPU
  * (or the submission failed, which is recorded with {@link #fail(Throwable)} first) and has run
  * the submission's completion callback, so a caller returning from {@link #waitFor()} may rely on
- * every effect of that callback.</p>
+ * every effect of that callback. That settlement state is a {@link LatchSemaphore}, shared by
+ * every {@link #withRequester(OperationMetadata) re-attributed view} of the completion.</p>
  *
- * <p>Knowing its {@link #getRunner() runner} is what lets a dependent submission to the same
+ * <p>Knowing its {@link #getStream() runner} is what lets a dependent submission to the same
  * runner skip any ordering work: the runner's stream already executes in submission order. Its
- * {@link #getSequence() sequence number} is what lets two completions of the same runner merge
+ * {@link #getOrdinal() sequence number} is what lets two completions of the same runner merge
  * into one (see {@link #merge(Semaphore)}).</p>
  */
-public class CudaSemaphore extends DefaultLatchSemaphore {
-	/** The runner the work was submitted to. */
-	private final CudaStreamRunner runner;
-
-	/** The position of the submission among all submissions to {@link #runner}. */
-	private final long sequence;
+public class CudaSemaphore extends StreamSemaphore<CudaStreamRunner> {
+	/** The settlement state: counted down once the submission has settled, holding its failure. */
+	private final LatchSemaphore settlement;
 
 	/**
 	 * Creates the completion handle for a new submission.
@@ -54,35 +50,36 @@ public class CudaSemaphore extends DefaultLatchSemaphore {
 	 * @param sequence  the position of the submission among all submissions to the runner
 	 */
 	CudaSemaphore(OperationMetadata requester, CudaStreamRunner runner, long sequence) {
-		super(requester, 1);
-		this.runner = runner;
-		this.sequence = sequence;
+		this(requester, runner, sequence, new LatchSemaphore(1));
 	}
 
 	/**
-	 * Creates a handle sharing the settlement state of another.
+	 * Creates a handle with the given settlement state, which a re-attributed view shares with
+	 * the original.
 	 *
-	 * @param requester metadata of the operation this completion is attributed to, or {@code null}
-	 * @param runner    the runner the work was submitted to
-	 * @param sequence  the position of the submission among all submissions to the runner
-	 * @param latch     the shared settlement latch
-	 * @param failure   the shared failure
+	 * @param requester  metadata of the operation this completion is attributed to, or {@code null}
+	 * @param runner     the runner the work was submitted to
+	 * @param sequence   the position of the submission among all submissions to the runner
+	 * @param settlement the settlement state
 	 */
 	private CudaSemaphore(OperationMetadata requester, CudaStreamRunner runner, long sequence,
-						  CountDownLatch latch, AtomicReference<Throwable> failure) {
-		super(requester, latch, failure);
-		this.runner = runner;
-		this.sequence = sequence;
+						  LatchSemaphore settlement) {
+		super(requester, runner, sequence);
+		this.settlement = settlement;
 	}
 
-	/** Returns the runner the work was submitted to. */
-	public CudaStreamRunner getRunner() { return runner; }
-
-	/** Returns the position of the submission among all submissions to its runner. */
-	public long getSequence() { return sequence; }
-
 	/** Returns true once the submission has settled, successfully or not. */
-	public boolean isSettled() { return getLatch().getCount() == 0; }
+	public boolean isSettled() { return settlement.isSettled(); }
+
+	/**
+	 * Records the failure the submission settles with; only the first is retained.
+	 *
+	 * @param failure the failure, or {@code null} if the submission completed normally
+	 */
+	void fail(Throwable failure) { settlement.fail(failure); }
+
+	/** Settles the submission, releasing its waiters and running its settlement callbacks. */
+	void countDown() { settlement.countDown(); }
 
 	/**
 	 * Blocks until the submission has completed on the GPU and its completion callback has run.
@@ -98,8 +95,19 @@ public class CudaSemaphore extends DefaultLatchSemaphore {
 	 */
 	@Override
 	public void waitFor() {
-		if (!isSettled()) runner.requireOffCompletionThread();
-		super.waitFor();
+		if (!isSettled()) getStream().requireOffStreamThread();
+		settlement.waitFor();
+	}
+
+	/**
+	 * Registers the callback with the settlement state, which the runner's completion thread
+	 * counts down, so no thread is held while the submission runs.
+	 *
+	 * @param r the callback to invoke once the submission has settled
+	 */
+	@Override
+	public void onSettled(Runnable r) {
+		settlement.onSettled(r);
 	}
 
 	/**
@@ -114,16 +122,11 @@ public class CudaSemaphore extends DefaultLatchSemaphore {
 	 */
 	@Override
 	public Semaphore merge(Semaphore other) {
-		if (!(other instanceof CudaSemaphore)) return null;
-
-		CudaSemaphore cuda = (CudaSemaphore) other;
-		if (cuda.runner != runner) return null;
-
-		return cuda.sequence > sequence ? cuda : this;
+		return later(other);
 	}
 
 	@Override
 	public Semaphore withRequester(OperationMetadata requester) {
-		return new CudaSemaphore(requester, runner, sequence, getLatch(), getFailure());
+		return new CudaSemaphore(requester, getStream(), getOrdinal(), settlement);
 	}
 }

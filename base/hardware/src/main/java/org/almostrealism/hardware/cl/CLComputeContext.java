@@ -24,11 +24,13 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.profile.ProfileData;
 import org.almostrealism.hardware.profile.RunData;
 import org.almostrealism.io.ConsoleFeatures;
 import org.jocl.CL;
+import org.jocl.CLException;
 import org.jocl.Pointer;
 import org.jocl.Sizeof;
 import org.jocl.cl_command_queue;
@@ -405,23 +407,66 @@ public class CLComputeContext extends AbstractComputeContext implements ConsoleF
 	protected void processEvent(cl_event event) { processEvent(event, null); }
 
 	/**
-	 * Waits for an OpenCL event to complete, optionally records profiling data, and releases the event.
+	 * Waits for an OpenCL event to complete, verifies that its command executed, optionally records
+	 * profiling data, and releases the event.
+	 *
+	 * <p>{@code clWaitForEvents} returns for a command that failed as well as for one that executed,
+	 * so the event's {@code CL_EVENT_COMMAND_EXECUTION_STATUS} is read after the wait: a negative
+	 * status means the command did not execute, and is reported as a {@link HardwareException} (see
+	 * {@link #requireExecuted(int)}). OpenCL fails a command whose wait list contains a failed event
+	 * the same way, so a dependent ordered after a failed command through its wait list reports the
+	 * failure through its own event. The event is released whether or not the wait or the status
+	 * check fails.</p>
 	 *
 	 * @param event    the OpenCL event to process
 	 * @param profile  optional consumer to receive timing data, or null to skip profiling
+	 * @throws HardwareException if the event's command did not execute
 	 */
 	protected void processEvent(cl_event event, Consumer<RunData> profile) {
-		CL.clWaitForEvents(1, new cl_event[] { event });
+		try {
+			int waited;
 
-		if (profiling && profile != null) {
-			long startTime[] = { 0 };
-			long endTime[] = { 0 };
-			CL.clGetEventProfilingInfo(event, CL.CL_PROFILING_COMMAND_START, Sizeof.cl_ulong, Pointer.to(startTime), null);
-			CL.clGetEventProfilingInfo(event, CL.CL_PROFILING_COMMAND_END, Sizeof.cl_ulong, Pointer.to(endTime), null);
-			profile.accept(new RunData(endTime[0] - startTime[0]));
+			try {
+				waited = CL.clWaitForEvents(1, new cl_event[] { event });
+			} catch (CLException e) {
+				throw new HardwareException("Waiting for an OpenCL command failed: " + e.getMessage(), e);
+			}
+
+			// With JOCL exceptions disabled a failed wait is reported by its return code instead
+			if (waited != CL.CL_SUCCESS && waited != CL.CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST) {
+				throw new HardwareException("Waiting for an OpenCL command failed: " + CL.stringFor_errorCode(waited));
+			}
+
+			int[] status = { 0 };
+			CL.clGetEventInfo(event, CL.CL_EVENT_COMMAND_EXECUTION_STATUS, Sizeof.cl_int, Pointer.to(status), null);
+			requireExecuted(status[0]);
+
+			if (profiling && profile != null) {
+				long startTime[] = { 0 };
+				long endTime[] = { 0 };
+				CL.clGetEventProfilingInfo(event, CL.CL_PROFILING_COMMAND_START, Sizeof.cl_ulong, Pointer.to(startTime), null);
+				CL.clGetEventProfilingInfo(event, CL.CL_PROFILING_COMMAND_END, Sizeof.cl_ulong, Pointer.to(endTime), null);
+				profile.accept(new RunData(endTime[0] - startTime[0]));
+			}
+		} finally {
+			CL.clReleaseEvent(event);
 		}
+	}
 
-		CL.clReleaseEvent(event);
+	/**
+	 * Throws if an OpenCL command execution status reports that the command did not execute. A
+	 * completed command has the status {@code CL_COMPLETE} (zero); a negative status is the error
+	 * code the command was terminated with, which OpenCL also gives a command whose wait list
+	 * contained a failed event.
+	 *
+	 * @param executionStatus the event's {@code CL_EVENT_COMMAND_EXECUTION_STATUS}
+	 * @throws HardwareException if the status is negative
+	 */
+	public static void requireExecuted(int executionStatus) {
+		if (executionStatus < 0) {
+			throw new HardwareException("OpenCL command did not execute (execution status " +
+					executionStatus + ")");
+		}
 	}
 
 	/**

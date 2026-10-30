@@ -62,6 +62,10 @@ import java.util.function.Consumer;
  * with or without it.</p>
  */
 public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
+	/** The message {@link #requireOffConfinedThread()} rejects a wait on the confined thread with. */
+	public static final String CONFINED_THREAD_WAIT =
+			"A task on the confined thread cannot wait for work queued behind itself";
+
 	/** How every task is run on the confined thread. */
 	private final Consumer<Runnable> taskScope;
 
@@ -319,10 +323,18 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	 * @throws IllegalStateException if called from the confined thread
 	 */
 	public void requireOffConfinedThread() {
-		if (Thread.currentThread() == confinedThread) {
-			throw new IllegalStateException(
-					"A task on the confined thread cannot wait for work queued behind itself");
+		if (isConfinedThread()) {
+			throw new IllegalStateException(CONFINED_THREAD_WAIT);
 		}
+	}
+
+	/**
+	 * Returns whether the calling thread is this executor's confined thread.
+	 *
+	 * @return true if called from a task running on the confined thread
+	 */
+	public boolean isConfinedThread() {
+		return Thread.currentThread() == confinedThread;
 	}
 
 	/**
