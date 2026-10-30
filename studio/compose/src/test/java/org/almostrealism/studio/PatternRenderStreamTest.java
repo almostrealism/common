@@ -22,6 +22,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -168,6 +169,68 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 			Assert.assertEquals("No buffer should be recorded when the producer rejects its own stop()",
 					0, stream.buffersRendered());
 		} finally {
+			stream.destroy();
+			workingInput.destroy();
+		}
+	}
+
+	/**
+	 * A render that {@link PatternRenderStream#stop()} cancels, by failing on the interrupt
+	 * {@code stop()} delivers, is not reported as a render failure: a consumer waiting for a
+	 * slot is not woken with a "render-ahead failed" error, and only its own interrupt ends
+	 * the wait.
+	 */
+	@Test(timeout = 60000)
+	public void renderCancelledByStopIsNotReportedAsFailure() throws InterruptedException {
+		AtomicBoolean rendering = new AtomicBoolean();
+		AtomicReference<Throwable> fromConsumer = new AtomicReference<>();
+
+		Runnable cancellableRender = () -> {
+			rendering.set(true);
+			while (!Thread.currentThread().isInterrupted()) {
+				Thread.onSpinWait();
+			}
+			throw new CancellationException("render cancelled by stop()");
+		};
+
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream stream = new PatternRenderStream(cancellableRender, new long[1],
+				workingInput, SLOTS, 1, BUFFER_SIZE);
+
+		Thread consumer = new Thread(() -> {
+			try {
+				stream.awaitSlot();
+			} catch (Throwable t) {
+				fromConsumer.set(t);
+			}
+		}, "pattern-render-consumer");
+
+		try {
+			stream.start(0);
+			while (!rendering.get()) {
+				Thread.sleep(5);
+			}
+
+			consumer.start();
+			while (consumer.getState() != Thread.State.WAITING) {
+				Thread.sleep(5);
+			}
+
+			stream.stop();
+
+			consumer.join(500);
+			Assert.assertTrue("A cancelled render must not wake the waiting consumer", consumer.isAlive());
+
+			consumer.interrupt();
+			consumer.join(10000);
+			Assert.assertFalse("The consumer should exit on its own interrupt", consumer.isAlive());
+			Assert.assertTrue("The consumer should observe its interrupt, not a render failure: "
+					+ fromConsumer.get(), fromConsumer.get() instanceof HardwareException);
+			Assert.assertNull("A render cancelled by stop() must not be reported as its cause",
+					fromConsumer.get().getCause());
+			Assert.assertEquals(0, stream.buffersRendered());
+		} finally {
+			consumer.interrupt();
 			stream.destroy();
 			workingInput.destroy();
 		}
