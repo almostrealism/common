@@ -59,8 +59,8 @@ import java.util.stream.Collectors;
  * 3. Calculate parallelism   min(workSize, configured parallelism)
  * 4. Submit tasks           p tasks to executor, each runs inst.apply()
  *                           (a single task runs on the coordinating thread instead)
- * 5. Wait for completion    latch.waitFor()
- * 6. Return semaphore       For downstream dependencies
+ * 5. Await workers          the coordinator (not the caller) awaits the latch count-down
+ * 6. Return semaphore       returned at once, for downstream dependencies
  * </pre>
  *
  * <h2>Usage Pattern</h2>
@@ -78,7 +78,7 @@ import java.util.stream.Collectors;
  * PackedCollection output = ...;
  * Semaphore result = execution.accept(new Object[] { input, output }, null);
  *
- * // Wait for completion (already done, but can be passed to next operation)
+ * // Wait for completion at a host boundary (or pass result to the next operation instead)
  * result.waitFor();
  * }</pre>
  *
@@ -171,7 +171,8 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li><strong>Work size:</strong> Must be &lt;= Integer.MAX_VALUE</li>
  *   <li><strong>Work offset:</strong> Must be 0 if parallelism > 1</li>
- *   <li><strong>Blocking:</strong> Currently blocks waiting for completion (TODO: make async)</li>
+ *   <li><strong>Blocking:</strong> Only when {@link #enableExecutor} is false; otherwise
+ *       {@link #accept(Object[], Semaphore)} returns without waiting for the dispatch</li>
  * </ul>
  *
  * @see HardwareOperator

@@ -22,3 +22,6 @@ Quantum and classical physics simulation. Models atomic structures (electrons, o
 ### [ar-chemistry](chemistry/README.md)
 Periodic table and chemical element representations. Provides all 118 elements with electron configurations, organized by groups, periods, families, and blocks. Supports `Alloy` creation for probabilistic element mixing and integrates with physics for atomic modeling and heredity for evolutionary material composition.
 
+### [ar-biology](biology/README.md)
+Biological models: neurons, synapses, cell types, connectomes and their dynamics. Builds on chemistry and graph so that biological dynamics are expressed as computation graphs that compile to native kernels.
+

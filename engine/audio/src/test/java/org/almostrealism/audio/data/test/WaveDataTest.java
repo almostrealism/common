@@ -151,6 +151,117 @@ public class WaveDataTest extends TestSuiteBase implements TestAudioDataFeatures
 	}
 
 	/**
+	 * Builds a WaveData from channel-major samples.
+	 *
+	 * @param channels the channel count
+	 * @param frames   the frames per channel
+	 * @param samples  the channel-major sample values, length {@code channels * frames}
+	 * @return the WaveData
+	 */
+	private WaveData waveData(int channels, int frames, double... samples) {
+		PackedCollection data = channels == 1 ?
+				new PackedCollection(frames) : new PackedCollection(channels, frames);
+		data.set(0, samples);
+		return new WaveData(data, TEST_SAMPLE_RATE);
+	}
+
+	/**
+	 * Tests that a mono source is duplicated across every target channel and that
+	 * frames beyond the source length are zero-padded.
+	 */
+	@Test(timeout = 30000)
+	public void conformMonoFillsEveryChannelAndZeroPads() {
+		WaveData mono = waveData(1, 4, 1.0, 2.0, 3.0, 4.0);
+
+		PackedCollection conformed = mono.conform(2, 8);
+
+		Assert.assertEquals(2, conformed.getShape().getDimensions());
+		Assert.assertEquals(2, conformed.getShape().length(0));
+		Assert.assertEquals(8, conformed.getShape().length(1));
+
+		for (int channel = 0; channel < 2; channel++) {
+			Assert.assertEquals(1.0, conformed.toDouble(channel * 8), 1e-9);
+			Assert.assertEquals(4.0, conformed.toDouble(channel * 8 + 3), 1e-9);
+			Assert.assertEquals(0.0, conformed.toDouble(channel * 8 + 4), 1e-9);
+			Assert.assertEquals(0.0, conformed.toDouble(channel * 8 + 7), 1e-9);
+		}
+	}
+
+	/**
+	 * Tests that a source longer than the target frame count is truncated.
+	 */
+	@Test(timeout = 30000)
+	public void conformTruncatesLongerSource() {
+		WaveData mono = waveData(1, 8, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+
+		PackedCollection conformed = mono.conform(1, 4);
+
+		Assert.assertEquals(4, conformed.getShape().length(1));
+		Assert.assertEquals(1.0, conformed.toDouble(0), 1e-9);
+		Assert.assertEquals(4.0, conformed.toDouble(3), 1e-9);
+	}
+
+	/**
+	 * Tests that each channel of a multi-channel source is preserved independently.
+	 */
+	@Test(timeout = 30000)
+	public void conformPreservesStereoChannels() {
+		// Channel-major: channel 0 = [1,2,3,4], channel 1 = [5,6,7,8].
+		WaveData stereo = waveData(2, 4, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+
+		PackedCollection conformed = stereo.conform(2, 4);
+
+		Assert.assertEquals(1.0, conformed.toDouble(0), 1e-9);
+		Assert.assertEquals(4.0, conformed.toDouble(3), 1e-9);
+		Assert.assertEquals(5.0, conformed.toDouble(4), 1e-9);
+		Assert.assertEquals(8.0, conformed.toDouble(7), 1e-9);
+	}
+
+	/**
+	 * Tests that a source with more channels than the target is truncated to the
+	 * target channel count, keeping the leading channels and dropping the rest.
+	 */
+	@Test(timeout = 30000)
+	public void conformTruncatesExtraChannels() {
+		// Channel-major: channel 0 = [1,2,3,4], channel 1 = [5,6,7,8].
+		WaveData stereo = waveData(2, 4, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+
+		PackedCollection conformed = stereo.conform(1, 4);
+
+		Assert.assertEquals(1, conformed.getShape().length(0));
+		Assert.assertEquals(4, conformed.getShape().length(1));
+		Assert.assertEquals(1.0, conformed.toDouble(0), 1e-9);
+		Assert.assertEquals(2.0, conformed.toDouble(1), 1e-9);
+		Assert.assertEquals(3.0, conformed.toDouble(2), 1e-9);
+		Assert.assertEquals(4.0, conformed.toDouble(3), 1e-9);
+	}
+
+	/**
+	 * Tests that a source with fewer channels than the target has its last channel
+	 * duplicated into the additional target channels, rather than being zero-filled.
+	 */
+	@Test(timeout = 30000)
+	public void conformDuplicatesLastChannel() {
+		// Channel-major: channel 0 = [1,2,3,4], channel 1 = [5,6,7,8].
+		WaveData stereo = waveData(2, 4, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+
+		PackedCollection conformed = stereo.conform(3, 4);
+
+		Assert.assertEquals(3, conformed.getShape().length(0));
+		Assert.assertEquals(4, conformed.getShape().length(1));
+
+		// Channel 0 preserved.
+		Assert.assertEquals(1.0, conformed.toDouble(0), 1e-9);
+		Assert.assertEquals(4.0, conformed.toDouble(3), 1e-9);
+		// Channel 1 preserved.
+		Assert.assertEquals(5.0, conformed.toDouble(4), 1e-9);
+		Assert.assertEquals(8.0, conformed.toDouble(7), 1e-9);
+		// Channel 2 duplicates the last source channel (channel 1).
+		Assert.assertEquals(5.0, conformed.toDouble(8), 1e-9);
+		Assert.assertEquals(8.0, conformed.toDouble(11), 1e-9);
+	}
+
+	/**
 	 * Tests BufferDetails retrieval.
 	 */
 	@Test(timeout = 30000)
