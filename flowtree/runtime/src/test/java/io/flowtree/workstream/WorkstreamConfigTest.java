@@ -305,6 +305,58 @@ public class WorkstreamConfigTest extends TestSuiteBase {
     }
 
     /**
+     * Verifies that {@code planInstructions} set on a live {@link Workstream}
+     * is persisted into its config entry and survives a save-and-reload
+     * round-trip back into a {@link Workstream}. This exercises both the
+     * {@link Workstream}-to-entry copy ({@code WorkstreamEntry.populateFrom}) and the
+     * entry-to-{@link Workstream} mapping ({@code toWorkstream}) that persist
+     * this branch's original-intent record.
+     */
+    @Test(timeout = 10000)
+    public void testPlanInstructionsSurvivesSaveAndReload() throws IOException {
+        Workstream ws = new Workstream("ws-plan-1", "C0001", "#alpha");
+        ws.setPlanInstructions("Investigate and fix the flaky retry loop.");
+
+        WorkstreamConfig original = new WorkstreamConfig();
+        original.addWorkstream(ws);
+
+        File tempFile = File.createTempFile("workstream-config-plan", ".yaml");
+        tempFile.deleteOnExit();
+        original.saveToYaml(tempFile);
+
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        List<Workstream> workstreams = reloaded.toWorkstreams();
+        assertEquals(1, workstreams.size());
+        assertEquals("Investigate and fix the flaky retry loop.",
+                workstreams.get(0).getPlanInstructions());
+    }
+
+    /**
+     * Verifies the {@code planInstructions} projections on {@link Workstream}:
+     * {@code toSummaryJson} omits the field when unset and emits it (escaped)
+     * once set, and the {@code describeSetting}/{@code applySetting} pair that
+     * backs the operator {@code /config} surface round-trips the value.
+     */
+    @Test(timeout = 10000)
+    public void testPlanInstructionsSummaryAndSettingRoundTrip() {
+        Workstream ws = new Workstream("ws-plan-2", "C0002", "#beta");
+        ws.setDefaultBranch("project/plan-instructions-setting");
+
+        assertFalse("planInstructions must be absent from toSummaryJson when unset",
+                ws.toSummaryJson().contains("planInstructions"));
+        assertEquals("(not set)", ws.describeSetting("planInstructions"));
+
+        assertNull("applySetting should accept planInstructions and return no error",
+                ws.applySetting("planInstructions", "Draft the ingestion pipeline plan."));
+        assertEquals("Draft the ingestion pipeline plan.", ws.getPlanInstructions());
+        assertEquals("Draft the ingestion pipeline plan.",
+                ws.describeSetting("planInstructions"));
+        assertTrue("planInstructions must appear in toSummaryJson once set",
+                ws.toSummaryJson().contains(
+                        "\"planInstructions\":\"Draft the ingestion pipeline plan.\""));
+    }
+
+    /**
      * Verifies that a YAML file in the post-migration format (produced by the
      * Python migration tool) loads correctly, including multi-workspace entries,
      * GitHub org tokens, and per-workstream workspace IDs.

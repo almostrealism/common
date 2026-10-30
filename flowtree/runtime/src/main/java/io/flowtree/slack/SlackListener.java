@@ -290,7 +290,15 @@ public class SlackListener implements ConsoleFeatures {
         for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) wsNotifier.removeWorkstream(id);
         channelToWorkstream.values().removeIf(ws -> id.equals(ws.getWorkstreamId()));
         if (workstreamConfig != null) workstreamConfig.getWorkstreams().removeIf(e -> id.equals(e.getWorkstreamId()));
-        return persistConfig();
+        if (!persistConfig()) return false;
+        // Only once the YAML no longer names the workstream: a failed write must
+        // not leave a live workstream without its metadata. A leftover row is harmless.
+        try {
+            if (workstreamConfig != null) workstreamConfig.removeWorkstreamMetadata(id);
+        } catch (IOException e) {
+            warn("Metadata of deleted workstream " + id + " was not removed: " + e.getMessage());
+        }
+        return true;
     }
 
     /**

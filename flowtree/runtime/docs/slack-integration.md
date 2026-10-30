@@ -181,6 +181,30 @@ HSQLDB-backed storage for job timing data and statistics. Records job start/comp
 - Tracks a `heartbeat_at` timestamp per job, written on every status event the controller receives and on every `POST /api/jobs/{jobId}/heartbeat` the job's harness sends on its own timer, so a job whose subprocess has died without posting a terminal status can still be distinguished from one that is running. `StuckJobScanner` consumes the heartbeat column to fail jobs silent for more than twice the workstream's wall-clock ceiling; the result flows through the same completion path as a real failure
 - `getActiveJobs(workstreamId)` returns the `ActiveJob` records (id, workstream, started-at, last heartbeat, node, description) the `GET /api/workstreams/{id}/jobs/active` endpoint exposes; `getPendingJobs(workstreamId)` returns the `PendingJob` records behind `GET /api/workstreams/{id}/jobs/pending`
 
+### WorkstreamMetadataStore
+
+HSQLDB-backed storage for workstream *metadata*. The workstreams YAML holds
+configuration only — branch, base branch, repository, dependent repositories,
+labels, phase configs, capabilities and flags. Values that grow without bound
+or change on every job are metadata and are kept in this store instead, so the
+YAML stays small and cheap to rewrite. Today the only metadata field is
+`planInstructions`; every other workstream field is configuration.
+
+- Database path: `workstream-metadata` in the directory holding
+  `workstreams.yaml` (`/config`, i.e. `/Users/Shared/flowtree/controller/`, in
+  the controller stack), beside the `stats` database, so backing up that
+  directory backs up configuration, statistics and metadata together
+- Opened by `FlowTreeController` when the YAML is loaded and closed on stop
+- On every load, metadata still present in the YAML (written by an older
+  controller) is committed to the store first and then removed from the YAML
+  by an atomic rewrite; a load with nothing to move writes nothing. If the
+  database cannot be opened, or that write fails, the metadata stays in the
+  YAML and the controller runs as before
+- `WorkstreamConfig.toWorkstreams()` reads all metadata in one query, and
+  `syncAndSave` commits it to the store before it rewrites the YAML; a failed
+  store write fails the save. The API request and response shapes, including
+  `planInstructions` in `GET /api/workstreams`, are unchanged
+
 ### SlackListener
 
 Manages the mapping between Slack channels and workstreams. Extracts prompts from `@bot` mentions, creates `ClaudeCodeJob.Factory` instances, and submits them to connected agents.
