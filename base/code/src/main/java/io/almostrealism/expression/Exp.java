@@ -22,7 +22,6 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 /**
@@ -32,14 +31,14 @@ import java.util.OptionalLong;
  * is {@code exp(x)} itself, so the delta pass returns a product of the operand's delta
  * and this expression.</p>
  */
-public class Exp extends Expression<Double> {
+public class Exp extends UnaryMathFunction {
 	/**
 	 * Constructs an exponential expression for the given operand.
 	 *
 	 * @param input the exponent operand
 	 */
 	protected Exp(Expression<Double> input) {
-		super(Double.class, input);
+		super(input);
 	}
 
 	/** {@inheritDoc} Returns 15, reflecting the cost of the {@code exp()} library call. */
@@ -47,8 +46,20 @@ public class Exp extends Expression<Double> {
 	public int getComputeCost() { return 15; }
 
 	@Override
-	public String getExpression(LanguageOperations lang) {
-		return "exp(" + getChildren().get(0).getExpression(lang) + ")";
+	protected String getFunctionName() { return "exp"; }
+
+	@Override
+	protected double applyToDouble(double operand) { return Math.exp(operand); }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Rebuilds through {@link #of(Expression)} so that a constant operand folds, matching
+	 * the factory rather than merely reconstructing the node.</p>
+	 */
+	@Override
+	protected Expression<Double> createNode(Expression<?> input) {
+		return Exp.<Double>of(input);
 	}
 
 	@Override
@@ -62,21 +73,6 @@ public class Exp extends Expression<Double> {
 		}
 
 		return OptionalLong.empty();
-	}
-
-	/** {@inheritDoc} Evaluates to {@code e^children[0]}. */
-	@Override
-	public Number evaluate(Number... children) {
-		return Math.exp(children[0].doubleValue());
-	}
-
-	@Override
-	public Expression<Double> recreate(List<Expression<?>> children) {
-		if (children.size() != 1) {
-			throw new UnsupportedOperationException();
-		}
-
-		return Exp.of(children.get(0));
 	}
 
 	@Override
@@ -99,12 +95,6 @@ public class Exp extends Expression<Double> {
 	 * @return a constant if the input has a known double value, otherwise a new {@link Exp}
 	 */
 	public static <T> Expression<T> of(Expression input) {
-		OptionalDouble d = input.doubleValue();
-
-		if (d.isPresent()) {
-			return (Expression<T>) new DoubleConstant(Math.exp(d.getAsDouble()));
-		}
-
-		return (Expression<T>) new Exp(input.toDouble());
+		return (Expression<T>) of(Math::exp, (Expression<Double>) input, Exp::new);
 	}
 }

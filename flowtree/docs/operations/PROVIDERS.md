@@ -185,7 +185,8 @@ reads those three values from `AgentRunRequest.getEnvironment()`, issues
 HMAC bearer token, extracts the key from the response payload, and
 writes it into the synthesized `opencode` config under
 `provider.openrouter.options.apiKey` for the launched subprocess. The
-config file is mode `0600` and is deleted after the subprocess exits.
+config is handed to the subprocess in the `OPENCODE_CONFIG_CONTENT`
+environment variable; it is never written to disk.
 
 ---
 

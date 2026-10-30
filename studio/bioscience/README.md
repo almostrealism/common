@@ -35,6 +35,18 @@ This module exists to:
   CI's `python-tests` job runs them through `tools/tests/test_bioscience_scripts.py`, which
   imports their test cases so that discovery under `tools/tests` collects them.
 
+## Tests
+
+Unlike the `domain/` modules, this module has test sources of its own, in
+`org.almostrealism.bioscience.connectome.test`:
+
+- `CellTypeConnectomeLoadTest` loads a small synthetic directory written in the script's layout.
+  It needs no external data.
+- `CellTypeConnectomeTest` and `CellTypeRateModelTest` (a `RatePopulation` with one unit per cell
+  type) run on the derived MaleCNS matrix, which is not in the repository. Its directory is the
+  `AR_MALE_CNS_CELL_TYPES` system property or environment variable; each test is skipped where the
+  directory does not hold the weights file.
+
 ## What does not belong here
 
 - Biological models that do not need `ar-ml`. Put them in `domain/biology`, where lower

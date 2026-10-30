@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import io.flowtree.api.FlowTreeApiEndpoint;
 import io.flowtree.controller.FlowTreeController;
+import io.flowtree.workstream.AgentEndpoint;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkstreamConfig;
 
@@ -81,10 +82,10 @@ public class SlackIntegrationTest extends TestSuiteBase {
         workstream.addAgent("host3", 7768);
 
         // Get agents in sequence
-        Workstream.AgentEndpoint a1 = workstream.getNextAgent();
-        Workstream.AgentEndpoint a2 = workstream.getNextAgent();
-        Workstream.AgentEndpoint a3 = workstream.getNextAgent();
-        Workstream.AgentEndpoint a4 = workstream.getNextAgent();
+        AgentEndpoint a1 = workstream.getNextAgent();
+        AgentEndpoint a2 = workstream.getNextAgent();
+        AgentEndpoint a3 = workstream.getNextAgent();
+        AgentEndpoint a4 = workstream.getNextAgent();
 
         assertEquals("host1", a1.getHost());
         assertEquals("host2", a2.getHost());

@@ -168,7 +168,8 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 
 	/**
 	 * The producer loop: render the next buffer ahead into a free ring slot, blocking when the
-	 * ring is full. Terminates on {@link #stop()} or on the first render failure.
+	 * ring is full. Terminates on {@link #stop()} or on the first render failure. A render that
+	 * {@link #stop()} interrupts ends by cancellation, and is not reported as a failure.
 	 */
 	private void produceLoop() {
 		try {
@@ -189,6 +190,9 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		} catch (Throwable t) {
+			// stop() interrupts an in-flight render, which cancels it; that is not a failure
+			if (!running) return;
+
 			producerError = t;
 			running = false;
 			// Wake any consumer waiting on a slot so it can observe the failure.

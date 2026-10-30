@@ -15,6 +15,7 @@ import org.almostrealism.io.DistributionMetric;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 
 /**
  * Interface providing core pattern rendering functionality.
@@ -260,11 +261,20 @@ public interface PatternFeatures extends CodeFeatures {
 	 * per-note without falling the whole window back. The per-note body below is unchanged from
 	 * the original {@code renderPerNote} loop.
 	 *
+	 * <p>An interrupt of the rendering thread cancels the render: no further note is
+	 * evaluated once it is observed, and the interrupt status is left set. An interrupted
+	 * evaluation does not reliably fail &mdash; a wait it abandons can return without the
+	 * work having completed &mdash; so neither the per-note failure handling nor the
+	 * consecutive-failure bound would stop the loop, and a cancelled render (a timed-out
+	 * caller, a stopped render-ahead thread) would keep dispatching every remaining note
+	 * against the work that follows it.</p>
+	 *
 	 * @param sceneContext scene context containing the destination buffer
 	 * @param notes        the notes to render
 	 * @param startFrame   starting frame of the target range (absolute position)
 	 * @param frameCount   number of frames in the target range
 	 * @param cache        optional cache for evaluated note audio (may be null)
+	 * @throws CancellationException if the rendering thread is interrupted
 	 */
 	default void renderNotes(AudioSceneContext sceneContext, List<RenderedNoteAudio> notes,
 							 int startFrame, int frameCount, NoteAudioCache cache) {
@@ -278,6 +288,11 @@ public interface PatternFeatures extends CodeFeatures {
 
 		notes.forEach(note -> {
 					int noteStart = note.getOffset();
+
+					// The interrupt status is only read, so the canceller still observes it
+					if (Thread.currentThread().isInterrupted()) {
+						throw new CancellationException("Pattern rendering interrupted at frame " + noteStart);
+					}
 
 					// Pre-filter: skip notes that cannot overlap the frame range
 					if (note.getExpectedFrameCount() > 0) {

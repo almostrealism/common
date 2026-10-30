@@ -61,17 +61,43 @@ import io.flowtree.api.FlowTreeApiEndpoint;
  */
 public class GitHubProxyHandler implements ConsoleFeatures {
 
+    /** The public GitHub REST API root; the default for every production handler. */
+    public static final String DEFAULT_API_ROOT = "https://api.github.com";
+
     /** Maps GitHub organisation names (case-insensitive) to their API access tokens. */
     private Map<String, String> githubOrgTokens;
 
     /**
-     * Constructs a new handler with the supplied per-org token map.
+     * The REST API root every typed operation builds its URLs from. Defaults to
+     * {@link #DEFAULT_API_ROOT}; a test points it at a local stub server so the
+     * companion-PR operations can be exercised without reaching GitHub.
+     */
+    private final String apiRoot;
+
+    /**
+     * Constructs a new handler with the supplied per-org token map, talking to
+     * the public GitHub API.
      *
      * @param githubOrgTokens map of GitHub organisation name to API token;
      *                        must not be {@code null}
      */
     public GitHubProxyHandler(Map<String, String> githubOrgTokens) {
+        this(githubOrgTokens, DEFAULT_API_ROOT);
+    }
+
+    /**
+     * Constructs a new handler whose typed operations build their URLs from
+     * {@code apiRoot} rather than the public GitHub API. Used by tests to point
+     * the handler at a local stub server.
+     *
+     * @param githubOrgTokens map of GitHub organisation name to API token;
+     *                        must not be {@code null}
+     * @param apiRoot         the REST API root (no trailing slash), e.g.
+     *                        {@code http://127.0.0.1:12345}
+     */
+    public GitHubProxyHandler(Map<String, String> githubOrgTokens, String apiRoot) {
         this.githubOrgTokens = githubOrgTokens;
+        this.apiRoot = apiRoot != null && !apiRoot.isEmpty() ? apiRoot : DEFAULT_API_ROOT;
     }
 
     /**
@@ -311,7 +337,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     public String createGitHubPullRequest(String ownerRepo, String head, String base,
                                    String title, String body, boolean draft, String token) {
         try {
-            String apiUrl = "https://api.github.com/repos/" + ownerRepo + "/pulls";
+            String apiUrl = apiRoot + "/repos/" + ownerRepo + "/pulls";
             String payload = pullRequestPayload(title, head, base, body, draft);
 
             URL url = URI.create(apiUrl).toURL();
@@ -412,11 +438,40 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      */
     public String createPullRequestFromCommit(String ownerRepo, String head, String base,
                                    String commitRef, String fallbackDescription, boolean draft, String token) {
+        return createPullRequestFromCommit(ownerRepo, head, base, commitRef,
+                fallbackDescription, draft, token, null);
+    }
+
+    /**
+     * Creates a pull request whose title and body describe the commit on the
+     * head branch, with {@code bodySuffix} appended to the derived body.
+     *
+     * <p>The companion-PR path uses the suffix to append a line linking the
+     * primary pull request, so the companion says what it belongs to. A
+     * {@code null} or empty suffix behaves exactly like
+     * {@link #createPullRequestFromCommit(String, String, String, String, String, boolean, String)}.</p>
+     *
+     * @param ownerRepo           the {@code owner/repo} path component
+     * @param head                the head (source) branch name
+     * @param base                the base (target) branch name
+     * @param commitRef           commit SHA, or a branch name for its head commit
+     * @param fallbackDescription description to use when no commit message is available
+     * @param draft               whether to open the pull request as a draft
+     * @param token               the GitHub API bearer token
+     * @param bodySuffix          text appended to the derived body, or {@code null}
+     * @return the HTML URL of the created pull request, or {@code null} on failure
+     */
+    public String createPullRequestFromCommit(String ownerRepo, String head, String base,
+                                   String commitRef, String fallbackDescription, boolean draft,
+                                   String token, String bodySuffix) {
         String commitMessage = commitRef == null ? null
                 : fetchCommitMessage(ownerRepo, commitRef, token);
+        String body = pullRequestBody(commitMessage, fallbackDescription);
+        if (bodySuffix != null && !bodySuffix.isEmpty()) {
+            body = body + "\n\n" + bodySuffix;
+        }
         return createGitHubPullRequest(ownerRepo, head, base,
-                pullRequestTitle(commitMessage, fallbackDescription),
-                pullRequestBody(commitMessage, fallbackDescription), draft, token);
+                pullRequestTitle(commitMessage, fallbackDescription), body, draft, token);
     }
 
     /**
@@ -433,7 +488,22 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @return the GitHub API URL for the commit
      */
     static String commitApiUrl(String ownerRepo, String ref) {
-        return "https://api.github.com/repos/" + ownerRepo + "/commits/"
+        return commitApiUrl(DEFAULT_API_ROOT, ownerRepo, ref);
+    }
+
+    /**
+     * Builds the commit lookup URL for {@code ref} against a specific API root.
+     * See {@link #commitApiUrl(String, String)} for the ref-encoding rationale;
+     * the root is explicit here so an instance can build the URL from its own
+     * configured {@link #apiRoot} and a test can point it at a stub server.
+     *
+     * @param apiRoot   the REST API root (no trailing slash)
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param ref       commit SHA, branch name, or tag
+     * @return the commit API URL
+     */
+    static String commitApiUrl(String apiRoot, String ownerRepo, String ref) {
+        return apiRoot + "/repos/" + ownerRepo + "/commits/"
                 + URLEncoder.encode(ref, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
@@ -496,29 +566,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
                 + "'; PR lookup for " + ownerRepo + " will be skipped");
             return null;
         }
-        String url = "https://api.github.com/repos/" + ownerRepo + "/pulls?" + query;
-        try {
-            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            conn.setRequestProperty("Accept", "application/vnd.github+json");
-            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
-            int status = conn.getResponseCode();
-            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            String responseBody = is != null
-                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
-            if (is != null) is.close();
-            if (status == 200) {
-                return GITHUB_MAPPER.readTree(responseBody);
-            }
-            log("GitHub PR lookup returned HTTP " + status + ": "
-                + responseBody.substring(0, Math.min(200, responseBody.length())));
-        } catch (IOException e) {
-            log("GitHub PR lookup failed for " + ownerRepo + ": " + e.getMessage());
-        }
-        return null;
+        return apiGet(apiRoot + "/repos/" + ownerRepo + "/pulls?" + query, token);
     }
 
     /**
@@ -530,9 +578,132 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @return the commit message, or {@code null} when it cannot be read
      */
     public String fetchCommitMessage(String ownerRepo, String ref, String token) {
+        JsonNode root = apiGet(commitApiUrl(apiRoot, ownerRepo, ref), token);
+        if (root == null) {
+            return null;
+        }
+        JsonNode message = root.path("commit").path("message");
+        if (!message.isMissingNode() && !message.asText().isBlank()) {
+            return message.asText();
+        }
+        log("Commit " + ref + " carries no message; falling back to the job description");
+        return null;
+    }
+
+    /**
+     * Returns the repository's default branch — the branch a companion pull
+     * request targets.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param token     the GitHub API bearer token
+     * @return the {@code default_branch}, or {@code null} when it cannot be read
+     */
+    public String fetchDefaultBranch(String ownerRepo, String token) {
+        JsonNode root = apiGet(apiRoot + "/repos/" + ownerRepo, token);
+        if (root == null) {
+            return null;
+        }
+        return root.path("default_branch").asText(null);
+    }
+
+    /**
+     * Reports whether {@code head} is ahead of {@code base} — the test for
+     * "the branch differs from the default branch". A branch that is not ahead
+     * carries no commits the base lacks, so no companion pull request is opened
+     * for it.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param base      the base branch (typically the repo's default branch)
+     * @param head      the head branch (the job's target branch)
+     * @param token     the GitHub API bearer token
+     * @return {@code true} when GitHub reports {@code ahead_by > 0}; {@code false}
+     *         when it is not ahead or the comparison could not be read
+     */
+    public boolean isAhead(String ownerRepo, String base, String head, String token) {
+        JsonNode root = apiGet(apiRoot + "/repos/" + ownerRepo + "/compare/"
+                + URLEncoder.encode(base, StandardCharsets.UTF_8).replace("+", "%20") + "..."
+                + URLEncoder.encode(head, StandardCharsets.UTF_8).replace("+", "%20"), token);
+        return root != null && root.path("ahead_by").asInt(0) > 0;
+    }
+
+    /**
+     * Returns the open pull request whose head is {@code branch} in
+     * {@code ownerRepo}, or {@code null} when none is open. Built on
+     * {@link #listPullRequestsForBranch}, so it reuses, rather than duplicates,
+     * an already-open companion pull request.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param branch    the head branch name
+     * @return the first open pull request on {@code branch}, or {@code null}
+     */
+    public PullRequest findOpenPullRequest(String ownerRepo, String branch) {
+        List<PullRequest> prs = listPullRequestsForBranch(ownerRepo, branch);
+        if (prs == null) {
+            return null;
+        }
+        for (PullRequest pr : prs) {
+            if (pr.isOpen()) {
+                return pr;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Posts a comment on a pull request's conversation.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param number    the pull request number
+     * @param body      the comment body (Markdown)
+     * @param token     the GitHub API bearer token
+     * @return {@code true} when GitHub accepted the comment
+     */
+    public boolean commentOnPullRequest(String ownerRepo, int number, String body, String token) {
+        String url = apiRoot + "/repos/" + ownerRepo + "/issues/" + number + "/comments";
+        String payload = "{\"body\":\"" + JsonFieldExtractor.escapeJson(body) + "\"}";
         try {
-            URL url = URI.create(commitApiUrl(ownerRepo, ref)).toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            conn.setDoOutput(true);
+            OutputStream os = conn.getOutputStream();
+            os.write(payload.getBytes(StandardCharsets.UTF_8));
+            os.close();
+
+            int status = conn.getResponseCode();
+            if (status == 201) {
+                return true;
+            }
+            InputStream is = conn.getErrorStream();
+            String responseBody = is != null
+                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
+            if (is != null) is.close();
+            log("GitHub comment on PR #" + number + " returned HTTP " + status + ": "
+                + responseBody.substring(0, Math.min(200, responseBody.length())));
+        } catch (IOException e) {
+            log("GitHub comment on PR #" + number + " failed: " + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * Issues a {@code GET} against the GitHub API and returns the parsed body on
+     * a {@code 200}, or {@code null} on any non-200 or transport failure. Shared
+     * by the typed {@code GET} operations so each reads as what it fetches rather
+     * than repeating the connection boilerplate.
+     *
+     * @param url   the fully-built request URL
+     * @param token the GitHub API bearer token
+     * @return the parsed response body, or {@code null}
+     */
+    private JsonNode apiGet(String url, String token) {
+        try {
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("Authorization", "Bearer " + token.trim());
             conn.setRequestProperty("Accept", "application/vnd.github+json");
@@ -547,18 +718,12 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             if (is != null) is.close();
 
             if (status == 200) {
-                JsonNode message = GITHUB_MAPPER.readTree(responseBody).path("commit").path("message");
-                if (!message.isMissingNode() && !message.asText().isBlank()) {
-                    return message.asText();
-                }
-                log("Commit " + ref + " carries no message; falling back to the job description");
-                return null;
+                return GITHUB_MAPPER.readTree(responseBody);
             }
-
-            log("GitHub commit lookup returned HTTP " + status + ": "
+            log("GitHub GET " + url + " returned HTTP " + status + ": "
                 + responseBody.substring(0, Math.min(200, responseBody.length())));
         } catch (IOException e) {
-            log("GitHub commit lookup failed: " + e.getMessage());
+            log("GitHub GET " + url + " failed: " + e.getMessage());
         }
         return null;
     }

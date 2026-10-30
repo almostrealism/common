@@ -83,12 +83,14 @@ Two receiver defects of this kind, both found by chaining plainly and both fixed
   signals. Committed ahead of that signal, hundreds of such command buffers sat on the GPU, and some
   outlived the GPU timeout and were killed, so their dispatches silently never ran. The fix was in
   `MetalCommandRunner`: a buffer is committed only once its bridges are signaled, and at most a
-  bounded number of buffers wait that way before a further bridged dispatch waits on its submitting
-  thread.
+  bounded number of buffers (`MAX_HELD`) wait that way before any further dispatch that would open
+  a new buffer, bridged or not, waits on its submitting thread.
 
 The second fix shows what a legitimate bound looks like: it lives in the receiver, it is sized by
 the resource that runs out (a command queue allows a bounded number of uncompleted command
-buffers), and it costs nothing when nothing is waiting for the host.
+buffers), and it costs nothing when nothing is waiting for the host. The bound is now part of the
+`SubmissionStream` core every device runner is built on, so the CUDA runner applies the same kind
+of bound to the submissions it holds behind a foreign dependency.
 
 ## Host work and listeners
 
@@ -114,6 +116,11 @@ A `Submittable` or backend dispatch that receives `dependsOn`:
 - returns its own completion, which must settle only once the work has finished (or failed), and
   must rethrow from `waitFor()` when the work failed or did not run because `dependsOn` failed;
 - applies any bound it needs itself, at the resource that runs out;
+- when it executes its work in order on a device queue, extends `SubmissionStream`, which
+  supplies the submission ordinal, same-stream ordering and merging, admission versus
+  destruction, the hold bound, and the `FailureRecord` that fails every completion at or after a
+  failed one (the shared model is described in
+  [semaphore-coordination.md](semaphore-coordination.md#the-shared-runner-core));
 - implements `onSettled` without parking a thread when its completion can be observed, and keeps
   the default (which waits, and so drives a completion that only progresses when waited for) when
   it cannot. `onSettled` callbacks always run on a background thread, never on the registering one.

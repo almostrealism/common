@@ -25,14 +25,13 @@ package org.almostrealism.heredity;
  *
  * <h2>Example Usage</h2>
  * <pre>{@code
- * // Perturb a value within bounds
- * double original = 0.5;
- * double lowerBound = 0.0;
- * double upperBound = 1.0;
- * double perturbAmount = 0.3;
+ * // Move 0.5 toward 1.0 by 0.3
+ * double start = 0.5;
+ * double target = 1.0;
+ * double magnitude = 0.3;
  *
- * double result = Breeders.perturbation(lowerBound, upperBound, perturbAmount);
- * // Result will be bounded to stay within [0.0, 1.0]
+ * double result = Breeders.perturbation(start, target, magnitude);
+ * // Returns 0.8 (clamped so it never passes the target)
  * }</pre>
  *
  * @see ChromosomeBreeder
