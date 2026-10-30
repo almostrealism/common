@@ -291,14 +291,14 @@ gene.setTransform(producer ->
 ```java
 import org.almostrealism.heredity.Breeders;
 
-// Mutate value within bounds
-double originalValue = 0.5;
-double bounds1 = 0.0;
-double bounds2 = 1.0;
+// Move a value from s1 toward s2 by |magnitude|, never past s2
+double s1 = 0.5;
+double s2 = 1.0;
 double magnitude = 0.3;
 
-double mutated = Breeders.perturbation(bounds1, bounds2, magnitude);
-// Result: 0.5 + mutated (clamped to [0.0, 1.0])
+double mutated = Breeders.perturbation(s1, s2, magnitude);   // 0.8
+Breeders.perturbation(s1, s2, 2.0);                          // 1.0 (clamped at s2)
+Breeders.perturbation(s1, s2, -0.3);                         // 0.8 (the sign is ignored)
 ```
 
 ## Integration with Other Modules

@@ -105,7 +105,11 @@ population whose elements read each other) use `SimulationRunner`.
 `SimulationRunner extends TemporalRunner` and **owns the simulation loop** for recurrent
 dynamical systems, as `ModelOptimizer` owns training and `DiffusionSampler` owns sampling. It
 always constructs its supertype with `iter = 1` and dispatches one compiled step per iteration of
-a host loop, so a globally coupled step gets a global synchronization every step.
+a host loop, so a globally coupled step gets a global synchronization every step. The host does
+not provide that synchronization by waiting: each step (and every due input, listener and
+recording) is submitted chained on the completion of the work before it, the backend orders it,
+and `run` waits once, after the last step (see
+[asynchronous-submission.md](../../docs/internals/asynchronous-submission.md)).
 
 **What it adds:**
 - `run(long steps)` - the one simulation loop (no `.evaluate()` and no host read inside it)

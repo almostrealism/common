@@ -434,12 +434,19 @@ public interface InstructionSet extends Destroyable {
 interface — it dispatches a compiled kernel with arguments:
 
 ```java
-public interface Execution {
-    Semaphore accept(Object[] args);                         // Execute
+@FunctionalInterface
+public interface Execution extends KernelWork {
+    default Semaphore accept(Object[] args);                 // accept(args, null)
     Semaphore accept(Object[] args, Semaphore dependsOn);    // With dependency
-    boolean isDestroyed();
+    default boolean isDestroyed();
 }
 ```
+
+Every `Execution` is also a `KernelWork` (`io.almostrealism.kernel`), so whatever dispatches
+one sets its work range (`setGlobalWorkSize`, `setGlobalWorkOffset`) without knowing which
+backend compiled it. `KernelWork`'s defaults describe a single work item at offset 0 and refuse
+any other range, so an implementation that can dispatch over a wider range overrides them (an
+external process, for example, keeps the defaults because it performs one work item).
 
 **Dependency chaining:** The `Semaphore dependsOn` parameter enables pipelining —
 a kernel can be enqueued before its dependency completes, with the backend handling

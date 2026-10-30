@@ -18,7 +18,7 @@ caller configures a `SimulationRunner` and calls `run` once.
 
 ```java
 // CORRECT: the system describes one step; it owns no loop
-public class OscillatorBank implements Temporal, CollectionFeatures {
+public class OscillatorBank implements Temporal, MatrixFeatures {   // MatrixFeatures provides matmul
     private final PackedCollection state;       // shape (2, n): positions, velocities
     private final PackedCollection next;        // next-state buffer, shape (2, n)
     private final PackedCollection propagator;  // exact 2x2 discrete propagator

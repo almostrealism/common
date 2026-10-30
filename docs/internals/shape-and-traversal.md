@@ -193,6 +193,7 @@ public interface TraversalOrdering extends IndexSet, Signature {
     default String signature();                                     // null by default
     default int indexOf(int idx);
     default OptionalInt getLength();                                // physical element count
+    default Optional<OrderingSegments> segments(int segmentLength); // empty by default
     default TraversalOrdering compose(TraversalOrdering other);     // DelegatedTraversalOrdering
 }
 ```
@@ -221,6 +222,14 @@ that remaps indices before they reach the underlying memory. Orderings compose:
   An ordering that reads a collection returns `null`, which prevents reuse: the collection is
   delivered to the kernel as an argument with no position in the computation's process tree,
   so a reused kernel would read the collection of the computation it was compiled for.
+- **Segment enumeration.** `segments(segmentLength)` optionally returns an `OrderingSegments`
+  enumeration of the members of each run of `segmentLength` consecutive logical indices (the
+  rows of a matrix, when the segment length is its number of columns), when the ordering stores
+  each segment's members contiguously: `start(s)` and `length(s)` locate segment `s`'s members
+  in the backing memory and `offset(p)` gives the logical offset within its segment of the
+  member at physical position `p`. A computation that needs only the members (a reduction of
+  each row of a sparse matrix) visits them through it, instead of reading every logical index
+  through `indexOf`. When it is empty (the default), reading through `indexOf` remains correct.
 
 ### Ordered collections as kernel inputs
 
@@ -244,6 +253,7 @@ computation.
 | `ExplicitIndexTraversalOrdering` | `compute/algebra` | A lookup table in a `PackedCollection`; `-1` marks an absent element |
 | `IndexMaskTraversalOrdering` | `compute/algebra` | A mask of the logical indices that are present, searched for each lookup |
 | `SplitIndexTraversalOrdering` | `compute/algebra` | A lookup table split into high and low lanes, exact above 2^24 in FP32 |
+| `CompressedRowTraversalOrdering` | `compute/algebra` | A compressed-sparse-row matrix: each row's entries searched for each lookup, and enumerable by row through `segments(int)` |
 
 `IndexMaskTraversalOrdering`'s search has no closed form: it is a chain of comparisons against
 the mask entries, so each lookup costs one comparison per mask entry. It suits small masks,

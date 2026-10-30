@@ -83,8 +83,8 @@ Two receiver defects of this kind, both found by chaining plainly and both fixed
   signals. Committed ahead of that signal, hundreds of such command buffers sat on the GPU, and some
   outlived the GPU timeout and were killed, so their dispatches silently never ran. The fix was in
   `MetalCommandRunner`: a buffer is committed only once its bridges are signaled, and at most a
-  bounded number of buffers wait that way before a further bridged dispatch waits on its submitting
-  thread.
+  bounded number of buffers (`MAX_HELD`) wait that way before any further dispatch that would open
+  a new buffer, bridged or not, waits on its submitting thread.
 
 The second fix shows what a legitimate bound looks like: it lives in the receiver, it is sized by
 the resource that runs out (a command queue allows a bounded number of uncompleted command

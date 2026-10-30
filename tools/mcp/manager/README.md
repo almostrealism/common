@@ -82,7 +82,7 @@ inputs `project_create_branch` sends it.
 |------|-------|-------------|
 | `project_create_branch` | pipeline | Dispatch the merge-triggered `plan-next-task` job on demand. Prefer `workstream_register` with `plan_instructions`/`plan_content` for deliberately-started work (see above). |
 | `project_verify_branch` | pipeline | Dispatch verify-completion workflow against a workstream's planning document |
-| `project_commit_plan` | pipeline | Commit a plan document to a branch (defaults the path to the workstream's configured planning document) |
+| `project_commit_plan` | pipeline | Commit a plan document to a branch (defaults the path to the workstream's configured planning document); a plan under `docs/plans/` without lifecycle front matter gets a `status: proposed` header, and one with a malformed header is refused |
 
 **Planned:** Add `github_dismiss_code_scanning_alert` — dismiss GitHub Advanced Security
 code-scanning alerts by alert number (e.g., to close bot-generated scanner warnings on

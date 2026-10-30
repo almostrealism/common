@@ -47,7 +47,7 @@ import java.util.OptionalInt;
  *
  * <h2>Example</h2>
  * <pre>{@code
- * // Mask indicating we want elements at positions 5, 2, 8, 1
+ * // Mask of the logical indices that are present: 5, 2, 8, 1
  * PackedCollection mask = pack(5.0, 2.0, 8.0, 1.0);
  *
  * IndexMaskTraversalOrdering ordering = new IndexMaskTraversalOrdering(mask);
