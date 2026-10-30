@@ -58,7 +58,7 @@ is a thin orchestration facade that:
 |------|-------|-------------|
 | `project_create_branch` | pipeline | Create branch + dispatch project-manager |
 | `project_verify_branch` | pipeline | Dispatch verify-completion workflow |
-| `project_commit_plan` | pipeline | Commit a plan document to a branch |
+| `project_commit_plan` | pipeline | Commit a plan document to a branch; a plan under `docs/plans/` without lifecycle front matter gets a `status: proposed` header, and one with a malformed header is refused |
 
 **Planned:** Add `github_dismiss_code_scanning_alert` — dismiss GitHub Advanced Security
 code-scanning alerts by alert number (e.g., to close bot-generated scanner warnings on

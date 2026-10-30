@@ -116,7 +116,13 @@ by the persistence layer and the cleanup accounting.
 models other than the current one (an item count and byte total, including the
 legacy slot) and offers a `WaveFeatureCleanup.remove()` that deletes exactly
 that data and re-persists the kept model — modelled on
-`LegacyLibraryMigrator.Result`.
+`LegacyLibraryMigrator.Result`. `WaveFeatures` is `Destroyable`, and the
+per-item `WaveDetails.removeOtherModelFeatures` destroys each discarded feature
+set and the legacy slot's tensor, so the bytes the report counts are released
+from native (potentially GPU) memory immediately rather than merely
+unreferenced — the same deterministic release `releaseData()` performs for the
+raw samples. Do not run the cleanup while anything still reads the discarded
+tensors.
 
 ### AudioLibraryPersistence
 

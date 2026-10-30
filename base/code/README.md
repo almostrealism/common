@@ -51,6 +51,7 @@ String code = result.getExpression(languageOps);
 - `Sum`, `Product`, `Quotient`, `Difference` - Arithmetic operations
 - `Sine`, `Cosine`, `Tangent`, `Exp`, `Logarithm` - Mathematical functions
 - `Conditional`, `Equals`, `Greater`, `Less` - Comparisons and conditionals
+- `And`, `Xor`, `ShiftRight` (subclasses of `BitwiseExpression`) - Bitwise operations on `int` or `long` operands, built with `bitwiseAnd()`, `xor()` and `shiftRight()` (`and()` is the boolean conjunction)
 - `IntegerConstant`, `DoubleConstant`, `BooleanConstant` - Constant values
 - `Cast` - Type conversions
 

@@ -91,9 +91,9 @@ For the broader project layer map, see the top-level
 | Per-phase runner dispatch | `CodingAgentJob.executeSingleRun()` → `AgentRunnerRegistry.get(...)` |
 | `AgentRunner` SPI + bundled runners | `flowtree/agents/src/main/java/io/flowtree/jobs/agent/` |
 | MCP config + tool allowlist construction | `flowtree/runtime/src/main/java/io/flowtree/jobs/McpConfigBuilder.java` |
-| Job submission HTTP endpoint | `flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java` |
-| Workstream config (`defaultRunner`, `runners`, ...) | `flowtree/runtime/src/main/java/io/flowtree/slack/{Workstream,WorkstreamConfig}.java` |
-| Slack integration | `flowtree/runtime/src/main/java/io/flowtree/slack/SlackListener.java`, `FlowTreeController.java` |
+| Job submission HTTP endpoint | `flowtree/runtime/src/main/java/io/flowtree/api/FlowTreeApiEndpoint.java` |
+| Workstream config (`defaultPhaseConfig`, `phaseConfigs`, ...) | `flowtree/runtime/src/main/java/io/flowtree/workstream/{Workstream,WorkstreamConfig}.java` |
+| Slack integration | `flowtree/runtime/src/main/java/io/flowtree/slack/SlackListener.java`, `controller/FlowTreeController.java` |
 | Controller config + secrets | `/Users/Shared/flowtree/controller/`, `/Users/Shared/flowtree/secrets/` (operator-managed) |
 
 ---

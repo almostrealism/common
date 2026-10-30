@@ -182,10 +182,14 @@ This boundary is deliberate:
 - The MCP server inventory (ar-manager + pushed + project) is workstream
   policy, not a runner choice.
 
-`OpencodeRunner.translateAllowedTools(...)` performs the runner-side
-translation for opencode; `ClaudeCodeRunner` passes the CSV through
-verbatim as `--allowedTools`. Unit tests cover round-trips for every known
-prefix.
+`OpencodeConfigBuilder.translateAllowlist(...)` performs the runner-side
+translation for opencode: the permission block opens with `"*": "deny"` and
+then allows each listed tool (built-in names map to opencode's permission
+keys, `mcp__server__tool` becomes `server_tool`, and a whole-server
+`mcp__server` grant becomes `server_*`), so an opencode session can use
+exactly the tools a Claude Code session launched with the same list can.
+`ClaudeCodeRunner` passes the CSV through verbatim as `--allowedTools`.
+Unit tests cover the translation of built-in and MCP entries.
 
 ---
 

@@ -10,6 +10,7 @@ This module provides audio persistence, discovery, and composition tools.
 | `AudioLayerGroupLibrary` | Persist `AudioLayerGroup`s as first-class library entries, content-addressed by MD5 |
 | `AudioLayerPitch` | Single, authoritative accessor for the captured pitch of an `AudioLayer` |
 | `LibraryDestination` | Manages batched protobuf file paths (PREFIX_0.bin, PREFIX_1.bin, etc.) |
+| `PatternElementPersistence` | Lossless codec between `PatternElement` / `PatternNote` and the `PatternData` / `PatternElementData` / `PatternNoteData` protobuf messages |
 | `PrototypeDiscovery` | Console app and reusable API for finding representative samples using graph algorithms |
 
 ## PrototypeDiscovery
@@ -152,8 +153,10 @@ AudioLibrary library = AudioLibraryPersistence.loadLibrary(
 - Identifier (MD5 content hash) - used as the key
 - Audio metadata (sample rate, channels, frame count)
 - Frequency analysis data (FFT results)
-- Feature data (for similarity computation)
-- Pre-computed similarity scores
+- Feature data (for similarity computation), one `FeatureSet` per model that
+  computed it, each tagged with that model's identifier (the legacy
+  unattributed feature fields are still written and read alongside them)
+- Pre-computed similarity scores, kept with the feature set they were computed from
 
 **NOT stored**: File paths (resolved at runtime via `AudioLibrary.find()`)
 

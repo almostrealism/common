@@ -231,6 +231,18 @@ System property and environment variable utilities:
 Optional<Boolean> enabled = SystemUtils.isEnabled("AR_FEATURE_FLAG");
 ```
 
+#### CallOrigin
+
+Identifies the call that led into a reporting class, so a warning can name its call site.
+`getOrigin()` returns the first stack frame outside the reporting class (put it in the message
+itself, since repeated warnings are suppressed by message), and `getCallers()` returns up to the
+requested number of frames above it, one per line, ready to append to the report:
+
+```java
+CallOrigin origin = new CallOrigin(PackedCollection.class, 12);
+warn(message + " (from " + origin.getOrigin() + ")" + origin.getCallers());
+```
+
 ## Environment Variables
 
 - `AR_IO_SYSOUT=false` - Disable System.out output (only listeners receive output)

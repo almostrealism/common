@@ -57,11 +57,11 @@ pass — normalization, projections, rotary embedding, the cache writes, scores,
 softmax, weighted values and the output projection. (The language these assets are written
 in, including what each built-in they call computes, is described in the
 [PDSL Language Reference](pdsl-language.md).) The Java side,
-`AttentionFeatures.attention(...)`, is a thin loader: `attentionArguments` allocates the
-caches and binds the arguments, `attentionLayer` parses the asset and builds the
-requested layer through `PdslLoader.buildLayer`. The caches are caller-owned state that
-every attention layer of the asset takes as its last two parameters, so a model gives each
-of its layers a pair of its own:
+`AttentionFeatures.attention(...)`, is a thin loader: `attentionArguments` binds the
+arguments (allocating and clearing the caches unless the caller supplies its own),
+`attentionLayer` parses the asset and builds the requested layer through
+`PdslLoader.buildLayer`. The caches are state that every attention layer of the asset takes
+as its last two parameters, so a model gives each of its layers a pair of its own:
 
 ```
 layer attention(..., epsilon: float,
@@ -70,16 +70,31 @@ layer attention(..., epsilon: float,
 
 ### Cache Allocation
 
-Each attention layer owns two caches — one for keys, one for values. They are
+Each attention layer reads and writes two caches — one for keys, one for values. They are
 `(seqLen, dim)` where `dim = heads * headSize` and `heads` is the number of *query*
 heads, not KV heads: row `s` holds token `s`'s key (or value) as one `headSize` slice
 per query head.
 
 ```java
-// AttentionFeatures.attentionArguments — bound to the layer's cache parameters
-args.put("key_cache", new PackedCollection(shape(seqLen, dim)));
-args.put("value_cache", new PackedCollection(shape(seqLen, dim)));
+// AttentionFeatures.attentionArguments — the self-allocating overload
+PackedCollection keyCache = new PackedCollection(shape(seqLen, dim));
+PackedCollection valueCache = new PackedCollection(shape(seqLen, dim));
+keyCache.clear();
+valueCache.clear();
+return attentionArguments(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+        seqLen, position, epsilon, keyCache, valueCache);
 ```
+
+The self-allocating overloads are the only place the cached attention family allocates
+caches, and the caches they allocate are sealed inside the compiled block. A caller that
+needs to own the decode state — to clear the caches when a new sequence starts and release
+them when the compiled block is destroyed — passes its own pair to the caller-supplied
+overloads instead: `attention(..., epsilon, keyCache, valueCache, requirements)` and the
+`attentionArguments` overloads ending in `keyCache, valueCache`. Those overloads allocate
+nothing; they reject a null cache or one whose shape is not `(seqLen, dim)` (with `seqLen`
+the rotary table's row count) with an `IllegalArgumentException` before compilation.
+`CausalLanguageModel.decodeModel` is such a caller (see
+[Single-Position KV-Cache Decode](#single-position-kv-cache-decode-for-the-self-hosted-lm)).
 
 For a Qwen3-4B model (32 query heads, 8 KV heads, headSize=112, seqLen=131072):
 - Key cache: `(131072, 3584)` = ~1.8 GB per layer
@@ -89,17 +104,21 @@ For a Qwen3-4B model (32 query heads, 8 KV heads, headSize=112, seqLen=131072):
 
 ### Unwritten Positions
 
-A freshly allocated cache holds zeros, so the rows of positions that have not been
+A cache starts cleared to zeros, so the rows of positions that have not been
 generated yet contribute zero to the dot product with the query. That alone is not
 enough — a zero score is not a negligible one after softmax — so the causal mask adds
 `-10000` to every column after the current position, and softmax assigns those
 positions ~0 probability. Both mechanisms are visible as stages of the asset
 (`causal_mask(position)` followed by `softmax()`).
 
-Zero-initialization of a freshly allocated `PackedCollection` is a property of the active
-`MemoryProvider`, not of `PackedCollection` itself: `JVMMemoryProvider` backs each allocation
-with a `new double[len]`, which the JVM zero-fills, but the mechanism is provider-specific
-rather than a guarantee documented on `PackedCollection`.
+The caches are cleared explicitly rather than relying on allocation: zero-initialization of a
+freshly allocated `PackedCollection` is a property of the active `MemoryProvider`, not of
+`PackedCollection` itself (`JVMMemoryProvider` backs each allocation with a `new double[len]`,
+which the JVM zero-fills, but the mechanism is provider-specific). The self-allocating
+`attentionArguments` overload calls `clear()` on both caches it allocates, and a caller that
+supplies its own caches is responsible for clearing them — `CausalLanguageModel.decodeModel`
+clears the caches it allocates, and `KeyValueCacheAutoregressiveModel.reset()` clears them
+again at every sequence boundary.
 
 ### GQA Expansion Strategy: Expand at Write Time
 
@@ -376,10 +395,16 @@ current step from the device.
 sliding-window generator re-runs a full `(seqLen, vocabSize)` forward pass per byte, this
 generator decodes one position at a time, scoring the new position against each layer's
 cached keys and values. It is a dedicated `AutoregressiveModel<Integer>` subclass rather
-than an `of()` wrapper because the per-layer caches live inside the compiled decode model
-(the attention layer allocates them), and `reset()` must clear them so a new sequence does
-not read a previous one's cached entries — a handle the `of()` factory, which owns only its
-input buffer, position, temperature and sampling, does not have.
+than an `of()` wrapper because it holds the per-layer caches the compiled decode model reads
+and writes, and `reset()` must clear them so a new sequence does not read a previous one's
+cached entries — a handle the `of()` factory, which owns only its input buffer, position,
+temperature and sampling, does not have. The caches are not allocated inside the attention
+layers: `CausalLanguageModel.decodeModel(position, keyCaches, valueCaches)` allocates one
+cleared `(seqLen, dim)` key cache and value cache per block, binds them through the
+caller-supplied-cache `attention` overload, and appends them in block order to the two lists
+it is given (which must be empty). The generator passes its own lists, so it can clear the
+caches in `reset()` and release them in `destroy()`. `load()` refuses a step at or beyond
+`seqLen` with an `IllegalStateException` rather than index past the caches.
 
 The decode model is built by `CausalLanguageModel.decodeModel`, which the generator compiles
 and owns. It bridges the trained weight layout to the cached `AttentionFeatures.attention`
@@ -954,6 +979,8 @@ layer, the second half of them over chunks shifted by half a chunk.
 | `engine/ml/src/.../ml/AttentionFeatures.java` | Unified attention mechanisms (MHA, GQA, cross-attention, transformer blocks) |
 | `engine/ml/src/.../ml/SequenceAttentionFeatures.java` | Full-sequence attention (`sequenceAttention`, `scaledDotProductAttention`); `AttentionFeatures` extends it |
 | `engine/ml/src/.../ml/AutoregressiveModel.java` | Autoregressive generation loop with prompt/generation phases |
+| `engine/ml/src/.../ml/KeyValueCacheAutoregressiveModel.java` | Single-position KV-cache decode generator for `CausalLanguageModel`; owns and clears the per-layer caches |
+| `engine/ml/src/.../ml/CausalLanguageModel.java` | Self-hosted language model; `decodeModel` builds its cached single-position decode variant |
 | `engine/ml/src/.../ml/RotationFeatures.java` | RoPE implementations (single-position and full-sequence) |
 | `engine/ml/src/.../ml/StateDictionary.java` | Model weight loading from protobuf format |
 | `engine/ml/src/.../ml/qwen3/Qwen3.java` | Qwen3 model implementation (reference for LLM inference) |
