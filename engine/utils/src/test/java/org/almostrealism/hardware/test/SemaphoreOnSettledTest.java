@@ -169,6 +169,37 @@ public class SemaphoreOnSettledTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A completion callback skipped because its latch failed leaves the failure to the
+	 * waiter: nothing escapes the callback thread as an uncaught exception.
+	 */
+	@Test(timeout = 30000)
+	public void skippedCompletionCallbackDoesNotEscapeItsThread() throws InterruptedException {
+		List<Throwable> uncaught = new ArrayList<>();
+		Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+		Thread.setDefaultUncaughtExceptionHandler((thread, t) -> {
+			synchronized (uncaught) {
+				uncaught.add(t);
+			}
+		});
+
+		try {
+			LatchSemaphore latch = new LatchSemaphore(1);
+			CountDownLatch completed = new CountDownLatch(1);
+			latch.onComplete(completed::countDown);
+
+			latch.fail(new IllegalStateException("guarded work failed"));
+			latch.countDown();
+
+			assertFalse(completed.await(QUIET_MILLIS, TimeUnit.MILLISECONDS));
+			synchronized (uncaught) {
+				assertTrue("uncaught: " + uncaught, uncaught.isEmpty());
+			}
+		} finally {
+			Thread.setDefaultUncaughtExceptionHandler(previous);
+		}
+	}
+
+	/**
 	 * A callback on deferred work waits for the semaphore the work returned, not merely for the
 	 * work to have started.
 	 */

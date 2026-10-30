@@ -222,20 +222,7 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 			awaitHoldCapacityUninterruptibly();
 		}
 
-		CudaSemaphore completion = admitted.completion;
-		Throwable launchFailure = admitted.launchFailure;
-		if (launchFailure == null) return completion;
-
-		if (Thread.currentThread() != completionThread) {
-			try {
-				completion.waitFor();
-			} catch (RuntimeException | Error settled) {
-				// The same failure, now with any callback failure attached; thrown below
-			}
-		}
-
-		if (launchFailure instanceof Error) throw (Error) launchFailure;
-		throw (RuntimeException) launchFailure;
+		return admitted.report(!isStreamThread());
 	}
 
 	/**
@@ -262,7 +249,7 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 
 		CudaSemaphore completion = new CudaSemaphore(requester, this, nextOrdinal());
 		Submission submission = new Submission(completion, command, foreign, onComplete);
-		Throwable poisoned = completion.getRecordedFailure();
+		Throwable poisoned = submission.getRecordedFailure();
 
 		// A submission that must fail anyway waits for nothing, unless earlier ones are held
 		if (poisoned != null && held.isEmpty()) {
@@ -270,7 +257,7 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 		} else if (!immediate) {
 			hold(submission, onHeld);
 		} else {
-			submission.launchFailure = start(submission, null);
+			submission.setLaunchFailure(start(submission, null));
 		}
 
 		return submission;
@@ -306,12 +293,12 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 	 * the failure is rethrown; a drain failure is attached to it as suppressed. Must hold this
 	 * runner's monitor.
 	 *
-	 * @param command enqueues the work on the stream
+	 * @param submission the submission whose work to enqueue
 	 * @return the event marking the work's completion
 	 */
-	private CUEvent launch(Consumer<CUStream> command) {
+	private CUEvent launch(Submission submission) {
 		try {
-			command.accept(stream);
+			submission.enqueue(stream);
 			return stream.recordEvent();
 		} catch (RuntimeException | Error e) {
 			try {
@@ -335,7 +322,7 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 	 * @param head the submission at the head of {@link #held}
 	 */
 	private void awaitDependency(Submission head) {
-		Semaphore dependency = head.dependsOn;
+		Semaphore dependency = head.getDependency();
 
 		dependency.onSettled(() -> {
 			Throwable failure = null;
@@ -367,18 +354,18 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 		if (held.peek() != head) return;
 
 		if (failure != null) {
-			head.completion.recordFailure(failure);
+			head.recordFailure(failure);
 		}
 
 		pollHeld();
-		start(head, failure == null ? head.completion.getRecordedFailure() : failure);
+		start(head, failure == null ? head.getRecordedFailure() : failure);
 
 		while (!held.isEmpty()) {
 			Submission next = held.peek();
-			Throwable poisoned = next.completion.getRecordedFailure();
+			Throwable poisoned = next.getRecordedFailure();
 
 			// A submission that must fail anyway is not kept waiting for its own dependency
-			if (next.dependsOn != null && poisoned == null) {
+			if (next.getDependency() != null && poisoned == null) {
 				awaitDependency(next);
 				return;
 			}
@@ -412,14 +399,14 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 
 		if (failure == null) {
 			try {
-				event = launch(submission.command);
+				event = launch(submission);
 			} catch (RuntimeException | Error e) {
 				failure = e;
-				submission.completion.recordFailure(e);
+				submission.recordFailure(e);
 			}
 		}
 
-		completions.add(new Completion(submission.completion, event, submission.onComplete, failure));
+		completions.add(submission.toCompletion(event, failure));
 		return failure;
 	}
 
@@ -578,6 +565,77 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 			this.command = command;
 			this.dependsOn = dependsOn;
 			this.onComplete = onComplete;
+		}
+
+		/**
+		 * Returns the foreign dependency this submission waits for before it can launch.
+		 *
+		 * @return the foreign dependency, or {@code null} if it has none
+		 */
+		private Semaphore getDependency() { return dependsOn; }
+
+		/**
+		 * Enqueues this submission's work on the stream.
+		 *
+		 * @param stream the stream to enqueue on
+		 */
+		private void enqueue(CUStream stream) { command.accept(stream); }
+
+		/**
+		 * Records in the runner's failure record that this submission did not execute.
+		 *
+		 * @param cause why it did not execute
+		 */
+		private void recordFailure(Throwable cause) { completion.recordFailure(cause); }
+
+		/**
+		 * Returns the failure recorded at or before this submission's sequence, or {@code null}.
+		 *
+		 * @return the recorded failure covering this submission, or {@code null}
+		 */
+		private Throwable getRecordedFailure() { return completion.getRecordedFailure(); }
+
+		/**
+		 * Records the outcome of launching this submission immediately on admission.
+		 *
+		 * @param launchFailure the launch failure, or {@code null} if it launched
+		 */
+		private void setLaunchFailure(Throwable launchFailure) { this.launchFailure = launchFailure; }
+
+		/**
+		 * Returns the record the completion thread settles this submission from, once it has been
+		 * launched or has failed to start.
+		 *
+		 * @param event   the event recorded behind the work, or {@code null} if it never launched
+		 * @param failure the failure the submission settles with, or {@code null}
+		 * @return the completion record
+		 */
+		private Completion toCompletion(CUEvent event, Throwable failure) {
+			return new Completion(completion, event, onComplete, failure);
+		}
+
+		/**
+		 * Reports the admission of this submission to its submitter: returns its completion, or
+		 * throws its immediate launch failure once the submission has settled in its turn, so its
+		 * callback has run by then.
+		 *
+		 * @param awaitTurn whether to wait for the submission to settle before throwing; false on
+		 *                  the completion thread, which cannot wait for its own turn
+		 * @return the submission's completion
+		 */
+		private Semaphore report(boolean awaitTurn) {
+			if (launchFailure == null) return completion;
+
+			if (awaitTurn) {
+				try {
+					completion.waitFor();
+				} catch (RuntimeException | Error settled) {
+					// The same failure, now with any callback failure attached; thrown below
+				}
+			}
+
+			if (launchFailure instanceof Error) throw (Error) launchFailure;
+			throw (RuntimeException) launchFailure;
 		}
 
 		/**
