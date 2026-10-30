@@ -34,13 +34,39 @@ PROMPT_FRAGMENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # file's contents. Fragments are not themselves expanded for includes:
 # one level is all the prompts need, and it keeps a fragment from ever
 # including itself.
+#
+# The fragment on an `@include` line may be chosen by the caller through a
+# `${NAME}` reference, resolved from the environment here — before the
+# `${VAR}` substitution render_prompt does, which happens only after the
+# includes are expanded. A built-in template can therefore carry a line like
+# `@include ${TEST_RUNNER_FRAGMENT}` and let the round pick a language-specific
+# fragment. A resolved fragment name may not contain `/`: a caller-supplied
+# template is rendered by this same code, and the restriction keeps it able to
+# include only the framework's own published fragments, never an arbitrary file
+# of the framework checkout. An include naming a literal fragment is unaffected.
 expand_prompt_includes() {
     local template="$1"
     local line
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             "@include "*)
-                local fragment="${PROMPT_FRAGMENT_DIR}/${line#@include }"
+                local name="${line#@include }"
+                while [[ "$name" == *'${'*'}'* ]]; do
+                    local ref="${name#*'${'}"
+                    ref="${ref%%\}*}"
+                    if [ -z "$ref" ]; then
+                        echo "ERROR: malformed include variable in: ${line}" >&2
+                        return 1
+                    fi
+                    name="${name//'${'${ref}'}'/${!ref:-}}"
+                done
+                case "$name" in
+                    */*)
+                        echo "ERROR: fragment name must not contain '/': ${name}" >&2
+                        return 1
+                        ;;
+                esac
+                local fragment="${PROMPT_FRAGMENT_DIR}/${name}"
                 if [ ! -f "$fragment" ]; then
                     echo "ERROR: Fragment not found at ${fragment}" >&2
                     return 1
