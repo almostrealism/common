@@ -88,7 +88,6 @@ fi
 # The names substituted into the template: the three the workflow always
 # supplies, plus every key the caller listed in TEMPLATE_VARS.
 NAMES=(BRANCH BASE_BRANCH REPO_URL)
-# TODO(review): TEMPLATE_VARS keys are exported unchecked, so PATH, BRANCH or TEST_RUNNER_FRAGMENT can be overridden; reject reserved names.
 
 if [ -n "${TEMPLATE_VARS:-}" ]; then
     # Captured by command substitution rather than read from a process
@@ -96,6 +95,17 @@ if [ -n "${TEMPLATE_VARS:-}" ]; then
     # rejected instead of rendering on without it.
     PAIRS="$(python3 -c '
 import json, os, sys
+# Keys the build itself relies on: PATH (every sed/grep/mktemp it runs), the
+# three the workflow always supplies, the selector and the TEMPLATE_VARS name,
+# the fragment default set just above, and the GITHUB_/RUNNER_ runner space. A
+# caller supplying one of these as a template variable would override process
+# state the build depends on rather than fill a ${NAME} in its template, so the
+# builder refuses it instead of exporting it.
+RESERVED = {
+    "PATH", "HOME", "IFS",
+    "BRANCH", "BASE_BRANCH", "REPO_URL",
+    "PROMPT", "TEMPLATE_VARS", "TEST_RUNNER_FRAGMENT",
+}
 raw = os.environ.get("TEMPLATE_VARS", "").strip()
 if not raw:
     sys.exit(0)
@@ -110,6 +120,9 @@ if not isinstance(data, dict):
 for key, value in data.items():
     if not (key.isidentifier() and key.isupper()):
         sys.stderr.write("TEMPLATE_VARS key is not an upper-case identifier: %r\n" % key)
+        sys.exit(1)
+    if key in RESERVED or key.startswith(("GITHUB_", "RUNNER_")):
+        sys.stderr.write("TEMPLATE_VARS key is reserved and may not be overridden: %r\n" % key)
         sys.exit(1)
     if not isinstance(value, str):
         sys.stderr.write("TEMPLATE_VARS value for %s must be a string\n" % key)

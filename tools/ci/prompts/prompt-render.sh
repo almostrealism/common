@@ -51,16 +51,23 @@ expand_prompt_includes() {
         case "$line" in
             "@include "*)
                 local name="${line#@include }"
-                # TODO(review): a value that contains its own ${NAME} (e.g. X='${X}') makes this loop spin forever; bound it.
-                while [[ "$name" == *'${'*'}'* ]]; do
-                    local ref="${name#*'${'}"
-                    ref="${ref%%\}*}"
+                # Resolve each ${NAME} in the include line in a single
+                # left-to-right pass: an already-substituted value is appended
+                # to the resolved prefix, never rescanned, so a self-referential
+                # value (X='${X}') cannot spin the loop forever.
+                local resolved="" rest="$name"
+                while [[ "$rest" == *'${'*'}'* ]]; do
+                    local before="${rest%%'${'*}"
+                    local after="${rest#*'${'}"
+                    local ref="${after%%\}*}"
+                    rest="${after#*\}}"
                     if [ -z "$ref" ]; then
                         echo "ERROR: malformed include variable in: ${line}" >&2
                         return 1
                     fi
-                    name="${name//'${'${ref}'}'/${!ref:-}}"
+                    resolved="${resolved}${before}${!ref:-}"
                 done
+                name="${resolved}${rest}"
                 case "$name" in
                     */*)
                         echo "ERROR: fragment name must not contain '/': ${name}" >&2

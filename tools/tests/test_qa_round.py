@@ -152,6 +152,29 @@ class QaRoundPromptBuildStepTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIsNone(prompt)
 
+    def test_a_reserved_template_vars_key_is_refused(self):
+        """A caller's template-vars fills ${NAME} placeholders; it must not be
+        able to override process state the build itself depends on (PATH, the
+        three workflow-supplied names, the selector, or the fragment), so a
+        reserved key fails the step rather than being exported."""
+        for key in ("PATH", "BRANCH", "TEST_RUNNER_FRAGMENT", "GITHUB_TOKEN"):
+            with self.subTest(key=key):
+                result, prompt = self._render(
+                    "qa/custom-round.txt",
+                    template_vars={key: "x"},
+                    caller_files={"qa/custom-round.txt": "Round on ${BRANCH}.\n"})
+                self.assertNotEqual(0, result.returncode)
+                self.assertIsNone(prompt)
+
+    def test_a_self_referential_include_fragment_does_not_hang(self):
+        """A fragment whose resolved value still contains its own ${NAME} must
+        not spin the include-variable resolver forever; it is resolved in a
+        single pass and then fails because no such fragment file exists."""
+        result, prompt = self._render(
+            "defect-hunt", fragment="${TEST_RUNNER_FRAGMENT}")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIsNone(prompt)
+
     def test_a_template_path_that_climbs_out_of_the_checkout_is_refused(self):
         """Read-as-data must stay inside the caller's checkout."""
         result, prompt = self._render("../../../etc/passwd")
