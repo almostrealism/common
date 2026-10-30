@@ -329,7 +329,9 @@ A reviewer can confirm the task is done when:
   the Open-Questions decision. The existing
   `testApiSubmitRepoUrlMismatchDoesNotCrossRoute` must keep passing unchanged.
   It pins that a submission *without* `createWorkstreamIfMissing` never
-  cross-routes.
+  cross-routes. Note this method exists in **two** test classes —
+  `SlackApiWorkstreamTest` and `SlackRoutingTest` (both in
+  `flowtree/runtime/src/test/.../slack/`) — and both copies must keep passing.
 - Reuse `GitOperationsTest`'s existing `isSameRepository` coverage rather than
   re-testing identity normalisation.
 
