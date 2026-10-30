@@ -115,12 +115,23 @@ Every API URL is hard-coded to `https://api.github.com`, so no test can point th
 
 - Add an API root field. The existing constructor defaults it to
   `https://api.github.com`, and a second constructor accepts it so tests can use a
-  local `com.sun.net.httpserver.HttpServer`. Every URL builder uses it, and the
-  proxy endpoint's host check (currently a literal `"api.github.com"` comparison)
-  compares against that root's host instead. Note `commitApiUrl(ownerRepo, ref)`
-  is `static` today; to read the instance root it becomes an instance method (its
-  callers, `createPullRequestFromCommit` and the commit-fetch path, are already
-  instance methods), or it keeps the root as an explicit parameter.
+  local `com.sun.net.httpserver.HttpServer`. The URL builders the typed operations
+  use — `createGitHubPullRequest` (which `createPullRequestFromCommit` delegates
+  to), `commitApiUrl` (reached through `fetchCommitMessage`), `listPullRequestsForBranch`,
+  and the new operations below — build from that root instead of the hard-coded
+  literal. Those are the only sites the companion-PR path and its fake-server tests
+  exercise. Two further `"api.github.com"` literals are *not* on this path and need
+  not change for the feature: the proxy endpoint's base-URL prepend for a relative
+  `url` parameter, and the host comparison in `follow()`. The latter is a security
+  control — it decides whether to replay the `Authorization` bearer when a redirect
+  is followed, so that the token is never disclosed to a host outside the API. If it
+  is made root-relative for consistency, the default must stay `api.github.com` and a
+  test root such as `localhost` must not become a path by which the bearer is
+  attached to a non-API host; the safe default is to leave `follow()` as it is. Note
+  `commitApiUrl(ownerRepo, ref)` is `static` today; to read the instance root it
+  becomes an instance method (its callers, `createPullRequestFromCommit` and the
+  commit-fetch path, are already instance methods), or it keeps the root as an
+  explicit parameter.
 - New operations, each returning `null`/`false` on failure in the same style as
   the existing ones:
   - `fetchDefaultBranch(ownerRepo, token)`: `GET /repos/{o}/{r}`, `default_branch`.
