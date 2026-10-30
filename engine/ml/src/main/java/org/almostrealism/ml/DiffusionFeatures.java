@@ -17,13 +17,17 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Factor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -74,6 +78,49 @@ import java.util.function.Function;
  * @see org.almostrealism.layers.LayerFeatures
  */
 public interface DiffusionFeatures extends LayerFeatures {
+
+	/**
+	 * Classpath location of the asset describing the two-layer SiLU MLP structure. Its
+	 * {@code silu_mlp} layer is the single definition of the {@code dense -> silu -> dense}
+	 * projection head that {@link #siluMlp(TraversalPolicy, PackedCollection, PackedCollection,
+	 * PackedCollection, PackedCollection, ComputeRequirement...)} builds, mirroring the
+	 * producer-level {@link #siluMlp(CollectionProducer, PackedCollection, PackedCollection,
+	 * PackedCollection, PackedCollection)} in {@link LayerFeatures}.
+	 */
+	String SILU_MLP_ASSET = "/pdsl/silu_mlp.pdsl";
+
+	/**
+	 * Builds the two-layer SiLU MLP {@code dense -> silu -> dense} as a {@link Block} from the
+	 * {@code silu_mlp} layer of {@link #SILU_MLP_ASSET}.
+	 *
+	 * <p>The structure is not assembled here: the asset composes the first projection, the SiLU
+	 * activation and the second projection. This method only binds the two projections and loads
+	 * the asset for the given input shape. It is the block-level counterpart of the producer
+	 * {@link #siluMlp(CollectionProducer, PackedCollection, PackedCollection, PackedCollection,
+	 * PackedCollection)}, and computes the same {@code w_out . silu(w_in . x + b_in) + b_out}.</p>
+	 *
+	 * @param inputShape   the shape of the conditioning vector fed to the first projection
+	 * @param weightIn     first linear weight, shape {@code [hidden, in]}
+	 * @param biasIn       first linear bias, shape {@code [hidden]}
+	 * @param weightOut    second linear weight, shape {@code [out, hidden]}
+	 * @param biasOut      second linear bias, shape {@code [out]}
+	 * @param requirements compute requirements applied to every layer the asset builds
+	 * @return the MLP block mapping {@code inputShape} to its output width
+	 */
+	default Block siluMlp(TraversalPolicy inputShape,
+						  PackedCollection weightIn, PackedCollection biasIn,
+						  PackedCollection weightOut, PackedCollection biasOut,
+						  ComputeRequirement... requirements) {
+		Map<String, Object> args = new HashMap<>();
+		args.put("w_in", weightIn);
+		args.put("b_in", biasIn);
+		args.put("w_out", weightOut);
+		args.put("b_out", biasOut);
+
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(SILU_MLP_ASSET), "silu_mlp",
+				inputShape, args, requirements);
+	}
 
 	/**
 	 * Creates sinusoidal timestep embeddings with default scale.
@@ -155,11 +202,18 @@ public interface DiffusionFeatures extends LayerFeatures {
 	 * @return MLP block for timestep embedding projection
 	 */
 	default Block timestepEmbeddings(int inputCount, int timeLen, int outLen) {
-		SequentialBlock block = new SequentialBlock(shape(inputCount));
-		block.add(dense(inputCount, timeLen));
-		block.add(silu(shape(timeLen)));
-		block.add(dense(timeLen, outLen));
-		return block;
+		PackedCollection weightIn = new PackedCollection(shape(timeLen, inputCount));
+		PackedCollection biasIn = new PackedCollection(shape(timeLen));
+		PackedCollection weightOut = new PackedCollection(shape(outLen, timeLen));
+		PackedCollection biasOut = new PackedCollection(shape(outLen));
+
+		// dense(int, int) initializes its weights from a scaled random normal (randn / inputSize)
+		// and its bias to zero; create and initialize the weights the same way so this method still
+		// builds a randomly-initialized MLP, then let the silu_mlp asset define the structure.
+		randnInit(weightIn, 1.0 / inputCount).get().run();
+		randnInit(weightOut, 1.0 / timeLen).get().run();
+
+		return siluMlp(shape(inputCount), weightIn, biasIn, weightOut, biasOut);
 	}
 
 	/**

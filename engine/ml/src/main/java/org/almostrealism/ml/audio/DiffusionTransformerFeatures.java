@@ -154,6 +154,13 @@ public interface DiffusionTransformerFeatures extends TransformerBlockFeatures, 
 	 * Builds the timestep-embedding MLP {@code linear . silu . linear} over an arbitrary Fourier
 	 * feature block, mapping a {@code [batch, 1]} timestep to a {@code [batch, embedDim]} embedding.
 	 *
+	 * <p>The {@code linear -> SiLU -> linear} projection is the {@code silu_mlp} asset (see
+	 * {@link DiffusionFeatures#siluMlp}); this method only prepends the {@code features} block and
+	 * loads it. The Fourier features stay in {@code features} rather than moving into the asset
+	 * because their {@code [cos, sin]} concatenation has no differentiable form in the language:
+	 * {@code concat_blocks} drops the backward pass, which would cut the gradient to the frequency
+	 * matrix that the Java Fourier block carries.</p>
+	 *
 	 * @param batchSize batch size
 	 * @param embedDim  embedding dimension
 	 * @param features  the Fourier feature block mapping {@code [batch, 1]} to {@code [batch, featureDim]}
@@ -168,9 +175,8 @@ public interface DiffusionTransformerFeatures extends TransformerBlockFeatures, 
 									PackedCollection weight2, PackedCollection bias2) {
 		SequentialBlock embedding = new SequentialBlock(shape(batchSize, 1));
 		embedding.add(features);
-		embedding.add(dense(weight0, bias0));
-		embedding.add(silu(shape(batchSize, embedDim)));
-		embedding.add(dense(weight2, bias2));
+		// linear -> SiLU -> linear projection over the Fourier features
+		embedding.add(siluMlp(features.getOutputShape(), weight0, bias0, weight2, bias2));
 		return embedding;
 	}
 
