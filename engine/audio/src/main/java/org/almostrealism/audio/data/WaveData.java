@@ -42,6 +42,8 @@ import org.almostrealism.io.Console;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -285,6 +287,35 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 	 */
 	public WaveData range(int channel, int start, int length) {
 		return new WaveData(getChannelData(channel).range(new TraversalPolicy(length), start), sampleRate);
+	}
+
+	/**
+	 * Conforms these samples to a fixed {@code [channels, frames]} tensor: a source
+	 * with fewer channels than {@code channels} has its last channel duplicated (so a
+	 * mono source fills every channel), a source with more is truncated to
+	 * {@code channels}, and each channel is truncated or zero-padded to {@code frames}.
+	 *
+	 * <p>This reshapes the audio to a target channel count and clip length without
+	 * resampling; callers needing a different sample rate must resample first.</p>
+	 *
+	 * @param channels the target channel count
+	 * @param frames   the target frame count
+	 * @return the conformed samples, shape {@code [channels, frames]}
+	 */
+	public PackedCollection conform(int channels, int frames) {
+		int sourceChannels = getChannelCount();
+		int copy = Math.min(frames, getFrameCount());
+		TraversalPolicy shape = new TraversalPolicy(channels, frames);
+
+		List<Producer<?>> rows = new ArrayList<>();
+		for (int c = 0; c < channels; c++) {
+			int sourceChannel = Math.min(c, sourceChannels - 1);
+			PackedCollection channelData =
+					getChannelData(sourceChannel).range(new TraversalPolicy(copy), 0);
+			rows.add(pad(shape, cp(channelData).reshape(1, copy), c, 0));
+		}
+
+		return add(rows).evaluate();
 	}
 
 	/**
