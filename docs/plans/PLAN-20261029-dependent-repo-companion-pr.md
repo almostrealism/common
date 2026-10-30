@@ -8,7 +8,7 @@ tracker: [dc9b2ec4-eacd-471c-8277-072324eb3f9b]
 # Open a companion PR when a job pushes commits to a dependent repo
 
 **Tracker task:** `dc9b2ec4-eacd-471c-8277-072324eb3f9b`: *Open a companion PR when a job pushes commits to a dependent repo*
-**Release:** Common 0.76 (project "Common")
+**Release:** the release under development (the version in the root `pom.xml`), project "Common"
 **Estimated complexity:** Medium
 
 ---
