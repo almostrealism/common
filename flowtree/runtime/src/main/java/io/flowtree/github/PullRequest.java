@@ -18,6 +18,9 @@ package io.flowtree.github;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
  * A pull request as GitHub's REST API renders it in a pull-request listing.
  *
@@ -28,6 +31,26 @@ import com.fasterxml.jackson.databind.JsonNode;
  * @param json one element of a {@code GET /repos/{owner}/{repo}/pulls} response
  */
 public record PullRequest(JsonNode json) {
+
+    /** Matches the trailing {@code /pull/{number}} (or {@code /pulls/{number}}) of a PR URL. */
+    private static final Pattern URL_NUMBER = Pattern.compile(".*/pulls?/(\\d+)/?$");
+
+    /**
+     * Extracts the pull-request number from a GitHub pull-request URL, such as
+     * {@code https://github.com/owner/repo/pull/123}. This is the number as it
+     * appears in the HTML URL ({@link #htmlUrl()}), the counterpart to
+     * {@link #number()} which reads it from a listing's JSON.
+     *
+     * @param url the pull-request URL, or {@code null}
+     * @return the number, or {@code -1} when the URL carries none
+     */
+    public static int numberFromUrl(String url) {
+        if (url == null) {
+            return -1;
+        }
+        Matcher matcher = URL_NUMBER.matcher(url);
+        return matcher.matches() ? Integer.parseInt(matcher.group(1)) : -1;
+    }
 
     /**
      * Reports whether the pull request was merged.
@@ -64,5 +87,14 @@ public record PullRequest(JsonNode json) {
      */
     public int number() {
         return json.path("number").asInt();
+    }
+
+    /**
+     * Returns the pull request's HTML URL — the page a human opens.
+     *
+     * @return the {@code html_url}, or {@code null} when the listing omits it
+     */
+    public String htmlUrl() {
+        return json.path("html_url").asText(null);
     }
 }

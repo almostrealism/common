@@ -101,6 +101,35 @@ public class JobCompletionEventTest extends TestSuiteBase {
 				event.toJson().contains("\"selfNotify\":true"));
 	}
 
+	/**
+	 * A dependent-repo push survives {@code toJson()} ->
+	 * {@link DependentRepoPush#listFromJson(String)} with its URL, branch, and
+	 * hash intact, which is how the job's report reaches the controller.
+	 */
+	@Test(timeout = 30000)
+	public void dependentRepoPushesRoundTripThroughJson() {
+		DependentRepoPush push = new DependentRepoPush(
+				"https://github.com/acme/lib.git", "feature/x", "abc123def456");
+		JobCompletionEvent event = JobCompletionEvent.success("job-dep", "Dependent push")
+				.withDependentRepoPushes(List.of(push));
+
+		List<DependentRepoPush> parsed = DependentRepoPush.listFromJson(event.toJson());
+
+		assertEquals(1, parsed.size());
+		assertEquals("https://github.com/acme/lib.git", parsed.get(0).repoUrl());
+		assertEquals("feature/x", parsed.get(0).branch());
+		assertEquals("abc123def456", parsed.get(0).commitHash());
+	}
+
+	/** A body with no pushes yields an empty list rather than null. */
+	@Test(timeout = 30000)
+	public void jsonWithoutPushesYieldsEmptyList() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-none", "No pushes");
+
+		assertNotNull(DependentRepoPush.listFromJson(event.toJson()));
+		assertTrue(DependentRepoPush.listFromJson(event.toJson()).isEmpty());
+	}
+
 	/** Verifies that staged and skipped file lists default to non-null empty lists. */
 	@Test(timeout = 30000)
 	public void defaultListsAreEmpty() {
