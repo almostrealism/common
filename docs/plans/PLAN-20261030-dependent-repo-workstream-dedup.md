@@ -14,23 +14,23 @@ as a dependent repo"
 
 ## Motivation
 
-<!-- TODO(review): this plan names a private downstream product/repo (Rings, ringsdesktop) throughout; per the CLAUDE.md public-repo rule, reword to platform-neutral terms (e.g. "a downstream repository") before approval. -->
-
 CI registers a workstream for each PR branch
 (`tools/ci/register-workstream.sh` → `POST /api/workstreams`, handled by
 `WorkstreamRegistrationHandler`). Registration returns the existing workstream
 when one matches the same repository and branch; otherwise it creates a new one,
 and when the derived Slack channel name collides it appends a numeric suffix
-(`w-sa3-generation` → `w-sa3-generation-2`).
+(`w-shared-branch` → `w-shared-branch-2`).
 
 That suffixing is wrong when the "collision" is the *same body of work seen from
 the other repository*. Concretely, on 2026-10-29:
 
-- A Rings workstream for branch `feature/sa3-generation` (primary repo
-  `ringsdesktop`) lists Common among its `dependentRepos`, and its job pushed
-  commits to the Common branch `feature/sa3-generation`.
-- When Common PR #784 opened for that branch, Common CI registered a *second*
-  workstream, `w-sa3-generation-2`, for work the Rings workstream already owns.
+- A workstream whose primary repo is a downstream repository that builds on this
+  one is registered for a shared feature branch; it lists Common among its
+  `dependentRepos`, and its job pushed commits to the Common branch of the same
+  name.
+- When the Common PR (#784) opened for that branch, Common CI registered a
+  *second* workstream (the suffixed channel name) for work the downstream
+  workstream already owns.
 
 The two workstreams then compete: duplicate Slack channels, duplicate
 auto-review/auto-resolve runs, and a split record of one piece of work. The fix
@@ -207,18 +207,18 @@ accessor's name for brevity.) Then:
 Common CI submits auto-review/auto-resolve via `submit-agent-job.sh` /
 `submit-staged-request.sh` with `createWorkstreamIfMissing: true`,
 `targetBranch: B`, `repoUrl: git@github.com:almostrealism/common.git`. After
-this change that submission resolves to the Rings workstream instead of creating
-`w-...-2`. The caller concern is what the job then does:
+this change that submission resolves to the downstream workstream instead of
+creating `w-...-2`. The caller concern is what the job then does:
 
 - A job's **primary** working directory is cloned from the *workstream's*
   `repoUrl` (`GitRepositorySetup.resolveWorkingDirectory` /
-  `cloneRepository`), i.e. `ringsdesktop`. The `dependentRepos` (Common) are
-  cloned as **siblings** (`prepareDependentRepos` /
+  `cloneRepository`), i.e. the downstream repository. The `dependentRepos`
+  (Common) are cloned as **siblings** (`prepareDependentRepos` /
   `prepareDependentReposBranches`).
 - The auto-review/auto-resolve diff, commit (`GitCommitHandler`), and auto-PR
-  all act on the **primary** repo. So a Common PR job routed to the Rings
-  workstream would, as the code stands, review the Rings diff and land
-  commits/PRs against Rings — **not** the Common companion checkout. That is the
+  all act on the **primary** repo. So a Common PR job routed to the downstream
+  workstream would, as the code stands, review the downstream repository's diff
+  and land commits/PRs against it — **not** the Common companion checkout. That is the
   "silently break CI-submitted jobs on companion PRs" failure the task warns
   against: the jobs do **not** act on the right repository as-is.
 
@@ -232,7 +232,7 @@ companion-PR job (skipped, or which checkout it runs against; success criterion
 **The guard must be server-side.** `POST /api/submit` resolves the workstream
 *and* queues the job in the same call. By the time `submit-agent-job.sh` can
 read `matchedAsDependentRepo` from the response, the job has already been sent
-to the Rings workstream. A client-side "skip if the response says dependent
+to the downstream workstream. A client-side "skip if the response says dependent
 match" in the CI scripts therefore cannot stop the wrong-repository job. The
 recommended guard (Open Question 1) instead lives in
 `FlowTreeApiEndpoint#handleSubmit`. When `resolution` is a dependent match, the
@@ -259,10 +259,10 @@ Note on `register-workstream.sh`: when registration returns an existing match,
 the script may run an update against the returned workstream. For the early
 Common `register-workstream` job (analysis.yaml) that update payload is empty
 (no `PLAN_FILE` / `TRACKER_CAPABILITIES` / `REQUIRED_LABELS_JSON` /
-`DEPENDENT_REPOS`), so it is already a no-op and will not clobber the Rings
+`DEPENDENT_REPOS`), so it is already a no-op and will not clobber the downstream
 workstream. The plan still recommends the script read the new
 `matchedAsDependentRepo` field and skip the update entirely for a dependent
-match, so Common CI settings can never be written onto the owning (Rings)
+match, so Common CI settings can never be written onto the owning (downstream)
 workstream even if a future caller starts passing those fields. Unlike the
 submit path, a client-side check is sufficient here, because registration
 queues no job. **Sequencing constraint:** `tools/ci/` is under the CI-file lock
@@ -277,27 +277,28 @@ runtime change does not depend on it.
 
 A reviewer can confirm the task is done when:
 
-1. Registering Common branch `B` (repo = Common) when a non-archived Rings
+1. Registering Common branch `B` (repo = Common) when a non-archived downstream
    workstream has default branch `B` and lists Common among its `dependentRepos`
-   returns that Rings workstream (`existing: true`, `matchedAsDependentRepo:
+   returns that downstream workstream (`existing: true`, `matchedAsDependentRepo:
    true`, its `workstreamId`) and creates nothing new.
 2. A genuine name collision with an *unrelated* workstream (same branch, neither
    the same repo nor a dependent-of relationship) still creates a new workstream
    with a suffixed channel name.
 3. An exact `(branch, repo)` match is still returned as an ordinary existing
    match (not a dependent match).
-4. Archived workstreams are never matched — an archived Rings workstream that
-   would otherwise match as a dependent-of does not suppress creation.
-5. The repository-identity comparison holds across spellings: a Rings workstream
-   whose `dependentRepos` lists `https://github.com/almostrealism/common.git`
+4. Archived workstreams are never matched — an archived downstream workstream
+   that would otherwise match as a dependent-of does not suppress creation.
+5. The repository-identity comparison holds across spellings: a downstream
+   workstream whose `dependentRepos` lists
+   `https://github.com/almostrealism/common.git`
    matches a Common registration that names the repo as
    `git@github.com:almostrealism/common.git`.
 6. A companion-PR job CI submits is shown not to act on the wrong checkout
    (per the Open-Questions decision). Under the recommended option: a
    `POST /api/submit` with `createWorkstreamIfMissing: true`, `targetBranch: B`
-   and `repoUrl` = Common, against a controller holding only the Rings workstream
-   that lists Common as a dependent, returns `"skipped": true`,
-   `"matchedAsDependentRepo": true` and the Rings `workstreamId`. It creates no
+   and `repoUrl` = Common, against a controller holding only the downstream
+   workstream that lists Common as a dependent, returns `"skipped": true`,
+   `"matchedAsDependentRepo": true` and the downstream `workstreamId`. It creates no
    workstream and queues no job. The same submission for an unrelated branch
    still creates a workstream, as `testApiSubmitCreatesWorkstreamWhenMissing`
    asserts today.
@@ -305,7 +306,8 @@ A reviewer can confirm the task is done when:
 ### Tests
 
 - **`NotifierRegistryTest`** (`flowtree/runtime/src/test/.../slack/`) already has
-  the `wsCommon` / `wsRings` fixtures used by
+  a Common-workstream fixture (`wsCommon`) and a downstream-workstream fixture
+  that share a branch, used by
   `testFindAllByBranchReturnsEveryWorkstreamSharingBranch`. Add coverage for
   `findByBranchAndDependentRepo`: a hit when a workstream lists the repo as a
   dependent (across SSH/HTTPS/`.git` spellings), a miss for an unrelated repo,
@@ -346,15 +348,16 @@ A reviewer can confirm the task is done when:
 ## Open questions
 
 1. **Caller behaviour for companion-PR remediation (the one real decision).**
-   Once a Common companion-PR submission resolves to the Rings workstream, the
-   job's primary checkout is `ringsdesktop`, and auto-review/auto-resolve act on
-   the primary repo. Two ways to keep from silently breaking it:
+   Once a Common companion-PR submission resolves to the downstream workstream,
+   the job's primary checkout is the downstream repository, and
+   auto-review/auto-resolve act on the primary repo. Two ways to keep from
+   silently breaking it:
    - *(Recommended, in-scope and minimal)* Registration returns the
      relationship (this plan's `matchedAsDependentRepo`), and
      `POST /api/submit` declines to queue a job whose workstream was resolved
      only as a dependent-of match. It returns `"skipped": true` with a reason
      (see "Check the callers" for why this must be server-side and not a CI
-     script guard). The owning (Rings) workstream, together with the
+     script guard). The owning (downstream) workstream, together with the
      companion-PR mechanism from `dc9b2ec4`, is where the branch's work and
      reviews are coordinated. This avoids running a review against the wrong
      repository and keeps this task's code changes to `flowtree/runtime`.
