@@ -111,6 +111,32 @@ public class SemaphoreOnSettledTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link LatchSemaphore#isSettled()} is false until the count-down that reaches zero, then
+	 * true whether the guarded work completed or failed, and a re-attributed view reports the
+	 * settlement of the latch it shares.
+	 */
+	@Test(timeout = 30000)
+	public void isSettledTracksTheCountDownToZero() {
+		LatchSemaphore completes = new LatchSemaphore(2);
+		assertFalse(completes.isSettled());
+		completes.countDown();
+		assertFalse(completes.isSettled());
+		completes.countDown();
+		assertTrue(completes.isSettled());
+
+		DefaultLatchSemaphore fails = new DefaultLatchSemaphore((OperationMetadata) null, 1);
+		DefaultLatchSemaphore view = (DefaultLatchSemaphore)
+				fails.withRequester(new OperationMetadata("view", "re-attributed view"));
+		fails.fail(new IllegalStateException("guarded work failed"));
+		assertFalse(fails.isSettled());
+		assertFalse(view.isSettled());
+
+		fails.countDown();
+		assertTrue(fails.isSettled());
+		assertTrue(view.isSettled());
+	}
+
+	/**
 	 * A latch handed to the semaphore from outside cannot report its own settlement, so the
 	 * callback is driven by a wait on a callback thread instead: it still runs only once the
 	 * latch reaches zero.
