@@ -126,7 +126,7 @@ if (repoUrl != null && !repoUrl.isEmpty()) {
     Workstream dependentOf =
         notifiers.findByBranchAndDependentRepo(defaultBranch, repoUrl);
     if (dependentOf != null) {
-        return Registration.matchedAsDependentRepo(dependentOf);
+        return Registration.dependentRepoMatch(dependentOf);
     }
 }
 // ... create a new workstream (suffixed channel) only now ...
@@ -186,11 +186,10 @@ it alone (see Open Questions).
 Extend `WorkstreamRegistrationHandler.Registration` with a
 `matchedAsDependentRepo` boolean (and accessor) and a factory that sets
 `existing = true` (so every existing-match code path keeps working) plus the new
-flag. Name the factory something other than the accessor, e.g.
-`Registration.dependentRepoMatch(Workstream)`. A static
+flag. Name the factory something other than the accessor — the sketch above
+uses `Registration.dependentRepoMatch(Workstream)`. A static
 `matchedAsDependentRepo(Workstream)` beside an instance `matchedAsDependentRepo()`
-is a legal overload, but it reads badly. (The code sketch above uses the
-accessor's name for brevity.) Then:
+would be a legal overload, but it reads badly, so avoid it. Then:
 
 - `handleRegister`: when the outcome is a dependent match, emit
   `{"ok":true,"existing":true,"matchedAsDependentRepo":true,"workstreamId":...}`.
