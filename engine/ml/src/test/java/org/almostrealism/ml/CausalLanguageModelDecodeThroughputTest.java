@@ -50,13 +50,14 @@ import java.util.stream.IntStream;
  * operation profile recorded ({@link OperationProfileNode#getRunCount()}), and the Metal dispatch and
  * command-buffer commit counts (zero on other backends), with the operations whose host waits forced
  * those commits; it reports the cache's speedup and its kernel-invocation and dispatch ratios, and
- * writes the profile to {@code results/causal_lm_decode_throughput.xml}. None of these figures is
- * asserted. Wall-clock time varies by node, and the cache path is not assumed to be cheaper: its work
- * per byte is one position rather than a {@code seqLen}-wide window, but a model this small is bound
- * by the cost of each dispatch and host wait rather than by arithmetic, so whether that saving shows
- * up as throughput is what this benchmark measures. What is asserted is backend-independent: both
+ * writes the profile to {@code results/causal_lm_decode_throughput.xml}. Wall-clock time, dispatches
+ * and commits are reported, not asserted: they vary by node and backend. A model this small is bound
+ * by the cost of each kernel, dispatch and host wait rather than by arithmetic, so whether the
+ * cache's saving (one position per byte rather than a {@code seqLen}-wide window) shows up as
+ * throughput is what this benchmark measures. What is asserted is backend-independent: both
  * generators decode the same greedy continuation, so the two sets of figures describe the same
- * decode, and the profile recorded the kernels each path ran.</p>
+ * decode; the profile recorded the kernels each path ran; and the cache path invokes strictly fewer
+ * kernels per byte than the sliding window, the work count its throughput advantage rests on.</p>
  *
  * <p>A second test continues the same prompt through the cache path greedily and with nucleus (top-p)
  * sampling, showing that the two sampling modes compose with the cache. Over random weights the
@@ -82,7 +83,8 @@ public class CausalLanguageModelDecodeThroughputTest extends TestSuiteBase {
 	/**
 	 * Decodes the same prompt to the full context with both generators, reports throughput and work
 	 * per byte for each and the cache's speedup, and requires both to decode the same greedy
-	 * continuation with the kernels of each recorded by the profile.
+	 * continuation with the kernels of each recorded by the profile, and the cache path to invoke
+	 * fewer kernels per byte than the sliding window.
 	 *
 	 * @throws IOException if the profile cannot be written
 	 */
@@ -112,6 +114,9 @@ public class CausalLanguageModelDecodeThroughputTest extends TestSuiteBase {
 					sliding.continuation(), cache.continuation());
 			Assert.assertTrue("no sliding-window kernel invocations were profiled", sliding.runsPerByte() > 0);
 			Assert.assertTrue("no key/value-cache kernel invocations were profiled", cache.runsPerByte() > 0);
+			Assert.assertTrue("the key/value-cache decode invokes " + cache.runsPerByte()
+							+ " kernels per byte, not fewer than the sliding window's " + sliding.runsPerByte(),
+					cache.runsPerByte() < sliding.runsPerByte());
 		} finally {
 			Hardware.getLocalHardware().clearProfile();
 			lm.getWeights().destroy();

@@ -231,8 +231,18 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 *       which visits only the stored entries</li>
 	 *   <li>Identity matrix detection -> returns input</li>
 	 *   <li>Diagonal matrix detection -> optimized scalar multiplication</li>
-	 *   <li>Vector-specific path -> uses element-wise multiply + sum instead of full matmul</li>
+	 *   <li>Vector-specific path for a batch of vectors -> uses element-wise multiply + sum
+	 *       instead of full matmul</li>
+	 *   <li>A single vector -> weighted sum, one kernel in which each output sums its row</li>
 	 * </ul>
+	 * </p>
+	 *
+	 * <p>
+	 * A single vector takes the weighted sum rather than the multiply + sum. The elementwise product
+	 * of a single vector has as many elements as the matrix, far more than the result, so it is
+	 * computed as a kernel of its own and summed by a second; the weighted sum computes each output
+	 * directly, which halves the kernels of a product that runs once per step of a single-position
+	 * decode.
 	 * </p>
 	 *
 	 * <p>
@@ -298,7 +308,11 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			// In that case, fall through to the weightedSum path below WITHOUT preprocessing.
 			// Empirically: 1000 outputs ~3s, 5000 outputs ~106s, 10000 outputs ~10+ minutes.
 			int outputSize = mShape.length(0);
-			if (outputSize <= 1000) {
+			if (outputSize <= 1000 && vShape.getTotalSizeLong() == mShape.length(1)) {
+				// A single vector: the weighted sum of a (1, n) row, in the shape multiply + sum gives
+				return matmul(matrix, reshape(shape(1, mShape.length(1)).traverse(0), vector))
+						.reshape(shape(outputSize, 1).traverse(1));
+			} else if (outputSize <= 1000) {
 				// Only do preprocessing for the repeat+multiply+sum path
 				if (onlyColumns) {
 					vShape = vShape.trim();

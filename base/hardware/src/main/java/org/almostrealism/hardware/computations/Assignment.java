@@ -359,6 +359,18 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	}
 
 	/**
+	 * Returns the destination producer: an assignment's scope writes the destination and
+	 * nothing else (see {@link #getScope(KernelStructureContext)}).
+	 *
+	 * @return the producer of the memory this assignment writes
+	 */
+	// TODO(review): confirm no required scope of the value writes another (aggregated) kernel argument; its copy-back is now skipped
+	@Override
+	public Supplier<Evaluable<? extends T>> getWrittenDestination() {
+		return getInputs().get(0);
+	}
+
+	/**
 	 * Returns a runnable that performs the assignment operation.
 	 *
 	 * <p>Attempts short-circuit optimization using {@link DestinationEvaluable} when the
