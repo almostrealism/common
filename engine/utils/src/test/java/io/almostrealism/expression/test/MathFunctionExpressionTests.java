@@ -150,6 +150,52 @@ public class MathFunctionExpressionTests extends TestSuiteBase implements Expres
 	}
 
 	/**
+	 * {@code recreate} on a non-folding function returns a node of the same function type that
+	 * renders the new operand inside the same call, and {@link Tangent} keeps its hyperbolic flag.
+	 */
+	@Test(timeout = 30000)
+	public void recreateKeepsFunctionIdentity() {
+		Expression<?> replacement = operand().add(e(1.0));
+		String inner = replacement.getExpression(lang);
+
+		Expression<?> acos = ((ArcCosine) ArcCosine.of(operand())).recreate(List.of(replacement));
+		Assert.assertTrue(acos instanceof ArcCosine);
+		Assert.assertEquals("acos(" + inner + ")", acos.getExpression(lang));
+
+		Expression<?> log = ((Logarithm) (Expression) Logarithm.of(operand())).recreate(List.of(replacement));
+		Assert.assertTrue(log instanceof Logarithm);
+		Assert.assertEquals("log(" + inner + ")", log.getExpression(lang));
+
+		Expression<?> tanh = ((Tangent) Tangent.of(operand(), true)).recreate(List.of(replacement));
+		Assert.assertEquals("tanh(" + inner + ")", tanh.getExpression(lang));
+
+		Expression<?> tan = ((Tangent) Tangent.of(operand(), false)).recreate(List.of(replacement));
+		Assert.assertEquals("tan(" + inner + ")", tan.getExpression(lang));
+	}
+
+	/**
+	 * The folding factories widen a non-double operand to a floating-point child before building
+	 * the node, so the emitted call never receives an integer argument.
+	 */
+	@Test(timeout = 30000)
+	public void factoriesWidenIntegerOperand() {
+		Expression index = kernel();
+		Assert.assertNotEquals(Double.class, index.getType());
+
+		Expression<?> sine = Sine.of(index);
+		Assert.assertTrue(sine instanceof Sine);
+		Assert.assertEquals(Double.class, sine.getChildren().get(0).getType());
+
+		Expression<?> tanh = Tangent.of(index, true);
+		Assert.assertTrue(tanh instanceof Tangent);
+		Assert.assertEquals(Double.class, tanh.getChildren().get(0).getType());
+
+		Expression<?> exp = Exp.of(index);
+		Assert.assertTrue(exp instanceof Exp);
+		Assert.assertEquals(Double.class, exp.getChildren().get(0).getType());
+	}
+
+	/**
 	 * {@code recreate} rejects an operand list whose arity is not one.
 	 */
 	@Test(timeout = 30000)
