@@ -168,7 +168,7 @@ it alone (see Open Questions).
   `Workstream` beside `matchesRepo`.
 
 > **File-length constraint (part of this task's scope).** `Workstream.java` is
-> at 1585 lines, 15 under the 1600-line Checkstyle `FileLength` limit, and a
+> at 1586 lines, 14 under the 1600-line Checkstyle `FileLength` limit, and a
 > javadoc'd `dependsOnRepo` (about 15–20 lines) will not fit without first
 > making room. The implementer must budget for extracting a cohesive group out
 > of `Workstream` (the repository-identity helpers, or another cohesive config
@@ -178,7 +178,7 @@ it alone (see Open Questions).
 > was 1582 before the companion-PR merge) and has room for the submit-response
 > field and the dependent-match skip described below (about 10–15 lines), but
 > the margin is small. Measure it again when implementing.
-> `WorkstreamRegistrationHandler.java` (925 lines) and `NotifierRegistry.java`
+> `WorkstreamRegistrationHandler.java` (935 lines) and `NotifierRegistry.java`
 > (464 lines) have ample room.
 
 ### Returning the relationship
@@ -401,7 +401,7 @@ A reviewer can confirm the task is done when:
 **Medium.** The registration logic is small and well-localised, and the repo
 identity comparison already exists. The weight is in: (a) threading the new
 `matchedAsDependentRepo` field through the `Registration` type and both response
-builders; (b) the required small refactor to keep `Workstream.java` (15 lines
+builders; (b) the required small refactor to keep `Workstream.java` (14 lines
 under the 1600-line limit) from breaching it, with `FlowTreeApiEndpoint.java`
 (42 lines under) to be re-measured; and (c) the caller-handling decision and its
 test. Under the recommended option, that is a server-side skip in
