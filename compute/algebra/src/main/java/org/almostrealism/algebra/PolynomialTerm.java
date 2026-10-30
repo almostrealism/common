@@ -157,30 +157,44 @@ public class PolynomialTerm {
 	 * Calculates the partial derivative of the polynomial term represented by this
 	 * PolynomialTerm object with respect to X and stores it for later use.
 	 */
-	// TODO(review): Math.max(0, exp-1) is correct for the documented non-negative
-	// exponent contract but yields an incorrect derivative for negative exponents
-	// (which expand() still supports); revisit if negative powers become supported.
 	public void calculateDx() {
 		this.dx = new PolynomialTerm(this.coefficient * this.expOfX,
-				Math.max(0, this.expOfX - 1), this.expOfY, this.expOfZ);
+				derivativeExponent(this.expOfX), this.expOfY, this.expOfZ);
 	}
-	
+
 	/**
 	 * Calculates the partial derivative of the polynomial term represented by this
 	 * PolynomialTerm object with respect to Y and stores it for later use.
 	 */
 	public void calculateDy() {
 		this.dy = new PolynomialTerm(this.coefficient * this.expOfY,
-				this.expOfX, Math.max(0, this.expOfY - 1), this.expOfZ);
+				this.expOfX, derivativeExponent(this.expOfY), this.expOfZ);
 	}
-	
+
 	/**
 	 * Calculates the partial derivative of the polynomial term represented by this
 	 * PolynomialTerm object with respect to Z and stores it for later use.
 	 */
 	public void calculateDz() {
 		this.dz = new PolynomialTerm(this.coefficient * this.expOfZ,
-				this.expOfX, this.expOfY, Math.max(0, this.expOfZ - 1));
+				this.expOfX, this.expOfY, derivativeExponent(this.expOfZ));
+	}
+
+	/**
+	 * Returns the exponent of the differentiation variable in the partial derivative
+	 * of a term whose exponent for that variable is {@code exponent}.
+	 *
+	 * <p>When {@code exponent} is {@code 0} the term does not depend on that variable,
+	 * so its partial derivative is the constant {@code 0}; the power rule's
+	 * {@code exponent - 1} would produce {@code -1} here, and since the derivative
+	 * coefficient is already {@code 0} the resulting {@code 0 * v^(-1)} evaluates to
+	 * {@code NaN} at {@code v == 0}. This case is collapsed to a genuine zero term by
+	 * keeping the exponent at {@code 0}. For every non-zero exponent (positive or
+	 * negative) the power rule applies unchanged, so {@code d/dv v^(-2) = -2 v^(-3)}
+	 * remains correct.</p>
+	 */
+	private static int derivativeExponent(int exponent) {
+		return exponent == 0 ? 0 : exponent - 1;
 	}
 	
 	/**

@@ -97,4 +97,19 @@ public class PolynomialTermTest extends TestSuiteBase {
 		PolynomialTerm quadratic = new PolynomialTerm(3.0, 0, 2, 0);
 		Assert.assertEquals(12.0, quadratic.getDy().evaluate(1, 2, 1), 1e-9);
 	}
+
+	/**
+	 * A non-zero exponent follows the power rule even when it is negative: only a
+	 * zero exponent (an absent variable) is collapsed to a constant-zero term. So
+	 * {@code d/dx(x^-2) = -2 x^-3}, which at {@code x == 2} is {@code -2 / 8 = -0.25},
+	 * and the derivative exponent remains {@code -3} rather than being clamped to
+	 * {@code 0}.
+	 */
+	@Test(timeout = 10000)
+	public void derivativeOfNegativeExponentFollowsThePowerRule() {
+		PolynomialTerm inverseSquare = new PolynomialTerm(1.0, -2, 0, 0);
+
+		Assert.assertEquals(-3, inverseSquare.getDx().getExpOfX());
+		Assert.assertEquals(-2.0 / 8.0, inverseSquare.getDx().evaluate(2, 1, 1), 1e-9);
+	}
 }
