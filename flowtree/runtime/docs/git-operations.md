@@ -554,8 +554,10 @@ git fetch origin
 ```
 
 All remote refs are updated so that subsequent branch operations see the
-current state of the remote. A non-zero exit code from fetch causes the
-preparation to fail with a `RuntimeException`.
+current state of the remote. A non-zero exit code from fetch is retried
+through `GitOperations.retryTransient` (3 attempts, linear backoff); when every
+attempt fails, preparation fails with a `TransientGitException` (see
+[Transient Git Failures](#transient-git-failures)).
 
 ### Step 4: Branch Checkout
 
@@ -576,6 +578,11 @@ force-push or rebase on the remote), the job falls back to a hard reset:
 ```
 git reset --hard origin/<targetBranch>
 ```
+
+Both the pull and the reset are retried with bounded backoff, because each
+races with a target branch that advances while the job runs. If the reset still
+fails after its retries, preparation fails with a `TransientGitException`
+("both pull and reset failed").
 
 This ensures tool server files (MCP Python scripts, configuration, etc.) are
 always up to date with the remote.
@@ -1019,14 +1026,32 @@ The one exception is `cloneRepository()`, which throws a `RuntimeException`
 on non-zero exit codes. This is because a failed clone is an unrecoverable
 error: there is no repository to work with, so continuing is impossible.
 
+### Transient Git Failures
+
+A sync race, an `index.lock` held by a concurrent git process, or a brief
+network failure usually clears on its own. `GitOperations.retryTransient(maxAttempts,
+baseBackoffMillis, step)` runs a `GitStep` (a lambda returning an exit code) up
+to `maxAttempts` times, sleeping `baseBackoffMillis * attempt` between tries, and
+returns `0` on the first success or the last non-zero exit code. It has no opinion
+about how an exhausted failure is reported.
+
+The callers that use it — `GitRepositorySetup` for fetch, pull and reset, and
+`GitCommitHandler` for the commit itself (3 attempts, 500 ms backoff unit) —
+throw `TransientGitException` (in `flowtree/base`, an `IOException` subclass)
+when the retries are spent. `GitManagedJob.createEvent` and
+`CodingAgentJobEvent.statusFor` recognise it anywhere in the cause chain
+(`TransientGitException.isTransient`) and report the job `DEGRADED` with a
+message prefixed `Transient git infrastructure failure: ` rather than `FAILED`,
+so a harness git hiccup is not counted as an agent failure.
+
 ### Exit Code Patterns in Calling Code
 
 The typical usage pattern in `GitManagedJob` is:
 
 ```java
-// Pattern 1: Check exit code, throw on failure
-if (git.execute("fetch", "origin") != 0) {
-    throw new RuntimeException("Failed to fetch from origin");
+// Pattern 1: Check exit code (retrying transient failures), throw on failure
+if (GitOperations.retryTransient(3, 500L, () -> git.execute("fetch", "origin")) != 0) {
+    throw new TransientGitException("Failed to fetch from origin after 3 attempts");
 }
 
 // Pattern 2: Check exit code, use boolean result
@@ -1223,7 +1248,8 @@ valid identity, and no gitconfig exists. Ensure `setGitUserName()` and
 **Fast-forward pull fails.** The working branch has diverged from the remote,
 typically because a previous job's commit was rebased or force-pushed. The
 preparation sequence handles this by falling back to `git reset --hard`, but
-if the reset also fails, the job aborts. Check the remote branch state and
+if the reset also fails after its retries, the job aborts with a
+`TransientGitException` and is reported `DEGRADED`. Check the remote branch state and
 ensure no concurrent force-pushes are occurring.
 
 **Clone fails with non-zero exit code.** The `RuntimeException` thrown by

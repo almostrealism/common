@@ -12,3 +12,6 @@ Spatial audio visualization bridging frequency-domain analysis with 3D rendering
 
 ### [ar-compose](compose/README.md)
 High-level orchestration for audio scene composition, arrangement, and generation. `AudioScene` manages tempo, patterns, effects chains, and automation. Integrates pattern-based music (ar-music), cell-based processing (ar-audio), ML audio generation (ar-ml), and genetic optimization (ar-heredity). Includes `MixdownManager` for effects routing, `AutomationManager` for parameter automation, and `AudioSceneOptimizer` for evolutionary optimization.
+
+### [ar-bioscience](bioscience/README.md)
+Biological models combined with the ML engine. Couples the neurons, synapses and connectomes of ar-biology to trained networks from ar-ml, and ingests biological datasets through the engine's model and tensor formats — for example the connectome loader `CellTypeConnectome`.

@@ -220,9 +220,13 @@ Producer<PackedCollection<?>> rotatedQ = ropeRotation(
 ### StateDictionary
 
 ```java
-public class StateDictionary implements Destroyable {
+// WeightGroup (org.almostrealism.model, ar-graph) is the contract PDSL models read weights through
+public class StateDictionary implements WeightGroup, Destroyable {
     public StateDictionary(String directory);
     public PackedCollection<?> get(String key);
+    public PackedCollection require(String key);   // fails, naming the closest keys
+    public StateDictionary group(String name);     // non-owning view of the keys under name
+    public List<String> members();                 // first segments of the keys (layers numerically)
 
     @Override
     public void destroy();  // Cleanup resources
@@ -244,7 +248,7 @@ body is omitted (shown as `;`) since these are the real implementations' paramet
 not a copy-pasteable interface:
 
 ```java
-public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
+public interface AttentionFeatures extends SequenceAttentionFeatures {  // -> RotationFeatures, FeedForwardFeatures
     // Multi-head attention with optional GQA, bias terms, and QK-Norm
     default Block attention(int heads, int kvHeads,
                            PackedCollection rmsAttWeight,
@@ -254,6 +258,21 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
                            PackedCollection qkNormQ, PackedCollection qkNormK,
                            CollectionProducer freqCis,
                            Producer<PackedCollection> position,
+                           ComputeRequirement... requirements);
+
+    // The same attention over caller-owned (seqLen, dim) key/value caches: the caller can
+    // clear them at a sequence boundary and release them, instead of the block allocating
+    // its own sealed pair (used by CausalLanguageModel.decodeModel)
+    default Block attention(int heads, int kvHeads,
+                           PackedCollection rmsAttWeight,
+                           PackedCollection wk, PackedCollection wv,
+                           PackedCollection wq, PackedCollection wo,
+                           PackedCollection bk, PackedCollection bv, PackedCollection bq,
+                           PackedCollection qkNormQ, PackedCollection qkNormK,
+                           CollectionProducer freqCis,
+                           Producer<PackedCollection> position,
+                           double epsilon,
+                           PackedCollection keyCache, PackedCollection valueCache,
                            ComputeRequirement... requirements);
 
     // Feed-forward with SwiGLU activation (from FeedForwardFeatures)
@@ -317,8 +336,13 @@ public class AutoregressiveModel<T> implements Destroyable {
     public static AutoregressiveModel<Integer> of(CompiledModel model,
                                                   PackedCollection position,
                                                   IntFunction<PackedCollection> tokenEmbed);
+    public static AutoregressiveModel<Integer> of(CompiledModel model,
+                                                  PackedCollection position,
+                                                  IntFunction<PackedCollection> tokenEmbed,
+                                                  Random random);  // seeded sampling
 
     public void setTemperature(double temperature);
+    public void setTopP(double topP);  // nucleus sampling threshold in (0, 1]; default 1.0
     public T next();  // Generate next token
 }
 ```
@@ -731,7 +755,9 @@ Other Stable Audio 3 building blocks:
   autoencoders that compress waveforms to and from the diffusion model's latent space. The
   transformer layers of `SAMEAutoEncoder`'s learned-resampling blocks
   (`TransformerResamplingFeatures`) are the `resampling_transformer_layer` of the PDSL asset
-  `pdsl/resampling_transformer.pdsl`.
+  `pdsl/resampling_transformer.pdsl`, and its per-frame channel projection (permute → dense →
+  permute, with or without a bias) is the `channel_projection` / `channel_projection_no_bias`
+  layer of `pdsl/channel_projection.pdsl`.
 - **`PatchedPretransform`** — a parameter-free pretransform, used by `SAMEAutoEncoder`, that folds
   runs of consecutive samples into the channel axis before encoding and unfolds them after decoding.
   The fold and unfold are the `patch_encode` and `patch_decode` layers of the PDSL asset
@@ -950,7 +976,8 @@ Use `insertEmbedding(id, vector)` to add a vector for a record that is already p
 its protobuf file until a kernel first reads it; a model whose weights no kernel
 ever asks for costs neither the Java heap nor the device:
 
-- **`CollectionEncoder`** — encode/decode a `PackedCollection` to protobuf `CollectionData`. The deferred `decode` forms hand back a collection whose values are read from the encoding on demand, never copied off it.
+- **`CollectionEncoder`** — encode/decode a `PackedCollection` to protobuf `CollectionData`, as floating-point (`Precision`) or, with a `NumberSystem` of `I32`/`I64`, as an exact integer payload that rejects non-whole or out-of-range values. The deferred `decode` forms hand back a collection whose values are read from the encoding on demand, never copied off it.
+- **`CollectionDataPayload`** — the value-carrying fields of `CollectionData` (`data` FP64, `data_32` FP32, `data_i32`, `data_i64`), each bound to the `NumberSystem` its values are stored as. A `CollectionData` carries exactly one payload; the integer payloads are fixed-width so a value can be addressed by offset without parsing. See [state-dictionary.md](../../docs/internals/state-dictionary.md).
 - **`CollectionDataMemoryProvider`** — the shared `"PROTOBUF"` `MemoryProvider` exposing collection data as read-only memory. Default `allocate(int)` rejects empty allocation (memory is created only from existing messages or file references); the default `setMem(...)` rejects writes — migration to a device is one-way.
 - **`CollectionDataMemory`** — the abstract `Memory` implementation the provider returns.
 - **`ParsedCollectionDataMemory`** — memory backed by a `CollectionData` already on the heap. Skips the device allocation when no kernel ever reads the values.

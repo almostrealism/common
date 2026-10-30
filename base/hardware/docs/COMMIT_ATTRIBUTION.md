@@ -51,17 +51,23 @@ count by cause:
 | `getBridgeCommitCount()` | Commits forced so a dispatch that bridges a *foreign* dependency starts a fresh buffer (see below) |
 | `getDestroyCommitCount()` | Commits performed while tearing the runner down |
 
-The cause counters always sum to the total. All are written on the runner's
+The cause counters are counted when the runner *closes* a buffer, while `getCommitCount()`
+is counted when a closed buffer is actually *committed*. A closed buffer is committed only
+once every host-signaled bridge encoded into it (and into every buffer closed before it) has
+been signaled, so while buffers are held waiting for a bridge the cause counters sum to more
+than the total; once no buffer is held they sum to it exactly. All are written on the runner's
 executor thread and safe to read from any thread.
 
 **Bridge commits.** A dispatch whose `dependsOn` is a foreign `Semaphore` (produced by
 another backend, another Metal context, or a composite latch) is ordered by encoding a
 GPU wait on a fresh per-bridge `MTLSharedEvent`, signaled from the host when the foreign
-work completes (`enableHostSignaledBridges`, default on). The submitting thread does not
-block, but if the open buffer already contains work it is committed first — a composite
+work settles (`enableHostSignaledBridges`, default on). The submitting thread does not
+block (unless `MAX_HELD` closed buffers already wait for bridges, see
+[semaphore-coordination.md](../../../docs/internals/semaphore-coordination.md)), but if the
+open buffer already contains work it is closed first — a composite
 completion over this runner's own semaphores resolves by completing their whole buffer,
 so a buffer containing both those dispatches and the bridge wait could never complete.
-Each such fresh-buffer commit increments `getBridgeCommitCount()`. A workload whose
+Each buffer closed this way increments `getBridgeCommitCount()`. A workload whose
 bridge commits approach its bridged-dispatch count is fragmenting buffers around bridges;
 grouping same-context members so bridges land at buffer starts restores batching.
 
