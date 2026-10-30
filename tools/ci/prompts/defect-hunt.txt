@@ -57,11 +57,12 @@ Work down your ranked list. For each theory, find out whether it is true
 something. Kill theories that do not survive, and say so; a theory
 eliminated is a real result and it narrows where the defect can be.
 
-Use the tools available to you. `ar-profile-analyzer` reads the generated
-kernel source and argument bindings, and for anything computing a wrong
-value that is the direct evidence rather than a guess. Use the MCP test
-runner for tests. Follow the evidence rather than your first impression
-of what the code does.
+Use the tools available to you.
+
+@include ${TEST_RUNNER_FRAGMENT}
+
+Follow the evidence rather than your first impression of what the code
+does.
 
 **4. Make it reproducible.**
 

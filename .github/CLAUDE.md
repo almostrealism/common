@@ -928,6 +928,37 @@ built from `tools/ci/prompts/`, and a coding-agent job submitted with
 `AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
 cadence logic.
 
+That shared shape now lives once, in the reusable `qa-round.yaml`
+(`workflow_call`, see "The other reusable workflows" below). Every QA job here
+except `coverage-qa` is a thin caller of it — `uses:
+./.github/workflows/qa-round.yaml` — passing its branch prefix, interval,
+prompt and submission settings as inputs, so the intake / cadence / archive /
+branch / register / build / submit / summary steps exist in one place and a
+consuming repository can adopt a QA round with just a caller job. The per-round
+differences travel as inputs: `branch-prefix`, `min-interval-days`,
+`ignore-interval` (passed as `${{ github.event.inputs.ignore_interval_<job> ||
+'false' }}`), `max-open-prs` (the same literal `MAX_OPEN_PRS` holds, since a
+called workflow cannot read the caller's `env`), the `prompt` (a built-in
+selector — `defect-hunt`, `doc-qa`, `consolidation`, `flaky-hunt` — or a path to
+the caller's own template), `template-vars`, and the submission settings
+(`protect-test-files`, `phase-configs`, `required-labels`, `enforce-changes`).
+`coverage-qa` stays inline: its target selection runs before branch creation and
+gates the whole round, it interleaves an exclusion commit with branch creation,
+and it needs `actions: read` to reuse master's coverage artifact — none of which
+fit the single-job generic shape. The templates of `performance-qa`, `pdsl-qa`
+and `qa-retrospective` are about this framework's own concerns (Metal, PDSL, the
+retrospective's ledger and branch conventions), so those rounds call
+`qa-round.yaml` but pass their own local template by path rather than a built-in
+selector; they are not offered to consumers. Of the built-in templates only the
+defect hunt is generalised today (its tooling guidance is a selectable
+`TEST_RUNNER_FRAGMENT`); `doc-qa` and `consolidation` remain this repository's
+own until a concrete non-Maven consumer appears.
+
+A new QA job for this repository adds a caller of `qa-round.yaml` (or, for a
+coverage-shaped round, a new inline job); either way it still gets its own
+`concurrency` group, its `agent` selector, and its `ignore_interval_*` dispatch
+input.
+
 Each QA job's `MIN_INTERVAL_DAYS` is 2 (`defect-hunt`, `coverage-qa`,
 `consolidation-qa`, `performance-qa`), 5 (`doc-qa`, `pdsl-qa`) or 7
 (`flaky-qa`, `qa-retrospective`). Every one of
@@ -1185,10 +1216,11 @@ reach the workflow as inputs; its defaults describe this repository's own layout
 guard, the script trust rule, the intake ordering, the planner role, the
 prompt's tool use and its variables.
 
-### The other reusable workflows: `Task Planning`, `Implement Plan`, `Plan Review`
+### The other reusable workflows: `Task Planning`, `Implement Plan`, `Plan Review`, `QA Round`
 
 Together with `Goal Decomposition` these give another repository the whole
-plan-then-implement pipeline for its own tracker project. Each is triggered only
+plan-then-implement pipeline for its own tracker project, and `QA Round` adds
+the recurring quality rounds on top. Each is triggered only
 by `workflow_call`, follows the same trust rule (every script and prompt
 template from an explicit checkout of this repository at `framework-ref`,
 `persist-credentials: false`; the controller URL and client ID as inputs, the
@@ -1225,9 +1257,22 @@ client secret as a declared secret), and describes its caller in its header.
   depend on the build and the quality gates. Its branch is read in a token-free
   `detect` job; the `review` job that holds the token checks out only this
   repository.
+- **`qa-round.yaml`** is one recurring QA round (see "QA-style jobs" under
+  `Master Agent Dispatch` above): intake, the shared cadence gate, archive,
+  branch, register, build prompt, submit, summary — all parameterised by the
+  caller's inputs. The branch prefix, interval and submission settings are
+  inputs; the `prompt` input is a built-in template selector (`defect-hunt`,
+  `doc-qa`, `consolidation`, `flaky-hunt`) or a path to the caller's own
+  template, read as data by `build-qa-round-prompt.sh` and rendered but never
+  executed. Its job's `concurrency` group keys on the calling repository and the
+  round name, so two merges to one repository cannot both pass a round's gate
+  while different rounds do not serialize against each other. This repository's
+  `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa`.
 
-`tools/tests/test_reusable_workflows.py` pins the trust rule for all four, and
-runs the release, plan-detection and docs-only steps for real. `test_master_agent_dispatch.py`,
+`tools/tests/test_reusable_workflows.py` pins the trust rule for all five, and
+runs the release, plan-detection and docs-only steps for real;
+`tools/tests/test_qa_round.py` runs `qa-round.yaml`'s prompt-build step for real,
+including for a non-Maven consumer. `test_master_agent_dispatch.py`,
 `test_automated_intake.py` and `test_verify_completion_workflow.py` follow a
 caller job into the workflow it calls, so their checks still apply to the steps
 that run.

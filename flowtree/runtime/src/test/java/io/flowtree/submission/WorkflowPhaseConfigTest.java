@@ -68,13 +68,23 @@ import static org.junit.Assert.assertTrue;
  */
 public class WorkflowPhaseConfigTest extends TestSuiteBase {
 
-	/** Matches {@code PHASE_CONFIGS: '<json>'} in a workflow file. */
+	/**
+	 * Matches a per-phase config declared either as a step's
+	 * {@code PHASE_CONFIGS: '<json>'} environment value or as a reusable
+	 * workflow's {@code phase-configs: '<json>'} input. A caller hard-codes the
+	 * JSON in exactly the same way whichever form it uses, so the guard applies
+	 * to both.
+	 */
 	private static final Pattern PHASE_CONFIGS = Pattern.compile(
-			"PHASE_CONFIGS:\\s*'(\\{.*?\\})'");
+			"(?:PHASE_CONFIGS|phase-configs):\\s*'(\\{.*?\\})'");
 
-	/** Matches {@code DEFAULT_PHASE_CONFIG: '<json>'} in a workflow file. */
+	/**
+	 * Matches a default config declared either as a step's
+	 * {@code DEFAULT_PHASE_CONFIG: '<json>'} environment value or as a reusable
+	 * workflow's {@code default-phase-config: '<json>'} input.
+	 */
 	private static final Pattern DEFAULT_PHASE_CONFIG = Pattern.compile(
-			"DEFAULT_PHASE_CONFIG:\\s*'(\\{.*?\\})'");
+			"(?:DEFAULT_PHASE_CONFIG|default-phase-config):\\s*'(\\{.*?\\})'");
 
 	/** Parses the workflow JSON strictly, unlike the resolver's lenient reader. */
 	private static final ObjectMapper MAPPER = new ObjectMapper();
