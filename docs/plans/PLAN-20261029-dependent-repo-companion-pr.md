@@ -45,8 +45,8 @@ In scope:
 2. **Controller side: open or reuse the companion PR.** On a successful
    completion whose job requested `autoCreatePr`, for each reported push:
    - target the dependent repo's default branch;
-   - do nothing when that branch is not behind the pushed branch (the branch
-     does not differ from default);
+   - do nothing when the pushed branch is not ahead of that default branch (the
+     branch does not differ from default);
    - reuse an open PR whose head is that branch, and never open a duplicate;
    - otherwise open a PR whose title and body come from the pushed commit's
      message (as `createPullRequestFromCommit` already does for the primary),
@@ -86,13 +86,21 @@ Changes:
   wrote with the same code.
 - **`GitRepositorySetup`** keeps the URL with each path. It replaces
   `List<String> dependentRepoPaths` with an ordered path→URL map, and keeps
-  `getDependentRepoPaths()` as a view so `InvalidFileDetector` and other
-  callers stay unchanged. It adds `getDependentRepoUrl(String path)`.
+  `getDependentRepoPaths()` as a view so its existing callers stay unchanged:
+  `GitManagedJob.enforceNoInvalidFiles` (which hands the paths to
+  `InvalidFileDetector.enforceNone`), and the public
+  `GitManagedJob.getDependentRepoPaths()`, which `JobWorkOutcome` and
+  `CodingAgentJob` read. It adds `getDependentRepoUrl(String path)`.
 - **`GitCommitHandler.handleDependentRepos`** records a `DependentRepoPush` after
   the push returns, using `git rev-parse HEAD` in that repo for the hash and
   `job.getTargetBranch()` for the branch (the branch the push targets). It
   records nothing on dry runs, on push-disabled jobs, or when nothing was
-  committed. It exposes the list through `getDependentRepoPushes()`. The method
+  committed. `GitPushReconciler.push` returns `void` and throws a
+  `RuntimeException` when the push cannot converge. A failed push therefore
+  never reaches the recording step. It also ends `handleDependentRepos` for any
+  later dependent repos and fails the job, so no companion PR is attempted. That
+  is today's behavior and the plan keeps it. The handler exposes the list
+  through `getDependentRepoPushes()`. The method
   is called today as `handleDependentRepos(repoSetup.getDependentRepoPaths())`,
   so it receives only paths and has no way to recover each repo's URL; its
   signature must change to carry the URL as well — either accept the ordered
@@ -178,6 +186,19 @@ state move out of the endpoint:
 - The primary PR to link is whatever `event.getPullRequestUrl()` ends up as. It
   is either the PR the job detected (`GitCommitHandler.detectPullRequestUrl`) or
   the one just auto-created.
+- **The companion loop must not be nested inside the primary-PR guards.** The
+  endpoint's current block opens the primary PR only when `prCtx != null`,
+  `event.getTargetBranch() != null`, **and** `event.getPullRequestUrl() == null`.
+  It then resolves a token for the *primary* org and makes the call only when
+  that token is non-null. If the extraction keeps that nesting and appends the
+  dependent-repo loop inside it, two cases are lost. A job whose primary PR
+  already exists (the detected-PR case, and the incident's case) would skip
+  the companion PR entirely. So would a job whose primary org has no token
+  while the dependent repo's org does. `publish` should run the primary step
+  under its existing conditions and then run the companion step under its own
+  conditions: a successful event, an `AutoPrContext` present (or the rule open
+  question #1 settles on), and pushes present. It should use the per-push
+  token from step 1.
 - `JobCompletionEvent` gains `withCompanionPullRequestUrls(List<String>)` so the
   result is visible downstream.
 - `handleStatusEvent` parses `dependentRepoPushes` from the body with
@@ -208,7 +229,10 @@ have `@Test(timeout = ...)`, and a fake GitHub API runs on a local
 `com.sun.net.httpserver.HttpServer`. The fake keeps an in-memory list of PRs and
 comments and serves `GET /repos/{o}/{r}`, `GET .../compare/...`,
 `GET .../pulls?head=...`, `GET .../commits/{ref}`, `POST .../pulls`, and
-`POST .../issues/{n}/comments`.
+`POST .../issues/{n}/comments`. No fake GitHub server exists yet. The local
+`HttpServer` stubs in `io.flowtree.api.TrackerEndpointTest` and
+`io.flowtree.tracker.TaskCloseOutReconcilerTest` (bound to `127.0.0.1` on port
+`0`) are the pattern to follow.
 
 - **`AutoPullRequestPublisherTest`** (`io.flowtree.api`):
   - `companionPrOpenedAndLinkedBothWays`: an event with a primary branch and one
@@ -224,11 +248,21 @@ comments and serves `GET /repos/{o}/{r}`, `GET .../compare/...`,
   - `branchEqualToDefaultCreatesNothing`: `ahead_by: 0` opens nothing.
   - `withoutAutoCreatePrNothingIsOpened`: pushes with no `AutoPrContext` make
     no `POST` requests and leave the unreviewed commits recorded.
+  - `companionPrOpenedWhenPrimaryAlreadyExists`: an event that already carries
+    a `pullRequestUrl` (the job detected the primary PR) still gets its
+    companion PR and the reciprocal comment. This guards the nesting pitfall
+    described in §3.
 - **`GitHubProxyHandlerTest`**: covers the new URL construction against a custom
   API root, and `findOpenPullRequest` skipping closed PRs.
 - **`JobCompletionEvent` round-trip**: `toJson()` → `DependentRepoPush.listFromJson`
-  preserves URL, branch, and hash. Add it to the existing event/serialization
-  tests in `io.flowtree.jobs`.
+  preserves URL, branch, and hash. Add it to the existing
+  `io.flowtree.jobs.JobCompletionEventTest`.
+- **Existing tests that the extractions must keep green:**
+  `io.flowtree.api.AutoCreatePrSubmitTest`, which covers the `autoCreatePr` and
+  `createPrAsDraft` submission fields that feed the registry moving into
+  `AutoPullRequestPublisher`; `GitHubProxyHandlerTest`, which asserts the
+  `https://api.github.com/...` form of `commitApiUrl` and must still pass with
+  the default root; and `GitManagedJobGitOperationsTest`.
 - **`GitCommitHandler`**: an existing git-backed test fixture
   (`GitManagedJobGitOperationsTest` style, with local bare repos as origins)
   shows that a job changing a file in a dependent repo reports one
@@ -287,6 +321,20 @@ label is needed.
    companion's body (so the suffix can be detected) or a list-comments call on
    the primary is needed to detect the existing comment. The approver should
    decide whether the first cut carries this or defers it to a follow-up.
+6. **The dependent branch's start point and the companion PR's base can
+   differ.** When the workstream branch does not yet exist in a dependent repo,
+   `GitRepositorySetup.prepareDependentReposBranches` creates it from
+   `origin/<job.getBaseBranch()>`. That is the *primary* repo's base branch.
+   The plan targets the companion PR at the dependent repo's own
+   `default_branch`. The two agree when both repos use `master`. When they
+   differ, the dependent repo may have no branch of that name and the checkout
+   would already fail. If it does have one, the companion PR's diff would carry
+   every commit between the two branches, not just the job's work. The plan
+   does not change the start point. The approver should decide whether the
+   companion should target the start-point branch instead, or whether the
+   checkout should start from the dependent repo's default branch. That second
+   choice is a change to existing behavior and is outside this task's stated
+   scope.
 
 ## Estimated complexity
 
