@@ -115,10 +115,12 @@ public class SubmissionStreamTest {
 		Assert.assertFalse(s.ordersAfter(new LatchSemaphore(1)));
 		Assert.assertFalse(s.ordersAfter(null));
 
-		Assert.assertSame(second, s.later(first, second));
-		Assert.assertSame(second, s.later(second, first));
-		Assert.assertNull(s.later(first, elsewhere));
-		Assert.assertNull(s.later(first, new LatchSemaphore(1)));
+		Assert.assertSame(second, first.later(second));
+		Assert.assertSame(second, second.later(first));
+		Assert.assertTrue(second.follows(first));
+		Assert.assertFalse(first.follows(second));
+		Assert.assertNull(first.later(elsewhere));
+		Assert.assertNull(first.later(new LatchSemaphore(1)));
 		Assert.assertSame(first, s.own(first));
 		Assert.assertNull(s.own(elsewhere));
 	}

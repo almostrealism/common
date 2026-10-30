@@ -38,9 +38,9 @@ import java.util.function.Supplier;
  *   <li><b>The submission ordinal</b> &mdash; a monotonic position for every submission
  *       ({@link #nextOrdinal()}), which is what completions are ordered, merged and failed by.</li>
  *   <li><b>Same-stream ordering</b> &mdash; {@link #ordersAfter(Semaphore)} recognises a
- *       dependency that the stream's own order already satisfies, and
- *       {@link #later(StreamCompletion, Semaphore)} merges two of the stream's completions into
- *       the later of them.</li>
+ *       dependency that the stream's own order already satisfies, and {@link #own(Semaphore)}
+ *       types such a dependency as one of the stream's completions, which
+ *       {@link StreamCompletion#later(Semaphore)} merges into the later of the two.</li>
  *   <li><b>The failure record</b> &mdash; one {@link FailureRecord} per stream, so a failure at
  *       ordinal {@code K} is reported by every wait at or after {@code K}.</li>
  *   <li><b>The off-stream-thread guard</b> &mdash; a wait that would have to be serviced by the
@@ -155,23 +155,6 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	 */
 	public boolean ordersAfter(Semaphore dependsOn) {
 		return completionType.isInstance(dependsOn) && completionType.cast(dependsOn).getStream() == this;
-	}
-
-	/**
-	 * Returns whichever of two completions of this stream was submitted later, or {@code null}
-	 * if {@code other} does not belong to this stream. The later completion cannot settle before
-	 * the earlier one, so it stands for both. A backend whose completions carry more than their
-	 * ordinal (Metal's prior-buffer value) builds on this rather than replacing it.
-	 *
-	 * @param completion a completion of this stream
-	 * @param other      another completion
-	 * @return the later of the two, or {@code null} if they cannot merge
-	 */
-	public C later(C completion, Semaphore other) {
-		C theirs = own(other);
-		if (theirs == null) return null;
-
-		return theirs.getOrdinal() > completion.getOrdinal() ? theirs : completion;
 	}
 
 	/**

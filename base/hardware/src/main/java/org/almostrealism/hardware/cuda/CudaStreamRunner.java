@@ -45,7 +45,7 @@ import java.util.function.Consumer;
  *
  * <p>The runner is a {@link SubmissionStream}, the coordination it shares with every other
  * backend: the stream supplies the submission ordinal (a submission's
- * {@link CudaSemaphore#getSequence() sequence}), same-runner ordering and merging, the
+ * {@link CudaSemaphore#getOrdinal() sequence}), same-runner ordering and merging, the
  * off-completion-thread wait guard, admission versus destruction, the hold bound and the
  * {@link FailureRecord}. The runner supplies only what is native to CUDA: launching on the
  * {@link CUStream}, recording and synchronizing {@link CUEvent}s.</p>
@@ -619,6 +619,13 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 		 * throws its immediate launch failure once the submission has settled in its turn, so its
 		 * callback has run by then.
 		 *
+		 * <p>The submission settles with the launch failure, so the wait rethrows it; an exception
+		 * the wait throws is that failure, or (should it ever differ) is attached to it. An
+		 * {@link Error} is not caught: it is the launch failure itself, a callback's Error that the
+		 * completion thread reports in its place (see {@link Completion#settle()}), or a failure of
+		 * the wait itself, such as a {@link VirtualMachineError}, and none of those may be
+		 * exchanged for the launch failure.</p>
+		 *
 		 * @param awaitTurn whether to wait for the submission to settle before throwing; false on
 		 *                  the completion thread, which cannot wait for its own turn
 		 * @return the submission's completion
@@ -629,8 +636,8 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 			if (awaitTurn) {
 				try {
 					completion.waitFor();
-				} catch (RuntimeException | Error settled) {
-					// The same failure, now with any callback failure attached; thrown below
+				} catch (RuntimeException settled) {
+					if (settled != launchFailure) launchFailure.addSuppressed(settled);
 				}
 			}
 
@@ -673,8 +680,12 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 		private final CUEvent event;
 		/** The completion callback, or {@code null}. */
 		private final Runnable onComplete;
-		/** The failure the submission settles with before its callback runs, or {@code null}. */
-		private final Throwable failure;
+		/**
+		 * The failure the submission settles with, or {@code null}: initially the one it already
+		 * carries, then accumulated by {@link #addFailure(Throwable)} as {@link #settle()} runs.
+		 * Touched only by the completion thread.
+		 */
+		private Throwable failure;
 
 		/**
 		 * Creates a completion record.
@@ -705,10 +716,13 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 		 * callback runs, and work that ran without a failure of its own still reports a failure the
 		 * record holds at or before its sequence: the completion thread settles in sequence order, so
 		 * a failure of submission {@code K} reaches every completion of {@code K} or later.</p>
+		 *
+		 * <p>An {@link Error} is the exception to first-failure-wins: one raised by a later step is
+		 * not attached under an earlier exception, where a waiter catching the exception would
+		 * never see it, but reported in its place, with the exception attached to it instead (see
+		 * {@link #addFailure(Throwable)}).</p>
 		 */
 		private void settle() {
-			Throwable failure = this.failure;
-
 			if (event != null) {
 				try {
 					event.synchronize();
@@ -720,8 +734,7 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 				try {
 					event.release();
 				} catch (RuntimeException | Error e) {
-					if (failure != null) failure.addSuppressed(e);
-					else failure = e;
+					addFailure(e);
 				}
 			}
 
@@ -730,11 +743,31 @@ public class CudaStreamRunner extends SubmissionStream<CudaSemaphore> implements
 			try {
 				if (onComplete != null) onComplete.run();
 			} catch (RuntimeException | Error e) {
-				if (failure != null) failure.addSuppressed(e);
-				else failure = e;
+				addFailure(e);
 			} finally {
 				completion.fail(failure);
 				completion.countDown();
+			}
+		}
+
+		/**
+		 * Adds the failure of a later step of {@link #settle()} to the failure this submission
+		 * settles with, attaching one to the other as suppressed. The earlier failure is kept
+		 * unless {@code next} is an {@link Error} and the earlier one is not: an Error (a
+		 * {@link VirtualMachineError}, a {@link LinkageError}) may leave the process unable to
+		 * continue, so it must reach the waiters as itself rather than as a suppressed detail of
+		 * an ordinary failure.
+		 *
+		 * @param next the failure of a later step
+		 */
+		private void addFailure(Throwable next) {
+			if (failure == null) {
+				failure = next;
+			} else if (next instanceof Error && !(failure instanceof Error)) {
+				next.addSuppressed(failure);
+				failure = next;
+			} else {
+				failure.addSuppressed(next);
 			}
 		}
 	}

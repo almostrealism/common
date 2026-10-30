@@ -226,6 +226,30 @@ public class CudaStreamRunnerSyncTest {
 	}
 
 	/**
+	 * When the command fails and the completion callback then fails with an {@link Error}, the
+	 * Error is not buried as a suppressed detail of the command failure: the submitting thread
+	 * receives the Error itself, carrying the command failure as suppressed.
+	 */
+	@Test(timeout = 30000)
+	public void commandFailureGivesWayToCallbackError() {
+		CudaStreamRunner runner = new CudaStreamRunner(new RecordingStream(new ArrayList<>()));
+		AssertionError error = new AssertionError("callback error");
+
+		try {
+			runner.submit(null, stream -> { throw new IllegalStateException("launch failed"); },
+					null, () -> { throw error; });
+			Assert.fail("The callback error should propagate");
+		} catch (AssertionError expected) {
+			Assert.assertSame(error, expected);
+			Assert.assertEquals(1, expected.getSuppressed().length);
+			Assert.assertTrue(expected.getSuppressed()[0] instanceof IllegalStateException);
+			Assert.assertEquals("launch failed", expected.getSuppressed()[0].getMessage());
+		}
+
+		runner.destroy();
+	}
+
+	/**
 	 * When waiting for a submission's completion event fails and releasing that event then fails
 	 * too, the submission's semaphore reports the wait failure, carrying the release failure as
 	 * suppressed, so the operation that actually failed is not hidden by cleanup.
@@ -632,7 +656,7 @@ public class CudaStreamRunnerSyncTest {
 		CudaSemaphore view = (CudaSemaphore) completion.withRequester(reattributed);
 
 		Assert.assertNotSame("withRequester must return a distinct handle", completion, view);
-		Assert.assertSame("The view must keep the original runner", runner, view.getRunner());
+		Assert.assertSame("The view must keep the original runner", runner, view.getStream());
 		Assert.assertSame("The view must carry the new requester", reattributed, view.getRequester());
 		Assert.assertSame("The original must keep its own requester", original, completion.getRequester());
 

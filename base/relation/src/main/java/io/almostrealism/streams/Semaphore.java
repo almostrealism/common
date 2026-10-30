@@ -109,13 +109,19 @@ public interface Semaphore {
 	 * callback does, and only if the operation completed normally: a failure is reported to
 	 * whoever waits on this semaphore, and the callback does not run.
 	 *
+	 * <p>Only an exception is left to the waiters. An {@link Error} thrown by {@link #waitFor()}
+	 * (a recorded failure that is an Error, or one raised by the wait itself) may mean the
+	 * process is in a state nothing can recover from, and the waiters may never come, so it is
+	 * not caught: it escapes the callback thread, where its uncaught-exception handler reports
+	 * it at once.</p>
+	 *
 	 * @param r the callback to invoke after {@link #waitFor()} returns
 	 */
 	default void onComplete(Runnable r) {
 		onSettled(() -> {
 			try {
 				waitFor();
-			} catch (RuntimeException | Error e) {
+			} catch (RuntimeException e) {
 				// Reported to the operation's own waiters; the callback only follows success
 				return;
 			}

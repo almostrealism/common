@@ -170,38 +170,48 @@ public class SemaphoreOnSettledTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A completion callback skipped because its latch failed leaves the failure to the
-	 * waiter: nothing escapes the callback thread as an uncaught exception.
+	 * A completion callback skipped because its latch failed with an exception leaves the
+	 * failure to the waiter: nothing escapes the callback thread as an uncaught exception.
 	 */
 	@Test(timeout = 30000)
 	public void skippedCompletionCallbackDoesNotEscapeItsThread() throws InterruptedException {
-		assertSkippedCompletionStaysQuiet(new IllegalStateException("guarded work failed"));
+		List<Throwable> uncaught = skipCompletion(new IllegalStateException("guarded work failed"), false);
+		assertTrue("uncaught: " + uncaught, uncaught.isEmpty());
 	}
 
 	/**
 	 * A latch that failed with an {@link Error} (which {@link LatchSemaphore#waitFor()} rethrows
-	 * as an Error) skips its completion callback just as quietly as one that failed with a
-	 * runtime exception: nothing escapes the callback thread, and the waiter still sees the Error.
+	 * as an Error) skips its completion callback, but does not conceal the Error: it escapes the
+	 * callback thread to the uncaught-exception handler, so it is reported as soon as it is
+	 * observed, and the waiter still receives it.
 	 */
 	@Test(timeout = 30000)
-	public void skippedCompletionCallbackForErrorDoesNotEscapeItsThread() throws InterruptedException {
-		assertSkippedCompletionStaysQuiet(new AssertionError("guarded work failed"));
+	public void skippedCompletionCallbackReportsError() throws InterruptedException {
+		AssertionError failure = new AssertionError("guarded work failed");
+		List<Throwable> uncaught = skipCompletion(failure, true);
+		Assert.assertEquals(List.of(failure), uncaught);
 	}
 
 	/**
 	 * Fails a latch with {@code failure}, verifies its {@link Semaphore#onComplete(Runnable)}
-	 * callback is skipped without any uncaught exception, and that the waiter receives
-	 * {@code failure} itself.
+	 * callback is skipped and that the waiter receives {@code failure} itself, and returns what
+	 * escaped a thread as an uncaught exception meanwhile.
 	 *
-	 * @param failure the failure the guarded work records
+	 * @param failure  the failure the guarded work records
+	 * @param reported whether {@code failure} is expected to reach the uncaught-exception handler,
+	 *                 in which case it is waited for rather than merely given a chance to arrive
+	 * @return the uncaught exceptions observed while the callback was skipped
 	 */
-	private void assertSkippedCompletionStaysQuiet(Throwable failure) throws InterruptedException {
+	private List<Throwable> skipCompletion(Throwable failure, boolean reported) throws InterruptedException {
 		List<Throwable> uncaught = new ArrayList<>();
+		CountDownLatch escaped = new CountDownLatch(1);
 		Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
 		Thread.setDefaultUncaughtExceptionHandler((thread, t) -> {
 			synchronized (uncaught) {
 				uncaught.add(t);
 			}
+
+			escaped.countDown();
 		});
 
 		try {
@@ -213,9 +223,7 @@ public class SemaphoreOnSettledTest extends TestSuiteBase {
 			latch.countDown();
 
 			assertFalse(completed.await(QUIET_MILLIS, TimeUnit.MILLISECONDS));
-			synchronized (uncaught) {
-				assertTrue("uncaught: " + uncaught, uncaught.isEmpty());
-			}
+			if (reported) assertTrue(escaped.await(SETTLE_SECONDS, TimeUnit.SECONDS));
 
 			Throwable seen = null;
 			try {
@@ -225,6 +233,10 @@ public class SemaphoreOnSettledTest extends TestSuiteBase {
 			}
 
 			Assert.assertSame(failure, seen);
+
+			synchronized (uncaught) {
+				return new ArrayList<>(uncaught);
+			}
 		} finally {
 			Thread.setDefaultUncaughtExceptionHandler(previous);
 		}

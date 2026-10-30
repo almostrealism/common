@@ -26,7 +26,7 @@ import org.almostrealism.hardware.HardwareException;
  * <p>Knowing the stream is what lets a dependent submission to the same stream skip any host-side
  * ordering (see {@link SubmissionStream#ordersAfter(Semaphore)}); knowing the ordinal is what lets
  * two completions of one stream merge into the later of them
- * (see {@link SubmissionStream#later(StreamCompletion, Semaphore)}) and what a
+ * (see {@link #later(Semaphore)}) and what a
  * {@link FailureRecord} is keyed by.</p>
  */
 public interface StreamCompletion extends Semaphore {
@@ -44,6 +44,33 @@ public interface StreamCompletion extends Semaphore {
 	 * @return the submission ordinal
 	 */
 	long getOrdinal();
+
+	/**
+	 * Returns whether this completion's submission was made after {@code other}'s, so that it
+	 * settles no earlier. Meaningful only for two completions of the same stream.
+	 *
+	 * @param other another completion of the same stream
+	 * @return true if this completion has the higher ordinal
+	 */
+	default boolean follows(StreamCompletion other) {
+		return getOrdinal() > other.getOrdinal();
+	}
+
+	/**
+	 * Returns whichever of this completion and {@code other} was submitted later, or {@code null}
+	 * if {@code other} does not belong to this completion's stream. The later completion cannot
+	 * settle before the earlier one, so it stands for both. A backend whose completions carry more
+	 * than their ordinal (Metal's prior-buffer value) builds on this rather than replacing it.
+	 *
+	 * @param other another completion
+	 * @return the later of the two, or {@code null} if they cannot merge
+	 */
+	default StreamCompletion later(Semaphore other) {
+		StreamCompletion theirs = getStream().own(other);
+		if (theirs == null) return null;
+
+		return theirs.follows(this) ? theirs : this;
+	}
 
 	/**
 	 * Records in the stream's {@link FailureRecord} that this completion's submission did not
