@@ -32,7 +32,9 @@ therefore never implements its plans on ready-for-review.
 
 Extracting Plan Ready into a `workflow_call` workflow closes that gap and makes
 this repository run the same code its consumers run — the pattern already
-established for decomposition, planning, implementation and docs-only review.
+established for decomposition, planning, implementation, docs-only review and
+the recurring QA rounds (`qa-round.yaml`, the most recent and closest example:
+a reusable workflow whose same-repository callers keep their own triggers).
 
 ## Scope
 
@@ -77,7 +79,7 @@ Out of scope (named as dependencies / open questions, not widened into here):
 
 ### The reusable workflow
 
-`plan-ready.yaml` is triggered only by `workflow_call`, like the other four
+`plan-ready.yaml` is triggered only by `workflow_call`, like the other five
 reusable workflows. Its single job keeps the name `dispatch` and the current
 four steps verbatim, with only the hard-coded values swapped for inputs read
 through `env:`:
@@ -194,7 +196,7 @@ branch's copy of the workflow.
 ### How the trust properties are kept
 
 - **Nothing from the PR is checked out or run.** Plan Ready's job is inline
-  shell over event metadata and GitHub API responses. Unlike the other four
+  shell over event metadata and GitHub API responses. Unlike the other five
   reusable workflows, it needs **no** framework checkout at all, so there is no
   `framework-repository`/`framework-ref` input and no `ref:` anywhere — and
   therefore no way to point a checkout at PR code. If a future change ever needs
@@ -309,7 +311,10 @@ A reviewer can confirm the task is done when:
 - None blocking: the tracker task has no `blocked_by` entries. It is the
   final piece beside the already-merged reusable `task-planning.yaml`,
   `implement-plan.yaml` and `plan-review.yaml` (PR #706, commit e187e0339),
-  which established the pattern this follows.
+  which established the pattern this follows, and `qa-round.yaml`
+  (PR #785), which most recently repeated it: a reusable `workflow_call`
+  workflow with thin same-repository callers (in `master-agent-dispatch.yaml`)
+  that keep their own triggers — the same shape `ready-plan.yaml` takes here.
 - The work must stay on this `ci/...` branch, because it changes
   `.github/workflows/` (the CI-file lock). This planning round's own change is
   only this document.
