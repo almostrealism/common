@@ -157,8 +157,12 @@ public class PolynomialTerm {
 	 * Calculates the partial derivative of the polynomial term represented by this
 	 * PolynomialTerm object with respect to X and stores it for later use.
 	 */
+	// TODO(review): Math.max(0, exp-1) is correct for the documented non-negative
+	// exponent contract but yields an incorrect derivative for negative exponents
+	// (which expand() still supports); revisit if negative powers become supported.
 	public void calculateDx() {
-		this.dx = new PolynomialTerm(this.coefficient * this.expOfX, this.expOfX - 1, this.expOfY, this.expOfZ);
+		this.dx = new PolynomialTerm(this.coefficient * this.expOfX,
+				Math.max(0, this.expOfX - 1), this.expOfY, this.expOfZ);
 	}
 	
 	/**
@@ -166,7 +170,8 @@ public class PolynomialTerm {
 	 * PolynomialTerm object with respect to Y and stores it for later use.
 	 */
 	public void calculateDy() {
-		this.dy = new PolynomialTerm(this.coefficient * this.expOfY, this.expOfX, this.expOfY - 1, this.expOfZ);
+		this.dy = new PolynomialTerm(this.coefficient * this.expOfY,
+				this.expOfX, Math.max(0, this.expOfY - 1), this.expOfZ);
 	}
 	
 	/**
@@ -174,7 +179,8 @@ public class PolynomialTerm {
 	 * PolynomialTerm object with respect to Z and stores it for later use.
 	 */
 	public void calculateDz() {
-		this.dz = new PolynomialTerm(this.coefficient * this.expOfZ, this.expOfX, this.expOfY, this.expOfZ - 1);
+		this.dz = new PolynomialTerm(this.coefficient * this.expOfZ,
+				this.expOfX, this.expOfY, Math.max(0, this.expOfZ - 1));
 	}
 	
 	/**
