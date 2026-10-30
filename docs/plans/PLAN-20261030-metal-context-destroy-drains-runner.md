@@ -166,8 +166,14 @@ A reviewer can confirm the task is done by checking, on this branch:
 ## Dependencies
 
 - **b3b032a7** (`e8aa8039b`, PR #781) — the shared submission-stream core
-  extraction. **Done and merged**; this task was blocked on it and is now
-  unblocked and, in substance, already satisfied by it.
+  extraction. The teardown behaviour this task depends on — Metal's runner
+  destroyed and drained on context destroy — **landed and merged** in that
+  commit (verified against the source on this branch), so this task is
+  unblocked and, in substance, already satisfied by it. Note that
+  `PLAN-20261029-extract-shared-dispatch-runner-core.md` still carries
+  `status: in-progress` (that plan stages further phases beyond the teardown
+  fix), so do not read "the whole extraction plan is complete" into this
+  dependency — only that the piece this task needs is in.
 
 ## Open questions
 
