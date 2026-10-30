@@ -28,6 +28,7 @@ import com.slack.api.methods.response.conversations.ConversationsListResponse;
 import com.slack.api.model.Conversation;
 import com.slack.api.model.ConversationType;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.jobs.DependentRepoPush;
 import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
@@ -1146,6 +1147,24 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private void appendSummaryFooter(StringBuilder sb, JobCompletionEvent event) {
         if (event.getPullRequestUrl() != null) {
             sb.append("   :link: PR: ").append(event.getPullRequestUrl()).append("\n");
+        }
+
+        // A companion PR per dependent-repo push that was opened or reused.
+        for (String companion : event.getCompanionPullRequestUrls()) {
+            sb.append("   :link: Companion PR: ").append(companion).append("\n");
+        }
+        // Dependent-repo commits that got no companion PR are unreviewed and
+        // cannot merge; name each so a human can act. TODO(review): a mixed
+        // outcome (one push companioned, another not) suppresses this entirely.
+        List<DependentRepoPush> pushes = event.getDependentRepoPushes();
+        if (!pushes.isEmpty() && event.getCompanionPullRequestUrls().isEmpty()) {
+            for (DependentRepoPush push : pushes) {
+                String hash = push.commitHash();
+                String shortHash = hash != null && hash.length() > 7 ? hash.substring(0, 7) : hash;
+                sb.append("   :warning: Unreviewed dependent-repo commit: ")
+                        .append(push.repoUrl()).append(" ").append(push.branch())
+                        .append(" ").append(shortHash).append("\n");
+            }
         }
 
         // Duration (wall time and API time)

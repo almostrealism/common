@@ -21,7 +21,9 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -66,8 +68,14 @@ class GitRepositorySetup implements ConsoleFeatures {
      */
     private String mergeParent;
 
-    /** Resolved filesystem paths for dependent repos after cloning. */
-    private final List<String> dependentRepoPaths = new ArrayList<>();
+    /**
+     * Resolved dependent-repo filesystem path to its clone URL, in clone order.
+     * Ordered so {@link #getDependentRepoPaths()} preserves the order the repos
+     * were declared, and keyed by path so {@link #getDependentRepoUrl(String)}
+     * can recover each repo's URL — which commit handling needs to report a
+     * {@link DependentRepoPush} but would otherwise lose after cloning.
+     */
+    private final Map<String, String> dependentRepoUrlsByPath = new LinkedHashMap<>();
 
     /**
      * Creates a new {@code GitRepositorySetup} for the given job.
@@ -416,13 +424,24 @@ class GitRepositorySetup implements ConsoleFeatures {
      * @return list of dependent repo paths
      */
     List<String> getDependentRepoPaths() {
-        return new ArrayList<>(dependentRepoPaths);
+        return new ArrayList<>(dependentRepoUrlsByPath.keySet());
+    }
+
+    /**
+     * Returns the clone URL of the dependent repo cloned to {@code path}, or
+     * {@code null} when no dependent repo was cloned there.
+     *
+     * @param path a path previously returned by {@link #getDependentRepoPaths()}
+     * @return the dependent repo's clone URL, or {@code null}
+     */
+    String getDependentRepoUrl(String path) {
+        return dependentRepoUrlsByPath.get(path);
     }
 
     /**
      * Clones dependent repositories as siblings of the primary repo and records
-     * their paths in {@link #dependentRepoPaths} for later branch preparation
-     * and commit handling.
+     * each path with its clone URL in {@link #dependentRepoUrlsByPath} for later
+     * branch preparation and commit handling.
      *
      * @throws IOException if a git command fails
      * @throws InterruptedException if a command is interrupted
@@ -452,7 +471,7 @@ class GitRepositorySetup implements ConsoleFeatures {
                 log("Cloning dependent repo: " + depRepoUrl + " into " + depPath);
                 job.gitOperations(parentDir).cloneRepository(depRepoUrl, depPath);
             }
-            dependentRepoPaths.add(depPath);
+            dependentRepoUrlsByPath.put(depPath, depRepoUrl);
         }
     }
 
@@ -466,7 +485,7 @@ class GitRepositorySetup implements ConsoleFeatures {
     void prepareDependentReposBranches() throws IOException, InterruptedException {
         String targetBranch = job.getTargetBranch();
         String baseBranch = job.getBaseBranch();
-        for (String depPath : dependentRepoPaths) {
+        for (String depPath : dependentRepoUrlsByPath.keySet()) {
             log("Preparing dependent repo branch: " + depPath);
             GitOperations gitOps = job.gitOperations(depPath);
 
