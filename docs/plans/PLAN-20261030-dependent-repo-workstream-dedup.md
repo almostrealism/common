@@ -14,6 +14,8 @@ as a dependent repo"
 
 ## Motivation
 
+<!-- TODO(review): this plan names a private downstream product/repo (Rings, ringsdesktop) throughout; per the CLAUDE.md public-repo rule, reword to platform-neutral terms (e.g. "a downstream repository") before approval. -->
+
 CI registers a workstream for each PR branch
 (`tools/ci/register-workstream.sh` → `POST /api/workstreams`, handled by
 `WorkstreamRegistrationHandler`). Registration returns the existing workstream
