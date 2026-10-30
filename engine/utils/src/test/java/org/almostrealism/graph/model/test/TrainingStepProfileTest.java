@@ -96,7 +96,7 @@ public class TrainingStepProfileTest extends TestSuiteBase implements ModelTestF
 							.into(input.traverseEach()).evaluate();
 					return input;
 				})
-				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
+				.map(input -> ValueTarget.of(input, linearFunc.apply(input).range(shape(outputSize))))
 				.collect(Collectors.toList()));
 
 		OperationProfileNode profile = new OperationProfileNode("trainingStep");
