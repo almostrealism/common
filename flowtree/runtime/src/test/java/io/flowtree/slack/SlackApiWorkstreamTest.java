@@ -92,6 +92,46 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * POST /api/workstreams persists planInstructions alongside
+     * planningDocument, as a record of the intent that seeded the work.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterWorkstreamWithPlanInstructions() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"project/plan-20260918-instructions-test\","
+                + "\"baseBranch\":\"master\","
+                + "\"planInstructions\":\"Investigate and fix the flaky retry loop.\","
+                + "\"channelName\":\"w-project-plan-20260918-instructions-test\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+
+            Workstream registered = notifier.findWorkstreamByBranch("project/plan-20260918-instructions-test");
+            assertNotNull("Workstream should be findable by branch", registered);
+            assertEquals("Investigate and fix the flaky retry loop.", registered.getPlanInstructions());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
     /** POST /api/workstreams requires defaultBranch and returns 400 when absent. */
     @Test(timeout = 10000)
     public void testApiRegisterWorkstreamMissingBranch() throws Exception {
@@ -157,6 +197,44 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
             assertEquals("C_NEW_123", workstream.getChannelId());
             assertEquals("#w-test-updated", workstream.getChannelName());
             assertEquals("docs/plans/PLAN-updated.md", workstream.getPlanningDocument());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * POST /api/workstreams/{id}/update persists planInstructions on an
+     * existing workstream, mirroring the registration path.
+     */
+    @Test(timeout = 10000)
+    public void testApiUpdateWorkstreamWithPlanInstructions() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream workstream = new Workstream(null, "w-test-plan-update");
+        workstream.setDefaultBranch("project/plan-update");
+        notifier.registerWorkstream(workstream);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"planInstructions\":\"Refactor the ingestion pipeline.\"}";
+
+            URL url = URI.create("http://localhost:" + port
+                + "/api/workstreams/" + workstream.getWorkstreamId() + "/update").toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+            conn.getOutputStream().write(body.getBytes(StandardCharsets.UTF_8));
+
+            assertEquals(200, conn.getResponseCode());
+
+            assertEquals("Refactor the ingestion pipeline.",
+                    workstream.getPlanInstructions());
         } finally {
             endpoint.stop();
         }

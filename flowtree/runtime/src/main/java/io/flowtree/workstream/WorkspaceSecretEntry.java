@@ -19,6 +19,12 @@ package io.flowtree.workstream;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.Set;
+
 /**
  * Declares a single workspace-scoped secret available to agent workstreams.
  *
@@ -43,4 +49,32 @@ public class WorkspaceSecretEntry {
     public String getFile() { return file; }
     /** Sets the path to the JSON payload file. */
     public void setFile(String file) { this.file = file; }
+
+    /**
+     * Describes what is wrong with this secret's payload file, or returns
+     * {@code null} when nothing is: the file is missing, or its permissions
+     * are wider than {@code 0600} (readable or writable by group or others).
+     * A filesystem without POSIX permissions reports no problem.
+     *
+     * @return a one-line description of the problem, or {@code null}
+     */
+    public String filePermissionProblem() {
+        if (file == null) return null;
+        Path filePath = Path.of(file);
+        if (!Files.exists(filePath)) {
+            return "Secret file not found: " + file;
+        }
+        try {
+            Set<PosixFilePermission> perms = Files.getPosixFilePermissions(filePath);
+            boolean tooPermissive = perms.contains(PosixFilePermission.GROUP_READ)
+                    || perms.contains(PosixFilePermission.GROUP_WRITE)
+                    || perms.contains(PosixFilePermission.OTHERS_READ)
+                    || perms.contains(PosixFilePermission.OTHERS_WRITE);
+            return tooPermissive ? "Secret file has unsafe permissions (expected 0600): " + file : null;
+        } catch (UnsupportedOperationException e) {
+            return null;
+        } catch (IOException e) {
+            return "Could not check permissions for secret file " + file + ": " + e.getMessage();
+        }
+    }
 }

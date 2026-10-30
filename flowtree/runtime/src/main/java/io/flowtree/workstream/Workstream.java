@@ -51,48 +51,6 @@ import io.flowtree.controller.FlowTreeController;
  */
 public class Workstream {
 
-    /**
-     * Connection details for a Flowtree agent.
-     *
-     * <p>This is retained for optional pre-configured agent lists, but the
-     * primary connection model is inbound: agents connect to the controller's
-     * {@link io.flowtree.Server} using {@code FLOWTREE_ROOT_HOST} and
-     * {@code FLOWTREE_ROOT_PORT}.</p>
-     */
-    public static class AgentEndpoint {
-        /** The hostname or IP address of the agent. */
-        private final String host;
-        /** The port the agent's FlowTree node is listening on. */
-        private final int port;
-
-        /**
-         * Creates an agent endpoint with the given host and port.
-         *
-         * @param host the agent hostname or IP address
-         * @param port the agent port number
-         */
-        public AgentEndpoint(String host, int port) {
-            this.host = host;
-            this.port = port;
-        }
-
-        /** Returns the agent hostname or IP address. */
-        public String getHost() {
-            return host;
-        }
-
-        /** Returns the agent port number. */
-        public int getPort() {
-            return port;
-        }
-
-        /** Returns "host:port" for logging and diagnostics. */
-        @Override
-        public String toString() {
-            return host + ":" + port;
-        }
-    }
-
     /** Immutable identifier; used as a memory namespace and for API routing. */
     private final String workstreamId;
     /** The Slack channel ID this workstream receives messages from. */
@@ -155,6 +113,23 @@ public class Workstream {
 
     /** Path to a planning document the agent consults for broader goal context. */
     private String planningDocument;
+
+    /**
+     * Natural-language record of the intent that originally seeded this
+     * workstream, as supplied by the operator at registration time (see
+     * {@code workstream_register}'s {@code plan_instructions} parameter).
+     *
+     * <p>This is a record of how the work began, not a specification the
+     * branch must conform to: work legitimately drifts from its original
+     * seed as it proceeds. Nothing in the pipeline may compare current work
+     * against this value, gate on it, warn about divergence from it, or
+     * feed it to a verification step as acceptance criteria — it exists
+     * purely as context for a human or an agent reading back how the work
+     * started. Verification against the workstream's intent instead reads
+     * the planning <em>document</em> ({@link #planningDocument}), which the
+     * operator or an agent may revise as work progresses.</p>
+     */
+    private String planInstructions;
 
     /** GitHub organization name; selects the org-specific token for GitHub API calls. */
     private String githubOrg;
@@ -658,6 +633,25 @@ public class Workstream {
      */
     public void setPlanningDocument(String planningDocument) {
         this.planningDocument = planningDocument;
+    }
+
+    /**
+     * Returns the recorded natural-language intent that originally seeded
+     * this workstream, or {@code null}. See the field javadoc for why this
+     * must never be treated as a specification to verify against.
+     */
+    public String getPlanInstructions() {
+        return planInstructions;
+    }
+
+    /**
+     * Sets the recorded original-intent instructions for this workstream.
+     *
+     * @param planInstructions natural-language description of the intent
+     *                         that originally seeded this workstream
+     */
+    public void setPlanInstructions(String planInstructions) {
+        this.planInstructions = planInstructions;
     }
 
     /**
@@ -1377,7 +1371,7 @@ public class Workstream {
      * {@code pipelineCapable}. Every other identifier and metadata field follows the
      * omission rule above: {@code channelName}, {@code defaultBranch}, {@code baseBranch},
      * {@code repoUrl}, {@code githubOrg}, {@code workspaceId}, {@code planningDocument},
-     * {@code dependentRepos}, {@code requiredLabels}.</p>
+     * {@code planInstructions}, {@code dependentRepos}, {@code requiredLabels}.</p>
      *
      * <p>Capability flags (omitted when {@code false}): {@code archived},
      * {@code dispatchCapable}, {@code useTmux}, {@code dormantForCompletionListeners}.
@@ -1415,6 +1409,9 @@ public class Workstream {
         }
         if (planningDocument != null && !planningDocument.isEmpty()) {
             json.append(",\"planningDocument\":\"").append(JsonFieldExtractor.escapeJson(planningDocument)).append("\"");
+        }
+        if (planInstructions != null && !planInstructions.isEmpty()) {
+            json.append(",\"planInstructions\":\"").append(JsonFieldExtractor.escapeJson(planInstructions)).append("\"");
         }
 
         boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();
@@ -1501,6 +1498,7 @@ public class Workstream {
             case "gitUserName": return getGitUserName() != null ? getGitUserName() : "(not set)";
             case "gitUserEmail": return getGitUserEmail() != null ? getGitUserEmail() : "(not set)";
             case "planningDocument": return getPlanningDocument() != null ? getPlanningDocument() : "(not set)";
+            case "planInstructions": return getPlanInstructions() != null ? getPlanInstructions() : "(not set)";
             case "workstreamId": return getWorkstreamId();
             case "channelId": return getChannelId();
             case "channelName": return getChannelName();
@@ -1561,6 +1559,9 @@ public class Workstream {
             case "planningDocument":
                 setPlanningDocument(value);
                 return null;
+            case "planInstructions":
+                setPlanInstructions(value);
+                return null;
             case "workstreamId":
             case "channelId":
             case "channelName":
@@ -1569,7 +1570,7 @@ public class Workstream {
                 return "Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
                     + "`baseBranch`, `repoUrl`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
-                    + "`gitUserName`, `gitUserEmail`, `planningDocument`";
+                    + "`gitUserName`, `gitUserEmail`, `planningDocument`, `planInstructions`";
         }
     }
 
