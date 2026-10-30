@@ -47,7 +47,14 @@ and documentation — no application code):
    in behaviour. The three values hard-coded today become inputs with
    this-repository defaults:
    - `docs-directory` (default `docs/`) — the prefix the docs-only rule requires
-     every changed file to be under, matching `analysis.yaml`'s docs-only rule;
+     every changed file to be under (today's `grep -v '^docs/'`, generalised to
+     this input). This is Plan Ready's own "every changed file under `docs/`"
+     check; it is *not* identical to `analysis.yaml`'s docs-only skip, which
+     looks only at code-extension files and additionally treats any `*.md` file
+     as documentation. Plan Ready's check is the stricter of the two — a single
+     non-`docs/` file, even one `analysis.yaml` would ignore, stops the dispatch
+     — which is the safe direction for an approval gate. A test should pin this
+     check's actual behaviour rather than assert parity with `analysis.yaml`;
    - `dispatch-workflow` (default `verify-completion.yaml`) — the workflow file
      dispatched on the PR's head branch;
    - `approvers` (default `""`) — the approver allowlist, passed in by the caller
