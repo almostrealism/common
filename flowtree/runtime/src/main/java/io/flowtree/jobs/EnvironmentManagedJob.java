@@ -242,10 +242,13 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
      * before it was reached, whereas the visitor treats an already-gone entry as
      * success — which, for a delete, it is.</p>
      *
+     * <p>Package-private so {@link EnvironmentManagedJobTest} can verify the
+     * vanishing-entry tolerance directly rather than through reflection.</p>
+     *
      * @param dir the root directory to delete
      * @throws IOException if the tree cannot be traversed
      */
-    private void deleteDirectory(Path dir) throws IOException {
+    void deleteDirectory(Path dir) throws IOException {
         if (!Files.exists(dir)) return;
         Files.walkFileTree(dir, new SimpleFileVisitor<>() {
             @Override
