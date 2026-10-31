@@ -1216,7 +1216,7 @@ reach the workflow as inputs; its defaults describe this repository's own layout
 guard, the script trust rule, the intake ordering, the planner role, the
 prompt's tool use and its variables.
 
-### The other reusable workflows: `Task Planning`, `Implement Plan`, `Plan Review`, `QA Round`
+### The other reusable workflows: `Task Planning`, `Implement Plan`, `Plan Review`, `QA Round`, `Plan Ready`
 
 Together with `Goal Decomposition` these give another repository the whole
 plan-then-implement pipeline for its own tracker project, and `QA Round` adds
@@ -1225,6 +1225,10 @@ by `workflow_call`, follows the same trust rule (every script and prompt
 template from an explicit checkout of this repository at `framework-ref`,
 `persist-credentials: false`; the controller URL and client ID as inputs, the
 client secret as a declared secret), and describes its caller in its header.
+`Plan Ready` is the one exception to that trust rule: it runs no framework
+script (inline shell over event metadata and the GitHub API) and dispatches
+through `GITHUB_TOKEN` alone, so it carries **no framework checkout** and **no
+controller secret** — no `framework-ref` input and no `secrets:` block.
 
 - **`task-planning.yaml`** is the task-planning round described under `Master
   Agent Dispatch` above, parameterised by tracker project and version file (a
@@ -1268,19 +1272,41 @@ client secret as a declared secret), and describes its caller in its header.
   round name, so two merges to one repository cannot both pass a round's gate
   while different rounds do not serialize against each other. This repository's
   `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa`.
+- **`plan-ready.yaml`** turns a plan's approval — its draft PR marked **ready
+  for review** — into a dispatch of the implementation workflow on the PR's head
+  branch, for a repository that wants its plans implemented on ready-for-review
+  rather than only by a hand dispatch. Its three hard-coded values are inputs
+  with this repository's defaults: `docs-directory` (`docs/`),
+  `dispatch-workflow` (`verify-completion.yaml`) and `approvers` (empty — the
+  caller passes its own `PLAN_APPROVERS`). It is the exception noted above: it
+  checks out nothing, runs no framework script and holds no controller secret.
+  This repository's `ready-plan.yaml` is its `pull_request_target` caller; see
+  "What the `Plan Ready` workflow does" below.
 
-`tools/tests/test_reusable_workflows.py` pins the trust rule for all five, and
-runs the release, plan-detection and docs-only steps for real;
-`tools/tests/test_qa_round.py` runs `qa-round.yaml`'s prompt-build step for real,
-including for a non-Maven consumer. `test_master_agent_dispatch.py`,
-`test_automated_intake.py` and `test_verify_completion_workflow.py` follow a
-caller job into the workflow it calls, so their checks still apply to the steps
-that run.
+`tools/tests/test_reusable_workflows.py` pins the trust rule for the first five,
+and runs the release, plan-detection and docs-only steps for real; it pins
+`plan-ready.yaml`'s own (checkout-free, secret-free) trust rule in a dedicated
+class rather than in the shared `_REUSABLE` loop, and runs its approver step for
+real. `tools/tests/test_qa_round.py` runs `qa-round.yaml`'s prompt-build step for
+real, including for a non-Maven consumer. `test_master_agent_dispatch.py`,
+`test_automated_intake.py`, `test_verify_completion_workflow.py` and
+`test_ready_plan_workflow.py` follow a caller job into the workflow it calls, so
+their checks still apply to the steps that run.
 
 ### What the `Plan Ready` workflow does
 
-Lives in `.github/workflows/ready-plan.yaml`. It starts implementation when the
-owner approves a plan by marking its pull request **ready for review**.
+It starts implementation when the owner approves a plan by marking its pull
+request **ready for review**. It is a reusable workflow
+(`.github/workflows/plan-ready.yaml`, `workflow_call`) with a thin caller:
+`.github/workflows/ready-plan.yaml` is this repository's
+`pull_request_target` caller, and another repository calls `plan-ready.yaml`
+the same way to get its own plans implemented on ready-for-review (see "The
+other reusable workflows" above). The caller owns the trigger, the per-head
+concurrency group and the `permissions`, and passes `approvers` from its own
+`PLAN_APPROVERS`; the `docs-directory` (`docs/`) and `dispatch-workflow`
+(`verify-completion.yaml`) inputs are left at the defaults here, so this
+repository behaves exactly as before the extraction. Everything below is the
+reusable workflow's behaviour, which runs under the caller's event.
 
 **The draft convention.** A plan PR is opened as a **draft** (the planning jobs
 set `PR_DRAFT`/`createPrAsDraft`; see "Draft plan pull requests" below). A draft
@@ -1292,16 +1318,20 @@ manual approval makes. For a PR that is real work rather than a plan, "ready"
 keeps its ordinary meaning (work under review); such a PR is not a draft and not
 docs-only, so this workflow does nothing with it.
 
-**It must stay in its own file, for the same reason `Cancel Merged PR Runs`
-does.** It is triggered by `pull_request_target` (`types: [ready_for_review]`,
-base `master`), which grants a writable token in the base-repository context, so
-GitHub runs *master's* copy of the file — the PR's branch cannot change what it
-does. It is safe only because it checks out nothing and runs nothing from the
-PR: every value it uses is event metadata or comes from the GitHub API. Never
-add a checkout of PR code to it, and never move it into a file beside jobs that
-build PR code.
+**The caller must stay in its own file, for the same reason `Cancel Merged PR
+Runs` does.** The caller (`ready-plan.yaml`) is triggered by
+`pull_request_target` (`types: [ready_for_review]`, base `master`), which grants
+a writable token in the base-repository context, so GitHub runs the base
+branch's copy of the caller and the `plan-ready.yaml` it names — the PR's branch
+cannot change what they do. Inside the called workflow the `github` context,
+`GITHUB_TOKEN` and `vars` are all the caller's, so the fork guard and the event
+reads below work unchanged. It is safe only because it checks out nothing and
+runs nothing from the PR: every value it uses is event metadata or comes from
+the GitHub API. Never add a checkout of PR code to either file, and never move
+the caller into a file beside jobs that build PR code.
 
-It dispatches `verify-completion.yaml` on the PR's head branch through the API
+It dispatches the implementation workflow (the `dispatch-workflow` input,
+default `verify-completion.yaml`) on the PR's head branch through the API
 (`workflow_dispatch`, which `GITHUB_TOKEN` is allowed to trigger, needing
 `actions: write`), so the implementation path is exactly the one a manual
 dispatch or `project_verify_branch` takes. It dispatches only when all of:
@@ -1310,14 +1340,19 @@ dispatch or `project_verify_branch` takes. It dispatches only when all of:
   (`github.event.pull_request.head.repo.full_name == github.repository`); a fork
   cannot be given a `workflow_dispatch` here and must not be able to start one;
 - the person who marked it ready (`github.event.sender.login`) is in the
-  `PLAN_APPROVERS` repository variable (see below). With the variable unset
-  nothing is dispatched, so an agent or bot can never approve a plan by marking
-  it ready;
-- the PR is **still docs-only** by the same rule `analysis.yaml` uses (every
-  changed file under `docs/`, read from the PR files API). Once implementation
-  commits land the PR is no longer docs-only, so re-toggling draft afterwards
-  dispatches nothing — this is the main guard against a second implementation,
-  alongside `implement-plan.yaml`'s own in-flight-job refusal.
+  `approvers` input, which the caller passes from the `PLAN_APPROVERS` repository
+  variable (see below). With it empty nothing is dispatched, so an agent or bot
+  can never approve a plan by marking it ready;
+- the PR is **still docs-only** — every changed file under the `docs-directory`
+  input (`docs/` here), read from the PR files API. This is Plan Ready's own,
+  stricter check, not identical to `analysis.yaml`'s docs-only skip:
+  `analysis.yaml` looks only at code-extension files and additionally treats any
+  `*.md` file as documentation, whereas Plan Ready requires *every* changed file
+  to be under `docs/`, so a single non-`docs/` file `analysis.yaml` would ignore
+  still stops the dispatch — the safe direction for an approval gate. Once
+  implementation commits land the PR is no longer docs-only, so re-toggling
+  draft afterwards dispatches nothing — this is the main guard against a second
+  implementation, alongside `implement-plan.yaml`'s own in-flight-job refusal.
 
 `analysis.yaml` does **not** re-run on the `ready_for_review` transition: its
 `pull_request` trigger uses the default types (`opened`, `synchronize`,
@@ -1346,8 +1381,9 @@ not.
 ### The `PLAN_APPROVERS` repository variable
 
 A space-, comma- or newline-separated list of GitHub logins allowed to approve a
-plan by marking its draft PR ready for review. `Plan Ready` reads it and
-dispatches `verify-completion.yaml` only for a sender in the list. It is a
+plan by marking its draft PR ready for review. The caller (`ready-plan.yaml`)
+passes it to `plan-ready.yaml` as the `approvers` input, which dispatches the
+implementation workflow only for a sender in the list. It is a
 repository **variable**, not a workflow value, so the allowlist changes without a
 commit and is never present on a fork. **Unset means no one can approve this
 way** — the transition then dispatches nothing, which is the intended

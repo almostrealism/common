@@ -1,0 +1,212 @@
+name: "Plan Ready"
+
+# Starts implementation when a plan's owner approves it, as a reusable workflow.
+# Approval is marking the plan's draft pull request **ready for review**; this
+# workflow turns that transition into a dispatch of the implementation workflow
+# on the PR's head branch, so the implementation path is exactly the one a
+# manual dispatch takes.
+#
+# It is triggered only by workflow_call. This repository calls it from
+# ready-plan.yaml; another repository calls it the same way from a workflow of
+# its own:
+#
+#   on:
+#     pull_request_target:
+#       types: [ready_for_review]
+#       branches: [main]          # its default branch
+#   concurrency:
+#     group: plan-ready-${{ github.event.pull_request.head.ref }}
+#     cancel-in-progress: false
+#   jobs:
+#     dispatch:
+#       uses: almostrealism/common/.github/workflows/plan-ready.yaml@master
+#       permissions:
+#         actions: write
+#         pull-requests: read
+#         contents: read
+#       with:
+#         approvers: ${{ vars.PLAN_APPROVERS }}
+#         # dispatch-workflow / docs-directory only if they differ from the defaults
+#
+# The consumer sets PLAN_APPROVERS as a repository **variable** (a space-, comma-
+# or newline-separated list of GitHub logins); an unset or empty value approves
+# no one, which is the intended fail-closed default. Because the caller is a
+# pull_request_target workflow, GitHub runs the caller's copy from the base
+# branch, so the caller only takes effect once it is merged to the consuming
+# repository's default branch.
+#
+# Trust. It runs under the caller's pull_request_target event, which grants a
+# writable token in the base-repository context, so GitHub runs the base
+# branch's copy of both files; the PR's branch cannot change what they do. It is
+# safe only because it checks out nothing and runs nothing from the PR — every
+# value it uses is event metadata or comes from the GitHub API. It dispatches
+# the implementation workflow through the API (workflow_dispatch, which
+# GITHUB_TOKEN is allowed to trigger), so it needs actions: write. Inside a
+# called workflow the github context, GITHUB_TOKEN and vars are all the caller's,
+# so the fork guard and the event reads below keep working unchanged. Unlike the
+# other reusable workflows it needs no framework checkout (it runs no framework
+# script) and holds no controller secret (it uses only GITHUB_TOKEN), so it has
+# no framework-ref input and no secrets: block.
+#
+# It dispatches only when every one of these holds:
+#   * the PR's head is a branch in this repository, not a fork (a fork cannot be
+#     given a workflow_dispatch here, and must not be able to start one);
+#   * the person who marked it ready is listed in the approvers input (the
+#     caller passes it from its own PLAN_APPROVERS variable). With it empty
+#     nothing is dispatched, so an agent or bot can never approve a plan by
+#     marking it ready;
+#   * the PR is still documentation-only — every changed file under the
+#     docs-directory input. This is Plan Ready's own, stricter check: a single
+#     changed file outside the directory (even one analysis.yaml's code-only
+#     docs-only skip would ignore) stops the dispatch, which is the safe
+#     direction for an approval gate. Once implementation commits land the PR is
+#     no longer docs-only, so re-toggling draft afterwards dispatches nothing —
+#     this is the main guard against a second implementation, alongside the
+#     implementation workflow's own in-flight-job refusal.
+
+on:
+  workflow_call:
+    inputs:
+      docs-directory:
+        description: "Dispatch only while every changed file is under this directory"
+        required: false
+        default: "docs/"
+        type: string
+      dispatch-workflow:
+        description: "Workflow file dispatched on the PR's head branch to start implementation"
+        required: false
+        default: "verify-completion.yaml"
+        type: string
+      approvers:
+        description: "Space/comma/newline-separated GitHub logins allowed to approve a plan; empty approves no one"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  dispatch:
+    # A fork's head branch is not in this repository, so it can be neither
+    # dispatched nor trusted to start one. Everything below assumes a same-repo
+    # head branch. The github context is the caller's inside a called workflow,
+    # so this compares the caller's event against the caller's repository.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      pull-requests: read
+      contents: read
+
+    steps:
+      # The approver allowlist is the approvers input, which the caller passes
+      # from its own repository variable, so it is changed without a commit and
+      # is never set on a fork. An empty value approves no one.
+      - name: Check the approver allowlist
+        id: approver
+        env:
+          APPROVERS: ${{ inputs.approvers }}
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          # Normalise the list: commas, tabs and newlines become spaces, and
+          # everything is lower-cased (GitHub logins are case-insensitive), so a
+          # list written in any of those styles is matched the same way.
+          APPROVERS_NORM=$(printf '%s' "$APPROVERS" | tr ',\t\n' '   ' | tr '[:upper:]' '[:lower:]')
+          if [ -z "$(printf '%s' "$APPROVERS_NORM" | tr -d ' ')" ]; then
+            echo "::notice::The approvers list is empty — no one may approve a plan this way; nothing dispatched"
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SENDER_NORM=$(printf '%s' "$SENDER" | tr '[:upper:]' '[:lower:]')
+          APPROVED=false
+          for a in $APPROVERS_NORM; do
+            if [ "$a" = "$SENDER_NORM" ]; then
+              APPROVED=true
+              break
+            fi
+          done
+          echo "approved=$APPROVED" >> "$GITHUB_OUTPUT"
+          if [ "$APPROVED" = "true" ]; then
+            echo "::notice::$SENDER is an approver"
+          else
+            echo "::notice::$SENDER is not in the approvers list — nothing dispatched"
+          fi
+
+      # Plan Ready's own docs-only rule: a PR is docs-only when every changed
+      # file is under the docs-directory input. Read from the PR files API, not
+      # a checkout, so nothing from the branch runs. Once implementation commits
+      # land the PR is no longer docs-only, so this is what stops a second
+      # implementation from a re-toggle.
+      - name: Check the PR is still docs-only
+        id: docs
+        if: steps.approver.outputs.approved == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DOCS_DIRECTORY: ${{ inputs.docs-directory }}
+        run: |
+          FILES=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+          if [ -z "$FILES" ]; then
+            echo "::notice::The PR changes no files — not docs-only; nothing dispatched"
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Normalise the directory to exactly one trailing slash so "docs" and
+          # "docs/" both mean "under docs/".
+          PREFIX="${DOCS_DIRECTORY%/}/"
+          NON_DOCS=$(printf '%s\n' "$FILES" | grep -v "^${PREFIX}" || true)
+          if [ -n "$NON_DOCS" ]; then
+            echo "::notice::The PR changes files outside ${PREFIX} — no longer a plan-only PR; nothing dispatched"
+            printf '%s\n' "$NON_DOCS" | sed 's/^/  non-docs: /'
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Dispatch the implementation workflow on the PR's head branch.
+      # workflow_dispatch runs the branch's own copy of that workflow, exactly
+      # as a manual dispatch does, so the implementation path is unchanged. The
+      # branch name and the workflow file are passed through the environment and
+      # handed to the API as data, never interpolated into a shell command.
+      - name: Dispatch the implementation workflow
+        id: dispatch
+        if: steps.approver.outputs.approved == 'true' && steps.docs.outputs.docs_only == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          DISPATCH_WORKFLOW: ${{ inputs.dispatch-workflow }}
+        run: |
+          gh api -X POST "repos/${REPO}/actions/workflows/${DISPATCH_WORKFLOW}/dispatches" \
+            -f ref="$HEAD_BRANCH"
+          echo "dispatched=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Dispatched $DISPATCH_WORKFLOW on $HEAD_BRANCH"
+
+      - name: Summary
+        if: always()
+        env:
+          SENDER: ${{ github.event.sender.login }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          DISPATCH_WORKFLOW: ${{ inputs.dispatch-workflow }}
+          APPROVED: ${{ steps.approver.outputs.approved }}
+          DOCS_ONLY: ${{ steps.docs.outputs.docs_only }}
+          DISPATCHED: ${{ steps.dispatch.outputs.dispatched }}
+        run: |
+          {
+            echo "## Plan Ready"
+            echo ""
+            echo "**Branch:** \`$HEAD_BRANCH\`"
+            echo "**Marked ready by:** $SENDER"
+            if [ "$DISPATCHED" = "true" ]; then
+              echo ""
+              echo "Approved — dispatched \`$DISPATCH_WORKFLOW\` to implement the plan."
+            elif [ "$APPROVED" != "true" ]; then
+              echo ""
+              echo "Not dispatched: the person who marked it ready is not an approver (or the approvers list is empty)."
+            elif [ "$DOCS_ONLY" != "true" ]; then
+              echo ""
+              echo "Not dispatched: the PR is no longer docs-only, so it is past the plan stage."
+            else
+              echo ""
+              echo "Not dispatched."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
