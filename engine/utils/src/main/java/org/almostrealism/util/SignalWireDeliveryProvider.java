@@ -49,8 +49,11 @@ import java.util.Properties;
  * sw.token=your-api-token
  * sw.from_number=+15551234567
  * sw.to_number=+15559876543
- * alert.message_prefix=[MyApp]
  * </pre>
+ *
+ * <p>Every outbound body is framed by {@link SmsComplianceProgram} into the
+ * exact shape the carrier registered — a brand prefix and an opt-out
+ * suffix — so there is no per-deployment message prefix to configure.</p>
  *
  * <h2>Usage Example</h2>
  * <pre>{@code
@@ -124,8 +127,11 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 	/** The recipient phone number in E.164 format. */
 	private String toNumber;
 
-	/** Optional prefix prepended to all outgoing alert messages. */
-	private String alertPrefix;
+	/**
+	 * The opt-out record consulted before every send, or {@code null} when none
+	 * is configured. A destination that has opted out is never sent to.
+	 */
+	private SmsOptOutRegistry optOut;
 
 	/**
 	 * Creates a new SignalWire delivery provider with the specified configuration.
@@ -146,22 +152,23 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 	}
 
 	/**
-	 * Returns the prefix prepended to all alert messages.
+	 * Returns the opt-out record this provider consults before sending.
 	 *
-	 * @return the alert message prefix, or null if none is set
+	 * @return the opt-out registry, or {@code null} when none is configured
 	 */
-	public String getAlertPrefix() {
-		return alertPrefix;
+	public SmsOptOutRegistry getOptOut() {
+		return optOut;
 	}
 
 	/**
-	 * Sets a prefix to prepend to all alert messages.
-	 * Useful for identifying the source application.
+	 * Sets the opt-out record consulted before every send. Once set, a
+	 * destination that has opted out is silently skipped rather than messaged,
+	 * which the program's carrier registration requires.
 	 *
-	 * @param alertPrefix the prefix to prepend (e.g., "[MyApp] ")
+	 * @param optOut the opt-out registry, or {@code null} to consult none
 	 */
-	public void setAlertPrefix(String alertPrefix) {
-		this.alertPrefix = alertPrefix;
+	public void setOptOut(SmsOptOutRegistry optOut) {
+		this.optOut = optOut;
 	}
 
 	/**
@@ -179,10 +186,22 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 	 * identifier, which is what the carrier's own records — where the
 	 * eventual delivery status lives — are searched by.</p>
 	 *
+	 * <p>Two compliance obligations are applied here, at the single send
+	 * chokepoint, so no caller can bypass either. A destination that has
+	 * {@linkplain SmsOptOutRegistry opted out} is never messaged, and that skip
+	 * is not charged against the rate limit because nothing is sent. The body
+	 * is then built by {@link SmsComplianceProgram#formatAlert(String)} into the
+	 * exact shape the carrier registered.</p>
+	 *
 	 * @param alert the alert to deliver
 	 */
 	@Override
 	public void sendAlert(Alert alert) {
+		if (optOut != null && toNumber != null && optOut.isOptedOut(toNumber)) {
+			log("Recipient has opted out; alert not sent");
+			return;
+		}
+
 		if (!sendLimit().reserve()) {
 			warn("SMS rate limit reached (" + messageLimit() + " per "
 					+ limitWindow().toMinutes() + " minutes); alert not sent");
@@ -190,8 +209,7 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 		}
 
 		try {
-			String message = alert.getMessage();
-			if (alertPrefix != null) message = alertPrefix + message;
+			String message = SmsComplianceProgram.formatAlert(alert.getMessage());
 
 			SendOutcome outcome = sendSms("https://" + space +
 							".signalwire.com/api/laml/2010-04-01/Accounts/" +
@@ -255,7 +273,7 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 	 * Returns a provider that reaches a different recipient through the same
 	 * SignalWire account as this one.
 	 *
-	 * <p>The account credentials, sending number and message prefix are
+	 * <p>The account credentials, sending number and opt-out record are
 	 * shared; only the destination differs. This is how a directory of named
 	 * recipients is built from a single configured account, and it is why the
 	 * rate-limit window is shared rather than per-instance.</p>
@@ -266,7 +284,7 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 	public SignalWireDeliveryProvider withRecipient(String recipientNumber) {
 		SignalWireDeliveryProvider provider = new SignalWireDeliveryProvider(
 				space, projectId, token, fromNumber, recipientNumber);
-		provider.setAlertPrefix(alertPrefix);
+		provider.setOptOut(optOut);
 		return provider;
 	}
 
@@ -313,7 +331,6 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 					properties.getProperty("sw.token"),
 					properties.getProperty("sw.from_number"),
 					properties.getProperty("sw.to_number"));
-			defaultProvider.setAlertPrefix(properties.getProperty("alert.message_prefix"));
 			configureLimit(properties);
 
 			Console.root().addAlertDeliveryProvider(defaultProvider);

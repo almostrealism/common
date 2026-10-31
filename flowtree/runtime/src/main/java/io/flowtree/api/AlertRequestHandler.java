@@ -24,8 +24,11 @@ import org.almostrealism.io.Alert;
 import org.almostrealism.io.AlertRecipients;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.RateLimit;
+import org.almostrealism.util.SmsOptOutRegistry;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -79,7 +82,22 @@ public final class AlertRequestHandler implements ConsoleFeatures {
     private final Function<IHTTPSession, String> readBody;
 
     /**
-     * Creates a handler delivering to the given recipients.
+     * Handle → destination number, so an opted-out recipient can be recognised
+     * and reported. Empty when no numbers are known, in which case no recipient
+     * is ever treated as opted out.
+     */
+    private final Map<String, String> recipientNumbers;
+
+    /**
+     * The opt-out record, or {@code null} when none is configured. Consulted by
+     * number so an opted-out recipient is skipped and reported rather than sent
+     * to.
+     */
+    private final SmsOptOutRegistry optOut;
+
+    /**
+     * Creates a handler delivering to the given recipients, with no opt-out
+     * awareness.
      *
      * @param recipients  the named recipient directory
      * @param callerLimit the per-caller send budget
@@ -87,9 +105,27 @@ public final class AlertRequestHandler implements ConsoleFeatures {
      */
     AlertRequestHandler(AlertRecipients recipients, RateLimit callerLimit,
                         Function<IHTTPSession, String> readBody) {
+        this(recipients, callerLimit, readBody, Map.of(), null);
+    }
+
+    /**
+     * Creates a handler that additionally skips and reports recipients who have
+     * opted out.
+     *
+     * @param recipients       the named recipient directory
+     * @param callerLimit      the per-caller send budget
+     * @param readBody         body reader supplied by the parent endpoint
+     * @param recipientNumbers handle → destination number, for opt-out lookup
+     * @param optOut           the opt-out record, or {@code null} for none
+     */
+    AlertRequestHandler(AlertRecipients recipients, RateLimit callerLimit,
+                        Function<IHTTPSession, String> readBody,
+                        Map<String, String> recipientNumbers, SmsOptOutRegistry optOut) {
         this.recipients = recipients;
         this.callerLimit = callerLimit;
         this.readBody = readBody;
+        this.recipientNumbers = recipientNumbers == null ? Map.of() : recipientNumbers;
+        this.optOut = optOut;
     }
 
     /**
@@ -139,16 +175,29 @@ public final class AlertRequestHandler implements ConsoleFeatures {
                             + " minutes per caller\"}");
         }
 
+        List<String> optedOut = new ArrayList<>();
+        List<String> toSend = new ArrayList<>();
+        for (String name : names) {
+            if (hasOptedOut(name)) {
+                optedOut.add(name);
+            } else {
+                toSend.add(name);
+            }
+        }
+
         Alert alert = new Alert(severity(
                 JsonFieldExtractor.extractString(body, "severity")), text);
-        List<String> unknown = recipients.send(alert, names);
+        List<String> unknown = recipients.send(alert, toSend);
 
-        log("Alert from " + caller + " sent to " + (names.size() - unknown.size())
-                + " of " + names.size() + " recipients");
+        List<String> delivered = toSend.stream().filter(n -> !unknown.contains(n)).toList();
+        log("Alert from " + caller + " sent to " + delivered.size()
+                + " of " + names.size() + " recipients (" + optedOut.size()
+                + " opted out)");
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json",
-                "{\"ok\":true,\"delivered\":" + jsonNames(names, unknown)
+                "{\"ok\":true,\"delivered\":" + jsonArray(delivered)
                         + ",\"unknown\":" + jsonArray(unknown)
+                        + ",\"optedOut\":" + jsonArray(optedOut)
                         + ",\"known\":" + jsonArray(recipients.names()) + "}");
     }
 
@@ -170,14 +219,17 @@ public final class AlertRequestHandler implements ConsoleFeatures {
     }
 
     /**
-     * Renders the requested names that were not reported unknown.
+     * Returns whether the named recipient has opted out, resolving the handle
+     * to its number and consulting the opt-out record. A handle with no known
+     * number, or an unconfigured record, is never treated as opted out.
      *
-     * @param names   every requested recipient
-     * @param unknown the names that could not be resolved
-     * @return a JSON array of the names that were delivered to
+     * @param name the recipient handle
+     * @return {@code true} when the recipient's number has opted out
      */
-    private String jsonNames(List<String> names, List<String> unknown) {
-        return jsonArray(names.stream().filter(n -> !unknown.contains(n)).toList());
+    private boolean hasOptedOut(String name) {
+        if (optOut == null) return false;
+        String number = recipientNumbers.get(name);
+        return number != null && optOut.isOptedOut(number);
     }
 
     /**

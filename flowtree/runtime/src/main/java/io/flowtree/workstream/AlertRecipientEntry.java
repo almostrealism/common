@@ -21,7 +21,9 @@ import org.almostrealism.io.AlertDeliveryProvider;
 import org.almostrealism.io.AlertRecipients;
 import org.almostrealism.util.SignalWireDeliveryProvider;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Configuration entry for a named alert recipient.
@@ -36,12 +38,24 @@ import java.util.List;
  * alertRecipients:
  *   - name: michael
  *     smsNumber: "+15551234567"
+ *     consentMethod: verbal
+ *     consentDate: "2026-10-31"
+ *     consentScriptVersion: v1
  * </pre>
  *
  * <p>The SignalWire account these messages are sent through is configured
  * separately, in {@code signalwire.properties}; only the destination belongs
  * here. That keeps API credentials out of the file the workspace tools
  * edit.</p>
+ *
+ * <h2>Consent record</h2>
+ * <p>The {@code consent*} fields record how the recipient agreed to receive
+ * messages, which carriers may ask to see. The registered opt-in is a verbal
+ * script, so {@code consentMethod} is normally {@code "verbal"};
+ * {@code consentDate} is the ISO date it was captured and
+ * {@code consentScriptVersion} identifies which wording of the script was read.
+ * The fields are advisory metadata — they do not gate delivery — so a recipient
+ * missing them is still reachable, but the record is incomplete.</p>
  *
  * @author Michael Murray
  */
@@ -53,6 +67,15 @@ public class AlertRecipientEntry {
     /** The destination phone number in E.164 format, or {@code null}. */
     private String smsNumber;
 
+    /** How consent was captured (e.g. {@code "verbal"}), or {@code null}. */
+    private String consentMethod;
+
+    /** The ISO date consent was captured (e.g. {@code "2026-10-31"}), or {@code null}. */
+    private String consentDate;
+
+    /** The version of the opt-in script that was read, or {@code null}. */
+    private String consentScriptVersion;
+
     /** Returns the handle callers use to name this recipient. */
     public String getName() { return name; }
     /** Sets the handle callers use to name this recipient. */
@@ -62,6 +85,43 @@ public class AlertRecipientEntry {
     public String getSmsNumber() { return smsNumber; }
     /** Sets the destination phone number in E.164 format. */
     public void setSmsNumber(String smsNumber) { this.smsNumber = smsNumber; }
+
+    /** Returns how consent was captured, or {@code null} when unrecorded. */
+    public String getConsentMethod() { return consentMethod; }
+    /** Sets how consent was captured (e.g. {@code "verbal"}). */
+    public void setConsentMethod(String consentMethod) { this.consentMethod = consentMethod; }
+
+    /** Returns the ISO date consent was captured, or {@code null}. */
+    public String getConsentDate() { return consentDate; }
+    /** Sets the ISO date consent was captured. */
+    public void setConsentDate(String consentDate) { this.consentDate = consentDate; }
+
+    /** Returns the opt-in script version that was read, or {@code null}. */
+    public String getConsentScriptVersion() { return consentScriptVersion; }
+    /** Sets the opt-in script version that was read. */
+    public void setConsentScriptVersion(String consentScriptVersion) {
+        this.consentScriptVersion = consentScriptVersion;
+    }
+
+    /**
+     * Returns the consent record as a one-line summary for producing on
+     * request, or {@code null} when no consent method is recorded.
+     *
+     * @return a summary such as {@code "verbal on 2026-10-31 (script v1)"}, or
+     *         {@code null}
+     */
+    public String consentSummary() {
+        if (consentMethod == null || consentMethod.isBlank()) return null;
+
+        StringBuilder sb = new StringBuilder(consentMethod.trim());
+        if (consentDate != null && !consentDate.isBlank()) {
+            sb.append(" on ").append(consentDate.trim());
+        }
+        if (consentScriptVersion != null && !consentScriptVersion.isBlank()) {
+            sb.append(" (script ").append(consentScriptVersion.trim()).append(")");
+        }
+        return sb.toString();
+    }
 
     /**
      * Returns the provider that reaches this recipient.
@@ -104,5 +164,33 @@ public class AlertRecipientEntry {
         }
 
         return recipients;
+    }
+
+    /**
+     * Builds the handle → destination number map described by the given
+     * entries, so an opted-out recipient can be recognised by number.
+     *
+     * <p>Unlike {@link #directory(List)} this does not depend on a SignalWire
+     * account being configured: the mapping is read straight from the entries,
+     * so opt-out enforcement works even where the delivery provider could not
+     * be built. Entries that name no number are omitted.</p>
+     *
+     * @param entries the configured entries, or {@code null}
+     * @return the handle → number map, never {@code null}
+     */
+    public static Map<String, String> numbers(List<AlertRecipientEntry> entries) {
+        Map<String, String> numbers = new LinkedHashMap<>();
+        if (entries == null) return numbers;
+
+        for (AlertRecipientEntry entry : entries) {
+            if (entry == null) continue;
+            String name = entry.getName();
+            String number = entry.getSmsNumber();
+            if (name != null && !name.isBlank() && number != null && !number.isBlank()) {
+                numbers.put(name.trim(), number.trim());
+            }
+        }
+
+        return numbers;
     }
 }
