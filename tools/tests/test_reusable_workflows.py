@@ -24,7 +24,7 @@ import yaml
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOWS = os.path.join(_REPO_ROOT, ".github", "workflows")
 _REUSABLE = ("goal-decomposition.yaml", "task-planning.yaml",
-             "implement-plan.yaml", "plan-review.yaml")
+             "implement-plan.yaml", "plan-review.yaml", "qa-round.yaml")
 
 # YAML 1.1 reads the unquoted key `on` as the boolean True; PyYAML follows it.
 _ON = True

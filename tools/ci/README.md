@@ -50,6 +50,7 @@ repository (input `framework-ref`), never from the caller's tree.
 | `task-planning.yaml` | Task-planning round: on the caller's default branch, gate on intake, a round in progress (`qa-cadence.sh`), the open-PR backlog (`open-pr-backlog.sh`) and a claimable task (`tracker-claimable.sh`) in `<project> <version>`, then create a `project/task-*` branch, register its workstream, claim the task (`tracker-claim.sh`) and submit an agent that plans it and opens the PR. This repository's `plan-release-task` calls it |
 | `implement-plan.yaml` | The manual "implement the plan" trigger, dispatched by the caller on a plan branch: detect the plan, resolve its workstream settings (`plan_workstream_config.py`), register the workstream, and submit the implementation through a token-free prompt build and `submit-staged-request.sh`. This repository's `verify-completion.yaml` calls it |
 | `plan-review.yaml` | Docs-only review for a repository without this pipeline: when every change on the branch is under `docs/`, submit the `docs-review.txt` agent, which improves the documents and never implements the plan |
+| `qa-round.yaml` | One recurring QA round: ask the controller about intake, gate on the shared cadence (`qa-cadence.sh`), archive the rounds that are over, create a `<branch-prefix><timestamp>` branch, register its workstream, build a prompt (`build-qa-round-prompt.sh`, from a built-in selector or the caller's own template path) and submit a coding-agent job that opens a PR. The branch prefix, interval, prompt, template vars and submission settings are inputs. This repository's `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa` (which stays inline) |
 
 ## Coverage (`coverage/`)
 
@@ -141,15 +142,10 @@ it knowingly does not cover are in
 | Script/Template | Purpose |
 |---|---|
 | `build-build-failure-prompt.sh` | Build prompt for agent when compilation fails |
-| `build-consolidation-prompt.sh` | Build prompt for the recurring consolidation (duplication) round |
 | `build-coverage-prompt.sh` | Build prompt for the recurring test-coverage round |
 | `build-goal-decomposition-prompt.sh` | Build prompt for the goal-decomposition round: turn a repository's release plan into tracker tasks, in its own project or the framework's; changes no files |
 | `build-docs-review-prompt.sh` | Build prompt for auto-review of a docs-only branch: review and improve the documents, never implement a plan |
-| `build-defect-hunt-prompt.sh` | Build prompt for the recurring defect hunt |
-| `build-flaky-hunt-prompt.sh` | Build prompt for the pilot flaky-test hunt: repeatedly run one module's small, named test slice on a fixed commit and fix or file the source of any nondeterminism |
-| `build-doc-qa-prompt.sh` | Build prompt for the recurring documentation-staleness review |
-| `build-performance-prompt.sh` | Build prompt for the recurring performance round |
-| `build-pdsl-migration-prompt.sh` | Build prompt for the recurring PDSL migration round |
+| `build-qa-round-prompt.sh` | Build the prompt for any round the reusable `qa-round.yaml` runs: render a built-in template chosen by selector (`defect-hunt` \| `doc-qa` \| `consolidation` \| `flaky-hunt`) or a caller-supplied template read as data by path, substituting `BRANCH`/`BASE_BRANCH`/`REPO_URL` and the round's `TEMPLATE_VARS`, including the `TEST_RUNNER_FRAGMENT` a built-in template selects, and failing if any `${...}` survives. Replaces the per-round builders the recurring QA jobs used to each carry |
 | `build-planning-prompt.sh` | Build prompt for planning workflow |
 | `build-task-planning-prompt.sh` | Build prompt for the task-planning round: plan the tracker task CI claimed for the round (`TASK_ID`, `TASK_TITLE`, `TASK_DESCRIPTION`) |
 | `build-policy-violation-prompt.sh` | Build prompt for agent when code policy enforcement fails |
@@ -157,11 +153,12 @@ it knowingly does not cover are in
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |
 | `build-resolve-prompt.sh` | Build prompt for agent when tests fail |
 | `build-review-prompt.sh` | Build prompt for general code review |
-| `build-retrospective-prompt.sh` | Build prompt for the recurring QA retrospective: survey recent automated work and propose how the process should improve |
 | `build-verify-prompt.sh` | Build prompt for the implement-plan workflow (called by verify-completion), the manual "implement the plan" trigger |
 | `consolidation.txt` | Template for the consolidation round: find one duplicated behavior, share it, pin it with tests |
 | `coverage.txt` | Template for the test-coverage round |
-| `defect-hunt.txt` | Template for the defect hunt |
+| `defect-hunt.txt` | Template for the defect hunt. Offered to consumers through `qa-round.yaml`'s `defect-hunt` selector; its test-runner / tooling guidance is an `@include ${TEST_RUNNER_FRAGMENT}` so a non-Maven consumer can select a neutral fragment |
+| `test-runner-maven.txt` | The default `TEST_RUNNER_FRAGMENT`: this framework's tooling guidance (`ar-profile-analyzer`, the MCP test runner) a built-in template includes |
+| `test-runner-generic.txt` | A neutral `TEST_RUNNER_FRAGMENT` for a non-Maven consumer: run a bounded selection with the repository's own test runner, read its output as evidence |
 | `flaky-hunt.txt` | Template for the pilot flaky-test hunt: one module, a small named slice run repeatedly on one commit, find a test whose outcome varies, fix the production/test-helper cause or file a follow-up, never editing the existing test |
 | `docs-review.txt` | Template for the docs-only review prompt |
 | `doc-qa.txt` | Template for the documentation-staleness review |
@@ -175,7 +172,7 @@ it knowingly does not cover are in
 | `pr-feedback.txt` | Shared fragment: how to find, read, act on and reply to pull-request review comments — patched into every auto-resolve prompt |
 | `project-planning.txt` | Template for the planning workflow |
 | `task-planning.txt` | Template for the task-planning round |
-| `prompt-render.sh` | Sourced by the builders: expands `@include <fragment>` lines and substitutes `${VAR}` placeholders (`render_prompt`, `append_prompt_fragment`) |
+| `prompt-render.sh` | Sourced by the builders: expands `@include <fragment>` lines and substitutes `${VAR}` placeholders (`render_prompt`, `append_prompt_fragment`). An `@include` line may name its fragment through a `${VAR}` resolved from the environment before expansion (so a template selects a fragment), and a resolved fragment name may not contain `/`, so a caller template can include only the framework's published fragments |
 | `verify-completion.txt` | Template for verify-completion prompt |
 
 ### Test execution limits

@@ -50,7 +50,11 @@ def _workflow():
 
 def called_job(job):
     """Returns the job that runs for ``job``: the only job of the reusable
-    workflow it calls from this repository, or ``job`` itself."""
+    workflow it calls from this repository, or ``job`` itself.
+
+    The called job is returned with its ``${{ inputs.X }}`` references intact,
+    the way ``controller_url`` and the task-planning checks read them against
+    the caller's ``with``."""
     uses = job.get("uses", "")
     if not uses.startswith("./.github/workflows/"):
         return job
@@ -59,6 +63,41 @@ def called_job(job):
     if len(jobs) != 1:
         raise AssertionError("%s should hold exactly one job" % uses)
     return next(iter(jobs.values()))
+
+
+# A whole-token input reference, e.g. ``${{ inputs.branch-prefix }}``. A
+# reference with extra content inside the braces (``${{ inputs.controller-url
+# || '...' }}``) is deliberately not matched: controller_url resolves that one.
+_INPUT_TOKEN = re.compile(r"\$\{\{ inputs\.([a-z0-9-]+) \}\}")
+
+
+def _effective_inputs(caller):
+    """The input values the called job runs with: the called workflow's
+    declared defaults, overridden by the caller's ``with``. GitHub applies an
+    omitted input's default, so a round that passes only some inputs still runs
+    the rest at their defaults — which is what the called job's steps see."""
+    uses = caller["uses"]
+    with open(os.path.join(_REPO_ROOT, uses[2:])) as f:
+        spec = yaml.safe_load(f)[_ON]["workflow_call"]["inputs"]
+    values = {key: meta["default"] for key, meta in spec.items() if "default" in meta}
+    values.update(caller.get("with", {}))
+    return values
+
+
+def _resolve_inputs(value, inputs):
+    """Returns ``value`` with every whole-token ``${{ inputs.X }}`` replaced by
+    the effective input X, recursively through dicts and lists. This is the same
+    caller-``with`` mapping ``controller_url`` performs for one value, applied to
+    a called job's whole tree so a QA caller resolves to the round it runs."""
+    if isinstance(value, str):
+        return _INPUT_TOKEN.sub(
+            lambda m: str(inputs[m.group(1)]) if m.group(1) in inputs else m.group(0),
+            value)
+    if isinstance(value, dict):
+        return {k: _resolve_inputs(v, inputs) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_resolve_inputs(v, inputs) for v in value]
+    return value
 
 
 def controller_url(caller, env):
@@ -77,9 +116,21 @@ def _run_steps(job):
 
 
 def _qa_jobs(workflow):
-    """Returns the jobs gated by the shared cadence script, by name."""
-    return {name: job for name, job in workflow["jobs"].items()
-            if "BRANCH_PREFIX" in job.get("env", {})}
+    """Returns the jobs gated by the shared cadence script, by name.
+
+    A QA round is either inline (``coverage-qa``, with its ``BRANCH_PREFIX`` in
+    the job ``env``) or a caller of ``qa-round.yaml`` (whose single job carries
+    ``BRANCH_PREFIX`` from the ``branch-prefix`` input). A caller is resolved
+    into that job with the caller's inputs in place, so every per-round check
+    below reads the value the round actually runs with — exactly the mapping
+    ``controller_url`` already makes for the controller URL."""
+    out = {}
+    for name, caller in workflow["jobs"].items():
+        job = called_job(caller)
+        if "BRANCH_PREFIX" not in job.get("env", {}):
+            continue
+        out[name] = job if job is caller else _resolve_inputs(job, _effective_inputs(caller))
+    return out
 
 
 class MasterAgentDispatchTests(unittest.TestCase):
@@ -160,8 +211,12 @@ class MasterAgentDispatchTests(unittest.TestCase):
             gate = next(s for s in job["steps"]
                         if "qa-cadence.sh" in s.get("run", ""))
             with self.subTest(job=name):
+                # An inline round wires the input directly; a caller passes it
+                # through ``with`` as ``... || 'false'`` (the dispatch inputs are
+                # empty on a push), which resolves into the gate the same way.
                 match = re.fullmatch(
-                    r"\$\{\{ github\.event\.inputs\.(ignore_interval_[a-z_]+) \}\}",
+                    r"\$\{\{ github\.event\.inputs\.(ignore_interval_[a-z_]+)"
+                    r"(?: \|\| 'false')? \}\}",
                     gate["env"].get("IGNORE_INTERVAL", ""))
                 self.assertIsNotNone(match, "IGNORE_INTERVAL is not wired to an input")
                 key = match.group(1)
@@ -409,7 +464,9 @@ class MasterAgentDispatchTests(unittest.TestCase):
         # hunt's note in the workflow for why one alone misroutes the phase.
         self.assertEqual({"runner", "model", "effort", "provider"}, set(primary))
         self.assertEqual("true", env["PROTECT_TEST_FILES"])
-        self.assertNotIn("ENFORCE_CHANGES", env)
+        # The reusable submit step always carries ENFORCE_CHANGES; an
+        # empty-handed migration is valid, so the round leaves it off (false).
+        self.assertEqual("false", env.get("ENFORCE_CHANGES", "false"))
 
     def test_the_retrospective_round_reports_an_empty_result_without_a_rerun(self):
         """The retrospective's contract is a report on disk. A run that
@@ -645,16 +702,30 @@ class MasterAgentDispatchTests(unittest.TestCase):
     def test_every_qa_round_applies_the_shared_backlog_limit(self):
         """Every round ends in a pull request for the same reviewer, so the
         QA rounds stop at the same open-PR limit as the planning rounds. Their
-        cadence gate checks it (CHECK_BACKLOG) against the workflow's
-        MAX_OPEN_PRS, which no job may override with a limit of its own."""
-        self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
-        for name, job in self.qa_jobs.items():
+        cadence gate checks it (CHECK_BACKLOG). An inline round reads the
+        workflow's shared MAX_OPEN_PRS and overrides it nowhere; a caller of
+        qa-round.yaml cannot read that env, so it passes the same value as the
+        gate's limit — never a limit of its own."""
+        shared = self.workflow["env"]["MAX_OPEN_PRS"]
+        self.assertEqual("7", shared)
+        for name, caller in self.jobs.items():
+            if name not in self.qa_jobs:
+                continue
+            job = self.qa_jobs[name]
             gate = next(s for s in job["steps"] if "qa-cadence.sh" in s.get("run", ""))
             with self.subTest(job=name):
                 self.assertEqual("true", gate["env"].get("CHECK_BACKLOG"))
-                self.assertNotIn("MAX_OPEN_PRS", job["env"])
-                self.assertNotIn("MAX_OPEN_PRS", gate["env"])
                 self.assertIn("GITHUB_TOKEN", gate["env"])
+                if caller.get("uses"):
+                    # The reusable round carries the limit into the gate from
+                    # its input, and the caller passes the shared value.
+                    self.assertEqual(shared, str(gate["env"]["MAX_OPEN_PRS"]))
+                    self.assertEqual(shared, str(caller["with"]["max-open-prs"]))
+                else:
+                    # The inline round inherits the workflow env and overrides
+                    # the shared limit nowhere.
+                    self.assertNotIn("MAX_OPEN_PRS", job["env"])
+                    self.assertNotIn("MAX_OPEN_PRS", gate["env"])
                 summary = next(s for s in job["steps"] if s["name"] == "Summary")
                 self.assertIn("backlog-full)", summary["run"])
 
@@ -699,20 +770,21 @@ class MasterAgentDispatchTests(unittest.TestCase):
         # hunt's note in the workflow for why one alone misroutes the phase.
         self.assertEqual({"runner", "model", "effort", "provider"}, set(primary))
         self.assertEqual("true", env["PROTECT_TEST_FILES"])
-        self.assertNotIn("REQUIRED_LABELS", env)
+        # The reusable submit step always carries REQUIRED_LABELS; the
+        # retrospective reads tools and writes markdown, so it leaves it empty
+        # rather than stranding itself on a GPU node.
+        self.assertEqual("", env.get("REQUIRED_LABELS", ""))
 
     def test_the_retrospective_survey_covers_every_qa_prefix(self):
-        """The survey reads one QA_PREFIXES list, passed from the workflow so
-        the prompt never hard-codes a stale one. It must cover every QA job's
-        BRANCH_PREFIX plus ci/qa- (the pipeline-subject follow-up convention),
-        so a future eighth QA job cannot silently drop out of the survey."""
-        job = self.qa_jobs["qa-retrospective"]
-        # The literal list lives at job level; the build step forwards it to
-        # the builder as the QA_PREFIXES variable.
-        build = next(s for s in job["steps"]
-                     if "build-retrospective-prompt.sh" in s.get("run", ""))
-        self.assertIn("env.QA_PREFIXES", build["env"]["QA_PREFIXES"])
-        prefixes = set(job["env"]["QA_PREFIXES"].split())
+        """The survey reads one QA_PREFIXES list, passed from the caller through
+        template-vars so the prompt never hard-codes a stale one. It must cover
+        every QA job's BRANCH_PREFIX plus ci/qa- (the pipeline-subject follow-up
+        convention), so a future eighth QA job cannot silently drop out of the
+        survey."""
+        caller = self.jobs["qa-retrospective"]
+        template_vars = json.loads(caller["with"]["template-vars"])
+        self.assertIn("QA_PREFIXES", template_vars)
+        prefixes = set(template_vars["QA_PREFIXES"].split())
         required = {j["env"]["BRANCH_PREFIX"] for j in self.qa_jobs.values()}
         required.add("ci/qa-")
         self.assertLessEqual(required, prefixes,
@@ -731,8 +803,10 @@ class MasterAgentDispatchTests(unittest.TestCase):
                       if "submit-agent-job.sh" in s.get("run", ""))
         env = submit["env"]
         self.assertEqual("true", env["PROTECT_TEST_FILES"])
-        self.assertNotIn("ENFORCE_CHANGES", env)
-        self.assertNotIn("REQUIRED_LABELS", env)
+        # The reusable submit step always carries these; an empty-handed round
+        # is valid (no enforce-changes) and the hunt needs no Metal (no labels).
+        self.assertEqual("false", env.get("ENFORCE_CHANGES", "false"))
+        self.assertEqual("", env.get("REQUIRED_LABELS", ""))
         primary = json.loads(env["PHASE_CONFIGS"])["primary"]
         self.assertEqual("opus", primary["model"])
         # Runner, model and provider must be set together; see the defect
