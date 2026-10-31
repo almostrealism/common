@@ -1,0 +1,38 @@
+/**
+ * Two-layer position-wise MLP with a SiLU activation — the non-gated projection head that
+ * embeds a conditioning signal into a model's hidden width. It is the block-level counterpart
+ * of the producer LayerFeatures.siluMlp (linear(silu(linear(x)))), written out as data flow.
+ *
+ * This file replaces the Java assembly that used to live in
+ * DiffusionTransformerFeatures.timestepEmbedding(...) (the linear -> SiLU -> linear tail that
+ * follows the Fourier feature projection) and DiffusionFeatures.timestepEmbeddings(...), both of
+ * which built this same structure as a SequentialBlock (dense, SiLU, dense). Those methods now
+ * only bind the two projections and load this asset, so there is one definition of the structure
+ * and it is here.
+ *
+ * The Fourier feature stage that precedes this MLP in a full timestep embedding is NOT part of
+ * this asset: the Fourier features are [cos(f), sin(f)] over a projected scalar, and the language
+ * has no differentiable concatenation of two parallel sub-blocks (concat_blocks drops the backward
+ * pass), so moving the Fourier stage into PDSL would drop the gradient that reaches its frequency
+ * matrix in Java. The Fourier projection therefore stays in Java and feeds this MLP as the layer's
+ * input.
+ *
+ * Data flow of one forward pass over a conditioning vector [..., in]:
+ *
+ *   [..., in] conditioning vector
+ *     dense(w_in, b_in)                                  [..., hidden]
+ *     silu()                                             [..., hidden]
+ *     dense(w_out, b_out)                                [..., out]
+ *
+ * SiLU-MLP(x) = w_out . silu(w_in . x + b_in) + b_out, with silu(z) = z * sigmoid(z). w_in is the
+ * first projection [hidden, in], w_out the second projection [out, hidden]; both carry a bias.
+ *
+ * Stage 1 dense(w_in, b_in) projects the input to the hidden width. Stage 2 silu applies the SiLU
+ * gate element-wise, preserving the shape. Stage 3 dense(w_out, b_out) projects the activated
+ * hidden vector to the output width.
+ */
+layer silu_mlp(w_in: weight, b_in: weight, w_out: weight, b_out: weight) {
+    dense(w_in, b_in)
+    silu()
+    dense(w_out, b_out)
+}
