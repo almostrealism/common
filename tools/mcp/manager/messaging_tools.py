@@ -400,10 +400,17 @@ def send_alert(
     call, and the known handles are listed in ``known`` so a typo is
     easy to correct.
 
-    The alert body is free-form text.  Nothing is prepended to it, so
-    include whatever context the reader needs to act — which repository,
-    which branch, which job — directly in ``text``.  Alerts are
-    delivered as a single short message; keep it to a sentence or two.
+    The alert body is free-form text.  Include whatever context the
+    reader needs to act — which repository, which branch, which job —
+    directly in ``text``.  The SMS delivery layer wraps the text in the
+    fixed, carrier-registered framing (a brand prefix and a
+    STOP/HELP opt-out suffix) and normalizes it to a single GSM-7
+    segment, truncating the text if the whole message would run long, so
+    keep it to a sentence or two.
+
+    Recipients who have replied STOP are suppressed: they are never sent
+    to, and are reported back in ``optedOut`` (see below) rather than in
+    ``delivered``.
 
     Rate limits apply at two levels: an account-wide ceiling shared by
     everyone, and a smaller per-caller budget.  Exceeding either returns
@@ -420,8 +427,11 @@ def send_alert(
             to ``INFO``.  Unrecognized values are treated as ``INFO``.
 
     Returns:
-        Dictionary with ``ok=true`` plus ``delivered``, ``unknown`` and
-        ``known`` recipient lists, or ``ok=false`` with error details.
+        Dictionary with ``ok=true`` plus ``delivered``, ``unknown``,
+        ``optedOut`` and ``known`` recipient lists, or ``ok=false`` with
+        error details.  ``optedOut`` names the recipients that were
+        skipped because they have unsubscribed by replying STOP; they are
+        not in ``delivered`` and are not an error.
     """
     server._require_scope("write")
 

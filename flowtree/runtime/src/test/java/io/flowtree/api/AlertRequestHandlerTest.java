@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -213,6 +214,55 @@ public class AlertRequestHandlerTest extends TestSuiteBase {
 
 		assertEquals(0, recipients.size());
 		assertFalse(recipients.contains("michael"));
+	}
+
+	/**
+	 * An opted-out recipient is skipped, reported under {@code optedOut}, and
+	 * never delivered to, while a reachable recipient alongside still receives.
+	 */
+	@Test(timeout = 10000)
+	public void testOptedOutRecipientIsSkippedAndReported() {
+		InMemorySmsOptOut registry = new InMemorySmsOptOut();
+		registry.optOut("+18335551234");
+
+		Map<String, String> numbers = Map.of(
+				"michael", "+18335551234", "mmurray", "+18335559999");
+		AlertRecipients recipients = new AlertRecipients()
+				.add("michael", delivered::add)
+				.add("mmurray", delivered::add);
+		AlertRequestHandler handler = new AlertRequestHandler(recipients,
+				new RateLimit(10, Duration.ofHours(1)),
+				session -> "{\"text\":\"Note\",\"recipients\":[\"michael\",\"mmurray\"]}",
+				numbers, registry);
+
+		Response response = handler.handle(null);
+
+		assertEquals(Response.Status.OK, response.getStatus());
+		assertEquals("only the reachable recipient is delivered to", 1, delivered.size());
+
+		String body = bodyOf(response);
+		assertTrue(body.contains("\"optedOut\":[\"michael\"]"));
+		assertTrue(body.contains("\"delivered\":[\"mmurray\"]"));
+	}
+
+	/** A recipient who has not opted out is delivered to and not reported. */
+	@Test(timeout = 10000)
+	public void testNonOptedOutRecipientIsDelivered() {
+		InMemorySmsOptOut registry = new InMemorySmsOptOut();
+
+		Map<String, String> numbers = Map.of("michael", "+18335551234");
+		AlertRecipients recipients = new AlertRecipients().add("michael", delivered::add);
+		AlertRequestHandler handler = new AlertRequestHandler(recipients,
+				new RateLimit(10, Duration.ofHours(1)),
+				session -> "{\"text\":\"Note\",\"recipients\":[\"michael\"]}",
+				numbers, registry);
+
+		Response response = handler.handle(null);
+
+		assertEquals(1, delivered.size());
+		String body = bodyOf(response);
+		assertTrue(body.contains("\"delivered\":[\"michael\"]"));
+		assertTrue(body.contains("\"optedOut\":[]"));
 	}
 
 	/** A null entry list yields an empty directory rather than throwing. */
