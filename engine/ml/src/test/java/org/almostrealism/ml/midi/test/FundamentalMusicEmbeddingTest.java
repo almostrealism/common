@@ -96,7 +96,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		double base = 10000.0;
 		int dim = 8;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(base, dim);
-		PackedCollection invFreqs = fme.computeInvFreqs(base, dim).get().evaluate();
+		PackedCollection invFreqs = fme.computeInvFreq(dim, base).get().evaluate();
 
 		assertEquals("Should have dim/2 frequencies", dim / 2, invFreqs.getShape().getTotalSize());
 
