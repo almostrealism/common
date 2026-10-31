@@ -125,6 +125,43 @@ public class AggregateCopyBackTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A write to the first element of a slice is not attributed to the slice that ends right
+	 * before it, and a write to the last element of a slice is not attributed to the slice that
+	 * starts right after it: each slice is the half-open range of its own positions.
+	 */
+	@Test(timeout = 60000)
+	public void writeAtSliceEdgeReachesOnlyItsOwnSlice() {
+		try (PackedCollection first = pack(1.0, 2.0);
+			 PackedCollection second = pack(3.0, 4.0);
+			 PackedCollection third = pack(5.0, 6.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				map.get(p(first));
+				ArrayVariable<?> secondArg = map.get(p(second));
+				map.get(p(third));
+
+				Scope<?> firstElement = new Scope<>("firstElement");
+				firstElement.assign(secondArg.reference(new IntegerConstant(0)), new IntegerConstant(0));
+				BitSet slices = map.getWrittenSlices(firstElement);
+				Assert.assertFalse(slices.get(0));
+				Assert.assertTrue(slices.get(1));
+				Assert.assertFalse(slices.get(2));
+
+				Scope<?> lastElement = new Scope<>("lastElement");
+				lastElement.assign(secondArg.reference(new IntegerConstant(1)), new IntegerConstant(0));
+				slices = map.getWrittenSlices(lastElement);
+				Assert.assertFalse(slices.get(0));
+				Assert.assertTrue(slices.get(1));
+				Assert.assertFalse(slices.get(2));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
 	 * A scope whose writes cannot be enumerated from its assignments (here, one that calls a
 	 * method) may write anything, so every slice is reported as written.
 	 */
