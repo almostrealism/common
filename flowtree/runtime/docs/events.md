@@ -337,6 +337,7 @@ Events are serialized to JSON in `GitManagedJob.buildEventJson()` using Jackson 
   "stagedFiles": ["string", ...],
   "skippedFiles": ["string (reason)", ...],
   "pullRequestUrl": "string | null",
+  "dependentRepoPushes": [{"repoUrl": "string", "branch": "string", "commitHash": "string"}, ...],
   "selfNotify": true | false,
   "errorMessage": "string | null",
   "prompt": "string | null",
@@ -367,6 +368,7 @@ Events are serialized to JSON in `GitManagedJob.buildEventJson()` using Jackson 
 | `stagedFiles` | `getStagedFiles()` | array | Empty array when no files were staged. |
 | `skippedFiles` | `getSkippedFiles()` | array | Each entry includes a reason suffix in parentheses. |
 | `pullRequestUrl` | `getPullRequestUrl()` | string/null | GitHub PR URL or `null`. |
+| `dependentRepoPushes` | `getDependentRepoPushes()` | array | Pushes the job made to repositories other than its own; each entry is an object with `repoUrl`, `branch`, and `commitHash`. Empty array when the job pushed only to its own repository. |
 | `selfNotify` | `isSelfNotify()` | boolean | `true` when the completing job asked its own workstream to be woken with a follow-up job; see [Self-Notify Field](#self-notify-field). |
 | `errorMessage` | `getErrorMessage()` | string/null | `null` for successful jobs. |
 | `prompt` | `getPrompt()` | string/null | `null` for non-Claude jobs (base class default). |
