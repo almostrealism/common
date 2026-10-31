@@ -43,6 +43,8 @@ The verify-completion workflow (`verify-completion.yaml`) implements a self-impr
 
 `verify-completion.yaml` itself is a thin caller: its one job calls the reusable `implement-plan.yaml`, which holds the jobs described below. Other repositories call `implement-plan.yaml` the same way for their own plan branches, so it checks this repository out explicitly (inputs `framework-repository` and `framework-ref`, by default `almostrealism/common` at `master`) and runs every script and prompt template from that checkout. In this repository that is the default branch.
 
+Implementation is triggered two ways. A person can dispatch `verify-completion.yaml` by hand (or via `project_verify_branch`). The automatic path is the owner approving the plan — marking its draft PR **ready for review** — which the `Plan Ready` workflow (`ready-plan.yaml`) turns into that same dispatch on the PR's head branch. A consuming repository gets the automatic path by calling the reusable `plan-ready.yaml` (`workflow_call`, in this repository) from its own `pull_request_target` caller and setting its `PLAN_APPROVERS` variable; without that caller it dispatches `verify-completion.yaml` by hand. `plan-ready.yaml` is inline shell over event metadata and the GitHub API — it checks out nothing, runs no framework script and holds no controller secret — so unlike `implement-plan.yaml` it needs no framework checkout.
+
 ### Four-Phase Pipeline
 
 The workflow runs as a four-phase pipeline of five jobs with conditional execution:
