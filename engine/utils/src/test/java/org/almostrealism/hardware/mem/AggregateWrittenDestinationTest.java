@@ -139,6 +139,51 @@ public class AggregateWrittenDestinationTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Strict side-effects exists to record writes a kernel does not declare, so under it a
+	 * declared destination does not narrow the copy-back: every writable slice is carried back,
+	 * including the slice of a root the kernel was declared only to read.
+	 */
+	@Test(timeout = 60000)
+	public void strictSideEffectsCopiesBackEveryWritableSlice() {
+		boolean strict = MemoryDataArgumentMap.enableStrictSideEffects;
+		List<PackedCollection> aggregates = new ArrayList<>();
+
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), length -> {
+						PackedCollection aggregate = new PackedCollection(length);
+						aggregates.add(aggregate);
+						return aggregate;
+					});
+
+			try {
+				map.get(p(read));
+				map.get(p(written));
+				Assert.assertEquals(1, map.getPostprocessOperationsOf(p(written)).size());
+
+				MemoryDataArgumentMap.enableStrictSideEffects = true;
+				Assert.assertEquals(map.getPostprocessOperations(null),
+						map.getPostprocessOperationsOf(p(written)));
+
+				Semaphore copiedIn = Submittable.submit(map.getPrepareOperations(), null);
+				if (copiedIn != null) copiedIn.waitFor();
+				Assert.assertEquals(1, aggregates.size());
+
+				aggregates.get(0).fill(10.0, 20.0, 30.0, 40.0);
+				Semaphore copiedOut = Submittable.submit(map.getPostprocessOperationsOf(p(written)), null);
+				if (copiedOut != null) copiedOut.waitFor();
+
+				Assert.assertArrayEquals(new double[] { 10.0, 20.0 }, read.toArray(), 0.0);
+				Assert.assertArrayEquals(new double[] { 30.0, 40.0 }, written.toArray(), 0.0);
+			} finally {
+				MemoryDataArgumentMap.enableStrictSideEffects = strict;
+				map.destroy();
+			}
+		}
+	}
+
+	/**
 	 * An in-place assignment over small (aggregated) arguments, run as an operation with no
 	 * explicit output, still carries its result back into the destination, and leaves the
 	 * argument it only read unchanged.

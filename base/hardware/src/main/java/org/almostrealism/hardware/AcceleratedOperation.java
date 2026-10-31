@@ -786,7 +786,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 
 				if (aggregateCopyOut) {
-					// TODO(review): the declared destination is trusted unchecked, even under enableStrictSideEffects
 					Supplier<? extends Evaluable<?>> written = output == null ? getWrittenDestination() : null;
 					Semaphore copyOut = Submittable.submit(written == null ?
 							argumentMap.getPostprocessOperations(output) :

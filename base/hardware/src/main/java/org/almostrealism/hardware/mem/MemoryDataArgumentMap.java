@@ -430,13 +430,17 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * an aggregated root through the kernel this map cannot see, so every writable slice is
 	 * copied back, as {@link #getPostprocessOperations(MemoryData)} does with no output.</p>
 	 *
+	 * <p>Under {@link #enableStrictSideEffects strict side-effects} the declaration is not
+	 * trusted: that mode exists to record side effects a kernel does not declare, so every
+	 * writable slice is copied back regardless of the destination.</p>
+	 *
 	 * @param destination the producer of the only memory the kernel writes
 	 * @return the copy-back of the replacement sharing memory with the destination (empty when it
 	 *         was not aggregated or is read-only), or of every writable slice when the destination
-	 *         is not provided memory
+	 *         is not provided memory or side effects are strict
 	 */
 	public List<Submittable> getPostprocessOperationsOf(Supplier<? extends Evaluable<?>> destination) {
-		Provider<?> provider = providerOf(destination);
+		Provider<?> provider = enableStrictSideEffects ? null : providerOf(destination);
 		if (provider == null || !(provider.get() instanceof MemoryData written)) {
 			return getPostprocessOperations(null);
 		}
