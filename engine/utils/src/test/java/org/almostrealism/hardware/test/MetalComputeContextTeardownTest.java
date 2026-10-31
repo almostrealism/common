@@ -97,14 +97,17 @@ public class MetalComputeContextTeardownTest extends TestSuiteBase {
 		for (int cycle = 0; cycle < 4; cycle++) {
 			OwnContext context = new OwnContext(shared);
 			AtomicReference<Thread> runnerThread = new AtomicReference<>();
+			Thread thread;
 
-			context.getCommandRunner().submit(null,
-					buffer -> runnerThread.set(Thread.currentThread()), null, null).waitFor();
-			Thread thread = runnerThread.get();
-			assertNotNull("The dispatch must be encoded on the runner's thread", thread);
-			assertTrue(thread.isAlive());
-
-			context.destroy();
+			try {
+				context.getCommandRunner().submit(null,
+						buffer -> runnerThread.set(Thread.currentThread()), null, null).waitFor();
+				thread = runnerThread.get();
+				assertNotNull("The dispatch must be encoded on the runner's thread", thread);
+				assertTrue(thread.isAlive());
+			} finally {
+				context.destroy();
+			}
 
 			thread.join(10000);
 			assertFalse("Destroying context " + cycle + " must terminate its runner's thread",
@@ -127,14 +130,14 @@ public class MetalComputeContextTeardownTest extends TestSuiteBase {
 			return;
 		}
 
-		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
-		MetalCommandRunner.enableHostSignaledBridges = true;
-
+		OwnContext context = new OwnContext(shared);
 		DefaultLatchSemaphore foreign = new DefaultLatchSemaphore((Semaphore) null, 1);
 		AtomicBoolean signaledAfterDestroyBegan = new AtomicBoolean();
 
+		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
+		MetalCommandRunner.enableHostSignaledBridges = true;
+
 		try {
-			OwnContext context = new OwnContext(shared);
 			MetalCommandRunner runner = context.getCommandRunner();
 			AtomicBoolean completed = new AtomicBoolean();
 
@@ -166,6 +169,10 @@ public class MetalComputeContextTeardownTest extends TestSuiteBase {
 			assertTrue("Destroying the context must destroy its runner", runner.isClosed());
 		} finally {
 			foreign.countDown();
+			if (!context.isDestroyed()) {
+				context.destroy();
+			}
+
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
 		}
 	}
