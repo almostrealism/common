@@ -28,7 +28,6 @@ import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
@@ -43,7 +42,6 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * Abstract base class for all hardware-accelerated operations, managing compilation, argument processing, and execution.
@@ -297,17 +295,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return The output argument index
 	 */
 	protected abstract int getOutputArgumentIndex();
-
-	/**
-	 * Returns the producer of the only memory this operation's kernel writes, when it is known,
-	 * so that the aggregation copy-back after a dispatch with no explicit output carries back only
-	 * that memory rather than every aggregated argument the kernel merely read (see
-	 * {@link MemoryDataArgumentMap#getPostprocessOperationsOf(Supplier)}).
-	 *
-	 * @return the producer of the memory the kernel writes, or {@code null} when every writable
-	 *         aggregated argument must be copied back
-	 */
-	protected Supplier<? extends Evaluable<?>> getWrittenDestination() { return null; }
 
 	/**
 	 * Creates a {@link MemoryDataArgumentMap} bound to this operation's {@link ComputeContext}.
@@ -670,9 +657,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 *   where the hardware cannot do better.</li>
 	 *   <li><strong>Compile-time argument aggregation</strong> (active when the argument map has
 	 *   replacements; managed by {@link MemoryDataArgumentMap}). Small inputs are folded into one
-	 *   aggregate kernel buffer; their data is copied in before the kernel. Whether each slice is
-	 *   copied back afterward follows the side-effect policy: {@code output == null} copies every
-	 *   slice back; {@code output != null} (default) copies none (the caller's explicit output is
+	 *   aggregate kernel buffer; their data is copied in before the kernel. Only a slice the
+	 *   compiled kernel's scope may write is ever copied back (see
+	 *   {@link MemoryDataArgumentMap#getWrittenSlices}); the staged copy of a slice it only reads
+	 *   is unchanged. Whether each such slice is copied back afterward follows the side-effect
+	 *   policy: {@code output == null} copies every one back; {@code output != null} (default) copies none (the caller's explicit output is
 	 *   taken to be the only result of interest); {@code output != null} with
 	 *   {@link MemoryDataArgumentMap#enableStrictSideEffects strict side-effects} copies back every
 	 *   slice except the one aliasing {@code output} (so an in-place {@code x = x + y} is not
@@ -786,10 +775,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 
 				if (aggregateCopyOut) {
-					Supplier<? extends Evaluable<?>> written = output == null ? getWrittenDestination() : null;
-					Semaphore copyOut = Submittable.submit(written == null ?
-							argumentMap.getPostprocessOperations(output) :
-							argumentMap.getPostprocessOperationsOf(written), completion);
+					Semaphore copyOut = Submittable.submit(argumentMap.getPostprocessOperations(output), completion);
 					if (copyOut != null) {
 						completion = inflight = copyOut;
 					}

@@ -54,6 +54,7 @@ import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.io.Describable;
 import org.almostrealism.lifecycle.WeakRunnable;
 
+import java.util.BitSet;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -528,7 +529,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * replays the fold over this operation's own computation to obtain an equivalently laid-out
 	 * per-operation copy plan and aggregate buffer, installs it as this operation's
 	 * {@link #argumentMap} (so {@link AcceleratedOperation#apply} performs the copy-in/out), and
-	 * binds the shared scope's aggregate argument to the per-operation buffer.</p>
+	 * binds the shared scope's aggregate argument to the per-operation buffer. The per-operation
+	 * copy-back is limited to the slices the shared kernel was found to write when it was
+	 * compiled, which are the same replacements here because the positions are the same.</p>
 	 *
 	 * <p>The generated source addresses each folded argument at a fixed position within the single
 	 * aggregate parameter, so the sequence of replacement positions is part of the compiled
@@ -588,6 +591,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		if (sharedAggregate == null) {
 			return;
 		}
+
+		BitSet written = manager.getWrittenAggregateSlices();
+		if (written != null) perOperation.setWrittenSlices(written);
 
 		this.argumentMap = perOperation;
 
@@ -699,7 +705,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *
 	 * <p>Records the aggregate positions this kernel was compiled against on the
 	 * instruction set manager, so every operation reusing these instructions can be
-	 * verified against them.</p>
+	 * verified against them. Alongside them it records which of the aggregated slices the
+	 * compiled scope may write, read off the scope itself, and limits this operation's
+	 * copy-back to those slices (see {@link MemoryDataArgumentMap#getWrittenSlices}).</p>
 	 *
 	 * <p>This method is synchronized to ensure thread-safe argument setup.</p>
 	 */
@@ -708,7 +716,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		getCompiler().postCompile();
 
 		if (instructions != null && argumentMap != null) {
+			BitSet written = argumentMap.limitCopyBackTo(getCompiler().getScope());
 			getInstructionSetManager().setAggregatePositions(argumentMap.describeAggregatePositions());
+			getInstructionSetManager().setWrittenAggregateSlices(written);
 		}
 	}
 
@@ -766,17 +776,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 */
 	public Variable getOutputVariable() {
 		return getComputation().getOutputVariable();
-	}
-
-	/**
-	 * Returns the destination the wrapped computation {@link Computation#getWrittenDestination() declares}
-	 * as the only memory it writes.
-	 *
-	 * @return the destination producer, or {@code null} when the computation declares none
-	 */
-	@Override
-	protected Supplier<? extends Evaluable<?>> getWrittenDestination() {
-		return getComputation().getWrittenDestination();
 	}
 
 	/**

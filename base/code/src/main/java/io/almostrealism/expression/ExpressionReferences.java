@@ -119,6 +119,26 @@ public interface ExpressionReferences {
 	}
 
 	/**
+	 * Returns whether assigning a value to this expression, as the destination of an
+	 * assignment, may write an element of {@code array} at a position in {@code [start, end)}.
+	 *
+	 * <p>This base implementation cannot tell which element, if any, an assignment to an
+	 * expression of its kind writes, so it answers {@code true} whenever {@code array} is
+	 * {@link #containsReference(Variable) referenced} anywhere in the tree. A destination that
+	 * names the element it writes ({@link InstanceReference}) overrides it to bound the
+	 * position.</p>
+	 *
+	 * @param array the array whose elements are in question
+	 * @param start the first position in question
+	 * @param end   the position after the last one in question
+	 * @return false only when an assignment to this expression cannot write an element of
+	 *         {@code array} in the range
+	 */
+	default boolean mayAssign(Variable<?, ?> array, long start, long end) {
+		return containsReference(array);
+	}
+
+	/**
 	 * Checks whether this expression tree references any variable named in {@code names}.
 	 *
 	 * <p>This is the name-based counterpart to {@link #containsReference(Variable)}, for

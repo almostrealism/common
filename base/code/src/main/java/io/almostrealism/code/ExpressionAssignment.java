@@ -158,6 +158,20 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 		return deps;
 	}
 
+	/**
+	 * Returns whether this assignment may write an element of {@code array} at a position in
+	 * {@code [start, end)}: whatever it writes, it writes through its destination (see
+	 * {@link Expression#mayAssign(Variable, long, long)}).
+	 *
+	 * @param array the array whose elements are in question
+	 * @param start the first position in question
+	 * @param end   the position after the last one in question
+	 * @return false only when this assignment cannot write an element of {@code array} in the range
+	 */
+	public boolean mayWrite(Variable<?, ?> array, long start, long end) {
+		return destination != null && destination.mayAssign(array, start, end);
+	}
+
 	@Override
 	public String getStatement(LanguageOperations lang) {
 		if (declaration) {

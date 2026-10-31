@@ -38,7 +38,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.uml.Nameable;
-import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -47,7 +46,6 @@ import org.almostrealism.io.SystemUtils;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -545,7 +543,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 */
 	public <A> List<Argument<? extends A>> getDependencies() {
 		List<Argument<? extends A>> result = arguments(arg -> (Argument<? extends A>) arg);
-		sortArguments(result);
+		Argument.sort(result);
 		return result;
 	}
 
@@ -573,8 +571,8 @@ public class Scope<T> extends ArrayList<Scope<T>>
 			return new Argument(arg.getVariable().getRootDelegate(), Expectation.EVALUATE_AHEAD);
 		});
 
-		args = removeDuplicateArguments(args);
-		sortArguments(args);
+		args = Argument.removeDuplicates(args);
+		Argument.sort(args);
 		return args;
 	}
 
@@ -685,7 +683,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 			args.addAll(extractArgumentDependencies(variables
 					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
-			sortArguments(args);
+			Argument.sort(args);
 
 			List<String> declaredArrays = getStatements().stream()
 					.map(s -> s instanceof ArrayDeclaration ? (ArrayDeclaration) s : null)
@@ -732,7 +730,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 			throw new UnsupportedOperationException();
 		}
 
-		return removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
+		return Argument.removeDuplicates(args).stream().map(mapper).collect(Collectors.toList());
 	}
 
 	/**
@@ -1087,6 +1085,36 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
+	 * Returns whether the code this scope generates may write an element of {@code array} at a
+	 * position in {@code [start, end)}.
+	 *
+	 * <p>The answer is read off the scope itself: every one of its
+	 * {@link #collectAssignments() assignments} is asked whether it
+	 * {@link ExpressionAssignment#mayWrite may write} the range. A scope whose writes cannot be
+	 * enumerated that way (one with required scopes, methods, metrics or explicit code) may
+	 * write anything, so for it the answer is always {@code true}.</p>
+	 *
+	 * @param array the array whose elements are in question
+	 * @param start the first position in question
+	 * @param end   the position after the last one in question
+	 * @return false only when nothing this scope generates can write an element of
+	 *         {@code array} in the range
+	 */
+	public boolean mayWrite(Variable<?, ?> array, long start, long end) {
+		// TODO(review): a child's required scopes are not checked here; consider getAllRequiredScopes()
+		if (!getRequiredScopes().isEmpty()) return true;
+
+		List<ExpressionAssignment<?>> assignments = collectAssignments();
+		if (assignments == null) return true;
+
+		for (ExpressionAssignment<?> assignment : assignments) {
+			if (assignment.mayWrite(array, start, end)) return true;
+		}
+
+		return false;
+	}
+
+	/**
 	 * Returns the signature string for this scope.
 	 * <p>Uses the metadata signature if available, otherwise falls back to the scope name.</p>
 	 *
@@ -1395,48 +1423,6 @@ public class Scope<T> extends ArrayList<Scope<T>>
 				names.add(var.getName());
 			}
 		}
-	}
-
-	/**
-	 * Sorts a list of arguments by their sort hints, then by name.
-	 * <p>Arguments without sort hints are placed at the end. Arguments with
-	 * null or empty names are sorted before named arguments when hints are equal.</p>
-	 *
-	 * @param <T>       the type of argument
-	 * @param arguments the list of arguments to sort (modified in place)
-	 * @return true if the list was sorted, false if the list was null
-	 */
-	public static <T extends Argument<?>> boolean sortArguments(List<T> arguments) {
-		if (arguments != null) {
-			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v)
-					.map(Argument::getSortHint).orElse(Integer.MAX_VALUE));
-			c = c.thenComparing(v -> v == null || v.getName() == null ? "" : v.getName());
-			arguments.sort(c);
-			return true;
-		}
-
-		return false;
-	}
-
-	/**
-	 * Removes duplicate arguments from a list, preferring arguments with {@code WILL_EVALUATE} expectation.
-	 * <p>When duplicates are found (by name), the argument with {@code WILL_EVALUATE} expectation
-	 * is preferred if present; otherwise, the first argument is kept.</p>
-	 *
-	 * @param <T>  the type of value held by the arguments
-	 * @param args the list of arguments potentially containing duplicates
-	 * @return a new list with duplicates removed
-	 */
-	public static <T> List<Argument<? extends T>> removeDuplicateArguments(List<Argument<? extends T>> args) {
-		return Named.removeDuplicates(args, (a, b) -> {
-			if (a.getExpectation() == Expectation.WILL_EVALUATE) {
-				return a;
-			} else if (b.getExpectation() == Expectation.WILL_EVALUATE) {
-				return b;
-			}
-
-			return a;
-		});
 	}
 
 	/**

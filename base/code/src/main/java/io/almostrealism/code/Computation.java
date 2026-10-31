@@ -18,14 +18,11 @@ package io.almostrealism.code;
 
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Computable;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
-
-import java.util.function.Supplier;
 
 /**
  * A {@link Computation} is a {@link Computable} that describes a computational
@@ -88,22 +85,6 @@ public interface Computation<T> extends
 	 * @return the scope containing this computation's logic
 	 */
 	Scope<T> getScope(KernelStructureContext context);
-
-	/**
-	 * Returns the producer of the memory this computation writes, when that memory is the only
-	 * memory its {@link #getScope(KernelStructureContext) scope} writes, or {@code null} when the
-	 * computation does not declare it.
-	 *
-	 * <p>Hardware that stages a computation's arguments in temporary memory (folding small
-	 * arguments into one aggregate kernel argument, for example) has to carry the staged values
-	 * of everything the kernel wrote back to their sources afterward. A declared destination
-	 * limits that copy-back to the destination; without one every staged argument that can be
-	 * written is copied back. A computation that declares a destination therefore must not
-	 * write any other argument.</p>
-	 *
-	 * @return the producer of the only memory this computation writes, or {@code null}
-	 */
-	default Supplier<? extends Evaluable<?>> getWrittenDestination() { return null; }
 
 	/**
 	 * Returns the console instance for logging.

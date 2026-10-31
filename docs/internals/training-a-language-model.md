@@ -406,10 +406,10 @@ sequences and that a later position reads an earlier position's cached entry.
 `CausalLanguageModelDecodeThroughputTest.keyValueCacheDecodeThroughput` decodes the same
 documentation prompt to the full 64-position context with both generators, over one model of the
 configuration above (random weights, which do not change the cost), warming each up once and then
-timing three decodes. On the machine above the key/value-cache decode runs at about 185 bytes per
+timing three decodes. On the machine above the key/value-cache decode runs at about 220 bytes per
 second against the sliding window's 170–200 (wall-clock figures vary by a few tens of bytes per second
-from run to run), a speedup of about 1.07, and issues 84 kernel invocations, 290 Metal dispatches and
-2 command-buffer commits per byte against the sliding window's 86, 128 and 7.
+from run to run), a speedup of about 1.1, and issues 84 kernel invocations, 249 Metal dispatches and
+2 command-buffer commits per byte against the sliding window's 86, 122 and 7.
 
 It was about four times slower, at 50 bytes per second with 109 kernel invocations, 181 dispatches and
 45 commits per byte. Its arithmetic per byte is one position instead of 64, but a model this small is
@@ -434,9 +434,12 @@ closed the gap:
   sum it used before ran as two kernels, because the product has as many elements as the matrix.
 - *Copy-back of written arguments only.* Small kernel arguments are staged in one aggregate buffer
   around each dispatch, and after a dispatch with no explicit output every staged argument was copied
-  back, including those the kernel only read. A computation can now declare the only memory it writes
-  (`Computation.getWrittenDestination()`, which `Assignment` implements), and the copy-back is then
-  limited to that memory.
+  back, including those the kernel only read. The copy-back is now limited to the staged arguments the
+  kernel's compiled `Scope` may write (`MemoryDataArgumentMap.getWrittenSlices`, which asks
+  `Scope.mayWrite` about each staged slice). Nothing is declared by the computation: every write in a
+  scope is an assignment to an element of the aggregate at a bounded position, so the slices written
+  are read off the scope itself, and a scope whose writes cannot be enumerated (one with methods,
+  required scopes or explicit code) copies every slice back.
 
 The cache path's remaining dispatches are mostly those staging copies: every argument of at most 1024
 elements is copied into the aggregate before each kernel, and at a single position that is nearly every

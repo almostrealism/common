@@ -29,12 +29,14 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -133,13 +135,19 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 */
 	private List<Submittable> copyOutOperations;
 	/**
-	 * {@link #copyOutOperations} without the ones that would write into read-only memory, which is
-	 * what every caller that is not skipping an in-place output wants. Held separately so that the
-	 * common case still returns a list built once rather than one filtered per dispatch, while
-	 * {@link #copyOutOperations} stays aligned with {@link #replacements} for the callers that index
-	 * it. Null until {@link #ensureCopyOperations()} runs.
+	 * {@link #copyOutOperations} without the ones that are never {@link #isCopiedBack(int) copied
+	 * back}, which is what every caller that is not skipping an in-place output wants. Held
+	 * separately so that the common case still returns a list built once rather than one filtered
+	 * per dispatch, while {@link #copyOutOperations} stays aligned with {@link #replacements} for the
+	 * callers that index it. Null until {@link #ensureCopyOperations()} runs.
 	 */
 	private List<Submittable> writableCopyOutOperations;
+	/**
+	 * The replacements, by index, whose slice the kernel this map prepares arguments for may write,
+	 * as {@link #getWrittenSlices(Scope) read off} that kernel's compiled {@link Scope}; null while
+	 * the kernel is unknown, in which case every slice that can be written is copied back.
+	 */
+	private BitSet writtenSlices;
 
 	/**
 	 * Creates an argument map bound to the {@link ComputeContext} of the operation it prepares
@@ -178,15 +186,16 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			if (passThrough.isPresent()) return passThrough.get();
 		}
 
-		Provider<?> provider = providerOf(key);
-		if (provider == null) return null;
+		Object provider = key.get();
+		if (!(provider instanceof Provider)) return null;
 
-		Object value = provider.get();
+		Object value = ((Provider) provider).get();
 
 		// Reuse an existing argument that provides the same value instance.
 		Optional<ArrayVariable> match = get(supplier -> {
-			Provider<?> v = providerOf(supplier);
-			return v != null && v.get() == value;
+			Object v = supplier.get();
+			if (!(v instanceof Provider)) return false;
+			return ((Provider) v).get() == value;
 		});
 
 		if (match.isPresent()) return match.get();
@@ -228,18 +237,6 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			// Return an ArrayVariable that delegates to the correct position of the root delegate
 			return delegateProvider.getArgument(key, var, md.getOffset());
 		}
-	}
-
-	/**
-	 * Returns the {@link Provider} an argument key supplies, the only kind of argument whose
-	 * memory is known before execution and can therefore be shared or aggregated by this map.
-	 *
-	 * @param key the argument key
-	 * @return the key's provider, or null when the key computes its value
-	 */
-	private static Provider<?> providerOf(Supplier<?> key) {
-		Object evaluable = key.get();
-		return evaluable instanceof Provider ? (Provider<?>) evaluable : null;
 	}
 
 	/**
@@ -324,6 +321,88 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	/** Returns true if at least one argument has been folded into the aggregate. */
 	public boolean hasReplacements() { return !replacements.isEmpty(); }
 
+	/**
+	 * Returns the replacements, by index, whose slice of the aggregate the code {@code kernel}
+	 * generates may write.
+	 *
+	 * <p>Every argument this map folded is referenced in {@code kernel} as the aggregate argument
+	 * at the replacement's position (a reference to a view is created as a reference to the
+	 * storage it views), so whether a slice is written is a question about the elements of the
+	 * aggregate the kernel {@link Scope#mayWrite(io.almostrealism.scope.Variable, long, long) may
+	 * write}. Nothing is declared by the computation the kernel was compiled from: the scope is the
+	 * code that runs, so it is the only account of what the kernel writes, and a scope whose writes
+	 * cannot be enumerated reports every slice.</p>
+	 *
+	 * @param kernel the compiled scope whose arguments this map prepared
+	 * @return the indices of the replacements whose slice {@code kernel} may write
+	 */
+	public BitSet getWrittenSlices(Scope<?> kernel) {
+		BitSet written = new BitSet(replacements.size());
+		if (replacements.isEmpty()) return written;
+
+		ArrayVariable<?> aggregate = getAggregateArgument();
+		for (int i = 0; i < replacements.size(); i++) {
+			Replacement r = replacements.get(i);
+			long start = r.getPosition();
+			if (kernel.mayWrite(aggregate, start, start + r.getRoot().getDelegatedLength())) {
+				written.set(i);
+			}
+		}
+
+		return written;
+	}
+
+	/**
+	 * Limits the copy-back after each dispatch to the slices {@code kernel}, the scope compiled
+	 * against this map, {@link #getWrittenSlices(Scope) may write}, leaving out the staged copies
+	 * of arguments it only reads, which are unchanged and need no transfer. It must be called
+	 * before the first dispatch, because the copy-back is built once.
+	 *
+	 * @param kernel the compiled scope whose arguments this map prepared
+	 * @return the indices of the replacements whose slice {@code kernel} may write, for recording
+	 *         alongside the compiled kernel so an operation reusing it can
+	 *         {@link #setWrittenSlices(BitSet) limit its own copy-back} the same way
+	 * @throws IllegalStateException if the copy-back has already been built
+	 */
+	public BitSet limitCopyBackTo(Scope<?> kernel) {
+		BitSet written = getWrittenSlices(kernel);
+		setWrittenSlices(written);
+		return written;
+	}
+
+	/**
+	 * Limits the copy-back after each dispatch to the given slices, for a map preparing arguments
+	 * for a kernel that was compiled against a different map.
+	 *
+	 * <p>This map does not hold the compiled scope in that case, so it cannot read the written
+	 * slices off it; {@code written} is what {@link #limitCopyBackTo(Scope)} reported when the
+	 * kernel was compiled, whose replacement positions this map was verified to reproduce. It must
+	 * be given before the first dispatch, because the copy-back is built once.</p>
+	 *
+	 * @param written the indices of the replacements whose slice the kernel may write
+	 * @throws IllegalStateException if the copy-back has already been built
+	 */
+	public void setWrittenSlices(BitSet written) {
+		if (copyOutOperations != null) {
+			throw new IllegalStateException("The copy-back has already been built without the written slices");
+		}
+
+		this.writtenSlices = (BitSet) written.clone();
+	}
+
+	/**
+	 * Returns whether the slice of the replacement at {@code index} is copied back after a
+	 * dispatch: its source can be written, and the kernel may have written its slice (see
+	 * {@link #setWrittenSlices(BitSet)}).
+	 *
+	 * @param index the index of the replacement
+	 * @return true if the replacement's slice is copied back
+	 */
+	private boolean isCopiedBack(int index) {
+		return !replacements.get(index).getRoot().isReadOnly()
+				&& (writtenSlices == null || writtenSlices.get(index));
+	}
+
 	/** Returns the total number of elements folded into the aggregate buffer. */
 	public int getAggregateLength() { return aggregateLength; }
 
@@ -382,14 +461,16 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * Returns the copy operations that move each aggregated slice back to its source after kernel
 	 * execution, omitting any slice that must not be written.
 	 *
-	 * <p>Two kinds are omitted. A slice whose source shares memory with {@code skipOutput} is left
+	 * <p>Three kinds are omitted. A slice whose source shares memory with {@code skipOutput} is left
 	 * out to avoid writing a stale read-copy over the buffer the kernel was told to use as its
 	 * explicit output (the in-place {@code x = x + y} case, where the aggregated read copy of
 	 * {@code x} must not overwrite the freshly written {@code x}). A slice whose source is read-only
 	 * is left out because it cannot be written and has no result to carry — the kernel read it and
-	 * nothing changed it.</p>
+	 * nothing changed it. And a slice the kernel cannot write (see
+	 * {@link #setWrittenSlices(BitSet)}) is left out for the same reason: its staged copy is still
+	 * the source's own contents.</p>
 	 *
-	 * <p>The read-only omission does not depend on the argument, so it is applied when the list is
+	 * <p>The last two omissions do not depend on the argument, so they are applied when the list is
 	 * built rather than on each call. Passing null therefore still returns a list built once, and it
 	 * is not the whole of {@link #copyOutOperations}: that one stays aligned with
 	 * {@link #replacements} for the indexed path below.</p>
@@ -410,50 +491,10 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		for (int i = 0; i < replacements.size(); i++) {
 			MemoryData root = replacements.get(i).getRoot();
 
-			if (root.getRootDelegate().getMem() == skip || root.isReadOnly()) {
+			if (root.getRootDelegate().getMem() == skip || !isCopiedBack(i)) {
 				continue;
 			}
 			result.add(copyOutOperations.get(i));
-		}
-		return result;
-	}
-
-	/**
-	 * Returns the copy operations that move back, after kernel execution, only the aggregated
-	 * slice holding the memory {@code destination} produces: the copy-back of a kernel known to
-	 * write nothing else. Every other aggregated root was only read, so its staged copy is
-	 * unchanged and copying it back would cost a transfer per argument for nothing.
-	 *
-	 * <p>The destination is resolved the way {@link #get(Supplier)} resolves the arguments it
-	 * aggregates: only a {@link Provider} of {@link MemoryData} names memory this map can have
-	 * folded. Any other destination (a computed view of provided memory, for example) may reach
-	 * an aggregated root through the kernel this map cannot see, so every writable slice is
-	 * copied back, as {@link #getPostprocessOperations(MemoryData)} does with no output.</p>
-	 *
-	 * <p>Under {@link #enableStrictSideEffects strict side-effects} the declaration is not
-	 * trusted: that mode exists to record side effects a kernel does not declare, so every
-	 * writable slice is copied back regardless of the destination.</p>
-	 *
-	 * @param destination the producer of the only memory the kernel writes
-	 * @return the copy-back of the replacement sharing memory with the destination (empty when it
-	 *         was not aggregated or is read-only), or of every writable slice when the destination
-	 *         is not provided memory or side effects are strict
-	 */
-	public List<Submittable> getPostprocessOperationsOf(Supplier<? extends Evaluable<?>> destination) {
-		Provider<?> provider = enableStrictSideEffects ? null : providerOf(destination);
-		if (provider == null || !(provider.get() instanceof MemoryData written)) {
-			return getPostprocessOperations(null);
-		}
-
-		ensureCopyOperations();
-
-		Memory target = written.getRootDelegate().getMem();
-		List<Submittable> result = new ArrayList<>(1);
-		for (int i = 0; i < replacements.size(); i++) {
-			MemoryData root = replacements.get(i).getRoot();
-			if (root.getRootDelegate().getMem() == target && !root.isReadOnly()) {
-				result.add(copyOutOperations.get(i));
-			}
 		}
 		return result;
 	}
@@ -466,10 +507,10 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * of this map and is reused across every {@code apply} rather than rebuilt per dispatch.</p>
 	 *
 	 * <p>Every replacement gets a copy-out, so that the list stays aligned with {@link #replacements}
-	 * for callers that index it. Those whose source can actually be written are additionally
-	 * collected into {@link #writableCopyOutOperations}, which is what a caller running all of them
-	 * is given. Whether a source is read-only cannot change while this map lives, so it is decided
-	 * here rather than on each dispatch.</p>
+	 * for callers that index it. Those that are {@link #isCopiedBack(int) copied back} are
+	 * additionally collected into {@link #writableCopyOutOperations}, which is what a caller running
+	 * all of them is given. Neither whether a source is read-only nor which slices the kernel writes
+	 * can change while this map lives, so it is decided here rather than on each dispatch.</p>
 	 *
 	 * <p>A copy moves a root's backing memory, its {@link MemoryData#getDelegatedLength() delegated
 	 * length}; a root whose logical length differs from it (smaller for a gather ordering,
@@ -485,7 +526,8 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		copyOutOperations = new ArrayList<>(replacements.size());
 		writableCopyOutOperations = new ArrayList<>(replacements.size());
 
-		for (Replacement r : replacements) {
+		for (int i = 0; i < replacements.size(); i++) {
+			Replacement r = replacements.get(i);
 			MemoryData root = r.getRoot();
 			int len = root.getDelegatedLength();
 			MemoryData backing = len == root.getMemLength() ? root : new Bytes(len, root, 0);
@@ -495,7 +537,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			copyInOperations.add(copyOperation(backing, slice));
 			copyOutOperations.add(copyOut);
 
-			if (!root.isReadOnly()) {
+			if (isCopiedBack(i)) {
 				writableCopyOutOperations.add(copyOut);
 			}
 		}
