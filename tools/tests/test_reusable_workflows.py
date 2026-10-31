@@ -311,5 +311,85 @@ class ImplementPlanDetectStepTests(unittest.TestCase):
         self.assertEqual({}, outputs)
 
 
+class PlanReadyTrustTests(unittest.TestCase):
+    """Plan Ready's trust rule.
+
+    ``plan-ready.yaml`` is a reusable workflow like the five in ``_REUSABLE``,
+    but it deliberately has **neither** a framework checkout nor the controller
+    service token: it is inline shell over event metadata and GitHub API
+    responses, dispatching through ``GITHUB_TOKEN`` alone. The ``_REUSABLE``
+    loop asserts both of those for every workflow it covers, so Plan Ready is
+    not a member of that tuple; its trust rule is pinned here instead."""
+
+    def setUp(self):
+        self.workflow = _load("plan-ready.yaml")
+        self.job = self.workflow["jobs"]["dispatch"]
+        self.steps = self.job["steps"]
+
+    def test_it_is_only_called(self):
+        self.assertEqual(["workflow_call"], list(self.workflow[_ON]))
+
+    def test_it_declares_no_secrets_and_needs_no_framework_checkout(self):
+        """Unlike the other reusable workflows it carries no ``secrets:`` block
+        (it uses only the auto-available ``GITHUB_TOKEN``) and checks out
+        nothing (it runs no framework script, only inline shell)."""
+        self.assertNotIn("secrets", self.workflow[_ON]["workflow_call"])
+        for step in self.steps:
+            with self.subTest(step=step.get("name")):
+                self.assertFalse(str(step.get("uses", "")).startswith("actions/checkout"),
+                                 "Plan Ready must not check out any code")
+
+    def test_the_fork_guard_is_on_the_dispatch_job(self):
+        self.assertEqual(
+            "github.event.pull_request.head.repo.full_name == github.repository",
+            self.job["if"])
+
+    def test_attacker_influenced_values_reach_shell_only_through_env(self):
+        """The approver input and the attacker-influenced event fields must
+        never be interpolated into a ``run:`` body, where they would execute."""
+        for step in self.steps:
+            run = step.get("run", "")
+            with self.subTest(step=step.get("name")):
+                self.assertNotIn("inputs.approvers", run)
+                self.assertNotIn("github.event.pull_request.head.ref", run)
+                self.assertNotIn("github.event.sender.login", run)
+
+
+class PlanReadyApproverStepTests(unittest.TestCase):
+    """The approver gate of plan-ready.yaml, run for real — the same "run the
+    step's shell" precedent as ``PlanReviewDocsCheckTests`` and
+    ``ImplementPlanDetectStepTests``."""
+
+    def _run(self, approvers, sender):
+        step = _step_script("plan-ready.yaml", "dispatch", "Check the approver allowlist")
+        tmp = tempfile.mkdtemp(prefix="plan-ready-approver-")
+        self.addCleanup(shutil.rmtree, tmp)
+        output = os.path.join(tmp, "github-output")
+        env = dict(os.environ)
+        env.update({"APPROVERS": approvers, "SENDER": sender, "GITHUB_OUTPUT": output})
+        result = subprocess.run(["bash", "-e", "-c", step["run"]], env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, result.returncode, result.stderr)
+        with open(output) as f:
+            outputs = dict(line.split("=", 1) for line in f.read().splitlines())
+        return outputs["approved"]
+
+    def test_an_empty_allowlist_approves_no_one(self):
+        """The fail-closed default: an unset ``PLAN_APPROVERS`` reaches the
+        reusable workflow as an empty ``approvers`` input, which dispatches
+        nothing."""
+        self.assertEqual("false", self._run("", "ashesfall"))
+        self.assertEqual("false", self._run("   \n  ", "ashesfall"))
+
+    def test_a_listed_sender_is_approved(self):
+        """Commas, newlines and case do not matter: GitHub logins are
+        case-insensitive and the list may be written in any of those styles."""
+        self.assertEqual("true", self._run("alice, ashesfall\nbob", "ashesfall"))
+        self.assertEqual("true", self._run("ASHESFALL", "ashesfall"))
+
+    def test_an_unlisted_sender_is_not_approved(self):
+        self.assertEqual("false", self._run("alice bob", "ashesfall"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -42,7 +42,10 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 Some workflows are called by other repositories rather than triggered here, so
 a repository that builds on this one can adopt a round without copying its
 scripts. A called workflow runs every script from an explicit checkout of this
-repository (input `framework-ref`), never from the caller's tree.
+repository (input `framework-ref`), never from the caller's tree. The one
+exception is `plan-ready.yaml`, which runs no framework script at all (inline
+shell over event metadata and the GitHub API), so it needs no checkout and
+declares no secret.
 
 | Workflow | Purpose |
 |---|---|
@@ -51,6 +54,7 @@ repository (input `framework-ref`), never from the caller's tree.
 | `implement-plan.yaml` | The manual "implement the plan" trigger, dispatched by the caller on a plan branch: detect the plan, resolve its workstream settings (`plan_workstream_config.py`), register the workstream, and submit the implementation through a token-free prompt build and `submit-staged-request.sh`. This repository's `verify-completion.yaml` calls it |
 | `plan-review.yaml` | Docs-only review for a repository without this pipeline: when every change on the branch is under `docs/`, submit the `docs-review.txt` agent, which improves the documents and never implements the plan |
 | `qa-round.yaml` | One recurring QA round: ask the controller about intake, gate on the shared cadence (`qa-cadence.sh`), archive the rounds that are over, create a `<branch-prefix><timestamp>` branch, register its workstream, build a prompt (`build-qa-round-prompt.sh`, from a built-in selector or the caller's own template path) and submit a coding-agent job that opens a PR. The branch prefix, interval, prompt, template vars and submission settings are inputs. This repository's `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa` (which stays inline) |
+| `plan-ready.yaml` | Plan approval → implementation: on a plan PR being marked **ready for review**, dispatch the implementation workflow (`dispatch-workflow`, default `verify-completion.yaml`) on the PR's head branch, but only for a sender in the `approvers` allowlist and while every changed file is under `docs-directory` (default `docs/`). Inline shell over event metadata and the GitHub API — it checks out nothing, runs no framework script, and holds no controller secret (only `GITHUB_TOKEN`), so it has no framework checkout and no `secrets:` block. This repository's `ready-plan.yaml` is its `pull_request_target` caller |
 
 ## Coverage (`coverage/`)
 

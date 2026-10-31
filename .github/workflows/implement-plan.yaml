@@ -31,9 +31,12 @@ name: "Implement Plan"
 # Implementation starts when the plan is approved, not from a push or the
 # pipeline. In this repository approval is marking the plan's draft pull
 # request ready for review, which the Plan Ready workflow (ready-plan.yaml)
-# turns into a dispatch of this workflow's caller; a consumer without that
-# workflow dispatches the caller by hand. Before approval a plan branch only
-# gets a review that improves its documents and never carries out the plan.
+# turns into a dispatch of this workflow's caller. A consumer gets the same
+# automatic dispatch by calling the reusable Plan Ready workflow
+# (plan-ready.yaml) from its own pull_request_target caller; without that
+# caller it dispatches this workflow's caller by hand. Before approval a plan
+# branch only gets a review that improves its documents and never carries out
+# the plan.
 #
 # It refuses to submit a second implementation while the branch's workstream
 # already has a job pending or running — the register-workstream job's
