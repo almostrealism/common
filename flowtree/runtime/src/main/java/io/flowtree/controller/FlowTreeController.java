@@ -1120,6 +1120,18 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setDataDirectory(dataDir);
             apiEndpoint.setAlertRecipients(AlertRecipientEntry.directory(
                     loadedConfig == null ? null : loadedConfig.getAlertRecipients()));
+
+            // Opt-out is a carrier compliance obligation that must outlive the
+            // process, so it is persisted beside the other controller databases
+            // and shared by both the outbound sender and the inbound webhook.
+            SmsOptOutStore optOutStore = new SmsOptOutStore(
+                    new File(dataDir, "sms-optout").getPath());
+            optOutStore.initialize();
+            SignalWireDeliveryProvider account = SignalWireDeliveryProvider.getDefaultProvider();
+            if (account != null) account.setOptOut(optOutStore);
+            apiEndpoint.setSmsCompliance(AlertRecipientEntry.numbers(
+                    loadedConfig == null ? null : loadedConfig.getAlertRecipients()),
+                    optOutStore);
             stuckJobScanner = CompletionListenerFanoutWiring.wire(apiEndpoint,
                     flowtreeServer, statsStore, listener, primaryNotifier,
                     notifiersByWorkspace);
