@@ -1091,7 +1091,8 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 * <p>The answer is read off the scope itself: every one of its
 	 * {@link #collectAssignments() assignments} is asked whether it
 	 * {@link ExpressionAssignment#mayWrite may write} the range. A scope whose writes cannot be
-	 * enumerated that way (one with required scopes, methods, metrics or explicit code) may
+	 * enumerated that way (one with methods, metrics or explicit code, or with a required scope
+	 * anywhere in its tree, since every one of those is generated as a separate function) may
 	 * write anything, so for it the answer is always {@code true}.</p>
 	 *
 	 * @param array the array whose elements are in question
@@ -1101,8 +1102,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 *         {@code array} in the range
 	 */
 	public boolean mayWrite(Variable<?, ?> array, long start, long end) {
-		// TODO(review): a child's required scopes are not checked here; consider getAllRequiredScopes()
-		if (!getRequiredScopes().isEmpty()) return true;
+		if (!getAllRequiredScopes().isEmpty()) return true;
 
 		List<ExpressionAssignment<?>> assignments = collectAssignments();
 		if (assignments == null) return true;

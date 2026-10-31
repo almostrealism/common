@@ -154,6 +154,46 @@ public class AggregateCopyBackTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A required scope is generated as a separate function whose writes are not among the
+	 * assignments of the scope tree, so a kernel with a required scope anywhere in its tree,
+	 * including on a child whose own statements are plain assignments, may write anything and
+	 * every slice is reported as written.
+	 */
+	@Test(timeout = 60000)
+	public void childWithRequiredScopeWritesEverySlice() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+
+				Scope<Void> kernel = new Scope<>("parent");
+				Scope<Void> child = new Scope<>("child");
+				child.assign(writtenArg.reference(new IntegerConstant(0)),
+						readArg.reference(new IntegerConstant(0)));
+				kernel.getChildren().add(child);
+
+				BitSet narrowed = map.getWrittenSlices(kernel);
+				Assert.assertFalse(narrowed.get(0));
+				Assert.assertTrue(narrowed.get(1));
+
+				Scope<?> required = new Scope<>("required");
+				required.assign(readArg.reference(new IntegerConstant(1)), new IntegerConstant(0));
+				child.getRequiredScopes().add(required);
+
+				BitSet slices = map.getWrittenSlices(kernel);
+				Assert.assertTrue(slices.get(0));
+				Assert.assertTrue(slices.get(1));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
 	 * The copy-back is built once, so the written slices must be known before it is: limiting
 	 * it afterwards would leave the already built copy-back in force, and is refused.
 	 */
