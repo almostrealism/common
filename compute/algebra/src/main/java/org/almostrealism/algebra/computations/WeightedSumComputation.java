@@ -88,17 +88,36 @@ public class WeightedSumComputation
 	 * member, so the cost of compiling it grows with the size of the group: a convolution
 	 * over 1024 channels with a kernel of 7 is a single expression of 7168 products, nearly a
 	 * megabyte of kernel source that takes tens of seconds to generate. The loop form compiles
-	 * a body of at most {@link #maxUnrolledMembers} products whatever the size of the group.
+	 * a body of at most {@link #MAX_ITERATION_MEMBERS} products whatever the size of the group.
 	 * The setting is read when a weighted sum is constructed and is part of its
 	 * {@link #signature() signature}.</p>
 	 */
 	public static int loopThreshold = 256;
 
 	/**
-	 * Maximum number of group members summed by each iteration of the loop that replaces a
-	 * group of at least {@link #loopThreshold} members.
+	 * Maximum number of group members in each step of the loop that replaces a group of at
+	 * least {@link #loopThreshold} members: the members of a step span the trailing dimensions
+	 * of the group, and the loop advances through the remaining dimensions one step at a time.
 	 */
 	public static int maxUnrolledMembers = 16;
+
+	/**
+	 * Maximum number of group members summed by each iteration of the loop. A group that
+	 * extends along a single dimension, such as the dot product that a matrix-vector product
+	 * computes for each row of the matrix, has one member in each step, and each iteration of
+	 * its loop sums this many consecutive steps (see {@link #getIterationSteps()}).
+	 *
+	 * <p>Summing a single member in each iteration makes every product wait on the running sum,
+	 * and on a GPU it has the threads of a SIMD group, each reading its own row, load one element
+	 * per iteration; when the rows do not start on a cache line boundary some thread reaches the
+	 * end of its line in almost every iteration and the whole group waits on that load.
+	 * Thirty-two single-precision members fill a 128-byte line, so each iteration reads a whole
+	 * line of each row, and the products of an iteration are summed before they are added to
+	 * the running sum. A group whose steps already hold several members, such as the taps of a
+	 * convolution, keeps one step per iteration, since each of its iterations already loads
+	 * several elements.</p>
+	 */
+	public static final int MAX_ITERATION_MEMBERS = 32;
 
 	/** The shape of the output collection produced by this computation. */
 	private final TraversalPolicy resultShape;
@@ -122,10 +141,16 @@ public class WeightedSumComputation
 	private final TraversalPolicy weightShape;
 
 	/**
-	 * Number of group members summed by each iteration of the loop the kernel is generated
-	 * as, or zero when the group is summed by a single expression.
+	 * Number of group members in each step of the loop the kernel is generated as, or zero
+	 * when the group is summed by a single expression.
 	 */
 	private final int loopMembers;
+
+	/**
+	 * Number of consecutive steps, of {@link #loopMembers} members each, that each iteration
+	 * of the loop sums; see {@link #getIterationSteps()}.
+	 */
+	private final int iterationSteps;
 
 	/**
 	 * Creates a new weighted sum computation.
@@ -153,10 +178,12 @@ public class WeightedSumComputation
 
 	/**
 	 * Creates a new weighted sum computation with an explicit loop decision. This is the form
-	 * {@link #generate(List)} uses, so that optimization preserves the number of members each
-	 * loop iteration sums - and hence the kernel form and {@link #signature() signature} - of
+	 * {@link #generate(List)} uses, so that optimization preserves the number of members in
+	 * each step of the loop - and hence the kernel form and {@link #signature() signature} - of
 	 * the sum it regenerates, rather than rereading the mutable {@link #loopThreshold}, which a
-	 * concurrently constructed sum may have changed.
+	 * concurrently constructed sum may have changed. The number of steps each iteration sums
+	 * depends only on the shapes of the sum and that number of members, so it is decided again
+	 * here, with the same result.
 	 *
 	 * @param resultShape  the shape of the result
 	 * @param inputPositions  traversal policy defining how to position input elements
@@ -165,8 +192,8 @@ public class WeightedSumComputation
 	 * @param weightGroupShape  group shape for weights (dimensions to sum over)
 	 * @param input  producer for input values
 	 * @param weights  producer for weight values
-	 * @param loopMembers  the number of group members summed by each loop iteration, or zero
-	 *                     when the group is summed by a single expression
+	 * @param loopMembers  the number of group members in each step of the loop, or zero when
+	 *                     the group is summed by a single expression
 	 * @throws IllegalArgumentException if the traversal policies have incompatible dimensions,
 	 *                                  or the input and weight groups have different total sizes
 	 */
@@ -204,6 +231,8 @@ public class WeightedSumComputation
 			throw new IllegalArgumentException();
 		}
 
+		this.iterationSteps = stepsPerIteration();
+
 		// Refresh the signature captured before the traversal policies were assigned
 		init();
 	}
@@ -221,9 +250,9 @@ public class WeightedSumComputation
 	 * sums over identically shaped operands would otherwise share a signature
 	 * while generating different kernels. Each policy contributes its
 	 * {@link TraversalPolicy#signature() signature}, which includes the
-	 * per-axis rates position policies are constructed with, and the number
-	 * of members summed by each iteration is appended when the kernel is
-	 * generated as a loop.
+	 * per-axis rates position policies are constructed with. When the kernel is
+	 * generated as a loop, the number of steps summed by each iteration (when
+	 * more than one) and the number of members in each step are appended.
 	 *
 	 * @return The signature string, or null when the base signature is unavailable
 	 */
@@ -248,6 +277,10 @@ public class WeightedSumComputation
 		}
 
 		if (isLooped()) {
+			if (iterationSteps > 1) {
+				detail.append("{steps:").append(iterationSteps).append("}");
+			}
+
 			detail.append("{loop:").append(loopMembers).append("}");
 		}
 
@@ -263,23 +296,58 @@ public class WeightedSumComputation
 	public boolean isLooped() { return loopMembers > 0; }
 
 	/**
+	 * Returns the number of consecutive steps, of the members that span the trailing dimensions
+	 * of the group, that each iteration of the loop sums. It is one unless the group extends
+	 * along a single dimension (see {@link #runAxis()}), the input and weight groups have the
+	 * same extent and neither is permuted; then each step is a single member, and each
+	 * iteration sums {@link #MAX_ITERATION_MEMBERS} of them, locating each member by its
+	 * position along that dimension rather than by dividing a flat index.
+	 *
+	 * @return the number of steps summed by each iteration of the loop
+	 */
+	public int getIterationSteps() { return iterationSteps; }
+
+	/**
 	 * Returns the number of iterations of the loop that sums the group, when the group has at
-	 * least {@link #loopThreshold} members, each iteration summing the members that span the
-	 * trailing dimensions of the group (at most {@link #maxUnrolledMembers} of them).
+	 * least {@link #loopThreshold} members: the number of whole runs of
+	 * {@link #getIterationSteps()} steps, each step being the members that span the trailing
+	 * dimensions of the group (at most {@link #maxUnrolledMembers} of them). The steps after the
+	 * last whole run are summed by the {@link #getAccumulationInitialValue(Expression) initial
+	 * value} of the loop.
 	 *
 	 * @return the number of loop iterations, or zero when the group is summed by a single expression
 	 */
 	@Override
 	protected int getAccumulationCount() {
-		return isLooped() ? Math.toIntExact(inputGroupShape.getTotalSizeLong() / loopMembers) : 0;
+		if (!isLooped()) return 0;
+		return Math.toIntExact(inputGroupShape.getTotalSizeLong() / loopMembers / iterationSteps);
+	}
+
+	/**
+	 * Returns the sum of the products of the group members that the iterations of the loop do
+	 * not reach: the steps after the last whole run of {@link #getIterationSteps()} steps. When
+	 * the steps of the group divide into whole runs this is zero.
+	 *
+	 * @param index the index of the output element
+	 * @return the partial weighted sum the output element holds before the loop
+	 */
+	@Override
+	protected Expression<?> getAccumulationInitialValue(Expression<?> index) {
+		long steps = inputGroupShape.getTotalSizeLong() / loopMembers;
+		int remaining = Math.toIntExact(steps % iterationSteps);
+		if (remaining == 0) return e(0.0);
+
+		return sumRun(index, e(Math.toIntExact(steps - remaining)), remaining);
 	}
 
 	/**
 	 * Returns the sum of the products of the group members that one iteration of the loop
-	 * contributes to an output element: members {@code iteration * loopMembers} through
-	 * {@code iteration * loopMembers + loopMembers - 1}, each located in the input and the
-	 * weights by the same {@link SubsetTraversalExpression traversals} that locate it in the
-	 * single-expression form.
+	 * contributes to an output element: the {@link #getIterationSteps()} steps of
+	 * {@code loopMembers} members starting at step {@code iteration * getIterationSteps()}.
+	 * Each member is located in the input and the weights by the same
+	 * {@link SubsetTraversalExpression traversals} that locate it in the single-expression form,
+	 * from its flat index within the group or, when an iteration sums more than one step, from
+	 * its position within the group.
 	 *
 	 * @param index     the index of the output element
 	 * @param iteration the index of the loop iteration
@@ -287,6 +355,10 @@ public class WeightedSumComputation
 	 */
 	@Override
 	protected Expression<?> getAccumulationTerm(Expression<?> index, Expression<?> iteration) {
+		if (iterationSteps > 1) {
+			return sumRun(index, iteration.multiply(iterationSteps), iterationSteps);
+		}
+
 		TraversableExpression[] args = getTraversableArguments(index);
 		SubsetTraversalExpression input = getInputTraversal();
 		SubsetTraversalExpression weights = getWeightsTraversal();
@@ -302,15 +374,86 @@ public class WeightedSumComputation
 	}
 
 	/**
-	 * Returns the number of group members each iteration of the loop sums, or zero when the
-	 * group is smaller than {@link #loopThreshold} and is summed by a single expression. The
-	 * members of one iteration span the trailing dimensions of the group, taken from the last
-	 * dimension backwards for as long as their product does not exceed
-	 * {@link #maxUnrolledMembers}, so the position of each member within the group is a
-	 * constant offset from the position of the iteration.
+	 * Returns the sum of the products of {@code count} consecutive members of a group that
+	 * extends along a single dimension (see {@link #runAxis()}), starting at the member
+	 * {@code first} along that dimension. Each member is located in the input and the weights by
+	 * its position within the group, given coordinate by coordinate (zero along every other
+	 * dimension), rather than by a flat index that the traversal would divide into a position:
+	 * the operand index of each member is then built from the position of the run's first member
+	 * and a constant, with no division of a flat index for the simplifier to cancel.
+	 *
+	 * @param index the index of the output element
+	 * @param first the position of the run's first member along the dimension of the group
+	 * @param count the number of members in the run
+	 * @return the sum of the products of the members of the run
+	 */
+	private Expression<?> sumRun(Expression<?> index, Expression<?> first, int count) {
+		TraversableExpression[] args = getTraversableArguments(index);
+		SubsetTraversalExpression input = getInputTraversal();
+		SubsetTraversalExpression weights = getWeightsTraversal();
+		int axis = runAxis();
+
+		Expression<?> sum = e(0.0);
+		for (int m = 0; m < count; m++) {
+			Expression[] position = new Expression[inputGroupShape.getDimensions()];
+			for (int d = 0; d < position.length; d++) {
+				position[d] = d == axis ? first.add(m) : e(0);
+			}
+
+			sum = sum.add(args[1].getValueAt(input.getInputIndex(position, index))
+					.multiply(args[2].getValueAt(weights.getInputIndex(position, index))));
+		}
+
+		return sum;
+	}
+
+	/**
+	 * Returns the dimension along which the group extends, when it extends along exactly one:
+	 * the group is then a dot product of two vectors, such as each row of a matrix-vector
+	 * product, and each step of its loop is a single member. Returns -1 when more than one
+	 * dimension of the group is longer than one.
+	 *
+	 * @return the one dimension of the group longer than one, or -1
+	 */
+	private int runAxis() {
+		int axis = -1;
+		for (int d = 0; d < inputGroupShape.getDimensions(); d++) {
+			if (inputGroupShape.lengthLong(d) > 1) {
+				if (axis >= 0) return -1;
+				axis = d;
+			}
+		}
+
+		return axis;
+	}
+
+	/**
+	 * Decides how many consecutive steps each iteration of the loop sums; see
+	 * {@link #getIterationSteps()}. The position of a member within the group is the same for
+	 * the input and the weights when their groups have the same extent and neither is permuted.
+	 *
+	 * @return the number of steps each iteration sums, at least one
+	 */
+	private int stepsPerIteration() {
+		if (loopMembers != 1 || runAxis() < 0 ||
+				inputGroupShape.isPermuted() || weightGroupShape.isPermuted() ||
+				!Arrays.equals(inputGroupShape.extentLong(), weightGroupShape.extentLong())) {
+			return 1;
+		}
+
+		return MAX_ITERATION_MEMBERS;
+	}
+
+	/**
+	 * Returns the number of group members in each step of the loop, or zero when the group is
+	 * smaller than {@link #loopThreshold} and is summed by a single expression. The members of
+	 * one step span the trailing dimensions of the group, taken from the last dimension
+	 * backwards for as long as their product does not exceed {@link #maxUnrolledMembers}, so
+	 * the position of each member within the group is a constant offset from the position of
+	 * the step.
 	 *
 	 * @param inputGroupShape  the shape of one group (the dimensions summed over)
-	 * @return the members summed by each iteration, or zero for a single expression
+	 * @return the members in each step, or zero for a single expression
 	 */
 	private static int unrolledLoopMembers(TraversalPolicy inputGroupShape) {
 		long size = inputGroupShape.getTotalSizeLong();
