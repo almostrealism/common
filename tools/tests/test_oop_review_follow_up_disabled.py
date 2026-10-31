@@ -109,7 +109,7 @@ class OopReviewFollowUpDisabledTest(unittest.TestCase):
         """Workflows that submit a branch's initial work never set the knob."""
         workflows = os.path.join(_REPO_ROOT, ".github", "workflows")
         for name in ("verify-completion.yaml", "goal-decomposition.yaml",
-                     "master-agent-dispatch.yaml"):
+                     "master-agent-dispatch.yaml", "qa-round.yaml"):
             with self.subTest(workflow=name):
                 with open(os.path.join(workflows, name)) as f:
                     self.assertNotIn("OBJECT_ORIENTED_REVIEW_ENABLED", f.read(),

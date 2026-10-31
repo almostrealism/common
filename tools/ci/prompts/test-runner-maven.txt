@@ -1,0 +1,4 @@
+`ar-profile-analyzer` reads the generated kernel source and argument
+bindings, and for anything computing a wrong value that is the direct
+evidence rather than a guess. Use the MCP test runner for tests, with a
+named, bounded selection and an explicit timeout.
