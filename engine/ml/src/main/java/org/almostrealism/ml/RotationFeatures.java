@@ -257,6 +257,13 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * {@link #applyRotaryPositionEmbedding}, these rotate all {@code dimHead} dimensions of each
 	 * head (a shorter array rotates only a leading part of each head).
 	 *
+	 * <p>This is the single definition of the RoPE inverse-frequency table; sinusoidal encodings
+	 * such as {@link org.almostrealism.ml.midi.FundamentalMusicEmbedding} use it rather than
+	 * repeating the formula. Like {@link #computeRopeFreqs(int, CollectionProducer)}, it must build
+	 * its result with {@link CollectionProducer} operations, never a Java loop feeding a constant
+	 * collection: that would hide the table from the native compiler and from automatic
+	 * differentiation.</p>
+	 *
 	 * @param dimHead per-head dimension
 	 * @param theta   RoPE base frequency (e.g., 10000 for Llama, 1000000 for Qwen3)
 	 * @return the inverse frequencies, shape {@code (dimHead / 2)}
