@@ -166,6 +166,68 @@ public class SubsetTraversalTests extends TestSuiteBase {
 	}
 
 	/**
+	 * The operand index of a group member located by its position within the window,
+	 * coordinate by coordinate, is the operand index of the same member located by its flat
+	 * index, for every member and every output. The geometries are the rows of a matrix
+	 * multiplying a vector, the columns of a matrix read by the same product (whose members are a
+	 * row length apart), and the padded input of a one-dimensional convolution, whose members
+	 * span the taps of each channel.
+	 */
+	@Test(timeout = 30000)
+	public void positionedIndexMatchesMemberIndex() {
+		int m = 3;
+		int n = 40;
+		int p = 2;
+
+		TraversalPolicy productResult = shape(1, m, 1, p);
+		assertPositionedIndices(productResult, shape(1, m, n, 1), shape(1, 1, n, 1),
+				productResult.withRate(3, n, p));
+		assertPositionedIndices(productResult, shape(1, 1, n, p), shape(1, 1, n, 1),
+				productResult.withRate(1, 1, m));
+
+		int channels = 6;
+		int kernel = 3;
+		int length = 5;
+
+		TraversalPolicy convResult = shape(1, 2, 1, length);
+		assertPositionedIndices(convResult, shape(1, 1, channels, length + kernel - 1),
+				shape(1, 1, channels, kernel),
+				convResult.withRate(1, 1, 2).withRate(2, channels, 1));
+	}
+
+	/**
+	 * Asserts, for every group member and every output index, that the operand index computed
+	 * from the member's position within the window equals the operand index computed from its
+	 * flat index within the group.
+	 *
+	 * @param resultShape  the output shape of the traversal
+	 * @param operandShape the operand collection shape
+	 * @param groupShape   the sliding window shape
+	 * @param positions    the anchor positions of the window over the operand
+	 */
+	private void assertPositionedIndices(TraversalPolicy resultShape, TraversalPolicy operandShape,
+										 TraversalPolicy groupShape, TraversalPolicy positions) {
+		SubsetTraversalExpression traversal =
+				new SubsetTraversalExpression(resultShape, operandShape, groupShape, positions);
+
+		for (int member = 0; member < groupShape.getTotalSize(); member++) {
+			int[] coordinates = groupShape.position(member);
+			Expression[] position = new Expression[coordinates.length];
+			for (int d = 0; d < coordinates.length; d++) {
+				position[d] = e(coordinates[d]);
+			}
+
+			for (int output = 0; output < resultShape.getTotalSize(); output++) {
+				int expected = traversal.getInputIndex(e(member), e(output))
+						.getSimplified().intValue().getAsInt();
+				int actual = traversal.getInputIndex(position, e(output))
+						.getSimplified().intValue().getAsInt();
+				Assert.assertEquals("member=" + member + " output=" + output, expected, actual);
+			}
+		}
+	}
+
+	/**
 	 * Asserts that the per-member index mapping agrees with the parent's {@code getInputIndex}
 	 * for every group member and output index of the supplied geometry.
 	 *
