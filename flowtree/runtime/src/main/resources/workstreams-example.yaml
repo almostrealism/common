@@ -56,11 +56,23 @@
 #
 # Recipients are read at controller startup; restart after changing them.
 #
+# Each recipient may also carry a consent record, which carriers may ask to
+# see as evidence of how opt-in was captured. The registered opt-in is a
+# verbal script, so consentMethod is normally "verbal"; consentDate is the ISO
+# date it was captured and consentScriptVersion identifies which wording of the
+# script was read. The fields are advisory metadata and do not gate delivery.
+#
 # alertRecipients:
 #   - name: michael
 #     smsNumber: "+15551234567"
+#     consentMethod: verbal
+#     consentDate: "2026-10-31"
+#     consentScriptVersion: v1
 #   - name: mmurray
 #     smsNumber: "+15559876543"
+#     consentMethod: verbal
+#     consentDate: "2026-10-31"
+#     consentScriptVersion: v1
 
 # ---------------------------------------------------------------------------
 # MCP tool delivery

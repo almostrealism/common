@@ -64,8 +64,7 @@ import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.NotifierRegistry;
 import org.almostrealism.io.AlertRecipients;
-import org.almostrealism.io.RateLimit;
-import org.almostrealism.util.SignalWireDeliveryProvider;
+import org.almostrealism.util.SmsOptOutRegistry;
 import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkspaceSecretEntry;
 import io.flowtree.workstream.WorkstreamConfig;
@@ -194,13 +193,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private final JobQueryHandler jobQueryHandler;
 
     /**
-     * Serves {@code POST /api/alerts}. Starts with an empty recipient
-     * directory, so the route answers coherently ("no recipients are
-     * configured") before {@link #setAlertRecipients(AlertRecipients)} is
-     * called, rather than failing as an unknown route.
+     * The SMS alerting surface: {@code POST /api/alerts} and the inbound
+     * SignalWire webhook, with the recipient directory and opt-out state they
+     * share. Starts with an empty directory so the alert route answers
+     * coherently before {@link #setAlertRecipients(AlertRecipients)} is called.
      */
-    private AlertRequestHandler alertHandler =
-            new AlertRequestHandler(new AlertRecipients(), callerAlertLimit(), this::readBody);
+    private final AlertEndpoints alertEndpoints = new AlertEndpoints(this::readBody);
 
     /**
      * Handles {@code /api/stats}, the active-job listing, and heartbeat
@@ -570,24 +568,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param recipients the recipient directory built from configuration
      */
     public void setAlertRecipients(AlertRecipients recipients) {
-        this.alertHandler = new AlertRequestHandler(recipients,
-                callerAlertLimit(), this::readBody);
+        alertEndpoints.setRecipients(recipients);
     }
 
     /**
-     * Returns the per-caller alert budget: half the delivery provider's
-     * account-wide ceiling, over the same window.
+     * Configures SMS compliance: the handle → number map used to recognise an
+     * opted-out recipient, and the opt-out record shared by the alert handler
+     * and the inbound {@code POST /api/sms/inbound} webhook.
      *
-     * <p>Deriving it from the provider's own limit rather than restating a
-     * number keeps the two from drifting apart, and makes the intent legible
-     * — no single caller may spend more than half of what the account can
-     * afford.</p>
-     *
-     * @return the per-caller rate limit
+     * @param numbers handle → destination number, or {@code null} for none
+     * @param optOut  the opt-out record, or {@code null} to disable opt-out
      */
-    protected static RateLimit callerAlertLimit() {
-        return new RateLimit(Math.max(1, SignalWireDeliveryProvider.messageLimit() / 2),
-                SignalWireDeliveryProvider.limitWindow());
+    public void setSmsCompliance(Map<String, String> numbers, SmsOptOutRegistry optOut) {
+        alertEndpoints.setCompliance(numbers, optOut);
     }
 
     /**
@@ -648,7 +641,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (Method.POST.equals(method) && "/api/alerts".equals(uri)) {
-            return alertHandler.handle(session);
+            return alertEndpoints.handleAlert(session);
+        }
+
+        if (Method.POST.equals(method) && InboundSmsHandler.PATH.equals(uri)) {
+            return alertEndpoints.handleInbound(session);
         }
 
         if (Method.GET.equals(method) && "/api/tracker/claimable".equals(uri)) {
