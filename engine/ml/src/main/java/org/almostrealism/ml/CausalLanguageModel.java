@@ -17,8 +17,10 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.layers.ProjectionFactory;
@@ -255,6 +257,13 @@ public final class CausalLanguageModel extends Model implements TransformerBlock
 	 * caller can clear them when a new sequence starts and release them when the decode model is
 	 * destroyed — they are decode state, not model state.</p>
 	 *
+	 * <p>When an accelerator is available the variant {@link Model#setComputeRequirements requires}
+	 * it for the whole pass. A single position makes nearly every operation of the pass small, and
+	 * left to themselves small operations are placed on a CPU context while the larger ones (the
+	 * cache reads, the output projection) go to the accelerator; the pass would then wait on the
+	 * host at every switch between the two, which is what made it slower per byte than the
+	 * full-window forward it does a fraction of the arithmetic of.</p>
+	 *
 	 * @param position   the device-resident single-element sequence position the attention reads;
 	 *                   the caller advances and resets it per step and per sequence
 	 * @param keyCaches   an empty, mutable list that receives the per-block key caches in block order
@@ -313,6 +322,11 @@ public final class CausalLanguageModel extends Model implements TransformerBlock
 		model.add(norm(NormalizationType.RMS, weights.get(FINAL_NORM_KEY), null));
 		model.add(dense(weights.get(OUTPUT_KEY)));
 		model.add(logSoftmax(shape(1, config.vocabSize)));
+
+		if (Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU)) {
+			model.setComputeRequirements(ComputeRequirement.GPU);
+		}
+
 		return model;
 	}
 }

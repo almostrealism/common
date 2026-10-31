@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -25,6 +26,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.ml.tokenization.ByteTokenizer;
 import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
 import org.almostrealism.optimize.AdamOptimizer;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.LossProvider;
@@ -898,6 +900,36 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 					maxDifference > 1e-4);
 		} finally {
 			Destroyable.destroy(decode);
+			position.destroy();
+			keyCaches.forEach(PackedCollection::destroy);
+			valueCaches.forEach(PackedCollection::destroy);
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * The single-position decode model keeps its whole pass on the accelerator when one is
+	 * available, rather than letting its many small operations fall to a CPU context between the
+	 * accelerator's larger ones, and leaves placement to each operation when there is none.
+	 */
+	@Test(timeout = 60000)
+	public void decodeModelRequiresTheAcceleratorWhenAvailable() {
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, 8, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+		PackedCollection position = new PackedCollection(1);
+		List<PackedCollection> keyCaches = new ArrayList<>();
+		List<PackedCollection> valueCaches = new ArrayList<>();
+
+		try {
+			Model decode = lm.decodeModel(position, keyCaches, valueCaches);
+
+			if (Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU)) {
+				Assert.assertEquals(List.of(ComputeRequirement.GPU), decode.getComputeRequirements());
+			} else {
+				Assert.assertNull(decode.getComputeRequirements());
+			}
+
+			Assert.assertNull("the training model places each operation itself", lm.getComputeRequirements());
+		} finally {
 			position.destroy();
 			keyCaches.forEach(PackedCollection::destroy);
 			valueCaches.forEach(PackedCollection::destroy);

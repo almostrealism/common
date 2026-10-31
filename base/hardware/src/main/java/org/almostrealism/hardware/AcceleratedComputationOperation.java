@@ -769,6 +769,17 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	/**
+	 * Returns the destination the wrapped computation {@link Computation#getWrittenDestination() declares}
+	 * as the only memory it writes.
+	 *
+	 * @return the destination producer, or {@code null} when the computation declares none
+	 */
+	@Override
+	protected Supplier<? extends Evaluable<?>> getWrittenDestination() {
+		return getComputation().getWrittenDestination();
+	}
+
+	/**
 	 * Returns the signature for instruction set caching.
 	 *
 	 * <p>The signature uniquely identifies the computation structure, enabling

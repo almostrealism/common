@@ -178,16 +178,15 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			if (passThrough.isPresent()) return passThrough.get();
 		}
 
-		Object provider = key.get();
-		if (!(provider instanceof Provider)) return null;
+		Provider<?> provider = providerOf(key);
+		if (provider == null) return null;
 
-		Object value = ((Provider) provider).get();
+		Object value = provider.get();
 
 		// Reuse an existing argument that provides the same value instance.
 		Optional<ArrayVariable> match = get(supplier -> {
-			Object v = supplier.get();
-			if (!(v instanceof Provider)) return false;
-			return ((Provider) v).get() == value;
+			Provider<?> v = providerOf(supplier);
+			return v != null && v.get() == value;
 		});
 
 		if (match.isPresent()) return match.get();
@@ -229,6 +228,18 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			// Return an ArrayVariable that delegates to the correct position of the root delegate
 			return delegateProvider.getArgument(key, var, md.getOffset());
 		}
+	}
+
+	/**
+	 * Returns the {@link Provider} an argument key supplies, the only kind of argument whose
+	 * memory is known before execution and can therefore be shared or aggregated by this map.
+	 *
+	 * @param key the argument key
+	 * @return the key's provider, or null when the key computes its value
+	 */
+	private static Provider<?> providerOf(Supplier<?> key) {
+		Object evaluable = key.get();
+		return evaluable instanceof Provider ? (Provider<?>) evaluable : null;
 	}
 
 	/**
@@ -403,6 +414,46 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 				continue;
 			}
 			result.add(copyOutOperations.get(i));
+		}
+		return result;
+	}
+
+	/**
+	 * Returns the copy operations that move back, after kernel execution, only the aggregated
+	 * slice holding the memory {@code destination} produces: the copy-back of a kernel known to
+	 * write nothing else. Every other aggregated root was only read, so its staged copy is
+	 * unchanged and copying it back would cost a transfer per argument for nothing.
+	 *
+	 * <p>The destination is resolved the way {@link #get(Supplier)} resolves the arguments it
+	 * aggregates: only a {@link Provider} of {@link MemoryData} names memory this map can have
+	 * folded. Any other destination (a computed view of provided memory, for example) may reach
+	 * an aggregated root through the kernel this map cannot see, so every writable slice is
+	 * copied back, as {@link #getPostprocessOperations(MemoryData)} does with no output.</p>
+	 *
+	 * <p>Under {@link #enableStrictSideEffects strict side-effects} the declaration is not
+	 * trusted: that mode exists to record side effects a kernel does not declare, so every
+	 * writable slice is copied back regardless of the destination.</p>
+	 *
+	 * @param destination the producer of the only memory the kernel writes
+	 * @return the copy-back of the replacement sharing memory with the destination (empty when it
+	 *         was not aggregated or is read-only), or of every writable slice when the destination
+	 *         is not provided memory or side effects are strict
+	 */
+	public List<Submittable> getPostprocessOperationsOf(Supplier<? extends Evaluable<?>> destination) {
+		Provider<?> provider = enableStrictSideEffects ? null : providerOf(destination);
+		if (provider == null || !(provider.get() instanceof MemoryData written)) {
+			return getPostprocessOperations(null);
+		}
+
+		ensureCopyOperations();
+
+		Memory target = written.getRootDelegate().getMem();
+		List<Submittable> result = new ArrayList<>(1);
+		for (int i = 0; i < replacements.size(); i++) {
+			MemoryData root = replacements.get(i).getRoot();
+			if (root.getRootDelegate().getMem() == target && !root.isReadOnly()) {
+				result.add(copyOutOperations.get(i));
+			}
 		}
 		return result;
 	}

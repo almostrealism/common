@@ -308,7 +308,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 										OperationProfile profile) {
 		model.recordCompilation();
 
-		Runnable setup = Process.optimized(model.setup()).get();
+		Runnable setup = Process.optimized(model.requiring("CompiledModel Setup", model.setup())).get();
 
 		List<InputContainer> inputs = new ArrayList<>();
 		inputs.add(new InputContainer(model.firstBlock().getInputShape()));
@@ -346,6 +346,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 
 		List<Cell<PackedCollection>> cells = model.forward();
 		OperationList forward = new OperationList("CompiledModel Forward");
+		forward.setComputeRequirements(model.getComputeRequirements());
 		for (int i = cells.size() - 1; i >= 0; i--) {
 			forward.add(cells.get(i).push(inputs.get(i)));
 		}
@@ -355,7 +356,8 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		ParallelProcess<?, Runnable> q;
 
 		if (backprop) {
-			q = (ParallelProcess<?, Runnable>) model.backward().push(outputGradient);
+			q = (ParallelProcess<?, Runnable>) model.requiring("CompiledModel Backward",
+					model.backward().push(outputGradient));
 			if (q instanceof OperationList) q = ((OperationList) q).flatten();
 			q = q.optimize();
 		} else {

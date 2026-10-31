@@ -474,4 +474,23 @@ public class TraversalPolicyTests extends TestSuiteBase {
 		TraversalPolicy trimmed = new TraversalPolicy(true).trim();
 		Assert.assertEquals(0, trimmed.getDimensions());
 	}
+
+	/**
+	 * Trimming a fully traversed policy, such as the {@code (m, 1)} result of a
+	 * weighted sum, must keep it fully traversed rather than traversing the trimmed
+	 * policy along an axis it no longer has. A policy traversed before the trailing
+	 * unit keeps its traversal axis.
+	 */
+	@Test(timeout = 10000)
+	public void trimFullyTraversedPolicyStaysFullyTraversed() {
+		TraversalPolicy trimmed = new TraversalPolicy(4, 1).traverseEach().trim();
+		Assert.assertTrue(trimmed.equalsIgnoreAxis(new TraversalPolicy(4)));
+		Assert.assertEquals(1, trimmed.getTraversalAxis());
+
+		TraversalPolicy all = new TraversalPolicy(2, 1, 1).traverseEach().trim();
+		Assert.assertTrue(all.equalsIgnoreAxis(new TraversalPolicy(2)));
+		Assert.assertEquals(1, all.getTraversalAxis());
+
+		Assert.assertEquals(0, new TraversalPolicy(4, 1).traverse(0).trim().getTraversalAxis());
+	}
 }

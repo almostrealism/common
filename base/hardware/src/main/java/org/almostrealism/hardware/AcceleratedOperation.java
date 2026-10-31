@@ -28,6 +28,7 @@ import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
@@ -42,6 +43,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Abstract base class for all hardware-accelerated operations, managing compilation, argument processing, and execution.
@@ -295,6 +297,17 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return The output argument index
 	 */
 	protected abstract int getOutputArgumentIndex();
+
+	/**
+	 * Returns the producer of the only memory this operation's kernel writes, when it is known,
+	 * so that the aggregation copy-back after a dispatch with no explicit output carries back only
+	 * that memory rather than every aggregated argument the kernel merely read (see
+	 * {@link MemoryDataArgumentMap#getPostprocessOperationsOf(Supplier)}).
+	 *
+	 * @return the producer of the memory the kernel writes, or {@code null} when every writable
+	 *         aggregated argument must be copied back
+	 */
+	protected Supplier<? extends Evaluable<?>> getWrittenDestination() { return null; }
 
 	/**
 	 * Creates a {@link MemoryDataArgumentMap} bound to this operation's {@link ComputeContext}.
@@ -773,7 +786,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 
 				if (aggregateCopyOut) {
-					Semaphore copyOut = Submittable.submit(argumentMap.getPostprocessOperations(output), completion);
+					Supplier<? extends Evaluable<?>> written = output == null ? getWrittenDestination() : null;
+					Semaphore copyOut = Submittable.submit(written == null ?
+							argumentMap.getPostprocessOperations(output) :
+							argumentMap.getPostprocessOperationsOf(written), completion);
 					if (copyOut != null) {
 						completion = inflight = copyOut;
 					}
