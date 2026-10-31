@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-10-30
-closed:
+closed: 2026-10-30
 tracker: [1f0095ae-3361-49ba-b1af-92f0d4f9ca6a]
 ---
 
@@ -198,6 +198,24 @@ A reviewer can confirm the task is done by checking, on this branch:
    closing. If the bridged case is found to stall, the fix is to move
    `runner.destroy()` ahead of `super.destroy()` — a one-line reordering within
    the same method, still in scope.
+
+## Outcome
+
+Both open questions were resolved by taking the optional hardening, verified on a
+Metal host:
+
+- `MetalComputeContextTeardownTest.destroyTerminatesRunnerThread` captures the
+  runner's confined thread (the thread that encodes a dispatch) and asserts it has
+  terminated after each of four create/destroy cycles. The executor's threads use
+  default pool names, so the thread is captured directly instead of counted by name.
+- `MetalComputeContextTeardownTest.destroyDrainsDispatchBridgedOnContextExecutor`
+  leaves a dispatch bridged to unsettled foreign work whose signal comes from a task
+  already queued on the context's own executor, released only once destroy has begun.
+  Destroy completes the bridged dispatch, so `super.destroy()` running before
+  `runner.destroy()` does not stall; no reordering was needed, and the reason is now
+  stated in the `MetalComputeContext.destroy()` javadoc.
+- With `runner.destroy()` disabled, all three teardown tests fail; with it in place
+  they pass (three repetitions), as do the five named Metal test classes.
 
 ## Estimated complexity
 

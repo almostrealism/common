@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.concurrent.DefaultLatchSemaphore;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.hardware.metal.MetalDataContext;
@@ -24,6 +26,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Verifies that destroying a {@link MetalComputeContext} destroys and drains its
@@ -74,6 +77,96 @@ public class MetalComputeContextTeardownTest extends TestSuiteBase {
 			Assert.fail("The runner of a destroyed context must refuse work");
 		} catch (IllegalStateException expected) {
 			assertTrue(expected.getMessage().contains("destroyed"));
+		}
+	}
+
+	/**
+	 * Every destroyed context takes its runner's thread with it. The thread that encodes a
+	 * dispatch is the runner's confined thread; after each of several create/destroy cycles that
+	 * thread must have terminated, so creating and destroying contexts does not leak a thread
+	 * per context.
+	 */
+	@Test(timeout = 120000)
+	public void destroyTerminatesRunnerThread() throws InterruptedException {
+		MetalComputeContext shared = SemaphoreChainBatchingTest.metalContext();
+		if (shared == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		for (int cycle = 0; cycle < 4; cycle++) {
+			OwnContext context = new OwnContext(shared);
+			AtomicReference<Thread> runnerThread = new AtomicReference<>();
+
+			context.getCommandRunner().submit(null,
+					buffer -> runnerThread.set(Thread.currentThread()), null, null).waitFor();
+			Thread thread = runnerThread.get();
+			assertNotNull("The dispatch must be encoded on the runner's thread", thread);
+			assertTrue(thread.isAlive());
+
+			context.destroy();
+
+			thread.join(10000);
+			assertFalse("Destroying context " + cycle + " must terminate its runner's thread",
+					thread.isAlive());
+		}
+	}
+
+	/**
+	 * A dispatch bridged to foreign work that is still unsettled when the context is destroyed
+	 * is drained rather than abandoned, also when that foreign work runs on the context's own
+	 * executor: shutting the executor down at the start of destroy lets the already-submitted
+	 * task finish, it signals the bridge, and the runner's drain then completes the bridged
+	 * dispatch before the queue is released.
+	 */
+	@Test(timeout = 120000)
+	public void destroyDrainsDispatchBridgedOnContextExecutor() {
+		MetalComputeContext shared = SemaphoreChainBatchingTest.metalContext();
+		if (shared == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
+		MetalCommandRunner.enableHostSignaledBridges = true;
+
+		DefaultLatchSemaphore foreign = new DefaultLatchSemaphore((Semaphore) null, 1);
+		AtomicBoolean signaledAfterDestroyBegan = new AtomicBoolean();
+
+		try {
+			OwnContext context = new OwnContext(shared);
+			MetalCommandRunner runner = context.getCommandRunner();
+			AtomicBoolean completed = new AtomicBoolean();
+
+			runner.submit(null, buffer -> { }, null, null).waitFor();
+			runner.submit(null, buffer -> { }, foreign, () -> completed.set(true));
+
+			context.runLater(() -> {
+				try {
+					while (!context.isDestroyed()) {
+						Thread.sleep(1);
+					}
+
+					Thread.sleep(100);
+					signaledAfterDestroyBegan.set(true);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				} finally {
+					foreign.countDown();
+				}
+			});
+
+			assertFalse("The bridged dispatch waits for its foreign work", completed.get());
+
+			context.destroy();
+
+			assertTrue("The foreign work must settle only after destroy began",
+					signaledAfterDestroyBegan.get());
+			assertTrue("Destroying the context must complete the bridged dispatch", completed.get());
+			assertTrue("Destroying the context must destroy its runner", runner.isClosed());
+		} finally {
+			foreign.countDown();
+			MetalCommandRunner.enableHostSignaledBridges = bridges;
 		}
 	}
 }
