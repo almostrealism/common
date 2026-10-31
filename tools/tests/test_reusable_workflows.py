@@ -391,5 +391,58 @@ class PlanReadyApproverStepTests(unittest.TestCase):
         self.assertEqual("false", self._run("alice bob", "ashesfall"))
 
 
+class PlanReadyDocsOnlyStepTests(unittest.TestCase):
+    """The docs-only gate of plan-ready.yaml, run for real with a stub ``gh``.
+
+    The step reads the PR's changed files from ``gh api`` and keeps the PR
+    docs-only only while every one is under the ``docs-directory`` input. This
+    is the one changed production path whose new behaviour — the prefix
+    normalisation ``PREFIX="${DOCS_DIRECTORY%/}/"`` that lets ``docs`` and
+    ``docs/`` both mean "under ``docs/``", and the rejection of a single file
+    outside it — is run here rather than only asserted structurally. ``gh`` is
+    stubbed to print a fixed file list, so the test exercises the shell without
+    a network call."""
+
+    def _run(self, files, docs_directory):
+        step = _step_script("plan-ready.yaml", "dispatch", "Check the PR is still docs-only")
+        tmp = tempfile.mkdtemp(prefix="plan-ready-docs-")
+        self.addCleanup(shutil.rmtree, tmp)
+        # A stub gh that ignores its arguments and prints the file list one per
+        # line (nothing when the list is empty), matching the --jq projection.
+        stub = os.path.join(tmp, "gh")
+        with open(stub, "w") as f:
+            f.write('#!/usr/bin/env bash\n[ -n "$STUB_FILES" ] && printf \'%s\\n\' "$STUB_FILES"\nexit 0\n')
+        os.chmod(stub, 0o755)
+        output = os.path.join(tmp, "github-output")
+        env = dict(os.environ)
+        env.update({"PATH": tmp + os.pathsep + env["PATH"],
+                    "STUB_FILES": "\n".join(files),
+                    "GH_TOKEN": "x", "REPO": "o/r", "PR_NUMBER": "1",
+                    "DOCS_DIRECTORY": docs_directory, "GITHUB_OUTPUT": output})
+        result = subprocess.run(["bash", "-e", "-c", step["run"]], env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, result.returncode, result.stderr)
+        with open(output) as f:
+            outputs = dict(line.split("=", 1) for line in f.read().splitlines())
+        return outputs["docs_only"]
+
+    def test_every_file_under_the_directory_is_docs_only(self):
+        self.assertEqual("true", self._run(
+            ["docs/plans/PLAN-20261020-thing.md", "docs/README.md"], "docs/"))
+
+    def test_a_single_file_outside_the_directory_stops_it(self):
+        """One non-docs file — even one analysis.yaml would ignore — is enough."""
+        self.assertEqual("false", self._run(
+            ["docs/plans/PLAN-20261020-thing.md", "src/Thing.java"], "docs/"))
+
+    def test_a_directory_without_a_trailing_slash_is_normalised(self):
+        """``docs`` means "under ``docs/``": it must not match ``docs-site/``."""
+        self.assertEqual("true", self._run(["docs/a.md", "docs/b.md"], "docs"))
+        self.assertEqual("false", self._run(["docs/a.md", "docs-site/b.md"], "docs"))
+
+    def test_a_pr_that_changes_no_files_is_not_docs_only(self):
+        self.assertEqual("false", self._run([], "docs/"))
+
+
 if __name__ == "__main__":
     unittest.main()
