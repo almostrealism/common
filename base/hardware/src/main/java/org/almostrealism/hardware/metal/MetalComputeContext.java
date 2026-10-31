@@ -418,6 +418,11 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * not outlive the context. Then all cached instruction sets are destroyed, the command queues
 	 * released, and internal state cleared &mdash; also when destroying the runner fails, whose
 	 * failure is rethrown afterwards. After calling destroy, this context cannot be used.</p>
+	 *
+	 * <p>The superclass's teardown, which shuts this context's executor down, may run before the
+	 * runner drains: shutting the executor down only refuses new tasks, so a task already submitted
+	 * to it that settles the foreign work a bridged command buffer waits for still runs, signals the
+	 * bridge, and lets the drain complete.</p>
 	 */
 	@Override
 	public synchronized void destroy() {
