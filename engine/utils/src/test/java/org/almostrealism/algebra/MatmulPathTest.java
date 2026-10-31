@@ -4,6 +4,7 @@ import org.almostrealism.collect.CollectionProducer;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -241,6 +242,49 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 				// The operands are not compatible matrices
 			}
 		}
+	}
+
+	/**
+	 * A single vector times a matrix of several rows is computed as one weighted sum in the
+	 * {@code (m, 1)} shape the multiply + sum gives, whether the vector is given flat or as a
+	 * column, and each output is the dot product of its row with the vector.
+	 */
+	@Test(timeout = 60000)
+	public void singleVectorIsWeightedSum() {
+		PackedCollection weights = pack(1, 2, 3, 4, 5, 6, -1, 0, 2).reshape(shape(3, 3));
+		PackedCollection vector = pack(1, -1, 2);
+		double[] expected = { 5, 11, 3 };
+
+		CollectionProducer flat = matmul(cp(weights), cp(vector));
+		CollectionProducer column = matmul(cp(weights), cp(vector.reshape(shape(3, 1))));
+
+		for (CollectionProducer product : new CollectionProducer[] { flat, column }) {
+			Assert.assertTrue("single-vector product is " + product.getClass().getSimpleName(),
+					product instanceof WeightedSumComputation);
+			Assert.assertEquals(2, product.getShape().getDimensions());
+			Assert.assertEquals(3, product.getShape().length(0));
+			Assert.assertEquals(1, product.getShape().length(1));
+
+			PackedCollection result = product.evaluate();
+			Assert.assertEquals(3, result.getShape().getTotalSize());
+			for (int i = 0; i < expected.length; i++) {
+				assertEquals("Output[" + i + "]", expected[i], result.toDouble(i));
+			}
+		}
+	}
+
+	/**
+	 * A matrix of one row times a single vector is a dot product, which keeps the multiply +
+	 * sum form rather than taking the single-vector weighted sum.
+	 */
+	@Test(timeout = 60000)
+	public void oneRowMatrixKeepsMultiplySum() {
+		CollectionProducer product = matmul(cp(pack(1, 2, 3).reshape(shape(1, 3))), cp(pack(4, -5, 6)));
+		Assert.assertFalse(product instanceof WeightedSumComputation);
+
+		PackedCollection result = product.evaluate();
+		Assert.assertEquals(1, result.getShape().getTotalSize());
+		assertEquals(12.0, result.toDouble(0));
 	}
 
 	/**
