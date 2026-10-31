@@ -188,6 +188,23 @@ public class SubsetTraversalExpression implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns the flat operand index of the group member at the given position within the
+	 * window, for the given output index. This is the index
+	 * {@link #getInputIndex(Expression, Expression)} computes after dividing a flat group index
+	 * into a position; a caller that already knows the position of a member, coordinate by
+	 * coordinate, supplies it directly, so that the index is built from those coordinates rather
+	 * than from expressions that divide a flat index and multiply it back, which the simplifier
+	 * cannot always cancel.
+	 *
+	 * @param groupPosition the member's position coordinates within the group window
+	 * @param outputIndex   the flat output index expression
+	 * @return the flat operand index expression
+	 */
+	public Expression getInputIndex(Expression[] groupPosition, Expression<?> outputIndex) {
+		return getInputIndex(Arrays.asList(groupPosition), groupPosition, outputIndex);
+	}
+
+	/**
 	 * Combines a group member's position within the window with the window anchor derived from
 	 * the given output index to produce the flat operand index for that member. This is the
 	 * shared index computation used both by {@link #getInputIndex(Expression, Expression)} and
