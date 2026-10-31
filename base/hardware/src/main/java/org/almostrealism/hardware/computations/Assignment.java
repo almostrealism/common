@@ -362,9 +362,13 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 * Returns the destination producer: an assignment's scope writes the destination and
 	 * nothing else (see {@link #getScope(KernelStructureContext)}).
 	 *
+	 * <p>A computation the value depends on that cannot be inlined becomes a required scope of
+	 * the kernel and writes its own output argument. That argument is keyed by the computation,
+	 * not by a {@link io.almostrealism.relation.Provider}, so {@link MemoryDataArgumentMap} never
+	 * stages it in aggregate memory and it needs no copy-back.</p>
+	 *
 	 * @return the producer of the memory this assignment writes
 	 */
-	// TODO(review): confirm no required scope of the value writes another (aggregated) kernel argument; its copy-back is now skipped
 	@Override
 	public Supplier<Evaluable<? extends T>> getWrittenDestination() {
 		return getInputs().get(0);

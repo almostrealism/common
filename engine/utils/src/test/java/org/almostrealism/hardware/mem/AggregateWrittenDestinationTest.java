@@ -92,6 +92,29 @@ public class AggregateWrittenDestinationTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A provided destination the map never aggregated has no staged slice, so nothing is copied
+	 * back for it, and none of the aggregated roots the kernel only read is copied back either.
+	 */
+	@Test(timeout = 60000)
+	public void copyBackOfUnaggregatedDestinationIsEmpty() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection other = pack(3.0, 4.0);
+			 PackedCollection unstaged = pack(5.0, 6.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				map.get(p(read));
+				map.get(p(other));
+				Assert.assertEquals(2, map.getPostprocessOperations(null).size());
+				Assert.assertTrue(map.getPostprocessOperationsOf(p(unstaged)).isEmpty());
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
 	 * A destination that is computed rather than provided cannot be matched to an aggregated
 	 * root, since the kernel may reach one through it, so its copy-back is every writable slice.
 	 */
