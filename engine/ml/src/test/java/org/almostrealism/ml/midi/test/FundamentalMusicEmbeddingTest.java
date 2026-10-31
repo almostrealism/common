@@ -18,7 +18,6 @@ package org.almostrealism.ml.midi.test;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.FundamentalMusicEmbedding;
@@ -97,7 +96,7 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		double base = 10000.0;
 		int dim = 8;
 		FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(base, dim);
-		PackedCollection invFreqs = fme.computeInvFreqs(base, dim).get().evaluate();
+		PackedCollection invFreqs = fme.computeInvFreq(dim, base).get().evaluate();
 
 		assertEquals("Should have dim/2 frequencies", dim / 2, invFreqs.getShape().getTotalSize());
 
@@ -106,48 +105,6 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 
 		double expected1 = 1.0 / Math.pow(base, 2.0 / dim);
 		assertEquals("invFreq[1]", expected1, invFreqs.toDouble(1), 1e-5);
-	}
-
-	/**
-	 * Pin the consolidation: {@link FundamentalMusicEmbedding#computeInvFreqs(double, int)} must
-	 * produce exactly the inverse frequencies that {@link RotationFeatures#computeInvFreq(int, double)}
-	 * produces for the same {@code (dim, base)}, since the former now delegates to the latter rather
-	 * than repeating the formula. The two are compared across the attribute bases Moonbeam actually
-	 * uses (and the small {@code dim=8} case the existing formula test pins), so a divergence between
-	 * the shared definition and this call site would fail here.
-	 */
-	@Test(timeout = 60000)
-	public void testInvFreqMatchesRotationFeatures() {
-		RotationFeatures rotation = new RotationFeatures() {};
-		double[] bases = {10000.0, 199999.0, 19.0, 131.0};
-		int[] dims = {8, 320, 64, 48};
-
-		for (int b = 0; b < bases.length; b++) {
-			for (int d = 0; d < dims.length; d++) {
-				double base = bases[b];
-				int dim = dims[d];
-				FundamentalMusicEmbedding fme = new FundamentalMusicEmbedding(base, dim);
-
-				PackedCollection fromEmbedding = fme.computeInvFreqs(base, dim).get().evaluate();
-				PackedCollection fromRotation = rotation.computeInvFreq(dim, base).get().evaluate();
-
-				assertEquals("Frequency count must match for base " + base + ", dim " + dim,
-						dim / 2, fromEmbedding.getShape().getTotalSize());
-				assertEquals("Frequency count must match the shared definition for base " + base +
-								", dim " + dim,
-						fromRotation.getShape().getTotalSize(), fromEmbedding.getShape().getTotalSize());
-
-				for (int i = 0; i < dim / 2; i++) {
-					double expected = 1.0 / Math.pow(base, 2.0 * i / dim);
-					assertEquals("invFreq[" + i + "] must match the shared definition for base " +
-									base + ", dim " + dim,
-							fromRotation.toDouble(i), fromEmbedding.toDouble(i), 1e-9);
-					assertEquals("invFreq[" + i + "] must match base^(-2i/dim) for base " + base +
-									", dim " + dim,
-							expected, fromEmbedding.toDouble(i), Math.max(1e-9, expected * 1e-5));
-				}
-			}
-		}
 	}
 
 	/**

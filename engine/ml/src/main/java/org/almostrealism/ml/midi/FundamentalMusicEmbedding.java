@@ -42,9 +42,9 @@ import org.almostrealism.ml.RotationFeatures;
  * output = Linear(encoding)              // weight (dim, dim) + bias (dim)
  * </pre>
  *
- * <p>The frequency computation is the RoPE inverse-frequency formula {@code 1/base^(2i/dim)}, so
- * {@link #computeInvFreqs(double, int)} delegates to {@link RotationFeatures#computeInvFreq(int, double)}
- * rather than repeating it.</p>
+ * <p>The frequency computation is the RoPE inverse-frequency formula {@code 1/base^(2i/dim)}, so the
+ * frequency table is built by {@link RotationFeatures#computeInvFreq(int, double)} rather than
+ * repeating it here.</p>
  *
  * <h2>Weight Keys (StateDictionary)</h2>
  * <ul>
@@ -94,7 +94,7 @@ public class FundamentalMusicEmbedding implements LayerFeatures, RotationFeature
 		this.linearWeight = linearWeight;
 		this.linearBias = linearBias;
 		this.translationBias = translationBias;
-		this.invFreqs = computeInvFreqs(base, dim);
+		this.invFreqs = computeInvFreq(dim, base);
 	}
 
 	/**
@@ -106,7 +106,7 @@ public class FundamentalMusicEmbedding implements LayerFeatures, RotationFeature
 	public FundamentalMusicEmbedding(double base, int dim) {
 		this.base = base;
 		this.dim = dim;
-		this.invFreqs = computeInvFreqs(base, dim);
+		this.invFreqs = computeInvFreq(dim, base);
 		this.linearWeight = new PackedCollection(new TraversalPolicy(dim, dim));
 		this.linearBias = new PackedCollection(new TraversalPolicy(dim));
 		this.translationBias = new PackedCollection(new TraversalPolicy(1));
@@ -192,23 +192,4 @@ public class FundamentalMusicEmbedding implements LayerFeatures, RotationFeature
 
 	/** Returns the translation bias. */
 	public CollectionProducer getTranslationBias() { return cp(translationBias); }
-
-	/**
-	 * Compute inverse frequency values for the sinusoidal encoding as a
-	 * {@link CollectionProducer} constant, shape (dim/2,).
-	 *
-	 * <p>The inverse-frequency formula {@code invFreq[i] = base^(-2*i / dim)} is the same one RoPE
-	 * uses, so this delegates to {@link RotationFeatures#computeInvFreq(int, double)} rather than
-	 * repeating it: that method is the single definition of the frequency table, builds it with
-	 * {@link CollectionProducer} operations (never a Java loop, so the native compiler and automatic
-	 * differentiation both see it), and rejects a {@code dim} that is not positive and even or a
-	 * {@code base} whose frequencies would overflow or underflow single precision.</p>
-	 *
-	 * @param base the frequency base
-	 * @param dim  the embedding dimension
-	 * @return CollectionProducer of shape (dim/2,) containing inverse frequency values
-	 */
-	public CollectionProducer computeInvFreqs(double base, int dim) {
-		return computeInvFreq(dim, base);
-	}
 }
