@@ -25,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
@@ -241,6 +242,125 @@ public class InvalidFileDetectorTest extends TestSuiteBase {
 					found.contains("preexisting.bin"));
 		} finally {
 			deleteTree(repo);
+		}
+	}
+
+	/**
+	 * Repeatedly creates and deletes each of {@code targets} until {@code running}
+	 * is cleared, so a concurrent scan is guaranteed to see entries that vanish
+	 * between being listed and being visited. Returns the started daemon thread.
+	 */
+	private static Thread startChurn(AtomicBoolean running, Path... targets) {
+		Thread churn = new Thread(() -> {
+			while (running.get()) {
+				for (Path target : targets) {
+					try {
+						Files.createDirectories(target.getParent());
+						Files.writeString(target, "x");
+						Files.deleteIfExists(target);
+					} catch (IOException ignored) {
+						// racing with the scan is the point
+					}
+				}
+			}
+		});
+		churn.setDaemon(true);
+		churn.start();
+		return churn;
+	}
+
+	/**
+	 * Reproduces the shared-node race: another job constantly creates and deletes
+	 * lock files (and even {@code .bin} files) under {@code .git} while the scan
+	 * runs. Because the scan never enters {@code .git}, it neither throws when a
+	 * churned entry vanishes mid-walk nor reports anything under {@code .git} —
+	 * and real {@code .bin} litter in the working tree is still detected. A throw
+	 * from {@code detect()} (the pre-fix {@code UncheckedIOException}) fails the test.
+	 */
+	@Test(timeout = 30000)
+	public void gitDirChurnIsNeitherThrownNorReportedWhileLitterIsStillFound()
+			throws IOException, InterruptedException {
+		Path dir = Files.createTempDirectory("invalid-file-detector-git-churn");
+		AtomicBoolean running = new AtomicBoolean(true);
+		Thread churn = null;
+		try {
+			Files.writeString(dir.resolve("model.bin"), "litter");
+			Files.createDirectories(dir.resolve("sub"));
+			Files.writeString(dir.resolve("sub").resolve("weights.bin"), "litter");
+
+			Path gitLogs = dir.resolve(".git").resolve("logs").resolve("refs")
+					.resolve("remotes").resolve("origin");
+			Files.createDirectories(gitLogs);
+			churn = startChurn(running,
+					gitLogs.resolve("some-branch.lock"),
+					dir.resolve(".git").resolve("index.bin"));
+
+			InvalidFileDetector detector = new InvalidFileDetector(jobWithWorkingDir(dir));
+			for (int i = 0; i < 50; i++) {
+				detector.detect();
+				for (String found : detector.getInvalidFiles()) {
+					assertFalse("Nothing under .git may be reported, but got " + found,
+							found.startsWith(".git" + File.separator) || found.equals(".git"));
+				}
+			}
+
+			running.set(false);
+			churn.join(5000);
+
+			detector.detect();
+			List<String> found = detector.getInvalidFiles();
+			List<String> expected = List.of("model.bin",
+					"sub" + File.separator + "weights.bin");
+			assertTrue("Working-tree litter must still be detected: " + found,
+					expected.equals(found));
+		} finally {
+			running.set(false);
+			if (churn != null) churn.join(5000);
+			deleteTree(dir);
+		}
+	}
+
+	/**
+	 * A scan that races with files vanishing — the condition that previously
+	 * threw at the commit stage and discarded finished work — must leave the
+	 * job's commit gate ({@link InvalidFileDetector#enforceNone(GitManagedJob, List)})
+	 * intact: with no real litter present, enforcement completes normally rather
+	 * than throwing and failing the job. The churn covers both a git lock (under
+	 * the skipped {@code .git} subtree) and a regular file in the scanned tree.
+	 */
+	@Test(timeout = 30000)
+	public void failingScanLeavesCommitPathIntact() throws IOException, InterruptedException {
+		Path dir = Files.createTempDirectory("invalid-file-detector-commit-path");
+		AtomicBoolean running = new AtomicBoolean(true);
+		Thread churn = null;
+		try {
+			Files.writeString(dir.resolve("result.txt"), "finished work");
+
+			Path gitLogs = dir.resolve(".git").resolve("logs").resolve("refs")
+					.resolve("remotes").resolve("origin").resolve("project");
+			Files.createDirectories(gitLogs);
+			churn = startChurn(running,
+					gitLogs.resolve("plan-20260918-runner-fleet-monitoring.lock"),
+					dir.resolve("scratch.tmp"));
+
+			GitManagedJob job = jobWithWorkingDir(dir);
+			for (int i = 0; i < 50; i++) {
+				InvalidFileDetector.enforceNone(job, List.of());
+			}
+
+			running.set(false);
+			churn.join(5000);
+
+			assertTrue("The finished work must survive the scan",
+					Files.exists(dir.resolve("result.txt")));
+			InvalidFileDetector detector = new InvalidFileDetector(job);
+			detector.detect();
+			assertFalse("A racing scan must not invent litter and block the commit",
+					detector.isDetected());
+		} finally {
+			running.set(false);
+			if (churn != null) churn.join(5000);
+			deleteTree(dir);
 		}
 	}
 
