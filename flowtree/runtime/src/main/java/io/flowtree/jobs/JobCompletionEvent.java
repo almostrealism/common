@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.time.Instant;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -506,6 +507,46 @@ public class JobCompletionEvent {
      * for non-coding-agent jobs and events that predate per-runner tracking.
      */
     public Map<String, Double> getCostByRunner() { return costByRunner; }
+
+    /**
+     * Returns the entries of {@link #getCostByRunner()} that have a positive
+     * cost, in the iteration order of that map.
+     *
+     * @return runner name to USD cost, excluding runners that cost nothing
+     */
+    public Map<String, Double> getPositiveCostByRunner() {
+        Map<String, Double> positive = new LinkedHashMap<>();
+        Map<String, Double> byRunner = getCostByRunner();
+        if (byRunner != null) {
+            for (Map.Entry<String, Double> entry : byRunner.entrySet()) {
+                if (entry.getValue() != null && entry.getValue() > 0.0) {
+                    positive.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+        return positive;
+    }
+
+    /**
+     * Returns the API call duration as a whole-number percentage of the
+     * wall-clock duration.
+     *
+     * @return the API share of the wall time, or 0 when no wall time is recorded
+     */
+    public long getApiTimePercent() {
+        return getDurationMs() > 0 ? Math.round(100.0 * getDurationApiMs() / getDurationMs()) : 0;
+    }
+
+    /**
+     * Returns an amount as a whole-number percentage of this job's total cost.
+     *
+     * @param amountUsd a part of the total cost, such as one runner's cost
+     * @return the share of the total, or 0 when the total is not positive
+     */
+    public long getCostPercent(double amountUsd) {
+        return getCostUsd() > 0 ? Math.round(100.0 * amountUsd / getCostUsd()) : 0;
+    }
+
     /**
      * Returns the per-model USD cost breakdown for this job, or an empty map
      * for non-coding-agent jobs and events that predate per-model tracking.

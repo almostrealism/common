@@ -22,7 +22,9 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.bioscience.connectome.CellTypeConnectome;
 import org.almostrealism.time.SimulationRunner;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -39,8 +41,9 @@ import java.util.stream.IntStream;
  *
  * <p>The cases are a long stability run, the sugar-sensing GRN to MN9 response against a matched
  * control, and the time per step. They need the derived data (see
- * {@link CellTypeConnectomeTest#requireDirectory()}) and are meant to run on both the Metal and
- * the native backend.</p>
+ * {@link CellTypeConnectomeTest#requireDirectory()}), which no runner carries, so they are
+ * long-running and excluded from the pipeline profile, and are meant to run on both the Metal
+ * and the native backend when asked for.</p>
  *
  * <h2>Measured time per step</h2>
  * <p>Measured on a Mac Studio (Apple silicon, macOS, aarch64) for the 11,751-type matrix,
@@ -105,6 +108,7 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 2400000)
 	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void stability() throws IOException {
 		int steps = 10000;
 		int interval = 100;
@@ -154,6 +158,7 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 2400000)
 	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void sugarDrivesMn9() throws IOException {
 		int steps = 1000;
 
@@ -234,6 +239,7 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 2400000)
 	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void timePerStep() throws IOException {
 		int warmup = 100;
 		int steps = 1000;

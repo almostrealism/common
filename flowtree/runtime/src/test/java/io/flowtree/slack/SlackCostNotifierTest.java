@@ -356,10 +356,11 @@ public class SlackCostNotifierTest extends TestSuiteBase {
 
         assertTrue(summary.contains("Work complete"));
         assertTrue(summary.contains("pushed 2 file(s)"));
-        assertTrue(summary.contains("Branch: `feature/split`"));
+        assertFalse(summary.contains("feature/split"));
         assertTrue(summary.contains("PR: https://github.com/test/repo/pull/773"));
-        assertTrue(summary.contains("Time: 2m 32s (API: 1m 42s)"));
-        assertTrue(summary.contains(":dollar: $1.86 total [claude $1.86]"));
+        assertTrue(summary.contains("   2m 32s (67% API) :dollar: $1.86 (100% claude)\n"));
+        assertFalse(summary.contains("Time:"));
+        assertFalse(summary.contains("total"));
         assertFalse(summary.contains("Commit:"));
         assertFalse(summary.contains("Stop reason:"));
         assertFalse(summary.contains("Turns:"));
@@ -374,16 +375,49 @@ public class SlackCostNotifierTest extends TestSuiteBase {
         assertFalse(details.contains("Work complete"));
         assertFalse(details.contains("Branch:"));
         assertFalse(details.contains("PR:"));
-        assertFalse(details.contains("Time:"));
-        assertFalse(details.contains(":dollar:"));
+        assertTrue(details.contains("Time: 2m 32s (API: 1m 42s)"));
+        assertTrue(details.contains(":dollar: $1.86 total [claude $1.86]"));
     }
 
     /**
-     * Verifies that a completion which pushed nothing still shows its job
-     * description and pull request link in the broadcast summary.
+     * Verifies that a completion posted without a prior submission thread names
+     * the branch in its summary, since there is no submission message to carry
+     * it (e.g. after a notifier restart or when another node handled the
+     * submission). The branch stays out of the summary when a thread exists,
+     * which {@link #testCompletionSummaryAndDetailsSplit()} covers.
      */
     @Test(timeout = 10000)
-    public void testNoChangesSummaryIncludesDescriptionAndPullRequest() {
+    public void testStandaloneCompletionSummaryNamesBranch() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json ->
+            messages.add(JsonFieldExtractor.extractString(json, "text")));
+
+        Workstream workstream = new Workstream("C_STANDALONE", "#standalone-test");
+        notifier.registerWorkstream(workstream);
+
+        CodingAgentJobEvent event = CodingAgentJobEvent.success("job-standalone", "Standalone task");
+        event.withGitInfo("feature/standalone", "cafe123456789", List.of("a.java"), List.of(), true);
+        event.withPullRequestUrl("https://github.com/test/repo/pull/775");
+        notifier.onJobCompleted(workstream.getWorkstreamId(), event);
+
+        assertEquals(2, messages.size());
+        String summary = messages.get(0);
+        String details = messages.get(1);
+
+        assertTrue(summary.contains("Work complete"));
+        assertTrue(summary.contains("Branch: `feature/standalone`"));
+        assertTrue(summary.contains("PR: https://github.com/test/repo/pull/775"));
+        assertFalse(details.contains("Branch:"));
+    }
+
+    /**
+     * Verifies that a completion which pushed nothing is marked with its own
+     * indicator, omits the job description, and still shows the pull request
+     * link in the broadcast summary.
+     */
+    @Test(timeout = 10000)
+    public void testNoChangesSummaryOmitsDescriptionAndIncludesPullRequest() {
         List<String> messages = new ArrayList<>();
         SlackNotifier notifier = new SlackNotifier(null);
         notifier.setMessageCallback(json ->
@@ -405,7 +439,9 @@ public class SlackCostNotifierTest extends TestSuiteBase {
         String summary = messages.get(1);
 
         assertTrue(summary.contains("no changes to push"));
-        assertTrue(summary.contains("Review the open PR"));
+        assertTrue(summary.startsWith(":small_red_triangle_down:"));
+        assertFalse(summary.contains(":white_check_mark:"));
+        assertFalse(summary.contains("Review the open PR"));
         assertTrue(summary.contains("PR: https://github.com/test/repo/pull/774"));
         assertFalse(details.contains("Review the open PR"));
         assertFalse(details.contains("PR:"));
@@ -441,6 +477,40 @@ public class SlackCostNotifierTest extends TestSuiteBase {
             JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
         assertNotNull("Status message should have thread_ts field",
             JsonFieldExtractor.extractString(message, "thread_ts"));
+    }
+
+    /**
+     * Verifies that a job submission posts its description and branch to the
+     * channel, and the job ID as a separate reply inside the job's thread.
+     */
+    @Test(timeout = 10000)
+    public void testSubmissionPostsJobIdInThread() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(messages::add);
+
+        Workstream workstream = new Workstream("C_SUBMIT", "#submit-test");
+        workstream.setDefaultBranch("feature/submit");
+        notifier.registerWorkstream(workstream);
+        notifier.onJobSubmitted(workstream.getWorkstreamId(),
+            JobCompletionEvent.started("job-submit-1", "Compact the notices"));
+
+        assertEquals(2, messages.size());
+        String submission = messages.get(0);
+        String jobId = messages.get(1);
+        String submissionText = JsonFieldExtractor.extractString(submission, "text");
+
+        assertNull(JsonFieldExtractor.extractString(submission, "thread_ts"));
+        assertTrue(submissionText.contains("Job submitted"));
+        assertTrue(submissionText.contains("Compact the notices"));
+        assertTrue(submissionText.contains("Branch: `feature/submit`"));
+        assertFalse(submissionText.contains("job-submit-1"));
+
+        Assert.assertEquals("The job ID must be posted in the submission's thread",
+            notifier.getThreadTs("job-submit-1"),
+            JsonFieldExtractor.extractString(jobId, "thread_ts"));
+        assertFalse(JsonFieldExtractor.extractBoolean(jobId, "reply_broadcast"));
+        assertTrue(JsonFieldExtractor.extractString(jobId, "text").contains("Job ID: `job-submit-1`"));
     }
 
     /**

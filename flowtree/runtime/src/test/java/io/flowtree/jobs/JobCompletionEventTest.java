@@ -20,7 +20,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -200,5 +202,31 @@ public class JobCompletionEventTest extends TestSuiteBase {
 
 		assertEquals("", event.shortDescription(80));
 		assertEquals("", event.shortDescription(1));
+	}
+
+	/** Only positively-costed runners survive the positive-cost filter. */
+	@Test(timeout = 30000)
+	public void positiveCostByRunnerExcludesZeroAndNegativeRunners() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-8", "Mixed costs");
+		Map<String, Double> costs = new HashMap<>();
+		costs.put("claude", 1.25);
+		costs.put("free-runner", 0.0);
+		costs.put("refunded", -0.5);
+		event.setCostByRunner(costs);
+
+		Map<String, Double> positive = event.getPositiveCostByRunner();
+		assertEquals(1, positive.size());
+		assertEquals(Double.valueOf(1.25), positive.get("claude"));
+		assertFalse(positive.containsKey("free-runner"));
+		assertFalse(positive.containsKey("refunded"));
+	}
+
+	/** Percentages are zero, not a divide-by-zero, when the denominator is absent. */
+	@Test(timeout = 30000)
+	public void apiAndCostPercentAreZeroWhenNoWallTimeOrCost() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-9", "No metrics");
+
+		assertEquals(0, event.getApiTimePercent());
+		assertEquals(0, event.getCostPercent(5.0));
 	}
 }

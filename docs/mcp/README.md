@@ -159,8 +159,8 @@ Returns the condensed API cheatsheet with all essential patterns.
 - Core: io, relation
 - Data: code, collect, hardware
 - Math: algebra, geometry, time, stats
-- Domain: graph, ml, color, space, physics, heredity, chemistry
-- Application: optimize, render, utils
+- Domain: graph, ml, color, space, physics, heredity, chemistry, biology
+- Application: optimize, render, utils, bioscience
 
 ### list_ar_modules
 
