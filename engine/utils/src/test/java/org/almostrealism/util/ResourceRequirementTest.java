@@ -171,6 +171,26 @@ public class ResourceRequirementTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * A directory whose name matches the required file does not satisfy the requirement: the
+	 * resource must be a regular file, so a strict requirement fails on every host.
+	 */
+	@Test(timeout = 30_000)
+	public void resourceInRejectsDirectoryNamedLikeFile() throws IOException {
+		File directory = Files.createTempDirectory("resource-requirement").toFile();
+		File namesake = new File(directory, "entry.txt");
+		try {
+			Assert.assertTrue(namesake.mkdir());
+			Throwable thrown = thrownBy(() -> requireResourceIn(UNDECLARED_PROPERTY, directory.getPath(),
+					"entry.txt", ComputeRequirement.GPU, ComputeRequirement.CPU));
+			Assert.assertTrue("expected AssertionError but was " + thrown, thrown instanceof AssertionError);
+			Assert.assertTrue(thrown.getMessage(), thrown.getMessage().contains("entry.txt in "));
+		} finally {
+			namesake.delete();
+			directory.delete();
+		}
+	}
+
 	/** An absent, undeclared local resource is skipped on every host, GPU or not. */
 	@Test(timeout = 30_000)
 	public void undeclaredMissingLocalResourceSkips() {

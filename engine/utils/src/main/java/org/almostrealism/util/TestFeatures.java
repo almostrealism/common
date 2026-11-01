@@ -1248,7 +1248,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 								   ComputeRequirement... mandatoryWhereAvailable) {
 		File directory = new File(SystemUtils.getProperty(locationProperty, defaultDirectory));
 		requireResource(file + " in " + directory.getAbsolutePath(), locationProperty,
-				new File(directory, file).exists(), mandatoryWhereAvailable);
+				new File(directory, file).isFile(), mandatoryWhereAvailable);
 		return directory;
 	}
 

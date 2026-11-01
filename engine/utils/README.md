@@ -95,9 +95,9 @@ export AR_TEST_DEPTH=2          # Test thoroughness level (default: 9)
 export AR_TEST_PROFILE=pipeline # Test profile (enables all tests)
 
 # Test behavior
-export AR_LONG_TESTS=true       # Enable long-running tests
+export AR_LONG_TESTS=enabled    # Enable long-running tests (enabled/disabled)
 export AR_TRAIN_TESTS=true      # Enable training tests
-export AR_KNOWN_ISSUES=true     # Include tests for known issues
+export AR_KNOWN_ISSUES=enabled  # Include tests for known issues (enabled/disabled)
 
 # Parallel execution (CI)
 export AR_TEST_GROUP=0          # Which group to run (0-3)
