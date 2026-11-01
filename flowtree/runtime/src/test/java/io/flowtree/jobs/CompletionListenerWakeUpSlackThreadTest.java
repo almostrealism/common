@@ -122,9 +122,10 @@ public class CompletionListenerWakeUpSlackThreadTest extends TestSuiteBase {
 
         assertEquals("fanout should submit exactly one wake-up",
                 1, server.added.size());
-        assertEquals("wake-up should post exactly one Slack message"
-                        + " (the thread-root submission notification)",
-                1, messages.size());
+        assertEquals("wake-up should post exactly two Slack messages"
+                        + " (the thread-root submission notification and"
+                        + " the job ID reply in its thread)",
+                2, messages.size());
 
         String message = messages.get(0);
         // The submission message targets the orchestrator's
@@ -259,11 +260,16 @@ public class CompletionListenerWakeUpSlackThreadTest extends TestSuiteBase {
         fanout.fanout(source.getWorkstreamId(),
                 JobCompletionEvent.success("j-channel", "channel test"));
 
-        assertEquals(1, channelIds.size());
+        // The submission notification and the job ID reply in its thread
+        assertEquals(2, channelIds.size());
         assertTrue("wake-up submission must be posted on the"
                         + " listener's channel, not the source's: got "
                         + channelIds.get(0),
                 "C_LISTENER_CHANNEL".equals(channelIds.get(0)));
+        assertTrue("wake-up job ID reply must be posted on the"
+                        + " listener's channel, not the source's: got "
+                        + channelIds.get(1),
+                "C_LISTENER_CHANNEL".equals(channelIds.get(1)));
     }
 
     // ----- helpers -----
