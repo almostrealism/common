@@ -127,15 +127,18 @@ public class NeuronConnectome implements CollectionFeatures, Destroyable {
 		this.tensors = tensors;
 		this.bodyIds = bodyIds;
 		this.annotations = Collections.unmodifiableList(annotations);
-		this.ordering = CompressedRowTraversalOrdering.of(n, rowOffsets, presynaptic);
-		this.weights = new PackedCollection(shape(n, n), 0, values, 0, ordering);
 
+		// The body ids are validated before the ordering allocates its index collections, so a
+		// duplicate id cannot leave those native buffers behind when it rejects the file
 		this.indices = new HashMap<>();
 		for (int i = 0; i < n; i++) {
 			if (indices.put(bodyIds[i], i) != null) {
 				throw new IllegalArgumentException("Body " + bodyIds[i] + " is listed twice");
 			}
 		}
+
+		this.ordering = CompressedRowTraversalOrdering.of(n, rowOffsets, presynaptic);
+		this.weights = new PackedCollection(shape(n, n), 0, values, 0, ordering);
 	}
 
 	/**

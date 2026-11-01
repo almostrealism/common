@@ -25,6 +25,7 @@ import org.almostrealism.biology.neuron.PoissonInput;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CounterRandom;
 import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.dsl.PdslNode;
 import org.almostrealism.hardware.OperationList;
@@ -232,7 +233,19 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 		this.neurons = new ExponentialSynapseNeurons(count, DT, REST_POTENTIAL, RESET_POTENTIAL,
 				THRESHOLD_POTENTIAL, MEMBRANE_TIME, SYNAPTIC_TIME, REFRACTORY_PERIOD);
 		this.neurons.exemptFromRefractoryPeriod(targets);
-		this.poisson = new PoissonInput(poissonRate * 1e-3, DT, POISSON_KICK, targets, step, seed);
+
+		try {
+			this.poisson = new PoissonInput(poissonRate * 1e-3, DT, POISSON_KICK, targets, step, seed);
+		} catch (RuntimeException e) {
+			// release the state already allocated so an invalid Poisson argument does not leak it
+			step.destroy();
+			targets.destroy();
+			ring.destroy();
+			totals.destroy();
+			neurons.destroy();
+			if (silence != null) silence.destroy();
+			throw e;
+		}
 
 		CollectionProducer rows = c((double) (delaySteps + 1));
 		Map<String, Object> args = new HashMap<>();
@@ -319,6 +332,13 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 					+ replicas + " replicas and steps (" + steps + ") positive");
 		}
 
+		int passes = trials / replicas;
+		if (seed < 0 || (long) seed + passes > CounterRandom.SEED_LIMIT) {
+			// validate the whole seed range up front, so a later pass cannot throw after an earlier one ran
+			throw new IllegalArgumentException("Seeds " + seed + " through " + (seed + passes - 1)
+					+ " of " + passes + " passes are not all within [0, " + CounterRandom.SEED_LIMIT + ")");
+		}
+
 		int n = connectome.getNeuronCount();
 		SimulationRunner simulation = getRunner();
 		a(cp(totals).each(), c(0.0)).get().run();
@@ -326,7 +346,7 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 				.permute(1, 0).sum(1).reshape(shape(n));
 		Runnable accumulate = a(cp(totals), cp(totals).add(counts)).get();
 
-		for (int pass = 0; pass < trials / replicas; pass++) {
+		for (int pass = 0; pass < passes; pass++) {
 			poisson.setSeed(seed + pass);
 			simulation.reset();
 			simulation.run(steps);

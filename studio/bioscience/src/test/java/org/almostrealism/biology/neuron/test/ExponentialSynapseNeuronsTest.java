@@ -247,4 +247,40 @@ public class ExponentialSynapseNeuronsTest extends TestSuiteBase {
 			poisson.destroy();
 		}
 	}
+
+	/**
+	 * The constructor rejects a nonpositive step duration and a rate whose kick probability per
+	 * step would exceed one (which would saturate the Bernoulli draw into a kick on every step),
+	 * and accepts the boundary where {@code rate * dt} is exactly one.
+	 */
+	@Test(timeout = 120000)
+	public void poissonRejectsInvalidParameters() {
+		try (PackedCollection targets = new PackedCollection(4);
+			 PackedCollection step = new PackedCollection(1)) {
+			targets.fill(1.0, 1.0, 1.0, 0.0);
+			assertConstructorRejected(-1.0, DT, targets, step);
+			assertConstructorRejected(1.0, 0.0, targets, step);
+			assertConstructorRejected(1.0, -DT, targets, step);
+			assertConstructorRejected(20.0, DT, targets, step);
+			new PoissonInput(10.0, DT, 2.0, targets, step, 0).destroy();
+		}
+	}
+
+	/**
+	 * Asserts that {@link PoissonInput}'s constructor rejects a rate and step duration with an
+	 * {@link IllegalArgumentException}.
+	 *
+	 * @param rate    the rate
+	 * @param dt      the step duration
+	 * @param targets the targets
+	 * @param step    the step counter
+	 */
+	private void assertConstructorRejected(double rate, double dt, PackedCollection targets, PackedCollection step) {
+		try {
+			new PoissonInput(rate, dt, 2.0, targets, step, 0).destroy();
+			Assert.fail("Accepted rate " + rate + " and step " + dt);
+		} catch (IllegalArgumentException expected) {
+			log("rejected=" + expected.getMessage());
+		}
+	}
 }

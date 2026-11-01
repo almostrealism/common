@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.IntStream;
 
 /**
@@ -137,6 +138,38 @@ public class NeuronConnectomeTest extends NeuronConnectomeChecks {
 			try {
 				NeuronConnectome.load(directory.toFile()).destroy();
 				Assert.fail("A malformed neuron table was accepted");
+			} catch (IllegalArgumentException expected) {
+				log("rejected=" + expected.getMessage());
+			}
+		} finally {
+			Files.delete(directory.resolve(NeuronConnectome.NEURONS_FILE));
+			Files.delete(directory.resolve(NeuronConnectome.TENSORS_FILE));
+			Files.delete(directory);
+		}
+	}
+
+	/**
+	 * A neuron table listing a body id twice is rejected, and because the ids are validated before
+	 * the ordering is built, no native ordering buffers are retained by the rejected load.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsDuplicateBodyId() throws IOException {
+		Path directory = Files.createTempDirectory("connectome");
+		try {
+			Files.copy(new File(synthetic(), NeuronConnectome.TENSORS_FILE).toPath(),
+					directory.resolve(NeuronConnectome.TENSORS_FILE));
+			List<String> lines = Files.readAllLines(new File(synthetic(), NeuronConnectome.NEURONS_FILE).toPath(),
+					StandardCharsets.UTF_8);
+			lines.removeIf(String::isEmpty);
+			String[] first = lines.get(1).split("\t", -1);
+			String[] second = lines.get(2).split("\t", -1);
+			second[0] = first[0];
+			lines.set(2, String.join("\t", second));
+			Files.write(directory.resolve(NeuronConnectome.NEURONS_FILE),
+					String.join("\n", lines).getBytes(StandardCharsets.UTF_8));
+			try {
+				NeuronConnectome.load(directory.toFile()).destroy();
+				Assert.fail("A duplicate body id was accepted");
 			} catch (IllegalArgumentException expected) {
 				log("rejected=" + expected.getMessage());
 			}

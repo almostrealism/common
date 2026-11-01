@@ -274,7 +274,11 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		TraversalOrdering mOrder = mShape.getOrder();
 		boolean rowsEnumerated = mOrder != null && mShape.getDimensions() == 2
 				&& mOrder.segments(mShape.length(1)).isPresent();
-		if (rowsEnumerated && vShape.getDimensions() <= 2 && vShape.length(0) == mShape.length(1)) {
+		// A batch of row vectors traversed along its rows is enumerated as columns below, even when
+		// its batch size happens to equal the column count; only a vector or a column-oriented
+		// matrix (traversed along axis 0) takes this branch, which contracts over axis 0
+		if (rowsEnumerated && vShape.getDimensions() <= 2 && vShape.length(0) == mShape.length(1)
+				&& (vShape.getDimensions() == 1 || vShape.getTraversalAxis() < 1)) {
 			return new SegmentedWeightedSumComputation("matmul",
 					vShape.getDimensions() == 1 ? 1 : vShape.length(1), matrix, vector);
 		} else if (rowsEnumerated && vShape.getDimensions() == 2 && vShape.getTraversalAxis() >= 1
