@@ -206,6 +206,55 @@ public class ConcatenationBlockTests extends TestSuiteBase implements LayerRouti
 	}
 
 	/**
+	 * Children whose outputs differ in rank still concatenate into one flat vector: a
+	 * {@code [2, 3]} part followed by a {@code [NODES_A]} part yields the six values of the first
+	 * part, row-major, followed by the second part's values, and the backward pass still gives the
+	 * dense part exactly its own slice of the output gradient, starting after the first segment.
+	 */
+	@Test(timeout = 120000)
+	public void concatenatesChildrenOfDifferentRanks() {
+		Random random = new Random(27);
+		PackedCollection constant = randn(shape(2, 3), 0.0, 1.0, random).evaluate();
+		PackedCollection weightA = randn(shape(NODES_A, SIZE), 0.0, 1.0, random).evaluate();
+		PackedCollection input = randn(shape(SIZE), 0.0, 1.0, random).evaluate();
+		int first = constant.getShape().getTotalSize();
+
+		List<Block> children = new ArrayList<>();
+		children.add(forwardOnly(constant));
+		children.add(dense(shape(SIZE), weightA, false, false));
+
+		List<PackedCollection> recorded = new ArrayList<>();
+		Model model = new Model(shape(SIZE), gradientRecorder(recorded));
+		model.add(concatBlocks(shape(SIZE), children));
+		try (CompiledModel compiled = model.compile(true, true)) {
+			Assert.assertEquals(1, recorded.size());
+			PackedCollection gradientA = recorded.get(0);
+
+			PackedCollection out = compiled.forward(input);
+			Assert.assertEquals(first + NODES_A, out.getShape().getTotalSize());
+			for (int i = 0; i < first; i++) {
+				Assert.assertEquals("segment constant " + i, constant.toDouble(i), out.toDouble(i), 1e-5);
+			}
+			for (int i = 0; i < NODES_A; i++) {
+				Assert.assertEquals("segment a " + i, dot(weightA, i, input), out.toDouble(first + i), 1e-5);
+			}
+
+			PackedCollection outputGradient = randn(shape(first + NODES_A), 0.0, 1.0, random).evaluate();
+			PackedCollection inputGradient = compiled.backward(outputGradient);
+			assertWeightGradient("a", weightA, gradientA, outputGradient, first, input, 0);
+
+			Assert.assertEquals(SIZE, inputGradient.getShape().getTotalSize());
+			for (int j = 0; j < SIZE; j++) {
+				double expected = 0.0;
+				for (int i = 0; i < NODES_A; i++) {
+					expected += weightA.toDouble(i * SIZE + j) * outputGradient.toDouble(first + i);
+				}
+				Assert.assertEquals("input " + j, expected, inputGradient.toDouble(j), 1e-5);
+			}
+		}
+	}
+
+	/**
 	 * A forward-only block (no backward cell) wrapped in a {@link SequentialBlock} — the form a PDSL
 	 * inline part takes — gives a chain whose own backward cell is non-null while its first or last
 	 * child has none. Compiling such a concatenation for training must not fail: a chain that ends
@@ -505,13 +554,13 @@ public class ConcatenationBlockTests extends TestSuiteBase implements LayerRouti
 	 * Creates a forward-only child of {@link #SIZE} inputs: it pushes {@code constant} as its output
 	 * segment, ignoring the input, and has no backward cell.
 	 *
-	 * @param constant the {@code [CACHE]} values the child outputs
+	 * @param constant the values the child outputs; its shape is the child's output shape
 	 * @return the forward-only child
 	 */
 	private Block forwardOnly(PackedCollection constant) {
 		Cell<PackedCollection> forwardCell = Cell.of((in, next) ->
 				next == null ? new OperationList() : next.push(cp(constant)));
-		return new DefaultBlock(shape(SIZE), shape(CACHE), forwardCell, null);
+		return new DefaultBlock(shape(SIZE), constant.getShape(), forwardCell, null);
 	}
 
 	/**
