@@ -789,7 +789,15 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * value, so an open buffer that waits for one of its dispatches would stall on the GPU until
 	 * the watchdog killed it. Neither is a runner with a recorded failure (see the class
 	 * documentation). In both cases the open buffer is left to the ordinary commit causes, and the
-	 * host wait that commits it reports the failure. Must run on the executor thread.</p>
+	 * host wait that commits it reports the failure.</p>
+	 *
+	 * <p>Only the last committed buffer needs to be inspected. It signals the highest timeline
+	 * value of any committed dispatch, and the timeline is shared, so once it has finished without
+	 * an error every value the open buffer can wait for has been reached, including that of an
+	 * earlier buffer that failed. The open buffer is then not stalled; a dispatch of it that
+	 * depends on the failed buffer runs on unwritten inputs exactly as it would after any other
+	 * commit, and the failure record, not this check, reports that when the failed buffer is
+	 * drained. Must run on the executor thread.</p>
 	 *
 	 * @return true if the GPU is idle and the open buffer could be committed to it immediately
 	 */
