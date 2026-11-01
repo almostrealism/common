@@ -783,13 +783,22 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * the open buffer waits for no host-signaled bridge, no closed buffer is held back for one
 	 * (so the open buffer would be committed at once, see {@link #commitReadyOnExecutor()}), and
 	 * every committed buffer has finished on the GPU. The queue is serial, so the most recently
-	 * committed buffer finishing means every one before it has. Must run on the executor thread.
+	 * committed buffer finishing means every one before it has.
+	 *
+	 * <p>A buffer that finished with an error is not an idle GPU: it never signaled its timeline
+	 * value, so an open buffer that waits for one of its dispatches would stall on the GPU until
+	 * the watchdog killed it. Neither is a runner with a recorded failure (see the class
+	 * documentation). In both cases the open buffer is left to the ordinary commit causes, and the
+	 * host wait that commits it reports the failure. Must run on the executor thread.</p>
 	 *
 	 * @return true if the GPU is idle and the open buffer could be committed to it immediately
 	 */
 	private boolean canCommitToIdleDevice() {
-		if (!openBridges.isSignaled() || !held.isEmpty()) return false;
-		return committed.isEmpty() || committed.get(committed.size() - 1).isFinished();
+		if (!openBridges.isSignaled() || !held.isEmpty() || getFailures().isFailed()) return false;
+		if (committed.isEmpty()) return true;
+
+		MTLCommandBuffer last = committed.get(committed.size() - 1).getBuffer();
+		return last.isFinished() && errorOf(last) == null;
 	}
 
 	/**
@@ -1177,14 +1186,6 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 		 * @return the command buffer this record tracks
 		 */
 		private MTLCommandBuffer getBuffer() { return buffer; }
-
-		/**
-		 * Returns whether the buffer has finished on the GPU, by completing or with an error,
-		 * without waiting for it. A buffer not yet committed has not finished.
-		 *
-		 * @return true once the GPU has finished the buffer
-		 */
-		private boolean isFinished() { return buffer.isFinished(); }
 
 		/**
 		 * Adds a released-memory callback to run once the buffer completes. Executor-thread only.
