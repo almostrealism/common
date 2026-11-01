@@ -36,6 +36,8 @@ import org.almostrealism.collect.PackedCollection;
  * <ol>
  *   <li>Get the continuous value from the underlying gene (typically in [0, 1])</li>
  *   <li>Multiply by the number of choices to get an index</li>
+ *   <li>Clamp the index to the last choice so the inclusive upper bound 1.0 maps to
+ *       the final choice rather than one position past the end</li>
  *   <li>Use that index to select from the choices collection</li>
  * </ol>
  *
@@ -115,7 +117,14 @@ public class ChoiceGene implements Gene<PackedCollection>, GeneParameters, Scala
 			@Override
 			public Producer<PackedCollection> getResultant(Producer<PackedCollection> value) {
 				value = values.valueAt(pos).getResultant(value);
-				return c(shape(1), p(choices), multiply(value, c(choices.getMemLength())));
+
+				// Map the continuous value in [0, 1] onto a choice index, clamping to the
+				// last valid index so that the inclusive upper bound 1.0 selects the final
+				// choice rather than reading one position past the end of the collection.
+				int choiceCount = choices.getMemLength();
+				Producer<PackedCollection> index =
+						min(multiply(value, c(choiceCount)), c(choiceCount - 1));
+				return c(shape(1), p(choices), index);
 			}
 
 			@Override
