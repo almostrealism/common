@@ -49,6 +49,7 @@ canonical name used in `<dependency>` blocks across all `pom.xml` files.
 | `domain/color` | `ar-color` | Layer 3 — Domain |
 | `domain/chemistry` | `ar-chemistry` | Layer 3 — Domain |
 | `domain/heredity` | `ar-heredity` | Layer 3 — Domain |
+| `domain/biology` | `ar-biology` | Layer 3 — Domain |
 | `engine/optimize` | `ar-optimize` | Layer 4 — Engine |
 | `engine/render` | `ar-render` | Layer 4 — Engine |
 | `engine/ml` | `ar-ml` | Layer 4 — Engine |
@@ -62,6 +63,7 @@ canonical name used in `<dependency>` blocks across all `pom.xml` files.
 | `studio/spatial` | `ar-spatial` | Layer 6 — Studio |
 | `studio/compose` | `ar-compose` | Layer 6 — Studio |
 | `studio/experiments` | `ar-experiments` | Layer 6 — Studio |
+| `studio/bioscience` | `ar-bioscience` | Layer 6 — Studio |
 | `flowtree/api` | `ar-flowtreeapi` | Standalone |
 | `flowtree/base` | `ar-flowtree-base` | Standalone |
 | `flowtree/agents` | `ar-flowtree-agents` | Standalone |
@@ -90,7 +92,7 @@ hierarchy — nothing in layers 1-6 depends on any standalone module.
                              │ depends on ↓
 ┌────────────────────────────▼────────────────────────────────────────┐
 │  LAYER 6 — STUDIO                                                    │
-│  ar-music · ar-spatial · ar-compose · ar-experiments                 │
+│  ar-music · ar-spatial · ar-compose · ar-experiments · ar-bioscience │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
 ┌────────────────────────────▼────────────────────────────────────────┐
@@ -107,7 +109,7 @@ hierarchy — nothing in layers 1-6 depends on any standalone module.
 ┌────────────────────────────▼────────────────────────────────────────┐
 │  LAYER 3 — DOMAIN                                                    │
 │  ar-graph · ar-space · ar-physics · ar-color                         │
-│  ar-chemistry · ar-heredity                                          │
+│  ar-chemistry · ar-heredity · ar-biology                             │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
 ┌────────────────────────────▼────────────────────────────────────────┐
@@ -221,6 +223,7 @@ ar-physics   →  ar-time, ar-color
 ar-graph     →  ar-geometry, ar-heredity
 ar-chemistry →  ar-physics, ar-heredity
 ar-space     →  ar-graph, ar-physics
+ar-biology   →  ar-chemistry, ar-graph
 ```
 
 **ar-heredity** (`domain/heredity`)
@@ -255,6 +258,13 @@ structures. Depends on `ar-graph` (scenes are graphs of objects with relationshi
 and `ar-physics` (objects in space have physical properties and constraints).
 `ar-space` is the highest module in Layer 3 because it integrates across all other
 domain modules transitively.
+
+**ar-biology** (`domain/biology`)
+Neurons, synapses, cell types, connectomes and their dynamics, such as the spiking
+neurons and Poisson input of the Shiu et al. whole-brain model. Depends on
+`ar-chemistry` (biological membranes and transmitters are chemical systems) and
+`ar-graph` (connectomes are networks, and the neuron types are `Block`s a PDSL layer
+can compose). No engine module consumes it; its only consumer is `ar-bioscience`.
 
 ---
 
@@ -346,6 +356,7 @@ ar-music        →  ar-audio
 ar-compose      →  ar-audio, ar-ml
 ar-spatial      →  ar-compose
 ar-experiments  →  ar-compose, ar-ml-onnx, ar-ml-djl, ar-ml-script, ar-utils
+ar-bioscience   →  ar-biology, ar-ml
 ```
 
 **ar-music** (`studio/music`)
@@ -367,6 +378,12 @@ on `ar-compose`, all three extern modules (`ar-ml-onnx`, `ar-ml-djl`, `ar-ml-scr
 and `ar-utils`. It is the most widely dependent module in Layer 6, intentionally
 serving as a proving ground for cross-module integration. `ar-experiments` is a leaf
 node — nothing depends on it.
+
+**ar-bioscience** (`studio/bioscience`)
+Biological models combined with the ML engine: connectome loaders and the spiking
+connectome simulation that reproduces the Shiu et al. Brian2 results. Depends on
+`ar-biology` (the neuron models) and `ar-ml` (safetensors loading through
+`StateDictionary`). `ar-bioscience` is a leaf node — nothing depends on it.
 
 ---
 
@@ -446,13 +463,14 @@ determined by following the chain.
 | `ar-heredity` | `ar-graph`, `ar-chemistry` |
 | `ar-color` | `ar-physics` |
 | `ar-physics` | `ar-chemistry`, `ar-space` |
-| `ar-graph` | `ar-optimize`, `ar-space` |
-| `ar-chemistry` | `ar-utils` |
+| `ar-graph` | `ar-optimize`, `ar-space`, `ar-biology` |
+| `ar-chemistry` | `ar-utils`, `ar-biology` |
+| `ar-biology` | `ar-bioscience` |
 | `ar-space` | `ar-render`, `ar-utils` |
 | `ar-optimize` | `ar-utils` |
 | `ar-utils` | `ar-render`, `ar-ml`, `ar-audio`, `ar-utils-http`, `ar-flowtreeapi`, `ar-graphpersist` |
 | `ar-render` | *(no named-layer consumers — leaf node)* |
-| `ar-ml` | `ar-ml-djl`, `ar-ml-onnx`, `ar-ml-script`, `ar-compose`, `ar-tools` |
+| `ar-ml` | `ar-ml-djl`, `ar-ml-onnx`, `ar-ml-script`, `ar-compose`, `ar-bioscience`, `ar-tools` |
 | `ar-audio` | `ar-music`, `ar-compose` |
 | `ar-utils-http` | `ar-flowtree-runtime` |
 | `ar-ml-djl` | `ar-experiments` |
@@ -462,6 +480,7 @@ determined by following the chain.
 | `ar-compose` | `ar-spatial`, `ar-experiments` |
 | `ar-spatial` | *(no consumers — leaf node)* |
 | `ar-experiments` | *(no consumers — leaf node)* |
+| `ar-bioscience` | *(no consumers — leaf node)* |
 | `ar-flowtreeapi` | `ar-flowtree-python`, `ar-flowtree-runtime` |
 | `ar-flowtree-base` | `ar-flowtree-agents`, `ar-flowtree-runtime` |
 | `ar-flowtree-agents` | `ar-flowtree-runtime` |
@@ -630,6 +649,7 @@ unless a consumer is added:
 - `ar-music` — leaf in Layer 6; pattern-based music composition
 - `ar-spatial` — leaf in Layer 6; spatial audio visualization
 - `ar-experiments` — leaf in Layer 6; integration experiments
+- `ar-bioscience` — leaf in Layer 6; connectome loading and simulation
 - `ar-flowtree-runtime` — top of standalone tree; no consumers in this project
 - `ar-tools` — standalone leaf; no consumers in this project
 
@@ -654,6 +674,8 @@ ar-compose              ~10% of modules (spatial, experiments)
 ar-render               ~0% named-layer consumers
 ar-music, ar-spatial    ~0% consumers
 ar-experiments          ~0% consumers
+ar-biology              ~0% consumers outside ar-bioscience
+ar-bioscience           ~0% consumers
 ar-flowtree-runtime        ~0% consumers
 ar-tools                ~0% consumers
 ```
@@ -938,10 +960,10 @@ done
 # Consumer audit (what depends on each module)
 for module in ar-meta ar-relation ar-io ar-code ar-collect ar-hardware \
               ar-algebra ar-geometry ar-stats ar-time \
-              ar-graph ar-space ar-physics ar-color ar-chemistry ar-heredity \
+              ar-graph ar-space ar-physics ar-color ar-chemistry ar-heredity ar-biology \
               ar-optimize ar-render ar-ml ar-audio ar-utils ar-utils-http \
               ar-ml-djl ar-ml-onnx ar-ml-script \
-              ar-music ar-spatial ar-compose ar-experiments \
+              ar-music ar-spatial ar-compose ar-experiments ar-bioscience \
               ar-flowtreeapi ar-flowtree-base ar-flowtree-agents \
               ar-graphpersist ar-flowtree-python ar-flowtree-runtime ar-tools; do
     consumers=$(grep -rl "$module" $(find . -name pom.xml) 2>/dev/null | \
@@ -1038,6 +1060,7 @@ LAYER 3 (Domain)
   ar-graph      ← ar-geometry, ar-heredity
   ar-chemistry  ← ar-physics, ar-heredity
   ar-space      ← ar-graph, ar-physics
+  ar-biology    ← ar-chemistry, ar-graph
 
 LAYER 4 (Engine)
   ar-optimize     ← ar-graph
@@ -1057,6 +1080,7 @@ LAYER 6 (Studio)
   ar-compose      ← ar-audio, ar-ml
   ar-spatial      ← ar-compose
   ar-experiments  ← ar-compose, ar-ml-onnx, ar-ml-djl, ar-ml-script, ar-utils
+  ar-bioscience   ← ar-biology, ar-ml
 
 STANDALONE
   ar-flowtreeapi       ← ar-utils

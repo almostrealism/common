@@ -74,6 +74,35 @@ class SyntheticConversionTest(unittest.TestCase):
         self.assertLess(strong["edges"], everything["edges"])
 
 
+class SubsetTest(unittest.TestCase):
+    """A subset keeps the chosen neurons in order and exactly the edges joining two of them."""
+
+    def test_induced_edges(self):
+        full = connectome_csr.synthetic(40)
+        keep = np.zeros(40, dtype=bool)
+        keep[[3, 7, 8, 20, 31]] = True
+        part = full.subset("part", keep, "five neurons")
+        self.assertEqual(full.body_ids[keep].tolist(), part.body_ids.tolist())
+        self.assertEqual(full.signs[keep].tolist(), part.signs.tolist())
+        self.assertEqual(5, len(part.annotations))
+
+        joined = keep[full.pre] & keep[full.post]
+        expected = sorted(zip(full.body_ids[full.pre[joined]].tolist(),
+                              full.body_ids[full.post[joined]].tolist(), full.count[joined].tolist()))
+        actual = sorted(zip(part.body_ids[part.pre].tolist(), part.body_ids[part.post].tolist(),
+                            part.count.tolist()))
+        self.assertEqual(expected, actual)
+        self.assertIn("five neurons", part.description["neurons"])
+
+    def test_convert_spot_checks_the_subset(self):
+        keep = np.arange(40) % 2 == 0
+        part = connectome_csr.synthetic(40).subset("part", keep, "even neurons")
+        with tempfile.TemporaryDirectory() as output:
+            metadata = connectome_csr.convert(part, output, 1, {}, "test")
+        self.assertEqual(20, metadata["neurons"])
+        self.assertEqual(len(part.count), metadata["edges"])
+
+
 class SafetensorsRoundTripTest(unittest.TestCase):
     """What write_safetensors writes, read_safetensors reads back exactly."""
 
@@ -99,6 +128,35 @@ class KickScheduleTest(unittest.TestCase):
         kicks = (drive > 0).sum()
         self.assertAlmostEqual(2 * 4000 * 0.015, kicks, delta=4 * np.sqrt(2 * 4000 * 0.015))
         np.testing.assert_array_equal(drive, brian2_reference.kick_schedule(10, (2, 5), 4000, 150.0, 3))
+
+
+class EventsTest(unittest.TestCase):
+    """The references store a run as (step, neuron) events, from which the dense run is exact."""
+
+    def test_events(self):
+        array = np.zeros((4, 3))
+        array[0, 2] = 1
+        array[2, 0] = 68.75
+        array[2, 1] = 1
+        self.assertEqual([[0, 2], [2, 0], [2, 1]], brian2_reference.events(array).tolist())
+
+    def test_no_events(self):
+        self.assertEqual((0, 2), brian2_reference.events(np.zeros((5, 4))).shape)
+
+    def test_compressed_steps(self):
+        array = np.zeros((4, 3))
+        array[0, 2] = 1.5
+        array[2, 0] = 68.75
+        array[2, 1] = 2.0
+        offsets, neurons, values = brian2_reference.compressed_steps(array)
+        self.assertEqual([0, 1, 1, 3, 3], offsets.tolist())
+        self.assertEqual([2, 0, 1], neurons.tolist())
+        self.assertEqual([1.5, 68.75, 2.0], values.tolist())
+        rebuilt = np.zeros_like(array)
+        for step in range(4):
+            row = slice(offsets[step], offsets[step + 1])
+            rebuilt[step, neurons[row]] = values[row]
+        np.testing.assert_array_equal(array, rebuilt)
 
 
 if __name__ == "__main__":

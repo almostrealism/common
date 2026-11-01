@@ -185,7 +185,7 @@ graph TB
                 </div>
 
                 <h3>domain &mdash; Domain Models</h3>
-                <p>Domain-specific functionality for graphics, physics, chemistry, genetics, neural networks, and native code generation.</p>
+                <p>Domain-specific functionality for graphics, physics, chemistry, biology, genetics, neural networks, and native code generation.</p>
                 <div class="mermaid">
 graph TB
     %% Entry points from compute layer
@@ -211,6 +211,10 @@ graph TB
     heredity --> chemistry["chemistry<br/>periodic table, alloys"]
     physics --> chemistry
 
+    %% Biology
+    chemistry --> biology["biology<br/>neurons, synapses, connectomes"]
+    graphMod --> biology
+
     %% Space/3D
     graphMod --> spaceMod["space<br/>3D scenes, meshes"]
     physics --> spaceMod
@@ -222,7 +226,7 @@ graph TB
 
     class geometry,stats,time compute
     class hardware base
-    class color,physics,heredity,graphMod,chemistry,spaceMod domain
+    class color,physics,heredity,graphMod,chemistry,biology,spaceMod domain
                 </div>
 
                 <h3>engine &mdash; Applications &amp; Training</h3>
@@ -296,13 +300,15 @@ graph TB
     class mldjl,mlonnx,mlscript extern
                 </div>
 
-                <h3>studio &mdash; Multimedia Composition</h3>
-                <p>Audio composition, musical patterns, and spatial audio processing.</p>
+                <h3>studio &mdash; Multimedia Composition and Applications</h3>
+                <p>Audio composition, musical patterns, spatial audio processing, and biological models combined with the ML engine.</p>
                 <div class="mermaid">
 graph TB
-    %% Entry points from engine layer
+    %% Entry points from engine and domain layers
     audio["audio"]
     utils["utils"]
+    ml["ml"]
+    biology["biology"]
 
     %% Music
     audio --> music["music<br/>patterns, notes, scales"]
@@ -314,12 +320,18 @@ graph TB
     %% Spatial
     compose --> spatial["spatial<br/>3D sound"]
 
+    %% Bioscience
+    biology --> bioscience["bioscience<br/>connectome simulation"]
+    ml --> bioscience
+
     %% Styling
+    classDef domain fill:#fce4ec,stroke:#c2185b,stroke-width:2px
     classDef engine fill:#fff9c4,stroke:#f57f17,stroke-width:2px
     classDef studio fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
 
-    class audio,utils engine
-    class music,compose,spatial studio
+    class biology domain
+    class audio,utils,ml engine
+    class music,compose,spatial,bioscience studio
                 </div>
 
                 <p class="arch-note">
@@ -453,6 +465,13 @@ graph TB
                         <a href="../domain/chemistry/README.md" class="doc-link">README</a> | <a href="modules/chemistry.html" class="doc-link">Details</a> | <a href="apidocs/org/almostrealism/chem/package-summary.html" class="doc-link">JavaDoc</a>
                     </div>
 
+                    <div class="module-card domain">
+                        <h3>biology</h3>
+                        <span class="badge domain-badge">domain</span>
+                        <p>Neurons, synapses, connectomes, and spiking neuron dynamics</p>
+                        <a href="../domain/biology/README.md" class="doc-link">README</a>
+                    </div>
+
                 </div>
 
                 <h3>engine &mdash; Applications &amp; Training</h3>
@@ -545,6 +564,13 @@ graph TB
                         <span class="badge studio-badge">studio</span>
                         <p>Spatial audio, 3D sound, and composition integration</p>
                         <a href="../studio/spatial/README.md" class="doc-link">README</a>
+                    </div>
+
+                    <div class="module-card studio">
+                        <h3>bioscience</h3>
+                        <span class="badge studio-badge">studio</span>
+                        <p>Connectome loading and simulation, reproducing whole-brain Brian2 results</p>
+                        <a href="../studio/bioscience/README.md" class="doc-link">README</a>
                     </div>
                 </div>
 

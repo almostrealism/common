@@ -18,11 +18,11 @@ package org.almostrealism.bioscience.connectome.test;
 
 import org.almostrealism.bioscience.connectome.ConnectomeNetwork;
 import org.almostrealism.bioscience.connectome.NeuronConnectome;
-import org.almostrealism.io.SystemUtils;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
@@ -48,7 +48,11 @@ import java.util.stream.IntStream;
  * MN9 silent.</p>
  *
  * <p>The connectome and the reference live outside the repository, by default under
- * {@value NeuronConnectomeDatasetTest#DERIVED}, and each test is skipped where they are absent.</p>
+ * {@value NeuronConnectomeDatasetTest#DERIVED}. Each frequency takes about 17 minutes, so these
+ * tests are long-running and excluded from the pipeline profile: they run when asked for, and
+ * then missing data fails the test. The pipeline runs the same network on the committed sugar
+ * circuit, the neurons this experiment activates, against Brian2 spike for spike
+ * ({@link ConnectomeNetworkTest}).</p>
  */
 public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 	/** The property or environment variable naming the directory of the Brian2 references. */
@@ -80,21 +84,21 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 	public static final int STEPS = 10000;
 
 	/**
-	 * Returns the directory of a Brian2 reference, skipping the calling test when it is absent.
+	 * Returns the directory of a Brian2 reference, failing the calling test when it is absent.
 	 *
 	 * @param rate the Poisson rate of the experiment in hertz
 	 * @return the directory
 	 */
 	private File reference(int rate) {
-		File directory = new File(SystemUtils.getProperty(REFERENCE_PROPERTY,
-				NeuronConnectomeDatasetTest.DERIVED + "/flywire/brian2-reference"), "sugarR_630_" + rate + "Hz");
-		Assume.assumeTrue(new File(directory, "rates.safetensors").exists());
-		return directory;
+		String experiment = "sugarR_630_" + rate + "Hz";
+		return new File(requireDataset(REFERENCE_PROPERTY, NeuronConnectomeDatasetTest.DERIVED + "/flywire/brian2-reference",
+				experiment + "/rates.safetensors"), experiment);
 	}
 
 	/** Sugar input at 100 Hz agrees with Brian2. */
 	@Test(timeout = 2400000)
 	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void sugar100Hz() throws IOException {
 		assertSugarMatchesBrian2(100);
 	}
@@ -102,6 +106,7 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 	/** Sugar input at 150 Hz, the model's default rate, agrees with Brian2. */
 	@Test(timeout = 2400000)
 	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void sugar150Hz() throws IOException {
 		assertSugarMatchesBrian2(150);
 	}
@@ -109,6 +114,7 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 	/** Sugar input at 200 Hz agrees with Brian2. */
 	@Test(timeout = 2400000)
 	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void sugar200Hz() throws IOException {
 		assertSugarMatchesBrian2(200);
 	}
@@ -116,6 +122,7 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 	/** The same input to 21 neurons spread evenly over the connectome leaves MN9 silent. */
 	@Test(timeout = 2400000)
 	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void nonGustatoryInputLeavesMn9Silent() throws IOException {
 		try (NeuronConnectome connectome = NeuronConnectome.load(NeuronConnectomeDatasetTest.flywire630())) {
 			int n = connectome.getNeuronCount();

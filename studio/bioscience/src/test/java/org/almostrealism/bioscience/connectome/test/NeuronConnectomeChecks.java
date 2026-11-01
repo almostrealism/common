@@ -22,6 +22,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.almostrealism.bioscience.connectome.NeuronConnectome;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
 
@@ -67,6 +68,27 @@ public abstract class NeuronConnectomeChecks extends TestSuiteBase {
 	}
 
 	/**
+	 * Returns the directory of a dataset kept outside the repository, failing the calling test
+	 * when the directory does not hold the expected file. The tests that call this declare
+	 * themselves long-running and excluded from the pipeline profile, so they run only when
+	 * someone asks for them, and then a missing dataset is an error rather than a skip.
+	 *
+	 * @param property         the system property or environment variable naming the directory
+	 * @param defaultDirectory the directory used when it is not set
+	 * @param file             a file the directory must hold
+	 * @return the directory
+	 */
+	public static File requireDataset(String property, String defaultDirectory, String file) {
+		File directory = new File(SystemUtils.getProperty(property, defaultDirectory));
+		if (!new File(directory, file).exists()) {
+			throw new IllegalStateException(file + " was not found in " + directory
+					+ "; set " + property + " to the directory that holds it");
+		}
+
+		return directory;
+	}
+
+	/**
 	 * Returns the directory of the committed synthetic connectome, written by
 	 * {@code connectome_csr.py --dataset synthetic}.
 	 *
@@ -74,6 +96,18 @@ public abstract class NeuronConnectomeChecks extends TestSuiteBase {
 	 */
 	protected File synthetic() {
 		return resourceDirectory("/connectome/synthetic/" + NeuronConnectome.TENSORS_FILE);
+	}
+
+	/**
+	 * Returns the directory of the committed FlyWire 630 sugar circuit, written by
+	 * {@code brian2_reference.py circuit}: the 451 neurons that fire in the Brian2 sugar
+	 * experiment at 200 Hz, including the 21 sugar GRNs and MN9, with every edge joining two of
+	 * them.
+	 *
+	 * @return the directory
+	 */
+	protected File sugarCircuit() {
+		return resourceDirectory("/connectome/sugar-circuit/" + NeuronConnectome.TENSORS_FILE);
 	}
 
 	/**

@@ -253,7 +253,9 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 
 	/**
 	 * Returns the row of a drive schedule that applies to the current step, row
-	 * {@code step mod rows}, for every replica.
+	 * {@code step mod rows}, for every replica. The schedule is read at logical positions, so a
+	 * schedule stored sparsely (a collection carrying a compressed-row ordering, one row per step)
+	 * is read through its ordering like a dense one.
 	 *
 	 * @param schedule the {@code [rows, N]} drive schedule
 	 * @return a producer of the {@code [replicas * N]} drive of the current step
@@ -268,7 +270,7 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 		}
 
 		CollectionProducer row = mod(cp(step), c((double) shape.length(0)));
-		return c(shape(replicas * n), cp(schedule.reshape(shape(shape.getTotalSize()))),
+		return c(shape(replicas * n), cp(schedule),
 				integers(0, replicas * n).mod(c((double) n)).add(row.multiply(c((double) n))));
 	}
 

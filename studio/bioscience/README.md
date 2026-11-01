@@ -44,19 +44,45 @@ This module exists to:
   `src/test/resources/connectome/synthetic` is its output); `brian2_reference.py` writes the Brian2
   references the network is checked against: `synthetic` runs the model's equations on a converted
   connectome under a seeded kick schedule (the committed fixture under
-  `src/test/resources/connectome/synthetic-brian2`, which `ConnectomeNetworkTest` must reproduce
-  spike for spike), and `sugar` runs the authors' own model for the sugar experiment and writes the
-  mean rate of every neuron. Brian2 is needed only for these runs. Their dependencies are listed in
-  `scripts/requirements.txt`. They are tested by `scripts/test_male_cns.py` (standard library
-  only) and `scripts/test_connectome_csr.py` (needs numpy):
+  `src/test/resources/connectome/synthetic-brian2`), `circuit` cuts the sugar circuit out of
+  FlyWire 630 and runs it the same way (both fixtures below), and `sugar` runs the authors' own
+  model for the sugar experiment and writes the mean rate of every neuron. A kick-schedule
+  reference stores the kicks and the spikes as `(step, neuron)` events. Brian2 is needed only for
+  these runs. Their dependencies are listed in `scripts/requirements.txt`. They are tested by
+  `scripts/test_male_cns.py` (standard library only) and `scripts/test_connectome_csr.py` (needs
+  numpy):
 
   ```bash
   python3 -m unittest discover -s studio/bioscience/scripts -p "test_*.py"
   ```
 
-  CI's `python-tests` job runs the standard-library tests through
-  `tools/tests/test_bioscience_scripts.py`, which imports their test cases so that discovery
-  under `tools/tests` collects them.
+  CI's `python-tests` job runs both through `tools/tests/test_bioscience_scripts.py`, which imports
+  their test cases so that discovery under `tools/tests` collects them.
+
+### What CI runs, and the full experiments
+
+The full datasets are too large for the repository and for the runners, so the pipeline runs the
+same code on committed fixtures cut to a size every runner can afford, and the full experiments
+run only when asked for:
+
+- `src/test/resources/connectome/sugar-circuit` is the FlyWire 630 sugar circuit: the 451
+  neurons that fire in the Brian2 sugar experiment at 200 Hz (including the 21 sugar GRNs and
+  MN9) and the 21,785 edges joining them, written by `brian2_reference.py circuit` through
+  `connectome_csr.py`, with spot checks recomputed from the FlyWire table.
+  `src/test/resources/connectome/sugar-circuit-brian2` is Brian2's run of it at the model's own
+  synapse weight under 200 Hz kicks to the sugar GRNs: 7917 spikes in 0.5 s, MN9 at 96 Hz against
+  92.7 Hz in the whole brain. `NeuronConnectomeTest` checks the circuit as a converted dataset and
+  `ConnectomeNetworkTest` requires the network to reproduce Brian2's spikes: every neuron's count
+  exactly, each spike within one step, and at most one in a thousand displaced. The allowance is
+  for FP32 backends only: a NumPy run of the same step in FP64 reproduces all 7917 spikes, and in
+  FP32 it shifts one spike by one step, which is what the network does on Metal. The synthetic
+  reference, with fewer than a thousand spikes, must match exactly.
+- The tests on the full datasets (`NeuronConnectomeDatasetTest`, `ConnectomeNetworkDatasetTest`,
+  `CellTypeConnectomeTest`, `CellTypeRateModelTest`) are declared
+  `@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)`: excluded from the
+  pipeline profile CI runs, and run locally when long tests are enabled
+  (`AR_LONG_TESTS=enabled`).
+  When one runs, a missing dataset fails it; none of them skips because data is absent.
 
 ### Converted datasets
 
@@ -71,6 +97,14 @@ directory named by the property in parentheses):
 | FlyWire 783 | `connectome_csr.py --dataset flywire-783 --source <flywire-783 directory>` | `flywire/csr-783` (`AR_FLYWIRE_783_CSR`) |
 | Cell types | `male_cns_cell_types.py --source <male-cns release>` | `male-cns/cell-type-matrix` (`AR_MALE_CNS_CELL_TYPES`) |
 | Brian2 sugar references | `brian2_reference.py sugar --repo <model repo> --rate <100, 150 or 200>` | `flywire/brian2-reference/sugarR_630_<rate>Hz` (`AR_FLYWIRE_BRIAN2_REFERENCE`, the parent directory) |
+
+The committed sugar circuit fixtures are regenerated from the source tables and the 200 Hz
+reference with:
+
+    brian2_reference.py circuit --source <flywire-783 directory> \
+        --rates <models-derived>/flywire/brian2-reference/sugarR_630_200Hz \
+        --connectome-output src/test/resources/connectome/sugar-circuit \
+        --output src/test/resources/connectome/sugar-circuit-brian2
 
 `ConnectomeNetworkDatasetTest` runs the sugar experiment (30 trials of 1 s) on FlyWire 630 and
 requires agreement with the Brian2 rates within the spread of two independent Brian2 runs: MN9

@@ -392,6 +392,48 @@ public class CompressedRowOrderedComputationTests extends TestSuiteBase implemen
 	}
 
 	/**
+	 * A matrix with many more rows than columns, most rows empty, read element by element
+	 * (multiplied by one) equals its dense form on every backend: this is how a sparse schedule,
+	 * one row per time step, becomes a dense input.
+	 */
+	@Test(timeout = 120000)
+	public void tallMatrixReadsDense() {
+		int rows = 2000;
+		int cols = 40;
+		int[] offsets = new int[rows + 1];
+		int[] columns = new int[rows / 7 * 2];
+		int entry = 0;
+		for (int i = 0; i < rows; i++) {
+			offsets[i] = entry;
+			if (i % 7 == 3 && entry + 2 <= columns.length) {
+				columns[entry++] = i % cols;
+				columns[entry++] = (i * 3 + 1) % cols == i % cols ? (i + 1) % cols : (i * 3 + 1) % cols;
+			}
+		}
+		offsets[rows] = entry;
+		int[] stored = Arrays.copyOf(columns, entry);
+
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(cols, offsets, stored);
+		for (ComputeRequirement backend : backends()) {
+			try (PackedCollection values = integers(1, entry + 1).evaluate()) {
+				PackedCollection matrix = new PackedCollection(shape(rows, cols), 0, values, 0, order);
+				PackedCollection dense = evaluate(cp(matrix).multiply(1.0), backend);
+				assertEquals(rows * cols, dense.getShape().getTotalSize());
+
+				double[] actual = dense.toArray(0, rows * cols);
+				double[] expected = new double[rows * cols];
+				for (int i = 0; i < rows; i++) {
+					for (int k = offsets[i]; k < offsets[i + 1]; k++) expected[i * cols + stored[k]] = k + 1;
+				}
+
+				for (int i = 0; i < expected.length; i++) {
+					assertEquals("element " + i + " on " + backend, expected[i], actual[i]);
+				}
+			}
+		}
+	}
+
+	/**
 	 * The product of a {@code 300 × 200} matrix holding one full row with a {@code (200, 3)}
 	 * matrix is correct. Read through the ordering, every logical element of this matrix is a
 	 * search as long as its longest row, and the dense product of it failed to compile; the

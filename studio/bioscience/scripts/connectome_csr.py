@@ -69,6 +69,7 @@ NAMED_NEURONS = {
     "male-cns": (10331, 16949),
     "flywire-630": (720575940660219265, 720575940624963786),
     "flywire-783": (720575940660219265, 720575940624963786),
+    "flywire-630-sugar-circuit": (720575940660219265, 720575940624963786),
 }
 
 
@@ -101,6 +102,29 @@ class Dataset:
         self.sources = sources
         self.description = description
         self.edges_by_body = edges_by_body
+
+    def subset(self, name, keep, rule):
+        """Returns the connectome induced on some of these neurons.
+
+        Args:
+            name: the name of the subset.
+            keep: a boolean numpy array, True for each neuron the subset keeps.
+            rule: a description of which neurons are kept, recorded as the
+                subset's neuron rule.
+
+        Returns:
+            A Dataset of the kept neurons, in their order here, and the edges
+            joining two of them. Its spot checks still read the source table,
+            which ``spot_checks`` filters to the kept neurons.
+        """
+        import numpy as np
+
+        index = np.cumsum(keep) - 1
+        edges = keep[self.pre] & keep[self.post]
+        description = dict(self.description, neurons="%s, of %s" % (rule, self.description["neurons"]))
+        return Dataset(name, self.body_ids[keep], [a for a, k in zip(self.annotations, keep) if k],
+                       self.signs[keep], index[self.pre[edges]], index[self.post[edges]],
+                       self.count[edges], self.sources, description, self.edges_by_body)
 
 
 def read_male_cns(source):

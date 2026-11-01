@@ -179,13 +179,13 @@ language for defining your expressions.
 ```
 common/
 ├── base/                              — Foundation
-│   uml, io, relation, code, collect, hardware
+│   meta, io, relation, code, collect, hardware
 │
 ├── compute/                           — Mathematical Domains
 │   algebra, geometry, stats, time
 │
 ├── domain/                            — Domain Models
-│   color, heredity, graph, physics, space, chemistry, llvm
+│   color, heredity, graph, physics, space, chemistry, biology
 │
 ├── engine/                            — Applications & Training
 │   optimize, render, ml, audio, utils, utils-http
@@ -193,8 +193,8 @@ common/
 ├── extern/                            — External Integrations
 │   ml-djl, ml-onnx, ml-script
 │
-├── studio/                            — Multimedia Composition
-│   music, spatial, compose
+├── studio/                            — Multimedia Composition and Applications
+│   music, spatial, compose, experiments, bioscience
 │
 ├── flowtree/                          — Workflow Orchestration
 │   api, base, agents, python,

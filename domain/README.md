@@ -1,6 +1,6 @@
 # domain — Domain Models
 
-This layer provides concrete domain models for graphics, neural networks, and simulation. These modules combine the foundation and mathematical layers to implement domain-specific systems — color and lighting, neural network graphs, 3D scene management, physical simulation, and evolutionary computation.
+This layer provides concrete domain models for graphics, neural networks, and simulation. These modules combine the foundation and mathematical layers to implement domain-specific systems — color and lighting, neural network graphs, 3D scene management, physical simulation, evolutionary computation, and biological dynamics.
 
 ## Modules
 
@@ -21,4 +21,7 @@ Quantum and classical physics simulation. Models atomic structures (electrons, o
 
 ### [ar-chemistry](chemistry/README.md)
 Periodic table and chemical element representations. Provides all 118 elements with electron configurations, organized by groups, periods, families, and blocks. Supports `Alloy` creation for probabilistic element mixing and integrates with physics for atomic modeling and heredity for evolutionary material composition.
+
+### [ar-biology](biology/README.md)
+Biological structure and dynamics: neurons, synapses, cell types and connectomes, expressed as computation graphs so a simulation compiles to native kernels like every other model. Provides `ExponentialSynapseNeurons`, the leaky integrate-and-fire neuron of the Shiu et al. (2024) whole-brain model stepped by the exact solution of its membrane and synapse equations, and `PoissonInput`, reproducible Poisson drive from a counter-based generator. Both are `Block`s, so a PDSL layer can place them in a network. Depends on chemistry and graph; applications that also need the ML engine live in `studio/bioscience`.
 

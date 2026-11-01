@@ -52,6 +52,24 @@ public class NeuronConnectomeTest extends NeuronConnectomeChecks {
 	}
 
 	/**
+	 * The committed FlyWire sugar circuit, a real connectome cut from the 630 snapshot, loads with
+	 * the totals the script recorded.
+	 */
+	@Test(timeout = 120000)
+	public void sugarCircuitTotals() throws IOException {
+		assertTotals(sugarCircuit());
+	}
+
+	/**
+	 * The sugar circuit's spot checks, including MN9 and a sugar GRN, agree with the script's
+	 * recomputation from the FlyWire source table, restricted to the circuit's neurons.
+	 */
+	@Test(timeout = 300000)
+	public void sugarCircuitSpotChecks() throws IOException {
+		assertSpotChecks(sugarCircuit());
+	}
+
+	/**
 	 * The sparse product of the loaded matrix with a vector equals the product of the dense
 	 * matrix, read element by element through the ordering, with the same vector.
 	 */
