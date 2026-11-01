@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Named;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
@@ -216,22 +217,39 @@ public abstract class ParallelBlock implements Block, Learning, Tracking {
 	 * buffer, then pushes the accumulated sum upstream and clears the buffer for the next step.
 	 * Accumulation happens as each child emits, because a child ending in a {@link BranchBlock}
 	 * clears the gradient it emitted immediately afterward.</p>
+	 *
+	 * <p>A child with no backward cell ({@link Block#getBackward()} returns {@code null}, as a
+	 * forward-only {@link DefaultBlock} does) is skipped with a warning, exactly as
+	 * {@link SequentialBlock#add(Block)} skips one: it contributes nothing to the summed input
+	 * gradient. Its forward output still occupies its segment of this block's output.</p>
 	 */
 	@Override
 	public Cell<PackedCollection> getBackward() {
 		if (backward == null) {
 			gradient = new PackedCollection(inputShape);
+			for (Block child : children) {
+				if (child.getBackward() == null) {
+					warn("No backward Cell for " + Named.nameOf(child)
+							+ "; it contributes no input gradient");
+				}
+			}
+
 			Receptor<PackedCollection> aggregator = input ->
 					a(name() + " aggregate", p(gradient.each()), add(p(gradient.each()), input));
 
 			backward = Cell.of((gradientValue, next) -> {
 				for (Block child : children) {
-					child.getBackward().setReceptor(aggregator);
+					if (child.getBackward() != null) {
+						child.getBackward().setReceptor(aggregator);
+					}
 				}
 
 				OperationList ops = new OperationList(name() + "-backward");
 				for (int i = 0; i < children.size(); i++) {
-					ops.add(children.get(i).getBackward().push(distribute(gradientValue, i)));
+					Cell<PackedCollection> childBackward = children.get(i).getBackward();
+					if (childBackward != null) {
+						ops.add(childBackward.push(distribute(gradientValue, i)));
+					}
 				}
 
 				if (next != null) {

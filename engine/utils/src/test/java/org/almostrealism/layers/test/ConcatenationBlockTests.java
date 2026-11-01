@@ -19,6 +19,8 @@ package org.almostrealism.layers.test;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.Cell;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerRoutingFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -135,6 +137,67 @@ public class ConcatenationBlockTests extends TestSuiteBase implements LayerRouti
 					}
 					Assert.assertEquals("pass " + pass + " input " + j, expected, inputGradient.toDouble(j), 1e-5);
 				}
+			}
+		}
+	}
+
+	/**
+	 * A {@link Block} is allowed to have no backward cell ({@link Block#getBackward()} returns
+	 * {@code null}, as a forward-only {@link DefaultBlock} does). Compiling a concatenation that
+	 * mixes such a forward-only child with a trainable one for training must not fail: the
+	 * forward-only child still contributes its segment to the forward output, is skipped in the
+	 * backward pass, and contributes nothing to the summed input gradient, so the input gradient is
+	 * exactly the trainable child's {@code W_aᵀ·g_a}.
+	 */
+	@Test(timeout = 120000)
+	public void skipsChildrenWithNoBackwardCell() {
+		Random random = new Random(25);
+		PackedCollection weightA = randn(shape(NODES_A, SIZE), 0.0, 1.0, random).evaluate();
+		PackedCollection constant = randn(shape(CACHE), 0.0, 1.0, random).evaluate();
+		PackedCollection input = randn(shape(SIZE), 0.0, 1.0, random).evaluate();
+
+		// A forward-only child: it pushes a constant segment and has no backward cell.
+		Cell<PackedCollection> forwardCell = Cell.of((in, next) ->
+				next == null ? new OperationList() : next.push(cp(constant)));
+		Block forwardOnly = new DefaultBlock(shape(SIZE), shape(CACHE), forwardCell, null);
+		Assert.assertNull("the forward-only child must have no backward cell", forwardOnly.getBackward());
+
+		List<Block> children = new ArrayList<>();
+		children.add(dense(shape(SIZE), weightA, false, false));
+		children.add(forwardOnly);
+
+		List<PackedCollection> recorded = new ArrayList<>();
+		Model model = new Model(shape(SIZE), gradientRecorder(recorded));
+		model.add(concatBlocks(shape(SIZE), children));
+		try (CompiledModel compiled = model.compile(true, true)) {
+			// Only the dense child holds weights, so only it records a gradient.
+			Assert.assertEquals(1, recorded.size());
+			PackedCollection gradientA = recorded.get(0);
+
+			PackedCollection out = compiled.forward(input);
+			Assert.assertEquals(NODES_A + CACHE, out.getShape().getTotalSize());
+			for (int i = 0; i < NODES_A; i++) {
+				Assert.assertEquals("segment a " + i, dot(weightA, i, input), out.toDouble(i), 1e-5);
+			}
+			for (int i = 0; i < CACHE; i++) {
+				Assert.assertEquals("segment constant " + i, constant.toDouble(i),
+						out.toDouble(NODES_A + i), 1e-5);
+			}
+
+			PackedCollection outputGradient = randn(shape(NODES_A + CACHE), 0.0, 1.0, random).evaluate();
+			PackedCollection inputGradient = compiled.backward(outputGradient);
+
+			// The dense child receives only its own slice of the output gradient.
+			assertWeightGradient("a", weightA, gradientA, outputGradient, 0, input, 0);
+
+			// The forward-only child contributes nothing, so the input gradient is W_aᵀ·g_a alone.
+			Assert.assertEquals(SIZE, inputGradient.getShape().getTotalSize());
+			for (int j = 0; j < SIZE; j++) {
+				double expected = 0.0;
+				for (int i = 0; i < NODES_A; i++) {
+					expected += weightA.toDouble(i * SIZE + j) * outputGradient.toDouble(i);
+				}
+				Assert.assertEquals("input " + j, expected, inputGradient.toDouble(j), 1e-5);
 			}
 		}
 	}
