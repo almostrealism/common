@@ -299,7 +299,7 @@ output shape. Anything else fails with "Cannot add *type* to block".
 | `accum { body }` | `SequentialBlock.accum`: the current tail is wrapped in a `BranchBlock` that feeds a sub-block holding `body`, and the sub-block's output is added to the main path (a residual connection). A body with one expression uses that block directly. | The sub-block's output must have the input's total size. Output: the input shape. |
 | `product(a, b)` | `SequentialBlock.product`: `b` is branched from the current output, `a` is applied on the main path, and the result is `a(x) * b(x)` element-wise. Each argument is an inline block `{ }`, a block-valued expression, or a nested `product`/`accum_blocks`/`concat_blocks`. | Both operands start at the current shape. Output: `a`'s output shape. |
 | `accum_blocks(a, b, ...)` | `LayerRoutingFeatures.accumBlocks`: every part receives the same input, and the outputs are summed element-wise. The backward pass gives each part the full output gradient and sums their input gradients. | All parts start at the current shape. The parts' outputs must agree. |
-| `concat_blocks(a, b, ...)` | `LayerRoutingFeatures.concatBlocks`: every part receives the same input, and the outputs are concatenated. | Output: the flat `[sum of the parts' sizes]`. |
+| `concat_blocks(a, b, ...)` | `LayerRoutingFeatures.concatBlocks`: every part receives the same input, and the outputs are concatenated. The backward pass gives each part the slice of the output gradient for its segment and sums the parts' input gradients. | Output: the flat `[sum of the parts' sizes]`. |
 | `for i in a..b { body }` | Interprets `body` once for each integer `i` from `a` (inclusive) to `b` (exclusive), each time in a new scope that binds `i`. Unrolled at build time. | Stages append in sequence. |
 | `stack group as m { body }` | Evaluates `group` to a `WeightGroup` and interprets `body` once per member, in `WeightGroup.members()` order (numeric names sorted numerically), with `m` bound to that member's sub-dictionary. The body has no index to compute with. | Stages append in sequence. |
 | `for each channel { body }` | Needs `channels` in scope and a `PdslMultiChannelDispatcher` installed (the audio registrar installs one). See [pdsl-audio-dsp.md](pdsl-audio-dsp.md#multi-channel-constructs). | `[C, S]` → per-channel body output. |
@@ -751,9 +751,6 @@ Each limit below is recorded with its evidence. Fixing any of them changes this 
   `beta` is not seen by the built layer either.
 - **`capture` cuts the gradient.** Its backward cell is empty (`PdslBuiltins.callCapture`), so
   nothing upstream of a `capture` receives a gradient.
-- **`concat_blocks` has no backward pass.** `LayerRoutingFeatures.concatBlocks` builds its layer
-  with a `null` back-propagation. Whether any gradient reaches the parts is not verified, and none
-  is expected.
 - **Imports are ignored by `parse(String)` and `parse(Path)`.** Those methods record the `Import`
   nodes, but only `parseResource`/`parseResources` resolve them. A source string that imports an
   asset and calls its layers fails at build time with "Unknown function".

@@ -193,8 +193,8 @@ common/
 ├── extern/                            — External Integrations
 │   ml-djl, ml-onnx, ml-script
 │
-├── studio/                            — Multimedia Composition
-│   music, spatial, compose, bioscience
+├── studio/                            — Multimedia Composition and Applications
+│   music, spatial, compose, experiments, bioscience
 │
 ├── flowtree/                          — Workflow Orchestration
 │   api, base, agents, python,

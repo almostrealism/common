@@ -703,6 +703,27 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	/**
+	 * Converts all data to an int array, for integer data crossing a host boundary such as index
+	 * tensors loaded from a file. Memory that has not been through an FP32 device holds every
+	 * {@code int} exactly, so values above {@code 2^24} survive the read.
+	 *
+	 * @return A new int array containing all values
+	 * @throws IllegalArgumentException If a value is not a whole number within the range of an int
+	 */
+	default int[] toIntArray() {
+		double[] values = toArray();
+		int[] integers = new int[values.length];
+		for (int i = 0; i < values.length; i++) {
+			integers[i] = (int) values[i];
+			if (integers[i] != values[i]) {
+				throw new IllegalArgumentException("Value " + values[i] + " at " + i + " is not an int");
+			}
+		}
+
+		return integers;
+	}
+
+	/**
 	 * Converts a range of this memory data to a float array.
 	 *
 	 * <p>Values are cast from double to float precision.</p>
