@@ -21,6 +21,7 @@ import org.almostrealism.bioscience.connectome.ConnectomeNetwork;
 import org.almostrealism.bioscience.connectome.NeuronConnectome;
 import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CounterRandom;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.time.SimulationRunner;
 import org.junit.Assert;
@@ -223,6 +224,59 @@ public class ConnectomeNetworkTest extends NeuronConnectomeChecks {
 			}
 
 			network.destroy();
+		}
+	}
+
+	/**
+	 * The constructor rejects a Poisson seed outside its range and a negative rate as invalid
+	 * arguments, so a caller cannot build a network that would draw from an invalid stream. The
+	 * rejection releases the network state the constructor had already allocated rather than
+	 * leaking it (see {@link ConnectomeNetwork}'s constructor cleanup).
+	 */
+	@Test(timeout = 300000)
+	public void constructorRejectsInvalidPoissonArguments() throws IOException {
+		try (NeuronConnectome connectome = NeuronConnectome.load(synthetic())) {
+			assertConstructorRejected(connectome, 150.0, CounterRandom.SEED_LIMIT);
+			assertConstructorRejected(connectome, 150.0, -1);
+			assertConstructorRejected(connectome, -1.0, 0);
+		}
+	}
+
+	/**
+	 * Asserts that {@link ConnectomeNetwork}'s constructor rejects a Poisson rate and seed with an
+	 * {@link IllegalArgumentException}.
+	 *
+	 * @param connectome the connectome
+	 * @param rate       the Poisson rate in hertz
+	 * @param seed       the Poisson seed
+	 */
+	private void assertConstructorRejected(NeuronConnectome connectome, double rate, int seed) {
+		try {
+			new ConnectomeNetwork(connectome, rate, seed).destroy();
+			Assert.fail("Accepted rate " + rate + " and seed " + seed);
+		} catch (IllegalArgumentException expected) {
+			log("rejected=" + expected.getMessage());
+		}
+	}
+
+	/**
+	 * {@link ConnectomeNetwork#meanRates(int, long, int)} rejects a seed range whose later passes
+	 * would run past {@link CounterRandom#SEED_LIMIT}, and does so before any state is cleared or
+	 * any trial run, rather than throwing partway through after earlier passes have already mutated
+	 * the network.
+	 */
+	@Test(timeout = 300000)
+	public void meanRatesRejectsSeedRangeOverflow() throws IOException {
+		try (NeuronConnectome connectome = NeuronConnectome.load(synthetic())) {
+			ConnectomeNetwork network = new ConnectomeNetwork(connectome, 150.0, 0, 0);
+			try {
+				network.meanRates(2, 10, CounterRandom.SEED_LIMIT - 1);
+				Assert.fail("Accepted a two-pass run whose second seed is past the limit");
+			} catch (IllegalArgumentException expected) {
+				log("rejected=" + expected.getMessage());
+			} finally {
+				network.destroy();
+			}
 		}
 	}
 }
