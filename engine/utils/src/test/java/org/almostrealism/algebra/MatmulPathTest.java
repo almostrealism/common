@@ -304,6 +304,23 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * A batch of two rows whose total size happens to equal the matrix width is not a single
+	 * vector, so it must not take the single-vector weighted sum, which would flatten both rows
+	 * into one vector and return a single {@code (m, 1)} result with the batch axis dropped.
+	 */
+	@Test(timeout = 60000)
+	public void batchMatchingWidthIsNotSingleVector() {
+		PackedCollection weights = new PackedCollection(shape(4, 6));
+		initializeWeights(weights, 4, 6);
+		PackedCollection batch = pack(1, -1, 2, 3, 0, -2).reshape(shape(2, 3).traverse(1));
+
+		CollectionProducer product = matmul(cp(weights), cp(batch));
+		Assert.assertFalse("batch product is " + product.getClass().getSimpleName(),
+				product instanceof WeightedSumComputation);
+		Assert.assertNotEquals(shape(4, 1), product.getShape());
+	}
+
+	/**
 	 * A matrix of one row times a single vector is a dot product, which keeps the multiply +
 	 * sum form rather than taking the single-vector weighted sum.
 	 */

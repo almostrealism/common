@@ -29,6 +29,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 /**
  * Provides convenient factory methods for creating matrix computations and operations.
@@ -330,7 +331,14 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			// In that case, fall through to the weightedSum path below WITHOUT preprocessing.
 			// Empirically: 1000 outputs ~3s, 5000 outputs ~106s, 10000 outputs ~10+ minutes.
 			int outputSize = mShape.length(0);
-			if (outputSize > 1 && outputSize <= 1000 && vShape.getTotalSizeLong() == mShape.length(1)) {
+
+			// Exactly one vector: one axis spans the matrix width and every other axis is a unit,
+			// so a batch whose total size merely equals the width is not mistaken for one
+			int width = mShape.length(1);
+			TraversalPolicy layout = vShape;
+			boolean singleVector = layout.getTotalSizeLong() == width
+					&& IntStream.range(0, layout.getDimensions()).anyMatch(i -> layout.length(i) == width);
+			if (outputSize > 1 && outputSize <= 1000 && singleVector) {
 				// A single vector: each output sums one row of the matrix against a (1, n)
 				// row holding the vector, computed directly in the (m, 1) shape multiply + sum
 				// gives so that the result is itself the computation rather than a view of it
