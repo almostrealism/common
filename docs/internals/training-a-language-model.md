@@ -376,7 +376,7 @@ reproducible after a reset.
 The cost of this sliding-window decode is one full forward pass per byte. In steady state it decodes
 about 190 bytes per second for this configuration (Mac Studio, Apple silicon, Metal, FP32, measured
 by `CausalLanguageModelDecodeThroughputTest` with an operation profile attached), issuing 86 kernel
-invocations, 128 Metal dispatches and 7 command-buffer commits per byte. The single-position
+invocations, 122 Metal dispatches and 7 command-buffer commits per byte. The single-position
 key/value-cache decode was added to avoid recomputing the window.
 `KeyValueCacheAutoregressiveModel` decodes the same weights one token at a time, scoring the new
 position against each layer's cached keys and values instead of recomputing the whole window, so the
