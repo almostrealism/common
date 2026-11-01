@@ -619,9 +619,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         // Terminal persistence is owned by the controller's completeJob path
         // (see JobLifecycleRecorder), not by the notifier.
-        String summary = formatCompletedSummary(event);
-        String details = formatCompletedDetails(event);
         String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
+        String summary = formatCompletedSummary(event, threadTs != null);
+        String details = formatCompletedDetails(event);
 
         // Only the summary reaches the channel; the details stay in the thread.
         if (threadTs != null) {
@@ -1046,13 +1046,17 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * Formats the summary of a job completion: the message posted to both the
      * job's thread and the channel. It carries the outcome, error details as
      * applicable, pull request and a one-line time and cost overview. The
-     * branch is omitted because the submission message already names it.
+     * branch is named only when {@code hasSubmissionThread} is false, because
+     * a submission thread already carries it; without one (e.g. after a
+     * notifier restart) the summary is the only place it can appear.
      * Everything else is left to {@link #formatCompletedDetails(JobCompletionEvent)}.
      *
-     * @param event       the completion event
-     * @return            formatted Slack message string
+     * @param event               the completion event
+     * @param hasSubmissionThread whether a submission message thread exists for
+     *                            this job to carry the branch identifier
+     * @return                    formatted Slack message string
      */
-    private String formatCompletedSummary(JobCompletionEvent event) {
+    private String formatCompletedSummary(JobCompletionEvent event, boolean hasSubmissionThread) {
         StringBuilder sb = new StringBuilder();
 
         switch (event.getStatus()) {
@@ -1060,6 +1064,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 if (isPushedWork(event)) {
                     sb.append(":white_check_mark: *Work complete* - pushed ");
                     sb.append(event.getStagedFiles().size()).append(" file(s)\n");
+                    if (!hasSubmissionThread && event.getTargetBranch() != null) {
+                        sb.append("   Branch: `").append(event.getTargetBranch()).append("`\n");
+                    }
                 } else {
                     sb.append(":small_red_triangle_down: *Work complete* - no changes to push\n");
                 }
@@ -1102,7 +1109,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
     /**
      * Formats the details of a job completion: the message kept in the job's
-     * thread alongside the {@link #formatCompletedSummary(JobCompletionEvent) summary}.
+     * thread alongside the {@link #formatCompletedSummary(JobCompletionEvent, boolean) summary}.
      * It carries the commit, exact time and cost figures, stop reason, turn
      * count, per-model cost and permission denials.
      *
@@ -1179,7 +1186,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             if (runners.length() > 0) {
                 overview.append(" (").append(runners).append(")");
             }
-            // TODO(review): "+" from appendCostTotal and "(incomplete)" both mark an incomplete cost; consider keeping one
             if (event.isCostIncomplete()) {
                 overview.append(" (incomplete)");
             }

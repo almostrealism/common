@@ -380,6 +380,38 @@ public class SlackCostNotifierTest extends TestSuiteBase {
     }
 
     /**
+     * Verifies that a completion posted without a prior submission thread names
+     * the branch in its summary, since there is no submission message to carry
+     * it (e.g. after a notifier restart or when another node handled the
+     * submission). The branch stays out of the summary when a thread exists,
+     * which {@link #testCompletionSummaryAndDetailsSplit()} covers.
+     */
+    @Test(timeout = 10000)
+    public void testStandaloneCompletionSummaryNamesBranch() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json ->
+            messages.add(JsonFieldExtractor.extractString(json, "text")));
+
+        Workstream workstream = new Workstream("C_STANDALONE", "#standalone-test");
+        notifier.registerWorkstream(workstream);
+
+        CodingAgentJobEvent event = CodingAgentJobEvent.success("job-standalone", "Standalone task");
+        event.withGitInfo("feature/standalone", "cafe123456789", List.of("a.java"), List.of(), true);
+        event.withPullRequestUrl("https://github.com/test/repo/pull/775");
+        notifier.onJobCompleted(workstream.getWorkstreamId(), event);
+
+        assertEquals(2, messages.size());
+        String summary = messages.get(0);
+        String details = messages.get(1);
+
+        assertTrue(summary.contains("Work complete"));
+        assertTrue(summary.contains("Branch: `feature/standalone`"));
+        assertTrue(summary.contains("PR: https://github.com/test/repo/pull/775"));
+        assertFalse(details.contains("Branch:"));
+    }
+
+    /**
      * Verifies that a completion which pushed nothing is marked with its own
      * indicator, omits the job description, and still shows the pull request
      * link in the broadcast summary.
