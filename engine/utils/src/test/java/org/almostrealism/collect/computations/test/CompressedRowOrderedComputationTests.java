@@ -335,6 +335,21 @@ public class CompressedRowOrderedComputationTests extends TestSuiteBase implemen
 	}
 
 	/**
+	 * The product with a batch of five row vectors of shape {@code (5, 5)}, traversed along its
+	 * rows, whose batch size equals the matrix's column count: the square batch must take the
+	 * row-vector path and keep the {@code (5, rows)} layout, not the column-oriented
+	 * {@code (rows, 5)} product.
+	 */
+	@Test(timeout = 60000)
+	public void matmulRowVectorBatchSquare() {
+		assertMatchesDense(m -> matmul(m, cp(pack(1.0, -1.0, 2.0, 0.5, 3.0,
+				-2.0, 4.0, 1.0, 0.0, 5.0,
+				2.0, -3.0, 1.0, 1.0, 1.0,
+				0.5, 0.5, -1.0, 2.0, -2.0,
+				3.0, 1.0, 0.0, -1.0, 4.0).reshape(shape(5, 5)).traverse(1))));
+	}
+
+	/**
 	 * The product of a {@code 60000 × 60000} matrix, one entry per row, with a row vector is
 	 * computed by visiting the stored entries: the logical size of the matrix exceeds the range of
 	 * an {@code int}, so a product that formed a logical index of it could not be built.

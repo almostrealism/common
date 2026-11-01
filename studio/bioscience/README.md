@@ -61,9 +61,13 @@ This module exists to:
 
 ### What CI runs, and the full experiments
 
-The full datasets are too large for the repository and for the runners, so the pipeline runs the
-same code on committed fixtures cut to a size every runner can afford, and the full experiments
-run only when asked for:
+The full datasets are too large for the repository and for the runners, so the committed fixtures
+are cut to a size every runner can afford and the same simulation code is exercised against them
+under the pipeline test profile; the full experiments run only when asked for. Of this, CI runs
+the Python conversion-script tests (the `python-tests` job, above) and the sparse-matrix ordering
+that backs the loader (`CompressedRowOrderedComputationTests` in `engine/utils`); the
+`studio/bioscience` Java tests below are not yet in the CI test matrix, as adding the module to it
+is a change to the locked CI configuration made on a `ci/` branch (tracked as a follow-up):
 
 - `src/test/resources/connectome/sugar-circuit` is the FlyWire 630 sugar circuit: the 451
   neurons that fire in the Brian2 sugar experiment at 200 Hz (including the 21 sugar GRNs and
@@ -79,8 +83,8 @@ run only when asked for:
   reference, with fewer than a thousand spikes, must match exactly.
 - The tests on the full datasets (`NeuronConnectomeDatasetTest`, `ConnectomeNetworkDatasetTest`,
   `CellTypeConnectomeTest`, `CellTypeRateModelTest`) are declared
-  `@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)`: excluded from the
-  pipeline profile CI runs, and run locally when long tests are enabled
+  `@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)`: excluded from
+  pipeline-profile runs, and run locally when long tests are enabled
   (`AR_LONG_TESTS=enabled`).
   When one runs, a missing dataset fails it; none of them skips because data is absent.
 

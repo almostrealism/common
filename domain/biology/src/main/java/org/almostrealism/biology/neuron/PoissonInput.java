@@ -77,12 +77,20 @@ public class PoissonInput implements Block {
 	 *                  sets the number of neurons; it belongs to the caller
 	 * @param step      the single-value step counter the draws are indexed by
 	 * @param seed      the initial seed, in {@code [0, }{@link CounterRandom#SEED_LIMIT}{@code )}
-	 * @throws IllegalArgumentException if the rate is negative or the seed is out of range
+	 * @throws IllegalArgumentException if the rate is negative, the step duration is not positive,
+	 *                                  the kick probability {@code rate * dt} exceeds one, or the
+	 *                                  seed is out of range
 	 */
 	public PoissonInput(double rate, double dt, double amplitude, PackedCollection targets,
 						PackedCollection step, int seed) {
 		if (rate < 0) {
 			throw new IllegalArgumentException("Rate must not be negative, got " + rate);
+		} else if (dt <= 0) {
+			throw new IllegalArgumentException("Step duration must be positive, got " + dt);
+		} else if (rate * dt > 1.0) {
+			throw new IllegalArgumentException("Rate " + rate + " over a step of " + dt
+					+ " gives a kick probability of " + (rate * dt) + ", above one; a single Bernoulli"
+					+ " kick per step needs rate * dt <= 1");
 		}
 
 		this.count = targets.getShape().getTotalSize();
