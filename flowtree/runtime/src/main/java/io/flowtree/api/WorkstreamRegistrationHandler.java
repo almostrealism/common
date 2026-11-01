@@ -141,8 +141,10 @@ final class WorkstreamRegistrationHandler {
 
         Workstream workstream = registration.workstream();
         if (registration.existing()) {
+            String dependentFlag = registration.matchedAsDependentRepo()
+                    ? ",\"matchedAsDependentRepo\":true" : "";
             return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json",
-                    "{\"ok\":true,\"existing\":true,\"workstreamId\":\""
+                    "{\"ok\":true,\"existing\":true" + dependentFlag + ",\"workstreamId\":\""
                     + JsonFieldExtractor.escapeJson(workstream.getWorkstreamId()) + "\"}");
         }
 
@@ -184,6 +186,12 @@ final class WorkstreamRegistrationHandler {
         private final String channelName;
         /** Whether the workstream already existed rather than being created here. */
         private final boolean existing;
+        /**
+         * Whether the match was made because the workstream lists the
+         * requested repository among its {@code dependentRepos} rather than
+         * tracking it as its own primary repo. Always implies {@link #existing}.
+         */
+        private final boolean matchedAsDependentRepo;
         /** The failure response, or {@code null} when registration succeeded. */
         private final Response failure;
 
@@ -191,18 +199,20 @@ final class WorkstreamRegistrationHandler {
          * Creates a registration outcome. Callers should use the static
          * factory methods rather than this constructor.
          *
-         * @param workstream  the resolved workstream, or {@code null} on failure
-         * @param channelId   the created Slack channel ID, or {@code null}
-         * @param channelName the Slack channel name, or {@code null}
-         * @param existing    whether the workstream already existed
-         * @param failure     the failure response, or {@code null} on success
+         * @param workstream             the resolved workstream, or {@code null} on failure
+         * @param channelId              the created Slack channel ID, or {@code null}
+         * @param channelName            the Slack channel name, or {@code null}
+         * @param existing               whether the workstream already existed
+         * @param matchedAsDependentRepo whether the match was a dependent-repo match
+         * @param failure                the failure response, or {@code null} on success
          */
         private Registration(Workstream workstream, String channelId, String channelName,
-                             boolean existing, Response failure) {
+                             boolean existing, boolean matchedAsDependentRepo, Response failure) {
             this.workstream = workstream;
             this.channelId = channelId;
             this.channelName = channelName;
             this.existing = existing;
+            this.matchedAsDependentRepo = matchedAsDependentRepo;
             this.failure = failure;
         }
 
@@ -218,6 +228,14 @@ final class WorkstreamRegistrationHandler {
         /** Returns whether the workstream already existed rather than being created. */
         boolean existing() { return existing; }
 
+        /**
+         * Returns whether the match was made because the workstream lists the
+         * requested repository among its {@code dependentRepos}, rather than
+         * tracking it as its primary repo. A dependent-repo match is always
+         * also an {@link #existing()} match.
+         */
+        boolean matchedAsDependentRepo() { return matchedAsDependentRepo; }
+
         /** Returns the failure response, or {@code null} when registration succeeded. */
         Response failure() { return failure; }
 
@@ -230,7 +248,7 @@ final class WorkstreamRegistrationHandler {
          * @return the success outcome
          */
         static Registration created(Workstream workstream, String channelId, String channelName) {
-            return new Registration(workstream, channelId, channelName, false, null);
+            return new Registration(workstream, channelId, channelName, false, false, null);
         }
 
         /**
@@ -241,7 +259,22 @@ final class WorkstreamRegistrationHandler {
          * @return the success outcome
          */
         static Registration alreadyRegistered(Workstream workstream) {
-            return new Registration(workstream, null, null, true, null);
+            return new Registration(workstream, null, null, true, false, null);
+        }
+
+        /**
+         * Returns an outcome describing a workstream reused because it lists
+         * the requested repository among its {@code dependentRepos}. The
+         * outcome is marked {@link #existing()} — so every existing-match code
+         * path keeps working and nothing new is created — and additionally
+         * {@link #matchedAsDependentRepo()}, so a caller can distinguish a
+         * genuine pre-existing match from a dependent-of match.
+         *
+         * @param workstream the owning (dependent-of) workstream
+         * @return the success outcome
+         */
+        static Registration dependentRepoMatch(Workstream workstream) {
+            return new Registration(workstream, null, null, true, true, null);
         }
 
         /**
@@ -251,7 +284,7 @@ final class WorkstreamRegistrationHandler {
          * @return the failure outcome
          */
         static Registration failed(Response failure) {
-            return new Registration(null, null, null, false, failure);
+            return new Registration(null, null, null, false, false, failure);
         }
     }
 
@@ -437,6 +470,18 @@ final class WorkstreamRegistrationHandler {
      * {@link #registrationRequest(String, String, String)} rather than its own
      * body, so job-level fields never become workstream defaults.</p>
      *
+     * <p>Deduplication runs in two steps. An exact {@code (branch, repo)}
+     * match is returned as an ordinary {@link Registration#alreadyRegistered}
+     * outcome. When that misses, and a {@code repoUrl} was supplied, a second
+     * lookup checks whether a non-archived workstream already covers this
+     * branch as a <em>dependent repo</em> — its primary repo is a downstream
+     * repository that lists {@code repoUrl} among its {@code dependentRepos}
+     * and shares this branch. Such a workstream already owns the branch's
+     * work, so it is reused via {@link Registration#dependentRepoMatch} rather
+     * than registering a competing duplicate with a suffixed channel. The
+     * exact match always wins, so a workstream that genuinely tracks
+     * {@code (branch, repo)} is never returned as a dependent-repo match.</p>
+     *
      * @param body          the raw request body JSON
      * @param defaultBranch the branch the workstream tracks; must be non-empty
      * @return the resulting {@link Registration}
@@ -524,6 +569,19 @@ final class WorkstreamRegistrationHandler {
             log.accept("Workstream already exists for branch " + defaultBranch
                 + ": " + existing.getWorkstreamId() + " — returning existing");
             return Registration.alreadyRegistered(existing);
+        }
+
+        // Reuse a workstream that already covers this branch as a dependent
+        // repo instead of creating a suffixed duplicate (see method javadoc).
+        // Guarded on a non-empty repoUrl: nothing to compare without one.
+        if (repoUrl != null && !repoUrl.isEmpty()) {
+            Workstream dependentOf = notifiers.findByBranchAndDependentRepo(defaultBranch, repoUrl);
+            if (dependentOf != null) {
+                log.accept("Branch " + defaultBranch + " of " + repoUrl
+                    + " is already covered as a dependent repo of workstream "
+                    + dependentOf.getWorkstreamId() + " — reusing it");
+                return Registration.dependentRepoMatch(dependentOf);
+            }
         }
 
         // Auto-create Slack channel if a name is provided — must be created

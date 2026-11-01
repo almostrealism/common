@@ -463,7 +463,7 @@ To audit the current state:
 
 ```bash
 CI_RUN="base/hardware base/io engine/utils engine/utils-http engine/ml engine/render \
-engine/audio extern/ml-onnx studio/music studio/compose studio/spatial studio/experiments \
+engine/audio extern/ml-onnx studio/music studio/compose studio/spatial studio/experiments studio/bioscience \
 flowtree/api flowtree/base flowtree/python flowtree/agents flowtree/graphpersist \
 flowtree/runtime tools"
 for f in $(find . -maxdepth 3 -name pom.xml | grep -v target | sort); do
@@ -502,8 +502,8 @@ change. Uploads `coverage-cpu`.
 
 ### What the `test-media` job covers
 
-Runs `engine/audio`, `studio/music`, `studio/compose`, `studio/spatial`, and
-`extern/ml-onnx,studio/experiments` on a self-hosted runner as a single
+Runs `engine/audio`, `studio/music`, `studio/compose`, `studio/spatial`,
+`extern/ml-onnx,studio/experiments` and `studio/bioscience` on a self-hosted runner as a single
 (non-matrix) job, like `test`. Runs after `test` (CPU lane, below). Skipped when
 none of studio/extern/engine/domain/compute/base change. Uploads `coverage-media`.
 

@@ -29,9 +29,9 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.model.AccumulationBlock;
 import org.almostrealism.model.Block;
+import org.almostrealism.model.ConcatenationBlock;
 import org.almostrealism.model.SequentialBlock;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
@@ -255,44 +255,26 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 *
 	 * <p>Each block receives the layer's input independently, its output is captured via
 	 * {@link Cell.CaptureReceptor}, and all captured outputs are concatenated in order
-	 * to form the final output.</p>
+	 * to form the final output. The backward pass gives each block the slice of the output
+	 * gradient for its segment of the concatenation and sums the blocks' input gradients, so the
+	 * weights inside every concatenated part train.</p>
 	 *
 	 * @param inputShape the input tensor shape
 	 * @param blocks     the sub-blocks to apply in parallel and concatenate
 	 * @param requirements optional compute requirements
-	 * @return a CellularLayer whose output is the concatenation of all block outputs
+	 * @return a {@link ConcatenationBlock} whose output is the concatenation of all block outputs
+	 *         and whose backward pass reaches every sub-block
+	 * @throws IllegalArgumentException if no blocks are given, or a block does not accept
+	 *                                  {@code inputShape}
 	 */
-	default CellularLayer concatBlocks(TraversalPolicy inputShape,
-									   List<Block> blocks,
-									   ComputeRequirement... requirements) {
-		int totalSize = 0;
-		for (Block b : blocks) totalSize += b.getOutputShape().getTotalSize();
-		TraversalPolicy outputShape = shape(totalSize);
-
-		return layer("concat_blocks", inputShape, outputShape, Cell.of((input, next) -> {
-			List<Cell.CaptureReceptor<PackedCollection>> receptors = new ArrayList<>();
-			for (Block b : blocks) {
-				Cell.CaptureReceptor<PackedCollection> receptor = new Cell.CaptureReceptor<>();
-				b.getForward().setReceptor(receptor);
-				receptors.add(receptor);
-			}
-
-			OperationList ops = new OperationList("concat_blocks");
-			for (Block b : blocks) {
-				ops.add(b.getForward().push(input));
-			}
-
-			if (next != null) {
-				CollectionProducer[] parts = new CollectionProducer[blocks.size()];
-				for (int i = 0; i < blocks.size(); i++) {
-					parts[i] = c(receptors.get(i).getReceipt())
-							.reshape(blocks.get(i).getOutputShape());
-				}
-				ops.add(next.push(concat(parts).reshape(outputShape)));
-			}
-
-			return ops;
-		}), null, requirements);
+	default Block concatBlocks(TraversalPolicy inputShape,
+							   List<Block> blocks,
+							   ComputeRequirement... requirements) {
+		ConcatenationBlock concat = new ConcatenationBlock(inputShape, blocks);
+		if (requirements.length > 0) {
+			concat.setComputeRequirements(List.of(requirements));
+		}
+		return concat;
 	}
 
 	/**

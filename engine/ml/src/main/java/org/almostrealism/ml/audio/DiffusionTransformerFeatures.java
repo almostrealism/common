@@ -156,10 +156,10 @@ public interface DiffusionTransformerFeatures extends TransformerBlockFeatures, 
 	 *
 	 * <p>The {@code linear -> SiLU -> linear} projection is the {@code silu_mlp} asset (see
 	 * {@link DiffusionFeatures#siluMlp}); this method only prepends the {@code features} block and
-	 * loads it. The Fourier features stay in {@code features} rather than moving into the asset
-	 * because their {@code [cos, sin]} concatenation has no differentiable form in the language:
-	 * {@code concat_blocks} drops the backward pass, which would cut the gradient to the frequency
-	 * matrix that the Java Fourier block carries.</p>
+	 * loads it. {@code concat_blocks} is now differentiable (its backward pass slices the output
+	 * gradient back to each part), so the {@code [cos, sin]} Fourier concatenation could move into
+	 * the asset; that move is tracked separately and has not been made yet, so the Fourier features
+	 * still stay in {@code features} and feed this MLP as the layer's input.</p>
 	 *
 	 * @param batchSize batch size
 	 * @param embedDim  embedding dimension

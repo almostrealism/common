@@ -1,0 +1,74 @@
+/**
+ * Llama 2 decoder: the whole forward pass of one token, from its embedding to one score per
+ * vocabulary entry.
+ *
+ * This file replaces the Java assembly that used to live in Llama2.model(), which built a Model
+ * by looping over the layers in Java — calling the AttentionFeatures.transformer(...) loader once
+ * per layer — and then adding a final RMSNorm and the vocabulary projection. Llama2.model() now
+ * only binds the flat checkpoint tensors and loads this model, so there is one definition of the
+ * structure and it is here.
+ *
+ * Llama 2 is a multi-head (not grouped-query) pre-norm transformer with no projection biases and
+ * no QK-norm, so each layer is the plain `transformer` layer of transformer.pdsl. It differs from
+ * the Qwen decoders (qwen2.pdsl / qwen3.pdsl) only in how the checkpoint stores the weights: the
+ * llama2.c format holds each weight as a single tensor with a leading layer axis, so this model
+ * takes those flat tensors and slices each layer's view with range(...) inside a `for` loop,
+ * where qwen3.pdsl reads a StateDictionary group with `stack`. The rotary table (freq_cis) and the
+ * classifier (wcls, which aliases the token embeddings when the checkpoint shares them) are the
+ * same for every layer, so they are bound once and passed through unchanged. Epsilon is 1e-5, the
+ * Llama 2 RMSNorm constant, in both the layers and the final normalization.
+ *
+ * The token embedding lookup is not part of this model: the caller maps each token id to its
+ * embedding row and feeds that [1, dim] vector in, exactly as in qwen3.pdsl. Each layer's key and
+ * value caches are allocated fresh by zeros(...) and persist across forward passes.
+ *
+ * Arguments:
+ *   settings   dim, hidden_dim, layers, heads and seq_len of the checkpoint
+ *   rms_att    per-layer pre-attention RMSNorm scales            [layers, dim]
+ *   wq wk wv wo  per-layer attention projections                 [layers, dim, dim]
+ *   rms_ffn    per-layer pre-feed-forward RMSNorm scales         [layers, dim]
+ *   w1 w3      per-layer SwiGLU gate and up projections          [layers, hidden_dim, dim]
+ *   w2         per-layer SwiGLU down projection                  [layers, dim, hidden_dim]
+ *   rms_final  final RMSNorm scale                               [dim]
+ *   freq_cis   rotary frequency table                            [seq_len, head_size / 2, 2]
+ *   wcls       classifier / vocabulary projection                [vocab_size, dim]
+ *   position   the index of the current token in the sequence
+ *
+ * Data flow of one forward pass over one token's embedding [1, dim]:
+ *
+ *   x                                                                  [1, dim]
+ *   for each of `layers` layers:
+ *     transformer(...)   residual attention then residual SwiGLU       [1, dim]
+ *   rmsnorm(rms_final)   final normalization                           [1, dim]
+ *   dense(wcls)          project to one logit per vocabulary entry      [1, vocab_size]
+ */
+
+import "/pdsl/transformer.pdsl"
+
+model llama2(settings: model_settings,
+             rms_att: weight, wq: weight, wk: weight, wv: weight, wo: weight,
+             rms_ffn: weight, w1: weight, w2: weight, w3: weight,
+             rms_final: weight, freq_cis: weight, wcls: weight,
+             position: scalar) {
+    // One pre-norm transformer layer per checkpoint layer, over its range(...) view of each tensor.
+    for i in 0..settings.layers {
+        transformer(settings.heads, settings.heads, settings.dim / settings.heads,
+                    range(rms_att, [settings.dim], i * settings.dim),
+                    range(wq, [settings.dim, settings.dim], i * settings.dim * settings.dim),
+                    range(wk, [settings.dim, settings.dim], i * settings.dim * settings.dim),
+                    range(wv, [settings.dim, settings.dim], i * settings.dim * settings.dim),
+                    range(wo, [settings.dim, settings.dim], i * settings.dim * settings.dim),
+                    null, null, null,
+                    freq_cis, position,
+                    range(rms_ffn, [settings.dim], i * settings.dim),
+                    range(w1, [settings.hidden_dim, settings.dim], i * settings.hidden_dim * settings.dim),
+                    range(w2, [settings.dim, settings.hidden_dim], i * settings.dim * settings.hidden_dim),
+                    range(w3, [settings.hidden_dim, settings.dim], i * settings.hidden_dim * settings.dim),
+                    1e-5,
+                    zeros([settings.seq_len, settings.dim]), zeros([settings.seq_len, settings.dim]))
+    }
+
+    // Final normalization, then projection to one logit per vocabulary entry.
+    rmsnorm(rms_final, 1e-5)
+    dense(wcls)
+}
