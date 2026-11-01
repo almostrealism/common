@@ -19,12 +19,16 @@
 ## Overview
 
 On Metal, dispatches are *encoded* into an open command buffer and only run once that
-buffer is *committed*. `MetalCommandRunner` batches encoded dispatches until either the
-open buffer reaches its dispatch bound (`MAX_OPEN`) or something on the host waits for a
-result (`MetalSemaphore.waitFor()`), which commits the buffer on demand. Sustained
-throughput therefore depends on commits happening at the `MAX_OPEN` cadence rather than
-being forced by host waits: a workload committing every few dispatches instead of every
-few hundred has had its batching collapsed by synchronous waits.
+buffer is *committed*. `MetalCommandRunner` batches encoded dispatches until the open
+buffer reaches its dispatch bound (`MAX_OPEN`), until something on the host waits for a
+result (`MetalSemaphore.waitFor()`), which commits the buffer on demand, or until the buffer
+holds at least `minIdleCommit` dispatches while the GPU has finished everything committed
+before it, in which case it is committed early so the GPU runs that work while the host
+encodes what follows (`AR_HARDWARE_METAL_IDLE_COMMIT`, zero disables). Sustained
+throughput therefore depends on commits happening at the runner's own cadence (`MAX_OPEN`
+while the GPU is busy, idle commits while it keeps up) rather than being forced by host
+waits: a workload committing every few dispatches instead of every few dozen or hundred has
+had its batching collapsed by synchronous waits.
 
 The commit-cause attribution instrumentation answers the two questions that matter when
 that happens:
@@ -47,7 +51,8 @@ count by cause:
 |---|---|
 | `getCommitCount()` | Total command-buffer commits |
 | `getHostCompleteCommitCount()` | Commits forced by a host-side wait (`complete()`, reached through `MetalSemaphore.waitFor()`) |
-| `getMaxOpenCommitCount()` | Commits from the open buffer reaching its dispatch bound — the expected steady-state cadence |
+| `getMaxOpenCommitCount()` | Commits from the open buffer reaching its dispatch bound — the expected steady-state cadence while the GPU is busy |
+| `getIdleCommitCount()` | Commits made early, once the open buffer holds `minIdleCommit` dispatches, because the GPU had finished everything committed before it — the steady-state cadence while the GPU keeps up (see below) |
 | `getBridgeCommitCount()` | Commits forced so a dispatch that bridges a *foreign* dependency starts a fresh buffer (see below) |
 | `getDestroyCommitCount()` | Commits performed while tearing the runner down |
 
@@ -57,6 +62,17 @@ once every host-signaled bridge encoded into it (and into every buffer closed be
 been signaled, so while buffers are held waiting for a bridge the cause counters sum to more
 than the total; once no buffer is held they sum to it exactly. All are written on the runner's
 executor thread and safe to read from any thread.
+
+**Idle commits.** A command buffer runs only once it is committed, so while the GPU has nothing
+to do every dispatch waiting in the open buffer is work it could already be doing. When the
+open buffer holds at least `MetalCommandRunner.minIdleCommit` dispatches and the most recently
+committed buffer has finished on the GPU, the runner commits the open buffer at once, and the
+GPU runs it while the host encodes the next one. A buffer that waits for a host-signaled
+bridge, or that would be held behind one, is never committed early: it could not reach the GPU
+until the bridge is signaled. Whether a buffer ends with an idle commit or at `MAX_OPEN`
+depends on how fast the GPU finishes the work committed before it, so the same workload can
+split its commits between `getIdleCommitCount()` and `getMaxOpenCommitCount()` differently
+from run to run; compare their sum across runs, not either count alone.
 
 **Bridge commits.** A dispatch whose `dependsOn` is a foreign `Semaphore` (produced by
 another backend, another Metal context, or a composite latch) is ordered by encoding a
@@ -124,6 +140,7 @@ runWorkloadOnce();
 long baseTotal = runner.getCommitCount();
 long baseHost = runner.getHostCompleteCommitCount();
 long baseMaxOpen = runner.getMaxOpenCommitCount();
+long baseIdle = runner.getIdleCommitCount();
 Map<String, Integer> baseCounts =
         new HashMap<>(MetalCommandRunner.hostCompleteRequesters.getCounts());
 
@@ -132,6 +149,7 @@ runWorkload();   // the window being measured
 long commits = runner.getCommitCount() - baseTotal;
 long host = runner.getHostCompleteCommitCount() - baseHost;
 long maxOpen = runner.getMaxOpenCommitCount() - baseMaxOpen;
+long idle = runner.getIdleCommitCount() - baseIdle;
 
 MetalCommandRunner.hostCompleteRequesters.getCounts().entrySet().stream()
         .map(e -> Map.entry(e.getKey(),
@@ -143,16 +161,17 @@ MetalCommandRunner.hostCompleteRequesters.getCounts().entrySet().stream()
 ```
 
 Normalize by the workload's natural unit (training step, audio tick, frame) —
-`commits / steps` is the headline number, and the host/maxOpen split tells you whether
-those commits are forced or the healthy cadence.
+`commits / steps` is the headline number, and the split between host and maxOpen + idle
+tells you whether those commits are forced or the healthy cadence.
 
 ## Interpreting the Results
 
 ### Healthy vs. Collapsed Batching
 
-- **Healthy sustained workload:** commits are dominated by `getMaxOpenCommitCount()`,
-  plus a small number of host-wait commits at genuine boundaries (the end of a
-  `run()`/`evaluate()` at the top of the call stack).
+- **Healthy sustained workload:** commits are dominated by `getMaxOpenCommitCount()` and
+  `getIdleCommitCount()` (idle commits when the GPU keeps up with the host, `MAX_OPEN`
+  commits when it does not), plus a small number of host-wait commits at genuine
+  boundaries (the end of a `run()`/`evaluate()` at the top of the call stack).
 - **Collapsed batching:** commits are dominated by `getHostCompleteCommitCount()`. The
   requester distribution then names the operations whose completions were being waited.
 
@@ -174,8 +193,8 @@ dispatch, not the caller that performed the wait. Two consequences:
 
 ### Common Fingerprints
 
-- **Every commit host-forced, `maxOpenCommits == 0`:** no batching is surviving at all;
-  every unit of work ends in a synchronous wait.
+- **Every commit host-forced, `maxOpenCommits + idleCommits == 0`:** no batching is
+  surviving at all; every unit of work ends in a synchronous wait.
 - **Each of N distinct kernels waited exactly once per step:** per-member boundary waits
   inside a composite operation — some layer of the composition is completing its members
   synchronously instead of chaining their semaphores.
