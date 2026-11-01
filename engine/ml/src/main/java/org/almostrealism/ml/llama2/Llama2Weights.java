@@ -23,6 +23,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.ByteBufferTransfer;
 
 import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Weight tensors for a Llama2 model, loaded from a binary checkpoint.
@@ -105,6 +107,34 @@ public class Llama2Weights implements CodeFeatures {
 
 		this.wcls = config.sharedWeights ? tokenEmbeddings
 				: stage(shape(config.vocabSize, config.dim), buffer);
+	}
+
+	/**
+	 * Returns these weights as the tensor arguments of the {@code llama2} PDSL model, each bound to
+	 * the model parameter it fills: {@code rms_att}, {@code wq}, {@code wk}, {@code wv}, {@code wo},
+	 * {@code rms_ffn}, {@code w1}, {@code w2}, {@code w3}, {@code rms_final}, {@code freq_cis} and
+	 * {@code wcls}. This is the weight-side counterpart of {@link Llama2Config#toPdslSettings()}: the
+	 * configuration contributes its {@code settings}, these weights contribute their tensors, and the
+	 * caller adds the sequence position. The token embedding table is deliberately absent — it is
+	 * looked up per token outside the model graph rather than bound as a model argument.
+	 *
+	 * @return a mutable map from PDSL parameter name to weight tensor
+	 */
+	public Map<String, Object> toPdslArguments() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("rms_att", rmsAttWeights);
+		args.put("wq", wq);
+		args.put("wk", wk);
+		args.put("wv", wv);
+		args.put("wo", wo);
+		args.put("rms_ffn", rmsFfn);
+		args.put("w1", w1);
+		args.put("w2", w2);
+		args.put("w3", w3);
+		args.put("rms_final", rmsFinalWeight);
+		args.put("freq_cis", freqCis);
+		args.put("wcls", wcls);
+		return args;
 	}
 
 	/**
