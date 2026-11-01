@@ -107,6 +107,74 @@ def write_safetensors(path, arrays):
             out.write(array.tobytes())
 
 
+def read_safetensors(path):
+    """Reads every tensor of a safetensors file written by ``write_safetensors``.
+
+    Args:
+        path: the safetensors file.
+
+    Returns:
+        A dict from tensor name to a numpy array of the stored dtype and shape.
+    """
+    import numpy as np
+
+    numpy_types = {"F32": "<f4", "F64": "<f8", "I32": "<i4", "I64": "<i8"}
+    with open(path, "rb") as source:
+        (length,) = struct.unpack("<Q", source.read(8))
+        header = json.loads(source.read(length).decode("utf-8"))
+        data = source.read()
+    tensors = {}
+    for name, entry in header.items():
+        if name == "__metadata__":
+            continue
+        start, end = entry["data_offsets"]
+        tensors[name] = np.frombuffer(data[start:end], dtype=numpy_types[entry["dtype"]]) \
+            .reshape(entry["shape"])
+    return tensors
+
+
+def sha256(path):
+    """Returns the hex SHA-256 digest of a file."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        for block in iter(lambda: source.read(1 << 24), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def source_checksums(directory, names):
+    """Checksums source files and checks them against a published SHA256SUMS.
+
+    Args:
+        directory: the directory holding the files and, optionally, a
+            ``SHA256SUMS`` listing (a ``*`` binary-mode marker is accepted).
+        names: the file names to checksum.
+
+    Returns:
+        A dict from file name to its hex SHA-256 digest.
+
+    Raises:
+        SystemExit: if a file is listed in ``SHA256SUMS`` with another digest.
+    """
+    import os
+
+    sums = {name: sha256(os.path.join(directory, name)) for name in names}
+    published = os.path.join(directory, "SHA256SUMS")
+    if os.path.exists(published):
+        with open(published) as listing:
+            expected = {}
+            for line in listing:
+                if line.strip():
+                    digest, name = line.split(None, 1)
+                    expected[name.strip().lstrip("*")] = digest
+        for name, digest in sums.items():
+            if expected.get(name) not in (None, digest):
+                raise SystemExit("checksum mismatch for " + name)
+    return sums
+
+
 def majority_annotations(types, superclasses, classes):
     """Returns the most common superclass and class of the members of each type.
 

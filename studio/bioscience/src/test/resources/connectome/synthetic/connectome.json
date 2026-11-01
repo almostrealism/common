@@ -1,0 +1,15 @@
+{
+ "dataset": "synthetic",
+ "source": "synthetic, seed 20261030",
+ "neurons_rule": "40 neurons; body id 1000 + 7 i, type T(i mod 5)",
+ "sign": "-1 for every third neuron (i mod 3 == 2), +1 otherwise",
+ "min_count": 1,
+ "neurons": 40,
+ "edges": 111,
+ "synapses": 1147,
+ "excitatory_edges": 73,
+ "inhibitory_edges": 38,
+ "inhibitory_neurons": 13,
+ "max_in_degree": 5,
+ "source_sha256": {}
+}

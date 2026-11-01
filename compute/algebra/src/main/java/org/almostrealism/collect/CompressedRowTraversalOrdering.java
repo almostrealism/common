@@ -352,4 +352,23 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 				PackedCollection.ofSplitIndices(rowOffsets),
 				PackedCollection.ofSplitIndices(columns.length == 0 ? new int[1] : columns));
 	}
+
+	/**
+	 * Creates an ordering from a CSR index structure held as plain integer values in two
+	 * collections, such as integer tensors loaded from a file. The values are read on the host,
+	 * then validated and uploaded in the split layout exactly as by {@link #of(int, int[], int[])}.
+	 * A collection whose memory is still host-resident holds every {@code int} exactly, so row
+	 * offsets above 2^24 survive the read; they must not first have passed through an FP32 device.
+	 *
+	 * @param cols       the number of columns
+	 * @param rowOffsets the {@code rows + 1} row boundaries, one value each
+	 * @param columns    the column of each entry, one value each
+	 * @return the ordering
+	 * @throws IllegalArgumentException if a value is not an {@code int}, or the values are not a
+	 *         valid CSR structure with {@code cols} columns
+	 */
+	public static CompressedRowTraversalOrdering of(int cols, PackedCollection rowOffsets,
+													PackedCollection columns) {
+		return of(cols, rowOffsets.toIntArray(), columns.toIntArray());
+	}
 }

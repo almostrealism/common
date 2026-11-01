@@ -1,0 +1,12 @@
+// One time step of a spiking connectome; see ConnectomeNetwork.
+layer connectome_step(weights: weight, synapse_weight: scalar,
+                      ring: weight, replica_shape: shape, read_row: producer([1]), write_row: producer([1]),
+                      poisson: block, neurons: block) {
+    poisson
+    reshape(replica_shape)
+    concat_blocks(
+        { identity() },
+        { cache_read(ring, read_row); reshape(replica_shape); dense(weights); scale(synapse_weight) })
+    neurons
+    cache_write(ring, write_row)
+}
