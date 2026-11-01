@@ -195,6 +195,82 @@ public class NotifierRegistryTest extends TestSuiteBase {
     }
 
     /**
+     * A workstream whose primary repo is a downstream repository and that lists
+     * another repository among its {@code dependentRepos} is found by
+     * {@link NotifierRegistry#findByBranchAndDependentRepo} for the dependent
+     * repository on the shared branch — across SSH/HTTPS/{@code .git} spellings.
+     */
+    @Test(timeout = 10000)
+    public void testFindByBranchAndDependentRepoMatchesAcrossSpellings() {
+        Workstream wsRings = newWorkstream("ws-rings", "C-rings",
+                "feature/shared",
+                "git@github.com:almostrealism/ringsdesktop.git");
+        wsRings.setDependentRepos(List.of("https://github.com/almostrealism/common.git"));
+        SlackNotifier primary = notifierWith(wsRings);
+        NotifierRegistry registry = new NotifierRegistry(primary, null);
+
+        // The registration names Common with a different-but-equivalent spelling.
+        assertSame("dependent-of match must hold across repo URL spellings",
+                wsRings, registry.findByBranchAndDependentRepo(
+                        "feature/shared", "git@github.com:almostrealism/common.git"));
+
+        // A repo nobody depends on misses, even on the shared branch.
+        assertNull("an unrelated repo is not a dependent-of match",
+                registry.findByBranchAndDependentRepo(
+                        "feature/shared", "git@github.com:almostrealism/other.git"));
+
+        // A different branch misses even for the right dependent repo.
+        assertNull("a different branch is not a dependent-of match",
+                registry.findByBranchAndDependentRepo(
+                        "feature/elsewhere", "git@github.com:almostrealism/common.git"));
+
+        // A null/empty repoUrl has nothing to compare against a dependentRepos list.
+        assertNull(registry.findByBranchAndDependentRepo("feature/shared", null));
+        assertNull(registry.findByBranchAndDependentRepo("feature/shared", ""));
+    }
+
+    /**
+     * An archived workstream is never returned as a dependent-of match, so an
+     * archived downstream workstream does not suppress a fresh registration.
+     */
+    @Test(timeout = 10000)
+    public void testFindByBranchAndDependentRepoSkipsArchived() {
+        Workstream wsRings = newWorkstream("ws-rings", "C-rings",
+                "feature/shared",
+                "git@github.com:almostrealism/ringsdesktop.git");
+        wsRings.setDependentRepos(List.of("git@github.com:almostrealism/common.git"));
+        wsRings.setArchived(true);
+        SlackNotifier primary = notifierWith(wsRings);
+        NotifierRegistry registry = new NotifierRegistry(primary, null);
+
+        assertNull("an archived workstream must not match as a dependent-of",
+                registry.findByBranchAndDependentRepo(
+                        "feature/shared", "git@github.com:almostrealism/common.git"));
+    }
+
+    /**
+     * The dependent-of lookup fans out across every workspace, mirroring
+     * {@link NotifierRegistry#findByBranchAndRepo}.
+     */
+    @Test(timeout = 10000)
+    public void testFindByBranchAndDependentRepoSearchesAllWorkspaces() {
+        SlackNotifier a = notifierWith(newWorkstream("ws-a", "C-a"));
+        Workstream wsRings = newWorkstream("ws-rings", "C-rings",
+                "feature/shared",
+                "git@github.com:almostrealism/ringsdesktop.git");
+        wsRings.setDependentRepos(List.of("git@github.com:almostrealism/common.git"));
+        SlackNotifier b = notifierWith(wsRings);
+        Map<String, SlackNotifier> byWs = new LinkedHashMap<>();
+        byWs.put("TAAA", a);
+        byWs.put("TBBB", b);
+        NotifierRegistry registry = new NotifierRegistry(a, byWs);
+
+        assertSame("dependent-of workstream on a second workspace must be discoverable",
+                wsRings, registry.findByBranchAndDependentRepo(
+                        "feature/shared", "git@github.com:almostrealism/common.git"));
+    }
+
+    /**
      * Verifies that {@code findAllByBranch} works correctly in single-workspace mode
      * when multiple workstreams share the same branch name.
      */
