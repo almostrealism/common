@@ -19,6 +19,7 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.ctx.SubmissionStream;
 import org.almostrealism.hardware.metal.MTLCommandBuffer;
 import org.almostrealism.hardware.metal.MTLCommandQueue;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
@@ -33,7 +34,7 @@ import static org.junit.Assert.assertNotSame;
 
 /**
  * Validates when {@link MetalCommandRunner} commits its open command buffer before it is full:
- * once the buffer holds {@link MetalCommandRunner#minIdleCommit} dispatches and the GPU has
+ * once the buffer holds {@link SubmissionStream#minIdleCommit} dispatches and the GPU has
  * finished everything committed before it, so the GPU starts on that work while the host is
  * still encoding what follows. A buffer that cannot reach the GPU at once, because it waits for
  * a host-signaled bridge, is never committed early.
@@ -59,8 +60,8 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 		}
 
 		MetalCommandRunner runner = metal.getCommandRunner();
-		int threshold = MetalCommandRunner.minIdleCommit;
-		MetalCommandRunner.minIdleCommit = THRESHOLD;
+		int threshold = SubmissionStream.minIdleCommit;
+		SubmissionStream.minIdleCommit = THRESHOLD;
 
 		try {
 			runner.submit(null, buffer -> { }, null, null).waitFor();
@@ -84,7 +85,7 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 			assertEquals("Waiting for a committed dispatch must not commit again",
 					(double) (commits + 1), (double) runner.getCommitCount());
 		} finally {
-			MetalCommandRunner.minIdleCommit = threshold;
+			SubmissionStream.minIdleCommit = threshold;
 		}
 	}
 
@@ -102,8 +103,8 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 		}
 
 		MetalCommandRunner runner = metal.getCommandRunner();
-		int threshold = MetalCommandRunner.minIdleCommit;
-		MetalCommandRunner.minIdleCommit = THRESHOLD;
+		int threshold = SubmissionStream.minIdleCommit;
+		SubmissionStream.minIdleCommit = THRESHOLD;
 
 		try {
 			runner.submit(null, buffer -> { }, null, null).waitFor();
@@ -130,7 +131,7 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 
 			last.waitFor();
 		} finally {
-			MetalCommandRunner.minIdleCommit = threshold;
+			SubmissionStream.minIdleCommit = threshold;
 		}
 	}
 
@@ -149,9 +150,9 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 		}
 
 		MetalCommandRunner runner = metal.getCommandRunner();
-		int threshold = MetalCommandRunner.minIdleCommit;
+		int threshold = SubmissionStream.minIdleCommit;
 		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
-		MetalCommandRunner.minIdleCommit = THRESHOLD;
+		SubmissionStream.minIdleCommit = THRESHOLD;
 		MetalCommandRunner.enableHostSignaledBridges = true;
 
 		DefaultLatchSemaphore foreign = new DefaultLatchSemaphore((Semaphore) null, 1);
@@ -179,7 +180,7 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 			assertEquals((double) idleCommits, (double) runner.getIdleCommitCount());
 		} finally {
 			foreign.countDown();
-			MetalCommandRunner.minIdleCommit = threshold;
+			SubmissionStream.minIdleCommit = threshold;
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
 		}
 	}
@@ -199,8 +200,8 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 		}
 
 		FailingRunner runner = new FailingRunner(metal.getMtlQueue());
-		int threshold = MetalCommandRunner.minIdleCommit;
-		MetalCommandRunner.minIdleCommit = THRESHOLD;
+		int threshold = SubmissionStream.minIdleCommit;
+		SubmissionStream.minIdleCommit = THRESHOLD;
 
 		try {
 			MetalSemaphore first = null;
@@ -225,7 +226,7 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 			assertEquals(1.0, (double) runner.getIdleCommitCount());
 		} finally {
 			runner.destroy();
-			MetalCommandRunner.minIdleCommit = threshold;
+			SubmissionStream.minIdleCommit = threshold;
 		}
 	}
 
@@ -245,8 +246,8 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 		}
 
 		FailingRunner runner = new FailingRunner(metal.getMtlQueue());
-		int threshold = MetalCommandRunner.minIdleCommit;
-		MetalCommandRunner.minIdleCommit = THRESHOLD;
+		int threshold = SubmissionStream.minIdleCommit;
+		SubmissionStream.minIdleCommit = THRESHOLD;
 
 		try {
 			MetalSemaphore first = null;
@@ -283,7 +284,7 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 			}
 		} finally {
 			runner.destroy();
-			MetalCommandRunner.minIdleCommit = threshold;
+			SubmissionStream.minIdleCommit = threshold;
 		}
 	}
 
@@ -300,8 +301,8 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 		}
 
 		MetalCommandRunner runner = metal.getCommandRunner();
-		int threshold = MetalCommandRunner.minIdleCommit;
-		MetalCommandRunner.minIdleCommit = 0;
+		int threshold = SubmissionStream.minIdleCommit;
+		SubmissionStream.minIdleCommit = 0;
 
 		try {
 			runner.submit(null, buffer -> { }, null, null).waitFor();
@@ -318,7 +319,7 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 			last.waitFor();
 			assertEquals((double) (commits + 1), (double) runner.getCommitCount());
 		} finally {
-			MetalCommandRunner.minIdleCommit = threshold;
+			SubmissionStream.minIdleCommit = threshold;
 		}
 	}
 

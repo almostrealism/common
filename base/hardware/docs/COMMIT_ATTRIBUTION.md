@@ -22,9 +22,9 @@ On Metal, dispatches are *encoded* into an open command buffer and only run once
 buffer is *committed*. `MetalCommandRunner` batches encoded dispatches until the open
 buffer reaches its dispatch bound (`MAX_OPEN`), until something on the host waits for a
 result (`MetalSemaphore.waitFor()`), which commits the buffer on demand, or until the buffer
-holds at least `minIdleCommit` dispatches while the GPU has finished everything committed
+holds at least `SubmissionStream.minIdleCommit` dispatches while the GPU has finished everything committed
 before it, in which case it is committed early so the GPU runs that work while the host
-encodes what follows (`AR_HARDWARE_METAL_IDLE_COMMIT`, zero disables). Sustained
+encodes what follows (`AR_HARDWARE_IDLE_COMMIT`, zero disables). Sustained
 throughput therefore depends on commits happening at the runner's own cadence (`MAX_OPEN`
 while the GPU is busy, idle commits while it keeps up) rather than being forced by host
 waits: a workload committing every few dispatches instead of every few dozen or hundred has
@@ -65,7 +65,7 @@ executor thread and safe to read from any thread.
 
 **Idle commits.** A command buffer runs only once it is committed, so while the GPU has nothing
 to do every dispatch waiting in the open buffer is work it could already be doing. When the
-open buffer holds at least `MetalCommandRunner.minIdleCommit` dispatches and the most recently
+open buffer holds at least `SubmissionStream.minIdleCommit` dispatches and the most recently
 committed buffer has finished on the GPU, the runner commits the open buffer at once, and the
 GPU runs it while the host encodes the next one. A buffer that waits for a host-signaled
 bridge, or that would be held behind one, is never committed early: it could not reach the GPU
@@ -73,6 +73,16 @@ until the bridge is signaled. Whether a buffer ends with an idle commit or at `M
 depends on how fast the GPU finishes the work committed before it, so the same workload can
 split its commits between `getIdleCommitCount()` and `getMaxOpenCommitCount()` differently
 from run to run; compare their sum across runs, not either count alone.
+
+The idle-commit policy itself is not Metal's: the threshold, the decision to close a batch
+early (`SubmissionStream.closeEarlyIfIdle`) and the idle-commit count belong to
+`SubmissionStream`, the coordination every backend runner shares. A runner supplies only what
+is native to it, by overriding `canCommitToIdleDevice()` (whether its device has finished
+everything committed) and `closeOpenBatch()` (how it closes its open batch). Any runner that
+holds submissions back in a batch the device does not see until it is committed gets idle
+commits by overriding both and calling `closeEarlyIfIdle` after each submission. A runner that launches every submission as it is
+admitted, as the CUDA runner does, never holds work back from an idle device, so there is
+nothing for it to commit early.
 
 **Bridge commits.** A dispatch whose `dependsOn` is a foreign `Semaphore` (produced by
 another backend, another Metal context, or a composite latch) is ordered by encoding a
