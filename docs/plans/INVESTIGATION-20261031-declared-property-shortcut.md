@@ -30,14 +30,15 @@ branch's commit history and the memories and messages each session stored on the
 
 The copy-back is now read off the compiled scope, and nothing is declared anywhere:
 
-- `ExpressionReferences.mayAssign(array, start, end)` asks whether an assignment *to this
-  expression* may write an element of `array` in a range. The default answer is "yes, if the
+- `AssignmentSupport.containsAssignment(ArrayVariable array, long start, long end)` is the one
+  signature every level shares. On an expression (`ExpressionReferences`) it asks whether an
+  assignment *to this expression* may write an element of `array` in a range. The default answer is "yes, if the
   array is referenced at all". `InstanceReference` overrides it: it writes one element of its
   referent, at a position bounded by the position expression's `lowerBound`/`upperBound`.
-- `ExpressionAssignment.mayWrite` delegates to its destination. `Scope.mayWrite` asks every
+- `ExpressionAssignment.containsAssignment` delegates to its destination. `Scope.containsAssignment` asks every
   assignment from the existing `Scope.collectAssignments()`. A scope that cannot be enumerated
   that way (one with methods, metrics, required scopes or explicit code) answers "yes".
-- `MemoryDataArgumentMap.getWrittenSlices(scope)` asks `Scope.mayWrite` about each staged slice
+- `MemoryDataArgumentMap.getWrittenSlices(scope)` asks `Scope.containsAssignment` about each staged slice
   of the aggregate. This works because `ArrayVariable.reference` collapses every view to the
   aggregate at the slice's baked position. `AcceleratedComputationOperation.postCompile` records
   the result with the instruction set manager, so an operation reusing the kernel limits its
@@ -203,10 +204,11 @@ re-examined for the same failure: a workaround at one call site of something gen
   `isAvailable(ComputeRequirement.GPU)`. **This is the same family of shortcut.** The cause is
   that `DefaultComputer` places operations by size alone. A small operation reading accelerator
   results is sent to the CPU and waits on the host, and each wait forces a commit. The branch
-  routes around that decision for one model instead of fixing it. It is left in place for now,
-  because removing it returns the decode to 50 bytes/s and the real fix is a placement design
-  change. It is tracked as task `a1aaeb33-6afd-466a-827e-f89652ff2e4a`, which ends with the pin
-  removed.
+  routes around that decision for one model instead of fixing it. Following review, the pin is
+  removed from `decodeModel`: the decode variant now inherits whatever requirements the caller
+  set on the `CausalLanguageModel` (none by default), and the throughput benchmark makes the
+  "use the accelerator when available" choice itself. The real fix, placement that does not need
+  a caller's choice, is tracked as task `a1aaeb33-6afd-466a-827e-f89652ff2e4a`.
 - **`Model.setComputeRequirements` / `CompiledModel`.** These give a model's passes the existing
   `ComputeRequirement` mechanism that `OperationList` already has. This is a legitimate API on
   the type that owns compilation. It stays under review with the task above: once placement is

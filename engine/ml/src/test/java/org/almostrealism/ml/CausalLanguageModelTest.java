@@ -908,27 +908,30 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	}
 
 	/**
-	 * The single-position decode model keeps its whole pass on the accelerator when one is
-	 * available, rather than letting its many small operations fall to a CPU context between the
-	 * accelerator's larger ones, and leaves placement to each operation when there is none.
+	 * The single-position decode model is compiled under the compute requirements the caller set on
+	 * the language model, and under none when none were set: the model does not choose a compute
+	 * context on the caller's behalf.
 	 */
 	@Test(timeout = 60000)
-	public void decodeModelRequiresTheAcceleratorWhenAvailable() {
+	public void decodeModelInheritsComputeRequirements() {
 		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, 8, 8, 2, 1, 8, ROPE_BASE, new Random(5));
 		PackedCollection position = new PackedCollection(1);
 		List<PackedCollection> keyCaches = new ArrayList<>();
 		List<PackedCollection> valueCaches = new ArrayList<>();
 
 		try {
-			Model decode = lm.decodeModel(position, keyCaches, valueCaches);
+			Model unrequired = lm.decodeModel(position, keyCaches, valueCaches);
+			Assert.assertNull("no requirements were set, so each operation places itself",
+					unrequired.getComputeRequirements());
 
-			if (Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU)) {
-				Assert.assertEquals(List.of(ComputeRequirement.GPU), decode.getComputeRequirements());
-			} else {
-				Assert.assertNull(decode.getComputeRequirements());
-			}
+			keyCaches.forEach(PackedCollection::destroy);
+			valueCaches.forEach(PackedCollection::destroy);
+			keyCaches.clear();
+			valueCaches.clear();
 
-			Assert.assertNull("the training model places each operation itself", lm.getComputeRequirements());
+			lm.setComputeRequirements(ComputeRequirement.GPU);
+			Model required = lm.decodeModel(position, keyCaches, valueCaches);
+			Assert.assertEquals(List.of(ComputeRequirement.GPU), required.getComputeRequirements());
 		} finally {
 			position.destroy();
 			keyCaches.forEach(PackedCollection::destroy);

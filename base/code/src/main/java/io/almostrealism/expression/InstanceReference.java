@@ -21,6 +21,7 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -133,7 +134,7 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	 * open, and a reference to the whole referent may write any of it.</p>
 	 */
 	@Override
-	public boolean mayAssign(Variable<?, ?> array, long start, long end) {
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
 		if (!getReferent().hasSameRoot(array)) return false;
 		if (pos == null) return true;
 

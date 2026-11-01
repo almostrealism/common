@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
@@ -58,6 +59,10 @@ import java.util.stream.IntStream;
  * generators decode the same greedy continuation, so the two sets of figures describe the same
  * decode; the profile recorded the kernels each path ran; and the cache path invokes strictly fewer
  * kernels per byte than the sliding window, the work count its throughput advantage rests on.</p>
+ *
+ * <p>The cache path is compiled with the accelerator {@link CausalLanguageModel#setComputeRequirements
+ * required} for its whole pass when one is available (see {@link #requireAccelerator}); the sliding
+ * window is compiled without requirements.</p>
  *
  * <p>A second test continues the same prompt through the cache path greedily and with nucleus (top-p)
  * sampling, showing that the two sampling modes compose with the cache. Over random weights the
@@ -104,7 +109,7 @@ public class CausalLanguageModelDecodeThroughputTest extends TestSuiteBase {
 							new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null));
 			Measurement cache = measure("keyValueCache", profile, prompt, length, repeats,
 					() -> new KeyValueCacheAutoregressiveModel(
-							new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null));
+							requireAccelerator(new CausalLanguageModel(lm.getConfig(), lm.getWeights())), null));
 
 			log("speedup=" + cache.bytesPerSecond() / sliding.bytesPerSecond()
 					+ " runsPerByteRatio=" + sliding.runsPerByte() / cache.runsPerByte()
@@ -135,7 +140,7 @@ public class CausalLanguageModelDecodeThroughputTest extends TestSuiteBase {
 		ByteTokenizer tokenizer = new ByteTokenizer();
 		int[] prompt = tokenizer.encodeAsInt(CausalLanguageModelTest.GENERATION_PROMPT);
 		int length = CausalLanguageModelTest.SEQ_LEN - prompt.length;
-		CausalLanguageModel lm = newModel();
+		CausalLanguageModel lm = requireAccelerator(newModel());
 
 		try (AutoregressiveModel<Integer> generator = new KeyValueCacheAutoregressiveModel(lm, new Random(SEED))) {
 			int[] greedy = CausalLanguageModelTest.generate(generator, prompt, length);
@@ -217,6 +222,24 @@ public class CausalLanguageModelDecodeThroughputTest extends TestSuiteBase {
 		synchronized (counts) {
 			return new HashMap<>(counts);
 		}
+	}
+
+	/**
+	 * Requires the accelerator for every pass compiled from {@code lm}, including its single-position
+	 * {@link CausalLanguageModel#decodeModel decode variant}, when one is available. A single position
+	 * makes nearly every operation of the decode small; left to themselves small operations are placed
+	 * on a CPU context while the larger ones go to the accelerator, and the pass then waits on the
+	 * host at every switch between the two. This is the benchmark's choice, not the model's.
+	 *
+	 * @param lm the model
+	 * @return {@code lm}
+	 */
+	private static CausalLanguageModel requireAccelerator(CausalLanguageModel lm) {
+		if (Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU)) {
+			lm.setComputeRequirements(ComputeRequirement.GPU);
+		}
+
+		return lm;
 	}
 
 	/**

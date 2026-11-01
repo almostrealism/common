@@ -23,6 +23,7 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.AssignmentSupport;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 
@@ -46,7 +47,7 @@ import java.util.function.Supplier;
  * @see Statement
  * @see io.almostrealism.scope.Scope
  */
-public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>> {
+public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>>, AssignmentSupport {
 	/** Whether this assignment also declares the destination variable. */
 	private final boolean declaration;
 	/** The destination expression that receives the assigned value. */
@@ -159,17 +160,14 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	}
 
 	/**
-	 * Returns whether this assignment may write an element of {@code array} at a position in
-	 * {@code [start, end)}: whatever it writes, it writes through its destination (see
-	 * {@link Expression#mayAssign(Variable, long, long)}).
+	 * {@inheritDoc}
 	 *
-	 * @param array the array whose elements are in question
-	 * @param start the first position in question
-	 * @param end   the position after the last one in question
-	 * @return false only when this assignment cannot write an element of {@code array} in the range
+	 * <p>Whatever this assignment writes, it writes through its destination, so the destination
+	 * {@link Expression#containsAssignment(ArrayVariable, long, long) answers}.</p>
 	 */
-	public boolean mayWrite(Variable<?, ?> array, long start, long end) {
-		return destination != null && destination.mayAssign(array, start, end);
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return destination != null && destination.containsAssignment(array, start, end);
 	}
 
 	@Override

@@ -328,8 +328,8 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * <p>Every argument this map folded is referenced in {@code kernel} as the aggregate argument
 	 * at the replacement's position (a reference to a view is created as a reference to the
 	 * storage it views), so whether a slice is written is a question about the elements of the
-	 * aggregate the kernel {@link Scope#mayWrite(io.almostrealism.scope.Variable, long, long) may
-	 * write}. Nothing is declared by the computation the kernel was compiled from: the scope is the
+	 * aggregate the kernel {@link Scope#containsAssignment(ArrayVariable, long, long) contains an
+	 * assignment to}. Nothing is declared by the computation the kernel was compiled from: the scope is the
 	 * code that runs, so it is the only account of what the kernel writes, and a scope whose writes
 	 * cannot be enumerated reports every slice.</p>
 	 *
@@ -344,7 +344,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		for (int i = 0; i < replacements.size(); i++) {
 			Replacement r = replacements.get(i);
 			long start = r.getPosition();
-			if (kernel.mayWrite(aggregate, start, start + r.getRoot().getDelegatedLength())) {
+			if (kernel.containsAssignment(aggregate, start, start + r.getRoot().getDelegatedLength())) {
 				written.set(i);
 			}
 		}
@@ -387,7 +387,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			throw new IllegalStateException("The copy-back has already been built without the written slices");
 		}
 
-		this.writtenSlices = (BitSet) written.clone();
+		this.writtenSlices = written.get(0, written.length());
 	}
 
 	/**

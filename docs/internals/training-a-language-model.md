@@ -421,9 +421,11 @@ closed the gap:
   one (each cache read, each matrix product's elementwise term, the output projection) on the
   accelerator, so the pass alternated between the two. Each CPU operation that read an accelerator
   result waited on the host for it, forcing a command-buffer commit: the about 30 waits per byte
-  the test attributed to `mtlCopy`, the copy that ends each accelerator operation. `decodeModel`
-  now sets `Model.setComputeRequirements(ComputeRequirement.GPU)` when an accelerator is available,
-  and `CompiledModel` compiles and runs the whole pass under it.
+  the test attributed to `mtlCopy`, the copy that ends each accelerator operation. The benchmark
+  sets `Model.setComputeRequirements(ComputeRequirement.GPU)` on the language model when an
+  accelerator is available; `decodeModel` compiles its variant under the requirements of the model
+  it is built from, and `CompiledModel` compiles and runs the whole pass under them. The model does
+  not make this choice itself: a caller that wants it sets it.
 - *One kernel per rotation.* `RotationFeatures.ropeRotation` is a single element-wise computation
   reading the input, the frequency table and the position directly; it was a chain of gathers from
   intermediate computations that compiled to five kernels per call. `computeRopeFreqs` builds its
@@ -436,7 +438,7 @@ closed the gap:
   around each dispatch, and after a dispatch with no explicit output every staged argument was copied
   back, including those the kernel only read. The copy-back is now limited to the staged arguments the
   kernel's compiled `Scope` may write (`MemoryDataArgumentMap.getWrittenSlices`, which asks
-  `Scope.mayWrite` about each staged slice). Nothing is declared by the computation: every write in a
+  `Scope.containsAssignment` about each staged slice). Nothing is declared by the computation: every write in a
   scope is an assignment to an element of the aggregate at a bounded position, so the slices written
   are read off the scope itself, and a scope whose writes cannot be enumerated (one with methods,
   required scopes or explicit code) copies every slice back.

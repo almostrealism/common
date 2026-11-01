@@ -122,7 +122,7 @@ import java.util.stream.IntStream;
 public class Scope<T> extends ArrayList<Scope<T>>
 		implements Fragment, KernelTree<Scope<T>>,
 					OperationInfo, Signature, Nameable,
-					ConsoleFeatures {
+					AssignmentSupport, ConsoleFeatures {
 	/**
 	 * Global flag controlling whether scope inlining is enabled.
 	 * When true, simple scopes can be absorbed into their parent scope
@@ -1085,30 +1085,25 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
-	 * Returns whether the code this scope generates may write an element of {@code array} at a
-	 * position in {@code [start, end)}.
+	 * {@inheritDoc}
 	 *
 	 * <p>The answer is read off the scope itself: every one of its
 	 * {@link #collectAssignments() assignments} is asked whether it
-	 * {@link ExpressionAssignment#mayWrite may write} the range. A scope whose writes cannot be
-	 * enumerated that way (one with methods, metrics or explicit code, or with a required scope
-	 * anywhere in its tree, since every one of those is generated as a separate function) may
-	 * write anything, so for it the answer is always {@code true}.</p>
-	 *
-	 * @param array the array whose elements are in question
-	 * @param start the first position in question
-	 * @param end   the position after the last one in question
-	 * @return false only when nothing this scope generates can write an element of
-	 *         {@code array} in the range
+	 * {@link ExpressionAssignment#containsAssignment contains an assignment} to the range. A
+	 * scope whose writes cannot be enumerated that way (one with methods, metrics or explicit
+	 * code, or with a required scope anywhere in its tree, since every one of those is generated
+	 * as a separate function) may write anything, so for it the answer is always
+	 * {@code true}.</p>
 	 */
-	public boolean mayWrite(Variable<?, ?> array, long start, long end) {
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
 		if (!getAllRequiredScopes().isEmpty()) return true;
 
 		List<ExpressionAssignment<?>> assignments = collectAssignments();
 		if (assignments == null) return true;
 
 		for (ExpressionAssignment<?> assignment : assignments) {
-			if (assignment.mayWrite(array, start, end)) return true;
+			if (assignment.containsAssignment(array, start, end)) return true;
 		}
 
 		return false;

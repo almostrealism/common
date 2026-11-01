@@ -210,24 +210,6 @@ public class Model implements Setup, Destroyable, Tracking, CodeFeatures {
 	}
 
 	/**
-	 * Returns one pass of a compilation of this model to be compiled and run under this model's
-	 * {@link #getComputeRequirements() requirements}: the pass itself when there are none,
-	 * otherwise an {@link OperationList} holding it that carries them.
-	 *
-	 * @param name the name of the holding list
-	 * @param pass the operation of the pass
-	 * @return the pass, carrying the requirements when there are any
-	 */
-	Supplier<Runnable> requiring(String name, Supplier<Runnable> pass) {
-		if (requirements == null) return pass;
-
-		OperationList list = new OperationList(name);
-		list.add(pass);
-		list.setComputeRequirements(requirements);
-		return list;
-	}
-
-	/**
 	 * Returns all blocks in this model's main sequential chain.
 	 *
 	 * @return an unmodifiable list of blocks
