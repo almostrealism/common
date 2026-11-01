@@ -143,8 +143,15 @@ Concrete, actionable items:
 ## Success Criteria
 
 - `CausalLanguageModelDecodeThroughputTest.keyValueCacheDecodeThroughput` reports the
-  cache path ahead of the sliding window on bytes/s **and** on `runsPerByte` /
-  `dispatchesPerByte` on Metal.
+  cache path ahead of the sliding window on bytes/s and on `runsPerByte` on Metal.
+  `dispatchesPerByte` was originally part of this criterion and is **not met**: the
+  recorded measurement is 249 Metal dispatches per byte for the cache path against 122 for
+  the sliding window, because every kernel argument of at most 1024 elements is staged
+  into an aggregate buffer around each dispatch, and at a single position that is nearly
+  every argument. As the open question below anticipated, the delivered fix moves the
+  backend-independent kernel count, commits and throughput, not this Metal counter. Cutting
+  the aggregation copies is tracked separately (tracker task
+  `38f78778-2970-4763-bfaf-14d378cbf32b`) and is not asserted here.
 - The test carries a new, passing assertion that `cache.runsPerByte() < sliding.runsPerByte()`
   (backend-independent), in addition to the existing path-agreement and `runsPerByte > 0`
   checks.

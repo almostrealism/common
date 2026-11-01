@@ -274,6 +274,36 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 	}
 
 	/**
+	 * A single vector given as a row traversed along its elements, {@code (1, n)}, or as a
+	 * one-vector batch of columns, {@code (1, n, 1)}, takes the single-vector weighted sum and
+	 * keeps the {@code (m, 1)} shape the multiply + sum gave these inputs, which collapses the
+	 * unit batch axis before it multiplies. The {@code (1, m)} row shape belongs only to
+	 * outputs too wide for the vector path, which this product is not.
+	 */
+	@Test(timeout = 60000)
+	public void singleRowVectorKeepsColumnShape() {
+		PackedCollection weights = pack(1, 2, 3, 4, 5, 6, -1, 0, 2).reshape(shape(3, 3));
+		PackedCollection vector = pack(1, -1, 2);
+		double[] expected = { 5, 11, 3 };
+
+		CollectionProducer row = matmul(cp(weights), cp(vector.reshape(shape(1, 3).traverse(1))));
+		CollectionProducer batch = matmul(cp(weights), cp(vector.reshape(shape(1, 3, 1))));
+
+		for (CollectionProducer product : new CollectionProducer[] { row, batch }) {
+			Assert.assertTrue("single-vector product is " + product.getClass().getSimpleName(),
+					product instanceof WeightedSumComputation);
+			Assert.assertEquals(2, product.getShape().getDimensions());
+			Assert.assertEquals(3, product.getShape().length(0));
+			Assert.assertEquals(1, product.getShape().length(1));
+
+			PackedCollection result = product.evaluate();
+			for (int i = 0; i < expected.length; i++) {
+				assertEquals("Output[" + i + "]", expected[i], result.toDouble(i));
+			}
+		}
+	}
+
+	/**
 	 * A matrix of one row times a single vector is a dot product, which keeps the multiply +
 	 * sum form rather than taking the single-vector weighted sum.
 	 */
