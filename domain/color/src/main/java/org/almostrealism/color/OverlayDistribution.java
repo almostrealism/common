@@ -16,7 +16,6 @@
 
 package org.almostrealism.color;
 
-import java.io.IOException;
 import java.lang.reflect.Method;
 
 /**
@@ -35,15 +34,12 @@ import java.lang.reflect.Method;
  * @see RangeSumDistribution
  * @author Mike Murray
  */
-public class OverlayDistribution extends ProbabilityDistribution {
-	/** The child distributions whose densities are combined by this overlay. */
-	private ProbabilityDistribution children[];
-
+public class OverlayDistribution extends CompositeDistribution {
 	/**
 	 * Constructs an {@link OverlayDistribution} with no children.
 	 */
 	public OverlayDistribution() {
-		this(new ProbabilityDistribution[0]);
+		super();
 	}
 
 	/**
@@ -52,24 +48,9 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 * @param children the child distributions to overlay
 	 */
 	public OverlayDistribution(ProbabilityDistribution children[]) {
-		this.children = children;
+		super(children);
 	}
 
-	/**
-	 * Adds a range to the first child distribution.
-	 *
-	 * <p>Has no effect if there are no children.</p>
-	 *
-	 * @param start the start of the range
-	 * @param end   the end of the range
-	 * @param p     the probability density for the range
-	 */
-	@Override
-	public void addRange(double start, double end, double p) {
-		if (this.children.length <= 0) return;
-		this.children[0].addRange(start, end, p);
-	}
-	
 	/**
 	 * Returns the ranges of the first child distribution, or an empty array if there are no children.
 	 *
@@ -77,8 +58,8 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 */
 	@Override
 	protected double[][] getRanges() {
-		if (this.children.length <= 0) return new double[0][3];
-		return this.children[0].getRanges();
+		if (getChildren().length <= 0) return new double[0][3];
+		return getChildren()[0].getRanges();
 	}
 
 	/**
@@ -91,8 +72,8 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	public double integrate(double limit) {
 		double v = 0.0;
 		
-		for (int i = 0; i < this.children.length; i++)
-			v = v + this.children[i].integrate(limit);
+		for (int i = 0; i < getChildren().length; i++)
+			v = v + getChildren()[i].integrate(limit);
 		
 		return v;
 	}
@@ -109,10 +90,10 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	 */
 	@Override
 	public double getSample(double r) {
-		if (this.children.length <= 0) return 0.0;
-		if (this.children.length == 1) return this.children[0].getSample(r);
+		if (getChildren().length <= 0) return 0.0;
+		if (getChildren().length == 1) return getChildren()[0].getSample(r);
 		
-		double d = this.children[0].getSample(r);
+		double d = getChildren()[0].getSample(r);
 		double v = this.integrate(d);
 		
 		while (Math.abs(v - r) > 0.0001) {
@@ -133,58 +114,12 @@ public class OverlayDistribution extends ProbabilityDistribution {
 	public RGB getIntegrated() {
 		RGB c = new RGB();
 		
-		for (int i = 0; i < this.children.length; i++)
-			c.addTo(this.children[i].getIntegrated());
+		for (int i = 0; i < getChildren().length; i++)
+			c.addTo(getChildren()[i].getIntegrated());
 		
 		return c;
 	}
-	
-	/**
-	 * Returns the total probability density at {@code x} by summing the densities
-	 * of all child distributions.
-	 *
-	 * @param x the domain value at which to evaluate the probability density
-	 * @return the sum of probability densities across all children at {@code x}
-	 */
-	@Override
-	public double getProbability(double x) {
-		double p = 0.0;
-		
-		for (int i = 0; i < this.children.length; i++)
-			p += this.children[i].getProbability(x);
-		
-		return p;
-	}
-	
-	/**
-	 * Returns {@code true} if any child distribution contains the specified range.
-	 *
-	 * @param start the start of the range to test
-	 * @param end   the end of the range to test
-	 * @return {@code true} if at least one child contains the range
-	 */
-	@Override
-	public boolean contains(double start, double end) {
-		for (int i = 0; i < this.children.length; i++)
-			if (this.children[i].contains(start, end)) return true;
-		return false;
-	}
-	
-	/**
-	 * Loads the overlay from a file, replacing all children with a single child distribution
-	 * populated from the file contents.
-	 *
-	 * @param file the path to the input file
-	 * @param div  the delimiter used between columns in the file
-	 * @throws IOException if the file cannot be read
-	 */
-	@Override
-	public void loadFromFile(String file, String div) throws IOException {
-		this.children = new ProbabilityDistribution[1];
-		this.children[0] = new ProbabilityDistribution();
-		this.children[0].loadFromFile(file, div);
-	}
-	
+
 	/**
 	 * Returns the {@link Method} object for {@link #createOverlayDistribution(ProbabilityDistribution[])},
 	 * useful for reflective invocation.
