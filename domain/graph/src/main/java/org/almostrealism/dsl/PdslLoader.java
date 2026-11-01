@@ -202,6 +202,28 @@ public class PdslLoader {
 	}
 
 	/**
+	 * Build a {@link Model} from a named model definition whose weights are bound by name from
+	 * {@code args} (rather than from a {@link WeightGroup}), applying {@code requirements} to every
+	 * layer the model constructs. This is the model-level counterpart of
+	 * {@link #buildLayer(PdslNode.Program, String, TraversalPolicy, Map, ComputeRequirement...)},
+	 * for a model whose checkpoint is stored as flat tensors sliced per layer with {@code range(...)}
+	 * rather than as a group a {@code stack} repeats over.
+	 *
+	 * @param program      the parsed PDSL program
+	 * @param modelName    the name of the model to build
+	 * @param inputShape   the input tensor shape
+	 * @param args         parameter bindings
+	 * @param requirements compute requirements applied to every layer the model constructs
+	 * @return the constructed Model
+	 */
+	public Model buildModel(PdslNode.Program program, String modelName,
+							TraversalPolicy inputShape, Map<String, Object> args,
+							ComputeRequirement... requirements) {
+		PdslInterpreter interpreter = newInterpreter(program);
+		return interpreter.buildModel(modelName, inputShape, args, requirements);
+	}
+
+	/**
 	 * Build a {@link Model} from a PDSL model definition whose weights come from a
 	 * {@link WeightGroup}. The group is bound to every parameter the model declares
 	 * with the type {@code checkpoint}; the model body then reads each weight by name, as in
