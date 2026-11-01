@@ -53,6 +53,43 @@ public class SubmissionStreamTest {
 		protected boolean isStreamThread() { return onStream.get(); }
 	}
 
+	/**
+	 * A device-free stream that holds submissions back in a batch, whose device idleness and
+	 * whether it has an open batch are set by the test, and which counts how often the
+	 * idle-commit policy consults it.
+	 */
+	private static final class BatchingStream extends SubmissionStream<TestCompletion> {
+		/** Whether {@link #canCommitToIdleDevice()} reports an idle device. */
+		private boolean idle;
+		/** Whether a batch is open for {@link #closeOpenBatch()} to close. */
+		private boolean open = true;
+		/** The number of times the device's idleness was consulted. */
+		private int idleChecks;
+		/** The number of batches closed. */
+		private int closes;
+
+		/** Creates a stream with a hold bound of one. */
+		private BatchingStream() {
+			super("batching stream", TestCompletion.class, 1, "on stream thread");
+		}
+
+		@Override
+		protected boolean isStreamThread() { return false; }
+
+		@Override
+		protected boolean canCommitToIdleDevice() {
+			idleChecks++;
+			return idle;
+		}
+
+		@Override
+		protected boolean closeOpenBatch() {
+			if (!open) return false;
+			closes++;
+			return true;
+		}
+	}
+
 	/** A device-free completion of a {@link SubmissionStream}. */
 	private static final class TestCompletion extends LatchSemaphore implements StreamCompletion {
 		/** The stream the completion belongs to. */
@@ -289,6 +326,83 @@ public class SubmissionStreamTest {
 		Assert.assertFalse("Every hold must have been released", releaser.isAlive());
 		Assert.assertEquals(0, s.getHeldCount());
 		Assert.assertTrue(s.hasHoldCapacity());
+	}
+
+	/**
+	 * A stream that launches every submission as it is admitted keeps the default hooks, so the
+	 * idle-commit policy never closes anything for it and counts no idle commit, however many
+	 * submissions it is told are pending.
+	 */
+	@Test(timeout = 10000)
+	public void nonBatchingStreamNeverClosesEarly() {
+		TestStream s = stream(1);
+		Assert.assertFalse(s.closeEarlyIfIdle(SubmissionStream.minIdleCommit));
+		Assert.assertFalse(s.closeEarlyIfIdle(Integer.MAX_VALUE));
+		Assert.assertEquals(0, s.getIdleCommitCount());
+	}
+
+	/**
+	 * A batching stream closes its open batch early, and counts it, only once the batch holds
+	 * {@link SubmissionStream#minIdleCommit} submissions and the device is idle. Below the
+	 * threshold the device is not even consulted; with a busy device, or with no batch open,
+	 * nothing is counted.
+	 */
+	@Test(timeout = 10000)
+	public void batchingStreamClosesEarlyOnlyAtThresholdWhenIdle() {
+		int saved = SubmissionStream.minIdleCommit;
+
+		try {
+			SubmissionStream.minIdleCommit = 8;
+			BatchingStream s = new BatchingStream();
+			s.idle = true;
+
+			Assert.assertFalse(s.closeEarlyIfIdle(7));
+			Assert.assertEquals("Below the threshold the device is not consulted", 0, s.idleChecks);
+			Assert.assertEquals(0, s.closes);
+
+			Assert.assertTrue(s.closeEarlyIfIdle(8));
+			Assert.assertEquals(1, s.closes);
+			Assert.assertEquals(1, s.getIdleCommitCount());
+
+			s.idle = false;
+			Assert.assertFalse(s.closeEarlyIfIdle(100));
+			Assert.assertEquals("A busy device leaves the batch open", 1, s.closes);
+			Assert.assertEquals(1, s.getIdleCommitCount());
+
+			s.idle = true;
+			s.open = false;
+			Assert.assertFalse(s.closeEarlyIfIdle(100));
+			Assert.assertEquals("Closing no batch is not an idle commit", 1, s.getIdleCommitCount());
+
+			s.open = true;
+			Assert.assertTrue(s.closeEarlyIfIdle(100));
+			Assert.assertEquals(2, s.closes);
+			Assert.assertEquals(2, s.getIdleCommitCount());
+		} finally {
+			SubmissionStream.minIdleCommit = saved;
+		}
+	}
+
+	/** A threshold of zero, or below, disables early commits without consulting the device. */
+	@Test(timeout = 10000)
+	public void nonPositiveThresholdDisablesEarlyCommits() {
+		int saved = SubmissionStream.minIdleCommit;
+
+		try {
+			BatchingStream s = new BatchingStream();
+			s.idle = true;
+
+			SubmissionStream.minIdleCommit = 0;
+			Assert.assertFalse(s.closeEarlyIfIdle(Integer.MAX_VALUE));
+			SubmissionStream.minIdleCommit = -1;
+			Assert.assertFalse(s.closeEarlyIfIdle(Integer.MAX_VALUE));
+
+			Assert.assertEquals(0, s.idleChecks);
+			Assert.assertEquals(0, s.closes);
+			Assert.assertEquals(0, s.getIdleCommitCount());
+		} finally {
+			SubmissionStream.minIdleCommit = saved;
+		}
 	}
 
 	/** A stream must allow at least one held unit of work. */
