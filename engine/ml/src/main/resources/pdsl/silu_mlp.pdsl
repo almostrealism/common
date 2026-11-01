@@ -11,11 +11,10 @@
  * and it is here.
  *
  * The Fourier feature stage that precedes this MLP in a full timestep embedding is NOT part of
- * this asset: the Fourier features are [cos(f), sin(f)] over a projected scalar, and the language
- * has no differentiable concatenation of two parallel sub-blocks (concat_blocks drops the backward
- * pass), so moving the Fourier stage into PDSL would drop the gradient that reaches its frequency
- * matrix in Java. The Fourier projection therefore stays in Java and feeds this MLP as the layer's
- * input.
+ * this asset: the Fourier features are [cos(f), sin(f)] over a projected scalar. concat_blocks is
+ * now differentiable (it slices the output gradient back to each part), so this stage could move
+ * into PDSL; that move is tracked separately and has not been made yet, so the Fourier projection
+ * still stays in Java and feeds this MLP as the layer's input.
  *
  * Data flow of one forward pass over a conditioning vector [..., in]:
  *
