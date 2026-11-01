@@ -16,6 +16,7 @@
 
 package org.almostrealism.bioscience.connectome.test;
 
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.bioscience.connectome.ConnectomeNetwork;
 import org.almostrealism.bioscience.connectome.NeuronConnectome;
 import org.almostrealism.ml.StateDictionary;
@@ -48,9 +49,9 @@ import java.util.stream.IntStream;
  * MN9 silent.</p>
  *
  * <p>The connectome and the reference live outside the repository, by default under
- * {@value NeuronConnectomeDatasetTest#DERIVED}. Each frequency takes about 17 minutes, so these
+ * {@value NeuronConnectomeChecks#DERIVED}. Each frequency takes about 17 minutes, so these
  * tests are long-running and excluded from the pipeline profile: they run when asked for, and
- * then missing data fails the test. The pipeline runs the same network on the committed sugar
+ * then missing data fails the test on every host. The pipeline runs the same network on the committed sugar
  * circuit, the neurons this experiment activates, against Brian2 spike for spike
  * ({@link ConnectomeNetworkTest}).</p>
  */
@@ -91,8 +92,8 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 	 */
 	private File reference(int rate) {
 		String experiment = "sugarR_630_" + rate + "Hz";
-		return new File(requireDataset(REFERENCE_PROPERTY, NeuronConnectomeDatasetTest.DERIVED + "/flywire/brian2-reference",
-				experiment + "/rates.safetensors"), experiment);
+		return new File(requireResourceIn(REFERENCE_PROPERTY, DERIVED + "/flywire/brian2-reference",
+				experiment + "/rates.safetensors", ComputeRequirement.GPU, ComputeRequirement.CPU), experiment);
 	}
 
 	/** Sugar input at 100 Hz agrees with Brian2. */
@@ -124,7 +125,7 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 	@TestDepth(2)
 	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void nonGustatoryInputLeavesMn9Silent() throws IOException {
-		try (NeuronConnectome connectome = NeuronConnectome.load(NeuronConnectomeDatasetTest.flywire630())) {
+		try (NeuronConnectome connectome = NeuronConnectome.load(flywire630())) {
 			int n = connectome.getNeuronCount();
 			Set<Integer> excluded = new HashSet<>();
 			for (int index : connectome.indicesOf(SUGAR)) excluded.add(index);
@@ -149,7 +150,7 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 	 */
 	protected void assertSugarMatchesBrian2(int rate) throws IOException {
 		File reference = reference(rate);
-		try (NeuronConnectome connectome = NeuronConnectome.load(NeuronConnectomeDatasetTest.flywire630());
+		try (NeuronConnectome connectome = NeuronConnectome.load(flywire630());
 			 StateDictionary brian = new StateDictionary(reference.getPath())) {
 			double[] expected = brian.get("rates").toArray();
 			Assert.assertEquals(connectome.getNeuronCount(), expected.length);

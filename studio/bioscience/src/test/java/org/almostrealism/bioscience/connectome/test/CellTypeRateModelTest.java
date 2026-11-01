@@ -16,6 +16,7 @@
 
 package org.almostrealism.bioscience.connectome.test;
 
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.RatePopulation;
 import org.almostrealism.hardware.Hardware;
@@ -40,10 +41,10 @@ import java.util.stream.IntStream;
  * {@code 1 / type_size} so that a type's input is the mean input per neuron of that type.
  *
  * <p>The cases are a long stability run, the sugar-sensing GRN to MN9 response against a matched
- * control, and the time per step. They need the derived data (see
- * {@link CellTypeConnectomeTest#requireDirectory()}), which no runner carries, so they are
- * long-running and excluded from the pipeline profile, and are meant to run on both the Metal
- * and the native backend when asked for.</p>
+ * control, and the time per step. They need the derived data (the directory
+ * {@link CellTypeConnectomeTest} reads), which no runner carries, so they are long-running and
+ * excluded from the pipeline profile, and are meant to run on both the Metal and the native
+ * backend when asked for. A missing directory then fails them on every host.</p>
  *
  * <h2>Measured time per step</h2>
  * <p>Measured on a Mac Studio (Apple silicon, macOS, aarch64) for the 11,751-type matrix,
@@ -85,6 +86,19 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 	private static final long CONTROL_SEED = 20261026L;
 
 	/**
+	 * Loads the cell-type matrix from the directory {@link CellTypeConnectomeTest} reads, failing
+	 * the calling test on every host when it is absent.
+	 *
+	 * @return the loaded connectome, to be closed by the caller
+	 * @throws IOException if the matrix cannot be read
+	 */
+	private CellTypeConnectome loadConnectome() throws IOException {
+		return CellTypeConnectome.load(requireResourceIn(CellTypeConnectomeTest.DIRECTORY_PROPERTY,
+				CellTypeConnectomeTest.DEFAULT_DIRECTORY, CellTypeConnectome.WEIGHTS_FILE,
+				ComputeRequirement.GPU, ComputeRequirement.CPU));
+	}
+
+	/**
 	 * Builds a population on the connectome with the row scale {@code 1 / type_size}.
 	 *
 	 * @param connectome the loaded connectome
@@ -113,7 +127,7 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 		int steps = 10000;
 		int interval = 100;
 
-		try (CellTypeConnectome connectome = CellTypeConnectome.load(CellTypeConnectomeTest.requireDirectory());
+		try (CellTypeConnectome connectome = loadConnectome();
 			 RatePopulation population = population(connectome)) {
 			Random random = new Random(10);
 			int n = population.getCount();
@@ -162,7 +176,7 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 	public void sugarDrivesMn9() throws IOException {
 		int steps = 1000;
 
-		try (CellTypeConnectome connectome = CellTypeConnectome.load(CellTypeConnectomeTest.requireDirectory());
+		try (CellTypeConnectome connectome = loadConnectome();
 			 RatePopulation population = population(connectome)) {
 			int mn9 = connectome.indexOf(MN9);
 			int[] grns = SUGAR_GRNS.stream().mapToInt(connectome::indexOf).toArray();
@@ -244,7 +258,7 @@ public class CellTypeRateModelTest extends TestSuiteBase {
 		int warmup = 100;
 		int steps = 1000;
 
-		try (CellTypeConnectome connectome = CellTypeConnectome.load(CellTypeConnectomeTest.requireDirectory());
+		try (CellTypeConnectome connectome = loadConnectome();
 			 RatePopulation population = population(connectome)) {
 			Random random = new Random(1000);
 			a(cp(population.getRates()), rand(shape(population.getCount()), random).multiply(R_MAX)).get().run();

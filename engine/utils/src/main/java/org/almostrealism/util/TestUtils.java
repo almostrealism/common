@@ -30,11 +30,11 @@ import java.util.Objects;
  * <p>This class provides static methods that read test configuration from the following
  * environment variables:</p>
  * <ul>
- *   <li>{@code AR_LONG_TESTS} - Enable long-running tests (boolean)</li>
+ *   <li>{@code AR_LONG_TESTS} - Enable long-running tests ({@code enabled} or {@code disabled})</li>
  *   <li>{@code AR_TRAIN_TESTS} - Enable ML training tests (boolean)</li>
  *   <li>{@code AR_TEST_DEPTH} - Test depth/thoroughness level (integer)</li>
  *   <li>{@code AR_TEST_PROFILE} - Test profile name (string, e.g., "pipeline")</li>
- *   <li>{@code AR_KNOWN_ISSUES} - Include tests for known issues (boolean)</li>
+ *   <li>{@code AR_KNOWN_ISSUES} - Include tests for known issues ({@code enabled} or {@code disabled})</li>
  * </ul>
  *
  * <h2>Static Initialization</h2>
@@ -83,7 +83,8 @@ public class TestUtils implements TestSettings {
 	 * <p>Returns false (don't skip) when:</p>
 	 * <ul>
 	 *   <li>Profile is "pipeline"</li>
-	 *   <li>{@code AR_LONG_TESTS=true} environment variable is set</li>
+	 *   <li>{@code AR_LONG_TESTS=enabled} is set (a value other than {@code enabled} or
+	 *       {@code disabled}, such as {@code true}, is rejected)</li>
 	 *   <li>Test depth is greater than 10</li>
 	 * </ul>
 	 *
@@ -110,7 +111,7 @@ public class TestUtils implements TestSettings {
 	 * <ul>
 	 *   <li>Profile is "pipeline"</li>
 	 *   <li>Long tests are being skipped</li>
-	 *   <li>{@code AR_KNOWN_ISSUES} is not set or false</li>
+	 *   <li>{@code AR_KNOWN_ISSUES} is set to {@code disabled}</li>
 	 * </ul>
 	 *
 	 * @return true if known issue tests should be skipped, false otherwise

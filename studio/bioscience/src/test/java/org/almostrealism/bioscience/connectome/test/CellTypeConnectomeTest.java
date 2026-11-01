@@ -20,6 +20,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.bioscience.connectome.CellTypeConnectome;
 import org.almostrealism.util.TestDepth;
@@ -57,13 +58,15 @@ public class CellTypeConnectomeTest extends TestSuiteBase {
 	private static final String SPOT_CHECKS_FILE = "spot-checks.json";
 
 	/**
-	 * Returns the data directory, failing the calling test when it does not hold the derived
-	 * matrix.
+	 * Returns the data directory, failing the calling test on every host when it does not hold the
+	 * derived matrix: these tests run only when asked for, so its absence is an error, never a
+	 * skip.
 	 *
 	 * @return the data directory
 	 */
-	public static File requireDirectory() {
-		return NeuronConnectomeChecks.requireDataset(DIRECTORY_PROPERTY, DEFAULT_DIRECTORY, CellTypeConnectome.WEIGHTS_FILE);
+	protected File requireDirectory() {
+		return requireResourceIn(DIRECTORY_PROPERTY, DEFAULT_DIRECTORY, CellTypeConnectome.WEIGHTS_FILE,
+				ComputeRequirement.GPU, ComputeRequirement.CPU);
 	}
 
 	/**
