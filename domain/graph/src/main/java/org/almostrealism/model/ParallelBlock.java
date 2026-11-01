@@ -50,8 +50,11 @@ import java.util.function.Supplier;
  * captured and summed afterwards — because a child whose backward path ends in a
  * {@link BranchBlock} clears the gradient it just emitted, so a deferred read would see zero.</p>
  *
- * <p>The gradient buffer is allocated only when the backward cell is first built, so a block used
- * solely for inference holds no gradient memory. A parameter update set on this block reaches
+ * <p>The gradient buffer is allocated only when a gradient is first pushed into the backward cell
+ * (that is, when a training graph is built), not when the backward cell is constructed: an
+ * enclosing {@link SequentialBlock} builds every child's backward cell as the block is added, even
+ * for a model later compiled for inference only, so a block used solely for inference holds no
+ * gradient memory. A parameter update set on this block reaches
  * every child that holds learnable parameters, so the weights inside each parallel path train.</p>
  *
  * <p>All children must accept this block's input shape, since the same input is pushed to each of
@@ -77,8 +80,9 @@ public abstract class ParallelBlock implements Block, Learning, Tracking {
 	private final List<Block> children;
 
 	/**
-	 * Accumulated input-gradient sum from all child backward passes. Allocated only when the
-	 * backward cell is built, so a block used solely for inference holds no gradient memory.
+	 * Accumulated input-gradient sum from all child backward passes. Allocated only when a gradient
+	 * is first pushed into the backward cell, so a block used solely for inference holds no
+	 * gradient memory.
 	 */
 	private PackedCollection gradient;
 
@@ -219,18 +223,20 @@ public abstract class ParallelBlock implements Block, Learning, Tracking {
 	 * clears the gradient it emitted immediately afterward.</p>
 	 *
 	 * <p>A child with no backward cell ({@link Block#getBackward()} returns {@code null}, as a
-	 * forward-only {@link DefaultBlock} does) is skipped with a warning, exactly as
-	 * {@link SequentialBlock#add(Block)} skips one: it contributes nothing to the summed input
-	 * gradient. Its forward output still occupies its segment of this block's output.</p>
+	 * forward-only {@link DefaultBlock} does) is skipped exactly as {@link SequentialBlock#add(Block)}
+	 * skips one, with a warning only when {@link SequentialBlock#enableWarnings} is set: it
+	 * contributes nothing to the summed input gradient. Its forward output still occupies its
+	 * segment of this block's output.</p>
 	 */
 	@Override
 	public Cell<PackedCollection> getBackward() {
 		if (backward == null) {
-			gradient = new PackedCollection(inputShape);
-			for (Block child : children) {
-				if (child.getBackward() == null) {
-					warn("No backward Cell for " + Named.nameOf(child)
-							+ "; it contributes no input gradient");
+			if (SequentialBlock.enableWarnings) {
+				for (Block child : children) {
+					if (child.getBackward() == null) {
+						warn("No backward Cell for " + Named.nameOf(child)
+								+ "; it contributes no input gradient");
+					}
 				}
 			}
 
@@ -238,6 +244,10 @@ public abstract class ParallelBlock implements Block, Learning, Tracking {
 					a(name() + " aggregate", p(gradient.each()), add(p(gradient.each()), input));
 
 			backward = Cell.of((gradientValue, next) -> {
+				if (gradient == null) {
+					gradient = new PackedCollection(inputShape);
+				}
+
 				for (Block child : children) {
 					if (child.getBackward() != null) {
 						child.getBackward().setReceptor(aggregator);

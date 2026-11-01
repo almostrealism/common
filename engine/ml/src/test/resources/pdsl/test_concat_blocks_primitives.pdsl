@@ -1,5 +1,5 @@
 /**
- * Fixture for the concat_blocks backward pass. The layer below concatenates two trainable dense
+ * Fixtures for the concat_blocks backward pass. The first layer concatenates two trainable dense
  * parts, the second starting with a slice, so one forward then one backward pass exercises the
  * concat backward (each part receives the slice of the output gradient for its segment) together
  * with the slice backward (a part that reads only the first elements of the input contributes its
@@ -19,5 +19,27 @@ layer concat_grad(in_size: int, hidden_size: int, weight_a: weight, weight_b: we
     concat_blocks(
         { dense(weight_a) },
         { slice(0, hidden_size); dense(weight_b) }
+    )
+}
+
+/** A caller-owned [rows, size] cache that concat_read_grad reads. */
+state concat_cache_state {
+    row_cache: weight
+}
+
+/**
+ * [in_size] -> [out_a + size]: the shape of a recurrent cell's [f(x) | h] input — a trainable dense
+ * part concatenated with an inline cache_read part. The cache_read part does not read the input:
+ * it receives its segment of the output gradient, trains nothing, and contributes nothing to the
+ * input gradient.
+ *
+ *   concat_blocks
+ *     dense(weight_a)                 a = W_a · x               [out_a]
+ *     cache_read(row_cache, position) row `position` of the cache [size]
+ */
+layer concat_read_grad(in_size: int, position: scalar, weight_a: weight) -> [in_size] {
+    concat_blocks(
+        { dense(weight_a) },
+        { cache_read(row_cache, position) }
     )
 }

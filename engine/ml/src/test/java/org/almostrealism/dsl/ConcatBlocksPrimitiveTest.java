@@ -57,6 +57,8 @@ public class ConcatBlocksPrimitiveTest extends TestSuiteBase implements ModelTes
 	private static final int OUT_A = 2;
 	/** Output size of the second part. */
 	private static final int OUT_B = 3;
+	/** Row size of the cache the inline cache_read part reads. */
+	private static final int CACHE_SIZE = 2;
 
 	/** Agreement required with the exact double-precision references. */
 	private static final double TOLERANCE = 1e-5;
@@ -129,6 +131,65 @@ public class ConcatBlocksPrimitiveTest extends TestSuiteBase implements ModelTes
 	}
 
 	/**
+	 * An inline input-independent part — {@code { cache_read(row_cache, position) }}, which the
+	 * loader wraps in a {@link org.almostrealism.model.SequentialBlock}, as in the GRU decoder's
+	 * {@code [x | h]} concatenation — does not prevent the layer from being built for training: the
+	 * dense part still receives the gradient of its own segment, the cache part contributes its row
+	 * to the forward output, and the input gradient is {@code W_aᵀ·g_a} alone.
+	 */
+	@Test(timeout = 120000)
+	public void concatBlocksTrainsAlongsideInlineCacheRead() {
+		Random random = new Random(32);
+		PackedCollection weightA = seeded(shape(OUT_A, IN_SIZE), random);
+		PackedCollection cache = seeded(shape(2, CACHE_SIZE), random);
+		PackedCollection input = seeded(shape(IN_SIZE), random);
+		PackedCollection outputGradient = seeded(shape(OUT_A + CACHE_SIZE), random);
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("in_size", IN_SIZE);
+		args.put("position", 1);
+		args.put("weight_a", weightA);
+		args.put("row_cache", cache);
+
+		GradientRecorder recorder = new GradientRecorder();
+		Model model = new Model(shape(IN_SIZE), recorder);
+		model.add(build("concat_read_grad", args));
+		try (CompiledModel compiled = model.compile(true, true)) {
+			double[] output = compiled.forward(input).doubleStream().toArray();
+			double[] x = input.doubleStream().toArray();
+			double[] g = outputGradient.doubleStream().toArray();
+
+			Assert.assertEquals(OUT_A + CACHE_SIZE, output.length);
+			for (int i = 0; i < OUT_A; i++) {
+				Assert.assertEquals("segment a " + i, dot(weightA, i, x, IN_SIZE), output[i], TOLERANCE);
+			}
+			for (int i = 0; i < CACHE_SIZE; i++) {
+				Assert.assertEquals("segment cache " + i, cache.toDouble(CACHE_SIZE + i),
+						output[OUT_A + i], TOLERANCE);
+			}
+
+			double[] inputGradient = compiled.backward(outputGradient).doubleStream().toArray();
+
+			double[] gradientA = recorder.gradientOfSize(OUT_A * IN_SIZE);
+			for (int i = 0; i < OUT_A; i++) {
+				for (int j = 0; j < IN_SIZE; j++) {
+					Assert.assertEquals("weight a [" + i + ", " + j + "]",
+							g[i] * x[j], gradientA[i * IN_SIZE + j], TOLERANCE);
+				}
+			}
+
+			Assert.assertEquals(IN_SIZE, inputGradient.length);
+			for (int j = 0; j < IN_SIZE; j++) {
+				double expected = 0.0;
+				for (int i = 0; i < OUT_A; i++) {
+					expected += weightA.toDouble(i * IN_SIZE + j) * g[i];
+				}
+				Assert.assertEquals("input " + j, expected, inputGradient[j], TOLERANCE);
+			}
+		}
+	}
+
+	/**
 	 * Builds the {@code concat_grad} fixture layer with the given part weights.
 	 *
 	 * @param weightA the first part's weights, shape {@code [OUT_A, IN_SIZE]}
@@ -142,8 +203,19 @@ public class ConcatBlocksPrimitiveTest extends TestSuiteBase implements ModelTes
 		args.put("weight_a", weightA);
 		args.put("weight_b", weightB);
 
+		return build("concat_grad", args);
+	}
+
+	/**
+	 * Builds a layer of the fixture program for an input of {@link #IN_SIZE}.
+	 *
+	 * @param layer the layer name
+	 * @param args  the layer arguments
+	 * @return the layer
+	 */
+	private Block build(String layer, Map<String, Object> args) {
 		PdslLoader loader = new PdslLoader();
-		return loader.buildLayer(loader.parseResource(FIXTURE), "concat_grad", shape(IN_SIZE), args);
+		return loader.buildLayer(loader.parseResource(FIXTURE), layer, shape(IN_SIZE), args);
 	}
 
 	/**

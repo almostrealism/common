@@ -8,7 +8,7 @@ tracker: [3c14e3d9-4c2e-498a-abb9-15d8951f9e33]
 # Give `concat_blocks` a backward pass so gradients reach every concatenated part
 
 - **Tracker task:** `3c14e3d9-4c2e-498a-abb9-15d8951f9e33` — "Give concat_blocks a backward pass so gradients reach every concatenated part"
-- **Release:** Common 0.76
+- **Release:** the release under development (the `Common` release matching the version in the root `pom.xml`)
 
 ## Motivation
 

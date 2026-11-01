@@ -27,12 +27,18 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.ConcatenationBlock;
 import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.optimize.Dataset;
+import org.almostrealism.optimize.MeanSquaredError;
+import org.almostrealism.optimize.ModelOptimizer;
+import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -156,10 +162,7 @@ public class ConcatenationBlockTests extends TestSuiteBase implements LayerRouti
 		PackedCollection constant = randn(shape(CACHE), 0.0, 1.0, random).evaluate();
 		PackedCollection input = randn(shape(SIZE), 0.0, 1.0, random).evaluate();
 
-		// A forward-only child: it pushes a constant segment and has no backward cell.
-		Cell<PackedCollection> forwardCell = Cell.of((in, next) ->
-				next == null ? new OperationList() : next.push(cp(constant)));
-		Block forwardOnly = new DefaultBlock(shape(SIZE), shape(CACHE), forwardCell, null);
+		Block forwardOnly = forwardOnly(constant);
 		Assert.assertNull("the forward-only child must have no backward cell", forwardOnly.getBackward());
 
 		List<Block> children = new ArrayList<>();
@@ -199,6 +202,123 @@ public class ConcatenationBlockTests extends TestSuiteBase implements LayerRouti
 				}
 				Assert.assertEquals("input " + j, expected, inputGradient.toDouble(j), 1e-5);
 			}
+		}
+	}
+
+	/**
+	 * A forward-only block (no backward cell) wrapped in a {@link SequentialBlock} — the form a PDSL
+	 * inline part takes — gives a chain whose own backward cell is non-null while its first or last
+	 * child has none. Compiling such a concatenation for training must not fail: a chain that ends
+	 * in the forward-only block produces no gradient, and a chain that starts with it still trains
+	 * the weights after it ({@code W_b} receives {@code g_b·cᵀ} for the constant {@code c}) while
+	 * contributing nothing upstream, so the input gradient is exactly {@code W_aᵀ·g_a}.
+	 */
+	@Test(timeout = 120000)
+	public void skipsSequentialChildrenWithForwardOnlyEnds() {
+		Random random = new Random(26);
+		PackedCollection weightA = randn(shape(NODES_A, SIZE), 0.0, 1.0, random).evaluate();
+		PackedCollection weightB = randn(shape(NODES_B, CACHE), 0.0, 1.0, random).evaluate();
+		PackedCollection cache = randn(shape(CACHE), 0.0, 1.0, random).evaluate();
+		PackedCollection input = randn(shape(SIZE), 0.0, 1.0, random).evaluate();
+
+		SequentialBlock readOnly = new SequentialBlock(shape(SIZE));
+		readOnly.add(forwardOnly(cache));
+		Assert.assertNotNull(readOnly.getBackward());
+
+		SequentialBlock readThenDense = new SequentialBlock(shape(SIZE));
+		readThenDense.add(forwardOnly(cache));
+		readThenDense.add(dense(shape(CACHE), weightB, false, false));
+
+		List<Block> children = new ArrayList<>();
+		children.add(dense(shape(SIZE), weightA, false, false));
+		children.add(readOnly);
+		children.add(readThenDense);
+
+		List<PackedCollection> recorded = new ArrayList<>();
+		Model model = new Model(shape(SIZE), gradientRecorder(recorded));
+		model.add(concatBlocks(shape(SIZE), children));
+		try (CompiledModel compiled = model.compile(true, true)) {
+			Assert.assertEquals(2, recorded.size());
+			PackedCollection gradientA = recorded.get(0);
+			PackedCollection gradientB = recorded.get(1);
+
+			PackedCollection out = compiled.forward(input);
+			Assert.assertEquals(NODES_A + CACHE + NODES_B, out.getShape().getTotalSize());
+			for (int i = 0; i < CACHE; i++) {
+				Assert.assertEquals("segment cache " + i, cache.toDouble(i), out.toDouble(NODES_A + i), 1e-5);
+			}
+			for (int i = 0; i < NODES_B; i++) {
+				double expected = 0.0;
+				for (int j = 0; j < CACHE; j++) {
+					expected += weightB.toDouble(i * CACHE + j) * cache.toDouble(j);
+				}
+				Assert.assertEquals("segment b " + i, expected, out.toDouble(NODES_A + CACHE + i), 1e-5);
+			}
+
+			PackedCollection outputGradient = randn(shape(NODES_A + CACHE + NODES_B), 0.0, 1.0, random).evaluate();
+			PackedCollection inputGradient = compiled.backward(outputGradient);
+
+			assertWeightGradient("a", weightA, gradientA, outputGradient, 0, input, 0);
+
+			// The dense after the cache read sees the cache row as its input.
+			for (int i = 0; i < NODES_B; i++) {
+				for (int j = 0; j < CACHE; j++) {
+					Assert.assertEquals("weight b [" + i + ", " + j + "]",
+							outputGradient.toDouble(NODES_A + CACHE + i) * cache.toDouble(j),
+							gradientB.toDouble(i * CACHE + j), 1e-5);
+				}
+			}
+
+			for (int j = 0; j < SIZE; j++) {
+				double expected = 0.0;
+				for (int i = 0; i < NODES_A; i++) {
+					expected += weightA.toDouble(i * SIZE + j) * outputGradient.toDouble(i);
+				}
+				Assert.assertEquals("input " + j, expected, inputGradient.toDouble(j), 1e-5);
+			}
+		}
+	}
+
+	/**
+	 * Under {@link ModelOptimizer}, the parameter update set on the model reaches the weights inside
+	 * every concatenated part: training a concatenation of two dense parts toward a fixed linear
+	 * target changes both weight matrices and lowers the loss.
+	 */
+	@Test(timeout = 120000)
+	public void optimizerTrainsEveryConcatenatedPart() {
+		Random random = new Random(27);
+		PackedCollection weightA = randn(shape(NODES_A, SIZE), 0.0, 0.1, random).evaluate();
+		PackedCollection weightB = randn(shape(NODES_B, SIZE), 0.0, 0.1, random).evaluate();
+		PackedCollection target = randn(shape(NODES_A + NODES_B, SIZE), 0.0, 1.0, random).evaluate();
+		double[] initialA = weightA.toArray();
+		double[] initialB = weightB.toArray();
+
+		List<Block> children = new ArrayList<>();
+		children.add(dense(shape(SIZE), weightA, false, false));
+		children.add(dense(shape(SIZE), weightB, false, false));
+
+		Model model = new Model(shape(SIZE), 1e-2);
+		model.add(concatBlocks(shape(SIZE), children));
+
+		List<ValueTarget<PackedCollection>> samples = new ArrayList<>();
+		for (int s = 0; s < 16; s++) {
+			PackedCollection x = randn(shape(SIZE), 0.0, 1.0, random).evaluate();
+			samples.add(ValueTarget.of(x, matmul(cp(target), cp(x)).evaluate()));
+		}
+		Dataset<PackedCollection> data = Dataset.of(samples);
+
+		try (CompiledModel compiled = model.compile()) {
+			double initialLoss = meanSquaredError(compiled, samples);
+
+			ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> data);
+			optimizer.setLossFunction(new MeanSquaredError(shape(NODES_A + NODES_B).traverseEach()));
+			optimizer.setLogFrequency(0);
+			optimizer.optimize(5);
+
+			double finalLoss = meanSquaredError(compiled, samples);
+			Assert.assertTrue("loss must fall: " + initialLoss + " -> " + finalLoss, finalLoss < initialLoss);
+			Assert.assertFalse("part a weights must change", Arrays.equals(initialA, weightA.toArray()));
+			Assert.assertFalse("part b weights must change", Arrays.equals(initialB, weightB.toArray()));
 		}
 	}
 
@@ -296,7 +416,7 @@ public class ConcatenationBlockTests extends TestSuiteBase implements LayerRouti
 	}
 
 	/**
-	 * The gradient buffer is allocated only when the backward cell is built, so destroying a block
+	 * The gradient buffer is allocated only when a gradient is first pushed, so destroying a block
 	 * used solely for inference must still destroy every child exactly once without touching the
 	 * absent buffer, and destroying a block whose backward was built must do the same.
 	 */
@@ -344,6 +464,28 @@ public class ConcatenationBlockTests extends TestSuiteBase implements LayerRouti
 	}
 
 	/**
+	 * The mean squared error of the model's forward output against every sample's target.
+	 *
+	 * @param compiled the compiled model
+	 * @param samples  the input/target pairs
+	 * @return the mean over samples and output elements of the squared error
+	 */
+	private double meanSquaredError(CompiledModel compiled, List<ValueTarget<PackedCollection>> samples) {
+		double sum = 0.0;
+		int count = 0;
+		for (ValueTarget<PackedCollection> sample : samples) {
+			double[] out = compiled.forward(sample.getInput()).toArray();
+			double[] expected = sample.getExpectedOutput().toArray();
+			for (int i = 0; i < out.length; i++) {
+				double d = out[i] - expected[i];
+				sum += d * d;
+				count++;
+			}
+		}
+		return sum / count;
+	}
+
+	/**
 	 * The dot product of row {@code row} of a {@code [nodes, SIZE]} weight matrix with the input.
 	 *
 	 * @param weights the weight matrix
@@ -357,6 +499,19 @@ public class ConcatenationBlockTests extends TestSuiteBase implements LayerRouti
 			sum += weights.toDouble(row * SIZE + j) * input.toDouble(j);
 		}
 		return sum;
+	}
+
+	/**
+	 * Creates a forward-only child of {@link #SIZE} inputs: it pushes {@code constant} as its output
+	 * segment, ignoring the input, and has no backward cell.
+	 *
+	 * @param constant the {@code [CACHE]} values the child outputs
+	 * @return the forward-only child
+	 */
+	private Block forwardOnly(PackedCollection constant) {
+		Cell<PackedCollection> forwardCell = Cell.of((in, next) ->
+				next == null ? new OperationList() : next.push(cp(constant)));
+		return new DefaultBlock(shape(SIZE), shape(CACHE), forwardCell, null);
 	}
 
 	/**
