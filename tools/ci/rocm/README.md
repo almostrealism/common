@@ -344,7 +344,8 @@ gh api orgs/almostrealism/actions/runners \
 
 ## Test Data (Sample Library)
 
-`test-media-cl` runs `studio/music`, `studio/compose`, and `studio/spatial`.
+`test-media-cl` runs `studio/music`, `studio/compose`, `studio/spatial`,
+`extern/ml-onnx`, `studio/experiments` and `studio/bioscience`.
 Several of those tests read a real audio sample library.
 
 Two different failure modes matter here, and they are not the same:
