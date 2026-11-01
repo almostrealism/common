@@ -59,4 +59,37 @@ public class ChoiceGeneTests extends TestSuiteBase implements HeredityFeatures {
 
 		assertEquals(30.0, selected);
 	}
+
+	/**
+	 * A gene value of {@code 0.0} — the inclusive lower bound of the documented value
+	 * range — must select the first choice. This exercises the mapping below the clamp,
+	 * confirming the upper-bound fix leaves the normal path unchanged.
+	 */
+	@Test(timeout = 120000)
+	public void minValueSelectsFirstChoice() {
+		PackedCollection choices = PackedCollection.of(10.0, 20.0, 30.0);
+
+		ChoiceGene gene = new ChoiceGene(g(0.0), choices);
+
+		double selected = gene.valueAt(0).getResultant(c(1.0)).get().evaluate().toDouble(0);
+
+		assertEquals(10.0, selected);
+	}
+
+	/**
+	 * A gene value strictly inside the range maps to the choice at {@code floor(value * N)},
+	 * well below the clamp. A value of {@code 0.5} with three choices yields index
+	 * {@code floor(1.5) = 1}, selecting the middle choice — demonstrating the clamp does not
+	 * alter values below the upper bound.
+	 */
+	@Test(timeout = 120000)
+	public void midValueSelectsMiddleChoice() {
+		PackedCollection choices = PackedCollection.of(10.0, 20.0, 30.0);
+
+		ChoiceGene gene = new ChoiceGene(g(0.5), choices);
+
+		double selected = gene.valueAt(0).getResultant(c(1.0)).get().evaluate().toDouble(0);
+
+		assertEquals(20.0, selected);
+	}
 }
