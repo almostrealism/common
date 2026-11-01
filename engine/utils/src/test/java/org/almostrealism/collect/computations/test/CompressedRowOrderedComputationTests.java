@@ -318,6 +318,80 @@ public class CompressedRowOrderedComputationTests extends TestSuiteBase implemen
 	}
 
 	/**
+	 * The product with one row vector of shape {@code (1, 5)} traversed along its rows, the form
+	 * in which a dense layer passes its input.
+	 */
+	@Test(timeout = 60000)
+	public void matmulRowVector() {
+		assertMatchesDense(m -> matmul(m, cp(pack(1.0, 2.0, 3.0, 4.0, 5.0).reshape(shape(1, 5)).traverse(1))));
+	}
+
+	/** The product with a batch of three row vectors of shape {@code (3, 5)}, traversed along its rows. */
+	@Test(timeout = 60000)
+	public void matmulRowVectorBatch() {
+		assertMatchesDense(m -> matmul(m, cp(pack(1.0, -1.0, 2.0, 0.5, 3.0,
+				-2.0, 4.0, 1.0, 0.0, 5.0,
+				2.0, -3.0, 1.0, 1.0, 1.0).reshape(shape(3, 5)).traverse(1))));
+	}
+
+	/**
+	 * The product of a {@code 60000 × 60000} matrix, one entry per row, with a row vector is
+	 * computed by visiting the stored entries: the logical size of the matrix exceeds the range of
+	 * an {@code int}, so a product that formed a logical index of it could not be built.
+	 */
+	@Test(timeout = 120000)
+	public void matmulRowVectorBeyondIntRange() {
+		int n = 60000;
+		int[] offsets = new int[n + 1];
+		int[] columns = new int[n];
+		for (int i = 0; i <= n; i++) offsets[i] = i;
+		for (int i = 0; i < n; i++) columns[i] = (int) ((7L * i) % n);
+
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(n, offsets, columns);
+		try (PackedCollection values = integers(0, n).mod(3).add(c(1.0)).evaluate();
+			 PackedCollection x = integers(0, n).mod(11).evaluate()) {
+			PackedCollection matrix = new PackedCollection(shape(n, n), 0, values, 0, order);
+			PackedCollection y = matmul(cp(matrix), cp(x.reshape(shape(1, n)).traverse(1))).evaluate();
+			assertEquals(n, y.getShape().getTotalSize());
+
+			double[] result = y.toArray();
+			for (int i = 0; i < n; i += 997) {
+				assertEquals("element " + i, (i % 3 + 1) * (columns[i] % 11), result[i]);
+			}
+		}
+	}
+
+	/**
+	 * The product of the same {@code 60000 × 60000} matrix with a batch of 30 row vectors, each
+	 * row of the result the product with one vector.
+	 */
+	@Test(timeout = 300000)
+	public void matmulRowVectorBatchBeyondIntRange() {
+		int n = 60000;
+		int batch = 30;
+		int[] offsets = new int[n + 1];
+		int[] columns = new int[n];
+		for (int i = 0; i <= n; i++) offsets[i] = i;
+		for (int i = 0; i < n; i++) columns[i] = (int) ((7L * i) % n);
+
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(n, offsets, columns);
+		try (PackedCollection values = integers(0, n).mod(3).add(c(1.0)).evaluate();
+			 PackedCollection x = integers(0, batch * n).mod(11).evaluate()) {
+			PackedCollection matrix = new PackedCollection(shape(n, n), 0, values, 0, order);
+			PackedCollection y = matmul(cp(matrix), cp(x.reshape(shape(batch, n)).traverse(1))).evaluate();
+			assertEquals(batch * n, y.getShape().getTotalSize());
+
+			double[] result = y.toArray();
+			for (int b = 0; b < batch; b++) {
+				for (int i = 0; i < n; i += 997) {
+					double expected = (i % 3 + 1) * ((b * n + columns[i]) % 11);
+					assertEquals("vector " + b + " element " + i, expected, result[b * n + i]);
+				}
+			}
+		}
+	}
+
+	/**
 	 * The product of a {@code 300 × 200} matrix holding one full row with a {@code (200, 3)}
 	 * matrix is correct. Read through the ordering, every logical element of this matrix is a
 	 * search as long as its longest row, and the dense product of it failed to compile; the

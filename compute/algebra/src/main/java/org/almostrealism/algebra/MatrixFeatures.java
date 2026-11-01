@@ -272,10 +272,24 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		// A matrix whose ordering enumerates its rows (a sparse matrix) is multiplied by visiting
 		// only the entries it stores, never forming a logical index of the matrix
 		TraversalOrdering mOrder = mShape.getOrder();
-		if (mOrder != null && mShape.getDimensions() == 2 && mOrder.segments(mShape.length(1)).isPresent()
-				&& vShape.getDimensions() <= 2 && vShape.length(0) == mShape.length(1)) {
+		boolean rowsEnumerated = mOrder != null && mShape.getDimensions() == 2
+				&& mOrder.segments(mShape.length(1)).isPresent();
+		if (rowsEnumerated && vShape.getDimensions() <= 2 && vShape.length(0) == mShape.length(1)) {
 			return new SegmentedWeightedSumComputation("matmul",
 					vShape.getDimensions() == 1 ? 1 : vShape.length(1), matrix, vector);
+		} else if (rowsEnumerated && vShape.getDimensions() == 2 && vShape.getTraversalAxis() >= 1
+				&& vShape.length(1) == mShape.length(1)) {
+			// A batch of row vectors, as a dense layer passes its input, is the same product
+			// over the batch as columns, transposed back into rows, in the shape of the dense product
+			int batch = vShape.length(0);
+			int rows = mShape.length(0);
+			if (batch == 1) {
+				return new SegmentedWeightedSumComputation("matmul", 1, matrix,
+						reshape(shape(vShape.length(1)), vector)).reshape(shape(rows, 1));
+			}
+
+			return new SegmentedWeightedSumComputation("matmul", batch, matrix,
+					c(vector).traverse(0).transpose()).traverse(0).transpose().reshape(shape(batch, rows, 1));
 		} else if (mShape.getTotalSizeLong() == 1 || vShape.getTotalSizeLong() == 1) {
 			return multiply(c(matrix), c(vector));
 		} else if (mShape.getDimensions() != 2) {

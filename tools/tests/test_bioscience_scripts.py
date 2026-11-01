@@ -17,5 +17,6 @@ sys.path.insert(0, os.path.normpath(_SCRIPTS))
 from test_male_cns import (  # noqa: E402,F401
     MajorityAnnotationsTest,
     SafetensorsHeaderTest,
+    SourceChecksumsTest,
     TransmitterSignTest,
 )
