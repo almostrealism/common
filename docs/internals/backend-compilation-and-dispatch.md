@@ -195,9 +195,12 @@ The `AR_HARDWARE_DRIVER` environment variable controls which backends are loaded
 available — **NOT** a per-operation priority order; see "Per-operation provider selection"
 below for how a backend is actually chosen for each operation):
 - **ARM64 (Apple Silicon):** JNI, Metal, OpenCL
-- **Linux/Windows (x86/x64 and ARM64):** CUDA, OpenCL, JNI — CUDA is attempted only when the
+- **Linux (x86/x64 and ARM64):** CUDA, OpenCL, JNI — CUDA is attempted only when the
   CUDA bridge loads and a device is present (`CudaDataContext.isDeviceAvailable()`); otherwise
   it is skipped
+- **Windows (x86/x64 and ARM64):** OpenCL, JNI — the CUDA bridge ships only as a Linux
+  `libARCUDA-linux-<arch>.so`, so CUDA is never loaded on Windows even though the wildcard lists
+  it; `isDeviceAvailable()` reports it absent and it is skipped
 - **x86/x64 (macOS):** OpenCL (no JNI)
 
 ### Backend Coverage in CI

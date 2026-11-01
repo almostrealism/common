@@ -216,4 +216,29 @@ public class CudaDataContextLifecycleTest {
 			context.destroy();
 		}
 	}
+
+	/**
+	 * {@link CudaDataContext#isDeviceAvailable()} probes the driver without throwing, and its
+	 * answer matches whether a context can actually obtain the device. A host with no usable CUDA
+	 * device reports {@code false} and cannot serve a memory provider; a host with CUDA reports
+	 * {@code true} and serves one. This is the predicate automatic backend selection relies on to
+	 * offer a CUDA context only where it will work, so the two must agree on every runner.
+	 */
+	@Test(timeout = 60000)
+	public void isDeviceAvailableAgreesWithDevice() {
+		boolean available = CudaDataContext.isDeviceAvailable();
+
+		CudaDataContext context = newContext();
+
+		try {
+			context.getMemoryProvider();
+			Assert.assertTrue("A host that serves a CUDA memory provider must report the device available",
+					available);
+		} catch (LinkageError | HardwareException e) {
+			Assert.assertFalse("A host with no usable CUDA device must report it unavailable",
+					available);
+		} finally {
+			context.destroy();
+		}
+	}
 }

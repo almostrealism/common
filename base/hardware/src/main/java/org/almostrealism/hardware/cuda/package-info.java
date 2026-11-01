@@ -43,9 +43,13 @@
  *       parameters ({@link org.almostrealism.hardware.cuda.CudaLanguageOperations} disables
  *       argument detail reads). This fits {@code cuLaunchKernel}'s parameter array and needs no
  *       per-dispatch allocation.</li>
- *   <li><b>Driver selection.</b> The driver token is {@code cuda}. The {@code *} and
- *       {@code gpu} selections do not yet resolve to CUDA; when they do, resolution should be
- *       availability-aware rather than based on operating-system checks.</li>
+ *   <li><b>Driver selection.</b> The driver token is {@code cuda}. The {@code *} selection
+ *       resolves to CUDA first on non-macOS hosts, availability-aware: it is offered ahead of
+ *       OpenCL and JNI but kept only when
+ *       {@link org.almostrealism.hardware.cuda.CudaDataContext#isDeviceAvailable()} holds, so a
+ *       host without a CUDA device falls through to the other backends. The {@code gpu} selection
+ *       does not yet resolve to CUDA; when it does, that resolution should be availability-aware
+ *       rather than based on operating-system checks.</li>
  *   <li><b>Integrated and discrete devices.</b> The backend is designed for both unified-memory
  *       (integrated) and discrete NVIDIA GPUs, so it does not silently depend on host access to
  *       device memory. Sharing CUDA memory with host kernels is off by default (see
