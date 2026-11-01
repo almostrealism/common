@@ -49,6 +49,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -59,6 +60,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 /**
  * Primary testing interface providing comprehensive utilities for unit testing, kernel testing,
@@ -1102,10 +1104,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 	/**
 	 * Returns whether a real GPU accelerator (Metal, OpenCL on a GPU device, or CUDA) is
-	 * present on this host. This is the one host property that may excuse a missing
-	 * {@link #requireResource(String, String, boolean) required resource}: a host without any
-	 * GPU (the CPU-only {@code native} lanes) is not expected to carry the resources the
-	 * accelerated workloads read.
+	 * present on this host. By default it is the host property that makes a
+	 * {@link #requireResource(String, String, boolean) required resource} mandatory: a host
+	 * without any GPU (the CPU-only {@code native} lanes) is not expected to carry the resources
+	 * the accelerated workloads read.
 	 *
 	 * <p>Delegates to {@link Hardware#isAvailable(ComputeRequirement...)} with
 	 * {@link ComputeRequirement#GPU}, which strictly filters the data contexts built from
@@ -1136,6 +1138,9 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 *       to run, and it is reported as skipped, never as passed.</li>
 	 * </ul>
 	 *
+	 * <p>This is {@link #requireResource(String, String, boolean, ComputeRequirement...)} with
+	 * {@link ComputeRequirement#GPU} as the requirement that makes the resource mandatory.</p>
+	 *
 	 * @param resource         description of the resource, including where it was looked for
 	 * @param locationProperty the property or environment variable that declares the
 	 *                         resource's location on a host, or {@code null} if there is none
@@ -1143,13 +1148,45 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @see #requireLocalResource(String, String, boolean)
 	 */
 	default void requireResource(String resource, String locationProperty, boolean available) {
+		requireResource(resource, locationProperty, available, ComputeRequirement.GPU);
+	}
+
+	/**
+	 * Makes the calling test fail, skip, or proceed according to whether a resource it needs is
+	 * present, with the test choosing which hosts are meant to carry it: a missing resource fails
+	 * on a host that declares {@code locationProperty}, and on a host where any of
+	 * {@code mandatoryWhereAvailable} is {@link Hardware#isAvailable(ComputeRequirement...)
+	 * available}; on any other host it is {@link Assume}-skipped, reported as skipped and never
+	 * as passed.
+	 *
+	 * <p>The requirements name the hosts on which running without the resource is not
+	 * tolerable. {@link ComputeRequirement#GPU} alone (the default of
+	 * {@link #requireResource(String, String, boolean)}) tolerates its absence on CPU-only hosts.
+	 * A test that must never run without its resource passes {@code GPU, CPU}, which every host
+	 * provides at least one of, so a missing resource always fails. No requirements at all means
+	 * that only a declared location makes the resource mandatory, as
+	 * {@link #requireLocalResource(String, String, boolean)} does.</p>
+	 *
+	 * @param resource                description of the resource, including where it was looked for
+	 * @param locationProperty        the property or environment variable that declares the
+	 *                                resource's location on a host, or {@code null} if there is none
+	 * @param available               whether the resource is present
+	 * @param mandatoryWhereAvailable the compute requirements whose availability on this host makes
+	 *                                the resource mandatory
+	 */
+	default void requireResource(String resource, String locationProperty, boolean available,
+								 ComputeRequirement... mandatoryWhereAvailable) {
 		if (isLocationDeclared(locationProperty)) {
 			requireResource(resource, available, true,
 					locationProperty + " is set, so this host is meant to carry it");
-		} else {
-			requireResource(resource, available, isGpuAvailable(),
-					"a GPU accelerator is available, so this host is meant to carry it");
+			return;
 		}
+
+		Optional<ComputeRequirement> present = Stream.of(mandatoryWhereAvailable)
+				.filter(r -> Hardware.getLocalHardware().isAvailable(r))
+				.findFirst();
+		requireResource(resource, available, present.isPresent(),
+				present.map(r -> r + " is available, so this host is meant to carry it").orElse(""));
 	}
 
 	/**
@@ -1166,13 +1203,52 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @return {@code directory}, which is guaranteed to exist and to have at least one entry
 	 */
 	default File requireResourceDirectory(String resource, String locationProperty, File directory) {
+		return requireResourceDirectory(resource, locationProperty, directory, ComputeRequirement.GPU);
+	}
+
+	/**
+	 * Requires a resource that is a directory, as
+	 * {@link #requireResource(String, String, boolean, ComputeRequirement...)} does with the same
+	 * requirements, and additionally fails, on every host, when the directory exists but is empty.
+	 *
+	 * @param resource                description of the resource
+	 * @param locationProperty        the property or environment variable that declares the
+	 *                                directory's location on a host, or {@code null} if there is none
+	 * @param directory               the directory the resource is expected in
+	 * @param mandatoryWhereAvailable the compute requirements whose availability on this host makes
+	 *                                the directory mandatory
+	 * @return {@code directory}, which is guaranteed to exist and to have at least one entry
+	 */
+	default File requireResourceDirectory(String resource, String locationProperty, File directory,
+										  ComputeRequirement... mandatoryWhereAvailable) {
 		String description = resource + " " + directory.getAbsolutePath();
-		requireResource(description, locationProperty, directory.isDirectory());
+		requireResource(description, locationProperty, directory.isDirectory(), mandatoryWhereAvailable);
 
 		String[] entries = directory.list();
 		Assert.assertTrue("Required resource " + description + " exists but is empty;"
 				+ " the mount or sync that should populate it did not run.",
 				entries != null && entries.length > 0);
+		return directory;
+	}
+
+	/**
+	 * Returns the directory a resource lives in, named by {@code locationProperty} or else
+	 * {@code defaultDirectory}, after requiring that it holds {@code file}, as
+	 * {@link #requireResource(String, String, boolean, ComputeRequirement...)} does with the same
+	 * requirements.
+	 *
+	 * @param locationProperty        the property or environment variable that names the directory
+	 * @param defaultDirectory        the directory used when the property is not set
+	 * @param file                    a file the directory must hold
+	 * @param mandatoryWhereAvailable the compute requirements whose availability on this host makes
+	 *                                the resource mandatory
+	 * @return the directory
+	 */
+	default File requireResourceIn(String locationProperty, String defaultDirectory, String file,
+								   ComputeRequirement... mandatoryWhereAvailable) {
+		File directory = new File(SystemUtils.getProperty(locationProperty, defaultDirectory));
+		requireResource(file + " in " + directory.getAbsolutePath(), locationProperty,
+				new File(directory, file).exists(), mandatoryWhereAvailable);
 		return directory;
 	}
 
@@ -1190,8 +1266,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param available        whether the resource is present
 	 */
 	default void requireLocalResource(String resource, String locationProperty, boolean available) {
-		requireResource(resource, available, isLocationDeclared(locationProperty),
-				locationProperty + " is set, so this host is meant to carry it");
+		requireResource(resource, locationProperty, available, new ComputeRequirement[0]);
 	}
 
 	/**

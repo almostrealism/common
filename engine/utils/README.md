@@ -62,6 +62,29 @@ initKernelMetrics();
 logKernelMetrics();
 ```
 
+#### Resources a test needs
+
+A test that needs a resource from outside the repository (a sample library, model weights, a
+dataset) calls one of the `require...` methods instead of checking for it and returning, which
+would report a test that did nothing as passed. A missing resource fails the test on a host that
+declares its location property, and on a host where one of the named `ComputeRequirement`s is
+available; anywhere else the test is skipped, never passed.
+
+```java
+// Default: mandatory on any GPU host (tolerated on CPU-only hosts)
+requireResource("sample library " + dir, "AR_RINGS_LIBRARY", dir.isDirectory());
+
+// Stricter: mandatory on every host, since every host has a GPU or a CPU context
+File data = requireResourceIn("AR_MY_DATASET", "/data/my-dataset", "tensors.safetensors",
+        ComputeRequirement.GPU, ComputeRequirement.CPU);
+
+// Looser: mandatory only where its location is declared (no requirements)
+requireLocalResource("model weights " + weights, "AR_MY_WEIGHTS", Files.exists(weights));
+```
+
+`requireResourceDirectory` does the same for a directory and also fails, on every host, when the
+directory exists but is empty.
+
 ### TestSettings
 
 Global test configuration via environment variables:

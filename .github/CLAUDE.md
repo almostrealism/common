@@ -646,7 +646,10 @@ policy is decided): a missing resource fails on any GPU host and on any host
 that declares its location, and is skipped — never passed — only on a host with
 no GPU that did not declare it, i.e. the CPU `test-media` lane. A new runner
 without the library therefore turns its lane red instead of letting tests that
-should have failed report a pass.
+should have failed report a pass. That GPU rule is the default; a test can name
+the `ComputeRequirement`s whose availability makes its resource mandatory
+(`requireResource(resource, property, available, GPU, CPU)` fails on every
+host), and `requireLocalResource` is the case with none.
 
 The memory settings below (`AR_HARDWARE_MEMORY_SCALE=7`, the group split, the
 `_JAVA_OPTIONS` direct-memory caps, `AR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled`)

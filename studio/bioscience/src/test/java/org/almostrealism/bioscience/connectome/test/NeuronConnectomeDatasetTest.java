@@ -33,40 +33,14 @@ import java.io.IOException;
  * distributed with Shiu et al. (2024).
  *
  * <p>The converted data lives outside the repository. Each directory is a system property or
- * environment variable, by default under {@value #DERIVED}. The datasets are too large for the
- * repository and for every runner, so these tests are long-running and excluded from the
- * pipeline profile: they run when asked for, and then a missing dataset fails the test. The same
+ * environment variable, by default under {@value NeuronConnectomeChecks#DERIVED}. The datasets
+ * are too large for the repository and for every runner, so these tests are long-running and
+ * excluded from the pipeline profile: they run when asked for, and then a missing dataset fails
+ * the test on every host ({@link NeuronConnectomeChecks#requireConnectome}). The same
  * checks run in the pipeline on the committed FlyWire sugar circuit, a real connectome cut from
  * the 630 snapshot ({@link NeuronConnectomeTest}).</p>
  */
 public class NeuronConnectomeDatasetTest extends NeuronConnectomeChecks {
-	/** The directory under which converted datasets live by default. */
-	public static final String DERIVED = "/Users/Shared/models-derived";
-
-	/** The property or environment variable naming the converted MaleCNS directory. */
-	public static final String MALE_CNS_PROPERTY = "AR_MALE_CNS_CSR";
-
-	/** The property or environment variable naming the converted FlyWire 630 directory. */
-	public static final String FLYWIRE_630_PROPERTY = "AR_FLYWIRE_630_CSR";
-
-	/** The property or environment variable naming the converted FlyWire 783 directory. */
-	public static final String FLYWIRE_783_PROPERTY = "AR_FLYWIRE_783_CSR";
-
-	/** Returns the converted MaleCNS directory, failing the test when it is absent. */
-	public static File maleCns() {
-		return requireDataset(MALE_CNS_PROPERTY, DERIVED + "/male-cns/csr", NeuronConnectome.TENSORS_FILE);
-	}
-
-	/** Returns the converted FlyWire 630 directory, failing the test when it is absent. */
-	public static File flywire630() {
-		return requireDataset(FLYWIRE_630_PROPERTY, DERIVED + "/flywire/csr-630", NeuronConnectome.TENSORS_FILE);
-	}
-
-	/** Returns the converted FlyWire 783 directory, failing the test when it is absent. */
-	public static File flywire783() {
-		return requireDataset(FLYWIRE_783_PROPERTY, DERIVED + "/flywire/csr-783", NeuronConnectome.TENSORS_FILE);
-	}
-
 	/** MaleCNS loads with the totals the script recorded. */
 	@Test(timeout = 1200000)
 	@TestDepth(2)

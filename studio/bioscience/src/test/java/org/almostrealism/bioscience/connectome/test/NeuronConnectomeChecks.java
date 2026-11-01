@@ -20,9 +20,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.bioscience.connectome.NeuronConnectome;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.io.SystemUtils;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
 
@@ -67,25 +67,58 @@ public abstract class NeuronConnectomeChecks extends TestSuiteBase {
 		}
 	}
 
+	/** The directory under which converted datasets live by default. */
+	public static final String DERIVED = "/Users/Shared/models-derived";
+
+	/** The property or environment variable naming the converted MaleCNS directory. */
+	public static final String MALE_CNS_PROPERTY = "AR_MALE_CNS_CSR";
+
+	/** The property or environment variable naming the converted FlyWire 630 directory. */
+	public static final String FLYWIRE_630_PROPERTY = "AR_FLYWIRE_630_CSR";
+
+	/** The property or environment variable naming the converted FlyWire 783 directory. */
+	public static final String FLYWIRE_783_PROPERTY = "AR_FLYWIRE_783_CSR";
+
 	/**
-	 * Returns the directory of a dataset kept outside the repository, failing the calling test
-	 * when the directory does not hold the expected file. The tests that call this declare
-	 * themselves long-running and excluded from the pipeline profile, so they run only when
-	 * someone asks for them, and then a missing dataset is an error rather than a skip.
+	 * Returns the directory of a converted connectome kept outside the repository, requiring it
+	 * on every host: a test that asks for a full dataset runs only when someone asks for it (they
+	 * are long-running and excluded from the pipeline profile), so its absence is an error, never
+	 * a skip.
 	 *
-	 * @param property         the system property or environment variable naming the directory
+	 * @param property         the property or environment variable naming the directory
 	 * @param defaultDirectory the directory used when it is not set
-	 * @param file             a file the directory must hold
 	 * @return the directory
 	 */
-	public static File requireDataset(String property, String defaultDirectory, String file) {
-		File directory = new File(SystemUtils.getProperty(property, defaultDirectory));
-		if (!new File(directory, file).exists()) {
-			throw new IllegalStateException(file + " was not found in " + directory
-					+ "; set " + property + " to the directory that holds it");
-		}
+	protected File requireConnectome(String property, String defaultDirectory) {
+		return requireResourceIn(property, defaultDirectory, NeuronConnectome.TENSORS_FILE,
+				ComputeRequirement.GPU, ComputeRequirement.CPU);
+	}
 
-		return directory;
+	/**
+	 * Returns the converted MaleCNS directory, failing the test when it is absent.
+	 *
+	 * @return the directory
+	 */
+	protected File maleCns() {
+		return requireConnectome(MALE_CNS_PROPERTY, DERIVED + "/male-cns/csr");
+	}
+
+	/**
+	 * Returns the converted FlyWire 630 directory, failing the test when it is absent.
+	 *
+	 * @return the directory
+	 */
+	protected File flywire630() {
+		return requireConnectome(FLYWIRE_630_PROPERTY, DERIVED + "/flywire/csr-630");
+	}
+
+	/**
+	 * Returns the converted FlyWire 783 directory, failing the test when it is absent.
+	 *
+	 * @return the directory
+	 */
+	protected File flywire783() {
+		return requireConnectome(FLYWIRE_783_PROPERTY, DERIVED + "/flywire/csr-783");
 	}
 
 	/**

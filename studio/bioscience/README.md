@@ -82,7 +82,9 @@ run only when asked for:
   `@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)`: excluded from the
   pipeline profile CI runs, and run locally when long tests are enabled
   (`AR_LONG_TESTS=enabled`).
-  When one runs, a missing dataset fails it; none of them skips because data is absent.
+  When one runs, a missing dataset fails it on every host: they require their data through
+  `TestFeatures.requireResourceIn` with `ComputeRequirement.GPU, ComputeRequirement.CPU`, so none
+  of them skips because data is absent.
 
 ### Converted datasets
 
