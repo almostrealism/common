@@ -74,7 +74,9 @@ public class ConcatenationBlock extends ParallelBlock {
 	 * <p>Concatenates the children's outputs in order into one flat vector. Each output is first
 	 * flattened to its total size, so children of differing ranks (for example a {@code [2, 3]}
 	 * part followed by a {@code [4]} part) concatenate into the same contiguous segments that
-	 * {@link #distribute(Producer, int)} slices the gradient back out of.</p>
+	 * {@link #distribute(Producer, int)} slices the gradient back out of. A single child needs no
+	 * concatenation axis, so its flattened output — already the block's flat output shape — is
+	 * returned directly.</p>
 	 */
 	@Override
 	protected Producer<PackedCollection> combine(List<Cell.CaptureReceptor<PackedCollection>> outputs) {
@@ -84,6 +86,11 @@ public class ConcatenationBlock extends ParallelBlock {
 			parts[i] = c(outputs.get(i).getReceipt())
 					.reshape(shape(children.get(i).getOutputShape().getTotalSize()));
 		}
+
+		if (parts.length == 1) {
+			return parts[0];
+		}
+
 		return concat(getOutputShape(), parts);
 	}
 

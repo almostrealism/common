@@ -255,6 +255,52 @@ public class ConcatenationBlockTests extends TestSuiteBase implements LayerRouti
 	}
 
 	/**
+	 * A concatenation of a single child needs no concatenation axis: its flattened output is already
+	 * the block's flat output shape, so the forward output is exactly that child's output and the
+	 * backward pass hands the child the whole output gradient. This is the {@code concat_blocks({ ... })}
+	 * form the constructor accepts; the shape-aware concatenation it would otherwise invoke throws
+	 * when there is nothing to concatenate against.
+	 */
+	@Test(timeout = 120000)
+	public void concatenatesSingleChild() {
+		Random random = new Random(28);
+		PackedCollection weightA = randn(shape(NODES_A, SIZE), 0.0, 1.0, random).evaluate();
+		PackedCollection input = randn(shape(SIZE), 0.0, 1.0, random).evaluate();
+
+		List<Block> children = new ArrayList<>();
+		children.add(dense(shape(SIZE), weightA, false, false));
+
+		List<PackedCollection> recorded = new ArrayList<>();
+		Model model = new Model(shape(SIZE), gradientRecorder(recorded));
+		model.add(concatBlocks(shape(SIZE), children));
+		try (CompiledModel compiled = model.compile(true, true)) {
+			Assert.assertEquals(1, recorded.size());
+			PackedCollection gradientA = recorded.get(0);
+
+			PackedCollection out = compiled.forward(input);
+			Assert.assertEquals(NODES_A, out.getShape().getTotalSize());
+			for (int i = 0; i < NODES_A; i++) {
+				Assert.assertEquals("segment a " + i, dot(weightA, i, input), out.toDouble(i), 1e-5);
+			}
+
+			PackedCollection outputGradient = randn(shape(NODES_A), 0.0, 1.0, random).evaluate();
+			PackedCollection inputGradient = compiled.backward(outputGradient);
+
+			// The single child receives the whole output gradient.
+			assertWeightGradient("a", weightA, gradientA, outputGradient, 0, input, 0);
+
+			Assert.assertEquals(SIZE, inputGradient.getShape().getTotalSize());
+			for (int j = 0; j < SIZE; j++) {
+				double expected = 0.0;
+				for (int i = 0; i < NODES_A; i++) {
+					expected += weightA.toDouble(i * SIZE + j) * outputGradient.toDouble(i);
+				}
+				Assert.assertEquals("input " + j, expected, inputGradient.toDouble(j), 1e-5);
+			}
+		}
+	}
+
+	/**
 	 * A forward-only block (no backward cell) wrapped in a {@link SequentialBlock} — the form a PDSL
 	 * inline part takes — gives a chain whose own backward cell is non-null while its first or last
 	 * child has none. Compiling such a concatenation for training must not fail: a chain that ends
