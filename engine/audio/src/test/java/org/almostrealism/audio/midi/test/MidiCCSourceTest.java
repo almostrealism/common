@@ -87,6 +87,40 @@ public class MidiCCSourceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests that bipolar mode respects its documented anchors and output range exactly.
+	 *
+	 * <p>{@link MidiCCSource#normalizeValue(int)} documents the bipolar anchors
+	 * {@code 0 = -1.0}, {@code 64 = 0.0} and {@code 127 = +1.0}, and the configured
+	 * range sets {@code -1.0} as the minimum output. A shared divisor of {@code 63}
+	 * placed {@code 127} at {@code +1.0} but sent {@code 0} to {@code -1.0159} — below
+	 * the documented minimum and outside the configured range. {@link #testBipolarMode()}
+	 * did not catch this because its {@code 0.02} tolerance is wider than the
+	 * {@code 0.0159} overshoot. This asserts the minimum anchor precisely and verifies no
+	 * CC value drives the output past either configured bound.</p>
+	 */
+	@Test(timeout = 5000)
+	public void testBipolarRespectsConfiguredRange() {
+		MidiCCSource source = new MidiCCSource(1);
+		source.setBipolar(true);
+		source.setRange(-1.0, 1.0);
+
+		source.setValue(0);
+		assertEquals(-1.0, source.getValue(), 1e-9);
+
+		source.setValue(127);
+		assertEquals(1.0, source.getValue(), 1e-9);
+
+		for (int cc = 0; cc <= 127; cc++) {
+			source.setValue(cc);
+			double value = source.getValue();
+			assertTrue("CC " + cc + " produced " + value + ", below the configured minimum",
+					value >= -1.0);
+			assertTrue("CC " + cc + " produced " + value + ", above the configured maximum",
+					value <= 1.0);
+		}
+	}
+
+	/**
 	 * Tests that exponential curve mapping produces lower values at low inputs.
 	 */
 	@Test(timeout = 5000)
