@@ -16,11 +16,9 @@
 
 package io.flowtree.api;
 
+import io.flowtree.controller.ControllerDatabase;
 import io.flowtree.job.JobFactory;
-import org.almostrealism.io.ConsoleFeatures;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -57,7 +55,7 @@ import java.util.function.Consumer;
  * @see FlowTreeApiEndpoint
  * @see JobFactory#decode(String)
  */
-public class PendingJobRecovery implements ConsoleFeatures {
+public class PendingJobRecovery extends ControllerDatabase {
 
     /** Name of the recovery database file within the controller's data directory. */
     public static final String DATABASE_NAME = "job-recovery";
@@ -68,12 +66,6 @@ public class PendingJobRecovery implements ConsoleFeatures {
         + "    job_id       VARCHAR(255) PRIMARY KEY,"
         + "    factory_blob LONGVARCHAR  NOT NULL"
         + ")";
-
-    /** Filesystem path to the HSQLDB database file (without extension). */
-    private final String dbPath;
-
-    /** Active JDBC connection to the backing HSQLDB database; {@code null} until initialized. */
-    private Connection connection;
 
     /**
      * Job ids this instance has already dispatched: those {@link #persist
@@ -91,41 +83,19 @@ public class PendingJobRecovery implements ConsoleFeatures {
      *               e.g. {@code ~/.flowtree/job-recovery}
      */
     public PendingJobRecovery(String dbPath) {
-        this.dbPath = dbPath;
+        super(dbPath);
     }
 
     /**
-     * Opens the database and creates the recovery table if it does not yet
-     * exist. A failure is logged and leaves the store disabled (every method
-     * becomes a no-op) rather than failing controller startup.
+     * Creates the recovery table if it does not yet exist. A failure to open
+     * the database leaves the store disabled (every method becomes a no-op)
+     * rather than failing controller startup.
      */
-    public void initialize() {
-        try {
-            connection = DriverManager.getConnection(
-                    "jdbc:hsqldb:file:" + dbPath + ";shutdown=true", "SA", "");
-            try (Statement stmt = connection.createStatement()) {
-                stmt.execute(CREATE_TABLE);
-            }
-            log("PendingJobRecovery initialized: " + dbPath);
-        } catch (SQLException e) {
-            warn("Failed to initialize PendingJobRecovery: " + e.getMessage());
+    @Override
+    protected void prepare() throws SQLException {
+        try (Statement stmt = connection().createStatement()) {
+            stmt.execute(CREATE_TABLE);
         }
-    }
-
-    /**
-     * Shuts down the database and closes the connection.
-     */
-    public void close() {
-        if (connection == null) return;
-        try {
-            try (Statement stmt = connection.createStatement()) {
-                stmt.execute("SHUTDOWN");
-            }
-            connection.close();
-        } catch (SQLException e) {
-            warn("Error closing PendingJobRecovery: " + e.getMessage());
-        }
-        connection = null;
     }
 
     /**
@@ -137,14 +107,14 @@ public class PendingJobRecovery implements ConsoleFeatures {
      *                       wire form; ignored when {@code null} or empty
      */
     public synchronized void persist(String jobId, String encodedFactory) {
-        if (connection == null || jobId == null || jobId.isEmpty()) return;
+        if (!isOpen() || jobId == null || jobId.isEmpty()) return;
         if (encodedFactory == null || encodedFactory.isEmpty()) return;
 
         String sql = "MERGE INTO recoverable_job USING (VALUES(?, ?)) "
             + "AS vals(jid, blob) ON recoverable_job.job_id = vals.jid "
             + "WHEN MATCHED THEN UPDATE SET factory_blob = vals.blob "
             + "WHEN NOT MATCHED THEN INSERT (job_id, factory_blob) VALUES (vals.jid, vals.blob)";
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
             ps.setString(1, jobId);
             ps.setString(2, encodedFactory);
             ps.executeUpdate();
@@ -162,8 +132,8 @@ public class PendingJobRecovery implements ConsoleFeatures {
      * @param jobId the job identifier
      */
     public synchronized void clear(String jobId) {
-        if (connection == null || jobId == null || jobId.isEmpty()) return;
-        try (PreparedStatement ps = connection.prepareStatement(
+        if (!isOpen() || jobId == null || jobId.isEmpty()) return;
+        try (PreparedStatement ps = connection().prepareStatement(
                 "DELETE FROM recoverable_job WHERE job_id = ?")) {
             ps.setString(1, jobId);
             ps.executeUpdate();
@@ -196,10 +166,10 @@ public class PendingJobRecovery implements ConsoleFeatures {
      */
     public synchronized int recover(Collection<String> stillPending,
                                     Consumer<JobFactory> dispatch) {
-        if (connection == null || stillPending == null || stillPending.isEmpty()) return 0;
+        if (!isOpen() || stillPending == null || stillPending.isEmpty()) return 0;
 
         int recovered = 0;
-        try (PreparedStatement ps = connection.prepareStatement(
+        try (PreparedStatement ps = connection().prepareStatement(
                 "SELECT job_id, factory_blob FROM recoverable_job");
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {

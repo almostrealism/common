@@ -111,6 +111,18 @@ requires agreement with the Brian2 rates within the spread of two independent Br
 within 5%, a median relative difference of at most 3% and a 90th percentile of at most 8% over
 neurons above 10 Hz, and at least 48 of the 50 fastest neurons in common.
 
+## Tests
+
+Unlike the `domain/` modules, this module has test sources of its own, in
+`org.almostrealism.bioscience.connectome.test`:
+
+- `CellTypeConnectomeLoadTest` loads a small synthetic directory written in the script's layout.
+  It needs no external data.
+- `CellTypeConnectomeTest` and `CellTypeRateModelTest` (a `RatePopulation` with one unit per cell
+  type) run on the derived MaleCNS matrix, which is not in the repository. Its directory is the
+  `AR_MALE_CNS_CELL_TYPES` system property or environment variable; each test is skipped where the
+  directory does not hold the weights file.
+
 ## What does not belong here
 
 - Biological models that do not need `ar-ml`. Put them in `domain/biology`, where lower

@@ -140,6 +140,7 @@ The hardware module includes comprehensive implementations for multiple accelera
 | **[metal](src/main/java/org/almostrealism/hardware/metal/)** | Apple Metal GPU acceleration | MetalDataContext, MetalMemoryProvider, MTLDevice |
 | **[cuda](src/main/java/org/almostrealism/hardware/cuda/)** | NVIDIA CUDA GPU acceleration (NVRTC-compiled kernels; opt-in via `AR_HARDWARE_DRIVER=cuda`; bridge packaged for Linux/aarch64 only) | CudaDataContext, CudaMemoryProvider, CudaOperator |
 | **[jni](src/main/java/org/almostrealism/hardware/jni/)** | Native C execution via JNI | NativeCompiler, NativeExecution, NativeDataContext |
+| **[external](src/main/java/org/almostrealism/hardware/external/)** | Running a compiled operation in a separate OS process, exchanging arguments through file-backed memory | ExternalComputeContext, ExternalInstructionSet, ExternalExecution, ExternalDataDirectory, LocalExternalMemoryProvider |
 | **[mem](src/main/java/org/almostrealism/hardware/mem/)** | Memory management abstractions | MemoryProvider, Heap, RAM, Bytes |
 | **[ctx](src/main/java/org/almostrealism/hardware/ctx/)** | Context management | AbstractDataContext, AbstractComputeContext |
 | **[instructions](src/main/java/org/almostrealism/hardware/instructions/)** | Kernel compilation and caching | InstructionsManager, InstructionSetCompiler |
@@ -639,6 +640,7 @@ kernel.execute(cpuMem1, cpuMem2, cpuMem3);  // 3 CPU->GPU transfers
 - Only aggregates memory from non-kernel providers
 - Respects size threshold (default: 1MB)
 - Root delegates grouped to minimize copies
+- Each root occupies, and is copied by, its physical backing length (`getDelegatedLength()`), not its logical `getMemLength()` — the two differ for a root read through a compact, sparse or gather `TraversalOrdering`
 
 **Configuration:**
 

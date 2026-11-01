@@ -53,8 +53,11 @@ import java.util.function.BiConsumer;
  * }</pre>
  *
  * <h2>Thread Safety</h2>
- * <p>All internal maps are synchronized for thread-safe access. However, compound
- * operations (read-modify-write) should be externally synchronized if needed.</p>
+ * <p>All internal maps are synchronized for thread-safe access, and the scalar aggregates
+ * returned by {@link #getCount()} and {@link #getTotal()} are updated under an internal lock
+ * so that concurrent {@link #addEntry} calls do not lose increments. However, compound
+ * operations spanning more than one accessor (read-modify-write across the maps and the
+ * aggregates) should be externally synchronized if needed.</p>
  *
  * @see DistributionMetric
  * @see TimingMetric
@@ -104,6 +107,12 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	private long count = 0;
 	/** Running sum of all recorded values, used to compute the overall mean. */
 	private double total = 0.0;
+	/**
+	 * Guards the scalar aggregates {@link #count} and {@link #total}. Unlike the entry maps,
+	 * which are synchronized, these are plain fields whose read-modify-write updates would
+	 * otherwise lose increments under concurrent {@link #addEntry} calls.
+	 */
+	private final Object aggregateLock = new Object();
 
 	/**
 	 * Creates a metric with the specified name.
@@ -134,14 +143,22 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	 *
 	 * @return the entry count
 	 */
-	public long getCount() { return count; }
+	public long getCount() {
+		synchronized (aggregateLock) {
+			return count;
+		}
+	}
 
 	/**
 	 * Returns the sum of all values added to this metric.
 	 *
 	 * @return the total value
 	 */
-	public double getTotal() { return total; }
+	public double getTotal() {
+		synchronized (aggregateLock) {
+			return total;
+		}
+	}
 
 	/**
 	 * Sets the console to use for logging output.
@@ -193,8 +210,10 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 		entries.merge(name, value, Double::sum);
 		counts.merge(name, 1, Integer::sum);
 
-		total += value;
-		count++;
+		synchronized (aggregateLock) {
+			total += value;
+			count++;
+		}
 
 		intervalTotals.merge(interval, value, Double::sum);
 		intervalCounts.merge(interval, 1, Integer::sum);
@@ -212,7 +231,9 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	 */
 	public void setEntries(Map<String, Double> entries) {
 		this.entries = entries;
-		this.total = entries.values().stream().mapToDouble(Double::doubleValue).sum();
+		synchronized (aggregateLock) {
+			this.total = entries.values().stream().mapToDouble(Double::doubleValue).sum();
+		}
 	}
 
 	/**
@@ -230,7 +251,9 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	 */
 	public void setCounts(Map<String, Integer> counts) {
 		this.counts = counts;
-		this.count = counts.values().stream().mapToInt(Integer::intValue).sum();
+		synchronized (aggregateLock) {
+			this.count = counts.values().stream().mapToInt(Integer::intValue).sum();
+		}
 	}
 
 	/**
@@ -298,8 +321,10 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	 * Resets counts, totals, entries, and interval data to initial state.
 	 */
 	public void clear() {
-		count = 0;
-		total = 0.0;
+		synchronized (aggregateLock) {
+			count = 0;
+			total = 0.0;
+		}
 		entries.clear();
 		counts.clear();
 		intervalTotals.clear();

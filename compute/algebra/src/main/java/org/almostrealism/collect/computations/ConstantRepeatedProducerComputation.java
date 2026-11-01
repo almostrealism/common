@@ -236,7 +236,7 @@ public abstract class ConstantRepeatedProducerComputation
 	 * <ul>
 	 *   <li>The original computation name and shape</li>
 	 *   <li>The memory length (size) and iteration count</li>
-	 *   <li>The initialization and expression functions</li>
+	 *   <li>The concrete subclass, which fixes the initial value and iteration step</li>
 	 *   <li>All configuration parameters from the original computation</li>
 	 * </ul>
 	 * 

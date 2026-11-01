@@ -101,6 +101,8 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | GET | `/api/tracker/claimable` | -- | How many tasks of a tracker release an agent could claim (query params: `project`, `release` — names). Returns the tracker's own `{"ok", "release_id", "count"}`; used by CI to decide whether to start a task-planning round. 503 when the tracker is unreachable |
 | POST | `/api/tracker/claim` | `{"project", "release", "workstreamId"}` | Claims the next ready task of a tracker release (names) for a registered workstream, linking the task to it. Returns `{"ok": true, "task": {...}}`, or `"task": null` when nothing is claimable. Used by CI after registering the workstream, to hand the claimed task to the agent. 400 when a field is missing or blank, 404 when `workstreamId` is not registered, 503 when no tracker is configured, 502 when the tracker call fails |
 | GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
+| POST | `/api/alerts` | `{"text":"...","recipients":["..."],"severity":"INFO"}` | Deliver free-form text to the named SMS recipients configured via `setSmsCompliance`, subject to a per-caller rate limit and recipient opt-out. The response reports the `delivered`, `unknown`, `optedOut`, and `known` recipient names — see `AlertRequestHandler` |
+| POST | `/api/sms/inbound` | SignalWire form-encoded `From`, `To`, `Body` | Inbound-SMS webhook for carrier compliance keywords (STOP/START/HELP): records or clears the sender's opt-out in the `SmsOptOutRegistry` and replies with cXML — see `InboundSmsHandler` |
 
 #### Workstream listing filters
 
@@ -180,6 +182,30 @@ HSQLDB-backed storage for job timing data and statistics. Records job start/comp
 - Initialized and wired by `FlowTreeController` at startup
 - Tracks a `heartbeat_at` timestamp per job, written on every status event the controller receives and on every `POST /api/jobs/{jobId}/heartbeat` the job's harness sends on its own timer, so a job whose subprocess has died without posting a terminal status can still be distinguished from one that is running. `StuckJobScanner` consumes the heartbeat column to fail jobs silent for more than twice the workstream's wall-clock ceiling; the result flows through the same completion path as a real failure
 - `getActiveJobs(workstreamId)` returns the `ActiveJob` records (id, workstream, started-at, last heartbeat, node, description) the `GET /api/workstreams/{id}/jobs/active` endpoint exposes; `getPendingJobs(workstreamId)` returns the `PendingJob` records behind `GET /api/workstreams/{id}/jobs/pending`
+
+### WorkstreamMetadataStore
+
+HSQLDB-backed storage for workstream *metadata*. The workstreams YAML holds
+configuration only — branch, base branch, repository, dependent repositories,
+labels, phase configs, capabilities and flags. Values that grow without bound
+or change on every job are metadata and are kept in this store instead, so the
+YAML stays small and cheap to rewrite. Today the only metadata field is
+`planInstructions`; every other workstream field is configuration.
+
+- Database path: `workstream-metadata` in the directory holding
+  `workstreams.yaml` (`/config`, i.e. `/Users/Shared/flowtree/controller/`, in
+  the controller stack), beside the `stats` database, so backing up that
+  directory backs up configuration, statistics and metadata together
+- Opened by `FlowTreeController` when the YAML is loaded and closed on stop
+- On every load, metadata still present in the YAML (written by an older
+  controller) is committed to the store first and then removed from the YAML
+  by an atomic rewrite; a load with nothing to move writes nothing. If the
+  database cannot be opened, or that write fails, the metadata stays in the
+  YAML and the controller runs as before
+- `WorkstreamConfig.toWorkstreams()` reads all metadata in one query, and
+  `syncAndSave` commits it to the store before it rewrites the YAML; a failed
+  store write fails the save. The API request and response shapes, including
+  `planInstructions` in `GET /api/workstreams`, are unchanged
 
 ### SlackListener
 

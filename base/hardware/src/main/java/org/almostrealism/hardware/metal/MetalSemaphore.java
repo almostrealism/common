@@ -19,6 +19,7 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.concurrent.OperationSemaphore;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.hardware.ctx.StreamSemaphore;
 
 /**
  * {@link OperationSemaphore} backed by a Metal {@link MTLEvent} timeline value — the Metal analog of
@@ -36,17 +37,11 @@ import io.almostrealism.profile.OperationMetadata;
  * {@link #merge(Semaphore)}), in which case it is the completion of the latest of them and
  * {@link #getPriorBufferValue()} records what else a dependent must wait for.</p>
  */
-public class MetalSemaphore implements OperationSemaphore {
-	/** Metadata identifying the operation this completion belongs to, or {@code null}. */
-	private final OperationMetadata requester;
-	/** The command runner that owns the command buffer. */
-	private final MetalCommandRunner runner;
+public class MetalSemaphore extends StreamSemaphore<MetalCommandRunner> {
 	/** The command buffer the dispatch was encoded into. */
 	private final MTLCommandBuffer commandBuffer;
 	/** The timeline event the dispatch's command buffer signals. */
 	private final MTLEvent event;
-	/** The timeline value of the dispatch, reached once its command buffer has completed. */
-	private final long value;
 	/**
 	 * The highest timeline value of a dispatch merged into this completion from an earlier
 	 * command buffer than {@link #commandBuffer}, or {@code 0} when there is none.
@@ -81,11 +76,9 @@ public class MetalSemaphore implements OperationSemaphore {
 	private MetalSemaphore(OperationMetadata requester, MetalCommandRunner runner,
 						   MTLCommandBuffer commandBuffer, MTLEvent event, long value,
 						   long priorBufferValue) {
-		this.requester = requester;
-		this.runner = runner;
+		super(requester, runner, value);
 		this.commandBuffer = commandBuffer;
 		this.event = event;
-		this.value = value;
 		this.priorBufferValue = priorBufferValue;
 	}
 
@@ -95,8 +88,12 @@ public class MetalSemaphore implements OperationSemaphore {
 	/** Returns the timeline event the dispatch's command buffer signals. */
 	public MTLEvent getEvent() { return event; }
 
-	/** Returns the timeline value of the dispatch, reached once its command buffer has completed. */
-	public long getValue() { return value; }
+	/**
+	 * Returns the timeline value of the dispatch, reached once its command buffer has completed.
+	 * The runner takes one timeline value per dispatch, so this is also the dispatch's
+	 * {@link #getOrdinal() ordinal} in the runner's stream.
+	 */
+	public long getValue() { return getOrdinal(); }
 
 	/**
 	 * Returns the highest timeline value of a dispatch this completion covers from a command
@@ -111,12 +108,6 @@ public class MetalSemaphore implements OperationSemaphore {
 	 */
 	public long getPriorBufferValue() { return priorBufferValue; }
 
-	/** Returns the command runner that owns the command buffer. */
-	public MetalCommandRunner getRunner() { return runner; }
-
-	@Override
-	public OperationMetadata getRequester() { return requester; }
-
 	/**
 	 * Blocks until the dispatch's command buffer is committed and has completed on the GPU.
 	 *
@@ -125,7 +116,7 @@ public class MetalSemaphore implements OperationSemaphore {
 	 */
 	@Override
 	public void waitFor() {
-		runner.complete(this);
+		getStream().complete(this);
 	}
 
 	/**
@@ -138,7 +129,7 @@ public class MetalSemaphore implements OperationSemaphore {
 	 */
 	@Override
 	public void whenComplete(Runnable r) {
-		runner.whenComplete(this, r);
+		getStream().whenComplete(this, r);
 	}
 
 	/**
@@ -153,7 +144,7 @@ public class MetalSemaphore implements OperationSemaphore {
 	 */
 	@Override
 	public void whenSettled(Runnable r) {
-		runner.whenComplete(this, r);
+		getStream().whenComplete(this, r);
 	}
 
 	/**
@@ -179,23 +170,22 @@ public class MetalSemaphore implements OperationSemaphore {
 	 */
 	@Override
 	public Semaphore merge(Semaphore other) {
-		if (!(other instanceof MetalSemaphore)) return null;
+		MetalSemaphore metal = getStream().own(other);
+		if (metal == null) return null;
 
-		MetalSemaphore metal = (MetalSemaphore) other;
-		if (metal.getRunner() != runner) return null;
-
-		MetalSemaphore later = metal.getValue() > value ? metal : this;
+		MetalSemaphore later = metal.follows(this) ? metal : this;
 		MetalSemaphore earlier = later == this ? metal : this;
 
 		long prior = Math.max(later.priorBufferValue,
-				earlier.commandBuffer == later.commandBuffer ? earlier.priorBufferValue : earlier.value);
+				earlier.commandBuffer == later.commandBuffer ? earlier.priorBufferValue : earlier.getValue());
 		if (prior == later.priorBufferValue) return later;
 
-		return new MetalSemaphore(later.requester, runner, later.commandBuffer, event, later.value, prior);
+		return new MetalSemaphore(later.getRequester(), getStream(), later.commandBuffer, event,
+				later.getValue(), prior);
 	}
 
 	@Override
 	public Semaphore withRequester(OperationMetadata requester) {
-		return new MetalSemaphore(requester, runner, commandBuffer, event, value, priorBufferValue);
+		return new MetalSemaphore(requester, getStream(), commandBuffer, event, getValue(), priorBufferValue);
 	}
 }

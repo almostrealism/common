@@ -197,15 +197,17 @@ The critical method that renders patterns to audio:
 
 ```java
 // PatternSystemManager.sum()
-public Supplier<Runnable> sum(Supplier<AudioSceneContext> context, ChannelInfo channel) {
+public Supplier<Runnable> sum(Supplier<AudioSceneContext> context, ChannelInfo channel,
+                              IntSupplier startFrame, int frameCount) {
     OperationList op = new OperationList("PatternSystemManager Sum");
 
     // Update destination buffers
     op.add(updateDestinations);
 
-    // Sum each pattern for this channel
+    // Sum each pattern for this channel, restricted to the requested frame range
     patternsForChannel.forEach(i -> {
-        op.add(patterns.get(i).sum(context, channel.getVoicing(), channel.getAudioChannel()));
+        op.add(patterns.get(i).sum(context, channel.getVoicing(), channel.getAudioChannel(),
+                startFrame, frameCount));
     });
 
     // Auto-volume normalization
@@ -222,7 +224,9 @@ public Supplier<Runnable> sum(Supplier<AudioSceneContext> context, ChannelInfo c
 // PatternLayerManager.sum()
 public Supplier<Runnable> sum(Supplier<AudioSceneContext> context,
                               ChannelInfo.Voicing voicing,
-                              ChannelInfo.StereoChannel audioChannel) {
+                              ChannelInfo.StereoChannel audioChannel,
+                              IntSupplier startFrame,
+                              int frameCount) {
     return OperationWithInfo.of(metadata, () -> () -> {
         Map<NoteAudioChoice, List<PatternElement>> elements = getAllElementsByChoice(0.0, duration);
 
@@ -344,6 +348,12 @@ Envelope generators for dynamic control:
 - `ParameterizedFilterEnvelope`
 - `ParameterizedLayerEnvelope`
 
+`ParameterizedEnvelope.createFilter(params, voicing)` returns a `ParameterizedEnvelopeFilter`,
+a `NoteAudioFilter` that reports the envelope that created it (`getEnvelope()`) together with
+the `ParameterSet` (`getParameters()`) and voicing (`getVoicing()`) it was created with. Passing
+those back to `createFilter` produces an equal filter, which is how the text format and the
+protobuf codec persist envelope-shaped notes exactly.
+
 ### ChordProgressionManager
 
 Manages chord changes throughout the scene:
@@ -384,12 +394,15 @@ bassPattern.setScaleTraversalStrategy(ScaleTraversalStrategy.SEQUENCE);
 
 ```java
 // In AudioScene
+int totalFrames = context.getFrames();
 Supplier<Runnable> patternSetup = patterns.sum(
     () -> getContext(List.of(channel)),
-    channel
+    channel,
+    () -> 0,       // start frame (0 renders from the beginning)
+    totalFrames    // frame count (the whole arrangement)
 );
 
-// Execute (renders entire arrangement)
+// Execute (renders the requested frame range; here the entire arrangement)
 patternSetup.get().run();
 ```
 

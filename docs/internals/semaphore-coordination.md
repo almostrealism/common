@@ -56,8 +56,15 @@ These are phrased so a reviewer can check a diff against them.
    - A native dispatch records a failure of its dependency, or of a worker, on its latch
      before the latch reaches zero, so its completion rethrows it and a dispatch chained after
      it does not run (`NativeExecutionFailureTest`).
-   - A Metal command buffer that completes in error fails every wait for its dispatches and
-     for every later dispatch of the runner (see below).
+   - Within one backend runner, a failure at submission ordinal `K` fails every wait at or after
+     `K`. Metal and CUDA share this rule through one `FailureRecord` (see "The shared runner
+     core" below): a Metal command buffer that completes in error, a CUDA submission whose
+     foreign dependency, launch or completion event failed, and a failed foreign dependency of a
+     Metal bridge are all recorded the same way.
+   - An OpenCL command that did not execute (a negative `CL_EVENT_COMMAND_EXECUTION_STATUS`)
+     fails every wait on its `CLSemaphore`, and a dependent ordered after it through an event wait
+     list is failed by OpenCL itself, or, once the failed event has been released, refused when it
+     is enqueued (`CLSemaphoreFailureTest`).
 
 `ComputeContext.copy(source, destination, dependsOn)` is the template for the model: the
 context chooses both the copy mechanism and its sequencing, and returns the completion.
@@ -72,13 +79,64 @@ context chooses both the copy mechanism and its sequencing, and returns the comp
   completions of the same runner into the later one, carrying the earlier buffer's value
   forward so the runner still waits for it.
 - **OpenCL** consumes dependencies through event wait lists and returns a `CLSemaphore`. A
-  dependency from another backend is waited for on the host before enqueuing. User events
-  would remove that wait but are not implemented yet.
+  dependency from another backend cannot be placed in a wait list, so the whole dispatch is
+  deferred until it settles through `Semaphore.then`, without blocking the caller; argument
+  preparation is deferred with it. User events would let the command queue express that
+  dependency directly but are not implemented yet.
 - **Native (JNI)** never blocks the caller and never holds a thread while its dependency is
   pending: `NativeExecution` starts its coordinator from `dependsOn.onSettled`, and the coordinator
   runs the parallel workers and counts the dispatch's latch down.
-- **CUDA** uses `CudaStreamRunner` with CUDA events; see the `hardware.cuda` package
-  documentation.
+- **CUDA** uses `CudaStreamRunner` with CUDA events. A dependency on an earlier submission of
+  the same runner is satisfied by the stream's order; a foreign dependency holds the submission,
+  and every submission after it, until a callback registered with the dependency's
+  `onSettled` releases them, so no runner thread is parked for it. See the `hardware.cuda`
+  package documentation.
+
+## The shared runner core
+
+Metal and CUDA runners are built on one backend-independent core in the `ctx` package of
+`base/hardware`: the core owns the coordination, and each runner *is* a `SubmissionStream` (it
+extends the abstract class) that supplies only what is native to it (Metal encodes into command
+buffers and signals an `MTLSharedEvent`; CUDA launches on a `CUStream` and synchronizes
+`CUEvent`s) and identifies its own thread by implementing `isStreamThread()`. The coordination
+steps a runner drives (taking an ordinal, admission, closing, holding and releasing) are
+protected members of the stream, so they are reachable only from the runner itself.
+
+- **`SubmissionStream`** owns the monotonic submission ordinal (a Metal dispatch's timeline value,
+  a CUDA submission's sequence), same-stream ordering (`ordersAfter`) and merging into the later
+  completion (`later`), the guard that rejects a wait on the stream's own thread, admission versus
+  destruction (a submission is admitted under the same lock the runner closes the stream under,
+  so none is admitted after the runner found itself idle), and the hold bound (how many units of
+  work may wait for a foreign dependency before a further submission that would add one waits on
+  its submitting thread: `MAX_HELD` command buffers on Metal, `MAX_HELD` submissions on CUDA).
+  A runner never waits for room on its own thread: Metal refuses submission from its executor
+  thread outright, and CUDA holds a submission made from a completion callback beyond the bound,
+  since the dependency that frees room may need the completion thread to observe earlier work.
+  Completions of a stream implement `StreamCompletion`, which records a failure at its own
+  ordinal (`recordFailure`) and reports the recorded failure that covers it
+  (`getRecordedFailure`).
+- **`FailureRecord`** is the one failure model: a failure recorded at ordinal `K` is reported by
+  every wait at or after `K`, the lowest recorded ordinal wins, and each waiter receives its own
+  exception carrying the recorded cause. Recording a failure directly is also the test seam
+  (`FailureRecordTest`, `SubmissionStreamTest`, `CudaStreamRunnerSyncTest`).
+- **Coarse propagation.** A same-stream dependency is dropped at submission, so a runner cannot
+  tell a true dependent of a failed submission from independent work that merely follows it, and
+  reports both as failed. A false failure for work that ran is recoverable; success for work that
+  read inputs that were never produced is not.
+- **Reset policy.** The record is never cleared. Clearing it after a later clean completion would
+  only be safe if a device that killed one submission were known to run every later one
+  correctly, which is not established for any backend. A runner that has recorded a failure is
+  poisoned for its lifetime; recovering means destroying its context and creating another.
+- **Teardown contract.** Destroying a context destroys its runner first, which drains what is in
+  flight and runs every completion callback before the context's queue or stream is released,
+  and the runner then refuses further work (`MetalComputeContextTeardownTest`,
+  `CudaStreamRunnerSyncTest`).
+
+OpenCL does not need the ordinal record, because the command queue already propagates a failure
+to every command whose wait list names a failed event. The native (JNI) dispatch has no queue at
+all: each `NativeExecution` records its own and its dependency's failure on its latch, which is
+the degenerate case of the same rule. `ExternalExecution`, which runs a separate process and waits
+for its dependency on the submitting thread before starting it, is not built on the core.
 
 ## Metal: completion is driven, not observed
 
@@ -121,15 +179,15 @@ A command buffer that Metal reports as failed (a GPU fault, or the watchdog kill
 buffer) ran none of its dispatches and never signaled its timeline value. Detecting this is the
 job of `MetalCommandRunner`, through its single error-status read (`errorOf`):
 
-- The failure is **recorded on the runner**, keyed by the timeline value of the failed buffer's
-  first dispatch (the lowest such value if several fail), not only reported to the thread that
-  happened to drain the buffer. The existing `commandBufferError=` warning is still logged
-  beside it.
+- The failure is **recorded in the runner's `FailureRecord`**, keyed by the timeline value of the
+  failed buffer's first dispatch (the lowest such value if several fail), not only reported to the
+  thread that happened to drain the buffer. The existing `commandBufferError=` warning is still
+  logged beside it.
 - `MetalCommandRunner.complete` — and so `MetalSemaphore.waitFor()` — throws a
   `HardwareException` carrying the Metal error text for **every** wait for a dispatch at or after
   that value: the draining waiter, a concurrent waiter, one that arrives after the buffer was
   drained, an earlier dispatch of the same buffer, and every later dispatch of the runner.
-- The record is **sticky**. A later buffer that encoded a GPU wait for a failed value can still
+- The record is **sticky** and never cleared (see the reset policy above). A later buffer that encoded a GPU wait for a failed value can still
   complete without an error of its own, because the shared timeline event is released by any
   higher value that an independent buffer signals; its own status cannot be trusted, so only
   the record reports it. The cost is that an independent later dispatch, whose work did run, is

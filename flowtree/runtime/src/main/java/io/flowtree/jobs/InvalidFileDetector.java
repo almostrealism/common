@@ -20,15 +20,16 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Detects invalid files left behind in a job's git working tree.
@@ -158,7 +159,11 @@ class InvalidFileDetector implements ConsoleFeatures {
      * branch. Replaces the result of any prior invocation, so the detector can
      * be re-run after a corrective cleanup to confirm the litter is gone.
      *
-     * @throws UncheckedIOException if a working tree cannot be traversed
+     * <p>The scan never throws for an I/O problem in the tree. A litter scan is
+     * run late, when the job's work is already finished, so a failure to
+     * traverse must not discard that work: a vanished entry is treated as gone,
+     * and a scan that cannot complete is reported as a warning (see
+     * {@link #scanRepo(Repo)}) rather than propagated.</p>
      */
     void detect() {
         List<String> found = new ArrayList<>();
@@ -173,6 +178,16 @@ class InvalidFileDetector implements ConsoleFeatures {
      * Scans a single repository for {@code .bin} litter, excluding files present
      * on its base branch. Returns the reported paths (prefixed with the repo
      * label for dependent repos), unsorted.
+     *
+     * <p>Walks with {@link Files#walkFileTree} so the git metadata directory and
+     * build-output directories are never entered: another job on the same node
+     * creates and deletes git lock files under {@code .git} constantly, and a
+     * {@link Files#walk} stream that descended into it would throw
+     * {@link NoSuchFileException} the moment such a lock vanished between being
+     * listed and being stat'd. An entry that vanishes mid-walk anywhere is
+     * treated as gone, and a walk that aborts outright is reported as a warning;
+     * neither propagates, so a finished job is never discarded over a litter
+     * scan.</p>
      */
     private List<String> scanRepo(Repo repo) {
         if (repo.root == null || !Files.isDirectory(repo.root)) {
@@ -180,22 +195,23 @@ class InvalidFileDetector implements ConsoleFeatures {
         }
 
         Set<String> baseBranchLitter = baseBranchAllowlist(repo.root);
-
-        try (Stream<Path> walk = Files.walk(repo.root)) {
-            return walk
-                    .filter(Files::isRegularFile)
-                    .filter(path -> !isInsideGitDir(repo.root, path))
-                    .filter(path -> !isInsideBuildOutput(repo.root, path))
-                    .filter(path -> path.getFileName().toString().endsWith(INVALID_EXTENSION))
-                    .map(repo.root::relativize)
-                    .filter(relative -> !baseBranchLitter.contains(toGitPath(relative)))
-                    .map(relative -> repo.label == null
-                            ? relative.toString() : repo.label + File.separator + relative)
-                    .collect(Collectors.toList());
+        LitterVisitor visitor = new LitterVisitor(repo.root, baseBranchLitter);
+        try {
+            Files.walkFileTree(repo.root, visitor);
         } catch (IOException e) {
-            throw new UncheckedIOException(
-                    "Failed to scan working tree for invalid files: " + repo.root, e);
+            warn("Invalid-file scan of " + repo.root + " did not complete, "
+                    + "reporting only what was found: " + e);
         }
+        for (String failure : visitor.failures) {
+            warn("Invalid-file scan skipped an unreadable entry: " + failure);
+        }
+
+        List<String> reported = new ArrayList<>();
+        for (Path relative : visitor.found) {
+            reported.add(repo.label == null
+                    ? relative.toString() : repo.label + File.separator + relative);
+        }
+        return reported;
     }
 
     /**
@@ -281,30 +297,98 @@ class InvalidFileDetector implements ConsoleFeatures {
     }
 
     /**
-     * Returns whether the given path lies within the git metadata directory of
-     * the given repository root, which is excluded from the scan.
+     * A {@link SimpleFileVisitor} that collects {@code .bin} litter under a
+     * repository root while refusing to enter the git metadata directory or
+     * build-output directories, and tolerating entries that vanish mid-walk.
+     *
+     * <p>Skipping {@code .git} at {@link #preVisitDirectory} — rather than
+     * walking into it and filtering afterwards — is what makes the scan safe on
+     * a node shared by several jobs: a lock file under {@code .git} that another
+     * job's git operation deletes between being listed and being stat'd would
+     * otherwise abort the whole walk. A worktree's {@code .git} is a regular
+     * file pointing at a git directory outside the working tree, so there is no
+     * subtree to enter for it and it is simply never flagged as litter.</p>
      */
-    private boolean isInsideGitDir(Path root, Path path) {
-        Path relative = root.relativize(path);
-        return relative.getNameCount() > 0 && GIT_DIR.equals(relative.getName(0).toString());
-    }
+    private static final class LitterVisitor extends SimpleFileVisitor<Path> {
 
-    /**
-     * Returns whether the given path lies within a Maven module's build-output
-     * directory: a {@link #BUILD_OUTPUT_DIR} whose parent holds a
-     * {@link #BUILD_DESCRIPTOR}, anywhere between the repository root and the
-     * file.
-     */
-    private boolean isInsideBuildOutput(Path root, Path path) {
-        for (Path dir = path.getParent(); dir != null && dir.startsWith(root) && !dir.equals(root);
-                dir = dir.getParent()) {
-            if (BUILD_OUTPUT_DIR.equals(dir.getFileName().toString())
-                    && Files.isRegularFile(dir.resolveSibling(BUILD_DESCRIPTOR))) {
-                return true;
-            }
+        /** Working-tree root the scan is relative to. */
+        private final Path root;
+
+        /** {@code .bin} paths, in git form, present on the base branch (not litter). */
+        private final Set<String> baseBranchLitter;
+
+        /** Working-tree-relative paths of the litter found so far. */
+        private final List<Path> found = new ArrayList<>();
+
+        /** Descriptions of entries the walk could not read (excluding vanished ones). */
+        private final List<String> failures = new ArrayList<>();
+
+        /**
+         * Creates a visitor for one repository.
+         *
+         * @param root             working-tree root being scanned
+         * @param baseBranchLitter {@code .bin} paths (git form) exempt as pre-existing
+         */
+        private LitterVisitor(Path root, Set<String> baseBranchLitter) {
+            this.root = root;
+            this.baseBranchLitter = baseBranchLitter;
         }
 
-        return false;
+        @Override
+        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+            if (!dir.equals(root) && isSkippedDirectory(dir)) {
+                return FileVisitResult.SKIP_SUBTREE;
+            }
+            return FileVisitResult.CONTINUE;
+        }
+
+        @Override
+        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+            if (attrs.isRegularFile()
+                    && file.getFileName().toString().endsWith(INVALID_EXTENSION)) {
+                Path relative = root.relativize(file);
+                if (!baseBranchLitter.contains(toGitPath(relative))) {
+                    found.add(relative);
+                }
+            }
+            return FileVisitResult.CONTINUE;
+        }
+
+        /**
+         * Records a failure to read an entry, unless the entry has simply
+         * vanished. On a shared node another job deletes files — above all git
+         * lock files — constantly, so a path listed a moment ago may be absent
+         * by the time it is visited; a {@link NoSuchFileException} is therefore
+         * "gone", not an error. Any other I/O failure is recorded so the scan
+         * can warn about it afterwards. Either way the walk continues: one bad
+         * entry must not abort the scan.
+         */
+        @Override
+        public FileVisitResult visitFileFailed(Path file, IOException exc) {
+            if (!(exc instanceof NoSuchFileException)) {
+                failures.add(file + ": " + exc);
+            }
+            return FileVisitResult.CONTINUE;
+        }
+
+        /**
+         * Returns whether the given directory is excluded from the scan: the git
+         * metadata directory ({@link InvalidFileDetector#GIT_DIR}), or a Maven
+         * module's build-output directory
+         * ({@link InvalidFileDetector#BUILD_OUTPUT_DIR} with a sibling
+         * {@link InvalidFileDetector#BUILD_DESCRIPTOR}).
+         */
+        private boolean isSkippedDirectory(Path dir) {
+            Path name = dir.getFileName();
+            if (name == null) {
+                return false;
+            }
+            if (GIT_DIR.equals(name.toString())) {
+                return true;
+            }
+            return BUILD_OUTPUT_DIR.equals(name.toString())
+                    && Files.isRegularFile(dir.resolveSibling(BUILD_DESCRIPTOR));
+        }
     }
 
     /**

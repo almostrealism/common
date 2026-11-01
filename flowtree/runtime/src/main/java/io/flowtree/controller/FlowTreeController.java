@@ -26,7 +26,6 @@ import com.slack.api.methods.response.auth.AuthTestResponse;
 import com.slack.api.model.event.AppMentionEvent;
 import com.slack.api.model.event.MessageEvent;
 import io.flowtree.Server;
-import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.McpToolDiscovery;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -37,8 +36,6 @@ import org.almostrealism.util.SignalWireDeliveryProvider;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,12 +50,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import io.flowtree.api.FlowTreeApiEndpoint;
 import io.flowtree.github.GitHubTokenValidator;
-import io.flowtree.workstream.McpServerEntry;
 import io.flowtree.workstream.PushedToolEntry;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkspaceEntry;
 import io.flowtree.workstream.WorkspaceSecretEntry;
 import io.flowtree.workstream.WorkstreamConfig;
+import io.flowtree.workstream.WorkstreamMetadataStore;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.SlackTokens;
@@ -193,6 +190,8 @@ public class FlowTreeController implements ConsoleFeatures {
     private int apiPort = FlowTreeApiEndpoint.DEFAULT_PORT;
     /** Persistent store for per-workstream job statistics. */
     private JobStatsStore statsStore;
+    /** Persistent store for workstream metadata kept out of the YAML; {@code null} until a file is loaded. */
+    private WorkstreamMetadataStore metadataStore;
 
     /**
      * Terminates jobs that stop reporting, so a dependent chain waiting on a
@@ -200,9 +199,6 @@ public class FlowTreeController implements ConsoleFeatures {
      * alongside the API endpoint and stopped with the controller.
      */
     private StuckJobScanner stuckJobScanner;
-
-    /** Managed MCP server subprocesses started by the controller (legacy, currently unused). */
-    private List<Process> mcpProcesses = new ArrayList<>();
 
     /** True when tokens are absent and the controller runs without a live Slack connection. */
     private boolean simulationMode = false;
@@ -295,7 +291,9 @@ public class FlowTreeController implements ConsoleFeatures {
      * Loads workstream configuration from a YAML file.
      *
      * <p>If any workstream entries lack a {@code workstreamId}, one is
-     * auto-generated and the file is rewritten to persist the IDs.</p>
+     * auto-generated and the file is rewritten to persist the IDs. Workstream
+     * metadata still held in the file is then moved to the metadata store
+     * (see {@link #attachMetadataStore}).</p>
      *
      * @param configFile the YAML configuration file
      * @throws IOException if the file cannot be read or parsed
@@ -306,6 +304,7 @@ public class FlowTreeController implements ConsoleFeatures {
         this.loadedConfig = config;
 
         sanitizeAndPersist(config);
+        attachMetadataStore(config);
 
         // Pass global default workspace path to listener
         if (config.getDefaultWorkspacePath() != null) {
@@ -427,7 +426,10 @@ public class FlowTreeController implements ConsoleFeatures {
             for (WorkspaceSecretEntry entry : wsEntry.getSecrets()) {
                 if (entry.getName() == null || entry.getFile() == null) continue;
                 byName.put(entry.getName(), entry);
-                checkSecretFilePermissions(entry, workspaceId);
+                String problem = entry.filePermissionProblem();
+                if (problem != null) {
+                    warn(problem + " (secret=" + entry.getName() + " workspace=" + workspaceId + ")");
+                }
             }
             if (workspaceId != null) {
                 cache.put(workspaceId, byName);
@@ -439,37 +441,43 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Checks that a declared secrets file exists and is not group- or world-readable.
-     * Logs a warning when the file has permissions wider than {@code 0600}.
+     * Opens the workstream metadata store on first use and attaches it to
+     * {@code config}, moving any metadata still held in the YAML into it (see
+     * {@link WorkstreamConfig#attachMetadataStore}). When the store cannot be
+     * opened, or the move fails, the configuration keeps that metadata in the
+     * YAML: nothing is lost and the controller still runs.
      *
-     * @param entry       the secret config entry
-     * @param workspaceId workspace owning this secret (for log context only)
+     * @param config the configuration just loaded from {@link #configFile}
      */
-    private void checkSecretFilePermissions(
-            WorkspaceSecretEntry entry, String workspaceId) {
-        Path filePath = Path.of(entry.getFile());
-        if (!Files.exists(filePath)) {
-            warn("Secret file not found: " + entry.getFile()
-                    + " (secret=" + entry.getName() + " workspace=" + workspaceId + ")");
-            return;
+    private void attachMetadataStore(WorkstreamConfig config) {
+        if (metadataStore == null) {
+            WorkstreamMetadataStore store = new WorkstreamMetadataStore(
+                    new File(dataDirectory(), WorkstreamMetadataStore.DATABASE_NAME).getPath());
+            if (!store.initialize()) return;
+            metadataStore = store;
         }
         try {
-            Set<PosixFilePermission> perms = Files.getPosixFilePermissions(filePath);
-            boolean tooPermissive = perms.contains(PosixFilePermission.GROUP_READ)
-                    || perms.contains(PosixFilePermission.GROUP_WRITE)
-                    || perms.contains(PosixFilePermission.OTHERS_READ)
-                    || perms.contains(PosixFilePermission.OTHERS_WRITE);
-            if (tooPermissive) {
-                warn("Secret file has unsafe permissions (expected 0600): "
-                        + entry.getFile()
-                        + " (secret=" + entry.getName() + " workspace=" + workspaceId + ")");
+            int moved = config.attachMetadataStore(metadataStore, configFile);
+            if (moved > 0) {
+                log("Moved metadata of " + moved + " workstream(s) from "
+                        + configFile.getName() + " to the workstream metadata store");
             }
-        } catch (UnsupportedOperationException ignored) {
-            // Non-POSIX filesystem — skip permission check
         } catch (IOException e) {
-            warn("Could not check permissions for secret file " + entry.getFile()
-                    + ": " + e.getMessage());
+            warn("Workstream metadata left in " + configFile.getName() + ": " + e.getMessage());
         }
+    }
+
+    /**
+     * Returns the directory holding the controller's databases: the directory
+     * of the loaded YAML (a persistent volume in the controller deployment),
+     * or {@code ~/.flowtree} when no file was loaded. Created when absent.
+     */
+    private File dataDirectory() {
+        File dir = configFile != null
+                ? configFile.getAbsoluteFile().getParentFile()
+                : new File(System.getProperty("user.home"), ".flowtree");
+        dir.mkdirs();
+        return dir;
     }
 
     /**
@@ -501,6 +509,7 @@ public class FlowTreeController implements ConsoleFeatures {
         try {
             WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
             sanitizeAndPersist(config);
+            attachMetadataStore(config);
 
             if (config.getDefaultWorkspacePath() != null) {
                 listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());
@@ -888,108 +897,6 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Starts centralized MCP servers as HTTP processes and builds the
-     * centralized config JSON for passing to agents.
-     *
-     * <p>Each server in the YAML {@code mcpServers} section is started as a
-     * Python subprocess with {@code MCP_TRANSPORT=http} and its configured
-     * port. The source file paths are resolved relative to the config file's
-     * parent directory.</p>
-     *
-     * <p><b>Deprecated:</b> Centralized MCP servers are no longer managed by the controller.
-     * ar-manager is the single centralized tool, running as a separate Docker service.
-     * This method is retained for reference but is not called during normal startup.</p>
-     *
-     * @param config    the parsed workstream configuration
-     * @param configDir the directory containing the YAML config file, used to
-     *                  resolve relative source paths (may be null)
-     * @deprecated ar-manager replaces all centralized MCP servers
-     */
-    @Deprecated
-    private void startCentralizedMcpServers(WorkstreamConfig config, File configDir) {
-        // No-op: ar-manager replaces all centralized MCP servers.
-        // Agents access ar-manager over HTTP with HMAC temp tokens.
-        Map<String, McpServerEntry> mcpServers = config.getMcpServers();
-        if (mcpServers == null || mcpServers.isEmpty()) return;
-
-        log("Configuring " + mcpServers.size() + " centralized MCP server(s)...");
-
-        // Build the centralized config JSON as we register each server
-        StringBuilder configJson = new StringBuilder("{");
-        boolean first = true;
-
-        for (Map.Entry<String, McpServerEntry> entry : mcpServers.entrySet()) {
-            String serverName = entry.getKey();
-            McpServerEntry serverEntry = entry.getValue();
-
-            String url;
-            List<String> tools;
-
-            if (serverEntry.isExternal()) {
-                // External server: already running, just reference by URL
-                url = serverEntry.getUrl();
-                tools = serverEntry.getTools();
-                if (tools == null || tools.isEmpty()) {
-                    warn("External server " + serverName + " has no tools listed — "
-                        + "agents will not be able to use it");
-                    tools = List.of();
-                }
-                log("External " + serverName + " at " + url
-                    + " (" + tools.size() + " tools)");
-            } else {
-                // Managed server: resolve source, discover tools, launch process
-                Path sourcePath = resolveToolSource(serverEntry.getSource(), configDir);
-
-                tools = McpToolDiscovery.discoverToolNames(sourcePath);
-                if (tools.isEmpty()) {
-                    warn("No tools discovered from " + sourcePath + " for server " + serverName);
-                }
-
-                try {
-                    ProcessBuilder pb = new ProcessBuilder("python3", sourcePath.toString());
-                    pb.environment().put("MCP_TRANSPORT", "http");
-                    pb.environment().put("MCP_PORT", String.valueOf(serverEntry.getPort()));
-
-                    for (Map.Entry<String, String> env : System.getenv().entrySet()) {
-                        if (env.getKey().startsWith("AR_")) {
-                            pb.environment().put(env.getKey(), env.getValue());
-                        }
-                    }
-
-                    pb.inheritIO();
-                    GitOperations.augmentPath(pb);
-
-                    Process process = pb.start();
-                    mcpProcesses.add(process);
-                    log("Started " + serverName + " on port " + serverEntry.getPort()
-                        + " (PID " + process.pid() + ", " + tools.size() + " tools)");
-                } catch (IOException e) {
-                    warn("Failed to start " + serverName + ": " + e.getMessage());
-                    continue;
-                }
-
-                url = "http://0.0.0.0:" + serverEntry.getPort() + "/mcp";
-            }
-
-            if (!first) configJson.append(",");
-            first = false;
-            configJson.append("\"").append(serverName).append("\":{");
-            configJson.append("\"url\":\"").append(url).append("\",");
-            configJson.append("\"tools\":[");
-            for (int i = 0; i < tools.size(); i++) {
-                if (i > 0) configJson.append(",");
-                configJson.append("\"").append(tools.get(i)).append("\"");
-            }
-            configJson.append("]}");
-        }
-
-        configJson.append("}");
-        String centralizedConfig = configJson.toString();
-
-        log("Centralized MCP config (legacy, not used): " + centralizedConfig);
-    }
-
-    /**
      * Loads the ar-manager shared secret from a file or environment variable.
      *
      * <p>Checks {@code AR_MANAGER_SHARED_SECRET_FILE} first (path to a file
@@ -1186,14 +1093,10 @@ public class FlowTreeController implements ConsoleFeatures {
      * and for programmatic job submission.
      */
     private void startApiEndpoint() {
-        // Initialize stats store — prefer the config directory (which is
-        // typically a persistent volume mount) over user.home so that stats
-        // survive container rebuilds.
-        String dataDir = configFile != null
-                ? configFile.getParentFile().getAbsolutePath()
-                : System.getProperty("user.home") + "/.flowtree";
-        new File(dataDir).mkdirs();
-        JobStatsStore newStore = new JobStatsStore(dataDir + "/stats");
+        // The stats store lives beside the workstream metadata store in the
+        // data directory, so both survive container rebuilds.
+        File dataDir = dataDirectory();
+        JobStatsStore newStore = new JobStatsStore(new File(dataDir, "stats").getPath());
         newStore.initialize();
         installStatsStore(newStore);
         SlackNotifier primaryNotifier = getNotifier();
@@ -1214,9 +1117,21 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
-            apiEndpoint.setDataDirectory(new File(dataDir));
+            apiEndpoint.setDataDirectory(dataDir);
             apiEndpoint.setAlertRecipients(AlertRecipientEntry.directory(
                     loadedConfig == null ? null : loadedConfig.getAlertRecipients()));
+
+            // Opt-out is a carrier compliance obligation that must outlive the
+            // process, so it is persisted beside the other controller databases
+            // and shared by both the outbound sender and the inbound webhook.
+            SmsOptOutStore optOutStore = new SmsOptOutStore(
+                    new File(dataDir, "sms-optout").getPath());
+            optOutStore.initialize();
+            SignalWireDeliveryProvider account = SignalWireDeliveryProvider.getDefaultProvider();
+            if (account != null) account.setOptOut(optOutStore);
+            apiEndpoint.setSmsCompliance(AlertRecipientEntry.numbers(
+                    loadedConfig == null ? null : loadedConfig.getAlertRecipients()),
+                    optOutStore);
             stuckJobScanner = CompletionListenerFanoutWiring.wire(apiEndpoint,
                     flowtreeServer, statsStore, listener, primaryNotifier,
                     notifiersByWorkspace);
@@ -1301,15 +1216,6 @@ public class FlowTreeController implements ConsoleFeatures {
     public void stop() throws Exception {
         running.set(false);
 
-        // Stop centralized MCP server processes
-        for (Process p : mcpProcesses) {
-            if (p.isAlive()) {
-                p.destroy();
-                log("Stopped MCP server process (PID " + p.pid() + ")");
-            }
-        }
-        mcpProcesses.clear();
-
         if (flowtreeServer != null) {
             flowtreeServer.stop();
             flowtreeServer = null;
@@ -1328,6 +1234,11 @@ public class FlowTreeController implements ConsoleFeatures {
         if (statsStore != null) {
             statsStore.close();
             statsStore = null;
+        }
+
+        if (metadataStore != null) {
+            metadataStore.close();
+            metadataStore = null;
         }
 
         // Stop all workspace connections

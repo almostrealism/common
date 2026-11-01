@@ -271,7 +271,7 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 	 * 
 	 * <p>This method provides a convenient overload that automatically obtains
 	 * the traversable arguments for the given global index before calling the
-	 * main expression function.
+	 * subclass's iteration step.
 	 * 
 	 * @param globalIndex The global index in the overall computation space
 	 * @param localIndex The local index within the current iteration

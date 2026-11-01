@@ -336,11 +336,12 @@ public abstract class CollectionProducerComputationAdapter
 	 *
 	 * <p>A computation whose value is a sum of many terms can return a positive count here,
 	 * together with {@link #getAccumulationTerm(Expression, Expression)}, so that its kernel
-	 * clears each output element and adds one term per iteration, rather than rendering the
-	 * whole sum as one expression whose size, and cost to compile, grows with the number of
-	 * terms. Only the kernel generated for the computation itself changes: when it is embedded
-	 * in another expression its value is still {@link #getValueAt(Expression)}, and the two
-	 * must agree.</p>
+	 * assigns each output element its {@link #getAccumulationInitialValue(Expression) initial
+	 * value} and adds one term per iteration, rather than rendering the whole sum as one
+	 * expression whose size, and cost to compile, grows with the number of terms. Only the
+	 * kernel generated for the computation itself changes: when it is embedded in another
+	 * expression its value is still {@link #getValueAt(Expression)}, and the two must
+	 * agree.</p>
 	 *
 	 * @return the number of loop iterations, or zero for single-statement assignment
 	 */
@@ -348,7 +349,8 @@ public abstract class CollectionProducerComputationAdapter
 
 	/**
 	 * Returns the term that one iteration of the accumulation loop adds to an output element,
-	 * for a computation whose {@link #getAccumulationCount()} is positive. The terms of all
+	 * for a computation whose {@link #getAccumulationCount()} is positive. The
+	 * {@link #getAccumulationInitialValue(Expression) initial value} and the terms of all
 	 * iterations sum to {@link #getValueAt(Expression)} at the same index.
 	 *
 	 * @param index     the index of the output element
@@ -362,8 +364,22 @@ public abstract class CollectionProducerComputationAdapter
 	}
 
 	/**
+	 * Returns the value an output element is assigned before the first iteration of the
+	 * accumulation loop, for a computation whose {@link #getAccumulationCount()} is positive.
+	 * The default is zero; a computation whose loop iterations do not cover every term of its
+	 * sum returns the sum of the terms they leave out.
+	 *
+	 * @param index the index of the output element
+	 * @return the value the output element holds before the loop
+	 */
+	protected Expression<?> getAccumulationInitialValue(Expression<?> index) {
+		return e(0.0);
+	}
+
+	/**
 	 * Generates the kernel scope that accumulates each output element over {@code iterations}
-	 * iterations of a loop: before the loop the element is cleared, and each iteration adds
+	 * iterations of a loop: before the loop the element is assigned
+	 * {@link #getAccumulationInitialValue(Expression)}, and each iteration adds
 	 * {@link #getAccumulationTerm(Expression, Expression)} to it. {@link Repeated} promotes
 	 * the element to a local accumulator and hoists the index arithmetic that does not depend
 	 * on the iteration out of the loop.
@@ -396,7 +412,7 @@ public abstract class CollectionProducerComputationAdapter
 				new OperationMetadata(getFunctionName() + "_body", "Accumulation (Body)"));
 
 		forEachStatement(context, (output, index) -> {
-			loop.getStatements().add(output.assign(e(0.0)));
+			loop.getStatements().add(output.assign(getAccumulationInitialValue(index)));
 			body.getStatements().add(output.assign(output.add(getAccumulationTerm(index, iteration))));
 		});
 

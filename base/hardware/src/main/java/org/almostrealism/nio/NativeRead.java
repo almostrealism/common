@@ -18,7 +18,6 @@ package org.almostrealism.nio;
 
 import io.almostrealism.code.Precision;
 import org.almostrealism.c.BaseNative;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeCompiler;
 
 /**
@@ -40,10 +39,6 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  *
  * // Read with offset
  * reader.apply(mem, 100, data, 0, 500);  // Read 500 elements starting at offset 100
- *
- * // Read from MemoryData
- * MemoryData memData = ...;
- * double[] result = reader.apply(memData);  // Creates and returns new array
  * }</pre>
  *
  * <h2>Precision Handling</h2>
@@ -62,12 +57,13 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  *   <li>The destination array is large enough to hold the data</li>
  * </ul>
  *
+ * @see NativeArrayCopy
  * @see NativeWrite
  * @see NativeMemory
  * @see org.almostrealism.nio.NativeMemoryProvider
  * @see BaseNative
  */
-public class NativeRead extends BaseNative {
+public class NativeRead extends NativeArrayCopy {
 	/**
 	 * Creates a new NativeRead operation using the specified compiler.
 	 *
@@ -77,108 +73,61 @@ public class NativeRead extends BaseNative {
 	 */
 	public NativeRead(NativeCompiler compiler) {
 		super(compiler);
-		initNative();
 	}
 
 	/**
 	 * Returns the C function definition for the native read operation.
 	 *
-	 * <p>Generates a JNI-compatible C function that reads data from native memory
-	 * into a Java double array. The function handles precision conversion:
-	 * FP64 mode reads doubles directly, FP32 mode converts floats to doubles.</p>
+	 * <p>Generates a JNI-compatible C function that copies data from native memory directly
+	 * into the caller's Java double array. FP64 mode copies the doubles in a single
+	 * {@code SetDoubleArrayRegion}; FP32 mode converts floats to doubles through a fixed-size
+	 * stack buffer of {@link #CONVERSION_CHUNK} values.</p>
+	 *
+	 * <p>Nothing is allocated, on the Java heap or the C heap, however long the read is. A
+	 * read the size of the whole memory block would otherwise need a second array of that size,
+	 * and a failed allocation is a {@code NULL} that the copy would dereference, crashing the
+	 * JVM instead of reporting the shortage.</p>
 	 *
 	 * @return The C code defining the JNI read function
 	 */
 	@Override
 	public String getFunctionDefinition() {
+		String signature = getFunctionSignature();
+
 		if (getNativeCompiler().getPrecision() == Precision.FP64) {
-			return "JNIEXPORT jdoubleArray JNICALL " + getFunctionName() +
-					" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jint len) {\n" +
-					(enableVerbose ? "\tprintf(\"nativeRead(%lu) - %i values\\n\", arg, len);\n" : "") +
-					"\tdouble* input = (double *) arg;\n" +
-					"\tjdoubleArray output = (*env)->NewDoubleArray(env, (jsize) len);\n" +
-					"\t(*env)->SetDoubleArrayRegion(env, output, 0, (jsize) len, (const jdouble*) &input[offset]);\n" +
-					"return output;\n" +
+			return signature +
+					"\t(*env)->SetDoubleArrayRegion(env, target, toffset, len, ((const jdouble *) arg) + offset);\n" +
 					"}\n";
 		} else {
-			return "JNIEXPORT jdoubleArray JNICALL " + getFunctionName() +
-					" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jint len) {\n" +
-					(enableVerbose ? "\tprintf(\"nativeRead(%lu) - %i values\\n\", arg, len);\n" : "") +
-					"\tfloat* input = (float *) arg;\n" +
-					"\tjdoubleArray output = (*env)->NewDoubleArray(env, (jsize) len);\n" +
-					"\tjdouble* values = (jdouble*) malloc(sizeof(jdouble) * len);\n" +
-					"\tfor (int i = 0; i < len; i++) {\n" +
-					"\t\tvalues[i] = (jdouble) input[offset + i];\n" +
+			int chunk = CONVERSION_CHUNK;
+			return signature +
+					"\tconst float* input = ((const float *) arg) + offset;\n" +
+					"\tjdouble values[" + chunk + "];\n" +
+					"\tfor (jint i = 0; i < len; i += " + chunk + ") {\n" +
+					"\t\tjint n = len - i < " + chunk + " ? len - i : " + chunk + ";\n" +
+					"\t\tfor (jint j = 0; j < n; j++) {\n" +
+					"\t\t\tvalues[j] = (jdouble) input[i + j];\n" +
+					"\t\t}\n" +
+					"\t\t(*env)->SetDoubleArrayRegion(env, target, toffset + i, n, values);\n" +
+					"\t\tif ((*env)->ExceptionCheck(env)) return;\n" +
 					"\t}\n" +
-					"\t(*env)->SetDoubleArrayRegion(env, output, 0, (jsize) len, values);\n" +
-					"\tfree(values);\n" +
-					"return output;\n" +
 					"}\n";
 		}
 	}
 
 	/**
-	 * Reads all data from a {@link MemoryData} into a new double array.
+	 * Native method that copies data from a memory address into an existing Java double array.
 	 *
-	 * @param mem The memory data to read from
-	 * @return A new array containing all values from the memory
-	 */
-	public double[] apply(MemoryData mem) {
-		double[] out = new double[mem.getMemLength()];
-		apply((NativeMemory) mem.getMem(), out);
-		return out;
-	}
-
-	/**
-	 * Reads all data from native memory starting at offset 0.
+	 * <p>This is a JNI method that invokes native code to read memory. The native code writes
+	 * directly into {@code target} and allocates nothing (see {@link #getFunctionDefinition()}).
+	 * The caller is responsible for the bounds of both the memory and the array.</p>
 	 *
-	 * @param mem    The native memory to read from
-	 * @param target The destination array to populate
-	 */
-	public void apply(NativeMemory mem, double[] target) { apply(mem, 0, target); }
-
-	/**
-	 * Reads data from native memory starting at the specified offset.
-	 *
-	 * @param mem    The native memory to read from
-	 * @param offset The starting offset in elements
-	 * @param target The destination array to populate
-	 */
-	public void apply(NativeMemory mem, int offset, double[] target) {
-		apply(mem, offset, target, 0, target.length);
-	}
-
-	/**
-	 * Reads data from native memory with full control over offsets and lengths.
-	 *
-	 * @param mem     The native memory to read from
+	 * @param arg     The native memory address to read from
 	 * @param offset  The starting offset in elements within native memory
-	 * @param target  The destination array to populate
+	 * @param target  The destination array
 	 * @param toffset The starting offset in the destination array
 	 * @param length  The number of elements to read
-	 * @throws IllegalArgumentException if the read would exceed memory bounds or array bounds
 	 */
-	public void apply(NativeMemory mem, int offset, double[] target, int toffset, int length) {
-		if (mem.getSize() < (long) (offset + length) * getNativeCompiler().getPrecision().bytes()) {
-			throw new IllegalArgumentException("Attempt to read memory beyond the size of " + mem);
-		} else if (target.length < toffset + length) {
-			throw new IllegalArgumentException("Attempt to read memory into a destination array beyond the array size");
-		}
-
-		double[] out = apply(mem.getContentPointer(), offset, length);
-		if (length >= 0) System.arraycopy(out, 0, target, toffset, length);
-	}
-
-	/**
-	 * Native method that reads data from a memory address into a new Java double array.
-	 *
-	 * <p>This is a JNI method that invokes native code to read memory. The native code
-	 * creates a new Java double array and copies data from the specified memory address.</p>
-	 *
-	 * @param arg    The native memory address to read from
-	 * @param offset The starting offset in elements
-	 * @param length The number of elements to read
-	 * @return A new array containing the read values
-	 */
-	public native double[] apply(long arg, int offset, int length);
+	@Override
+	protected native void apply(long arg, int offset, double[] target, int toffset, int length);
 }

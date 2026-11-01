@@ -8,16 +8,17 @@ This document describes how Flowtree integrates with CI/CD pipelines to automati
 
 1. [Overview](#overview)
 2. [Verify-Completion Workflow](#verify-completion-workflow)
-3. [Auto-Resolve Workflow](#auto-resolve-workflow)
-4. [Failure Detection](#failure-detection)
-5. [Prompt Generation](#prompt-generation)
-6. [Job Submission API](#job-submission-api)
-7. [Workstream Registration API](#workstream-registration-api)
-8. [Quality Gate Evaluation](#quality-gate-evaluation)
-9. [Concurrency Model](#concurrency-model)
-10. [Test File Protection](#test-file-protection)
-11. [Surefire Report Parsing](#surefire-report-parsing)
-12. [End-to-End Flow Diagram](#end-to-end-flow-diagram)
+3. [QA Round Workflow](#qa-round-workflow)
+4. [Auto-Resolve Workflow](#auto-resolve-workflow)
+5. [Failure Detection](#failure-detection)
+6. [Prompt Generation](#prompt-generation)
+7. [Job Submission API](#job-submission-api)
+8. [Workstream Registration API](#workstream-registration-api)
+9. [Quality Gate Evaluation](#quality-gate-evaluation)
+10. [Concurrency Model](#concurrency-model)
+11. [Test File Protection](#test-file-protection)
+12. [Surefire Report Parsing](#surefire-report-parsing)
+13. [End-to-End Flow Diagram](#end-to-end-flow-diagram)
 
 ---
 
@@ -41,6 +42,8 @@ The key components involved are:
 The verify-completion workflow (`verify-completion.yaml`) implements a self-improvement loop where coding agents implement and verify plan goals on feature branches. It is triggered manually via `workflow_dispatch` on any non-master branch, and it is the only thing that starts implementing a plan: until someone dispatches it, a plan branch (whose changes are all under `docs/`) receives only the docs-only review from `auto-review` in `analysis.yaml`, which improves the documents and never carries out the plan.
 
 `verify-completion.yaml` itself is a thin caller: its one job calls the reusable `implement-plan.yaml`, which holds the jobs described below. Other repositories call `implement-plan.yaml` the same way for their own plan branches, so it checks this repository out explicitly (inputs `framework-repository` and `framework-ref`, by default `almostrealism/common` at `master`) and runs every script and prompt template from that checkout. In this repository that is the default branch.
+
+Implementation is triggered two ways. A person can dispatch `verify-completion.yaml` by hand (or via `project_verify_branch`). The automatic path is the owner approving the plan — marking its draft PR **ready for review** — which the `Plan Ready` workflow (`ready-plan.yaml`) turns into that same dispatch on the PR's head branch. A consuming repository gets the automatic path by calling the reusable `plan-ready.yaml` (`workflow_call`, in this repository) from its own `pull_request_target` caller and setting its `PLAN_APPROVERS` variable; without that caller it dispatches `verify-completion.yaml` by hand. `plan-ready.yaml` is inline shell over event metadata and the GitHub API — it checks out nothing, runs no framework script and holds no controller secret — so unlike `implement-plan.yaml` it needs no framework checkout.
 
 ### Four-Phase Pipeline
 
@@ -120,6 +123,50 @@ The channel name is derived from the branch name: `project/plan-20260223-foo` be
 
 **Claiming a tracker task:**
 Agents do not claim tracker tasks themselves. A workflow that hands a tracker task to an agent first registers the workstream, then calls the controller's `POST /api/tracker/claim` with `{"project": "<name>", "release": "<name>", "workstreamId": "<id>"}`. The controller forwards the claim to the tracker, which links the next ready task of the release to the workstream, and answers `{"ok": true, "task": {...}}` (or `"task": null` when nothing is claimable); the workflow puts that task in the agent's prompt. The endpoint answers 400 when a field is missing or blank, 404 when the workstream is not registered, 503 when the controller has no tracker configured, and 502 when the tracker call fails. `GET /api/tracker/claimable?project=<name>&release=<name>` answers how many tasks could be claimed without claiming one.
+
+---
+
+## QA Round Workflow
+
+The QA-round workflow (`qa-round.yaml`) is the recurring-quality counterpart of
+the plan-then-implement reusable workflows. Each recurring round — a defect
+hunt, a documentation-staleness review, a consolidation pass, and so on — runs
+the same ordered steps, and `qa-round.yaml` carries them once so a repository
+building on this one can adopt a round with only a caller job and inputs, rather
+than copying the plumbing.
+
+It is triggered only by `workflow_call`. Its single job: checks out the caller's
+default branch (to create and push the round's branch) and the framework at
+`framework-ref` with `persist-credentials: false` (for every script and built-in
+template); asks the controller whether it accepts automated jobs
+(`automated-intake.sh`); decides from the shared cadence gate
+(`qa-cadence.sh`) whether a round may start — no round of this prefix in
+progress, room in the open-PR backlog, and the interval passed; archives the
+rounds that are over; creates a `<branch-prefix><UTC timestamp>` branch;
+registers its workstream; builds the prompt; and submits a coding-agent job with
+`AUTO_CREATE_PR` (never as a draft — a QA round's PR is real work meant to be
+merged as it stands). With the gate declined nothing is created.
+
+The per-round differences are inputs: `branch-prefix`, `min-interval-days`,
+`grace-hours`, `max-open-prs`, `force`, `ignore-interval`, the submission
+settings (`protect-test-files`, `enforce-changes`, `max-enforce-changes-retries`,
+`phase-configs`, `required-labels`, `required-labels-json`, `description`), and
+the prompt. The `prompt` input is either a built-in template selector
+(`defect-hunt` | `doc-qa` | `consolidation` | `flaky-hunt`, rendered from the
+framework checkout) or a path to a template the caller supplies in its own
+checkout, read as *data* by `tools/ci/prompts/build-qa-round-prompt.sh` and
+rendered but never executed. `template-vars` is a JSON map of extra `${NAME}`
+substitutions, and `test-runner-fragment` chooses the language-specific tooling
+guidance a built-in template includes (default `test-runner-maven.txt`; a
+non-Maven consumer passes `test-runner-generic.txt`). The trust rule is the same
+as the other reusable workflows: no input is interpolated into a `run:` script,
+the controller URL and client ID are inputs, and the client secret is the
+declared `workflow_call` secret `FLOWTREE_CF_ACCESS_CLIENT_SECRET`.
+
+This repository's `master-agent-dispatch.yaml` calls `qa-round.yaml` for every
+QA round except `coverage-qa`, which stays inline because its target selection
+runs before (and gates) branch creation and it needs `actions: read` to reuse
+master's coverage artifact.
 
 ---
 

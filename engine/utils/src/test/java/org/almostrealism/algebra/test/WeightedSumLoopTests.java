@@ -39,9 +39,11 @@ import java.util.function.Supplier;
  * Tests weighted sums whose group is large enough to be summed by a native loop rather than by
  * a single expression (see {@link WeightedSumComputation#loopThreshold}). For each shape that
  * {@code weightedSum} is used for - a one-dimensional convolution (several members per
- * iteration), a matrix product (one member per iteration) and a two-dimensional convolution
- * (a two-dimensional block of members per iteration) - the looped kernel must produce the
- * values of a host evaluation of the same sum and of the single-expression kernel.
+ * step), a matrix product (one member per step) and a two-dimensional convolution
+ * (a two-dimensional block of members per step) - the looped kernel must produce the
+ * values of a host evaluation of the same sum and of the single-expression kernel. Where the
+ * group extends along a single dimension, each iteration of the loop sums a run of several
+ * single-member steps (see {@link WeightedSumComputation#getIterationSteps()}).
  */
 public class WeightedSumLoopTests extends TestSuiteBase {
 
@@ -190,13 +192,7 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 			}
 		}
 
-		Supplier<CollectionProducer> conv = () -> {
-			TraversalPolicy resultShape = shape(1, filters, 1, length);
-			return weightedSum("convolution",
-					resultShape.withRate(1, 1, filters).withRate(2, channels, 1),
-					resultShape.withRate(2, channels, 1).withRate(3, kernel, length),
-					shape(1, 1, channels, kernel), cp(input), cp(filter));
-		};
+		Supplier<CollectionProducer> conv = () -> convolution(input, filter, channels, filters, kernel, length);
 
 		String signature = ((WeightedSumComputation) conv.get()).signature();
 		Assert.assertNotNull(label + " signature", signature);
@@ -204,6 +200,31 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 				signature.endsWith("{loop:" + loopMembers + "}"));
 
 		assertLoopMatches(label, expected, conv);
+	}
+
+	/**
+	 * Builds the weighted sum for a one-dimensional convolution of {@code input}, holding
+	 * {@code channels} channels of {@code length + kernel - 1} samples, by {@code filter},
+	 * holding {@code filters} filters of {@code kernel} taps per channel, producing
+	 * {@code length} outputs per filter.
+	 */
+	private CollectionProducer convolution(PackedCollection input, PackedCollection filter,
+										   int channels, int filters, int kernel, int length) {
+		TraversalPolicy resultShape = shape(1, filters, 1, length);
+		return weightedSum("convolution",
+				resultShape.withRate(1, 1, filters).withRate(2, channels, 1),
+				resultShape.withRate(2, channels, 1).withRate(3, kernel, length),
+				shape(1, 1, channels, kernel), cp(input), cp(filter));
+	}
+
+	/**
+	 * Builds the weighted sum for a one-dimensional convolution, as {@link #convolution}, over
+	 * newly allocated (and tracked) collections, for tests of how its loop is structured.
+	 */
+	private WeightedSumComputation convolutionOfShape(int channels, int filters, int kernel, int length) {
+		PackedCollection input = track(new PackedCollection(shape(1, 1, channels, length + kernel - 1)));
+		PackedCollection filter = track(new PackedCollection(shape(1, filters, channels, kernel)));
+		return (WeightedSumComputation) convolution(input, filter, channels, filters, kernel, length);
 	}
 
 	/**
@@ -442,6 +463,78 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 
 		assertLoopMatches("large output", matmulReference(a.toArray(), b.toArray(), m, n, p),
 				() -> matmul(a, b, m, n, p));
+	}
+
+	/**
+	 * A matrix product whose group of 300 members advances along one axis, one member per step,
+	 * sums a run of {@link WeightedSumComputation#MAX_ITERATION_MEMBERS} steps in each iteration
+	 * of its loop, records that number of steps in its signature ahead of the members of a step,
+	 * and, with the 12 members after the last whole run summed before the loop, matches the host
+	 * evaluation and the single-expression kernel.
+	 */
+	@Test(timeout = 120000)
+	public void iterationSumsRunOfSteps() {
+		int m = 4;
+		int n = 300;
+		int p = 3;
+
+		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n, p)).randFill());
+
+		WeightedSumComputation product = (WeightedSumComputation) matmul(a, b, m, n, p);
+		Assert.assertEquals(WeightedSumComputation.MAX_ITERATION_MEMBERS, product.getIterationSteps());
+		Assert.assertTrue(product.signature().endsWith(
+				"{steps:" + WeightedSumComputation.MAX_ITERATION_MEMBERS + "}{loop:1}"));
+
+		assertLoopMatches("matrix product (runs of steps)",
+				matmulReference(a.toArray(), b.toArray(), m, n, p), () -> matmul(a, b, m, n, p));
+	}
+
+	/**
+	 * A matrix-vector product whose odd row length of 1001 is not a whole number of runs, and
+	 * whose rows therefore do not begin at the same position within a run, sums 31 runs of 32
+	 * members in its loop and the remaining 9 members of each row before it, and matches the
+	 * host evaluation and the single-expression kernel.
+	 */
+	@Test(timeout = 120000)
+	public void oddRowLengthSumsRemainderBeforeLoop() {
+		int m = 7;
+		int n = 1001;
+
+		PackedCollection a = track(new PackedCollection(shape(m, n)).randFill());
+		PackedCollection b = track(new PackedCollection(shape(n, 1)).randFill());
+
+		Assert.assertEquals(WeightedSumComputation.MAX_ITERATION_MEMBERS,
+				((WeightedSumComputation) matmul(a, b, m, n, 1)).getIterationSteps());
+		assertLoopMatches("odd row length", matmulReference(a.toArray(), b.toArray(), m, n, 1),
+				() -> matmul(a, b, m, n, 1));
+	}
+
+	/**
+	 * A one-dimensional convolution, whose steps are the 7 taps of a channel, keeps one step in
+	 * each iteration of its loop: its group extends along both the channels and the taps, so its
+	 * iterations already sum several members, and its signature records no runs.
+	 */
+	@Test(timeout = 30000)
+	public void convolutionKeepsOneStepPerIteration() {
+		WeightedSumComputation conv = convolutionOfShape(64, 8, 7, 20);
+		Assert.assertEquals(1, conv.getIterationSteps());
+		Assert.assertTrue(conv.signature().endsWith("{loop:7}"));
+		Assert.assertFalse(conv.signature().contains("{steps:"));
+	}
+
+	/**
+	 * A convolution whose 17 taps exceed {@link WeightedSumComputation#maxUnrolledMembers}
+	 * advances one member at a time along both the taps and the channels. Its steps are single
+	 * members, but its group does not extend along a single dimension: a run of members would
+	 * cross from one channel into the next. Each iteration sums a single step and the signature
+	 * records no runs.
+	 */
+	@Test(timeout = 30000)
+	public void stepsAlongTwoAxesAreNotCombined() {
+		WeightedSumComputation conv = convolutionOfShape(16, 2, 17, 6);
+		Assert.assertEquals(1, conv.getIterationSteps());
+		Assert.assertFalse(conv.signature().contains("{steps:"));
 	}
 
 	/**

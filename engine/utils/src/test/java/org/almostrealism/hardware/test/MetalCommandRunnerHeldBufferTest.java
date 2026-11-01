@@ -110,6 +110,51 @@ public class MetalCommandRunnerHeldBufferTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Every buffer closed behind an unsettled bridge is counted in the runner's hold bound, and
+	 * released from it when the buffer is committed. Filling the bridged buffer closes it while
+	 * its bridge is unsignaled, so exactly one buffer is held; once the foreign work settles and
+	 * the dispatches complete, nothing is held, so a later submission is never refused room by a
+	 * count the runner failed to release.
+	 */
+	@Test(timeout = 120000)
+	public void heldCountReturnsToZeroOnceBridgedBufferIsCommitted() {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
+		MetalCommandRunner.enableHostSignaledBridges = true;
+
+		DefaultLatchSemaphore foreign = new DefaultLatchSemaphore((Semaphore) null, 1);
+
+		try {
+			runner.submit(null, buffer -> { }, null, null).waitFor();
+			assertEquals(0, runner.getHeldCount());
+
+			Semaphore bridged = runner.submit(null, buffer -> { }, foreign, null);
+			Semaphore last = bridged;
+			for (int i = 1; i < MetalCommandRunner.MAX_OPEN; i++) {
+				last = runner.submit(null, buffer -> { }, null, null);
+			}
+
+			assertEquals("The full bridged buffer must be closed and held", 1, runner.getHeldCount());
+
+			foreign.countDown();
+			last.waitFor();
+			bridged.waitFor();
+
+			assertEquals("A committed buffer must be released from the hold bound",
+					0, runner.getHeldCount());
+		} finally {
+			foreign.countDown();
+			MetalCommandRunner.enableHostSignaledBridges = bridges;
+		}
+	}
+
+	/**
 	 * A host wait for a dispatch whose buffer is closed but held back for an unsettled bridge is
 	 * a wait for the foreign work, since the buffer is not on the GPU yet. An interrupt must end
 	 * that wait, leaving the caller's interrupt status set, without committing the held buffer.

@@ -24,7 +24,7 @@ import yaml
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOWS = os.path.join(_REPO_ROOT, ".github", "workflows")
 _REUSABLE = ("goal-decomposition.yaml", "task-planning.yaml",
-             "implement-plan.yaml", "plan-review.yaml")
+             "implement-plan.yaml", "plan-review.yaml", "qa-round.yaml")
 
 # YAML 1.1 reads the unquoted key `on` as the boolean True; PyYAML follows it.
 _ON = True
@@ -309,6 +309,139 @@ class ImplementPlanDetectStepTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("Plan file not found: planning/MISSING.md", result.stdout)
         self.assertEqual({}, outputs)
+
+
+class PlanReadyTrustTests(unittest.TestCase):
+    """Plan Ready's trust rule.
+
+    ``plan-ready.yaml`` is a reusable workflow like the five in ``_REUSABLE``,
+    but it deliberately has **neither** a framework checkout nor the controller
+    service token: it is inline shell over event metadata and GitHub API
+    responses, dispatching through ``GITHUB_TOKEN`` alone. The ``_REUSABLE``
+    loop asserts both of those for every workflow it covers, so Plan Ready is
+    not a member of that tuple; its trust rule is pinned here instead."""
+
+    def setUp(self):
+        self.workflow = _load("plan-ready.yaml")
+        self.job = self.workflow["jobs"]["dispatch"]
+        self.steps = self.job["steps"]
+
+    def test_it_is_only_called(self):
+        self.assertEqual(["workflow_call"], list(self.workflow[_ON]))
+
+    def test_it_declares_no_secrets_and_needs_no_framework_checkout(self):
+        """Unlike the other reusable workflows it carries no ``secrets:`` block
+        (it uses only the auto-available ``GITHUB_TOKEN``) and checks out
+        nothing (it runs no framework script, only inline shell)."""
+        self.assertNotIn("secrets", self.workflow[_ON]["workflow_call"])
+        for step in self.steps:
+            with self.subTest(step=step.get("name")):
+                self.assertFalse(str(step.get("uses", "")).startswith("actions/checkout"),
+                                 "Plan Ready must not check out any code")
+
+    def test_the_fork_guard_is_on_the_dispatch_job(self):
+        self.assertEqual(
+            "github.event.pull_request.head.repo.full_name == github.repository",
+            self.job["if"])
+
+    def test_attacker_influenced_values_reach_shell_only_through_env(self):
+        """The approver input and the attacker-influenced event fields must
+        never be interpolated into a ``run:`` body, where they would execute."""
+        for step in self.steps:
+            run = step.get("run", "")
+            with self.subTest(step=step.get("name")):
+                self.assertNotIn("inputs.approvers", run)
+                self.assertNotIn("github.event.pull_request.head.ref", run)
+                self.assertNotIn("github.event.sender.login", run)
+
+
+class PlanReadyApproverStepTests(unittest.TestCase):
+    """The approver gate of plan-ready.yaml, run for real — the same "run the
+    step's shell" precedent as ``PlanReviewDocsCheckTests`` and
+    ``ImplementPlanDetectStepTests``."""
+
+    def _run(self, approvers, sender):
+        step = _step_script("plan-ready.yaml", "dispatch", "Check the approver allowlist")
+        tmp = tempfile.mkdtemp(prefix="plan-ready-approver-")
+        self.addCleanup(shutil.rmtree, tmp)
+        output = os.path.join(tmp, "github-output")
+        env = dict(os.environ)
+        env.update({"APPROVERS": approvers, "SENDER": sender, "GITHUB_OUTPUT": output})
+        result = subprocess.run(["bash", "-e", "-c", step["run"]], env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, result.returncode, result.stderr)
+        with open(output) as f:
+            outputs = dict(line.split("=", 1) for line in f.read().splitlines())
+        return outputs["approved"]
+
+    def test_an_empty_allowlist_approves_no_one(self):
+        """The fail-closed default: an unset ``PLAN_APPROVERS`` reaches the
+        reusable workflow as an empty ``approvers`` input, which dispatches
+        nothing."""
+        self.assertEqual("false", self._run("", "ashesfall"))
+        self.assertEqual("false", self._run("   \n  ", "ashesfall"))
+
+    def test_a_listed_sender_is_approved(self):
+        """Commas, newlines and case do not matter: GitHub logins are
+        case-insensitive and the list may be written in any of those styles."""
+        self.assertEqual("true", self._run("alice, ashesfall\nbob", "ashesfall"))
+        self.assertEqual("true", self._run("ASHESFALL", "ashesfall"))
+
+    def test_an_unlisted_sender_is_not_approved(self):
+        self.assertEqual("false", self._run("alice bob", "ashesfall"))
+
+
+class PlanReadyDocsOnlyStepTests(unittest.TestCase):
+    """The docs-only gate of plan-ready.yaml, run for real with a stub ``gh``.
+
+    The step reads the PR's changed files from ``gh api`` and keeps the PR
+    docs-only only while every one is under the ``docs-directory`` input. This
+    is the one changed production path whose new behaviour — the prefix
+    normalisation ``PREFIX="${DOCS_DIRECTORY%/}/"`` that lets ``docs`` and
+    ``docs/`` both mean "under ``docs/``", and the rejection of a single file
+    outside it — is run here rather than only asserted structurally. ``gh`` is
+    stubbed to print a fixed file list, so the test exercises the shell without
+    a network call."""
+
+    def _run(self, files, docs_directory):
+        step = _step_script("plan-ready.yaml", "dispatch", "Check the PR is still docs-only")
+        tmp = tempfile.mkdtemp(prefix="plan-ready-docs-")
+        self.addCleanup(shutil.rmtree, tmp)
+        # A stub gh that ignores its arguments and prints the file list one per
+        # line (nothing when the list is empty), matching the --jq projection.
+        stub = os.path.join(tmp, "gh")
+        with open(stub, "w") as f:
+            f.write('#!/usr/bin/env bash\n[ -n "$STUB_FILES" ] && printf \'%s\\n\' "$STUB_FILES"\nexit 0\n')
+        os.chmod(stub, 0o755)
+        output = os.path.join(tmp, "github-output")
+        env = dict(os.environ)
+        env.update({"PATH": tmp + os.pathsep + env["PATH"],
+                    "STUB_FILES": "\n".join(files),
+                    "GH_TOKEN": "x", "REPO": "o/r", "PR_NUMBER": "1",
+                    "DOCS_DIRECTORY": docs_directory, "GITHUB_OUTPUT": output})
+        result = subprocess.run(["bash", "-e", "-c", step["run"]], env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, result.returncode, result.stderr)
+        with open(output) as f:
+            outputs = dict(line.split("=", 1) for line in f.read().splitlines())
+        return outputs["docs_only"]
+
+    def test_every_file_under_the_directory_is_docs_only(self):
+        self.assertEqual("true", self._run(
+            ["docs/plans/PLAN-20261020-thing.md", "docs/README.md"], "docs/"))
+
+    def test_a_single_file_outside_the_directory_stops_it(self):
+        """One non-docs file — even one analysis.yaml would ignore — is enough."""
+        self.assertEqual("false", self._run(
+            ["docs/plans/PLAN-20261020-thing.md", "src/Thing.java"], "docs/"))
+
+    def test_a_directory_without_a_trailing_slash_is_normalised(self):
+        """``docs`` means "under ``docs/``": it must not match ``docs-site/``."""
+        self.assertEqual("true", self._run(["docs/a.md", "docs/b.md"], "docs"))
+        self.assertEqual("false", self._run(["docs/a.md", "docs-site/b.md"], "docs"))
+
+    def test_a_pr_that_changes_no_files_is_not_docs_only(self):
+        self.assertEqual("false", self._run([], "docs/"))
 
 
 if __name__ == "__main__":

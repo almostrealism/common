@@ -85,11 +85,20 @@ def _read(path):
         return f.read()
 
 
+# build-qa-round-prompt.sh is the one builder that does not fit the fixed shape
+# these tests check: it renders a template chosen at run time by a selector or a
+# caller path rather than a static TEMPLATE= line, and its required PROMPT must
+# be a real selector, not the placeholder value the run-tests below pass. It is
+# the reusable qa-round.yaml's builder and is covered for real in test_qa_round.py.
+_GENERIC_QA_BUILDER = "build-qa-round-prompt.sh"
+
+
 def _builders():
-    """Returns the path of every prompt builder, sorted by name."""
+    """Returns the path of every fixed-shape prompt builder, sorted by name."""
     return [os.path.join(_PROMPT_DIR, name)
             for name in sorted(os.listdir(_PROMPT_DIR))
-            if name.startswith("build-") and name.endswith(".sh")]
+            if name.startswith("build-") and name.endswith(".sh")
+            and name != _GENERIC_QA_BUILDER]
 
 
 def _required_vars(builder):

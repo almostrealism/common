@@ -29,6 +29,8 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Verifies that {@link PatternFeatures#renderPerNote} aborts a render quickly
@@ -56,19 +58,9 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 	 * @return a single-note pattern element wired to fail
 	 */
 	private static PatternElement failingElement(int offset, RuntimeException toThrow) {
-		return new PatternElement() {
-			@Override
-			public List<RenderedNoteAudio> getNoteDestinations(boolean melodic, double off,
-															   AudioSceneContext context,
-															   NoteAudioContext audioContext) {
-				RenderedNoteAudio note = new RenderedNoteAudio(offset, 0);
-				note.setOffsetArg(new PackedCollection(1));
-				note.setProducerFactory(frameCount -> {
-					throw toThrow;
-				});
-				return List.of(note);
-			}
-		};
+		return observedElement(offset, () -> {
+			throw toThrow;
+		});
 	}
 
 	/**
@@ -138,5 +130,92 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 							+ " consecutive failures: " + e.getMessage(),
 					e.getMessage().contains("after " + MAX_CONSECUTIVE_NOTE_FAILURES));
 		}
+	}
+
+	/**
+	 * Builds a {@link PatternElement} whose single note runs {@code onRequest} when its
+	 * producer is requested and then fails the evaluation, as an evaluation abandoned by
+	 * an interrupt does.
+	 *
+	 * @param offset    the note start frame
+	 * @param onRequest run each time the note's producer is requested
+	 * @return a single-note pattern element
+	 */
+	private static PatternElement observedElement(int offset, Runnable onRequest) {
+		return new PatternElement() {
+			@Override
+			public List<RenderedNoteAudio> getNoteDestinations(boolean melodic, double off,
+															   AudioSceneContext context,
+															   NoteAudioContext audioContext) {
+				RenderedNoteAudio note = new RenderedNoteAudio(offset, 0);
+				note.setOffsetArg(new PackedCollection(1));
+				note.setProducerFactory(frameCount -> {
+					onRequest.run();
+					throw new RuntimeException("evaluation abandoned at frame " + offset);
+				});
+				return List.of(note);
+			}
+		};
+	}
+
+	/**
+	 * A render whose thread is interrupted evaluates no note, fails with a
+	 * {@link CancellationException} rather than the consecutive-failure abort, and leaves the
+	 * interrupt status set for whoever requested the cancellation.
+	 */
+	@Test(timeout = 30_000)
+	public void interruptedRenderEvaluatesNoNote() {
+		AudioSceneContext ctx = minimalContext();
+		AtomicInteger requested = new AtomicInteger();
+
+		List<PatternElement> elements = new ArrayList<>();
+		for (int i = 0; i < 100; i++) {
+			elements.add(observedElement(i * 8, requested::incrementAndGet));
+		}
+
+		Thread.currentThread().interrupt();
+
+		try {
+			renderPerNote(ctx, null, elements, false, 0.0, 0, 1024, null);
+			Assert.fail("renderPerNote should have been cancelled");
+		} catch (CancellationException e) {
+			Assert.assertTrue("the cancelling interrupt must remain set",
+					Thread.currentThread().isInterrupted());
+		} finally {
+			Thread.interrupted();
+		}
+
+		Assert.assertEquals("no note may be evaluated on an interrupted thread", 0, requested.get());
+	}
+
+	/**
+	 * A render interrupted part way through (a timed-out caller, a stopped render-ahead
+	 * thread) stops at the next note instead of evaluating the rest of the pattern, which
+	 * would otherwise keep dispatching work until the consecutive-failure bound, or never
+	 * when abandoned evaluations do not fail.
+	 */
+	@Test(timeout = 30_000)
+	public void renderInterruptedMidwayStopsAtNextNote() {
+		AudioSceneContext ctx = minimalContext();
+		AtomicInteger requested = new AtomicInteger();
+
+		List<PatternElement> elements = new ArrayList<>();
+		for (int i = 0; i < 100; i++) {
+			elements.add(observedElement(i * 8, () -> {
+				if (requested.incrementAndGet() == 2) Thread.currentThread().interrupt();
+			}));
+		}
+
+		try {
+			renderPerNote(ctx, null, elements, false, 0.0, 0, 1024, null);
+			Assert.fail("renderPerNote should have been cancelled");
+		} catch (CancellationException e) {
+			Assert.assertTrue("message should name the frame the render stopped at: " + e.getMessage(),
+					e.getMessage().contains("frame 16"));
+		} finally {
+			Thread.interrupted();
+		}
+
+		Assert.assertEquals("only the notes before the interrupt may be evaluated", 2, requested.get());
 	}
 }

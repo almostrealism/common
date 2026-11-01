@@ -456,7 +456,11 @@ Block layer = layer("dense", inputShape, outputShape, operator, weights);</code>
                     </tr>
                     <tr>
                         <td>ar-ml</td>
-                        <td>Provides foundation for high-level models (Llama, Qwen, etc.), AttentionFeatures builds on graph layers</td>
+                        <td>Provides foundation for high-level models (Llama, Qwen, etc.), AttentionFeatures builds on graph layers; ships the PDSL model assets and adds the attention primitives to the PDSL interpreter as a <code>PdslExtension</code></td>
+                    </tr>
+                    <tr>
+                        <td>ar-biology</td>
+                        <td>Builds biological models on the population dynamics of this module (<code>LeakyIntegrateAndFirePopulation</code>, <code>RatePopulation</code>)</td>
                     </tr>
                     <tr>
                         <td>ar-hardware</td>
@@ -752,7 +756,9 @@ List&lt;PackedCollection&gt; trainable = loraLayers.stream()
             <section id="resources">
                 <h2>Additional Resources</h2>
                 <ul>
-                    <li><a href="../../graph/README.md">Graph Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../../domain/graph/README.md">Graph Module README</a> - Comprehensive module documentation</li>
+                    <li><a href="../internals/pdsl-language.md">PDSL Language Reference</a> - The PDSL language core (package <code>org.almostrealism.dsl</code>), which lives in this module</li>
+                    <li><a href="../internals/neural-population-simulation.md">Simulating a Spiking Neural Population</a> - Building and stepping the population models of this module</li>
                     <li><a href="../apidocs/org/almostrealism/graph/package-summary.html">JavaDoc API - Graph</a> - Core graph classes</li>
                     <li><a href="../apidocs/org/almostrealism/layers/package-summary.html">JavaDoc API - Layers</a> - Layer implementations</li>
                     <li><a href="../apidocs/org/almostrealism/model/package-summary.html">JavaDoc API - Model</a> - Model and block classes</li>

@@ -30,7 +30,7 @@ The `Status` enum defines five possible states:
 | `SUCCESS` | Job completed successfully. |
 | `FAILED` | Job failed with an error. |
 | `CANCELLED` | Job was cancelled before completion. |
-| `DEGRADED` | Job exited cleanly but its work is incomplete or was not kept — for example, every change was dropped by staging guardrails, the post-completion pass cap was hit, or the agent abandoned a test-runner run it started. |
+| `DEGRADED` | Job exited cleanly but its work is incomplete or was not kept — for example, every change was dropped by staging guardrails, the post-completion pass cap was hit, the agent abandoned a test-runner run it started, or a git sync/commit failed transiently after its retries (`TransientGitException`). |
 
 ### Core Fields
 
@@ -215,7 +215,10 @@ Events are created by `GitManagedJob.fireJobCompleted(Exception error)`, which d
 ```java
 // GitManagedJob.createEvent()
 if (error != null) {
-    return JobCompletionEvent.failed(taskId, getTaskString(), error.getMessage(), error);
+    return TransientGitException.isTransient(error)
+        ? JobCompletionEvent.degraded(taskId, getTaskString(),
+                TransientGitException.describe(error))
+        : JobCompletionEvent.failed(taskId, getTaskString(), error.getMessage(), error);
 } else if (workOutcome.allChangesDropped()) {
     return JobCompletionEvent.degraded(taskId, getTaskString(),
         "All changes were dropped by staging guardrails: " + ...);
@@ -228,9 +231,11 @@ if (unpublished != null) {
 return JobCompletionEvent.success(taskId, getTaskString());
 ```
 
-`JobWorkOutcome.describeUnpublishedWork()` reports work the job produced but never committed (uncommitted changes to non-excluded files, or an authored commit message with no commit behind it), so a job whose output was dropped on the way out fails instead of reporting success.
+A thrown error that is (or was caused by) a `TransientGitException` — a fetch, pull/reset or commit that still failed after `GitOperations.retryTransient` spent its attempts — is reported `DEGRADED` with a message prefixed `Transient git infrastructure failure: `, so a harness git hiccup is not counted as an agent failure.
 
-`CodingAgentJob` overrides `createEvent()` to delegate to `CodingAgentJobEvent.forJob(job, error)`, which returns a `CodingAgentJobEvent` and applies additional checks: `FAILED` for a thrown error, a hard-failed primary phase, or a non-zero agent exit code; `DEGRADED` when the post-completion command pass cap was hit or every change was dropped by staging guardrails; `FAILED` for unpublished work; and `DEGRADED` when the agent abandoned test-runner runs. Otherwise the event is `SUCCESS`.
+`JobWorkOutcome.describeUnpublishedWork()` reports work the job produced but never committed (primary-tree work destroyed by a tampering revert and not replaced, uncommitted changes to non-excluded files, or an authored commit message with no commit behind it), so a job whose output was dropped on the way out fails instead of reporting success.
+
+`CodingAgentJob` overrides `createEvent()` to delegate to `CodingAgentJobEvent.forJob(job, error)`, which returns a `CodingAgentJobEvent` and applies additional checks: `DEGRADED` for a thrown `TransientGitException` (as above), `FAILED` for any other thrown error, a hard-failed primary phase, or a non-zero agent exit code; `DEGRADED` when the post-completion command pass cap was hit or every change was dropped by staging guardrails; `FAILED` for unpublished work; and `DEGRADED` when the agent abandoned test-runner runs. Otherwise the event is `SUCCESS`.
 
 ### Stage 2: Population
 
@@ -332,6 +337,7 @@ Events are serialized to JSON in `GitManagedJob.buildEventJson()` using Jackson 
   "stagedFiles": ["string", ...],
   "skippedFiles": ["string (reason)", ...],
   "pullRequestUrl": "string | null",
+  "dependentRepoPushes": [{"repoUrl": "string", "branch": "string", "commitHash": "string"}, ...],
   "selfNotify": true | false,
   "errorMessage": "string | null",
   "prompt": "string | null",
@@ -362,6 +368,7 @@ Events are serialized to JSON in `GitManagedJob.buildEventJson()` using Jackson 
 | `stagedFiles` | `getStagedFiles()` | array | Empty array when no files were staged. |
 | `skippedFiles` | `getSkippedFiles()` | array | Each entry includes a reason suffix in parentheses. |
 | `pullRequestUrl` | `getPullRequestUrl()` | string/null | GitHub PR URL or `null`. |
+| `dependentRepoPushes` | `getDependentRepoPushes()` | array | Pushes the job made to repositories other than its own; each entry is an object with `repoUrl`, `branch`, and `commitHash`. Empty array when the job pushed only to its own repository. |
 | `selfNotify` | `isSelfNotify()` | boolean | `true` when the completing job asked its own workstream to be woken with a follow-up job; see [Self-Notify Field](#self-notify-field). |
 | `errorMessage` | `getErrorMessage()` | string/null | `null` for successful jobs. |
 | `prompt` | `getPrompt()` | string/null | `null` for non-Claude jobs (base class default). |

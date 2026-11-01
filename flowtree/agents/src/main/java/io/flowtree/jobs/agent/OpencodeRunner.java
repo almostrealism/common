@@ -54,7 +54,8 @@ import java.util.function.Supplier;
  * same runner reaches either case without code changes.</p>
  *
  * <p>The runner owns binary discovery (see {@link OpencodeBinaryLocator}),
- * config-file synthesis ({@link OpencodeConfigBuilder}), subprocess launch
+ * config synthesis ({@link OpencodeConfigBuilder}, passed to the process in
+ * {@link #ENV_CONFIG_CONTENT}), subprocess launch
  * (via the runner-agnostic {@link AgentProcessRunner}), and output parsing
  * ({@link OpencodeOutputParser}).</p>
  *

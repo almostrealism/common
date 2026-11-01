@@ -24,11 +24,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.util.Comparator;
-import java.util.stream.Stream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Base64;
 import org.almostrealism.util.KeyUtils;
 
@@ -235,17 +236,40 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
     /**
      * Recursively deletes a directory tree.
      *
+     * <p>Walks with {@link Files#walkFileTree} and deletes each entry on the way
+     * out, tolerating entries that vanish concurrently: a {@link Files#walk}
+     * stream would throw if a file it had listed was removed by another process
+     * before it was reached, whereas the visitor treats an already-gone entry as
+     * success — which, for a delete, it is.</p>
+     *
+     * <p>Package-private so {@link EnvironmentManagedJobTest} can verify the
+     * vanishing-entry tolerance directly rather than through reflection.</p>
+     *
      * @param dir the root directory to delete
-     * @throws IOException if a file cannot be deleted
+     * @throws IOException if the tree cannot be traversed
      */
-    private void deleteDirectory(Path dir) throws IOException {
+    void deleteDirectory(Path dir) throws IOException {
         if (!Files.exists(dir)) return;
-        try (Stream<Path> walk = Files.walk(dir)) {
-            walk.sorted(Comparator.reverseOrder())
-                .forEach(p -> {
-                    try { Files.delete(p); } catch (IOException ignored) { }
-                });
-        }
+        Files.walkFileTree(dir, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+                    throws IOException {
+                Files.deleteIfExists(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path directory, IOException exc)
+                    throws IOException {
+                Files.deleteIfExists(directory);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     /**

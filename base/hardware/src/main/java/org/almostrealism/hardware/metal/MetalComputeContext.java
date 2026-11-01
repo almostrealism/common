@@ -412,13 +412,34 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	/**
 	 * Destroys this compute context and releases all Metal resources.
 	 *
-	 * <p>Destroys all cached instruction sets, releases command queues, and
-	 * clears internal state. After calling destroy, this context cannot be used.</p>
+	 * <p>The command runner is destroyed first, which commits and waits for every command buffer
+	 * still in flight and runs their completion callbacks, so no instruction set is destroyed and
+	 * no queue is released while work encoded against them is pending, and the runner's thread does
+	 * not outlive the context. Then all cached instruction sets are destroyed, the command queues
+	 * released, and internal state cleared &mdash; also when destroying the runner fails, whose
+	 * failure is rethrown afterwards. After calling destroy, this context cannot be used.</p>
+	 *
+	 * <p>The superclass's teardown, which shuts this context's executor down, may run before the
+	 * runner drains: shutting the executor down only refuses new tasks, so a task already submitted
+	 * to it that settles the foreign work a bridged command buffer waits for still runs, signals the
+	 * bridge, and lets the drain complete.</p>
 	 */
 	@Override
 	public synchronized void destroy() {
 		super.destroy();
 
+		try {
+			if (runner != null) runner.destroy();
+		} finally {
+			releaseResources();
+		}
+	}
+
+	/**
+	 * Destroys the cached instruction sets and copy kernels and releases the command queues. Part of
+	 * {@link #destroy()}, after the command runner has drained.
+	 */
+	private void releaseResources() {
 		List<MetalOperatorMap> toDestroy = new ArrayList<>(instructionSets.values());
 		toDestroy.forEach(MetalOperatorMap::destroy);
 

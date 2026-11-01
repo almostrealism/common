@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.ml.RotationFeatures;
 
 /**
  * Fundamental Music Embedding (FME) -- a sinusoidal continuous embedding
@@ -41,9 +42,9 @@ import org.almostrealism.layers.LayerFeatures;
  * output = Linear(encoding)              // weight (dim, dim) + bias (dim)
  * </pre>
  *
- * <p>The frequency computation reuses the math from
- * {@code RotationFeatures.computeRopeFreqs()} -- the formula
- * {@code 1/base^(2i/dim)} is identical.</p>
+ * <p>The frequency computation is the RoPE inverse-frequency formula {@code 1/base^(2i/dim)}, so the
+ * frequency table is built by {@link RotationFeatures#computeInvFreq(int, double)} rather than
+ * repeating it here.</p>
  *
  * <h2>Weight Keys (StateDictionary)</h2>
  * <ul>
@@ -55,7 +56,7 @@ import org.almostrealism.layers.LayerFeatures;
  * @see CompoundMidiEmbedding
  * @see MoonbeamConfig
  */
-public class FundamentalMusicEmbedding implements LayerFeatures {
+public class FundamentalMusicEmbedding implements LayerFeatures, RotationFeatures {
 
 	/** The base value for frequency computation (attribute-specific theta). */
 	private final double base;
@@ -93,7 +94,7 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 		this.linearWeight = linearWeight;
 		this.linearBias = linearBias;
 		this.translationBias = translationBias;
-		this.invFreqs = computeInvFreqs(base, dim);
+		this.invFreqs = computeInvFreq(dim, base);
 	}
 
 	/**
@@ -105,7 +106,7 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 	public FundamentalMusicEmbedding(double base, int dim) {
 		this.base = base;
 		this.dim = dim;
-		this.invFreqs = computeInvFreqs(base, dim);
+		this.invFreqs = computeInvFreq(dim, base);
 		this.linearWeight = new PackedCollection(new TraversalPolicy(dim, dim));
 		this.linearBias = new PackedCollection(new TraversalPolicy(dim));
 		this.translationBias = new PackedCollection(new TraversalPolicy(1));
@@ -191,26 +192,4 @@ public class FundamentalMusicEmbedding implements LayerFeatures {
 
 	/** Returns the translation bias. */
 	public CollectionProducer getTranslationBias() { return cp(translationBias); }
-
-	/**
-	 * Compute inverse frequency values for the sinusoidal encoding as a
-	 * {@link CollectionProducer} constant, shape (dim/2,).
-	 *
-	 * <p>This is the same formula used in {@code RotationFeatures.computeRopeFreqs()}:
-	 * {@code invFreq[i] = 1.0 / base^(2*i / dim)}.</p>
-	 *
-	 * @param base the frequency base
-	 * @param dim  the embedding dimension
-	 * @return CollectionProducer of shape (dim/2,) containing inverse frequency values
-	 */
-	public CollectionProducer computeInvFreqs(double base, int dim) {
-		// CRITICAL: This method MUST use CollectionProducer computations, NOT Java math loops.
-		// Replacing this with a Java loop + c(shape, double[]) hides the computation from the
-		// native compiler: hardware acceleration is lost, gradients cannot flow through the
-		// frequency table, and the kernel pipeline cannot fuse or optimize the expression.
-		// This is the same formula used in DiffusionFeatures.timesteps — do NOT revert it.
-		return integers(0, dim / 2)
-				.multiply(-2.0 * Math.log(base) / dim)
-				.exp();
-	}
 }

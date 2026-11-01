@@ -25,7 +25,7 @@ ar-compose
     |
     +-- ar-time (Temporal, TemporalRunner)
     |
-    +-- ar-ml (AudioComposer, generators)
+    +-- ar-ml (autoencoders, generators)
     |
     +-- ar-heredity (genetic algorithms)
 ```
@@ -41,8 +41,9 @@ ar-compose
 | `EfxManager` | `org.almostrealism.studio.arrange` | Per-channel effects management |
 | `RiseManager` | `org.almostrealism.studio.arrange` | Rise/swell effect processing |
 | `SceneSectionManager` | `org.almostrealism.studio.arrange` | Musical section organization |
-| `AudioComposer` | `org.almostrealism.studio.ml` | ML-based audio generation |
+| `AudioComposer` | `org.almostrealism.studio.ml` | Latent-space blending of autoencoded audio sources |
 | `AudioLibraryPersistence` | `org.almostrealism.studio.persistence` | Save/load library to Protocol Buffer |
+| `PatternElementPersistence` | `org.almostrealism.studio.persistence` | Lossless protobuf codec for `PatternElement` / `PatternNote` |
 | `LibraryDestination` | `org.almostrealism.studio.persistence` | Batched protobuf file management |
 | `AudioLayerGroupLibrary` | `org.almostrealism.studio.persistence` | Persist `AudioLayerGroup`s as first-class library entries |
 | `AudioLayerPitch` | `org.almostrealism.studio.persistence` | Single accessor for the captured pitch of an `AudioLayer` |
@@ -205,8 +206,21 @@ Generates audio using autoencoder-based latent space interpolation:
 - Interpolates in latent space
 - Decodes to audio output
 
+Each source carries a length-`dim` merge weight vector. `addSource(features)`
+samples it from a Gaussian (L2-normalized when `normalizeWeights` is set);
+`addSource(features, weights)` and `setWeights(index, weights)` supply it
+explicitly, used verbatim (any shape with `dim` elements is accepted and
+flattened; other lengths throw `IllegalArgumentException`). `getSource(index)`
+and `getSourceCount()` expose the per-source `ComposableAudioFeatures`.
+
 ### ComposableAudioFeatures
-Enables weighted feature composition for audio generation.
+Enables weighted feature composition for audio generation. Its weights are
+either a per-cell `(T, B, L)` tensor or a single length-`L` vector broadcast to
+every feature cell. `getResultant(value)` scales the features by the dot product
+of each weight vector with `value`, clamped to be non-negative, and multiplied by
+the source's blend contribution (`setContribution(double)`, default `1.0`).
+Explicit weights plus contributions make the composed latent a deterministic
+function of the sources.
 
 ## Persistence Package
 
