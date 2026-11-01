@@ -98,13 +98,14 @@ import java.util.stream.Stream;
  *   <li><strong>{@code native}</strong> - JNI backend with runtime-generated C code (default for CPU)</li>
  *   <li><strong>{@code cl}</strong> - OpenCL backend for GPU/CPU acceleration</li>
  *   <li><strong>{@code mtl}</strong> - Metal backend for Apple Silicon GPU</li>
+ *   <li><strong>{@code cuda}</strong> - CUDA backend for NVIDIA GPU (Linux)</li>
  *   <li><strong>{@code cpu}</strong> - Abstract CPU requirement. Resolves to {@link ComputeRequirement#JNI JNI} on aarch64 hosts and to {@link ComputeRequirement#CL CL} on all others.</li>
  *   <li><strong>{@code gpu}</strong> - Abstract GPU requirement. Resolves to {@link ComputeRequirement#MTL MTL} on macOS hosts and to {@link ComputeRequirement#CL CL} on all others (including non-macOS aarch64).</li>
  *   <li><strong>{@code *}</strong> - Automatic selection (default when unset):
  *     <ul>
  *       <li>macOS (aarch64): JNI, MTL, CL</li>
  *       <li>macOS (non-aarch64): JNI, CL</li>
- *       <li>non-macOS: CL, JNI</li>
+ *       <li>non-macOS: CUDA, CL, JNI</li>
  *     </ul>
  *   </li>
  *   <li><strong>Multiple drivers:</strong> Comma-separated list: {@code cl,native}</li>
@@ -772,6 +773,12 @@ public final class Hardware implements ConsoleFeatures {
 			ComputeRequirement type = requested.resolve();
 
 			if (done.contains(type)) continue r;
+
+			if (type == ComputeRequirement.CUDA && (drivers == null || !drivers.isRequired(requested))
+					&& !CudaDataContext.isDeviceAvailable()) {
+				if (enableVerbose) log("Hardware[" + getName() + "]: No CUDA device available");
+				continue r;
+			}
 
 			try {
 				boolean started = cl != null && type == ComputeRequirement.CL;
