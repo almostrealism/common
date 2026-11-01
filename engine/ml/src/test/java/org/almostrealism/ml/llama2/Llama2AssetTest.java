@@ -207,13 +207,17 @@ public class Llama2AssetTest extends TestSuiteBase implements AttentionFeatures 
 	 */
 	private double[][] run(Model model, Weights w) {
 		CompiledModel compiled = model.compile(false);
-		double[][] outputs = new double[STEPS][];
-		for (int step = 0; step < STEPS; step++) {
-			w.position.fill(step);
-			outputs[step] = compiled.forward(w.input(step)).toArray();
-			log("position " + step + " = " + arrayLiteral(outputs[step]));
+		try {
+			double[][] outputs = new double[STEPS][];
+			for (int step = 0; step < STEPS; step++) {
+				w.position.fill(step);
+				outputs[step] = compiled.forward(w.input(step)).toArray();
+				log("position " + step + " = " + arrayLiteral(outputs[step]));
+			}
+			return outputs;
+		} finally {
+			compiled.destroy();
 		}
-		return outputs;
 	}
 
 	/** Requires {@code actual} to hold {@code expected} element for element, within {@link #TOLERANCE}. */
