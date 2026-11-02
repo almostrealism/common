@@ -29,6 +29,7 @@
           "must_include": [
             "qa/docs-",
             "qa/defect-",
+            "qa/flaky-",
             "qa/coverage-",
             "qa/consolidate-",
             "qa/performance-",
@@ -38,8 +39,8 @@
           ],
           "must_include_any": [
             [
-              "MAX_OPEN_PRS[^.\\n]*\\b(?:7|seven)\\b",
-              "\\b(?:7|seven)\\b[^.\\n]*MAX_OPEN_PRS"
+              "MAX_OPEN_PRS[\\s`]*(?:=|:|\\bis\\b|\\bof\\b|\\bequals\\b|\\bset to\\b|\\blimit(?:ed)? to\\b|\\bcaps? (?:at|to)\\b)(?!\\s*(?:not|never|no)\\b)\\s*(?:to\\s+)?(?:a\\s+)?(?:7|seven)\\b",
+              "\\b(?:7|seven)\\b\\s+(?:open\\s+)?(?:PRs?|pull requests?)\\b[^.\\n]*MAX_OPEN_PRS"
             ]
           ]
         },
