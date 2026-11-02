@@ -33,7 +33,9 @@
 # `unittest discover` invocations the python-tests CI job uses, and test
 # files are omitted from the report (coverage.py's `--source=<dir>` caveat
 # documented in the plan's appendix: it instruments the test files
-# themselves unless told not to).
+# themselves unless told not to). The consult evals (tools/mcp/manager/eval)
+# are not a package, so that discovery does not reach them: they measure the
+# docs as much as the code, and run in their own python-evals CI job.
 #
 # Usage:
 #   fetch-latest-coverage.sh
