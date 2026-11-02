@@ -54,7 +54,7 @@
 - [music](studio/music/README.md): Pattern-based music composition, notes, arrangements | [Details](docs/modules/music.html)
 - [compose](studio/compose/README.md): Audio scene orchestration, generative audio, ML integration | [Details](docs/modules/compose.html)
 - [spatial](studio/spatial/README.md): Spatial audio visualization | [Details](docs/modules/music.html)
-- [bioscience](studio/bioscience/README.md): Biological models combined with the ML engine; connectome loaders (`CellTypeConnectome`) and dataset conversion scripts
+- [bioscience](studio/bioscience/README.md): Biological models combined with the ML engine; connectome loaders (`CellTypeConnectome` for cell-type matrices, `NeuronConnectome` for neuron-level signed compressed sparse rows), the `ConnectomeNetwork` spiking simulation over them, and the dataset conversion scripts (`connectome_csr.py`, `brian2_reference.py`)
 
 ### Standalone
 - [tools](tools/README.md): MCP servers, profiling UI
@@ -114,6 +114,7 @@
 ### Simulation
 - [Simulation Loop Examples](docs/internals/simulation-loop-examples.md): SimulationRunner patterns — the loop owner for recurrent dynamical systems, the step contract, boundary inputs, recording, measured dispatch overhead
 - [Simulating a Spiking Neural Population](docs/internals/neural-population-simulation.md): A tested worked example from device-resident state to recorded spikes — the LIF step, synaptic delay through the ring buffer, connectivity, reproducible random drive (`RandomProducer`, `AR_RANDOM`, `CounterRandom`), driving it with SimulationRunner, rate populations, and known limits
+- [Simulating a Neuron-Level Connectome](docs/internals/neuron-level-connectome-simulation.md): A tested worked example of the finer, neuron-level path — loading a brain circuit as a signed compressed-sparse-row `NeuronConnectome`, the sparse synaptic product, the `connectome_step` PDSL layer, the `ExponentialSynapseNeurons`/`PoissonInput` blocks, `ConnectomeNetwork` (the Shiu et al. 2024 whole-brain model) stepped by SimulationRunner with replicas and `meanRates`, and spike-for-spike cross-validation against Brian2
 
 ### Testing and Profiling
 - [Test Examples](docs/internals/test-examples.md): TestSuiteBase, @TestDepth usage

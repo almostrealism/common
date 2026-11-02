@@ -146,6 +146,26 @@ class TestScriptedModel(unittest.TestCase):
         with self.assertRaises(ValueError):
             model.resolve(self._evidence())
 
+    def test_no_committed_scripted_fixture_pins_a_line_anchor(self):
+        # The end-to-end run only rejects a line anchor in a fixture that a case
+        # actually exercises; this guards every committed fixture as data, so a
+        # drifted or orphan fixture is caught before the pipeline runs at all.
+        fixtures = os.path.join(_EVAL_DIR, "fixtures", "scripted")
+        offenders = {}
+        for name in os.listdir(fixtures):
+            if not name.endswith(".txt"):
+                continue
+            with open(os.path.join(fixtures, name), encoding="utf-8") as handle:
+                text = handle.read()
+            line_anchors = [match.group(0)
+                            for match in ScriptedModel._PLACEHOLDER.finditer(text)
+                            if match.group(4)]
+            if line_anchors:
+                offenders[name] = line_anchors
+        self.assertEqual(offenders, {},
+                         'scripted fixtures must cite by content (@"<phrase>"), '
+                         "not by line number")
+
     def test_consult_records_the_prompt(self):
         model = ScriptedModel("x")
         model.consult("q", evidence=self._evidence())
