@@ -3,7 +3,7 @@
 ## Overview
 
 This document explains how optimized process trees compile to native code and execute
-on hardware backends (JNI/C, OpenCL, Metal, and the opt-in CUDA backend). This is the final stage of the compilation
+on hardware backends (JNI/C, OpenCL, Metal, and CUDA). This is the final stage of the compilation
 pipeline — it takes a `Scope` (the computation AST) and produces an executable kernel.
 
 For how process trees are constructed, see
@@ -30,7 +30,7 @@ Scope (computation AST)
   │     ├── NativeComputeContext  →  C source → clang → .so → JNI
   │     ├── CLComputeContext      →  OpenCL source → cl_program → cl_kernel
   │     ├── MetalComputeContext   →  Metal source → MTLLibrary → MTLFunction
-  │     └── CudaComputeContext    →  CUDA C++ source → NVRTC → CUModule → CUFunction  (opt-in)
+  │     └── CudaComputeContext    →  CUDA C++ source → NVRTC → CUModule → CUFunction
   │
   └── InstructionSet → Execution
         Cached compiled kernel, ready to dispatch
@@ -186,7 +186,7 @@ The `AR_HARDWARE_DRIVER` environment variable controls which backends are loaded
 | `native` | JNI only (C compilation via clang) |
 | `cl` | OpenCL only |
 | `mtl` | Metal only (macOS) |
-| `cuda` | CUDA only (NVIDIA GPU; opt-in — never loaded by `*`/unset auto-detect; Linux/aarch64 bridge only) |
+| `cuda` | CUDA only (NVIDIA GPU, Linux) |
 | `cpu` | CPU-optimized backend |
 | `gpu` | GPU-optimized backend |
 | `*` or unset | Auto-detect best available |
@@ -195,7 +195,12 @@ The `AR_HARDWARE_DRIVER` environment variable controls which backends are loaded
 available — **NOT** a per-operation priority order; see "Per-operation provider selection"
 below for how a backend is actually chosen for each operation):
 - **ARM64 (Apple Silicon):** JNI, Metal, OpenCL
-- **x86/x64 (Linux/Windows):** OpenCL, JNI
+- **Linux (x86/x64 and ARM64):** CUDA, OpenCL, JNI — CUDA is attempted only when the
+  CUDA bridge loads and a device is present (`CudaDataContext.isDeviceAvailable()`); otherwise
+  it is skipped
+- **Windows (x86/x64 and ARM64):** OpenCL, JNI — the CUDA bridge ships only as a Linux
+  `libARCUDA-linux-<arch>.so`, so CUDA is never loaded on Windows even though the wildcard lists
+  it; `isDeviceAvailable()` reports it absent and it is skipped
 - **x86/x64 (macOS):** OpenCL (no JNI)
 
 ### Backend Coverage in CI
@@ -572,7 +577,7 @@ reduce memory usage.
 - `HardwareDataContext.java` (`base/hardware/src/.../ctx/`) — Memory management
 - `CLOperator.java` (`base/hardware/src/.../hardware/cl/`) — OpenCL dispatch
 - `MetalOperator.java` (`base/hardware/src/.../hardware/metal/`) — Metal dispatch
-- `CudaProgram.java` (`base/hardware/src/.../hardware/cuda/`) — CUDA C++/NVRTC compilation (opt-in; Linux/aarch64 bridge only)
+- `CudaProgram.java` (`base/hardware/src/.../hardware/cuda/`) — CUDA C++/NVRTC compilation
 - `NativeCompiler.java` (`base/hardware/src/.../hardware/jni/`) — C/JNI compilation
 
 ## See Also

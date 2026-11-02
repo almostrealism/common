@@ -22,6 +22,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Verifies how {@code AR_HARDWARE_DRIVER} values are interpreted, and in
@@ -48,7 +49,7 @@ public class DriverSelectionTest {
 	public void wildcardRequiresNothing() {
 		DriverSelection selection = DriverSelection.parse("*", false, false);
 
-		Assert.assertEquals(Arrays.asList(ComputeRequirement.CL, ComputeRequirement.JNI),
+		Assert.assertEquals(Arrays.asList(ComputeRequirement.CUDA, ComputeRequirement.CL, ComputeRequirement.JNI),
 				selection.getRequirements());
 		Assert.assertTrue("the wildcard must not commit to any backend",
 				selection.getRequired().isEmpty());
@@ -96,7 +97,7 @@ public class DriverSelectionTest {
 	public void aRepeatedBackendAppearsOnce() {
 		DriverSelection selection = DriverSelection.parse("cl,*", false, false);
 
-		Assert.assertEquals(Arrays.asList(ComputeRequirement.CL, ComputeRequirement.JNI),
+		Assert.assertEquals(Arrays.asList(ComputeRequirement.CL, ComputeRequirement.CUDA, ComputeRequirement.JNI),
 				selection.getRequirements());
 	}
 
@@ -204,12 +205,26 @@ public class DriverSelectionTest {
 		Assert.assertTrue(paired.isRequired(ComputeRequirement.CUDA));
 	}
 
-	/** The wildcard does not yet offer CUDA, so existing wildcard selections are unchanged. */
+	/**
+	 * Outside macOS the wildcard offers CUDA first, on every architecture, without committing to
+	 * it; macOS has no CUDA, so the wildcard never offers it there.
+	 */
 	@Test(timeout = 30000)
-	public void wildcardDoesNotOfferCuda() {
-		Assert.assertFalse(DriverSelection.parse("*", false, true)
+	public void wildcardOffersCudaOutsideMacOS() {
+		List<ComputeRequirement> expected =
+				Arrays.asList(ComputeRequirement.CUDA, ComputeRequirement.CL, ComputeRequirement.JNI);
+
+		DriverSelection arm = DriverSelection.parse("*", false, true);
+		Assert.assertEquals(expected, arm.getRequirements());
+		Assert.assertFalse(arm.isRequired(ComputeRequirement.CUDA));
+
+		DriverSelection x86 = DriverSelection.parse("*", false, false);
+		Assert.assertEquals(expected, x86.getRequirements());
+		Assert.assertFalse(x86.isRequired(ComputeRequirement.CUDA));
+
+		Assert.assertFalse(DriverSelection.parse("*", true, true)
 				.getRequirements().contains(ComputeRequirement.CUDA));
-		Assert.assertFalse(DriverSelection.parse("*", false, false)
+		Assert.assertFalse(DriverSelection.parse("*", true, false)
 				.getRequirements().contains(ComputeRequirement.CUDA));
 	}
 }

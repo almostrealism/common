@@ -98,13 +98,14 @@ import java.util.stream.Stream;
  *   <li><strong>{@code native}</strong> - JNI backend with runtime-generated C code (default for CPU)</li>
  *   <li><strong>{@code cl}</strong> - OpenCL backend for GPU/CPU acceleration</li>
  *   <li><strong>{@code mtl}</strong> - Metal backend for Apple Silicon GPU</li>
+ *   <li><strong>{@code cuda}</strong> - CUDA backend for NVIDIA GPU (Linux)</li>
  *   <li><strong>{@code cpu}</strong> - Abstract CPU requirement. Resolves to {@link ComputeRequirement#JNI JNI} on aarch64 hosts and to {@link ComputeRequirement#CL CL} on all others.</li>
  *   <li><strong>{@code gpu}</strong> - Abstract GPU requirement. Resolves to {@link ComputeRequirement#MTL MTL} on macOS hosts and to {@link ComputeRequirement#CL CL} on all others (including non-macOS aarch64).</li>
  *   <li><strong>{@code *}</strong> - Automatic selection (default when unset):
  *     <ul>
  *       <li>macOS (aarch64): JNI, MTL, CL</li>
  *       <li>macOS (non-aarch64): JNI, CL</li>
- *       <li>non-macOS: CL, JNI</li>
+ *       <li>non-macOS: CUDA, CL, JNI</li>
  *     </ul>
  *   </li>
  *   <li><strong>Multiple drivers:</strong> Comma-separated list: {@code cl,native}</li>
@@ -236,6 +237,7 @@ import java.util.stream.Stream;
  * <ul>
  *   <li>{@link org.almostrealism.hardware.cl.CLDataContext} - OpenCL</li>
  *   <li>{@link MetalDataContext} - Metal</li>
+ *   <li>{@link CudaDataContext} - CUDA</li>
  *   <li>{@link NativeDataContext} - JNI/C</li>
  * </ul>
  *
@@ -656,17 +658,45 @@ public final class Hardware implements ConsoleFeatures {
 	 * @return The number of data contexts successfully initialized
 	 */
 	private int processRequirements(List<ComputeRequirement> requirements) {
+		List<ComputeRequirement> available = availableRequirements(requirements);
 		Precision precision = Precision.valueOf(SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP64"));
 
 		if (KernelPreferences.isRequireUniformPrecision()) {
-			for (ComputeRequirement r : requirements) {
+			for (ComputeRequirement r : available) {
 				if (r.getMaximumPrecision().bytes() < precision.bytes()) {
 					precision = r.getMaximumPrecision();
 				}
 			}
 		}
 
-		return processRequirements(requirements, precision);
+		return processRequirements(available, precision);
+	}
+
+	/**
+	 * Removes optional backends with no device on this host, so an unavailable candidate neither
+	 * lowers the resolved precision nor is attempted. Only CUDA is filtered: it is the backend the
+	 * wildcard offers whose presence {@link CudaDataContext#isDeviceAvailable()} can probe without
+	 * creating a context. A backend named explicitly in {@code AR_HARDWARE_DRIVER} is required and
+	 * kept, so its failure to initialize is reported rather than silently dropped.
+	 *
+	 * @param requirements the requested backends, in order
+	 * @return the subset whose devices are available or which were explicitly required
+	 */
+	private List<ComputeRequirement> availableRequirements(List<ComputeRequirement> requirements) {
+		List<ComputeRequirement> available = new ArrayList<>(requirements.size());
+
+		for (ComputeRequirement requested : requirements) {
+			if (requested.resolve() == ComputeRequirement.CUDA
+					&& (drivers == null || !drivers.isRequired(requested))
+					&& !CudaDataContext.isDeviceAvailable()) {
+				if (enableVerbose) log("Hardware[" + getName() + "]: No CUDA device available");
+				continue;
+			}
+
+			available.add(requested);
+		}
+
+		return available;
 	}
 
 	/**
@@ -759,6 +789,8 @@ public final class Hardware implements ConsoleFeatures {
 		if (enableVerbose) {
 			log("Hardware[" + getName() + "]: Processing Hardware Requirements...");
 		}
+
+		requirements = availableRequirements(requirements);
 
 		List<ComputeRequirement> done = new ArrayList<>();
 
@@ -1381,8 +1413,9 @@ public final class Hardware implements ConsoleFeatures {
 	 * to the sole context when only one exists — it filters the contexts built from
 	 * {@code AR_HARDWARE_DRIVER} strictly by the requirements. So
 	 * {@code isAvailable(ComputeRequirement.GPU)} returns false on a CPU-only host (a single
-	 * {@link NativeDataContext}) and true only on a host that built a {@link MetalDataContext} or
-	 * {@link CLDataContext}, making it a reliable presence check for a real accelerator.</p>
+	 * {@link NativeDataContext}) and true only on a host that built a {@link MetalDataContext},
+	 * {@link CudaDataContext} or {@link CLDataContext}, making it a reliable presence check for a
+	 * real accelerator.</p>
 	 *
 	 * @param requirements the requirements every candidate context must satisfy
 	 * @return whether any initialized context satisfies all the requirements

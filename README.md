@@ -71,7 +71,8 @@ by other modules.
     2. OpenCL on CPU (x86/Aarch64)
     3. OpenCL on GPU (x86/Aarch64)
     4. Metal (JNI with dylib) on GPU (Aarch64)
-    5. External Native Operations via a generated executable (x86/Aarch64)
+    5. CUDA on GPU (x86/Aarch64 Linux)
+    6. External Native Operations via a generated executable (x86/Aarch64)
 
 *For more information about the Java bindings for OpenCL used here, visit jocl.org*
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
