@@ -269,6 +269,58 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Store-backed items with no file in the tree must still be recomputed when
+	 * the model changes. The file-tree scan in {@link AudioLibrary#refresh()}
+	 * never visits them, so revalidation alone would strip them from the complete
+	 * set and leave them without the new model's features and absent from
+	 * {@link AudioLibrary#allDetails()}. Here the sample files are deleted after
+	 * the first pass, leaving the stored entries file-less, and refresh must
+	 * recompute them from their stored frequency data.
+	 */
+	@Test(timeout = 300000)
+	public void modelChangeRecomputesStoreOnlyItems() throws Exception {
+		int count = 6;
+		List<File> wavFiles = generateSineWaves(count);
+
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library = new AudioLibrary(
+				new FileWaveDataProviderNode(samplesDir.toFile()),
+				SAMPLE_RATE, store);
+		library.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(
+				FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION, "old-model"));
+		library.refresh().get();
+		library.stop();
+		store.close();
+
+		// Remove the files so the stored entries have no provider in the file tree.
+		for (File wav : wavFiles) {
+			Assert.assertTrue("sample file deleted", wav.delete());
+		}
+
+		ProtobufWaveDetailsStore store2 = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library2 = new AudioLibrary(
+				new FileWaveDataProviderNode(samplesDir.toFile()),
+				SAMPLE_RATE, store2);
+		library2.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(
+				FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION, "new-model"));
+		library2.refresh().get();
+
+		List<WaveDetails> reloaded = library2.allDetails().toList();
+		Assert.assertEquals("file-less items remain complete for the new model",
+				count, reloaded.size());
+
+		for (WaveDetails d : reloaded) {
+			Assert.assertNotNull("new-model features recomputed from stored data",
+					d.getFeatures("new-model"));
+			Assert.assertNotNull("old-model features kept beside them",
+					d.getFeatures("old-model"));
+		}
+
+		library2.stop();
+		store2.close();
+	}
+
+	/**
 	 * Tests that HNSW search returns sensible nearest neighbors: samples
 	 * at nearby frequencies should be neighbors, while distant frequencies
 	 * should not appear in top results.

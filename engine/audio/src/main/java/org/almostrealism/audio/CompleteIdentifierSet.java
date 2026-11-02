@@ -44,16 +44,17 @@ final class CompleteIdentifierSet extends HashSet<String> {
 	 *
 	 * @param modelId  the current model, or {@code null} if there is none (no-op)
 	 * @param complete whether the item with a given identifier is complete for that model
-	 * @return the number of identifiers removed
+	 * @return the identifiers removed, so the caller can recompute them; empty
+	 *         when there is no model or the set was already checked against it
 	 */
-	int revalidate(String modelId, Predicate<String> complete) {
-		if (modelId == null || modelId.equals(this.modelId)) return 0;
+	List<String> revalidate(String modelId, Predicate<String> complete) {
+		if (modelId == null || modelId.equals(this.modelId)) return List.of();
 
 		List<String> stale = new ArrayList<>(this).stream()
 				.filter(complete.negate())
 				.toList();
 		removeAll(stale);
 		this.modelId = modelId;
-		return stale.size();
+		return stale;
 	}
 }
