@@ -73,12 +73,21 @@ final class CompleteIdentifierSet extends AbstractSet<String> {
 	 * already checked against {@code modelId}. Checking is costly (it reads each
 	 * item), so it runs once per model rather than on every refresh.
 	 *
+	 * <p>The check, scan, removal, and publication of the new model are performed
+	 * atomically: {@link AudioLibrary#refresh()} is public and may be invoked
+	 * concurrently, and without this guarantee two overlapping refreshes could
+	 * both observe the old model, both scan, and both return the same stale
+	 * identifiers — enqueuing the same expensive recomputation work twice. The
+	 * lock is uncontended in the common case because the method returns early
+	 * once a model has been checked, and it never contends with the analysis
+	 * worker, which adds through the lock-free backing set.</p>
+	 *
 	 * @param modelId  the current model, or {@code null} if there is none (no-op)
 	 * @param complete whether the item with a given identifier is complete for that model
 	 * @return the identifiers removed, so the caller can recompute them; empty
 	 *         when there is no model or the set was already checked against it
 	 */
-	List<String> revalidate(String modelId, Predicate<String> complete) {
+	synchronized List<String> revalidate(String modelId, Predicate<String> complete) {
 		if (modelId == null || modelId.equals(this.modelId)) return List.of();
 
 		List<String> stale = new ArrayList<>(identifiers).stream()

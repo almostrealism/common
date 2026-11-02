@@ -22,7 +22,9 @@ import org.junit.Test;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -142,6 +144,61 @@ public class CompleteIdentifierSetTest extends TestSuiteBase {
 		}
 
 		Assert.assertNull("iteration under concurrent add must not throw", failure.get());
+	}
+
+	/**
+	 * Regression test for the once-per-model contract under overlapping refreshes:
+	 * when two threads revalidate the same new model concurrently, exactly one scan
+	 * must win and return the stale identifiers, so {@link AudioLibrary#refresh()}
+	 * never enqueues the same recomputation work twice. Without the atomic
+	 * check/scan/publish both callers would observe the old model and both return
+	 * the stale list.
+	 */
+	@Test(timeout = 60000)
+	public void concurrentRevalidateScansOncePerModel() throws InterruptedException {
+		for (int trial = 0; trial < 200; trial++) {
+			CompleteIdentifierSet set = new CompleteIdentifierSet();
+			set.add("stale");
+
+			AtomicInteger scans = new AtomicInteger();
+			AtomicInteger nonEmptyResults = new AtomicInteger();
+			CountDownLatch ready = new CountDownLatch(2);
+			CountDownLatch go = new CountDownLatch(1);
+			AtomicReference<Throwable> failure = new AtomicReference<>();
+
+			Runnable revalidate = () -> {
+				try {
+					ready.countDown();
+					go.await();
+					List<String> removed = set.revalidate("m1", id -> {
+						scans.incrementAndGet();
+						return false;
+					});
+					if (!removed.isEmpty()) {
+						Assert.assertEquals(List.of("stale"), removed);
+						nonEmptyResults.incrementAndGet();
+					}
+				} catch (Throwable t) {
+					failure.set(t);
+				}
+			};
+
+			Thread a = new Thread(revalidate);
+			Thread b = new Thread(revalidate);
+			a.start();
+			b.start();
+			ready.await();
+			go.countDown();
+			a.join(10000);
+			b.join(10000);
+
+			Assert.assertNull("concurrent revalidate must not throw", failure.get());
+			Assert.assertEquals("the scan runs exactly once across overlapping calls",
+					1, scans.get());
+			Assert.assertEquals("only one call returns the stale identifiers",
+					1, nonEmptyResults.get());
+			Assert.assertFalse("the stale id is removed", set.contains("stale"));
+		}
 	}
 
 	/** The type behaves as a {@link Set}: add/remove/contains/size all delegate correctly. */
