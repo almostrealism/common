@@ -236,12 +236,24 @@ public class MidiCCSource implements ModulationSource, CodeFeatures {
 
 	/**
 	 * Normalizes MIDI value (0-127) to 0.0-1.0 range.
-	 * For bipolar mode, maps 0-127 to -1.0 to +1.0.
+	 * For bipolar mode, maps 0-127 to -1.0 to +1.0 with the anchors 0 = -1.0,
+	 * 64 = 0.0 and 127 = +1.0.
+	 *
+	 * <p>The CC range is asymmetric about the center: 64 steps lie below it and 63
+	 * above, so the two sides require different divisors. A single shared divisor
+	 * cannot place both 0 at -1.0 and 127 at +1.0; dividing throughout by 63 keeps
+	 * the positive anchor but sends 0 to -1.0159, below the documented -1.0 and
+	 * outside the configured output range. The halves are therefore scaled
+	 * independently so that each anchor is exact and the result stays within
+	 * [-1.0, +1.0].</p>
 	 */
 	private double normalizeValue(int midiValue) {
 		if (bipolar) {
-			// 0 = -1.0, 64 = 0.0, 127 = +1.0
-			return (midiValue - 64) / 63.0;
+			if (midiValue >= 64) {
+				return (midiValue - 64) / 63.0;
+			} else {
+				return (midiValue - 64) / 64.0;
+			}
 		} else {
 			return midiValue / 127.0;
 		}
