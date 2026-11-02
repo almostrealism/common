@@ -99,6 +99,7 @@ The `changes` job detects which top-level directories changed and sets flags:
 | `extern_changed`   | `extern/`                  | `test-media`                     |
 | `studio_changed`   | `studio/`                  | `test-media`                     |
 | `python_changed`   | any `*.py` + `tools/mcp/requirements.txt` | `python-tests`    |
+| `evals_changed`    | any `*.md`/`*.html`/`*.java`/`*.py`/`*.sh` + `tools/mcp/manager/eval/` + the ar-manager Dockerfile | `python-evals` |
 | `agent_protection_changed` | `tools/ci/agent-protection/` | `python-tests` (the branch-check shell suites) |
 | `agent_isolation_changed` | agent compose/entrypoint + isolation validator (+ `analysis.yaml`) | `agent-volume-isolation` |
 | `images_changed`   | Dockerfiles, `.dockerignore`, compose, `tools/mcp/`, `tools/tracker/`, `docs/`, `CLAUDE.md` | `docker-build` |
@@ -117,8 +118,36 @@ skipped only by its own path gate, never by an upstream failure, so that
 `skipped` is unambiguous.
 The `python_changed` flag is a path-based (not layer-based) flag that gates
 `python-tests`; Python sources are not part of the layered Java module graph.
+`evals_changed` is the same kind of flag for `python-evals` (see "What the
+`python-evals` job covers" below).
 The `agent_isolation_changed` flag is likewise path-based and gates
 `agent-volume-isolation` (folded in from a former standalone workflow).
+
+### What the `python-evals` job covers
+
+Runs the consult evaluation set, `python3 -m unittest discover -s
+tools/mcp/manager/eval`. The evals run the real consult pipeline over the
+documentation corpus and snapshot index staged from the checkout (the corpus as
+the ar-manager Dockerfile's `docs` stage copies it), so their inputs are the
+repository's docs and sources, not only Python. They used to run inside
+`python-tests`, which is gated on Python sources: a docs-only change broke them,
+nothing ran them on that pull request, and the breakage first appeared after
+merge, in `coverage-qa` (which runs the same discovery as `python-tests`).
+
+`eval/` is deliberately **not a package** (no `__init__.py`), so the
+`tools/mcp/manager` discovery in `python-tests`, and in
+`fetch-latest-coverage.sh`, does not reach it. Gated on `evals_changed`, which
+covers every file type the evals read — doc suffixes for the corpus, `*.java`,
+`*.py` and `*.sh` for the index — plus the eval data and the ar-manager
+Dockerfile, and **not** on `code_changed` (see the sanctioned exception under
+"Changing layer flags"). Depends only on `changes`. Uploads `python-evals-output`
+on failure, which `auto-resolve-python` quotes alongside `python-tests-output`.
+Part of `all-checks` (skipped → treated as passing).
+`tools/tests/test_python_evals_job.py` pins all of this.
+
+A scripted eval answer cites evidence by content, `[D:<path>@"<phrase>"]`,
+never by line: the corpus is the live checkout, so a line anchor moved to
+another chunk whenever anything above it was edited. A line anchor is rejected.
 
 ### What the `agent-volume-isolation` job covers
 
@@ -136,9 +165,9 @@ conflicting edits and at least one of them fails.
 
 | Job | When | Prompts | Submission |
 |-----|------|---------|------------|
-| `auto-resolve-python` | `python-tests` failed | Python test failure | At once, from this run |
-| `auto-review` | attempt 1 only, `python-tests` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
-| `auto-resolve` | attempt ≥ 3, `python-tests` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
+| `auto-resolve-python` | `python-tests` or `python-evals` failed | Python test failure | At once, from this run |
+| `auto-review` | attempt 1 only, `python-tests` and `python-evals` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
+| `auto-resolve` | attempt ≥ 3, `python-tests` and `python-evals` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
 
 The docs-only review (`docs-review.txt`) reviews and improves documents and
 **never implements a plan**, and it keeps its edits under `docs/` so the branch
@@ -173,8 +202,9 @@ Exclusivity is structural, not a handoff between jobs:
   retry re-runs it whenever one of its inputs failed, and its first agent —
   submitted minutes into attempt 1 — is very likely still working when a test
   failure brings attempt 2 around.
-- A `python-tests` failure skips both `auto-review` and `auto-resolve`, skips
-  `test-flowtree` (which gates on python-tests success-or-skipped), and is never
+- A `python-tests` or `python-evals` failure skips both `auto-review` and
+  `auto-resolve`, a `python-tests` failure also skips `test-flowtree` (which
+  gates on python-tests success-or-skipped), and either is never
   retried by `rerun-flaky-tests.sh`, so `auto-resolve-python` is its only
   submission.
 - Retries only happen when a long-running test job (`test`, `test (N)`,
@@ -1057,7 +1087,8 @@ progress for `PR_GRACE_HOURS`. The agent plans only its task and never writes
 
 Every job runs on `ubuntu-latest`. None of them builds the Java reactor or runs
 its tests. The one job that runs any tests is `coverage-qa`: it runs the Python
-suites under coverage.py (seconds) and reuses master's `merged-coverage-report`
+suites under coverage.py (seconds; the consult evals are not among them, see
+"What the `python-evals` job covers") and reuses master's `merged-coverage-report`
 artifact for Java. Its Maven recompute path (`fetch-latest-coverage.sh`) is
 switched off with `ALLOW_RECOMPUTE=false`, so a missing artifact fails the step
 and names the fix (a fresh master "Build and Test" run) instead of running the
@@ -1510,15 +1541,16 @@ hook below is a partial backstop, not yet a closed surface (see its own entry):
   must include the flag, and any job gated on the flag must AND it with
   `code_changed == 'true'` so docs-only PRs still skip everything.
 
-  **One sanctioned exception: `docker-build` is gated on `images_changed`
-  alone.** The `code_changed` conjunction exists so a docs-only PR skips the
-  *test* pipeline, and every other flag-gated job is a test job. `docker-build`
-  is not: it verifies a build artifact, and documentation is one of that
-  artifact's inputs, because ar-manager bakes the corpus into its image. ANDing
-  it with `code_changed` would skip the corpus check on precisely the change
-  that alters the corpus — `code_changed` is false for a docs-only PR, since
-  the detector excludes `docs/` and `*.md`. Do not "fix" this back to the
-  general rule. Any future job in the same position (verifying an artifact
+  **Sanctioned exceptions: `docker-build` is gated on `images_changed` alone,
+  and `python-evals` on `evals_changed` alone.** The `code_changed`
+  conjunction exists so a docs-only PR skips the *test* pipeline, and every
+  other flag-gated job tests code. These two do not: `docker-build` verifies a
+  build artifact, and documentation is one of that artifact's inputs, because
+  ar-manager bakes the corpus into its image; `python-evals` measures consult
+  against that same corpus. ANDing either with `code_changed` would skip it on
+  precisely the change that alters the corpus — `code_changed` is false for a
+  docs-only PR, since the detector excludes `docs/` and `*.md`. Do not "fix"
+  these back to the general rule. Any future job in the same position (one
   whose inputs include documentation) belongs in this exception too.
 
 ---

@@ -128,13 +128,23 @@ class TestScriptedModel(unittest.TestCase):
         return ev
 
     def test_placeholders_resolve_to_presented_ids(self):
-        model = ScriptedModel("A [D:.github/CLAUDE.md]. B [D:.github/CLAUDE.md@915]. "
+        model = ScriptedModel('A [D:.github/CLAUDE.md]. B [D:.github/CLAUDE.md@"b"]. '
                               "C [N:mem-1]. D [I:x.sh].")
         self.assertEqual(model.resolve(self._evidence()), "A [D1]. B [D2]. C [N1]. D [I1].")
 
     def test_unretrieved_evidence_becomes_an_unpresented_id(self):
         model = ScriptedModel("A [D:other.md]. B [N:missing].")
         self.assertEqual(model.resolve(self._evidence()), "A [D99]. B [N99].")
+
+    def test_a_phrase_missing_from_every_item_becomes_an_unpresented_id(self):
+        model = ScriptedModel('A [D:.github/CLAUDE.md@"not in any chunk"].')
+        self.assertEqual(model.resolve(self._evidence()), "A [D99].")
+
+    def test_a_line_anchor_is_rejected(self):
+        # Line anchors drift whenever the live doc is edited above them.
+        model = ScriptedModel("A [D:.github/CLAUDE.md@915].")
+        with self.assertRaises(ValueError):
+            model.resolve(self._evidence())
 
     def test_consult_records_the_prompt(self):
         model = ScriptedModel("x")
@@ -243,6 +253,19 @@ class TestScriptedRun(unittest.TestCase):
 
     def test_no_false_abstentions(self):
         self.assertEqual(self.summary["false_abstention"], 0)
+
+    def test_every_scripted_citation_names_retrieved_evidence(self):
+        # A placeholder whose phrase no longer appears in any retrieved item
+        # resolves to [D99] and would pass a case that expects warnings for
+        # the wrong reason; re-pick the phrase from the cited text instead.
+        unresolved = {}
+        for cid, response in run_consult_eval._run_scripted(self.cases).items():
+            for turn in response if isinstance(response, list) else [response]:
+                sentences = [w["sentence"] for w in turn.get("citation_warnings", [])
+                             if w["reason"] == "unknown citation"]
+                if sentences:
+                    unresolved.setdefault(cid, []).extend(sentences)
+        self.assertEqual(unresolved, {})
 
 
 if __name__ == "__main__":
