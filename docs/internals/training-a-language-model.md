@@ -13,11 +13,11 @@ general rule that `ModelOptimizer` owns the training loop.
 | Byte tokenizer | `ByteTokenizer` (`org.almostrealism.ml.tokenization`) | Fixed 256-symbol vocabulary; token id = unsigned UTF-8 byte. Decoding uses standard UTF-8 replacement for malformed sequences; ids outside `0..255` are rejected. |
 | Next-token dataset | `NextTokenDataset` (`org.almostrealism.ml`) | Input `(seqLen)` token ids, target `(seqLen, vocab)` one-hot rows of the tokens shifted by one. `split` partitions the source tokens into contiguous regions before windowing, so no window crosses the train/held-out seam. |
 | One-hot rows | `VectorFeatures.oneHotRows` | One producer for the whole `(rows, classes)` matrix. |
-| Token embedding | `LayerFeatures.embedding` | Gathers table rows with `CollectionFeatures.rows`; gradients reach the table (`EmbeddingTests`). |
-| Causal attention | `SequenceAttentionFeatures` | `sequenceAttention(..., causal)` builds a causal layer of `sequence_attention.pdsl`, whose score half's `sequence_causal_mask` stage adds `causalLogitMask` (zero for key `j <= i`, a large negative penalty otherwise) to the logits before the key-axis softmax, alongside any per-key mask. Reached from `TransformerBlockFeatures.transformerBlock(..., causal)` through the `AttentionFeatures.selfAttention` variant seam; `DifferentialAttentionFeatures` rejects `causal = true`. |
+| Token embedding | `LayerFeatures.embedding`, the PDSL `embedding` built-in | Gathers table rows with `CollectionFeatures.rows`; gradients reach the table (`EmbeddingTests`, `EmbeddingLogSoftmaxPrimitivesTest`). |
+| Causal attention | `sequence_attention.pdsl`, `SequenceAttentionFeatures` | The `sequence_attention_causal` layer, whose score half's `sequence_causal_mask` stage adds `causalLogitMask` (zero for key `j <= i`, a large negative penalty otherwise) to the logits before the key-axis softmax, alongside any per-key mask. The model's blocks call it from `causal_lm.pdsl`; a Java caller builds it with `sequenceAttention(..., causal)`, which `TransformerBlockFeatures.transformerBlock(..., causal)` reaches through the `AttentionFeatures.selfAttention` variant seam; `DifferentialAttentionFeatures` rejects `causal = true`. |
 | Gradients into K and V | `sequence_attention.pdsl`, the PDSL `scaled_dot_product` built-in | The keys and values are branches of the attention layer, and `scaled_dot_product` takes a branch as its second operand, wiring it into the product as an auxiliary input (`LayerRoutingFeatures.compose`), so the fused QKV weight receives gradients in all three slices (`SequenceAttentionGradientTest`). |
-| Loss | `logSoftmax` + `NegativeLogLikelihood` | The model ends in a `(seqLen, vocab)` output, so the loss is the mean over positions; `NegativeLogLikelihood.gradient` is `-target / rows`, the gradient of that mean. |
-| Model | `CausalLanguageModel` (a `Model`) and `CausalLanguageModelConfig` (a `TransformerConfig`) | Embedding, `depth` pre-norm RMS blocks with causal RoPE attention and a SiLU-gated feed-forward, final RMS norm, output projection, log-softmax, assembled when the model is constructed. Weights live in a `StateDictionary`; the configuration owns their shapes and keys and creates fresh ones. |
+| Loss | `log_softmax` (`ActivationFeatures.logSoftmax`) + `NegativeLogLikelihood` | The model ends in a `(seqLen, vocab)` output, so the loss is the mean over positions; `NegativeLogLikelihood.gradient` is `-target / rows`, the gradient of that mean. |
+| Model | `CausalLanguageModel` (a `Model`), `CausalLanguageModelConfig` (a `TransformerConfig`) and the `causal_lm.pdsl` asset | Embedding, `depth` pre-norm RMS blocks with causal RoPE attention and a SiLU-gated feed-forward, final RMS norm, output projection, log-softmax. The structure is the asset's layers, for the full-window pass and for the single-position decode; the model binds its configuration as the asset's `settings` (`TransformerConfig.toPdslSettings()`) and each block's weights, and builds them when it is constructed. Weights live in a `StateDictionary`; the configuration owns their shapes and keys and creates fresh ones. |
 | Optimizer | `AdamOptimizer` set with `Model.setParameterUpdate` | `CausalLanguageModel` starts with updates disabled, so Adam must be set before the model is compiled for training. |
 | Window spacing | `NextTokenDataset.spanningStride` | The largest stride at which a given number of windows fit in the region, so a run that reads that many windows covers the region from start to end. |
 | Generation | `SlidingWindowAutoregressiveModel` | An `AutoregressiveModel<Integer>` that compiles a `CausalLanguageModel` for inference and decodes with a sliding window over it; see "Generation" below. |
@@ -380,16 +380,21 @@ invocations, 135 Metal dispatches and 7 command-buffer commits per byte. The sin
 key/value-cache decode was added to avoid recomputing the window.
 `KeyValueCacheAutoregressiveModel` decodes the same weights one token at a time, scoring the new
 position against each layer's cached keys and values instead of recomputing the whole window, so the
-work per byte is one position rather than one window. It is built by `CausalLanguageModel.decodeModel`,
-which bridges the trained weight layout to the cached `AttentionFeatures.attention` overloads without
-copying a weight, passing each block a caller-owned `(seqLen, dim)` key and value cache it appends to
-the generator's lists so the generator — not the block — owns them: the fused QKV `(3·dim, dim)`
-weight of each block is exposed as three contiguous
-`(dim, dim)` query, key and value views — the same sections the full-sequence path slices — and the
-position-indexed rotary `freqCis` the cached overload expects is derived from the stored
-`rope_inv_freq` with `RotationFeatures.computeRopeFreqs(seqLen, invFreq)`, which produces exactly the
-rotation the full-sequence path applies at each row, so greedy output matches. The feed-forward, final
-normalization, output projection and log-softmax are the trained ones, unchanged. The generator mirrors
+work per byte is one position rather than one window. It is built by `CausalLanguageModel.decodeModel`
+from the `causal_lm_decode_block` and `causal_lm_head` layers of `causal_lm.pdsl`, which bridge the
+trained weight layout to the cached `attention` layer of `attention.pdsl` without copying a weight. The
+model passes each block a caller-owned `(seqLen, dim)` key and value cache it appends to the
+generator's lists, so the generator — not the block — owns them. The decode block reads the fused QKV
+`(3·dim, dim)` weight of its block as three contiguous `(dim, dim)` query, key and value views — the
+same sections the full-sequence path slices — and the position-indexed rotary `freqCis` the cached
+attention expects is derived from the stored `rope_inv_freq` with
+`RotationFeatures.computeRopeFreqs(seqLen, invFreq)`, which produces exactly the rotation the
+full-sequence path applies at each row, so greedy output matches. The feed-forward
+(`causal_lm_feed_forward`) is the layer the full window uses, and the head (`causal_lm_head`) shares
+the full window's final normalization and output projection (`causal_lm_logits`) and its log-softmax.
+`CausalLanguageModelAssetTest` pins both passes
+against the Java assembly they replaced and against values captured from it, and requires the decode's
+row at every position to equal the full window's row there. The generator mirrors
 `SlidingWindowAutoregressiveModel`: it owns the decode compilation, its input buffer, the per-layer
 caches, the position and the temperature, and `reset()` clears the caches and position so a new sequence
 starts clean; it routes the same tempered logits through `sampleToken`, so greedy, temperature and

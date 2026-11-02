@@ -19,12 +19,14 @@ package org.almostrealism.ml;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.layers.NormalizationType;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.layers.ParameterUpdate;
-import org.almostrealism.layers.ProjectionFactory;
+import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -34,12 +36,21 @@ import java.util.Random;
  * log-probabilities of the next token at every position:</p>
  * <ol>
  *   <li>a trainable {@link org.almostrealism.layers.LayerFeatures#embedding token embedding};</li>
- *   <li>{@code depth} pre-norm {@link TransformerBlockFeatures#transformerBlock transformer blocks}
- *       with RMS normalization, causal self-attention with full rotary position embedding, no
- *       query/key normalization, and a SiLU-gated feed-forward of width {@code ffDim};</li>
+ *   <li>{@code depth} pre-norm transformer blocks with RMS normalization, causal self-attention
+ *       with full rotary position embedding, no query/key normalization, and a SiLU-gated
+ *       feed-forward of width {@code ffDim};</li>
  *   <li>a final RMS normalization, an output projection to the vocabulary, and a log-softmax over
  *       the vocabulary axis.</li>
  * </ol>
+ *
+ * <p>The structure is not assembled here. Both forward passes — this full-window one, and the
+ * single-position one {@link #decodeModel} builds for decoding through key/value caches — are the
+ * layers of {@link #CAUSAL_LM_ASSET}, which define each stage once: the embedding, the full-window and
+ * single-position blocks, the gated feed-forward they share and the head. This class binds its
+ * configuration as the asset's {@code settings}, in the layout of
+ * {@link TransformerConfig#toPdslSettings()}, and each block's weights from the
+ * {@link StateDictionary}, and builds those layers in order, one block layer per configured
+ * block.</p>
  *
  * <p>The output is two-dimensional, {@code (seqLen, vocabSize)}, so that
  * {@link org.almostrealism.optimize.NegativeLogLikelihood} treats each position as one row and
@@ -65,7 +76,14 @@ import java.util.Random;
  * @see NextTokenDataset
  * @see SlidingWindowAutoregressiveModel
  */
-public final class CausalLanguageModel extends Model implements TransformerBlockFeatures {
+public final class CausalLanguageModel extends Model implements SequenceAttentionFeatures {
+	/**
+	 * Classpath location of the asset that defines the structure of both forward passes of the model:
+	 * the layers {@link #addLayers()} builds for the full window and {@link #decodeModel} builds for a
+	 * single position.
+	 */
+	public static final String CAUSAL_LM_ASSET = "/pdsl/causal_lm.pdsl";
+
 	/** Weight key of the token embedding table, {@code (vocabSize, dim)}. */
 	public static final String EMBEDDING_KEY = "token_embedding";
 
@@ -196,32 +214,76 @@ public final class CausalLanguageModel extends Model implements TransformerBlock
 
 	/**
 	 * Adds the layers of this model over its weights, from {@code (seqLen)} token ids to
-	 * {@code (seqLen, vocabSize)} log-probabilities.
+	 * {@code (seqLen, vocabSize)} log-probabilities: the {@code causal_lm_embedding} layer of
+	 * {@link #CAUSAL_LM_ASSET}, its {@code causal_lm_block} layer once per block, bound to that block's
+	 * weights, and its {@code causal_lm_window_head} layer. The model attends to every position of its
+	 * window, so each block's padding and key masks are bound as all-ones masks, which leave every value
+	 * and every score unchanged.
 	 */
 	private void addLayers() {
 		TraversalPolicy blockShape = shape(1, config.seqLen, config.dim);
-		TraversalPolicy logitShape = shape(1, config.seqLen, config.vocabSize);
 
-		add(embedding(config.getInputShape(), weights.get(EMBEDDING_KEY)));
-		add(reshape(shape(config.seqLen, config.dim), blockShape));
+		Map<String, Object> embedding = new HashMap<>();
+		embedding.put("token_embedding", weights.get(EMBEDDING_KEY));
+		add(buildLayer("causal_lm_embedding", config.getInputShape(), embedding));
 
 		for (int i = 0; i < config.layerCount; i++) {
-			add(transformerBlock(1, config.dim, config.seqLen, config.headCount, false, 0, null,
-					weights.get(config.layerKey(i, "attention_norm")), null,
-					weights.get(config.layerKey(i, "qkv")), weights.get(config.layerKey(i, "wo")),
-					null, null, null, null,
-					weights.get(INV_FREQ_KEY),
-					null, null, null, null, null, null, null, null, null,
-					weights.get(config.layerKey(i, "ffn_norm")), null,
-					weights.get(config.layerKey(i, "w1")), weights.get(config.layerKey(i, "w2")), null, null,
-					null, ProjectionFactory.dense(), AttentionVariant.STANDARD, null, null, null,
-					NormalizationType.RMS, null, true));
+			Map<String, Object> block = blockArguments(i);
+			block.put("inv_freq", weights.get(INV_FREQ_KEY));
+			block.put("padding_mask", everyPositionValid(1, config.seqLen));
+			block.put("key_mask", everyPositionValid(1, config.seqLen));
+			add(buildLayer("causal_lm_block", blockShape, block));
 		}
 
-		add(norm(NormalizationType.RMS, weights.get(FINAL_NORM_KEY), null));
-		add(dense(weights.get(OUTPUT_KEY)));
-		add(reshape(logitShape, config.getOutputShape()));
-		add(logSoftmax(config.getOutputShape()));
+		add(buildLayer("causal_lm_window_head", blockShape, headArguments()));
+	}
+
+	/**
+	 * Builds a layer of {@link #CAUSAL_LM_ASSET} over this model's configuration, which every layer of
+	 * the asset reads its sizes from: the configuration is bound as the layer's {@code settings}, in
+	 * the layout of {@link TransformerConfig#toPdslSettings()}, alongside the layer's own arguments.
+	 *
+	 * @param layer      the layer name
+	 * @param inputShape the input shape the layer is built for
+	 * @param args       the layer's weights and the state of the forward pass it belongs to
+	 * @return the layer
+	 */
+	private Block buildLayer(String layer, TraversalPolicy inputShape, Map<String, Object> args) {
+		Map<String, Object> arguments = new HashMap<>(args);
+		arguments.put("settings", config.toPdslSettings());
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(CAUSAL_LM_ASSET), layer, inputShape, arguments);
+	}
+
+	/**
+	 * Binds the weights of one block, which both block layers of {@link #CAUSAL_LM_ASSET} take: the
+	 * full-window {@code causal_lm_block} and the single-position {@code causal_lm_decode_block}.
+	 *
+	 * @param layer the block index
+	 * @return the bindings, to be completed with the arguments of one of the two block layers
+	 */
+	private Map<String, Object> blockArguments(int layer) {
+		Map<String, Object> args = new HashMap<>();
+		args.put("attention_norm", weights.get(config.layerKey(layer, "attention_norm")));
+		args.put("qkv", weights.get(config.layerKey(layer, "qkv")));
+		args.put("wo", weights.get(config.layerKey(layer, "wo")));
+		args.put("ffn_norm", weights.get(config.layerKey(layer, "ffn_norm")));
+		args.put("w1", weights.get(config.layerKey(layer, "w1")));
+		args.put("w2", weights.get(config.layerKey(layer, "w2")));
+		return args;
+	}
+
+	/**
+	 * Binds the weights of the head of {@link #CAUSAL_LM_ASSET}, which both forward passes end in: the
+	 * final normalization scale and the output projection.
+	 *
+	 * @return the bindings
+	 */
+	private Map<String, Object> headArguments() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("final_norm", weights.get(FINAL_NORM_KEY));
+		args.put("output", weights.get(OUTPUT_KEY));
+		return args;
 	}
 
 	/**
@@ -232,17 +294,17 @@ public final class CausalLanguageModel extends Model implements TransformerBlock
 	 * value cache so that each step scores the new position against the cached past instead of
 	 * recomputing the whole window.
 	 *
-	 * <p>It is the decode counterpart of the training layers assembled in {@link #addLayers()}: the
-	 * same embedding weights feed it (the caller supplies the embedding, as the generator does), the
-	 * feed-forward of each block is the identical {@link #gatedLinearFeedForward gated feed-forward}
-	 * over a single position, and the final normalization, output projection and log-softmax are the
-	 * same. Only the attention changes — from the full-window {@link #transformerBlock causal
-	 * self-attention} to the cached single-position {@link AttentionFeatures#attention attention}. The
-	 * attention weights are the same: the fused {@code qkv} {@code (3 * dim, dim)}
-	 * weight is exposed as three contiguous {@code (dim, dim)} query, key and value views without a
-	 * copy (section 0 is the query, 1 the key, 2 the value, as the training path's
-	 * {@code sequence_attention} slices it), and the position-indexed rotary frequencies are derived
-	 * from the stored {@link #INV_FREQ_KEY rotary inverse frequencies} with
+	 * <p>It is the decode counterpart of the training layers {@link #addLayers()} builds: the same
+	 * embedding weights feed it (the caller supplies the embedding, as the generator does), and it is
+	 * built from the same asset, {@link #CAUSAL_LM_ASSET} — its {@code causal_lm_decode_block} layer
+	 * once per block, then its {@code causal_lm_head} layer. The decode block shares the full-window
+	 * block's gated feed-forward layer, and the head is the full-window head without its reshape. Only
+	 * the attention changes — from the full-window causal self-attention to the cached single-position
+	 * attention. The attention weights are the same: the decode block reads the fused {@code qkv}
+	 * {@code (3 * dim, dim)} weight as three contiguous {@code (dim, dim)} query, key and value views
+	 * without a copy (section 0 is the query, 1 the key, 2 the value, as the full-window attention
+	 * slices it), and the position-indexed rotary frequencies are derived from the stored
+	 * {@link #INV_FREQ_KEY rotary inverse frequencies} with
 	 * {@link #computeRopeFreqs(int, PackedCollection)}, which produces exactly the rotation the
 	 * full-sequence path applies at the same row, so greedy decoding agrees with the full forward.</p>
 	 *
@@ -274,45 +336,28 @@ public final class CausalLanguageModel extends Model implements TransformerBlock
 			throw new IllegalArgumentException("cache lists must be empty");
 		}
 
-		int dim = config.dim;
 		CollectionProducer freqCis = computeRopeFreqs(config.seqLen, weights.get(INV_FREQ_KEY));
-		TraversalPolicy tokenShape = shape(1, dim);
-		TraversalPolicy ffnShape = shape(1, 1, dim);
+		TraversalPolicy tokenShape = shape(1, config.dim);
 
 		Model model = new Model(tokenShape);
 
 		for (int i = 0; i < config.layerCount; i++) {
-			PackedCollection qkv = weights.get(config.layerKey(i, "qkv"));
-			PackedCollection wq = qkv.range(shape(dim, dim), 0);
-			PackedCollection wk = qkv.range(shape(dim, dim), dim * dim);
-			PackedCollection wv = qkv.range(shape(dim, dim), 2 * dim * dim);
-
-			PackedCollection keyCache = new PackedCollection(shape(config.seqLen, dim));
-			PackedCollection valueCache = new PackedCollection(shape(config.seqLen, dim));
+			PackedCollection keyCache = new PackedCollection(shape(config.seqLen, config.dim));
+			PackedCollection valueCache = new PackedCollection(shape(config.seqLen, config.dim));
 			keyCache.clear();
 			valueCache.clear();
 			keyCaches.add(keyCache);
 			valueCaches.add(valueCache);
 
-			model.add(residual(attention(config.headCount, config.headCount,
-					weights.get(config.layerKey(i, "attention_norm")),
-					wk, wv, wq, weights.get(config.layerKey(i, "wo")),
-					null, null, null, null, null,
-					freqCis, p(position), 1e-5,
-					keyCache, valueCache)));
-
-			model.add(reshape(tokenShape, ffnShape));
-			model.add(residual(gatedLinearFeedForward(ffnShape, NormalizationType.RMS,
-					weights.get(config.layerKey(i, "ffn_norm")), null,
-					weights.get(config.layerKey(i, "w1")), null,
-					weights.get(config.layerKey(i, "w2")), null,
-					null, null, silu(), ProjectionFactory.dense())));
-			model.add(reshape(ffnShape, tokenShape));
+			Map<String, Object> block = blockArguments(i);
+			block.put("freq_cis", freqCis);
+			block.put("position", p(position));
+			block.put("key_cache", keyCache);
+			block.put("value_cache", valueCache);
+			model.add(buildLayer("causal_lm_decode_block", tokenShape, block));
 		}
 
-		model.add(norm(NormalizationType.RMS, weights.get(FINAL_NORM_KEY), null));
-		model.add(dense(weights.get(OUTPUT_KEY)));
-		model.add(logSoftmax(shape(1, config.vocabSize)));
+		model.add(buildLayer("causal_lm_head", tokenShape, headArguments()));
 		return model;
 	}
 }

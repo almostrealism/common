@@ -403,7 +403,7 @@ layer block_with_imports(size: int) {
 
 ## Builtin catalog
 
-The 30 built-ins dispatched by `PdslBuiltins` (package-private). These are the domain-agnostic
+The 32 built-ins dispatched by `PdslBuiltins` (package-private). These are the domain-agnostic
 core, available to every program. The attention and rotary position primitives of the
 machine-learning engine are an extension, cataloged under
 [The machine-learning extension](#the-machine-learning-extension). The interpreter itself evaluates
@@ -423,12 +423,14 @@ means neither the code nor a test settles it.
 | Builtin | Call forms | Input → output | Lowers to | Gradient |
 |---------|------------|----------------|-----------|----------|
 | `dense` | `dense(w)`, `dense(w, b)` | `[..., in]` → `[..., out]`, with `w` `[out, in]` | `LayerFeatures.dense` | input: passes; `w`, `b`: trains (registered weights) |
+| `embedding` | `embedding(table)` | token ids of any shape `s` → `s` with a trailing `dim` axis (`[seq_len]` → `[seq_len, dim]`); each id is replaced by its row of the `[vocab, dim]` `table` | `LayerFeatures.embedding` | ids: none (they are indices); `table`: trains (registered weight; each position's gradient accumulates into the row it selected, `EmbeddingLogSoftmaxPrimitivesTest.embeddingAccumulatesEveryPositionsGradientIntoItsRow`) |
 | `conv1d` | `conv1d(w, b, stride, padding)`, `conv1d(w, stride, padding)` | `[batch, in_ch, len]` → `[batch, out_ch, len']`, with `w` `[out_ch, in_ch, kernel]` | `ConvolutionLayerFeatures.convolution1d` | input: passes; `w`, `b`: trains (registered weights); no PDSL gradient test |
 | `conv_transpose1d` | `conv_transpose1d(w, b, stride, padding, output_padding)`, `conv_transpose1d(w, stride, padding, output_padding)` | `[batch, in_ch, len]` → `[batch, out_ch, (len - 1) * stride - 2 * padding + kernel + output_padding]`, with `w` `[in_ch, out_ch, kernel]` | `ConvolutionLayerFeatures.convTranspose1d` | input: passes; `w`, `b`: trains (registered weights); no PDSL gradient test |
 | `rmsnorm` | `rmsnorm(w, eps)`, `rmsnorm(w, b, eps)` (`b` may be `null`) | shape preserved; normalizes runs of `w`'s last-axis length | `NormalizationLayerFeatures.rmsnorm` | input: passes; `w`, `b`: trains (registered weights); `eps`: build-time constant |
 | `layernorm` | `layernorm(w, b, eps)` (`b` may be `null`; `w` required) | shape preserved; runs of `size(w)` must tile the input | `NormalizationLayerFeatures.norm` | input: passes (`SequenceAttentionAssetTest.qkLayerNormGradientsMatchJavaAssembly`); `w`, `b`: trains (registered weights) |
 | `dynamic_tanh` | `dynamic_tanh(alpha, w, b)` (`w` and `b` may be `null`; `alpha` required, one value or one per feature) | shape preserved; every element becomes `w ⊙ tanh(alpha · x) + b`, with runs of `size(w)` (or `size(b)`) tiling the input; DynamicTanh (DyT) normalization, which computes no statistic | `NormalizationLayerFeatures.dynamicTanh` | input: passes; `alpha`, `w`, `b`: trains (registered weights) (`DynamicTanhPrimitiveTest.dynamicTanhTrainsAlphaAndItsAffine`) |
 | `softmax` | `softmax()` | `[rows, size]` (≥ 2 axes) preserved; max-subtracted, over the last axis | `ActivationFeatures.softmax(shape, true)` | input: passes |
+| `log_softmax` | `log_softmax()` | `[rows, size]` (exactly 2 axes) preserved; each row's log-probabilities, `x − log Σ exp(x)` over the last axis, without subtracting the row maximum (see [Known limits](#known-limits)) | `ActivationFeatures.logSoftmax` | input: passes (`EmbeddingLogSoftmaxPrimitivesTest.logSoftmaxPassesTheGradientOfEachRow`) |
 | `silu` | `silu()` | preserved | `ActivationFeatures.silu` | input: passes |
 | `relu` | `relu()` | preserved | `ActivationFeatures.relu` | input: passes |
 | `gelu` | `gelu()` | preserved | `ActivationFeatures.gelu` | input: passes |
@@ -714,8 +716,10 @@ pre-norm transformer layer. `sequence_attention.pdsl`, `sdpa.pdsl` and
 feed-forward networks. `resampling_transformer.pdsl` is one layer of a learned-resampling
 transformer: differential attention within each attention chunk and a gated feed-forward, both
 normalized with `dynamic_tanh`. `qwen2.pdsl`, `qwen3.pdsl` and `t5gemma_encoder.pdsl` are whole
-models and encoders. `midi/` and `audio/` hold the SkyTNT, GRU decoder, Oobleck codec and mixdown
-assets.
+models and encoders. `causal_lm.pdsl` is the small language model the platform trains from scratch,
+in both of its forward passes: the full window it trains with, from token ids through `embedding` to
+`log_softmax` log-probabilities, and the single position it decodes with through key/value caches.
+`midi/` and `audio/` hold the SkyTNT, GRU decoder, Oobleck codec and mixdown assets.
 
 ## Known limits
 
@@ -751,6 +755,12 @@ Each limit below is recorded with its evidence. Fixing any of them changes this 
   `beta` is not seen by the built layer either.
 - **`capture` cuts the gradient.** Its backward cell is empty (`PdslBuiltins.callCapture`), so
   nothing upstream of a `capture` receives a gradient.
+- **`log_softmax` is not finite for large logits.** `ActivationFeatures.logSoftmax` computes
+  `x − log Σ exp(x)` without subtracting the row maximum, so in single precision a row whose largest
+  value exceeds about 88 becomes `−∞` throughout, and a row whose values all lie below about −103
+  becomes `+∞`: `[1000, 0]` and `[100, 0]` give `−∞`, `[50, 0]` is right. Subtracting the maximum, as
+  `softmax` does, makes the backward of one existing case fail to compile (`SoftmaxTests`), so the
+  fix is tracked as its own task.
 - **Imports are ignored by `parse(String)` and `parse(Path)`.** Those methods record the `Import`
   nodes, but only `parseResource`/`parseResources` resolve them. A source string that imports an
   asset and calls its layers fails at build time with "Unknown function".
