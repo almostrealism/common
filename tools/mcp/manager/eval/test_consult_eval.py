@@ -559,6 +559,28 @@ class TestGraderTeeth(unittest.TestCase):
         result = grade(value_first, resolve_expect(case, "step2"))
         self.assertTrue(result.passed, result.failures)
 
+    def test_e1_step2_limit_guard_accepts_common_assertions_and_rejects_negations(self):
+        # A live model states the limit in many equivalent ways; the guard
+        # must accept each of them, and still reject a negation even when the
+        # negating word is code-formatted.
+        case = self._case("E1")
+        prefixes = ("Master Agent Dispatch uses branch prefixes qa/docs-, "
+                    "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
+                    "qa/performance-, qa/pdsl- and qa/retro-; ")
+        accepted = ["MAX_OPEN_PRS is set to 7.",
+                    "MAX_OPEN_PRS is `7`.",
+                    "MAX_OPEN_PRS defaults to seven.",
+                    "MAX_OPEN_PRS: 7."]
+        rejected = ["MAX_OPEN_PRS is `not` 7.",
+                    "MAX_OPEN_PRS is never set to 7."]
+        for limit in accepted + rejected:
+            with self.subTest(limit=limit):
+                response = {"ok": True, "answer": prefixes + limit,
+                            "sources": [".github/CLAUDE.md"]}
+                result = grade(response, resolve_expect(case, "step2"))
+                self.assertEqual(result.passed, limit in accepted,
+                                 result.failures)
+
 
 class TestMustFlagStale(unittest.TestCase):
     """must_flag_stale needs the evidence field and the named-absent list."""
